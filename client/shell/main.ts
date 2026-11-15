@@ -16,6 +16,7 @@ import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts"
 import { BenchRun, PassClock } from "../core/passes.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
+import { arrivalOf, type ClusterList } from "../core/travel.ts";
 import { devicePage } from "./device.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
@@ -34,6 +35,8 @@ const bench = params.has("bench") ? new BenchRun() : null;
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
+/** A survivor arriving from another server of the cluster, with its ticket (client/core/travel.ts). */
+const arrival = arrivalOf(location.hash);
 
 async function boot(): Promise<void> {
   const reg = compileContent(CORE_CONTENT).registry!;
@@ -56,7 +59,8 @@ async function boot(): Promise<void> {
   const ground = groundSize(hf);
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
   const session = new ClientSession(connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`), {
-    ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, params.get("name")),
+    ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, arrival?.name ?? params.get("name"), arrival !== null),
+    ...(arrival ? { ticket: arrival.ticket } : {}),
     spectate: params.has("spectate"),
     password: params.get("password") ?? "",
     registry: reg,
@@ -75,6 +79,14 @@ async function boot(): Promise<void> {
   app.plainSky = selfcheck;
   [app.ui.settings.touchFirst, app.dpr] = [matchMedia("(pointer: coarse)").matches, devicePixelRatio];
   app.address((name) => params.get(name), selfcheck || bench !== null || device !== null);
+  app.page = {
+    origin: location.origin,
+    protocol: location.protocol,
+    hostname: location.hostname,
+    go: (url) => location.assign(url),
+    arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
+    cluster: async () => (await fetchJson(fetch, "cluster.json")) as ClusterList,
+  };
   const clock = (renderer.passes = device ? null : new PassClock(renderer.gl, bench !== null && params.has("passes")));
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   // A device probe runs by itself, and a touch must not move or open anything.

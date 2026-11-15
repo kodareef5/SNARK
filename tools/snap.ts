@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 
@@ -57,6 +57,7 @@ import { encodePng } from "./snap/png.ts";
 import { PICK_SKY, Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
 import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
+import { slopesScene } from "./snap/slopes.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
 export function houseScene(view: ProvingView, tier: string): void {
@@ -1084,6 +1085,7 @@ if (import.meta.main) {
       houseScene(view, arg("house") ?? "wood");
       houseView(view, arg("house") ?? "wood", look);
     }
+    if (args.includes("--slopes")) sceneLabels.splice(0, sceneLabels.length, ...slopesScene(view, arg("slopes") ?? "scene", arg("from") === "far" ? "far" : "near"));
     if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
     if (args.includes("--ragdoll")) ragdollScene(view, Number(arg("ragdoll") ?? 4));
     if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);

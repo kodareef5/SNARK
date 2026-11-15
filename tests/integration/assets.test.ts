@@ -107,5 +107,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // until the pack held the mortar and pestle's grey box (content/items/stations.ts); without it and sparkpowder it is that again.
   // It was afc8210d until the pack held the smoke and poison clouds' boxes, which are never drawn (render/clouds.ts); without
   // the two grenades, their clouds and the poison's buff (content/items/explosives.ts) it is that again.
-  expect(hash.toString(16)).toBe("fff88e25");
+  // It was fff88e25 until the pack held the obelisk's and its terminal's grey boxes (content/terminals.ts), which number the
+  // meshes after them on; without them, and the proving ground's obelisk, it is that again.
+  // It was e8a95911 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
+  // It was 949f9aed until the pteranodon's grey box (content/creatures/pteranodon.ts) numbered the meshes after it on;
+  // without the pteranodon and its beach entry it is that again.
+  expect(hash.toString(16)).toBe("98e00881");
 });

@@ -65,7 +65,7 @@ export const WEAPONS: readonly Def[] = [
   // 15 for 6 points, of 4 wood, 2 fiber, 10 sparkpowder and 2 gunpowder, craftingxp 0.24. It is spent as it fires, as a
   // thrown weapon is, and its flare is its own round (D447), which carries a light and so flies as a prop (core:flare_live,
   // server/projectiles.ts) that rises, sinks slowly and goes out where it lands. Its speed, the light's reach and colour,
-  // the stack of 1 and its throw's pose in place of a pistol's are ours (DEV149, DEV150). Until rendering has local lights
+  // the stack of 1 and its throw's pose in place of a pistol's are ours (DEV156, DEV157). Until rendering has local lights
   // the flare is a bright mesh (D436): the blast's yellow cube, a metre across, until the art gives it its own.
   {
     type: "item", class: "weapon", id: id("flare_gun"), label: "flare gun", stack: 1, weight: 0.5, color: 3,

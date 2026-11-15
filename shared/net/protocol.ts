@@ -1,10 +1,10 @@
 // Message layouts live here and nowhere else. Every message starts with its type, and each type has a fixed channel. A client's
-// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 14 to 255 are free.
+// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 15 to 255 are free.
 //
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
 //                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
-//                            password string ("" for none)
+//                            with HELLO_TICKET a travel ticket (32 bytes), password string ("" for none)
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
 //                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
 //                            one bit: 1 = same as the one before.
@@ -22,12 +22,13 @@
 //                            and per run: first slot minus the end of the run before svarint, length-1 varint.
 //                            Rows are read first. A removal leaves alone any row newer than itself.
 //     CHUNK_DROP reliable    chunk u16
-//     REJECT    reliable     reason u8
+//     REJECT    reliable     reason u8, and for REJECT_TRAVEL why, as a string
 //     RESULT    reliable     command sequence u16 (0 when no command asked), code u8
 //     TEXT      reliable     channel u8, text string
 //     OWN       reliable     component u8, then that component's fields
 //     NODES     reliable     chunk u16, version u32, count u8, used-up slots (u8 each)
 //     EVENT     reliable     kind u8, then that kind's fields (see EVENT_*)
+//     TRAVEL    reliable     travel ticket (32 bytes), destination's world id u16; the connection then closes
 //
 // The server never trusts a position or a target. Neither INPUT nor COMMAND has room for a coordinate of the client's own
 // body or the identity of something to hit. Commands are applied at most once and never resent after a reconnect. The
@@ -37,7 +38,78 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 16;
+/** 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. 16: the flyers'.
+ * 17: vehicles: a body's mechanical state and seat after the flight counters, and a view entry's vehicle pose (view.ts). */
+export const PROTOCOL_VERSION = 17;
+
+// Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
+// named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
+// flight layout of a pose's motion bits and CUE_TAKEOFF and CUE_ROLL (shared/anim/pose.ts), and the two flight counters
+// at the end of writeBody.
+/** CMD_CARRY, FL6: a ridden flyer grabs a body in its feet, named by its entity index u32, as CARRY_PICK_UP names one. */
+export const CARRY_GRAB = 3;
+/** CMD_CARRY, FL6: a ridden flyer lets go of what it carries, in the air or on the ground. Nothing follows. */
+export const CARRY_RELEASE = 4;
+/** CMD_ORDER, FL3: a flyer lands where it is, as ARK's whistle lands flyers (ASE 288.113). A whistle may give it. */
+export const ORDER_LAND = 11;
+/** The flight counters (Body.regenWait, Body.rollWait), 10 bits each after the rest of a body. */
+function writeFlight(w: BitWriter, b: Body): void {
+  w.bits(b.regenWait, 10);
+  w.bits(b.rollWait, 10);
+}
+function readFlight(r: BitReader, b: Body): void {
+  b.regenWait = r.bits(10);
+  b.rollWait = r.bits(10);
+}
+/** Protocol 17: a vehicle's mechanical state and a body's seat, after the flight counters (shared/sim/vehicle-body.ts). */
+function writeVehicle(w: BitWriter, b: Body): void {
+  w.bool(b.vehicle);
+  if (b.vehicle) {
+    w.f32(b.vehicleYaw);
+    w.f32(b.vehiclePitch);
+    w.f32(b.vehicleRoll);
+    w.f32(b.steering);
+    w.f32(b.wheelAngle);
+    w.f32(b.fuel);
+    w.f32(b.vehicleYawRate);
+    w.f32(b.vehiclePitchRate);
+    w.f32(b.vehicleRollRate);
+    w.f32(b.vehicleGroundPitch);
+    w.f32(b.vehicleGroundRoll);
+    w.f32(b.vehicleRideOffset);
+    w.f32(b.vehicleRideVelocity);
+    w.u8(b.vehicleGear + 1);
+    w.f32(b.vehicleRpm);
+    w.f32(b.vehicleShiftTime);
+    w.f32(b.vehiclePayloadMass);
+    // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
+  }
+  w.varint(b.seat);
+  if (b.seat !== 0) { w.u8(b.seatSlot); w.bits(b.seatGen, 12); }
+}
+function readVehicle(r: BitReader, b: Body): void {
+  b.vehicle = r.bool();
+  b.vehicleYaw = b.vehicle ? r.f32() : 0;
+  b.vehiclePitch = b.vehicle ? r.f32() : 0;
+  b.vehicleRoll = b.vehicle ? r.f32() : 0;
+  b.steering = b.vehicle ? r.f32() : 0;
+  b.wheelAngle = b.vehicle ? r.f32() : 0;
+  b.fuel = b.vehicle ? r.f32() : 0;
+  b.vehicleYawRate = b.vehicle ? r.f32() : 0;
+  b.vehiclePitchRate = b.vehicle ? r.f32() : 0;
+  b.vehicleRollRate = b.vehicle ? r.f32() : 0;
+  b.vehicleGroundPitch = b.vehicle ? r.f32() : 0;
+  b.vehicleGroundRoll = b.vehicle ? r.f32() : 0;
+  b.vehicleRideOffset = b.vehicle ? r.f32() : 0;
+  b.vehicleRideVelocity = b.vehicle ? r.f32() : 0;
+  b.vehicleGear = b.vehicle ? r.u8() - 1 : 0;
+  b.vehicleRpm = b.vehicle ? r.f32() : 0;
+  b.vehicleShiftTime = b.vehicle ? r.f32() : 0;
+  b.vehiclePayloadMass = b.vehicle ? r.f32() : 0;
+  b.seat = r.varint();
+  b.seatSlot = b.seat !== 0 ? r.u8() : 0;
+  b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
+}
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -73,6 +145,11 @@ export const S_MARKS = 12;
  * whole, and an emptied one is sent empty. Protocol 9.
  */
 export const S_FAR = 13;
+/**
+ * Protocol 14. The survivor has left for another server of the cluster: the travel ticket (TICKET_BYTES) and the destination's
+ * world id u16. The page takes the ticket to the destination, whose HELLO carries it, and the server closes this connection.
+ */
+export const S_TRAVEL = 14;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -83,13 +160,22 @@ export const REJECT_NAME = 5;
 export const REJECT_DENIED = 6;
 export const REJECT_KICKED = 7;
 export const REJECT_PASSWORD = 8;
+/**
+ * Protocol 14. A travel ticket, or a survivor that is away on another server, was turned away. A string says why: the ticket
+ * was used, has expired, is for another name, or its survivor went back; this server will not take the survivor; or it is away.
+ */
+export const REJECT_TRAVEL = 9;
 export const MAX_PASSWORD_BYTES = 64;
 export const MAX_TUNING_BYTES = 1 << 20;
 
 export const HELLO_SPECTATE = 1;
 /** A look follows the key. A new survivor gets it at once and skips the creator. */
 export const HELLO_LOOK = 2;
+/** Protocol 14. A travel ticket follows the look: the survivor arrives from another server of the cluster (S_TRAVEL). */
+export const HELLO_TICKET = 4;
 export const KEY_BYTES = 16;
+/** A transfer's id (16 bytes), then the secret that lets one browser take it (16 bytes). */
+export const TICKET_BYTES = 32;
 
 export const SESSION_ALIVE = 0;
 export const SESSION_DEAD = 1;
@@ -105,7 +191,7 @@ export const CMD_USE = 3;
 
 /** Closes the open container. No arguments. */
 export const CMD_CLOSE = 4;
-/** Index u8 into the places OWN_RESPAWN listed. */
+/** Index u8 into the places OWN_RESPAWN listed, then that list's number u8. A place from a list since replaced is STALE. */
 export const CMD_RESPAWN = 5;
 
 /** Stat u8. It gets one level-up point. */
@@ -139,7 +225,10 @@ export const CMD_CHAT = 17;
  * the position out again itself.
  */
 export const CMD_PLACE = 18;
-/** Structure ref u32, then a STRUCT_ action u8 (shared/world/upkeep.ts). STRUCT_PIN and STRUCT_USE add a PIN u16: 0 to 9999, or 0xffff for none. */
+/**
+ * Structure ref u32, then a STRUCT_ action u8 (shared/world/upkeep.ts). STRUCT_PIN and STRUCT_USE add a PIN u16: 0 to 9999, or
+ * 0xffff for none. STRUCT_NAME adds a name string.
+ */
 export const CMD_STRUCT = 19;
 /**
  * Orders a tribe creature: entity index u32 or ORDER_ALL, then order u8. The order is an ORDER_ value, ORDER_STANCE plus a
@@ -204,6 +293,11 @@ export const CMD_CRAFT_AT = 29;
  * station (INVALID), and without the ingredients (SHORT).
  */
 export const CMD_CRAFT_BLUEPRINT = 30;
+/**
+ * Protocol 14. The survivor leaves for another server of the cluster: its world id u16. Refused (DENIED, with a notice that
+ * says why) where it may not go; on success the answer is S_TRAVEL, once its leaving is saved.
+ */
+export const CMD_TRAVEL = 31;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
@@ -263,8 +357,16 @@ export const SLOT_ON = 2;
 export const OWN_OPEN = 4;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
 export const OWN_MARKERS = 5;
-/** count u8, then per place: name string, x f32, z f32, wait u16 (seconds until a bed is ready, 0 for a spawn point). */
+/**
+ * The places a survivor without a body may rise at, sent whenever they change while it chooses: why it chooses (CHOOSE_), the
+ * list's number u8 (CMD_RESPAWN names it), count u8, then per place: the bed's structure kind u16 (0 for one of the map's spawn
+ * points), name string, x f32, z f32, and the tick it is ready from u32 (0 for now).
+ */
 export const OWN_RESPAWN = 6;
+/** Why a survivor has no body and chooses where to rise: it died, it arrived from another server, it travels from a bed. */
+export const CHOOSE_DIED = 0;
+export const CHOOSE_ARRIVED = 1;
+export const CHOOSE_TRAVEL = 2;
 
 /**
  * experience u32, level u16, unspent stat points u16, unspent engram points varint, learned engrams (count varint, content
@@ -435,8 +537,9 @@ export class InputBuffer {
 }
 
 /**
- * 360 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
- * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them).
+ * 380 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
+ * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them), and the flyers'
+ * contracts (protocol 16) the flight counters.
  */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
@@ -462,29 +565,8 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u8(b.reloadTo);
   w.u8(b.bloom);
   w.u8(b.kick);
-  w.bool(b.vehicle);
-  if (b.vehicle) {
-    w.f32(b.vehicleYaw);
-    w.f32(b.vehiclePitch);
-    w.f32(b.vehicleRoll);
-    w.f32(b.steering);
-    w.f32(b.wheelAngle);
-    w.f32(b.fuel);
-    w.f32(b.vehicleYawRate);
-    w.f32(b.vehiclePitchRate);
-    w.f32(b.vehicleRollRate);
-    w.f32(b.vehicleGroundPitch);
-    w.f32(b.vehicleGroundRoll);
-    w.f32(b.vehicleRideOffset);
-    w.f32(b.vehicleRideVelocity);
-    w.u8(b.vehicleGear + 1);
-    w.f32(b.vehicleRpm);
-    w.f32(b.vehicleShiftTime);
-    w.f32(b.vehiclePayloadMass);
-
-  }
-  w.varint(b.seat);
-  if (b.seat !== 0) { w.u8(b.seatSlot); w.bits(b.seatGen, 12); }
+  writeFlight(w, b);
+  writeVehicle(w, b);
 }
 
 export function readBody(r: BitReader, b: Body): void {
@@ -511,40 +593,22 @@ export function readBody(r: BitReader, b: Body): void {
   b.reloadTo = r.u8();
   b.bloom = r.u8();
   b.kick = r.u8();
-  b.vehicle = r.bool();
-  b.vehicleYaw = b.vehicle ? r.f32() : 0;
-  b.vehiclePitch = b.vehicle ? r.f32() : 0;
-  b.vehicleRoll = b.vehicle ? r.f32() : 0;
-  b.steering = b.vehicle ? r.f32() : 0;
-  b.wheelAngle = b.vehicle ? r.f32() : 0;
-  b.fuel = b.vehicle ? r.f32() : 0;
-  b.vehicleYawRate = b.vehicle ? r.f32() : 0;
-  b.vehiclePitchRate = b.vehicle ? r.f32() : 0;
-  b.vehicleRollRate = b.vehicle ? r.f32() : 0;
-  b.vehicleGroundPitch = b.vehicle ? r.f32() : 0;
-  b.vehicleGroundRoll = b.vehicle ? r.f32() : 0;
-  b.vehicleRideOffset = b.vehicle ? r.f32() : 0;
-  b.vehicleRideVelocity = b.vehicle ? r.f32() : 0;
-  b.vehicleGear = b.vehicle ? r.u8() - 1 : 0;
-  b.vehicleRpm = b.vehicle ? r.f32() : 0;
-  b.vehicleShiftTime = b.vehicle ? r.f32() : 0;
-  b.vehiclePayloadMass = b.vehicle ? r.f32() : 0;
-
-  b.seat = r.varint();
-  b.seatSlot = b.seat !== 0 ? r.u8() : 0;
-  b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
+  readFlight(r, b);
+  readVehicle(r, b);
 }
 
-/** `key` must be KEY_BYTES long. */
-export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = ""): void {
+/** `key` must be KEY_BYTES long, and a `ticket` TICKET_BYTES. */
+export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = "", ticket: Uint8Array | null = null): void {
   w.bits(C_HELLO, 4);
   w.u16(version);
   w.u32(contentHash);
   w.u32(clipHash);
   w.string(name);
-  w.u8(look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK);
+  const marked = look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK;
+  w.u8(ticket ? marked | HELLO_TICKET : marked & ~HELLO_TICKET);
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
   if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+  if (ticket) for (let i = 0; i < TICKET_BYTES; i++) w.u8(ticket[i] ?? 0);
   w.string(password);
 }
 

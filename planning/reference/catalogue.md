@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 41 classes: 28 built, 5 partly built, and 8 stubs that
-wait for a feature. The core pack holds 412 definitions, and 85 renames of ids
+wait for a feature. The core pack holds 610 definitions, and 87 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -29,22 +29,22 @@ share a `tag`.
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
 | `item` | PrimalItem | a group |  |  |  |
-| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 12 |
-| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose`, `use` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `youngFor`, `use` | 9 |
-| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `tool`, `ammo` | 15 |
-| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 8 |
-| `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 4 |
+| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 12 |
+| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose`, `use` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `youngFor`, `use` | 9 |
+| `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `tool`, `ammo` | 15 |
+| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 8 |
+| `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 4 |
 | `item/equipment` | item type Equipment | a group |  |  |  |
-| `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 20 |
-| `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 2 |
-| `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 28 |
-| `item/egg` | PrimalItemConsumable_Egg_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `spoilHours`, `spoilsInto` | 6 |
-| `item/feces` | the feces items, small to massive | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `spoilHours`, `spoilsInto`, `fuel` | 4 |
-| `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
-| `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
-| `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
-| `item/dye` | PrimalItemDye_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
-| `item/artifact` | PrimalItemArtifact_ | stub: bosses | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
+| `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 20 |
+| `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 3 |
+| `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 30 |
+| `item/egg` | PrimalItemConsumable_Egg_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `eat`, `spoilHours`, `spoilsInto` | 8 |
+| `item/feces` | the feces items, small to massive | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto`, `fuel` | 4 |
+| `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
+| `item/costume` | equipment types Costume and Trophy | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
+| `item/skin` | PrimalItemSkin_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
+| `item/dye` | PrimalItemDye_ | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
+| `item/artifact` | PrimalItemArtifact_ | stub: bosses | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 0 |
 
 - **`item`** on shelf `items`. Anything that is carried.
 - **`item/resource`** on shelf `items/resources`. A material: gathered, stacked, and spent in crafting. One a weapon fires, as a slingshot fires stone, has an ammo facet.
@@ -54,7 +54,7 @@ share a `tag`.
 - **`item/attachment`** on shelf `items/attachments`. Fitted to a weapon that takes it.
 - **`item/equipment`** on shelf `items/equipment`. Worn by a body, in a slot.
 - **`item/armor`** on shelf `items/armor`. A piece worn on the head, torso, hands, legs or feet.
-- **`item/saddle`** on shelf `items/saddles`. Worn by a tamed creature so that it can be ridden.
+- **`item/saddle`** on shelf `items/saddles`. Worn by a tamed creature so that it can be ridden. Drawn as its worn mesh on the creature's bones, unless the creature has a saddled model, which is drawn in place of both.
 - **`item/structure`** on shelf `items/structures`. Set down as a structure.
 - **`item/egg`** on shelf `items/eggs`. An egg in the hand, eaten or set down. A fertilised one stacks to 1, keeps its young and does not hatch while held.
 - **`item/feces`** on shelf `items/feces`. What a creature leaves when it defecates, a size for each kind of creature.
@@ -82,7 +82,7 @@ Asset slots:
 - `item/dye`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 - `item/artifact`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#dropped` mesh, may, from `{id}/dropped`, else `core:bag`.
 
-ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `youngFor` is prime meat from the young in place of raw meat; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is whether it may be a blueprint (a crafted item may, unless false); `use` is UseItemAddCharacterStatusValues and the buffs a consumable gives.
+ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `youngFor` is prime meat from the young in place of raw meat; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is whether it may be a blueprint (a crafted item may, unless false); `use` is UseItemAddCharacterStatusValues and the buffs a consumable gives; `travels` is bPreventUpload, inverted.
 
 What names what: `youngFor` names a `item`; `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item`; `weapon.fits[]` names a `item/attachment`; `weapon.cloud.prop` names a `prop/cloud`; `weapon.cloud.buff` names a `buff`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `craft.needs[].item` names a `item`; `craft.at` names a `structure/station`; `spoilsInto` names a `item`; `use.buffs[]` names a `buff`.
 
@@ -92,7 +92,7 @@ Packs may add to: `weapon`, `places`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 83 |
+| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 85 |
 
 - **`engram`** on shelf `engrams`. Learned with points at a level, for good. Its one item can then be made.
 
@@ -120,7 +120,7 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | --- | --- | --- | --- | --- | --- |
 | `species` | a character | a group |  |  |  |
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `fistsTorpor`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
-| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `keeps`, `fists`, `bite`, `drops`, `corpse`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `alarm`, `tamedSprintMul`, `drag`, `mass`, `carriable`, `feces`, `eggChance`, `fistsTorpor`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 4 |
+| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `keeps`, `fists`, `bite`, `drops`, `corpse`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `alarm`, `tamedSprintMul`, `drag`, `mass`, `carriable`, `feces`, `eggChance`, `fistsTorpor`, `fly`, `grab`, `defendsEgg`, `riderWeight`, `missiles`, `structures`, `tameBonus`, `tamedHealth`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 5 |
 | `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `still` | `stats`, `equips`, `slots`, `zones`, `takes`, `torporDrain`, `crouch`, `prone`, `stamina`, `fists`, `food`, `drops`, `killXp` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
@@ -131,10 +131,10 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 Asset slots:
 
 - `species/survivor`: `#body/{head, torso, hands, legs, feet}` mesh, must with `skeleton`, from `{mesh}_{sex}/{key}`, else `{mesh}/{key}` then `core:mannequin/{key}`; `#hair/<hair>` mesh, may with `skeleton`, from `{mesh}_{sex}/hair/{key}`, else `none`; `#beard/<beard>` mesh, may with `skeleton`, from `{mesh}_{sex}/beard/{key}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`.
-- `species/creature`: `#body` mesh, must, from `{mesh}`, else `box`; `#rig` rig, must with `skeleton`, from `{mesh}`, else `rigid`; `#clip/{idle, walk, run, attack, death}` clip, must with `skeleton`, from `{mesh}/{key}`, else `{mesh}/idle` then `rest`; `#move/{swim, swim_idle, fall, land, turn, startled, flinch, call, torpor_eat, held, carried, jump}` clip, may with `skeleton`, from `{mesh}/{key}`, else `none`; `#torpor/{torpor_in, torpor_idle, torpor_out}` clip, may with `skeleton`, from `{mesh}/{key}`, else `{mesh}/death` then `rest`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#sound/<any>` sound, may, from `{id}/sound/{key}`, else `none`.
+- `species/creature`: `#body` mesh, must, from `{mesh}`, else `box`; `#rig` rig, must with `skeleton`, from `{mesh}`, else `rigid`; `#clip/{idle, walk, run, attack, death}` clip, must with `skeleton`, from `{mesh}/{key}`, else `{mesh}/idle` then `rest`; `#move/{swim, swim_idle, fall, land, turn, startled, flinch, call, torpor_eat, held, carried, jump}` clip, may with `skeleton`, from `{mesh}/{key}`, else `none`; `#torpor/{torpor_in, torpor_idle, torpor_out}` clip, may with `skeleton`, from `{mesh}/{key}`, else `{mesh}/death` then `rest`; `#flight/{take_off, hover, fly, fly_fast, glide, dive, attack_air, barrel_roll, grab, carry, release, torpor_fall, death_air}` clip, may with `fly`, from `{mesh}/{key}`, else `none`; `#saddled` mesh, may with `skeleton`, from `{mesh}/saddled`, else `#body`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#sound/<any>` sound, may, from `{id}/sound/{key}`, else `none`.
 - `species/target`: `#body/{head, torso, hands, legs, feet}` mesh, must with `skeleton`, from `{mesh}_{sex}/{key}`, else `{mesh}/{key}` then `core:mannequin/{key}`; `#hair/<hair>` mesh, may with `skeleton`, from `{mesh}_{sex}/hair/{key}`, else `none`; `#beard/<beard>` mesh, may with `skeleton`, from `{mesh}_{sex}/beard/{key}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`.
 
-ARK's names: `keeps` is GetSpoilingTimeMultiplier of its inventory; `fistsTorpor` is the torpor of a bare-handed strike; `drops` is DeathHarvestingComponent; `corpse` is DeathHarvestingComponent's health and damage per roll; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `regions` is the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions; `alarm` is the herd that flees with a creature when it is hurt; `tamedSprintMul` is the tamed running speed; `drag` is drag weight; `mass` is mass; `carriable` is picked up and thrown by a player; `feces` is the creature's feces item; `eggChance` is the chance of an egg in place of feces; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
+ARK's names: `keeps` is GetSpoilingTimeMultiplier of its inventory; `fistsTorpor` is the torpor of a bare-handed strike; `drops` is DeathHarvestingComponent; `corpse` is DeathHarvestingComponent's health and damage per roll; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `regions` is the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions; `alarm` is the herd that flees with a creature when it is hurt; `tamedSprintMul` is the tamed running speed; `drag` is drag weight; `mass` is mass; `carriable` is picked up and thrown by a player; `feces` is the creature's feces item; `eggChance` is the chance of an egg in place of feces; `fly` is the flying speed, sprint and stamina, and the barrel roll; `grab` is the most drag weight a flyer carries; `defendsEgg` is a skittish flyer that turns on an egg thief; `riderWeight` is PassengerWeightMultiplier; `missiles` is the flyers' damage from projectiles that are not bullets; `structures` is the flyers' damage to structures; `tameBonus` is TamingMaxStatAdditions and TamingMaxStatMultipliers; `tamedHealth` is TamedBaseHealthMultiplier; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
 
 What names what: `drops[].item` names a `item`; `eats[].item` names a `item`; `breeds.egg` names a `prop/egg`; `feces` names a `item/feces`; `loot` names a `loot`; `saddle` names a `item/saddle`; `buffs[]` names a `buff`.
 
@@ -148,16 +148,16 @@ Packs may add to: `drops`, `eats`, `buffs`.
 | `structure/piece` | a structure with snap points | built | `mesh`, `color`, `half`, `hp`, `shape`, `material` | `opens`, `locked`, `decayDays`, `falls` | 33 |
 | `structure/container` | an item container | built | `mesh`, `color`, `half`, `hp`, `slots` | `shape`, `material`, `decayDays`, `locked`, `falls` | 3 |
 | `structure/station` | a crafting inventory with its engrams and speed | partial: stations | `mesh`, `color`, `half`, `hp` | `shape`, `material`, `decayDays`, `locked`, `falls`, `slots`, `lights`, `lit` | 3 |
-| `structure/bed` | a bed | built | `mesh`, `color`, `half`, `hp`, `bed` | `shape`, `material`, `decayDays`, `falls` | 1 |
-| `structure/static` | level geometry, ours | built | `mesh`, `color`, `half`, `hp` | `material` | 112 |
+| `structure/bed` | a bed | built | `mesh`, `color`, `half`, `hp`, `bed` | `shape`, `material`, `decayDays`, `falls`, `wait`, `once`, `floor`, `rise` | 3 |
+| `structure/static` | level geometry, ours | built | `mesh`, `color`, `half`, `hp` | `material`, `shape` | 289 |
 | `structure/defence` | turrets and spikes | stub: defences | `mesh`, `color`, `half`, `hp` | `shape`, `material`, `decayDays`, `falls`, `slots` | 0 |
 
 - **`structure`** on shelf `structures`. Anything built or standing in the world that is not alive.
 - **`structure/piece`** on shelf `structures/pieces`. A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up.
 - **`structure/container`** on shelf `structures/containers`. Holds stacks: a box, a vault.
 - **`structure/station`** on shelf `structures/stations`. Things are made or changed at it: fuel burns and food cooks, and an item whose craft names it in `at` is made from what lies in it. How fast it makes things waits.
-- **`structure/bed`** on shelf `structures/beds`. Its tribe may come back to life at it.
-- **`structure/static`** on shelf `structures/static`. Part of a map: set there with the world and joined to nothing.
+- **`structure/bed`** on shelf `structures/beds`. Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down.
+- **`structure/static`** on shelf `structures/static`. Part of a map: set there with the world and joined to nothing. With a shape it may be sloped.
 - **`structure/defence`** on shelf `structures/defences`. Harms what comes near it.
 
 Asset slots:
@@ -166,7 +166,7 @@ Asset slots:
 - `structure/container`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
 - `structure/station`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
 - `structure/bed`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
-- `structure/static`: `#mesh` mesh, must, from `{mesh}`, else `box`.
+- `structure/static`: `#mesh` mesh, must, from `{mesh}`, else `box` then `shape`.
 - `structure/defence`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
 
 ARK's names: `shape` is SnapPoints; `hp` is Health; `material` is StructureSettingsClass; `slots` is an inventory component; `decayDays` is DecayDestructionPeriod.
@@ -177,7 +177,7 @@ What names what: `shape` names a `shape`; `material` names a `material`; `opens`
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `shape` | snap points and collision | built | `role`, `boxes` | `doorway`, `hulls` | 15 |
+| `shape` | snap points and collision | built | `role`, `boxes` | `doorway`, `hulls`, `look` | 24 |
 
 - **`shape`** on shelf `shapes`. The form of a piece, shared by every material: what bodies walk on and what joins what.
 
@@ -218,7 +218,7 @@ Packs may add to: `yields`.
 | `prop` | an actor that is not alive | a group |  |  |  |
 | `prop/container` | a death cache, a dropped bag | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 4 |
 | `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 3 |
-| `prop/egg` | a laid or dropped egg, fertilised or not | built | `mesh`, `color`, `radius`, `height` | `size`, `item`, `fertile` | 3 |
+| `prop/egg` | a laid or dropped egg, fertilised or not | built | `mesh`, `color`, `radius`, `height` | `size`, `item`, `fertile` | 4 |
 | `prop/cloud` | the gas and smoke actors of grenades | built | `mesh`, `color`, `radius`, `height` |  | 2 |
 | `prop/crate` | SupplyCrate_ | stub: loot | `mesh`, `color`, `radius`, `height` | `slots` | 0 |
 
@@ -299,7 +299,7 @@ Packs may add to: `entries`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 2 |
+| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 3 |
 
 - **`map`** on shelf `maps`. A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put.
 
@@ -325,7 +325,7 @@ Packs may add to: `buffs`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `rename` | a redirect for a class that was renamed | built | `to` |  | 85 |
+| `rename` | a redirect for a class that was renamed | built | `to` |  | 87 |
 
 - **`rename`** on shelf `renames`. An id that is no longer defined, and what it is called now. Saves and settings that use it still read.
 
@@ -337,8 +337,10 @@ Each class below has a row and no content, and each field is declared and
 checked and read by nothing. They are filled in when the feature under them is
 built.
 
+- **Taming bonuses in a tame's stats, passive taming, mate boost, unfertilised eggs.** `species.tameBonus`, `species.tamedHealth`.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot` (partly built), `species.loot`.
+- **Flyers.** `species.bite.stamina`, `species.fly`, `species.grab`, `species.defendsEgg`, `species.riderWeight`, `species.missiles`, `species.structures`.
 - **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
 - **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
@@ -359,21 +361,21 @@ built.
 
 **`item/armor`** (20): cloth_hat, cloth_shirt, cloth_gloves, cloth_pants, cloth_boots, hide_hat, hide_shirt, hide_gloves, hide_pants, hide_boots, chitin_hat, chitin_shirt, chitin_gloves, chitin_pants, chitin_boots, flak_hat, flak_shirt, flak_gloves, flak_pants, flak_boots.
 
-**`item/saddle`** (2): saddle_parasaur, saddle_raptor.
+**`item/saddle`** (3): saddle_parasaur, saddle_pteranodon, saddle_raptor.
 
-**`item/structure`** (28): piece_foundation_thatch, piece_wall_thatch, piece_ceiling_thatch, piece_door_thatch, piece_foundation_wood, piece_wall_wood, piece_ceiling_wood, piece_door_wood, piece_pillar_wood, piece_stairs_wood, piece_foundation_stone, piece_wall_stone, piece_ceiling_stone, piece_door_stone, piece_pillar_stone, piece_stairs_stone, piece_foundation_metal, piece_wall_metal, piece_ceiling_metal, piece_door_metal, piece_pillar_metal, piece_stairs_metal, piece_storage_box, piece_storage_large, piece_vault, piece_campfire, piece_bed, piece_mortar.
+**`item/structure`** (30): piece_foundation_thatch, piece_wall_thatch, piece_ceiling_thatch, piece_door_thatch, piece_foundation_wood, piece_wall_wood, piece_ceiling_wood, piece_door_wood, piece_pillar_wood, piece_stairs_wood, piece_foundation_stone, piece_wall_stone, piece_ceiling_stone, piece_door_stone, piece_pillar_stone, piece_stairs_stone, piece_foundation_metal, piece_wall_metal, piece_ceiling_metal, piece_door_metal, piece_pillar_metal, piece_stairs_metal, piece_storage_box, piece_storage_large, piece_vault, piece_campfire, piece_sleeping_bag, piece_bed, piece_bunk_bed, piece_mortar.
 
-**`item/egg`** (6): dodo_egg, dodo_egg_fertile, parasaur_egg, parasaur_egg_fertile, raptor_egg, raptor_egg_fertile.
+**`item/egg`** (8): dodo_egg, dodo_egg_fertile, parasaur_egg, parasaur_egg_fertile, pteranodon_egg, pteranodon_egg_fertile, raptor_egg, raptor_egg_fertile.
 
 **`item/feces`** (4): feces_small, feces_medium, feces_large, feces_massive.
 
-**`engram`** (83): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-shotgun, engram-flare_gun, engram-arrow_stone, engram-arrow_tranq, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-round_shotgun, engram-dart_tranq, engram-dart_shock, engram-scope, engram-silencer, engram-flashlight, engram-laser, engram-grenade, engram-bola, engram-grenade_smoke, engram-grenade_poison, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-ingot, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
+**`engram`** (85): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_sleeping_bag, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_pteranodon, engram-saddle_raptor, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-shotgun, engram-flare_gun, engram-arrow_stone, engram-arrow_tranq, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-round_shotgun, engram-dart_tranq, engram-dart_shock, engram-scope, engram-silencer, engram-flashlight, engram-laser, engram-grenade, engram-bola, engram-grenade_smoke, engram-grenade_poison, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-ingot, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
 
 **`levels`** (1): levels.
 
 **`species/survivor`** (1): survivor.
 
-**`species/creature`** (4): dodo, grazer, parasaur, raptor.
+**`species/creature`** (5): dodo, grazer, parasaur, pteranodon, raptor.
 
 **`species/target`** (1): dummy.
 
@@ -383,11 +385,11 @@ built.
 
 **`structure/station`** (3): campfire, campfire_lit, mortar.
 
-**`structure/bed`** (1): bed.
+**`structure/bed`** (3): sleeping_bag, bed, bunk_bed.
 
-**`structure/static`** (112): block, crate, foundation, wall, ceiling, pillar, step, slab, zruin_floor4_concrete, zruin_floor8_concrete, zruin_floor16_concrete, zruin_beam4_concrete, zruin_beam8_concrete, zruin_beam16_concrete, zruin_pier4_concrete, zruin_pier8_concrete, zruin_pier16_concrete, zruin_wall4_concrete, zruin_wall4_limestone, zruin_wall4_rose, zruin_wall4_mint, zruin_wall4_clay, zruin_wall4_steel, zruin_wall4_rust, zruin_wall4_blue, zruin_wall8_concrete, zruin_wall8_limestone, zruin_wall8_rose, zruin_wall8_mint, zruin_wall8_clay, zruin_wall8_steel, zruin_wall8_rust, zruin_wall8_blue, zruin_sill4_concrete, zruin_sill4_limestone, zruin_sill4_rose, zruin_sill4_mint, zruin_sill4_clay, zruin_sill4_steel, zruin_sill4_rust, zruin_sill4_blue, zruin_sill8_concrete, zruin_sill8_limestone, zruin_sill8_rose, zruin_sill8_mint, zruin_sill8_clay, zruin_sill8_steel, zruin_sill8_rust, zruin_sill8_blue, zruin_fin4_concrete, zruin_fin4_limestone, zruin_fin4_rose, zruin_fin4_mint, zruin_fin4_clay, zruin_fin4_steel, zruin_fin4_rust, zruin_fin4_blue, zruin_fin8_concrete, zruin_fin8_limestone, zruin_fin8_rose, zruin_fin8_mint, zruin_fin8_clay, zruin_fin8_steel, zruin_fin8_rust, zruin_fin8_blue, zruin_fin16_concrete, zruin_fin16_limestone, zruin_fin16_rose, zruin_fin16_mint, zruin_fin16_clay, zruin_fin16_steel, zruin_fin16_rust, zruin_fin16_blue, zruin_trim4_concrete, zruin_trim4_limestone, zruin_trim4_rose, zruin_trim4_mint, zruin_trim4_clay, zruin_trim4_steel, zruin_trim4_rust, zruin_trim4_blue, zruin_trim8_concrete, zruin_trim8_limestone, zruin_trim8_rose, zruin_trim8_mint, zruin_trim8_clay, zruin_trim8_steel, zruin_trim8_rust, zruin_trim8_blue, zruin_step_concrete, zruin_landing_concrete, zruin_rubble_concrete, zruin_rubble4_concrete, zruin_container_concrete, zruin_container_limestone, zruin_container_rose, zruin_container_mint, zruin_container_clay, zruin_container_steel, zruin_container_rust, zruin_container_blue, zruin_tank_concrete, zruin_seat_concrete, zruin_plinth_concrete, zruin_crown_concrete, zruin_crown_limestone, zruin_crown_rose, zruin_crown_mint, zruin_crown_clay, zruin_crown_steel, zruin_crown_rust, zruin_crown_blue.
+**`structure/static`** (289): block, crate, foundation, wall, ceiling, pillar, step, slab, zruin_zbalcony_concrete, zruin_zbalcony_limestone, zruin_zbalcony_rose, zruin_zbalcony_mint, zruin_zbalcony_clay, zruin_zbalcony_steel, zruin_zbalcony_rust, zruin_zbalcony_blue, zruin_zpanel8_concrete, zruin_zpanel8_limestone, zruin_zpanel8_rose, zruin_zpanel8_mint, zruin_zpanel8_clay, zruin_zpanel8_steel, zruin_zpanel8_rust, zruin_zpanel8_blue, zruin_zpanel16_concrete, zruin_zpanel16_limestone, zruin_zpanel16_rose, zruin_zpanel16_mint, zruin_zpanel16_clay, zruin_zpanel16_steel, zruin_zpanel16_rust, zruin_zpanel16_blue, zruin_zshaft8_concrete, zruin_zshaft8_limestone, zruin_zshaft8_rose, zruin_zshaft8_mint, zruin_zshaft8_clay, zruin_zshaft8_steel, zruin_zshaft8_rust, zruin_zshaft8_blue, zruin_zshaft16_concrete, zruin_zshaft16_limestone, zruin_zshaft16_rose, zruin_zshaft16_mint, zruin_zshaft16_clay, zruin_zshaft16_steel, zruin_zshaft16_rust, zruin_zshaft16_blue, zruin_zpartition_concrete, zruin_zpartition_limestone, zruin_zpartition_rose, zruin_zpartition_mint, zruin_zpartition_clay, zruin_zpartition_steel, zruin_zpartition_rust, zruin_zpartition_blue, zruin_zdoorpost_concrete, zruin_zdoorpost_limestone, zruin_zdoorpost_rose, zruin_zdoorpost_mint, zruin_zdoorpost_clay, zruin_zdoorpost_steel, zruin_zdoorpost_rust, zruin_zdoorpost_blue, zruin_zheader_concrete, zruin_zheader_limestone, zruin_zheader_rose, zruin_zheader_mint, zruin_zheader_clay, zruin_zheader_steel, zruin_zheader_rust, zruin_zheader_blue, zruin_zroof8_concrete, zruin_zroof8_limestone, zruin_zroof8_rose, zruin_zroof8_mint, zruin_zroof8_clay, zruin_zroof8_steel, zruin_zroof8_rust, zruin_zroof8_blue, zruin_zroof16_concrete, zruin_zroof16_limestone, zruin_zroof16_rose, zruin_zroof16_mint, zruin_zroof16_clay, zruin_zroof16_steel, zruin_zroof16_rust, zruin_zroof16_blue, zruin_zcore_concrete, zruin_zcore_limestone, zruin_zcore_rose, zruin_zcore_mint, zruin_zcore_clay, zruin_zcore_steel, zruin_zcore_rust, zruin_zcore_blue, zruin_zcover_concrete, zruin_zcover_limestone, zruin_zcover_rose, zruin_zcover_mint, zruin_zcover_clay, zruin_zcover_steel, zruin_zcover_rust, zruin_zcover_blue, zruin_zcounter_concrete, zruin_zcounter_limestone, zruin_zcounter_rose, zruin_zcounter_mint, zruin_zcounter_clay, zruin_zcounter_steel, zruin_zcounter_rust, zruin_zcounter_blue, zruin_zbed_concrete, zruin_zbed_limestone, zruin_zbed_rose, zruin_zbed_mint, zruin_zbed_clay, zruin_zbed_steel, zruin_zbed_rust, zruin_zbed_blue, zruin_zcar_concrete, zruin_zcar_limestone, zruin_zcar_rose, zruin_zcar_mint, zruin_zcar_clay, zruin_zcar_steel, zruin_zcar_rust, zruin_zcar_blue, zruin_zcab_concrete, zruin_zcab_limestone, zruin_zcab_rose, zruin_zcab_mint, zruin_zcab_clay, zruin_zcab_steel, zruin_zcab_rust, zruin_zcab_blue, zruin_zbus_concrete, zruin_zbus_limestone, zruin_zbus_rose, zruin_zbus_mint, zruin_zbus_clay, zruin_zbus_steel, zruin_zbus_rust, zruin_zbus_blue, zruin_zsign_concrete, zruin_zsign_limestone, zruin_zsign_rose, zruin_zsign_mint, zruin_zsign_clay, zruin_zsign_steel, zruin_zsign_rust, zruin_zsign_blue, zruin_zpole_concrete, zruin_zpole_limestone, zruin_zpole_rose, zruin_zpole_mint, zruin_zpole_clay, zruin_zpole_steel, zruin_zpole_rust, zruin_zpole_blue, zruin_zwreck_concrete, zruin_zwreck_limestone, zruin_zwreck_rose, zruin_zwreck_mint, zruin_zwreck_clay, zruin_zwreck_steel, zruin_zwreck_rust, zruin_zwreck_blue, zruin_zmass8_concrete, zruin_zmass8_limestone, zruin_zmass8_rose, zruin_zmass8_mint, zruin_zmass8_clay, zruin_zmass8_steel, zruin_zmass8_rust, zruin_zmass8_blue, zruin_floor4_concrete, zruin_floor8_concrete, zruin_floor16_concrete, zruin_beam4_concrete, zruin_beam8_concrete, zruin_beam16_concrete, zruin_pier4_concrete, zruin_pier8_concrete, zruin_pier16_concrete, zruin_wall4_concrete, zruin_wall4_limestone, zruin_wall4_rose, zruin_wall4_mint, zruin_wall4_clay, zruin_wall4_steel, zruin_wall4_rust, zruin_wall4_blue, zruin_wall8_concrete, zruin_wall8_limestone, zruin_wall8_rose, zruin_wall8_mint, zruin_wall8_clay, zruin_wall8_steel, zruin_wall8_rust, zruin_wall8_blue, zruin_sill4_concrete, zruin_sill4_limestone, zruin_sill4_rose, zruin_sill4_mint, zruin_sill4_clay, zruin_sill4_steel, zruin_sill4_rust, zruin_sill4_blue, zruin_sill8_concrete, zruin_sill8_limestone, zruin_sill8_rose, zruin_sill8_mint, zruin_sill8_clay, zruin_sill8_steel, zruin_sill8_rust, zruin_sill8_blue, zruin_fin4_concrete, zruin_fin4_limestone, zruin_fin4_rose, zruin_fin4_mint, zruin_fin4_clay, zruin_fin4_steel, zruin_fin4_rust, zruin_fin4_blue, zruin_fin8_concrete, zruin_fin8_limestone, zruin_fin8_rose, zruin_fin8_mint, zruin_fin8_clay, zruin_fin8_steel, zruin_fin8_rust, zruin_fin8_blue, zruin_fin16_concrete, zruin_fin16_limestone, zruin_fin16_rose, zruin_fin16_mint, zruin_fin16_clay, zruin_fin16_steel, zruin_fin16_rust, zruin_fin16_blue, zruin_trim4_concrete, zruin_trim4_limestone, zruin_trim4_rose, zruin_trim4_mint, zruin_trim4_clay, zruin_trim4_steel, zruin_trim4_rust, zruin_trim4_blue, zruin_trim8_concrete, zruin_trim8_limestone, zruin_trim8_rose, zruin_trim8_mint, zruin_trim8_clay, zruin_trim8_steel, zruin_trim8_rust, zruin_trim8_blue, zruin_step_concrete, zruin_landing_concrete, zruin_rubble_concrete, zruin_rubble4_concrete, zruin_container_concrete, zruin_container_limestone, zruin_container_rose, zruin_container_mint, zruin_container_clay, zruin_container_steel, zruin_container_rust, zruin_container_blue, zruin_tank_concrete, zruin_seat_concrete, zruin_plinth_concrete, zruin_crown_concrete, zruin_crown_limestone, zruin_crown_rose, zruin_crown_mint, zruin_crown_clay, zruin_crown_steel, zruin_crown_rust, zruin_crown_blue, obelisk, travel_terminal, zslope_ramp, zslope_rubble, zslope_stairs, zslope_stairs_solid, zslope_slab30, zslope_slab60, zslope_roof.
 
-**`shape`** (15): shape_foundation, shape_wall, shape_doorframe, shape_windowframe, shape_ceiling, shape_pillar, shape_door, shape_door_open, shape_stairs, shape_storage_box, shape_storage_large, shape_vault, shape_campfire, shape_bed, shape_mortar.
+**`shape`** (24): shape_foundation, shape_wall, shape_doorframe, shape_windowframe, shape_ceiling, shape_pillar, shape_door, shape_door_open, shape_stairs, shape_storage_box, shape_storage_large, shape_vault, shape_campfire, shape_sleeping_bag, shape_bed, shape_bunk_bed, shape_mortar, zslope_shape_ramp, zslope_shape_rubble, zslope_shape_stairs, zslope_shape_stairs_solid, zslope_shape_slab30, zslope_shape_slab60, zslope_shape_roof.
 
 **`material`** (4): mat_thatch, mat_wood, mat_stone, mat_metal.
 
@@ -397,7 +399,7 @@ built.
 
 **`prop/projectile`** (3): flare_live, grenade_live, arrow_stuck.
 
-**`prop/egg`** (3): egg_dodo, egg_parasaur, egg_raptor.
+**`prop/egg`** (4): egg_dodo, egg_parasaur, egg_pteranodon, egg_raptor.
 
 **`prop/cloud`** (2): cloud_smoke, cloud_poison.
 
@@ -405,6 +407,6 @@ built.
 
 **`spawns`** (4): spawns_beach, spawns_jungle, spawns_proving_herd, spawns_proving_hunters.
 
-**`map`** (2): miami, tampa.
+**`map`** (3): miami, tampa, san-francisco.
 
-**`rename`** (85): 81 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.
+**`rename`** (87): 83 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.

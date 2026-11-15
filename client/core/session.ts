@@ -43,6 +43,8 @@ import {
   OWN_STATION,
   OWN_PROGRESSION,
   OWN_RESPAWN,
+  CHOOSE_ARRIVED,
+  CHOOSE_DIED,
   OWN_SESSION,
   OWN_SLOTS,
   OWN_VITALS,
@@ -50,6 +52,7 @@ import {
   PITCH_LIMIT,
   PROTOCOL_VERSION,
   SESSION_ALIVE,
+  SESSION_DEAD,
   S_CHUNK,
   S_CHUNK_DROP,
   S_EVENT,
@@ -69,7 +72,10 @@ import {
   S_RESULT,
   S_SNAPSHOT,
   S_TEXT,
+  S_TRAVEL,
   S_WELCOME,
+  REJECT_TRAVEL,
+  TICKET_BYTES,
   nextCommandSeq,
   readBody,
   writeCommand,
@@ -113,6 +119,8 @@ export interface SessionOptions {
   clipHash?: number;
   /** A look for a new survivor (shared/anim/look.ts). Without one, a new name waits in the creator for `create`. */
   look?: Uint8Array;
+  /** A travel ticket: the survivor arrives with it from another server of the cluster (S_TRAVEL). */
+  ticket?: Uint8Array;
   /** Returns null if this client does not have the map. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
@@ -308,6 +316,10 @@ export class ClientSession {
   state: "connecting" | "active" | "closed" = "connecting";
   /** Reject reason from the server, or a negative local reason. */
   closeReason = 0;
+  /** What the server said of a REJECT_TRAVEL. */
+  closeText = "";
+  /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
+  travelled: { ticket: Uint8Array; world: number } | null = null;
 
   world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
@@ -335,6 +347,10 @@ export class ClientSession {
   logVersion = 0;
   /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
+  /** It came from another server of the cluster and chooses where to rise, as the server says (CHOOSE_ARRIVED). */
+  get arriving(): boolean {
+    return this.sessionState === SESSION_DEAD && this.choosing === CHOOSE_ARRIVED;
+  }
   hasVitals = false;
   /** Oldest first. Falling.absorb empties it. */
   readonly rubble: Rubble[] = [];
@@ -376,8 +392,14 @@ export class ClientSession {
   station: { kind: number; jobs: { item: number; left: number; doneAt: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
-  /** The world's respawn points, then the tribe's beds. wait is in seconds. */
-  readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
+  /**
+   * While the survivor has no body: the map's spawn points, then its tribe's beds. `kind` is the bed's structure kind (0 for a
+   * spawn point), `readyAt` the tick it may be risen at from (0 for now). `choosing` says why (CHOOSE_), and `placesList` is the
+   * list's number, which a choice names.
+   */
+  readonly respawnPoints: { kind: number; name: string; x: number; z: number; readyAt: number }[] = [];
+  choosing = CHOOSE_DIED;
+  placesList = 0;
   /** The map beyond the view: structure cells and marks, as the server sends them. */
   readonly tactical = new MapStore();
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
@@ -476,7 +498,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "");
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -835,6 +857,12 @@ export class ClientSession {
     else if (type === S_REJECT) {
       this.state = "closed";
       this.closeReason = r.u8();
+      if (this.closeReason === REJECT_TRAVEL) this.closeText = r.string(MAX_SERVER_TEXT_BYTES);
+    } else if (type === S_TRAVEL) {
+      const ticket = new Uint8Array(TICKET_BYTES);
+      for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
+      const world = r.u16();
+      if (!r.overflow) this.travelled = { ticket, world };
     }
   }
 
@@ -887,6 +915,11 @@ export class ClientSession {
       const dayOffset = r.u32();
       if (r.overflow) return;
       this.sessionState = state;
+      // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
+      if (state !== SESSION_DEAD) {
+        this.respawnPoints.length = 0;
+        this.choosing = CHOOSE_DIED;
+      }
       this.admin = admin;
       this.ownHandle = handle;
       this.dayOffset = dayOffset;
@@ -1054,10 +1087,14 @@ export class ClientSession {
       p.jobs = jobs;
       p.version++;
     } else if (component === OWN_RESPAWN) {
+      const why = r.u8();
+      const number = r.u8();
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), wait: r.u16() });
+      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
       if (r.overflow) return;
+      this.choosing = why;
+      this.placesList = number;
       this.respawnPoints.length = 0;
       this.respawnPoints.push(...list);
     }

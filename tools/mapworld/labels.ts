@@ -115,7 +115,7 @@ export function resolveLabels(primary: Map<number, Footprint>, data: LabelData, 
 
 if (import.meta.main) {
   const from = process.argv[2]; if (!from) throw new Error("bun tools/mapworld/labels.ts <blocks folder>");
-  const to = resolve("assets/source/maps/miami/blocks"); mkdirSync(to, { recursive: true });
+  const to = resolve(process.argv[3] ?? (() => { throw new Error("Destination blocks folder required"); })()); mkdirSync(to, { recursive: true });
   for (const file of ["labels.json", "places.json"]) { const value = read(join(from, file)); writeFileSync(join(to, file), `${JSON.stringify(value, null, 2)}\n`); }
   const data = readLabels(resolve(to, ".."));
   console.log(`${Object.keys(data.labels).length} footprint labels, ${data.places.length} positioned places, ${data.research.size} name-matched research records`);

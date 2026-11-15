@@ -71,7 +71,7 @@ export function describe(file: Uint8Array): string[] {
   ];
   if (map.regions) lines.push(`spawn regions: ${map.regions.map((r) => `${r.count} of ${r.spawns} at (${r.at[0]}, ${r.at[1]})`).join(", ")}`);
   const known = registry().index;
-  const named = new Set([...map.statics.map((s) => s.kind), ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!)]);
+  const named = new Set([...map.statics.kinds, ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!)]);
   const lacking = [...named].filter((id) => !known.has(id));
   if (lacking.length > 0) lines.push(`not in the core content: ${lacking.join(", ")}`);
   return lines;

@@ -10,3 +10,10 @@ reports/ruins2/circulation.json
 reports/ruins2/places.json
 reports/ruins2/bridges.json
 reports/ruins2/bridge-walk.json
+# The round's inventories are written again by tools/mapworld/ruin-report.ts and the build.
+reports/ruins3/buildings.json
+reports/ruins3/labels.json
+reports/ruins3/circulation.json
+reports/ruins3/places.json
+reports/ruins3/bridges.json
+reports/ruins3/bridge-walk.json

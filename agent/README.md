@@ -9,7 +9,7 @@ and commands a browser sends, and has no powers a player lacks.
 | --- | --- |
 | `main.ts` | Process entry: arguments, the key file, the manifest and the map fetched from the server, the 60 Hz timer, the pipes, joining again after a dropped link |
 | `mcp.ts` | The protocol: JSON-RPC 2.0, one object a line, `initialize`, `ping`, `tools/list`, `tools/call` |
-| `tools.ts` | `Agent`: the fifteen tools, their arguments and answers, chat and console pace |
+| `tools.ts` | `Agent`: the eighteen tools, their arguments and answers, chat and console pace |
 | `controller.ts` | One task at a time, as looks and buttons a tick at a time: walking a way, aiming, swinging, opening, and stopping for danger |
 | `observe.ts` | The ground about the survivor as letters, and the nearest things by id |
 | `commands.ts` | Commands at ten a second, and each one's result |
@@ -66,11 +66,14 @@ there are any.
 | `craft` | `recipe`, `count` 1 to 100, `learn`, `wait_s` (20) | Makes an item. With `learn` it spends the engram points first |
 | `eat` | `item` | Eats or drinks |
 | `say` | `channel` global, local or tribe, `text` | A chat line |
+| `place` | `item`, `x` and `z` or `on`, `facing`, `wait_s` (25) | Walks to stand three metres south of the place and sets down a foundation, or a bed, a sleeping bag, a box or a fire, on the ground or on a floor of the tribe's. A simple bed goes only on a floor. The answer gives the new id |
+| `bed` | `id`, `do` name or travel, `name`, `wait_s` (25) | Walks to a bed or bag of the tribe's and names it, or travels from it: everything carried stays there in a bag, the body leaves, and the survivor chooses where to rise |
+| `rise` | `place`, a number or a name | With no body, after a death or travelling: rises at a place `status` lists under `choosing` (why, and each place as number, name, kind, x, z, seconds it still waits) |
 | `status` | `wait_s` (0) | The running task, vitals, inventory, the open box, what is being made, chat heard. With `wait_s` it waits for the task |
 | `cancel` | | Stops the running task |
 | `console` | `line` | A console line. Only with `--console`. The server takes one every 200 ms, so a line asked sooner waits its turn |
 
-`walk_to`, `harvest`, `attack`, `open` and `pick_up` are tasks. One runs at a time, and a second is
+`walk_to`, `harvest`, `attack`, `open`, `pick_up`, `place` and `bed` are tasks. One runs at a time, and a second is
 refused until the first ends or is cancelled. A task answers when it ends, or
 after `wait_s` with `running`, so no call outlasts a client's timeout.
 
@@ -126,7 +129,7 @@ under 30%, being knocked out, and death each end the running task at once,
 with the buttons let go. Each is told once: a hunter until it is 20 m off
 again, falling health until none has been lost for five seconds. A task
 started meanwhile is not stopped by what has been told already, so the
-survivor can run. A dead survivor wakes at the first place offered.
+survivor can run. A dead survivor chooses where to rise with `rise`, as a player does; until it does it has no body.
 
 An `attack` is a fight, so it is not ended by the thing fought being near,
 nor by falling health while two thirds of it are left. Under that, or when
@@ -137,5 +140,5 @@ another hunter comes, it ends like any task.
 - Latitude and longitude for `walk_to`. They come with
   `shared/world/coords.ts`, and go in `walkTo` in `tools.ts`.
 - Shooting: `attack` strikes with what is in hand and looses nothing.
-- Feeding a knocked-out creature to tame it, building and riding.
+- Feeding a knocked-out creature to tame it, building beyond foundations and things that stand alone, and riding.
 - Floors above the ground, and swimming to a goal.

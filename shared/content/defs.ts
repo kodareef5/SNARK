@@ -4,6 +4,7 @@
 // each class must and may declare.
 
 import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
+import type { Feature } from "../features.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
 import { hullPoint, type HullDef } from "../world/convex.ts";
 
@@ -86,9 +87,10 @@ export interface SpeciesDef extends Named {
   readonly leash?: number;
   /**
    * Its bite, which does its `fists` damage. `reach` is how far from its eye it reaches, past its own length. `ticks` is
-   * how long one bite takes and `lands` is the tick it lands on. They default to 27 and 11.
+   * how long one bite takes and `lands` is the tick it lands on. They default to 27 and 11. `stamina` is the points one
+   * costs, none where not given: a stub until a ridden creature's bite spends it (FL2 of planning/reference/flyers-plan.md).
    */
-  readonly bite?: { readonly reach: number; readonly ticks?: number; readonly lands?: number };
+  readonly bite?: { readonly reach: number; readonly ticks?: number; readonly lands?: number; readonly stamina?: number };
   /** It can be tamed by knocking it out and feeding it. These are the reference's five numbers for its species (shared/sim/taming.ts). */
   readonly taming?: { readonly a0: number; readonly a1: number; readonly foodBase: number; readonly proneMult: number; readonly k: number };
   /** What it eats, best liked first. Each entry is an item, the food one piece is worth to it, and its affinity. */
@@ -124,6 +126,35 @@ export interface SpeciesDef extends Named {
   readonly feces?: string;
   /** The chance, 0 to 1, that a female lays an unfertilised egg in place of her feces: the item her egg prop names. */
   readonly eggChance?: number;
+  // The flyers' contracts (planning/reference/flyers-plan.md, FL0): declared, checked and compiled, and read by nothing
+  // until the package each names builds it. classes.ts lists them as stubs.
+  /** It flies in a mode of its own (MODE_FLYER), along its look, with no climb key (FL1). Its numbers, each in its unit: */
+  readonly fly?: FlyFacet;
+  /** It grabs and carries in its feet while flying (FL6). */
+  readonly grab?: {
+    /** The most it lifts, in drag weight, against a body's drag weight plus three quarters of that body's weight stat. */
+    readonly drag: number;
+    /** Metres below it within which it may grab. */
+    readonly reach: number;
+  };
+  /** Though it flees from harm, the wild of its kind go for whoever takes their egg, as ARK's pteranodon does (FL3, amending D388). */
+  readonly defendsEgg?: boolean;
+  /** The share of a rider's weight that counts on it, 0 to 1 (ARK's PassengerWeightMultiplier). 1 where not given (FL2). */
+  readonly riderWeight?: number;
+  /**
+   * Multiplier on the damage of a hit from a missile, a projectile that is not a bullet: an arrow, a dart, a stone, a
+   * thrown weapon. ARK's flyers take 1.5 (ASE 231.4). 1 where not given. The weapons program's damage function reads it.
+   */
+  readonly missiles?: number;
+  /** Multiplier on the damage its bite and bare hands do to a structure. ARK's flyers do 0.4 (ASE 177.0). 1 where not given. */
+  readonly structures?: number;
+  /**
+   * The taming bonuses of each stat, ARK's TamingMaxStatAdditions and TamingMaxStatMultipliers (Ta and Tm): what a tame
+   * gains over its wild value by how well it was tamed (the tameBonus feature). Where a stat is not given, both are 0.
+   */
+  readonly tameBonus?: { readonly [S in StatName]?: readonly [add: number, mult: number] };
+  /** A tame's base health as a share of a wild one's (ARK's TamedBaseHealthMultiplier). 1 where not given (tameBonus). */
+  readonly tamedHealth?: number;
   // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
   /** What kind of variant of its base it is: "alpha", "event". */
   readonly variant?: string;
@@ -131,11 +162,33 @@ export interface SpeciesDef extends Named {
   readonly attacks?: readonly { readonly name: string; readonly damage: number; readonly type: DamageType; readonly reach: number; readonly ticks: number; readonly lands: number }[];
   /** The loot definition its body leaves, beside `drops`. */
   readonly loot?: string;
-  /** The saddle item it wears. Today the saddle names the species. */
+  /**
+   * The saddle item it wears. Today the saddle names the species. How a worn saddle is drawn is its asset's business, not
+   * content's: see the `saddled` slot of species/creature (shared/content/classes.ts).
+   */
   readonly saddle?: string;
   /** Buffs it always has. */
   readonly buffs?: readonly string[];
   readonly boss?: boolean;
+}
+
+/** A species' own flight (SpeciesDef.fly), compiled into the flight fields of its MoveParams (shared/sim/character.ts). */
+export interface FlyFacet {
+  /** Metres per second flying. Hovering is flying with no way given. */
+  readonly speed: number;
+  /** Its sprint in the air, as a multiple of `speed`, wild and once tamed. Tamed defaults to wild. */
+  readonly sprintMul: number;
+  readonly tamedSprintMul?: number;
+  /** Metres per second squared by which its velocity moves toward the one it wishes. */
+  readonly accel: number;
+  /** Degrees per second its facing turns toward its look in the air. */
+  readonly turn: number;
+  /** Stamina points per second flying or hovering and per second sprinting in the air, and points per barrel roll and per grab. */
+  readonly stamina: { readonly fly: number; readonly sprint: number; readonly roll: number; readonly grab: number };
+  /** Seconds after it last flew before any stamina comes back on the ground. None comes back in the air. */
+  readonly wait: number;
+  /** The barrel roll: metres per second it adds to its speed, and seconds from one roll to the next. */
+  readonly roll: { readonly burst: number; readonly every: number };
 }
 
 /** `at` is the centre, measured from the piece's origin. `half` is the half extents. Both are in metres. */
@@ -160,8 +213,18 @@ export interface ShapeDef extends Named {
    * piece's origin along its first axis, up and along its second. A shape with parts may have no boxes.
    */
   readonly hulls?: readonly HullDef[];
+  /**
+   * What is drawn in place of the boxes and parts, where that is not what bodies and rays meet: a flight of stairs walked as
+   * a ramp and drawn as treads. Far off, past the nearest level, the boxes and parts are drawn.
+   */
+  readonly look?: ShapeLook;
   /** A door may be set in it. */
   readonly doorway?: boolean;
+}
+
+export interface ShapeLook {
+  readonly boxes?: readonly ShapeBox[];
+  readonly hulls?: readonly HullDef[];
 }
 
 export interface StructureDef extends Named {
@@ -196,6 +259,14 @@ export interface StructureDef extends Named {
   readonly lit?: boolean;
   /** Its tribe may respawn at it. */
   readonly bed?: boolean;
+  /** A bed's seconds, after a survivor rises at it, before anyone may again. */
+  readonly wait?: number;
+  /** A sleeping bag: only the survivor who set it down may rise at it, and it is gone once one has. */
+  readonly once?: boolean;
+  /** It is set only on a foundation or a ceiling, never on open ground. */
+  readonly floor?: boolean;
+  /** Where a survivor rises from a bed, from its middle and turned with it. On top of it unless given. */
+  readonly rise?: readonly [number, number, number];
 }
 
 /** Multiplier on each type of damage a structure of this material takes. A type not given does no damage. */
@@ -267,6 +338,11 @@ export interface ItemDef extends Named {
   readonly blueprint?: boolean;
   /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
   readonly use?: UseFacet;
+  /**
+   * False for a thing that may not leave its server, as ARK's Element, tributes and boss trophies may not: a survivor carrying
+   * one is refused travel until it puts it down (ark.wiki.gg CrossARK Transfers, 2026-11-15). Omitted, it travels.
+   */
+  readonly travels?: boolean;
 }
 
 /**
@@ -646,9 +722,11 @@ export interface SpawnsDef extends Named {
     readonly group: readonly string[];
     readonly chances?: readonly number[];
     readonly offsets?: readonly (readonly [number, number])[];
+    /** The feature it waits for: kept with its numbers, and left out of the table until its package takes this away. */
+    readonly waits?: Feature;
   }[];
-  /** The most of a region's creatures that may be of one species, as a share from 0 to 1 of the number it holds. */
-  readonly limits?: readonly { readonly species: string; readonly share: number }[];
+  /** The most of a region's creatures that may be of one species, as a share from 0 to 1 of the number it holds. `waits` as an entry's. */
+  readonly limits?: readonly { readonly species: string; readonly share: number; readonly waits?: Feature }[];
 }
 
 /** A place on a map where something spawns or drops. */
@@ -708,11 +786,11 @@ export interface RenameDef {
 
 export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
 
-/** Half extents of the box, centred on a shape's origin, that holds all of its boxes and convex parts. */
-export function shapeHalf(boxes: readonly ShapeBox[], hulls: readonly HullDef[] = []): [number, number, number] {
+/** Half extents of the box, centred on a shape's origin, that holds all of its boxes and convex parts, and what is drawn of it. */
+export function shapeHalf(boxes: readonly ShapeBox[], hulls: readonly HullDef[] = [], look: ShapeLook = {}): [number, number, number] {
   const out: [number, number, number] = [0, 0, 0];
-  for (const b of boxes) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
-  for (const h of hulls) {
+  for (const b of [...boxes, ...(look.boxes ?? [])]) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
+  for (const h of [...hulls, ...(look.hulls ?? [])]) {
     for (const c of h.corners) {
       const p = hullPoint(c, h.sixty === true);
       for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(p[a]!));

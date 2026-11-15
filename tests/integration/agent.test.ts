@@ -193,5 +193,5 @@ test("a call left waiting when the server goes is answered, and so is every call
   p.h.ends[0]!.peer.close();
   expect(await walking).toEqual({ state: "refused", reason: "not connected (reason -1)" });
   expect(await p.call("status")).toEqual({ state: "refused", reason: "not connected (reason -1)" });
-  expect((await p.ask("tools/list"))!.result.tools.length).toBe(15);
+  expect((await p.ask("tools/list"))!.result.tools.length).toBe(18);
 });

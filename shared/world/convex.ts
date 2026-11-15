@@ -1,6 +1,7 @@
 // Convex parts: a piece's form as the hull of a few corners, for ramps, sloped roofs and triangles. A part's corners are set by
 // the same whole-number frame vectors the piece is placed by, so pieces that share corners share faces at every yaw. An upright
-// capsule meets a part by the separating-axis test, and a ray by clipping it against the part's planes.
+// capsule meets a part by the separating-axis test, and a ray by clipping it against the part's planes. For placing, a part
+// meets a box or another part by the same test, as two solids.
 
 import { HALF_SIDE, frameAxes, sixtyOf } from "./frame.ts";
 
@@ -13,7 +14,8 @@ const MAX_FACES = 2 * MAX_CORNERS - 4;
  * each three numbers of `at` in metres: along the piece's first axis, up, and along its second. Its faces are face[p] up to
  * face[p + 1], each three of its corners in `faceCorners`, counted from its first, that go round the face counter-clockwise
  * seen from outside. Its edges are edge[p] up to edge[p + 1], each two corners in `edgeCorners`. With `sixty` set the second
- * axis is the first turned 60 degrees, so a triangle of two whole-number sides is drawn on them.
+ * axis is the first turned 60 degrees, so a triangle of two whole-number sides is drawn on them. Face f, drawn, is every
+ * corner on it: ring[f] up to ring[f + 1] of `ringCorners`, round it as its three are.
  */
 export interface HullTable {
   readonly start: Uint32Array;
@@ -24,6 +26,8 @@ export interface HullTable {
   readonly at: Float64Array;
   readonly faceCorners: Uint8Array;
   readonly edgeCorners: Uint8Array;
+  readonly ring: Uint32Array;
+  readonly ringCorners: Uint8Array;
 }
 
 /** A part as content writes it. */
@@ -39,9 +43,9 @@ export function hullPoint(c: readonly [number, number, number], sixty: boolean):
 
 /**
  * The faces and edges of the hull of a part's corners, or a reason it is not a solid one. Each face is the first three corners
- * found on its plane; every corner must be on the hull.
+ * found on its plane; every corner must be on the hull. `rings` holds each face's every corner, in order round it.
  */
-export function hullOf(def: HullDef): { faces: number[]; edges: number[] } | string {
+export function hullOf(def: HullDef): { faces: number[]; edges: number[]; rings: number[][] } | string {
   const n = def.corners.length;
   if (n < 4 || n > MAX_CORNERS) return `a part has 4 to ${MAX_CORNERS} corners`;
   const p = def.corners.map((c) => hullPoint(c, def.sixty === true));
@@ -88,7 +92,35 @@ export function hullOf(def: HullDef): { faces: number[]; edges: number[] } | str
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) if (planes.filter((plane) => on(plane, p[i]!) && on(plane, p[j]!)).length >= 2) edges.push(i, j);
   }
-  return { faces, edges };
+  const rings = planes.map((plane, f) => ringOf(p, plane, faces.slice(f * 3, f * 3 + 3)));
+  return { faces, edges, rings };
+}
+
+/**
+ * The corners of `p` on `plane` in order round the face, starting from the first of its three `tri`, which go round it
+ * counter-clockwise seen from outside. Ordered by which side of the first corner each lies and then by turn, with no angle
+ * worked out, so every engine orders them alike.
+ */
+function ringOf(p: readonly number[][], plane: readonly number[], tri: readonly number[]): number[] {
+  const on = p.flatMap((q, i) => (Math.abs(plane[0]! * q[0]! + plane[1]! * q[1]! + plane[2]! * q[2]! - plane[3]!) < 1e-9 ? [i] : []));
+  const m = [0, 1, 2].map((a) => on.reduce((s, i) => s + p[i]![a]!, 0) / on.length);
+  const first = p[tri[0]!]!;
+  const u = [first[0]! - m[0]!, first[1]! - m[1]!, first[2]! - m[2]!];
+  // w is the plane's normal crossed with u: a quarter turn on from u, counter-clockwise seen from outside.
+  const w = [plane[1]! * u[2]! - plane[2]! * u[1]!, plane[2]! * u[0]! - plane[0]! * u[2]!, plane[0]! * u[1]! - plane[1]! * u[0]!];
+  const along = (i: number): [number, number] => {
+    const d = [p[i]![0]! - m[0]!, p[i]![1]! - m[1]!, p[i]![2]! - m[2]!];
+    return [d[0]! * u[0]! + d[1]! * u[1]! + d[2]! * u[2]!, d[0]! * w[0]! + d[1]! * w[1]! + d[2]! * w[2]!];
+  };
+  const half = (a: number, b: number): number => (b > 1e-12 || (Math.abs(b) <= 1e-12 && a > 0) ? 0 : 1);
+  return on.sort((i, j) => {
+    if (i === tri[0]) return -1;
+    if (j === tri[0]) return 1;
+    const [ai, bi] = along(i);
+    const [aj, bj] = along(j);
+    const h = half(ai, bi) - half(aj, bj);
+    return h !== 0 ? h : aj * bi - ai * bj;
+  });
 }
 
 /** Builds the table of every kind's parts. `partsOf(k)` lists kind k's parts, each already accepted by hullOf. */
@@ -101,10 +133,12 @@ export function hullTable(kinds: number, partsOf: (kind: number) => readonly Hul
   const at: number[] = [];
   const faceCorners: number[] = [];
   const edgeCorners: number[] = [];
+  const ring: number[] = [];
+  const ringCorners: number[] = [];
   for (let k = 0; k < kinds; k++) {
     start[k] = sixty.length;
     for (const def of partsOf(k)) {
-      const built = hullOf(def) as { faces: number[]; edges: number[] };
+      const built = hullOf(def) as Exclude<ReturnType<typeof hullOf>, string>;
       corner.push(at.length / 3);
       face.push(faceCorners.length / 3);
       edge.push(edgeCorners.length / 2);
@@ -112,12 +146,17 @@ export function hullTable(kinds: number, partsOf: (kind: number) => readonly Hul
       for (const c of def.corners) at.push(c[0], c[1], c[2]);
       faceCorners.push(...built.faces);
       edgeCorners.push(...built.edges);
+      for (const r of built.rings) {
+        ring.push(ringCorners.length);
+        ringCorners.push(...r);
+      }
     }
   }
   start[kinds] = sixty.length;
   corner.push(at.length / 3);
   face.push(faceCorners.length / 3);
   edge.push(edgeCorners.length / 2);
+  ring.push(ringCorners.length);
   return {
     start,
     corner: Uint32Array.from(corner),
@@ -127,6 +166,8 @@ export function hullTable(kinds: number, partsOf: (kind: number) => readonly Hul
     at: Float64Array.from(at),
     faceCorners: Uint8Array.from(faceCorners),
     edgeCorners: Uint8Array.from(edgeCorners),
+    ring: Uint32Array.from(ring),
+    ringCorners: Uint8Array.from(ringCorners),
   };
 }
 
@@ -190,8 +231,12 @@ function place(t: HullTable, p: number, yaw: number): void {
   }
 }
 
-/** The shortest push out of the last part capsuleHull found an overlap with, in world space, and how deep it was. */
-export const hullPush = { x: 0, y: 0, z: 0, depth: 0 };
+/**
+ * The shortest push out of the last part capsuleHull found an overlap with, in world space, how deep it was, whether it is out
+ * through a face, along the face's normal, rather than off an edge or a corner, and the upward part of the normal of the most
+ * level face there: the face's own, or of those that meet at the edge or corner.
+ */
+export const hullPush = { x: 0, y: 0, z: 0, depth: 0, face: false, up: 0 };
 
 /**
  * An upright capsule against part `p` of a piece turned `yaw`. (dx, dz) is its axis from the piece's origin, y0 and y1 the
@@ -216,7 +261,7 @@ export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz
   }
   // The axis segment clipped by the planes. If any of it is left, the segment passes through the part, and the body leaves by
   // the face it is least deep behind, as a box's does.
-  if (clipUpright(faces, -1, dx, dz, y0, y1)) return pushed(planes[first * 4]!, planes[first * 4 + 1]!, planes[first * 4 + 2]!, r - most);
+  if (clipUpright(faces, -1, dx, dz, y0, y1)) return pushed(planes[first * 4]!, planes[first * 4 + 1]!, planes[first * 4 + 2]!, r - most, true);
   // Else no face is nearer than the farthest of their planes, so if the nearest point of that plane is on its face, that is
   // the distance. Otherwise the nearest point is on an edge.
   for (let f = 0, o = 0; f < faces; f++, o += 4) {
@@ -226,7 +271,7 @@ export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz
     const nx = planes[o]!;
     const nz = planes[o + 2]!;
     const on = ny === 0 ? clipUpright(faces, f, dx - e * nx, dz - e * nz, y0, y1) : onFace(faces, f, dx - e * nx, (ny > 0 ? y0 : y1) - e * ny, dz - e * nz);
-    if (on) return pushed(nx, ny, nz, r - e);
+    if (on) return pushed(nx, ny, nz, r - e, true);
   }
   const ec = t.edgeCorners;
   const length = y1 - y0;
@@ -234,6 +279,10 @@ export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz
   let bx = 0;
   let by = 0;
   let bz = 0;
+  // Where on the part the nearest point is.
+  let px = 0;
+  let py = 0;
+  let pz = 0;
   for (let e = t.edge[p]!, end = t.edge[p + 1]!; e < end; e++) {
     const i = ec[e * 2]! * 3;
     const j = ec[e * 2 + 1]! * 3;
@@ -276,19 +325,30 @@ export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz
     bx = ox;
     by = oy;
     bz = oz;
+    px = qx + ex * u;
+    py = qy + ey * u;
+    pz = qz + ez * u;
   }
   if (best >= reach * reach) return false;
   const d = Math.sqrt(best);
   // Touching an edge exactly, the way out is through the nearest face.
-  if (d <= 1e-9) return pushed(planes[first * 4]!, planes[first * 4 + 1]!, planes[first * 4 + 2]!, r - most);
-  return pushed(bx / d, by / d, bz / d, r - d);
+  if (d <= 1e-9) return pushed(planes[first * 4]!, planes[first * 4 + 1]!, planes[first * 4 + 2]!, r - most, true, planes[first * 4 + 1]!);
+  // Off an edge or a corner, the surface there is as level as the most level face that meets at it.
+  let up = -1;
+  for (let f = 0, o = 0; f < faces; f++, o += 4) {
+    const off = planes[o]! * px + planes[o + 1]! * py + planes[o + 2]! * pz - planes[o + 3]!;
+    if (off < 1e-6 && off > -1e-6 && planes[o + 1]! > up) up = planes[o + 1]!;
+  }
+  return pushed(bx / d, by / d, bz / d, r - d, false, up);
 }
 
-function pushed(nx: number, ny: number, nz: number, depth: number): boolean {
+function pushed(nx: number, ny: number, nz: number, depth: number, face: boolean, up = ny): boolean {
   hullPush.x = nx * depth;
   hullPush.y = ny * depth;
   hullPush.z = nz * depth;
   hullPush.depth = depth;
+  hullPush.face = face;
+  hullPush.up = up;
   return true;
 }
 
@@ -320,6 +380,117 @@ function onFace(faces: number, face: number, x: number, y: number, z: number): b
     if (f !== face && planes[o]! * x + planes[o + 1]! * y + planes[o + 2]! * z - planes[o + 3]! > 1e-9) return false;
   }
   return true;
+}
+
+/** Most edges a part's hull can have. */
+const MAX_EDGES = 3 * MAX_CORNERS - 6;
+
+/**
+ * A convex solid in the world, to ask whether two overlap: its corners, and its faces' and edges' directions as unit vectors,
+ * each direction kept once. A placed part (partSolid) or a box turned about the vertical (boxSolid).
+ */
+export class Solid {
+  corners = 0;
+  faces = 0;
+  edges = 0;
+  readonly at = new Float64Array(3 * MAX_CORNERS);
+  readonly face = new Float64Array(3 * MAX_FACES);
+  readonly edge = new Float64Array(3 * MAX_EDGES);
+}
+
+/** Adds the direction (x, y, z) to `to`, of which `n` are kept, unless it or its opposite is there. Returns how many are kept. */
+function keep(to: Float64Array, n: number, x: number, y: number, z: number): number {
+  const l = Math.sqrt(x * x + y * y + z * z);
+  if (l < 1e-12) return n;
+  x /= l;
+  y /= l;
+  z /= l;
+  for (let k = 0; k < n * 3; k += 3) if (Math.abs(to[k]! * x + to[k + 1]! * y + to[k + 2]! * z) > 1 - 1e-9) return n;
+  to[n * 3] = x;
+  to[n * 3 + 1] = y;
+  to[n * 3 + 2] = z;
+  return n + 1;
+}
+
+/** Part `p` of `t` on a piece at (x, y, z) metres turned `yaw`, into `out`. */
+export function partSolid(t: HullTable, p: number, yaw: number, x: number, y: number, z: number, out: Solid): void {
+  place(t, p, yaw);
+  const corners = t.corner[p + 1]! - t.corner[p]!;
+  for (let c = 0; c < corners * 3; c += 3) {
+    out.at[c] = x + placed[c]!;
+    out.at[c + 1] = y + placed[c + 1]!;
+    out.at[c + 2] = z + placed[c + 2]!;
+  }
+  out.corners = corners;
+  out.faces = 0;
+  for (let o = 0, end = (t.face[p + 1]! - t.face[p]!) * 4; o < end; o += 4) out.faces = keep(out.face, out.faces, planes[o]!, planes[o + 1]!, planes[o + 2]!);
+  out.edges = 0;
+  const ec = t.edgeCorners;
+  for (let e = t.edge[p]!, end = t.edge[p + 1]!; e < end; e++) {
+    const i = ec[e * 2]! * 3;
+    const j = ec[e * 2 + 1]! * 3;
+    out.edges = keep(out.edge, out.edges, placed[j]! - placed[i]!, placed[j + 1]! - placed[i + 1]!, placed[j + 2]! - placed[i + 2]!);
+  }
+}
+
+/** A box centred at (x, y, z) metres with half extents (hx, hy, hz), its X along (c, 0, -s) and its Z along (s, 0, c), into `out`. */
+export function boxSolid(x: number, y: number, z: number, c: number, s: number, hx: number, hy: number, hz: number, out: Solid): void {
+  for (let m = 0; m < 8; m++) {
+    const i = m & 1 ? hx : -hx;
+    const j = m & 2 ? hy : -hy;
+    const k = m & 4 ? hz : -hz;
+    out.at[m * 3] = x + c * i + s * k;
+    out.at[m * 3 + 1] = y + j;
+    out.at[m * 3 + 2] = z - s * i + c * k;
+  }
+  out.corners = 8;
+  out.faces = keep(out.face, keep(out.face, keep(out.face, 0, c, 0, -s), 0, 1, 0), s, 0, c);
+  out.edges = keep(out.edge, keep(out.edge, keep(out.edge, 0, c, 0, -s), 0, 1, 0), s, 0, c);
+}
+
+/**
+ * Whether two solids overlap by more than each gives way. Along any direction a solid gives way by `side` for as much of the
+ * direction as is level and `up` for as much as is upright, but never so far that it is left thinner than 2 * `thin`, as a
+ * box shrunk for the same test would be. They are apart exactly when one of their faces' directions, or a direction square to
+ * an edge of each, separates them.
+ */
+export function solidsCross(a: Solid, aSide: number, aUp: number, b: Solid, bSide: number, bUp: number, thin: number): boolean {
+  for (let k = 0; k < a.faces * 3; k += 3) if (apart(a, aSide, aUp, b, bSide, bUp, thin, a.face[k]!, a.face[k + 1]!, a.face[k + 2]!)) return false;
+  for (let k = 0; k < b.faces * 3; k += 3) if (apart(a, aSide, aUp, b, bSide, bUp, thin, b.face[k]!, b.face[k + 1]!, b.face[k + 2]!)) return false;
+  const ae = a.edge;
+  const be = b.edge;
+  for (let i = 0; i < a.edges * 3; i += 3) {
+    for (let j = 0; j < b.edges * 3; j += 3) {
+      const x = ae[i + 1]! * be[j + 2]! - ae[i + 2]! * be[j + 1]!;
+      const y = ae[i + 2]! * be[j]! - ae[i]! * be[j + 2]!;
+      const z = ae[i]! * be[j + 1]! - ae[i + 1]! * be[j]!;
+      const l = Math.sqrt(x * x + y * y + z * z);
+      if (l > 1e-9 && apart(a, aSide, aUp, b, bSide, bUp, thin, x / l, y / l, z / l)) return false;
+    }
+  }
+  return true;
+}
+
+function apart(a: Solid, aSide: number, aUp: number, b: Solid, bSide: number, bUp: number, thin: number, nx: number, ny: number, nz: number): boolean {
+  let a0 = Infinity;
+  let a1 = -Infinity;
+  for (let k = 0; k < a.corners * 3; k += 3) {
+    const d = a.at[k]! * nx + a.at[k + 1]! * ny + a.at[k + 2]! * nz;
+    if (d < a0) a0 = d;
+    if (d > a1) a1 = d;
+  }
+  let b0 = Infinity;
+  let b1 = -Infinity;
+  for (let k = 0; k < b.corners * 3; k += 3) {
+    const d = b.at[k]! * nx + b.at[k + 1]! * ny + b.at[k + 2]! * nz;
+    if (d < b0) b0 = d;
+    if (d > b1) b1 = d;
+  }
+  const level = Math.sqrt(nx * nx + nz * nz);
+  const upright = Math.abs(ny);
+  const ga = Math.min(aSide * level + aUp * upright, Math.max(0, (a1 - a0) / 2 - thin));
+  const gb = Math.min(bSide * level + bUp * upright, Math.max(0, (b1 - b0) / 2 - thin));
+  return a1 - ga <= b0 + gb || b1 - gb <= a0 + ga;
 }
 
 /** The outward normal of the face the last rayHull entered by, in world space, or all zero if the ray began inside. */

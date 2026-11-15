@@ -48,7 +48,11 @@ def footprint_at(e, n, reach=0.0):
 
 def metres(v):
     m = re.match(r"\s*([0-9.]+)\s*(m|ft|')?", v or "")
-    return round(float(m.group(1)) * (0.3048 if m.group(2) in ("ft", "'") else 1), 1) if m else None
+    try: return round(float(m.group(1)) * (0.3048 if m.group(2) in ("ft", "'") else 1), 1) if m else None
+    except ValueError: return None
+
+def bare(v):
+    return re.fullmatch(r"\s*[0-9.]+\s*", v or "") is not None
 
 AMENITY = {"fire_station": "fire_station", "police": "police_station", "hospital": "hospital", "clinic": "hospital", "school": "school", "kindergarten": "school",
            "university": "university", "college": "university", "library": "library", "townhall": "city_hall", "courthouse": "courthouse", "post_office": "post_office",
@@ -93,7 +97,7 @@ for el in json.load(open(os.path.join(MAIN, "raw", "osm", "all.json")))["element
         if t.get("name"): L["names"].append(t["name"])
         k = kind_of(t)
         if k: L["kinds"][k] += 3
-        if metres(t.get("height")): L["heights"].append(metres(t["height"]))
+        if metres(t.get("height")): L["heights"].append((metres(t["height"]), bare(t["height"])))
         if re.match(r"^\d+$", t.get("building:levels", "")): L["levels"].append(int(t["building:levels"]))
         if t.get("addr:housenumber") and t.get("addr:street") and not L["address"]: L["address"] = t["addr:housenumber"] + " " + t["addr:street"]
         continue
@@ -112,11 +116,33 @@ for el in json.load(open(os.path.join(MAIN, "raw", "osm", "all.json")))["element
     if what and (t.get("name") or what in ("pier", "crane", "bridge", "storage_tank")):
         places.append({"name": t.get("name"), "kind": what, "e": round(e, 1), "n": round(n, 1), "lat": lat, "lon": lon, "in_footprint": fid})
 
+# OpenStreetMap heights with no unit are metres by its rules, but imports have brought in feet (Tampa's). Where the
+# city's bare heights run near 3.28 times USA Structures' at the median, a bare height 2.6 to 4.2 times the survey's is
+# read as feet; heights mapped by hand in metres sit near the survey and stay.
+pairs = []
+for fid, L in labels.items():
+    s = attrs.get(str(fid), {}).get("HEIGHT")
+    if L["heights"] and s and float(s) > 2:
+        h, is_bare = max(L["heights"])
+        if is_bare: pairs.append((fid, h / float(s)))
+ratios = sorted(r for _, r in pairs)
+median_ratio = ratios[len(ratios) // 2] if ratios else None
+feet_city = median_ratio is not None and 2.6 <= median_ratio <= 4.2
+in_feet = {fid for fid, r in pairs if feet_city and 2.6 <= r <= 4.2}
+json.dump({"bare_heights_beside_usa_structures": len(pairs), "median_ratio": median_ratio and round(median_ratio, 3),
+           "quartiles": [round(ratios[len(ratios) * q // 4], 3) for q in (1, 3)] if ratios else None,
+           "read_as_feet": feet_city, "converted": len(in_feet),
+           "rule": "bare heights are feet when the median ratio to USA Structures is 2.6 to 4.2; then each such height 2.6 to 4.2 times the survey's is divided by 3.2808"},
+          open(os.path.join(HERE, "height-units.json"), "w"), indent=1)
+print("height units: %d bare OpenStreetMap heights beside USA Structures, median ratio %s, %s; %d converted from feet" % (
+    len(pairs), median_ratio and round(median_ratio, 2), "read as feet" if feet_city else "metres", len(in_feet)))
+
 out = {}
 for fid, L in labels.items():
     a = attrs.get(str(fid), {})
     survey_h = a.get("HEIGHT")
-    h = max(L["heights"]) if L["heights"] else (round(float(survey_h), 1) if survey_h else None)
+    h = max(L["heights"])[0] if L["heights"] else (round(float(survey_h), 1) if survey_h else None)
+    if fid in in_feet: h = round(h * 0.3048, 1)
     use = a.get("OCC_CLS")
     kind = L["kinds"].most_common(1)[0][0] if L["kinds"] else None
     names = [n for n, _ in collections.Counter(L["names"]).most_common(3)]
@@ -124,7 +150,7 @@ for fid, L in labels.items():
     if not kind: kind = USE.get(use)
     if h and h >= 60 and kind in (None, "apartment_block", "office", "house"):
         kind = "tower_office" if kind == "office" or use == "Commercial" else "tower_residential" if kind in ("apartment_block", "house") or use == "Residential" else "tower"
-    out[str(fid)] = {"name": names[0] if names else None, "also": names[1:], "kind": kind, "height_m": h, "height_from": "osm" if L["heights"] else ("usa_structures" if survey_h else None), "use": use, "primary_use": a.get("PRIM_OCC"),
+    out[str(fid)] = {"name": names[0] if names else None, "also": names[1:], "kind": kind, "height_m": h, "height_from": ("osm_feet" if fid in in_feet else "osm") if L["heights"] else ("usa_structures" if survey_h else None), "use": use, "primary_use": a.get("PRIM_OCC"),
                      "levels": max(L["levels"]) if L["levels"] else None, "address": L["address"], "uses": dict(L["uses"].most_common(6)), "area_m2": round(feet[fid]["area"]),
                      "e": round(feet[fid]["e"], 1), "n": round(feet[fid]["n"], 1)}
 # Reviewed corrections survive a fresh geographic join; evidence and previous values stay beside the labels.

@@ -14,7 +14,7 @@ import { Scene } from "../../client/core/render/scene.ts";
 import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { bakeChunk, pieceShapes, Summary, writeFar } from "../../shared/world/tactical.ts";
-import { parseMap } from "../../shared/world/mapfile.ts";
+import { MapStatics, parseMap, type MapStatic } from "../../shared/world/mapfile.ts";
 import { SOURCE } from "../art/source.ts";
 import { provingView, settle } from "../snap.ts";
 import { gameFiles } from "../snap/files.ts";
@@ -22,6 +22,7 @@ import { encodePng } from "../snap/png.ts";
 
 interface View {
   name: string;
+  isolate?: { first: number; count: number; x: number; y: number; z: number; yaw: number };
   spawn?: string;
   x?: number;
   z?: number;
@@ -41,17 +42,38 @@ if (!path || !list || !folder) {
 }
 const started = performance.now();
 const map = parseMap(new Uint8Array(readFileSync(path)));
-const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => only === undefined || v.name === only);
+const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => only === undefined || only.split(",").includes(v.name));
 const files = await gameFiles(resolve(SOURCE));
 mkdirSync(folder, { recursive: true });
 let farCells: FarStore | null = null;
+let previousIsolated = false;
+const stageX = map.dims.chunksX * 32; const stageZ = map.dims.chunksZ * 32;
+const flatHeights = new Uint16Array(map.heights.length).fill(Math.round((2 - map.minY) / map.stepY));
+const flatTint = new Uint8Array(map.tint.length).fill(100);
 const rendered: { name: string; frames: number; milliseconds: number; eye: number[]; draws: number; dropped: number; casterDropped: number }[] = [];
 const small: { w: number; h: number; rgba: Uint8Array }[] = [];
+/** The map's pieces `first` to `first + count` in the order it lists them, as a list a staged map can take. */
+function piecesOf(t: MapStatics, first: number, count: number): MapStatic[] {
+  const out: MapStatic[] = [];
+  for (let i = first; i < Math.min(first + count, t.row.length); i++) {
+    const r = t.row[i]!;
+    out.push({ kind: t.kinds[t.kind[r]!]!, x: t.x[r]!, y: t.y[r]!, z: t.z[r]!, yaw: t.yaw[r]! });
+  }
+  return out;
+}
+
 for (const v of views) {
   Bun.gc(true);
   const t0 = performance.now();
   const [w, h] = v.size ?? [1280, 720];
-  const view = provingView(w, h, {}, files, map);
+  let activeMap = map;
+  if (v.isolate) {
+    const i = v.isolate; const a = i.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+    activeMap = { ...map, heights: flatHeights, tint: flatTint, nodes: [], statics: MapStatics.of(map.dims, piecesOf(map.statics, i.first, i.count).map((p) => ({ ...p, x: stageX + (p.x - i.x) * c - (p.z - i.z) * s, z: stageZ + (p.x - i.x) * s + (p.z - i.z) * c, y: p.y - i.y + 2, yaw: (p.yaw - Math.round(i.yaw * 65536 / 360) + 65536) & 65535 }))) };
+  }
+  if (v.isolate || previousIsolated) farCells = null;
+  previousIsolated = !!v.isolate;
+  const view = provingView(w, h, {}, files, activeMap);
   // Supply the same far-cell stream and complete near chunks as a stationary live client.
   // The generic snap harness holds the entire map as near rows, overflowing its draw list on a city.
   if (!farCells) {
@@ -109,7 +131,7 @@ for (const v of views) {
   console.log(`${out}  ${frames} frames, ${(performance.now() - t0).toFixed(0)} ms, eye ${cam.x.toFixed(0)}, ${cam.y.toFixed(1)}, ${cam.z.toFixed(0)}, dropped ${scene.packet.dropped}`);
 }
 // Every view at half size, three across, in the order listed.
-if (small.length > 1) {
+if (small.length > 1 && !only) {
   const cw = Math.max(...small.map((s) => s.w));
   const across = 3;
   const rows = Math.ceil(small.length / across);

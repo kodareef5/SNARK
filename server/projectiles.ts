@@ -44,7 +44,7 @@ const REST_SPEED = 1.2;
 /**
  * A flare (a round that carries a light) rises as it was fired and, once it falls, sinks no faster than FLARE_FALL metres a
  * second and keeps FLARE_DRIFT of its speed across the ground each second, as a flare under its little canopy; it is out
- * where it lands, or after FLARE_TICKS. Ours: ARK says only that it lights "until it hits the ground" (Flare Gun, DEV150).
+ * where it lands, or after FLARE_TICKS. Ours: ARK says only that it lights "until it hits the ground" (Flare Gun, DEV157).
  */
 export const FLARE_FALL = 2.5;
 export const FLARE_DRIFT = 0.25;

@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 const SERVICE = "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Structures_View/FeatureServer/0/query";
 const FIELDS = ["OBJECTID", "HEIGHT", "OCC_CLS", "PRIM_OCC", "SEC_OCC", "OUTBLDG", "SQMETERS", "SOURCE", "VAL_METHOD", "IMAGE_DATE"];
 
-const name = process.argv[2] ?? "miami";
+const name = process.argv[2] ?? (() => { throw new Error("Map name required"); })();
 const base = resolve(import.meta.dir, "../../assets/source/maps", name, "base");
 const geo = JSON.parse(readFileSync(join(base, "buildings.geojson"), "utf8")) as { features: { properties: { id: number } }[] };
 const ids = [...new Set(geo.features.map((f) => f.properties.id))].sort((a, b) => a - b);

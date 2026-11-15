@@ -96,6 +96,11 @@ export class EntityRecord {
   /** Content index of its saddle, or 0. */
   saddle = 0;
   /**
+   * A creature in its own flight (MODE_FLYER) when last saved, so that it loads in the air and does not fall
+   * (planning/reference/flyers-plan.md, FL0). Refreshed from the simulation when saved, as the position is.
+   */
+  flying = false;
+  /**
    * Breeding (server/breeding.ts). `mating` is whether an owned creature is willing to mate, and `mateReadyAt` the tick
    * from which a female may again (0 for now). `span` and `grown` are the ticks growing takes and the tick it ends,
    * both 0 for one that is grown. `growDue` is the tick it is next a hundredth more grown. It is derived, not saved.
@@ -131,6 +136,23 @@ export class EntityRecord {
   }
 }
 
+/** Bytes of the SHA-256 of a device key that a survivor record keeps. */
+const KEY_HASH_BYTES = 16;
+
+/** What a survivor record keeps of the device key that owns it (EntityRecord.keyHash). */
+export function hashKey(key: Uint8Array): Uint8Array {
+  return new Bun.CryptoHasher("sha256").update(key).digest().slice(0, KEY_HASH_BYTES);
+}
+
+/**
+ * Team numbers each world makes. A world's are its id times this plus a count of its own, so a team means the same on every
+ * server of a cluster and a survivor keeps its team as it travels. Saves from before held teams below it, numbered with
+ * their records, which no world's range reaches while no world is 0.
+ */
+export const TEAM_RANGE = 1 << 20;
+/** A team number is 32 bits, so this is the highest world id that can make teams. */
+export const MAX_TEAM_WORLD = 4095;
+
 export class Records {
   readonly worldId: number;
   readonly byPid = new Map<number, EntityRecord>();
@@ -140,14 +162,17 @@ export class Records {
   readonly dirty = new Set<number>();
   readonly deleted: number[] = [];
   nextSeq = 1;
+  /** Teams made, saved with the record counter. */
+  nextTeam = 1;
 
   constructor(worldId: number) {
     this.worldId = worldId;
   }
 
-  /** Team ids come from the record counter, so they are saved with it and never repeat. */
+  /** Never repeats, here or on another world of a cluster. */
   newTeam(): number {
-    return this.nextSeq++;
+    if (this.nextTeam >= TEAM_RANGE || this.worldId > MAX_TEAM_WORLD) throw new Error(`world ${this.worldId} has made all the teams it can`);
+    return this.worldId * TEAM_RANGE + this.nextTeam++;
   }
 
   create(kind: number, name = ""): EntityRecord {
@@ -163,5 +188,12 @@ export class Records {
     this.entOf.delete(pid);
     this.dirty.delete(pid);
     this.deleted.push(pid);
+  }
+
+  /** Puts a record in that came from elsewhere. One deleted since the last commit is written again, not deleted. */
+  put(rec: EntityRecord): void {
+    this.byPid.set(rec.pid, rec);
+    for (let i = this.deleted.indexOf(rec.pid); i >= 0; i = this.deleted.indexOf(rec.pid)) this.deleted.splice(i, 1);
+    this.dirty.add(rec.pid);
   }
 }

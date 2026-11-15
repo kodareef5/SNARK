@@ -99,6 +99,9 @@ function world(width: number, height: number, files?: GameFiles): World {
 /** A piece where building puts it, turned a quarter for each `edge`, and the boxes it is made of. */
 function put(w: World, piece: string, x: number, y: number, z: number, edge = 0, parts?: number[][]): void {
   const k = w.reg.index.get(`core:${piece}`)!;
+  // The truth is boxes standing square, which a sloped part is not.
+  const hulls = w.reg.parts.hulls;
+  if (hulls && hulls.start[k + 1]! > hulls.start[k]!) throw new Error(`${piece} has convex parts, which the shadow truth cannot hold`);
   w.structs.add(k, x, y, z, edge * 16384, 0, 1);
   const turn = edge % 2 === 1;
   for (const [cx, cy, cz, hx, hy, hz] of parts ?? [[0, 0, 0, w.reg.halfX[k]!, w.reg.halfY[k]!, w.reg.halfZ[k]!]]) {

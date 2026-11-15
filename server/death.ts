@@ -2,7 +2,7 @@
 // things or dead with a cache that holds them. A client never names what it opens. The server casts a ray from the body's eye.
 
 import { BitWriter } from "../shared/net/codec.ts";
-import { MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
+import { CHOOSE_DIED, MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
 import { leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
 import { F_PROP, GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
@@ -208,6 +208,29 @@ export class Death {
   }
 
   /**
+   * Leaves everything `rec` carries, worn things too, in one bag at a point: what a survivor that travels from a bed drops
+   * there. The bag takes the inventory object, so nothing is copied. Null if it carried nothing.
+   */
+  dropAll(rec: EntityRecord, x: number, y: number, z: number): EntityRecord | null {
+    const { records, items } = this.ctx;
+    const inv = items.inv(rec);
+    if (inv.used() === 0) return null;
+    const bag = records.create(this.bag, "bag");
+    bag.inv = inv;
+    rec.inv = null;
+    rec.held = -1;
+    bag.x = x;
+    bag.y = y;
+    bag.z = z;
+    bag.expiresAt = this.ctx.world.tick + this.lifetime(this.bag);
+    this.lie(rec.pid, bag);
+    records.dirty.add(bag.pid);
+    records.dirty.add(rec.pid);
+    this.place(bag);
+    return bag;
+  }
+
+  /**
    * Mints `n` of `item` into a bag at the feet of `rec`, whose harvest gave more than it could hold: the bag it last left
    * there while that has room, else new ones. Returns how many went in.
    */
@@ -324,7 +347,8 @@ export class Death {
       this.close(c);
       this.ctx.game.kill(c);
       c.sentInv = -1;
-      c.sentRespawn = false;
+      c.why = CHOOSE_DIED;
+      c.sentPlaces = -1;
       this.ctx.game.sendText(c, TEXT_NOTICE, `You ${CAUSE_NAMES[cause] ?? "died"}.`);
     }
   }

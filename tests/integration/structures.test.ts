@@ -2,10 +2,12 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { BLAST_MS } from "../../client/core/shots.ts";
+import { slopeKind } from "../../content/slopes.ts";
 import { dress } from "../../server/commands/combat.ts";
 import { ZONE_NONE } from "../../shared/anim/human.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, EVENT_BLAST, EVENT_HIT } from "../../shared/net/protocol.ts";
 import { BTN_PRIMARY } from "../../shared/sim/character.ts";
+import { DMG_EXPLOSIVE } from "../../shared/sim/damage.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -310,6 +312,31 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   expect(rec.dead).toBe(true);
   expect(rec.xp).toBe(xp);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a sloped piece takes a blast by its nearest part, not by the air its box holds over the ramp's low end", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const g = flatGround(h, 12, 12);
+  const structs = h.world.structs;
+  // A ramp rising 2 m over 6 m toward +Z, its top 0.2 m over its middle line, its box 1.2 m each way of its middle.
+  const kind = reg.index.get(slopeKind("ramp"))!;
+  const [x, y, z] = [g.x + 6, g.y + 1.2, g.z + 6];
+  const ramp = structs.add(kind, x, y, z, 0, 0, 16000);
+  const hp = (): number => structs.chunks[Math.floor(ramp / 65536)]!.hp[ramp & 0xffff]!;
+  const src = { by: null, x, z, item: 0, base: 100, type: DMG_EXPLOSIVE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  const lost = (dy: number, dz: number): number => {
+    const before = hp();
+    h.host.combat.blast(src, x, y + dy, z + dz, 5);
+    return before - hp();
+  };
+  // Just over the slope, and 1 m up in its box over the low end, 1.63 m over the slope there and 1.55 m off it.
+  const on = lost(0.25, 0);
+  const air = lost(1, -2.5);
+  const off = (1 + 2.5 / 3 - 0.2) * Math.cos(Math.atan(1 / 3));
+  expect(on).toBeGreaterThan(0);
+  expect(air / on).toBeCloseTo(1 - (off - 1) / 4, 2);
+  // Out of reach of its parts, though within reach of its box's top.
+  expect(lost(5.6, -2.5)).toBe(0);
 });
 
 test("damage to something built is saved with it, and a client is shown a blast", () => {
