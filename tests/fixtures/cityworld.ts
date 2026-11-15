@@ -9,6 +9,7 @@ import type { FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import type { Pack } from "../../shared/pack/pack.ts";
 import { CityStatics } from "../../shared/world/city.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapStatic } from "../../shared/world/mapfile.ts";
@@ -57,6 +58,7 @@ export interface CityWorldOptions {
   height?: number;
   /** The ground's height at (x, z), flat at 0 if not given. */
   ground?: (x: number, z: number) => number;
+  pack?: Pack;
 }
 
 export type CityWorld = ReturnType<typeof cityWorld>;
@@ -84,7 +86,7 @@ export function cityWorld(options: CityWorldOptions) {
   const cells = new FarStore();
   const whole = new Uint8Array(dims.chunksX * dims.chunksZ);
   const complete = (chunk: number): boolean => whole[chunk] === 1;
-  const pack = farPack();
+  const pack = o.pack ?? farPack();
   const scene = new Scene({ dims, hf, structs, far: { cells, complete }, city: { statics, complete } }, reg, pack);
   scene.assets.tier = { ...tierOf("medium"), ...o.tier };
   scene.city!.makeMs = Infinity;
