@@ -1,11 +1,13 @@
 // What the world sounds like where the ear is: a bed for the place and the time of day, the shore when the sea is near,
-// wind high up, the muffled deep under water, and a short stinger as day breaks and as it ends. A map has no layer of
-// biomes yet, so the place is read from what the client has: the sea round the ear makes a beach (or the open sea), many
-// trees round it a jungle, and anywhere else grass. Beds fade into one another as the ear moves and the clock turns.
+// wind high up, the muffled deep under water, the sea's or a lake's, and a short stinger as day breaks and as it ends. A
+// map has no layer of biomes yet, so the place is read from what the client has: the sea round the ear makes a beach (or
+// the open sea), many trees round it a jungle, and anywhere else grass. Beds fade into one another as the ear moves and
+// the clock turns.
 
 import { SUNRISE, SUNSET } from "../../../shared/sim/clock.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
+import { seaHere } from "../../../shared/world/water.ts";
 
 /** Metres round the ear the sea and the trees are looked for. */
 const RING = 30;
@@ -46,19 +48,20 @@ export class WorldSounds {
       let wet = 0;
       for (let k = 0; k < RING_POINTS; k++) {
         const a = (k / RING_POINTS) * Math.PI * 2;
-        if (hf.heightAt(x + Math.cos(a) * RING, z + Math.sin(a) * RING) < hf.seaLevel) wet++;
+        const [sx, sz] = [x + Math.cos(a) * RING, z + Math.sin(a) * RING];
+        if (hf.heightAt(sx, sz) < hf.seaLevel && seaHere(hf.water, sx, sz)) wet++;
       }
       this.sea = wet / RING_POINTS;
       this.biome = this.sea > 0 ? 0 : trees(x, z, RING) >= JUNGLE_TREES ? 1 : 2;
     }
-    const under = y < hf.seaLevel;
+    const under = y < hf.waterAt(x, z);
     const night = hour < SUNRISE || hour >= SUNSET ? 1 : 0;
     const openSea = this.sea >= 0.85;
     BED.forEach((pair, b) => pair.forEach((key, t) => loop(WORLD_LOOPS + b * 2 + t, key, 1, !under && !openSea && b === this.biome && t === night)));
     loop(WORLD_LOOPS + 10, K.sea, 1, !under && openSea);
     loop(WORLD_LOOPS + 11, K.under, 1, under);
     loop(WORLD_LOOPS + 12, K.shore, Math.min(1, this.sea * 3), !under && this.sea > 0 && !openSea);
-    const above = y - Math.max(hf.heightAt(x, z), hf.seaLevel);
+    const above = y - Math.max(hf.heightAt(x, z), hf.waterAt(x, z));
     loop(WORLD_LOOPS + 13, K.windLight, Math.min(1, (above - WIND_LIGHT) / WIND_LIGHT), !under && above > WIND_LIGHT && above <= WIND_STRONG);
     loop(WORLD_LOOPS + 14, K.windStrong, 1, !under && above > WIND_STRONG);
     if (this.hour >= 0 && !under) {

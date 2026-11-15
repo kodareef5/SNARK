@@ -7,7 +7,8 @@ import { COLOR_REGIONS, Genome, STAT_COUNT } from "../../shared/sim/genome.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { validLook } from "../../shared/anim/look.ts";
-import { EntityRecord, type Job } from "../records.ts";
+import type { Lane } from "../../shared/sim/station.ts";
+import { EntityRecord, type FireState, type Job } from "../records.ts";
 
 /**
  * The revision of a record's parts, in its first byte. Raise it whenever a part gains a field, or a part is added that a build
@@ -21,8 +22,12 @@ import { EntityRecord, type Job } from "../records.ts";
  * would keep the slots unread and the record empty-handed.
  * 6 saves whether a creature flies, a bit at the end of COMP_STATE. A build without it would write the part back without
  * the bit, and a flyer parked in the air would load walking and fall.
+ * 7 saves, behind a fire's cooking, the piece burning and what it makes by itself (its lanes, by item id), and behind a
+ * job's blueprint, the ticks left of a unit paused for want of fuel (planning/reference/stations-plan.md, S0). A build
+ * without them would write the fire and the queue back without them, and a forge's refining or a fabricator's paused unit
+ * would start again from nothing.
  */
-const RECORD_FORMAT = 6;
+const RECORD_FORMAT = 7;
 /** The first revision whose vitals hold, beyond a body's own rates, only what its saved buffs give. */
 const FORMAT_BUFFS = 3;
 // A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
@@ -250,6 +255,15 @@ export class RecordCodec {
         c.uint53(rec.fire.at);
         c.varint(rec.fire.fuel);
         c.varint(rec.fire.cook);
+        // Then, since format 7, the piece burning (0 for none known) and each lane's item and ticks under way.
+        const piece = rec.fire.piece ?? 0;
+        c.varint(piece === 0 ? 0 : this.toSaved[piece]!);
+        const lanes = rec.fire.lanes ?? [];
+        c.varint(lanes.length);
+        for (const l of lanes) {
+          c.varint(this.toSaved[l.item]!);
+          c.varint(l.ticks);
+        }
       }
       this.part(COMP_FIXTURE);
     }
@@ -272,6 +286,10 @@ export class RecordCodec {
       const fromBlueprint = rec.jobs.some((j) => j.bp !== undefined);
       c.bool(fromBlueprint);
       if (fromBlueprint) for (const j of rec.jobs) c.u8(j.bp === undefined ? 0 : j.bp + 1);
+      // Then, since format 7, a bit and the ticks plus one each job's unit has left while its station is out, 0 for none.
+      const resting = rec.jobs.some((j) => j.rest !== undefined);
+      c.bool(resting);
+      if (resting) for (const j of rec.jobs) c.varint(j.rest === undefined ? 0 : j.rest + 1);
       this.part(COMP_PROGRESSION);
     }
     if (rec.markers.length > 0) {
@@ -543,6 +561,13 @@ export class RecordCodec {
             if (bp !== 0) j.bp = bp - 1;
           }
         }
+        // Then a 1 bit says which wait for their station's fuel, and with how long left. Saves before format 7 end before it.
+        if (c.pos + 1 <= blob.length * 8 && c.bool()) {
+          for (const j of jobs) {
+            const rest = c.varint();
+            if (rest !== 0) j.rest = rest - 1;
+          }
+        }
         for (const j of jobs) if (j.item !== 0) rec.jobs.push(j);
       } else if (component === COMP_STATE) {
         rec.dead = c.bool();
@@ -584,7 +609,22 @@ export class RecordCodec {
         rec.pin = c.varint() - 1;
         if (c.pos + 54 <= blob.length * 8) {
           rec.readyAt = c.uint53();
-          if (c.bool()) rec.fire = { at: c.uint53(), fuel: c.varint(), cook: c.varint(), due: 0 };
+          if (c.bool()) {
+            const fire: FireState = { at: c.uint53(), fuel: c.varint(), cook: c.varint(), due: 0, out: 0 };
+            // Saves before format 7 end here. A piece or a lane whose content is gone is dropped: it is no item anyone holds.
+            if (c.pos + 16 <= blob.length * 8) {
+              const piece = this.toRuntime[c.varint()] ?? 0;
+              if (piece !== 0) fire.piece = piece;
+              const lanes: Lane[] = [];
+              for (let k = c.varint(); k > 0 && !c.overflow; k--) {
+                const item = this.toRuntime[c.varint()] ?? 0;
+                const ticks = c.varint();
+                if (item !== 0) lanes.push({ item, ticks });
+              }
+              if (lanes.length > 0) fire.lanes = lanes;
+            }
+            rec.fire = fire;
+          }
         }
       } else if (component === COMP_BUFFS) {
         const read: { buff: number; until: number; by: number; torpor: number; health: number }[] = [];

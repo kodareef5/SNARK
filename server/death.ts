@@ -5,6 +5,7 @@ import { BitWriter } from "../shared/net/codec.ts";
 import { CHOOSE_DIED, MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } from "../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
 import { leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
+import { rayVehicle } from "../shared/sim/vehicle-frame.ts";
 import { F_PROP, GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
 import { Inventory, stackOf } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
@@ -570,7 +571,9 @@ export class Death {
           const r = reg.bodyRadius[ents.kind[i]!]! * size;
           // A creature's body is met where it lies, as a blow meets it.
           const body = this.corpses?.at(i);
-          const t = body ? this.corpses!.hit(i, ox, oy, oz, d[0]!, d[1]!, d[2]!, best) : rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
+          const car = reg.vehicle[ents.kind[i]!];
+          // A vehicle is looked at by its hull, nose to tail and up to its roof.
+          const t = car && !body ? rayVehicle(car, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[i]!, ox, oy, oz, d[0]!, d[1]!, d[2]!, car.spec.height) : body ? this.corpses!.hit(i, ox, oy, oz, d[0]!, d[1]!, d[2]!, best) : rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
           if (t < best) {
             best = t;
             hit = i;

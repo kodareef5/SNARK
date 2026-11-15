@@ -15,6 +15,7 @@ import { QUALITY_MUL } from "../shared/sim/items.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, WATER_SPEED, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../shared/sim/projectiles.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
+import { bodyAlong, seaHere } from "../shared/world/water.ts";
 import type { Combat, Source } from "./combat.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
@@ -282,12 +283,18 @@ export class Projectiles {
   /** Where one ray along `d` from the origin ends, against the world, water and the bodies of the view tick, into `at`. `self` is skipped. */
   private cast(self: number, ox: number, oy: number, oz: number, d: readonly number[], view: number): typeof this.at {
     const { world, combat } = this.ctx;
-    const sea = world.hf.seaLevel;
+    const hf = world.hf;
+    const sea = hf.seaLevel;
     let reach = HITSCAN_RANGE;
     let on = -1;
-    // Water stops a round fired from above it.
-    if (oy > sea && d[1]! < 0 && (sea - oy) / d[1]! < reach) {
+    // Water stops a round fired from above it: the sea, or a lake's surface.
+    if (oy > sea && d[1]! < 0 && (sea - oy) / d[1]! < reach && seaHere(hf.water, ox + (d[0]! * (sea - oy)) / d[1]!, oz + (d[2]! * (sea - oy)) / d[1]!)) {
       reach = (sea - oy) / d[1]!;
+      on = -2;
+    }
+    const lake = bodyAlong(hf.water, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
+    if (lake < reach) {
+      reach = lake;
       on = -2;
     }
     let built = -1;
@@ -338,7 +345,7 @@ export class Projectiles {
     const world = this.ctx.world;
     const reg = world.reg;
     const now = world.tick;
-    const sea = world.hf.seaLevel;
+    const sea = world.hf.waterAt(ox, oz);
     const wet = reg.weapon[weapon]?.wet ?? false;
     const speed = launchSpeed(reg.ammoSpeed[ammo]!, draw) * (wet && oy < sea ? WATER_SPEED : 1);
     const f: Flying = {
@@ -413,11 +420,17 @@ export class Projectiles {
     let length = piece.length;
     if (!(length > 0)) return false;
     const { x, y, z, dx, dy, dz } = piece;
-    const sea = world.hf.seaLevel;
+    const hf = world.hf;
+    const sea = hf.seaLevel;
     // At the surface a shot from a dry weapon stops. One from a wet weapon goes on, slowed.
     let splash = false;
-    if (!f.under && y > sea && y + dy * length <= sea) {
+    if (!f.under && y > sea && y + dy * length <= sea && seaHere(hf.water, x + (dx * (sea - y)) / dy, z + (dz * (sea - y)) / dy)) {
       length = (sea - y) / dy;
+      splash = true;
+    }
+    const lake = f.under ? Infinity : bodyAlong(hf.water, x, y, z, dx, dy, dz, length);
+    if (lake <= length) {
+      length = lake;
       splash = true;
     }
     let on = splash ? -2 : -1;
@@ -467,7 +480,7 @@ export class Projectiles {
       f.vx *= WATER_SPEED;
       f.vy *= WATER_SPEED;
       f.vz *= WATER_SPEED;
-    } else if (f.under && f.y > sea) f.under = false;
+    } else if (f.under && f.y > hf.waterAt(f.x, f.z)) f.under = false;
     return f.x >= 0 && f.z >= 0 && f.x <= world.hf.sizeX && f.z <= world.hf.sizeZ && f.y > -1000;
   }
 
@@ -574,7 +587,7 @@ export class Projectiles {
     flyEnd(f, gravity);
     if (f.vy < -FLARE_FALL) f.vy = -FLARE_FALL;
     const hf = world.hf;
-    if (f.y <= hf.seaLevel || f.x < 0 || f.z < 0 || f.x > hf.sizeX || f.z > hf.sizeZ) return false;
+    if (f.y <= hf.waterAt(f.x, f.z) || f.x < 0 || f.z < 0 || f.x > hf.sizeX || f.z > hf.sizeZ) return false;
     if ((world.ents.flags[f.ent]! & F_ALIVE) === 0 || world.ents.gen[f.ent] !== f.gen) return false;
     world.ents.setPosition(f.ent, f.x, f.y, f.z);
     return true;

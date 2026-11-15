@@ -34,6 +34,35 @@ for each box. The site exposes footprints, district data, ground samples and
 plant clearing masks. The ground builder leaves the footprints bare when
 `world.heaps` is false. Resource nodes are placed after all static layers.
 
+## Lakes above the sea
+
+`tools/mapdata/prepare.py` keeps a lake whose hydro-flattened lidar stands more
+than 2 m over the city's sea out of the sea, in `base/perched_water.geojson`.
+The builder (`lakes.ts`) makes each one water standing on its own surface, a
+body of the map file's water layer (`water.json` and `water.png` among the
+layers; [maps](../../planning/reference/maps.md)), and carves its bed:
+
+- Its surface is the mode of its outline's lidar, to 10 cm, put on the heights'
+  lattice. A sample of the outline more than `bank` (0.25 m) over it is bank and
+  stays land, as does one under a footprint; past a misdrawn outline the water
+  goes on up to `past` (10) samples where the lidar is flat at its surface.
+- Its bed falls from `shoreDepth` (0.3 m) at the shore by `slope` (0.08) a metre
+  out, to `deepest` (8 m), as a gentle sea shore does here. Its squares reach a
+  sample over its shore, so the shore line is the ground meeting the surface.
+- Flowing water (TIGER's H3 codes, a river's or a canal's channel) falls along
+  its length: its lidar smoothed over 20 m is cut into reaches `reach` (0.25 m)
+  apart, each a body.
+- An outline the lidar did not flatten (under `flattened`, 30%, of it within
+  `bank` of the surface) or that its ground does not hold in (more than `leaks`,
+  20%, of its shore more than `bank` under the surface) is no lake: it stays the
+  marsh it was, and the build says why.
+
+`world.lakes` in `world.json` changes any of these numbers, and `false` leaves
+every lake marsh. A city whose base has no `perched_water.geojson` (Miami,
+Tampa) builds the same bytes as before. A mapped pier or breakwater over a lake
+stands over its surface as one over the sea does over the sea. `stats.json`
+lists each lake made and each left, with its reason.
+
 ## Obelisks
 
 Where survivors leave for another server of the cluster. `world.json` lists
@@ -130,3 +159,42 @@ comparison gallery using `ruins/proof.json` and optional `ruins/captions.json`.
 Line-ups isolate exact packed pieces by their recorded range, with one camera,
 light and ground plane. They are diagnostic views, not replacements for the
 required city streets and interiors.
+
+## Cars: wrecks and parked ones
+
+Today the street pass (`makeStreetPieces` in `ruins.ts`) puts a box assembly
+from `street.assemblies` on an 8 m grid, kept by a hash at `street.chance`, at a
+street's edge, in a yard or on a verge, turned 0 or 90 degrees. Its `car` is a
+`zcar` and a `zcab` box; San Francisco had 16,422 of them and 4,568 buses.
+
+Wrecks should be the car's own mesh: statics of wreck kinds such as
+`core:compact_wreck`, one piece each, set at the ground with yaw along the
+street. A wreck kind is a static whose `mesh` names the wreck's mesh and whose
+`shape` is its collider in the car's frame (origin on the ground under its
+middle, length along +z), so the piece's `y` is the ground and the far city
+draws its boxes. Tipped wrecks are kinds of their own, each its own posed mesh,
+since a piece has only a yaw. An assembly part would name a content id in place
+of a box shape, and the prop checks would take its size from the content.
+
+Cars a survivor can drive away go in `vehicles.json`
+(`[{ "kind": "core:compact", "x": 240, "z": 270, "yaw": 90 }]`, through the
+layers folder into the file's `VHCL`). The server parks each, owned by nobody,
+once in a new world; the save keeps it from then on. The rule for a point:
+
+- On a street's lane: a local or secondary centreline of `base/roads.geojson`,
+  not a highway, ramp, path, bridge deck or tunnel, set in from the centreline to
+  the kerb on the right of travel and turned along it.
+- At least 15 m from a junction (a point two lines share, or a line's end).
+- Clear of every static's boxes and of the wrecks by the car's envelope, X ±0.9,
+  Y 0 to 1.5, Z ±2.0, plus 1 m, and plus the door room its seats need (entries at
+  X ±1.25); the plants are cleared round it as round a spawn point.
+- On dry street ground, its four wheels' heights giving a ground normal no
+  steeper than the kind's `minGroundNormal` (0.85 for the compact), with margin
+  enough to drive off.
+- A density per kilometre of such street in each district, clamped to a few per
+  district, the points chosen by a hash of the map's seed so every build is the
+  same, and spread apart.
+
+The kinds and their sizes come from the compiled content: a vehicle's
+`spec` (half width, half length, height, wheelbase, track, ground limit) and its
+`seats`, so a truck or a bus needs no new code.

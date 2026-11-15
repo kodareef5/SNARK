@@ -8,20 +8,22 @@ import { Binding } from "../../client/core/assets/bind.ts";
 import { AssetTable } from "../../client/core/assets/table.ts";
 import { HudModel, fillHotbar } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
-import { KEY_CHAR_RECIPE_PICTURE, TAB_MAKE } from "../../client/core/ui/character.ts";
+import { KEY_CHAR_ENGRAM_PICTURE, KEY_CHAR_RECIPE_PICTURE, KEY_CHAR_TAB, TAB_ENGRAMS, TAB_MAKE, engramOrder } from "../../client/core/ui/character.ts";
 import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { K_IMAGE, K_PANEL } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
-import type { ItemDef } from "../../shared/content/defs.ts";
+import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
 import { ICONS_A_SHEET, ICON_SIZE } from "../../shared/pack/icons.ts";
 import { MANIFEST_VERSION, describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
-import { IconPainter, buildIcons, iconSubjects } from "../../tools/pack/icons.ts";
+import { IconPainter, buildIcons, framingOf, iconSubjects, type IconFraming } from "../../tools/pack/icons.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
-import { buildPack } from "../../tools/pack/write.ts";
+import { boxMesh, buildPack } from "../../tools/pack/write.ts";
+import { standInSession } from "../../tools/snap.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -64,10 +66,45 @@ test("a code-made pick is drawn on a clear ground, filling its picture and centr
   expect(shades.size).toBeGreaterThan(3);
 });
 
+test("a framing's shift, with its zoom, shows one end of a long thing and lets the rest run off the picture", () => {
+  // A stick 60 cm long from its grip, as a spear's shaft is held: its far end goes to the top right.
+  const lod = boxMesh([0.01, 0.01, 0.3], 15);
+  for (let v = 2; v < lod.positions.length; v += 3) lod.positions[v]! += 0.3;
+  const n = 32;
+  const painter = new IconPainter(parsePack(buildPack([{ id: "t:stick", lods: [lod] }], defaultPalette())), () => null, n);
+  /** Which sides of the picture what it holds reaches: left, right, top, bottom. */
+  const reaches = (framing: IconFraming | null): boolean[] => {
+    const picture = painter.draw(0, [15, 0, 0, 0, 0, 0], framing);
+    const covered = (x: number, y: number): boolean => picture[(y * n + x) * 4 + 3]! > 0;
+    const any = (f: (k: number) => boolean): boolean => Array.from({ length: n }, (_, k) => f(k)).some((v) => v);
+    return [any((y) => covered(0, y)), any((y) => covered(n - 1, y)), any((x) => covered(x, 0)), any((x) => covered(x, n - 1))];
+  };
+  // Whole, it reaches no side. Zoomed toward its far end, that end is whole and the rest runs off below, the picture's
+  // middle a little above the stick; the other way, the grip's end is whole and the rest runs off above.
+  const view = framingOf({ around: 1.08, above: 0.42 });
+  expect(reaches(null)).toEqual([false, false, false, false]);
+  expect(reaches({ ...view, zoom: 3, shift: [0.6, 0.7] })).toEqual([false, false, false, true]);
+  expect(reaches({ ...view, zoom: 3, shift: [-0.6, -0.7] })).toEqual([false, false, true, false]);
+});
+
 test("an item is drawn from its own dropped mesh, else its own held mesh, and never from the bag that stands in", () => {
   const subjects = (meshes: string[]): string[] => iconSubjects(reg.defs, (id) => meshes.includes(id)).map((s) => `${s.icon} ${s.mesh}`);
   expect(subjects(["core:pick", "core:bag"])).toEqual(["core:pick/icon core:pick"]);
   expect(subjects(["core:pick", "core:pick/dropped", "core:stone/dropped"]).sort()).toEqual(["core:pick/icon core:pick/dropped", "core:stone/icon core:stone/dropped"]);
+});
+
+test("a structure's item with no mesh of its own is drawn as the first structure it places stands, in that structure's colour", () => {
+  const subjects = (meshes: string[]): string[] => iconSubjects(reg.defs, (id) => meshes.includes(id)).map((s) => `${s.icon} ${s.mesh} ${s.colors[0]}`);
+  const mortar = reg.defs.find((d) => d?.id === "core:mortar") as { color: number };
+  // The mortar's grey box or modelled mesh, which share its id; its own preview where it has one, and its own dropped
+  // mesh before either. The bag a dropped stack stands in is still nobody's picture.
+  expect(subjects(["core:mortar"])).toEqual([`core:piece_mortar/icon core:mortar ${mortar.color}`]);
+  expect(subjects(["core:mortar", "core:piece_mortar/preview"])).toEqual([`core:piece_mortar/icon core:piece_mortar/preview ${mortar.color}`]);
+  expect(subjects(["core:mortar", "core:piece_mortar/dropped"])[0]!.split(" ")[1]).toBe("core:piece_mortar/dropped");
+  expect(subjects(["core:bag"])).toEqual([]);
+  // A lit pair's item places the unlit kind, so it is pictured out.
+  const campfire = reg.defs.find((d) => d?.type === "item" && d.places?.includes("core:campfire"));
+  expect(subjects(["core:campfire", "core:campfire_lit"])).toEqual([`${campfire!.id}/icon core:campfire ${(reg.defs.find((d) => d?.id === "core:campfire") as { color: number }).color}`]);
 });
 
 test("a sheet of pictures is a file of the manifest, which still reads version 3 and refuses a picture outside its sheet", () => {
@@ -107,11 +144,11 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   inv.set(inv.hotbar + 1, id("core:stone"), 30, 0, 0, 0);
   const engrams = reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : []));
   const session = { inventory: inv, held: 0, tamed: [], serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" }, progress: { level: 99, xp: 0, statPoints: 0, engramPoints: 0, jobs: [], engrams }, ownKind: id("core:survivor") } as unknown as ClientSession;
-  const frame = (pictures: boolean, character: boolean, page = 0): Ui => {
+  const frame = (pictures: boolean, character: boolean, page = 0, tab = TAB_MAKE): Ui => {
     const ui = new Ui();
     ui.sheet.page = page;
     if (pictures) new Icons(manifest, reg.defs, "assets", () => new Uint8ClampedArray(ICON_SIZE * ICON_SIZE * 4)).install(ui.frame);
-    [ui.registry, ui.palette, ui.inventory.open, ui.character, ui.sheet.tab] = [reg, pack.palette, true, character, TAB_MAKE];
+    [ui.registry, ui.palette, ui.inventory.open, ui.character, ui.sheet.tab] = [reg, pack.palette, true, character, tab];
     const hud = new HudModel();
     fillHotbar(hud, inv, 0, reg, pack.palette);
     ui.build(16 / 9, hud, session);
@@ -127,10 +164,39 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   // A build without pictures shows every swatch as before.
   expect(frame(false, false).frame.find(KEY_INV_SLOT + 1)!.kind).toBe(K_PANEL);
   // The crafting list puts the pick's picture beside its row, on whichever page that is, and no other: no other item has one.
-  const made = reg.defs.flatMap((d, k) => (d?.type === "item" && (d as ItemDef).craft ? [k] : []));
+  // Its row is its place among what is made in the hands; what a station makes is listed at the station.
+  const made = reg.defs.flatMap((d, k) => (d?.type === "item" && (d as ItemDef).craft && reg.craftAt[k] === 0 ? [k] : []));
   const key = KEY_CHAR_RECIPE_PICTURE + made.indexOf(id("core:pick"));
   const pages = Array.from({ length: frame(true, true).sheet.pages }, (_, page) => frame(true, true, page).frame);
   const page = pages.find((f) => f.find(key) !== null)!;
   expect(page.find(key)!.kind).toBe(K_IMAGE);
   expect(pages.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_RECIPE_PICTURE).length).toBe(1);
+  // An engram has no picture of its own, and its row shows its item's: the pick's engram shows the pick, and no other row
+  // shows one.
+  const order = engramOrder(reg, engrams);
+  const pickEngram = order.findIndex((e) => (reg.defs[e] as EngramDef).item === "core:pick");
+  const learned = Array.from({ length: frame(true, true, 0, TAB_ENGRAMS).sheet.pages }, (_, page) => frame(true, true, page, TAB_ENGRAMS).frame);
+  const shows = learned.find((f) => f.find(KEY_CHAR_ENGRAM_PICTURE + pickEngram) !== null)!.find(KEY_CHAR_ENGRAM_PICTURE + pickEngram)!;
+  expect([shows.kind, shows.image, shows.sx, shows.sy]).toEqual([K_IMAGE, IMAGE_ICONS, 0, 0]);
+  expect(learned.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_ENGRAM_PICTURE).length).toBe(1);
+});
+
+test("the session bun run snap -- --ui draws the interface from builds the bag, the chat and every tab of the character sheet", () => {
+  // Its stand-in was once an object made by hand without `tamed`, and building the bag threw.
+  const session = standInSession(reg, "Night Shift");
+  session.inventory = new Inventory(40);
+  session.inventory.set(0, reg.index.get("core:berry")!, 24, 0, 0, 9000);
+  const built = (bag: boolean, tab: number): Ui => {
+    const ui = new Ui();
+    [ui.registry, ui.palette, ui.inventory.open, ui.character, ui.sheet.tab] = [reg, pack.palette, bag, !bag, tab];
+    ui.build(16 / 9, new HudModel(), session);
+    return ui;
+  };
+  expect(built(true, 0).frame.find(KEY_INV_SLOT + 1)?.text).toBe("berr");
+  for (const tab of [0, TAB_ENGRAMS, TAB_MAKE]) expect(built(false, tab).frame.find(KEY_CHAR_TAB + tab)?.text).toBe(["Stats", "Engrams", "Make"][tab]);
+  const chat = new Ui();
+  chat.chat.begin(TEXT_TRIBE, session);
+  chat.chat.edit("on my way");
+  chat.build(16 / 9, new HudModel(), session);
+  expect(chat.frame.count).toBeGreaterThan(0);
 });

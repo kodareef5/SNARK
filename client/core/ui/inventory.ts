@@ -7,7 +7,7 @@ import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LO
 import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { StationPanel } from "./station.ts";
+import { KEY_STATION_VIEW, StationPanel } from "./station.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
 
 export const KEY_INV_PANEL = 290;
@@ -244,9 +244,19 @@ export class InventoryScreen {
     const orderH = subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
     const subjectH = subject ? infoH + 2 + orderH : 0;
     const otherH = other ? titleH + subjectH + rows(this.pages > 1 ? this.pageSize : other.bag) + PAD * 2 : 0;
-    const x0 = Math.round((f.width - w) / 2);
+    // An open crafting station's panel goes beside the column, the two centred together. Where the canvas is too narrow for
+    // both, the open container's title row has a button that shows the panel alone, in place of the inventory.
+    const stationW = other && this.station.showing(session) ? this.station.width(f) + 8 : 0;
+    const narrow = stationW > 0 && w + stationW > f.width - 8;
+    this.station.begin(session, narrow);
+    const x0 = Math.round((f.width - w - (narrow ? 0 : stationW)) / 2);
     let y = Math.max(4, Math.round((f.height - ownH - otherH - (other ? 8 : 0)) / 2));
     const tick = session.serverTick;
+    if (narrow && this.station.alone) {
+      this.held = -1;
+      this.station.build(f, session, reg, Math.round((f.width - stationW + 8) / 2), 4);
+      return;
+    }
 
     /** Slots `from` .. `from + n - 1` of `inv` as a grid starting at `top`. */
     const grid = (inv: Inventory, which: number, base: number, top: number, from: number, n: number): void => {
@@ -282,7 +292,14 @@ export class InventoryScreen {
     if (other) {
       f.add(KEY_OPEN_PANEL, K_PANEL, x0, y, w, otherH, S_PANEL);
       const pagerW = this.pages > 1 ? 120 : 0;
-      f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, w - PAD * 2 - pagerW, S_TITLE, fit(session.open!.name).slice(0, Math.floor((w - PAD * 2 - pagerW) / (18 * 0.6))));
+      const viewW = narrow ? 84 : 0;
+      const titleW = w - PAD * 2 - pagerW - (viewW > 0 ? viewW + GAP : 0);
+      f.text(KEY_OPEN_TITLE, x0 + PAD, y + PAD, titleW, S_TITLE, fit(session.open!.name).slice(0, Math.floor(titleW / (18 * 0.6))));
+      if (viewW > 0) {
+        const b = f.add(KEY_STATION_VIEW, K_BUTTON, x0 + w - PAD - pagerW - (pagerW > 0 ? GAP : 0) - viewW, y + PAD - 2, viewW, 22, S_BUTTON);
+        b.text = "Crafting";
+        b.interactive = true;
+      }
       if (this.pages > 1) {
         const px = x0 + w - PAD - pagerW;
         for (const [n, label] of [[0, "<"], [2, ">"]] as const) {
@@ -334,7 +351,7 @@ export class InventoryScreen {
         }
       }
       grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + subjectH + 4, this.page * this.pageSize, onPage);
-      this.station.build(f, session, reg, x0, y, w);
+      if (stationW > 0 && !narrow) this.station.build(f, session, reg, x0 + w + 8, y);
       y += otherH + 8;
     }
     f.add(KEY_INV_PANEL, K_PANEL, x0, y, w, ownH, S_PANEL);

@@ -13,7 +13,8 @@ import { chunkCount } from "../../shared/coords.ts";
 import { mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
-import { readLayers } from "../map/layers.ts";
+import { readLayers, waterLayer } from "../map/layers.ts";
+import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import { makeGround, S, type World } from "./ground.ts";
@@ -92,11 +93,18 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   put("tint.u8", tint);
   put("plants.png", writeGrey(nodes.side, nodes.side, nodes.plants));
   put("stones.png", writeGrey(nodes.side, nodes.side, nodes.stones));
+  put("sea.png", writeGrey(nodes.side, nodes.side, nodes.sea));
   put("nodes.json", `${JSON.stringify(nodes.layers, null, 2)}\n`);
   const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
   put("spawns.json", lines(spawns));
   put("regions.json", lines(regions));
   if (statics.length > 0) put("statics.json", lines(statics));
+  // Lakes above the sea as bodies of water, in squares of a sample.
+  if (ground.lakes) {
+    const water = waterLayer({ chunksX: chunks, chunksZ: chunks }, world.minY, world.stepY, 2, ground.lakes.bodies, lakeSquares(ground.lakes, n, 2));
+    put("water.json", water.json);
+    put("water.png", water.png);
+  }
   lap(`layers in ${layers}`);
 
   let map = readLayers(layers);
@@ -135,7 +143,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   for (let j = 0; j + 1 < hf.nz; j++) {
     for (let i = 0; i + 1 < hf.nx; i++) {
       const h = hf.sample(i, j);
-      if (h < hf.seaLevel) continue;
+      if (h < hf.waterAt(i * hf.cell + 1, j * hf.cell + 1)) continue;
       land++;
       const gx = (hf.sample(i + 1, j) - h) / hf.cell;
       const gz = (hf.sample(i, j + 1) - h) / hf.cell;
@@ -187,6 +195,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     landShareWalkable: Number((walkable / land).toFixed(4)),
     landSquareMetres: land * 4,
     bridges: ground.bridges,
+    ...(ground.lakes ? { lakes: ground.lakes.made.map((m) => ({ ...m, squareMetres: m.water * 4 })) } : {}),
     nodes: Object.fromEntries([...byKind.entries()].sort((a, b) => b[1] - a[1])),
     nodeTotal: [...byKind.values()].reduce((a, b) => a + b, 0),
     zoneCell: ZONE_CELL,

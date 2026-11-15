@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
@@ -15,7 +15,7 @@ import { DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, F
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
-import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
+import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
 import { AnimState, CUE_DEAD, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
 import { sizeSpan } from "../shared/anim/corpse.ts";
@@ -24,9 +24,11 @@ import type { Rig } from "../shared/anim/rigs.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
-import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, CMD_SELECT, KEY_BYTES } from "../shared/net/protocol.ts";
 import { dress } from "../server/commands/combat.ts";
 import { Inventory } from "../shared/sim/items.ts";
+import { stationRecipes } from "../client/core/ui/station.ts";
+import { TICK_RATE } from "../shared/coords.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
@@ -715,6 +717,9 @@ export function clientPicture(width: number, height: number, look: Uint8Array | 
   return raster.color;
 }
 
+/** The view a model is drawn with: narrow, so that near and far parts are drawn nearly the same size. */
+const MODEL_FOV = 0.2;
+
 export interface ModelShot {
   /** Index of the mesh in the pack, and the level of it to draw. */
   mesh: number;
@@ -735,6 +740,8 @@ export interface ModelShot {
   floor?: number;
   /** Lit as the lit tiers light, which is the default, or as low poly. */
   lit?: boolean;
+  /** How many times nearer the picture is than the ball: the view narrowed from where the ball puts the camera, so near and far parts keep their sizes. */
+  zoom?: number;
   /** The level of the hurt and decay layer of each material that has one, in LAYER_LEVELS (client/core/render/surface.ts); 0 for none. Its texture must be on the card. */
   layer?: number;
 }
@@ -759,8 +766,7 @@ export class ModelView {
     this.pack = pack;
     this.background = background;
     this.cam.aspect = width / height;
-    // Narrow, so that near and far parts are drawn nearly the same size.
-    this.cam.fovY = 0.2;
+    this.cam.fovY = MODEL_FOV;
     this.packet.sky.set(background);
     this.packet.fogStart = 1e8;
     this.packet.fogEnd = 2e8;
@@ -777,6 +783,7 @@ export class ModelView {
     const a = (shot.around * Math.PI) / 180;
     const e = (shot.above * Math.PI) / 180;
     // Far enough off that the ball fits the narrower way.
+    cam.fovY = MODEL_FOV;
     const half = Math.min(cam.fovY / 2, Math.atan(Math.tan(cam.fovY / 2) * cam.aspect));
     const far = shot.radius / Math.sin(half);
     cam.x = shot.centre[0] + far * Math.sin(a) * Math.cos(e);
@@ -786,6 +793,7 @@ export class ModelView {
     cam.pitch = -e;
     cam.near = Math.max(0.05, far - shot.radius * 1.5);
     cam.far = far + shot.radius * 1.5;
+    if (shot.zoom !== undefined) cam.fovY = 2 * Math.atan(Math.tan(MODEL_FOV / 2) / shot.zoom);
     cam.update();
     p.beginFrame();
     p.viewProj.set(cam.viewProj);
@@ -875,6 +883,18 @@ export class ModelView {
     out[2] = (m[2]! * rx + m[6]! * ry + m[10]! * rz + m[14]!) / w;
     return true;
   }
+}
+
+/**
+ * A session for the interface to be drawn from without a server: a real one on a connection that goes nowhere, so a
+ * screen finds every field it reads (an object made by hand once lacked `tamed`, and `--ui --inventory` crashed), at
+ * server tick 1000, in the tribe `tribe`.
+ */
+export function standInSession(reg: Registry, tribe = ""): ClientSession {
+  const s = new ClientSession({ open: false, send: () => {}, close: () => {}, onMessage: null, onClose: null }, { name: "snap", key: new Uint8Array(KEY_BYTES), registry: reg, resolveMap: () => null });
+  s.renderClock = 1000;
+  s.tribe.name = tribe;
+  return s;
 }
 
 if (import.meta.main) {
@@ -1273,6 +1293,7 @@ if (import.meta.main) {
       ui.console.edit(typed);
     }
     let session: ClientSession | null = null;
+    const standIn = (tribe: string): ClientSession => standInSession(view.reg, tribe);
     if (args.includes("--inventory")) {
       // A stand-in inventory, to look at the screen without a server.
       const inv = new Inventory(40);
@@ -1283,16 +1304,39 @@ if (import.meta.main) {
       inv.set(3, item("core:fiber"), 180, 0, 0, 0);
       inv.set(12, item("core:meat"), 3, 0, 0, 4000);
       inv.set(13, item("core:waterskin"), 1, 0, 0, 0);
-      session = { inventory: inv, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" } } as unknown as ClientSession;
+      session = standIn("");
+      session.inventory = inv;
       ui.registry = view.reg;
       ui.palette = view.pack.palette;
       ui.inventory.open = true;
       ui.inventory.held = 1;
       ui.inventory.hover = 2;
     }
+    const stationId = arg("station");
+    if (stationId !== undefined) {
+      // --station ID: a station of that structure kind open beside the bag (its panel, planning/reference/stations-plan.md,
+      // S4), holding three units' ingredients of each thing it makes and every engram known. A lit kind burns for 15 minutes.
+      const kind = view.reg.index.get(stationId);
+      if (kind === undefined || view.reg.defs[kind]?.type !== "structure") throw new Error(`--station: ${stationId} is not a structure`);
+      session ??= standIn("");
+      session.inventory ??= new Inventory(40);
+      const slots = new Inventory(Math.max(1, view.reg.structSlots[kind]!));
+      let free = 0;
+      for (const item of stationRecipes(view.reg, kind)) {
+        const needs = view.reg.recipeOf[item]!;
+        for (let k = 0; k + 1 < needs.length && free < slots.cap; k += 2) if (slots.total(needs[k]!) === 0) slots.set(free++, needs[k]!, Math.min(view.reg.stack[needs[k]!]!, needs[k + 1]! * 3), 0, 0, 0);
+      }
+      session.open = { name: stationId.slice(stationId.indexOf(":") + 1).replace(/_/g, " "), inventory: slots };
+      session.station = { kind, ref: 0, out: view.reg.burning[kind] === 1 ? session.serverTick + 900 * TICK_RATE : 0, lanes: [], jobs: [] };
+      session.progress.engrams.push(...view.reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : [])));
+      session.progress.level = 100;
+      ui.registry = view.reg;
+      ui.palette = view.pack.palette;
+      ui.inventory.open = true;
+    }
     if (args.includes("--chat")) {
       // Lines on each channel, and the chat box open on the tribe channel with a line being typed.
-      session ??= { inventory: null, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "Night Shift" } } as unknown as ClientSession;
+      session ??= standIn("Night Shift");
       const said: [number, string][] = [
         [TEXT_NOTICE, "bob joined Night Shift."],
         [TEXT_GLOBAL, "cy: anyone trading hide for narcotics? I am at the pool with far more than I can carry"],

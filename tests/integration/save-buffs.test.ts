@@ -27,7 +27,7 @@ test("a creature set alight before a restart burns for what was left of its fire
   let host = open(db);
   const [a, b] = [grazer(host, 250), grazer(host, 262)];
   const full = host.survival.value(a, V_HEALTH);
-  // Eight health a second for eight seconds, less the 0.2 a second it mends.
+  // Twenty-two health a second for eight seconds (Flame Arrow), less the 0.2 a second it mends.
   host.buffs.give(a, id("burning"), 0);
   // Knocked out, then a dose that adds torpor for eight seconds.
   host.survival.add(b, V_TORPOR, 10000);
@@ -40,17 +40,17 @@ test("a creature set alight before a restart burns for what was left of its fire
   const [burnt, dosed] = [host.records.byPid.get(a.pid)!, host.records.byPid.get(b.pid)!];
   expect(burnt.buffs).toEqual([{ buff: id("burning"), until: until[0]!, by: 0, torpor: 0, health: 0 }]);
   expect(dosed.buffs).toEqual([{ buff: id("drugged"), until: until[1]!, by: 0, torpor: 5, health: 0 }]);
-  expect(host.survival.value(burnt, V_HEALTH)).toBeCloseTo(full - 2 * 7.8, 1);
+  expect(host.survival.value(burnt, V_HEALTH)).toBeCloseTo(full - 2 * 21.8, 1);
   run(host, 7);
   // Six more seconds of fire and one of mending.
   expect(burnt.buffs.length).toBe(0);
-  expect(host.survival.value(burnt, V_HEALTH)).toBeCloseTo(full - 8 * 7.8 + 0.2, 1);
+  expect(host.survival.value(burnt, V_HEALTH)).toBeCloseTo(full - 8 * 21.8 + 0.2, 1);
   // The dose is spent too. Its torpor then drains, and the creature gets up.
   expect([dosed.buffs.length, dosed.out]).toEqual([0, true]);
   const most = dosed.vitals!.max[V_TORPOR]! / 1e6;
   expect(host.survival.value(dosed, V_TORPOR)).toBeLessThan(most);
   run(host, 60);
-  expect(host.survival.value(burnt, V_HEALTH)).toBeCloseTo(full - 8 * 7.8 + 61 * 0.2, 1);
+  expect(host.survival.value(burnt, V_HEALTH)).toBeCloseTo(full - 8 * 21.8 + 61 * 0.2, 1);
   run(host, most / 0.6);
   expect([dosed.out, host.survival.value(dosed, V_TORPOR)]).toEqual([false, 0]);
   expect(host.records.byPid.has(a.pid)).toBe(true);

@@ -10,7 +10,9 @@ import { STAGES, growthStep, maturity, stageOf, youngScale } from "../../shared/
 import { sortU32 } from "../../shared/sort.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
 import { CHOOSE_DIED, CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
-import { MF_OUT, STAMINA_UNITS } from "../../shared/sim/character.ts";
+import { MF_OUT, STAMINA_UNITS, type Body } from "../../shared/sim/character.ts";
+import type { VehicleSpec } from "../../shared/sim/vehicle.ts";
+import { DEFAULT_DRIVETRAIN, drivetrainShifting } from "../../shared/sim/vehicle-drivetrain.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Camera } from "./render/camera.ts";
@@ -173,7 +175,48 @@ export interface Heads {
   overhead(id: number, out: number[]): boolean;
 }
 
+/** Instruments read the predicted mechanical state; audio load and tire slip remain presentation only. */
+export class VehicleTelemetry {
+  active = false;
+  id = -1;
+  speed = 0;
+  forward = 0;
+  lateral = 0;
+  throttle = 0;
+  brake = 0;
+  handbrake = false;
+  grounded = true;
+  fuel = 0;
+  gear = 1;
+  rpm = 0;
+  redline = DEFAULT_DRIVETRAIN.redlineRpm;
+  load = 0;
+  slip = 0;
+
+  stop(): void { this.active = false; this.id = -1; this.rpm = this.load = this.slip = 0; }
+
+  update(id: number, body: Body, throttle: number, handbrake: boolean, spec: VehicleSpec, _dt: number): void {
+    this.active = true; this.id = id;
+    this.forward = body.vx * Math.sin(body.vehicleYaw) + body.vz * Math.cos(body.vehicleYaw);
+    this.lateral = body.vx * Math.cos(body.vehicleYaw) - body.vz * Math.sin(body.vehicleYaw);
+    this.speed = Math.hypot(body.vx, body.vz);
+    this.throttle = Math.max(-1, Math.min(1, throttle));
+    this.handbrake = handbrake;
+    this.brake = handbrake ? 1 : this.forward * this.throttle < -.2 ? Math.abs(this.throttle) : 0;
+    this.grounded = body.grounded;
+    this.fuel = Math.max(0, Math.min(1, body.fuel / spec.fuelCapacity));
+    this.gear = body.vehicleGear;
+    this.rpm = body.vehicleRpm;
+    const drivetrain = spec.drivetrain ?? DEFAULT_DRIVETRAIN;
+    this.redline = drivetrain.redlineRpm;
+    const shift = drivetrainShifting(body.vehicleShiftTime, drivetrain) ? .35 : 1;
+    this.load = this.fuel > 0 ? Math.abs(this.throttle) * (this.brake > 0 ? .25 : 1) * shift : 0;
+    this.slip = body.grounded && this.speed > 2 ? Math.max(0, Math.min(1, (Math.abs(this.lateral) - .4) / 4 + (handbrake ? this.speed / 28 : 0))) : 0;
+  }
+}
+
 export class HudModel {
+  vehicle: VehicleTelemetry | null = null;
   /** The microphone's state, or why it is off. "" for nothing. */
   voice = "";
   readonly talkers: string[] = [];
@@ -453,7 +496,8 @@ function describe(m: OverheadModel, session: ClientSession, remote: RemoteSample
   const team = session.tribe.team;
   m.owner = remote.team[i] === 0 ? OWNER_WILD : team !== 0 && remote.team[i] === team ? OWNER_TRIBE : OWNER_OTHER;
   m.title = named ? remote.name[i]! : species.charAt(0).toUpperCase() + species.slice(1);
-  m.line = `${named ? `${species}  ` : ""}level ${remote.level[i]}`;
+  const vehicle = reg.vehicle[remote.kind[i]!];
+  m.line = vehicle ? `vehicle  ${vehicle.seats.length} seats` : `${named ? `${species}  ` : ""}level ${remote.level[i]}`;
   // How far a young one has grown shows to its tribe, and on one nobody has claimed.
   if (remote.grown[i] !== 0 && m.owner !== OWNER_OTHER) {
     const tick = Math.floor(remote.tick);
@@ -466,6 +510,7 @@ function describe(m: OverheadModel, session: ClientSession, remote: RemoteSample
   if (!told || told.id !== remote.id[i]) return;
   if (m.owner === OWNER_OTHER && told.tribe !== "") m.tribe = `of ${told.tribe}`;
   addBar(m, BAR_HEALTH, told.health);
+  if (vehicle) return;
   addBar(m, BAR_FOOD, told.food);
   addBar(m, BAR_TORPOR, told.torpor);
   addBar(m, BAR_TAMING, told.taming);
