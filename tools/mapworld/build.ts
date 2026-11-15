@@ -59,7 +59,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const tint = makeTint(ground, world);
   lap("colour");
   const spawns = placeSpawns(ground, world, toSample, size);
-  const regions = placeRegions(ground, size);
+  const regions = placeRegions(ground, size, spawns, world.easyAroundSpawns ?? 0);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
   // so none stands in it or before its terminal.
@@ -72,7 +72,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   rmSync(layers, { recursive: true, force: true });
   mkdirSync(layers, { recursive: true });
   const put = (file: string, data: string | Uint8Array): void => writeFileSync(join(layers, file), data);
-  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunks, chunks], minY: world.minY, stepY: world.stepY, seaLevel: 0 }, null, 2)}\n`);
+  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunks, chunks], minY: world.minY, stepY: world.stepY, seaLevel: world.sea === false ? null : 0 }, null, 2)}\n`);
   const heights = new Uint8Array(n * n * 2);
   const view = new DataView(heights.buffer);
   let deepest = Infinity;

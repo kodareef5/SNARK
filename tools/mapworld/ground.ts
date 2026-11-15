@@ -51,6 +51,8 @@ export interface World {
   readonly ruins?: { report: string; yardDistricts: string[] };
   readonly id: string;
   readonly label: string;
+  /** False for a frame with no sea: the map file then has no water, and heights are still over seaNavd88. */
+  readonly sea?: boolean;
   readonly seaNavd88: number;
   readonly minY: number;
   readonly stepY: number;
@@ -58,6 +60,8 @@ export interface World {
   readonly spawns: readonly { name: string; at: [number, number]; face: [number, number]; ground: "sand" | "open" }[];
   /** Where survivors leave for another server: each obelisk near a place, its terminal turned toward another (places.ts). */
   readonly obelisks?: readonly { name: string; at: [number, number]; face: [number, number] }[];
+  /** Metres round a spawn point with no beach region in reach within which the jungle's regions take the beach's table. */
+  readonly easyAroundSpawns?: number;
   /** Whether each footprint is raised into a heap of rubble (heaps.ts), the stand-in for block ruins. On unless false. */
   readonly heaps?: boolean;
   readonly containerHeaps?: boolean;
@@ -95,7 +99,8 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const gaps = world.bridgeGapLayer ? base.bytes(world.bridgeGapLayer) : new Uint8Array(base.n * base.n);
   const wrecks = base.bytes("wrecks");
   const dem = base.elevation();
-  const bathy = blur(base.bathymetry(), n, n, 2, 3);
+  const model = base.bathymetry();
+  const bathy = model ? blur(model, n, n, 2, 3) : null;
   const height = new Float32Array(N);
   const surface = new Uint8Array(N);
 
@@ -117,7 +122,8 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const weight = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     if (water[i]) continue;
-    raw[i] = Number.isNaN(dem[i]!) ? bathy[i]! : dem[i]!;
+    if (Number.isNaN(dem[i]!) && !bathy) throw new Error(`sample ${i % n}, ${Math.floor(i / n)} has no elevation and the map no coastal model`);
+    raw[i] = Number.isNaN(dem[i]!) ? bathy![i]! : dem[i]!;
     weight[i] = 1;
   }
   const radius = 1;
@@ -138,7 +144,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
       const least = 0.3 + Math.min(d, reach) * (gentle ? 0.035 : 0.1);
       const shallowest = -(d <= reach ? least : Math.max(0.3, least - (d - reach) * 0.02));
       const deepest = -(0.4 + d * (gentle ? 0.08 : 0.6));
-      height[i] = Math.min(shallowest, Math.max(deepest, bathy[i]! - sea));
+      height[i] = bathy ? Math.min(shallowest, Math.max(deepest, bathy[i]! - sea)) : shallowest;
       continue;
     }
     let h = land[i]! - sea;

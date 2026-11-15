@@ -17,7 +17,10 @@ from common import Manifest, folder_arg  # noqa: E402
 
 def main():
     m = folder_arg()
-    c = m.city['bathymetry']
+    c = m.city.get('bathymetry')
+    if not c:
+        print('bathymetry: none, the frame has no sea')
+        return
     raw = m.raw / 'bathymetry' / c['url'].rsplit('/', 1)[1]
     with netcdf_file(raw, mmap=False) as f:
         lon = f.variables['lon'][:].copy()

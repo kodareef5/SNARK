@@ -14,6 +14,7 @@ import { assembly, layout } from "./ruin-layouts.ts";
 import { ruleFor, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { hash3 } from "./raster.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
+import { makeSigns, nearSign } from "./signs.ts";
 import type { Footprint, Site, StaticLayer, StaticPiece } from "./statics.ts";
 
 interface NamedPlace { id: string; name: string; footprint: number; layout: string; recipe: string; retain: number; finish: RuinFinish; note: string; source: string; }
@@ -91,8 +92,20 @@ export function makeRuins(site: Site): StaticPiece[] {
   const infrastructureCount = pieces.length;
   const corridors = corridorIndex(bridges.corridors);
   const planAccess = accessPlanner(site, pieces);
+  const keptAsGround: { part: number; name: string }[] = [];
   for (const p of planned) {
     const { f, rule } = p;
+    // A named place whose footprint is its ground, as a hillside's seats are, is neither built on nor levelled.
+    if (p.named?.layout === "ground") {
+      keptAsGround.push({ part: f.building.id, name: p.named.name });
+      // Only low growth on it, as on the ground round a low building.
+      const side = (site.ground.n - 1) / 2; const fr = p.frame;
+      for (let row = 0; row < side; row++) for (let col = 0; col < side; col++) {
+        const dx = size - col * 4 - fr.x; const dz = size - row * 4 - fr.z;
+        if (Math.abs(dx * fr.c - dz * fr.s) <= fr.width / 2 && Math.abs(dx * fr.s + dz * fr.c) <= fr.depth / 2) site.lowPlants[row * side + col] = 1;
+      }
+      continue;
+    }
     const original = p.frame;
     const samples = tilesOf(original, 4).map((t) => { const [x, z] = worldPoint(original, t.u, t.v); return site.groundAt(x, z); }).sort((a, b) => a - b);
     const base = Math.max(.5, Math.round((samples[Math.floor(samples.length / 2)] ?? site.groundAt(original.x, original.z)) * 16) / 16);
@@ -205,7 +218,9 @@ export function makeRuins(site: Site): StaticPiece[] {
   const infrastructure = makeInfrastructure(site, acceptProp);
   const joinedFrontages = joinFrontages(records, v, acceptProp);
   const streets = makeStreetPieces(site, v, acceptProp);
-  const publicPlaces = makePublicPlaces(site, data.places, acceptProp);
+  // Lettered signs come after the passes that read every piece as a box of the ruin kit.
+  const signs = makeSigns(site, accept);
+  const publicPlaces = makePublicPlaces(site, data.places, acceptProp, nearSign(site, 60));
   const side = (site.ground.n - 1) / 2;
   for (const p of data.places) {
     const radius = v.growth.lowAroundPlace[p.kind]; if (!radius) continue;
@@ -238,6 +253,7 @@ export function makeRuins(site: Site): StaticPiece[] {
     heightLevelConflicts: all.filter(([, f]) => f.label.levels && f.label.height_m && (f.label.height_m / f.label.levels < 2 || f.label.height_m / f.label.levels > 6)).map(([id, f]) => ({ id, height: f.label.height_m, levels: f.label.levels, kept: "height_m" })) });
   put("survey.json", { ...inventory, status: "stopped; enrichment by unambiguous name only", pending: [], unavailable: inventory.pending, enrichmentMatches: data.research.size });
   put("places.json", publicPlaces);
+  put("signs.json", signs);
   put("sightlines.json", sightlines);
   put("buildings.json", records);
   put("roof-gardens.json", records.flatMap((r) => {
@@ -245,13 +261,13 @@ export function makeRuins(site: Site): StaticPiece[] {
     return p ? [{ part: r.part, x: p.x, y: p.y, z: p.z, yaw: r.yaw, name: r.name }] : [];
   }));
   put("generation.json", { version: v.version, seed: v.seed, labelsFingerprint: data.fingerprint, staticFingerprint: digest(pieces),
-    blocks: pieces.length, buildings: records.length, footprints: site.footprints.length, rejected, kinds: usedKinds, topChunks,
+    blocks: pieces.length, buildings: records.length, footprints: site.footprints.length, rejected, keptAsGround, kinds: usedKinds, topChunks,
     clearance, streets, event: { ...v.event, sheltered: records.filter((r) => (r.shelter ?? 0) > .1).length, exposure: tally(records.map((r) => (Math.floor((r.exposure ?? 0) * 10) / 10).toFixed(1))) }, frontage: { joined: joinedFrontages, buildings: records.filter((r) => r.party?.length).length, partyEdges: records.reduce((n, r) => n + (r.party?.length ?? 0), 0) }, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
     piecesByKind: Object.fromEntries([...new Set(records.map((r) => r.kind))].sort().map((kind) => { const rows = records.filter((r) => r.kind === kind); return [kind, { buildings: rows.length, pieces: rows.reduce((n, r) => n + r.blocks, 0), max: Math.max(...rows.map((r) => r.blocks)) }]; })),
     byRecipe: tally(records.map((r) => r.recipe)), byDistrict: tally(records.map((r) => r.district)),
     reduced: records.filter((r) => r.detail > 0).map((r) => ({ part: r.part, name: r.name, detail: r.detail })),
     compounds: records.filter((r) => r.wings.length).map((r) => ({ part: r.part, name: r.name, wings: r.wings.length, cores: r.routes.length, entrances: r.entries.length })), approaches: records.reduce((n, r) => n + r.approaches.length, 0), escapes: records.reduce((n, r) => n + r.escapes.length, 0),
-    routes: records.reduce((a, r) => a + r.routes.length, 0), infrastructure, publicPlaces: tally(publicPlaces.map((p) => p.status)), budgets: v.budgets });
+    routes: records.reduce((a, r) => a + r.routes.length, 0), infrastructure, publicPlaces: tally(publicPlaces.map((p) => p.status)), signs: tally(signs.map((s) => s.status)), budgets: v.budgets });
   console.log(`ruins: ${records.length} buildings, ${pieces.length} blocks, peak chunk ${topChunks[0]?.blocks ?? 0}; ${supplied.length} direct labels, ${data.research.size} research matches`);
   return pieces;
 }
@@ -306,13 +322,14 @@ function levelFloor(site: Site, frame: Frame, owner: number, base: number): void
   }
 }
 
-function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) => boolean): (PublicPlace & { status: string; blocks: number })[] {
+function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) => boolean, signed: (x: number, z: number) => boolean): (PublicPlace & { status: string; blocks: number })[] {
   const size = (site.ground.n - 1) * 2;
   const out: (PublicPlace & { status: string; blocks: number })[] = [];
   for (const p of places) {
     const [x, z] = site.toEngine(p.e, p.n); const y = site.groundAt(x, z);
     const record = { ...p, status: "context only", blocks: 0 }; out.push(record);
     if (x < 20 || z < 20 || x >= size - 20 || z >= size - 20) { record.status = "outside usable map"; continue; }
+    if (signed(x, z)) { record.status = "lettered sign built by the sign layer"; continue; }
     const i = Math.round((size - z) / 2) * site.ground.n + Math.round((size - x) / 2);
     if (p.in_footprint !== null || site.ground.surface[i] === S.FLOOR) { record.status = "building already represented"; continue; }
     if (p.kind === "bridge") { record.status = "full way geometry built by bridge layer"; continue; }
