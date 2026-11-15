@@ -29,7 +29,7 @@ test("a bed is risen from on the bed, whoever stands under it, and not at all on
     state.readyAt = 0;
     let code = -1;
     ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
-    ada.command(CMD_RESPAWN, (w: BitWriter) => w.u8(h.world.spawns.length));
+    ada.command(CMD_RESPAWN, (w: BitWriter) => (w.u8(h.world.spawns.length), w.u8(ada.placesList)));
     h.run(300);
     return [code, ada.sessionState];
   };

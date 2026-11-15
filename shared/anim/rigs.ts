@@ -13,11 +13,16 @@ import { Solved, type Skeleton } from "./skeleton.ts";
 /**
  * The clips a creature plays, by name: a rig's clip ids are "<rig id>/<one of these>", which its asset maps to the actions
  * it makes them from. Besides these, each clip named "idle_" and a word plays now and then in place of a turn of its idle.
- * "held", "carried" and "jump" wait for a game that holds, carries or jumps a creature.
+ * "held", "carried" and "jump" wait for a game that holds, carries or jumps a creature. The flyer's (the pteranodon's
+ * FUNCTIONS.md, section 15; planning/reference/flyers-plan.md) wait for FL4 and FL6: taking off, hovering, flying, flying
+ * fast, gliding and diving; the bite in the air and the barrel roll; grabbing, carrying in its feet and letting go; limp
+ * in the air when knocked out, and dying in the air. A flyer lands by "land".
  */
 export const RIG_CLIPS = [
   "idle", "walk", "run", "attack", "swim", "swim_idle", "fall", "land", "turn", "startled", "flinch", "call",
   "torpor_in", "torpor_idle", "torpor_eat", "torpor_out", "death", "held", "carried", "jump",
+  "take_off", "hover", "fly", "fly_fast", "glide", "dive", "attack_air", "barrel_roll", "grab", "carry", "release",
+  "torpor_fall", "death_air",
 ] as const;
 export type RigClip = (typeof RIG_CLIPS)[number];
 

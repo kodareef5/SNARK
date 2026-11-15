@@ -118,7 +118,8 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   }
   let land = 0;
   let walkable = 0;
-  const cosLimit = Math.cos((50 * Math.PI) / 180);
+  // Walkable as the survivor's own limit has it (ARK's 44.8 degrees, D483).
+  const cosLimit = reg.move[reg.index.get("core:survivor")!]!.slopeCos;
   for (let j = 0; j + 1 < hf.nz; j++) {
     for (let i = 0; i + 1 < hf.nx; i++) {
       const h = hf.sample(i, j);

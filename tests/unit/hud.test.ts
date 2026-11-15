@@ -64,7 +64,7 @@ test("HUD coordinates, compass and minimap markers follow the map convention", (
   // While it chooses where to return to life, the places it may choose are marked, after its deaths.
   a.sessionState = SESSION_DEAD;
   a.markers.push({ kind: MARKER_DEATH, x: 200, y: 0, z: 200, tick: 1 });
-  a.respawnPoints.push({ name: "Plaza", x: 256, z: 240, wait: 0 });
+  a.respawnPoints.push({ kind: 0, name: "Plaza", x: 256, z: 240, readyAt: 0 });
   updateHud(hud, a, remote, 60);
   expect(hud.markers.map((m) => m.kind)).toEqual(["self", "mate", "tame", "death", "spawn", "creature"]);
   expect([hud.markers[4]!.u, hud.markers[4]!.v]).toEqual([lonOf(h.world.hf, 256) / 100, latOf(h.world.hf, 240) / 100]);

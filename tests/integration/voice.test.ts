@@ -408,7 +408,7 @@ test("who is heard: not the muted, not the dead, not those only watching; and wh
   h.run(300);
   say(1, 10);
   expect(heardBy(0)).toEqual({});
-  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  bob.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(bob.placesList)));
   h.run(600);
   expect(bob.sessionState).toBe(SESSION_ALIVE);
   place(bob, 5);

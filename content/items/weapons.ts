@@ -59,6 +59,21 @@ export const WEAPONS: readonly Def[] = [
   // attachments none. Its piece is W9's, in the firearms asset.
   { type: "item", class: "weapon", id: id("shotgun"), stack: 1, weight: 10, color: 4, weapon: { kind: "gun", ammo: [id("round_shotgun")], power: 1, clip: 2, reload: 3.33, interval: 1 / 2.85, uses: 300, melee: BLOW, mesh: id("shotgun"), hold: "rifle", ...SHOTGUN_AIM } },
 
+  // The flare gun (W6; ark.wiki.gg Flare Gun, read 2026-11-15): "only good for one use, breaking after firing a single
+  // flare", which lights "until it hit[s] the ground", best "fired directly above you"; weight 0.5; no harm (its melee is
+  // "akin to punching with your Fists", patch 180.4, so ours strikes with bare hands); made in the inventory in 5 s at level
+  // 15 for 6 points, of 4 wood, 2 fiber, 10 sparkpowder and 2 gunpowder, craftingxp 0.24. It is spent as it fires, as a
+  // thrown weapon is, and its flare is its own round (D447), which carries a light and so flies as a prop (core:flare_live,
+  // server/projectiles.ts) that rises, sinks slowly and goes out where it lands. Its speed, the light's reach and colour,
+  // the stack of 1 and its throw's pose in place of a pistol's are ours (DEV156, DEV157). Until rendering has local lights
+  // the flare is a bright mesh (D436): the blast's yellow cube, a metre across, until the art gives it its own.
+  {
+    type: "item", class: "weapon", id: id("flare_gun"), label: "flare gun", stack: 1, weight: 0.5, color: 3,
+    weapon: { kind: "thrown", uses: 1, mesh: id("flare_gun"), hold: "pistol" },
+    ammo: { damage: 0, type: "fire", speed: 40, gravity: 9.81, light: { reach: 40, color: 10 }, mesh: id("blast") },
+  },
+  { type: "prop", class: "projectile", id: id("flare_live"), mesh: id("blast"), color: 10, radius: 0.5, height: 1 },
+
   // How each is made, from the same infoboxes on 2026-11-15: requiredlevel, engrampoints, the ingredients, craftingtime where
   // the page gives one, and the Crafting XP the page shows (its craftingxp times the global 4 of patches 253.0 and 313.5, as
   // the mortar's 28.8 is). ARK makes the crossbow, pistol and long rifle at the smithy, which is not built: they are made in
@@ -70,4 +85,6 @@ export const WEAPONS: readonly Def[] = [
   // The shotgun (W3): level 39, 18 points, 80 ingots, 20 wood and 25 hide, craftingxp 105.8, at the smithy (Shotgun); made
   // in the hand (DEV136) and its 15 s ours, the long rifle's (DEV135).
   ...making("shotgun", "Shotgun", 39, 18, 1, 15, [["ingot", 80], ["wood", 20], ["hide", 25]], 423.2),
+  // The flare gun, from its infobox above: made in the inventory, its craftingxp 0.24 times the global 4.
+  ...making("flare_gun", "Flare gun", 15, 6, 1, 5, [["wood", 4], ["fiber", 2], ["sparkpowder", 10], ["gunpowder", 2]], 0.96),
 ];

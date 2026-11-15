@@ -4,6 +4,7 @@
 
 import { resolve } from "node:path";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
 import { TEAM_RANGE, type EntityRecord, type Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
@@ -424,7 +425,7 @@ export class Persistence {
     for (const cb of callbacks) cb();
   }
 
-  /** The record takes the entity's position, if the entity lives. */
+  /** The record takes the entity's position, and whether it flies, if the entity lives. */
   capture(rec: EntityRecord, ent: number): void {
     const ents = this.world.ents;
     if ((ents.flags[ent]! & F_ALIVE) === 0) return;
@@ -432,5 +433,6 @@ export class Persistence {
     rec.y = ents.y[ent]!;
     rec.z = ents.z[ent]!;
     rec.yaw = ents.yaw[ent]!;
+    rec.flying = ents.mode[ent] === MODE_FLYER;
   }
 }

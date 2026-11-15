@@ -9,7 +9,7 @@ import { MAX_VIEW } from "../../shared/net/view.ts";
 import { STAGES, growthStep, maturity, stageOf, youngScale } from "../../shared/sim/breeding.ts";
 import { sortU32 } from "../../shared/sort.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../../shared/sim/items.ts";
-import { CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
+import { CHOOSE_DIED, CMD_MAP_ZOOM, SESSION_ALIVE, SESSION_DEAD, SESSION_SPECTATING } from "../../shared/net/protocol.ts";
 import { MF_OUT, STAMINA_UNITS } from "../../shared/sim/character.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -416,7 +416,7 @@ export function updateHud(model: HudModel, session: ClientSession, remote: Remot
   }
   model.out = session.sessionState === SESSION_ALIVE && (b.mflags & MF_OUT) !== 0;
   model.clock = formatHour(hourOfDay(session.latestSnapshot, session.dayOffset, session.clock));
-  model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? (session.arriving ? "" : "DEAD") : model.out ? "UNCONSCIOUS" : "";
+  model.banner = session.sessionState === SESSION_SPECTATING ? "SPECTATING" : session.sessionState === SESSION_DEAD ? (session.choosing === CHOOSE_DIED ? "DEAD" : "") : model.out ? "UNCONSCIOUS" : "";
   model.crosshair = model.banner === "" && session.crosshair;
   if (model.readoutDue(6)) model.formatReadout();
 }

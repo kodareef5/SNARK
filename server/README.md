@@ -16,6 +16,7 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `progression.ts` | Experience, levels, engrams, crafting jobs |
 | `harvest.ts` | Gathering from resource nodes |
 | `death.ts` | Death, caches, markers, the use button, coming back |
+| `beds.ts` | Where a survivor without a body may rise and why it chooses (it died, arrived, travels from a bed): the list, the waits, sleeping bags, travel between beds, names |
 | `combat.ts`, `projectiles.ts`, `history.ts` | Blows, the one damage function's caller, shots in flight, and where bodies were for lag compensation |
 | `buffs.ts` | What acts on a body for a time |
 | `tribes.ts`, `chat.ts` | Who is with whom, and what they write to each other |

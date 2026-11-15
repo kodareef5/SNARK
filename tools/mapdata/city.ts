@@ -4,7 +4,8 @@
 // authored rules; world/world.json and ruins/ hold the world build's settings. Steps that download skip what raw/ holds.
 // Python steps run in tools/mapdata/.venv (README.md says how to make it).
 
-import { existsSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -22,11 +23,14 @@ const STEPS: [string, string[]][] = [
   ["fetch", py("fetch.py", "tiger", "dem", "nlcd", "fema", "bathymetry", "osm")],
   ["prepare", py("prepare.py")],
   ["attributes", ["bun", join(ROOT, "tools/mapworld/fetch-attributes.ts"), name]],
+  ["split", py("split.py")],
   ["future", py("future.py")],
   ["fine", py("fine.py")],
   ["bathymetry", py("bathy.py")],
   ["labels", py("labels.py")],
   ["ways", py("ways.py")],
+  ["world", py("world.py")],
+  ["vocabulary", py("vocabulary.py")],
   ["build", ["bun", join(ROOT, "tools/mapworld/build.ts"), name]],
 ];
 
@@ -45,5 +49,32 @@ for (const [step, command] of STEPS.slice(from, to + 1)) {
   console.log(`== ${step}`);
   const run = Bun.spawnSync(command, { cwd: ROOT, stdout: "inherit", stderr: "inherit" });
   if (run.exitCode !== 0) throw new Error(`${step} failed with ${run.exitCode}`);
+  if (step === "attributes") recordAttributes();
   console.log(`== ${step} done in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
+}
+
+// fetch-attributes asks USA Structures for its rows itself; its download is recorded here, as fetch.py records its own.
+function recordAttributes(): void {
+  const file = join(folder, "base/buildings_attributes.json");
+  const manifest = join(folder, "downloads.json");
+  const records = existsSync(manifest) ? (JSON.parse(readFileSync(manifest, "utf8")) as Record<string, unknown>) : {};
+  const city = JSON.parse(readFileSync(join(folder, "city.json"), "utf8")) as { footprints: { service: string; source: string; licence: string } };
+  const bytes = readFileSync(file);
+  const fields = (JSON.parse(bytes.toString()) as { fields: string[] }).fields;
+  records["base/buildings_attributes.json"] = {
+    url: `${city.footprints.service}/query`, method: "POST", source: city.footprints.source, licence: city.footprints.licence,
+    body: `where=OBJECTID IN (500 ids a request, from base/buildings.geojson), outFields=${fields.join(",")}, returnGeometry=false, f=json`,
+    bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex"), retrieved_utc: new Date().toISOString(),
+    note: "the rows as fetched; split.py appends rows for split footprints afterwards",
+  };
+  writeFileSync(manifest, `${stringifySorted(records)}\n`);
+}
+
+// As Python's json.dumps(indent=2, sort_keys=True), so the file keeps one form whichever tool wrote it last.
+function stringifySorted(value: unknown, indent = ""): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  const inner = `${indent}  `;
+  if (Array.isArray(value)) return value.length ? `[\n${value.map((v) => inner + stringifySorted(v, inner)).join(",\n")}\n${indent}]` : "[]";
+  const keys = Object.keys(value).sort();
+  return keys.length ? `{\n${keys.map((k) => `${inner}${JSON.stringify(k)}: ${stringifySorted((value as Record<string, unknown>)[k], inner)}`).join(",\n")}\n${indent}}` : "{}";
 }

@@ -98,6 +98,6 @@ test("a grenade weighs 0.5, stacks to 10, goes off 5 s after the pin and is lear
   expect([carried("grenade"), reg.fuseTicks[at("grenade")]]).toEqual([[0.5, 10], 5 * TICK_RATE]);
   // Its 4 oil wait for oil (DEV140); its page gives no crafting time (DEV135).
   expect([made("grenade"), engram("grenade")]).toEqual([{ needs: "15 fiber, 20 stone, 30 gunpowder, 5 hide, 2 ingot", seconds: 8, xp: 45.6, count: 1, at: "hand" }, [38, 20]]);
-  // Its damage is W6's: 788 within 5 m until it does ARK's 175 within 6 m with a structure factor of 4.5 (D435, DEV31).
-  expect([reg.damage[at("grenade")], reg.blast[at("grenade")]]).toEqual([788, 5]);
+  // Its damage is W6's: ARK's 175 within 6 m ("175 (6 meter radius)"), with a structure factor of 788 / 175 (D435, DEV31).
+  expect([reg.damage[at("grenade")], reg.blast[at("grenade")], reg.structureMul[at("grenade")]! * 175]).toEqual([175, 6, 788]);
 });

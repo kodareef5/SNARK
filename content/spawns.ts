@@ -7,6 +7,7 @@ import type { Def } from "../shared/content/defs.ts";
 const dodo = "core:dodo";
 const para = "core:parasaur";
 const raptor = "core:raptor";
+const ptera = "core:pteranodon";
 
 export const SPAWNS: readonly Def[] = [
   // The Island's beach. ARK's has eleven more entries, of species this build lacks, weighing 1.215 of its 1.765.
@@ -16,8 +17,10 @@ export const SPAWNS: readonly Def[] = [
     entries: [
       { name: "Dodo Spawn (1-5)", weight: 0.425, group: [dodo, dodo, dodo, dodo, dodo], chances: [1, 0.7, 0.6, 0.25, 0.2], offsets: [[0, 6.8], [0, 0], [0, -6.8], [0, -3.4], [0, 3.4]] },
       { name: "Para (1-2)", weight: 0.125, group: [para, para], chances: [1, 0.5], offsets: [[0, 6.8], [0, -6.8]] },
+      // Held back until the stand-in flies: FL3 of planning/reference/flyers-plan.md takes away the two `waits`.
+      { name: "Ptero (1-2)", weight: 0.15, group: [ptera, ptera], chances: [1, 0.5], offsets: [[0, 2.5], [0, -2.5]], waits: "flyers" },
     ],
-    limits: [{ species: dodo, share: 0.6 }, { species: para, share: 0.2 }],
+    limits: [{ species: dodo, share: 0.6 }, { species: para, share: 0.2 }, { species: ptera, share: 0.25, waits: "flyers" }],
   },
   // ARK's jungle, keeping its parasaur and raptor groups: what lives in the hammocks, gardens and ruins of Miami.
   {

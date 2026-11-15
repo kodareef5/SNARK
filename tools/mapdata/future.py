@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 import numpy as np
 from PIL import Image
-from shapely.geometry import Polygon, mapping
+from shapely.geometry import LineString, Polygon, mapping
 from shapely.ops import unary_union
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -36,10 +36,18 @@ def main():
         norm = math.hypot(dx, dy)
         dx, dy = dx / norm, dy / norm
         length, width = s['length_m'], s['width_m']
+        # A road mapped as two carriageways is broken across both: the gap widens to every stretch of the same name
+        # that crosses the gap's line within 120 m.
+        across = LineString([(c.x - dy * 120, c.y + dx * 120), (c.x + dy * 120, c.y - dx * 120)])
+        for h in choices:
+            hit = h.intersection(across)
+            for q in getattr(hit, 'geoms', [hit]):
+                if not q.is_empty and q.geom_type == 'Point':
+                    width = max(width, 2 * abs((q.x - c.x) * -dy + (q.y - c.y) * dx) + 24)
         poly = Polygon([(c.x + u * dx - v * dy, c.y + u * dy + v * dx) for u, v in
                         [(-length / 2, -width / 2), (length / 2, -width / 2), (length / 2, width / 2), (-length / 2, width / 2)]])
         gaps.append((poly.intersection(water), {'kind': 'missing_bridge_span', 'causeway': s['road'], 'length_m': length,
-                                                'authored': True, 'why': s.get('why')}))
+                                                'width_m': round(width, 1), 'authored': True, 'why': s.get('why')}))
     wrecks = []
     for i, w in enumerate(f['wrecks']):
         x, y, length, width = w['e'], w['n'], w['length_m'], w['width_m']
