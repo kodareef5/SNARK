@@ -185,6 +185,14 @@ def main():
     span = hi - lo
 
     img, hit = rasterize(left, size, lambda f, c: np.array(REGION[f["r"] if 0 <= f["r"] < 6 else 6]) / 255)
+    # down the nape the hood narrows to a wedge (model.py: NAPE_WEDGE); the rest of its piece there is neck feathers
+    wedge = data.get("nape_wedge")
+    if wedge:
+        at, _ = rasterize(left, size, lambda f, c: np.array(f["p"][c]))
+        hood, _ = rasterize(left, size, lambda f, c: np.array([1.0 if f["i"] == "shell_hood" else 0.0]))
+        half = np.interp(at[..., 1], [y for y, _ in wedge], [w for _, w in wedge], left=0.0, right=1.0)
+        nape = hit & (hood[..., 0] > 0.5) & (at[..., 2] < 0.11) & (np.abs(at[..., 0]) > half)
+        img[nape] = np.array(REGION[0]) / 255
     save(np.where(hit[..., None], img, 0.0), "dodo_regions.png")
     img, hit = rasterize(left, size, lambda f, c: (np.array(f["p"][c]) - lo) / span)
     img, hit = pad(img, hit)
