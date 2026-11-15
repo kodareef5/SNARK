@@ -5,6 +5,7 @@
 
 import type { Def, ShapeBox } from "../shared/content/defs.ts";
 import { slopeShape, staticOf } from "../shared/content/slopes.ts";
+import { PI, detCos, detSin } from "../shared/math/scalar.ts";
 import type { HullDef } from "../shared/world/convex.ts";
 
 export const LETTER_HEIGHT = 13.7;
@@ -13,11 +14,12 @@ const DEPTH = 0.5;
 const SHEET = { color: 10, material: "core:mat_metal", hp: 9000 } as const;
 
 type P = readonly [number, number];
-/** Centre lines are written from -1 to 1 across and up the letter's box, inside half a stroke of its edges. */
+/** Centre lines are written from -1 to 1 across and up the letter's box, inside half a stroke of its edges. The sine is the
+ * deterministic one, so every engine compiles the same corners. */
 const arc = (from: number, to: number, steps: number, ry = 1, cy = 0): P[] =>
   Array.from({ length: steps + 1 }, (_, k) => {
-    const a = ((from + ((to - from) * k) / steps) * Math.PI) / 180;
-    return [Math.cos(a), cy + ry * Math.sin(a)] as const;
+    const a = ((from + ((to - from) * k) / steps) * PI) / 180;
+    return [detCos(a), cy + ry * detSin(a)] as const;
   });
 
 /** Each letter's width in metres and the centre lines of its strokes. */
@@ -54,7 +56,7 @@ const GLYPHS: Readonly<Record<string, { wide: number; strokes: readonly (readonl
 function segment(a: P, b: P): { box?: ShapeBox; hull?: HullDef } {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
-  const len = Math.hypot(dx, dy);
+  const len = Math.sqrt(dx * dx + dy * dy);
   const ux = dx / len;
   const uy = dy / len;
   const r = STROKE / 2;
