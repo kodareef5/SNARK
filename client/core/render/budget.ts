@@ -68,6 +68,8 @@ export const leavesAt = (thin: number): number => 1 - ((1 - LEAVES_LEFT) * thin)
 export class FrameBudget {
   /** Off, crowns are drawn as their distance asks: for pictures of the whole and the device page's windows. */
   on = true;
+  /** Held, the squeeze stays where it is set, for pictures drawn at a squeeze found elsewhere. */
+  held = false;
   /** The squeeze the frame being built draws crowns at. */
   squeeze = 0;
   /** What the tier allows a frame, as the governor leaves it. */
@@ -108,7 +110,7 @@ export class FrameBudget {
     const above = triangles - this.crowns - this.ambient;
     const room = Math.max(0, this.triangles - above);
     Object.assign(this.last, { triangles, crowns: this.crowns, ambient: this.ambient, draws, room });
-    if (!this.on) return;
+    if (!this.on || this.held) return;
     if (now >= this.floorUntil) this.floor = 0;
     if (this.crowns > room) {
       this.under = 0;
