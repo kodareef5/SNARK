@@ -21,4 +21,7 @@ accepted pictures:
 5. Add a short section "Files" at the end of `REPORT.md`: which originals the accepted build reads, what the
    `.gitignore` leaves out, the size of what remains, and that the rebuild matched byte for byte.
 
+Leave no TypeScript file anywhere in your folder, `superseded/` and `checks/` included: every `.ts` file under the
+asset folders is type-checked with the game, ignored or not. Rename what you keep of them to `.ts.txt`.
+
 Do not change any delivered picture. If the rebuild does not match, say so and stop.

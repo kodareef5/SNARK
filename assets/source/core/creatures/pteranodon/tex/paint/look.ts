@@ -3,14 +3,19 @@
 // inner wing), in the design's dyes and in loud and dark ones. The renderer reads the rgba variant, so maps are at most
 // 1,024 across here. It stands in its rest pose, the glide.
 //
-//   bun tex/paint/look.ts --source DIR --out DIR
+//   bun tex/paint/look.ts --source DIR --out DIR [--stages]
+//
+// With --stages, and hurt and decay layers named in the asset, it draws instead each view at every stage, unhurt, hurt
+// 1 to 3 (3 is also the fresh corpse) and decay 1 to 3, a row each (stages_<view>_<dyes>.png).
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { LAYER_LEVELS, LAYER_STAGES } from "../../../../../../../client/core/render/surface.ts";
 import { buildRig } from "../../../../../../../shared/anim/rigs.ts";
 import { parsePack } from "../../../../../../../shared/pack/pack.ts";
 import { nearestColour } from "../../../../../../../shared/pack/palette.ts";
 import { findAssets } from "../../../../../../../tools/art/assets.ts";
+import { repack } from "../../../../../../../tools/art/build.ts";
 import { Poser } from "../../../../../../../tools/art/check.ts";
 import { materialsOf } from "../../../../../../../tools/art/materials.ts";
 import { ModelView } from "../../../../../../../tools/snap.ts";
@@ -25,7 +30,8 @@ mkdirSync(out, { recursive: true });
 
 const asset = (await findAssets(arg("source"))).find((a) => a.id === "core:pteranodon");
 if (!asset) throw new Error("no core:pteranodon there");
-const pack = parsePack(new Uint8Array(readFileSync(asset.file)));
+// Made again from itself and the asset as it is now, so the layers the asset names are in it without a build.
+const pack = parsePack(repack(new Uint8Array(readFileSync(asset.file)), false, asset));
 const index = pack.meshIndex.get("core:pteranodon")!;
 const rig = buildRig(pack.header.rigs[pack.header.meshes[index]!.rig!]!, pack.clips);
 if (!rig) throw new Error("the pack has no rig");
@@ -97,6 +103,39 @@ function sizes(colors: readonly number[]): { w: number; h: number; img: Uint8Arr
     x += sw * 4 + pad;
   }
   return { w, h, img };
+}
+
+const STAGES = Array.from({ length: LAYER_STAGES + 1 }, (_, s) => (s * LAYER_LEVELS) / LAYER_STAGES);
+if (args.includes("--stages")) {
+  const side = 300;
+  for (const [dyes, colors] of Object.entries(DYES)) {
+    for (const name of ["three_quarter", "above", "side", "head", "rider", "inner_wing", "under_wing"]) {
+      const shot = SHOTS[name]!;
+      const pad = 8;
+      const w = STAGES.length * (side + pad) + pad;
+      const h = side + pad * 2;
+      const img = new Uint8Array(w * h * 4).fill(214);
+      const view = viewOf(side * SS, side * SS, shot[4]);
+      STAGES.forEach((layer, k) => {
+        view.draw({ mesh: index, level: 0, around: shot[2], above: shot[3], centre: shot[0], radius: shot[1], rig, colors, textured: true, layer });
+        const src = view.raster.color;
+        const x0 = pad + k * (side + pad);
+        for (let y = 0; y < side; y++) {
+          for (let x = 0; x < side; x++) {
+            for (let c = 0; c < 4; c++) {
+              let sum = 0;
+              for (let dy = 0; dy < SS; dy++) for (let dx = 0; dx < SS; dx++) sum += src[((y * SS + dy) * side * SS + x * SS + dx) * 4 + c]!;
+              img[((pad + y) * w + x0 + x) * 4 + c] = Math.round(sum / (SS * SS));
+            }
+          }
+        }
+      });
+      const path = join(out, `stages_${name}_${dyes}.png`);
+      writeFileSync(path, encodePng(w, h, img));
+      console.log(path);
+    }
+  }
+  process.exit(0);
 }
 
 for (const [dyes, colors] of Object.entries(DYES)) {

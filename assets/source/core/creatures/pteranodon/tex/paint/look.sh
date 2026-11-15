@@ -3,6 +3,7 @@
 # renderer.
 #   zsh tex/paint/look.sh OUT_DIR          compose, build (Blender, about a minute) and draw
 #   zsh tex/paint/look.sh OUT_DIR --maps   compose and draw on the model built last time, no Blender
+#   zsh tex/paint/look.sh OUT_DIR --maps --stages   the same, and every hurt and decay stage (tex/*_hurt.png, _decay.png)
 # The build lives in /private/tmp/ptera-look/tree, never under the repository's asset folders, where the game would
 # take it for a second pteranodon. With --maps each run composes into its own copy of it, named after OUT_DIR, so
 # several painters can look at once. Pictures land in OUT_DIR.
@@ -25,10 +26,12 @@ fi
 DIR=$TREE/core/creatures/pteranodon
 mkdir -p $DIR/tex
 python3 $HERE/compose.py --out $DIR/tex
+rm -f $DIR/tex/*_hurt.png(N) $DIR/tex/*_decay.png(N)
+for f in $ASSET/tex/pteranodon*_hurt.png(N) $ASSET/tex/pteranodon*_decay.png(N); do cp $f $DIR/tex/; done
+sed "s|\.\./\.\./\.\./\.\./\.\./\.\./\.\./|$ROOT/|g" $HERE/look_asset.ts > $DIR/asset.ts
 if [[ $TREE == $BUILT ]]; then
   cp $ASSET/rig.py $ASSET/model.py $ASSET/layout.json $DIR/
-  sed "s|\.\./\.\./\.\./\.\./\.\./\.\./\.\./|$ROOT/|g" $HERE/look_asset.ts > $DIR/asset.ts
   (cd $ROOT && bun run art -- core:pteranodon --source $TREE --out $OUT/art)
 fi
 cd $ROOT
-bun $HERE/look.ts --source $TREE --out $OUT
+bun $HERE/look.ts --source $TREE --out $OUT ${@:3}
