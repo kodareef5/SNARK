@@ -251,9 +251,9 @@ test("how long things keep, how long fuel burns, and how much a tree takes and g
   /** Returns [blows, thatch]. */
   const fell = (m: ReturnType<typeof served>): number[] => {
     const tree = nodesOf(m.h, "core:tree", 256, 256).find((t) => standFacing(m.h, m.ada, m.h.pilots[0]!, t))!;
-    const table = m.h.host.harvest!.field.store.chunks[tree.chunk]!;
+    const field = m.h.host.harvest!.field;
     let blows = 0;
-    while (table.kind[tree.index] !== 0 && blows < 200) {
+    while (field.standing(tree.chunk, tree.index) !== 0 && blows < 200) {
       m.h.host.harvest!.strike(m.h.client(m.ada)!, tree.chunk, tree.index);
       blows++;
     }

@@ -3,7 +3,8 @@ import { CHUNK_SIZE, TICK_DT, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Body, stepBody } from "../../shared/sim/character.ts";
-import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
+import { ROUTE_MARGIN } from "../../server/behavior.ts";
+import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../../shared/world/collide.ts";
 import { NodeField, SIZE_STEPS, SIZE_UNITS, mix, nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_NODES_PER_CHUNK, PROVING_SEA_LEVEL, buildProvingHeightfield, provingNodes } from "../../shared/world/proving.ts";
 import { HIT_NODE, castWorld, rayHit } from "../../shared/world/ray.ts";
@@ -45,8 +46,8 @@ test("where nodes stand is a pure function of the map: the same every time, dry,
   expect(total).toBeGreaterThan(2500);
   for (const id of ["core:tree", "core:rock", "core:bush"]) expect(counts.get(kind(id))!).toBeGreaterThan(200);
   for (const id of KINDS) expect(counts.get(kind(id)) ?? 0).toBeGreaterThan(20);
-  // Every tree is one of sixteen sizes from 0.8 to 1.25 of the grey box.
-  expect([...sizes].sort((x, y) => x - y)).toEqual(Array.from({ length: SIZE_STEPS }, (_, s) => Math.round((0.8 + (0.45 * s) / 15) * SIZE_UNITS)));
+  // Every live oak is one of sixteen sizes from 0.85 to 1.2 of its model.
+  expect([...sizes].sort((x, y) => x - y)).toEqual(Array.from({ length: SIZE_STEPS }, (_, s) => Math.round((0.85 + (0.35 * s) / 15) * SIZE_UNITS)));
 });
 
 test("a world saved before the new kinds came keeps every node where it was and of its kind: the first 96 slots are as they were", () => {
@@ -151,11 +152,11 @@ test("the node store holds only chunks someone is near, minus what is used up", 
   f.retain(28, 1, -1, gone);
   expect(f.store.count).toBe(0);
 
-  // A used-up node of a kind with nothing left of it is left out when its chunk is filled. While the chunk is filled, set()
-  // puts it back and takes it out.
+  // A used-up node of a kind with nothing left of it (a rock) is left out when its chunk is filled. While the chunk is filled,
+  // set() puts it back and takes it out.
   const t = f.store;
   f.retain(9, 0, 1, gone);
-  const slot = [...Array(PROVING_NODES_PER_CHUNK).keys()].find((i) => t.chunks[9]!.kind[i] !== 0)!;
+  const slot = [...Array(PROVING_NODES_PER_CHUNK).keys()].find((i) => t.chunks[9]!.kind[i] !== 0 && forms.left[t.chunks[9]!.kind[i]!] === 0)!;
   const was = t.chunks[9]!.kind[slot]!;
   f.retain(9, 0, -1, gone);
   used.add(`9:${slot}`);
@@ -247,19 +248,78 @@ test("trees and rocks stop a body, bushes do not, and a ray finds every kind", (
       b.z = s.z - reach;
       b.y = south;
       b.grounded = true;
+      let closest = Infinity;
       for (let t = 0; t < 90; t++) {
         stepBody(world, b, 0, 127, 0, 0, 0, p, TICK_DT);
         if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error("in solid");
+        closest = Math.min(closest, Math.hypot(b.x - s.x, b.z - s.z));
       }
-      // Anything but a bush stops the body or turns it aside.
-      if (soft) expect(b.z).toBeGreaterThan(s.z + 2);
-      else expect(Math.hypot(b.x - s.x, b.z - s.z)).toBeGreaterThan(forms.halfX[s.form]! + p.radius - 0.05);
-      // A look level with its middle, from in front of it.
-      expect(castWorld(world, s.x, s.y + forms.halfY[s.form]! / 2, s.z - reach, 0, 0, 1, reach + 1)).toBe(HIT_NODE);
+      // A bush is walked through. Anything else stops the body or turns it aside before its trunk or its middle.
+      if (soft) expect([closest < 0.5, b.z > s.z + 2]).toEqual([true, true]);
+      else expect(closest).toBeGreaterThan(p.radius);
+      // A look level with the middle of its first box, which stands on its origin, from in front of it.
+      const first = forms.parts.start[s.form]! * 6;
+      expect(castWorld(world, s.x, s.y + forms.parts.box[first + 1]!, s.z - reach, 0, 0, 1, reach + 1)).toBe(HIT_NODE);
       expect(rayHit.ref).toBe(chunk * 65536 + i);
     }
   }
   expect(seen.size).toBe(KINDS.length);
+});
+
+test("a live oak stops a body at its trunk alone, which a swing reaches, and a banyan at each of its trunks, with free ground between", () => {
+  const f = field();
+  f.retain(0, 16, 1, () => false);
+  const world = { hf, structs: new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), nodes: f.store };
+  const p = reg.move[kind("core:survivor")]!;
+  const s = spot();
+  const box = forms.parts.box;
+  /** Where box `b` of the form at the spot stands: its middle across, and its foot. */
+  const placed = (b: number): [number, number, number] => {
+    const a = (s.yaw / 65536) * TAU;
+    const [lx, lz] = [box[b * 6]!, box[b * 6 + 2]!];
+    return [Math.cos(a) * lx + Math.sin(a) * lz + s.x, s.y + box[b * 6 + 1]! - box[b * 6 + 4]!, Math.cos(a) * lz - Math.sin(a) * lx + s.z];
+  };
+  const meets = (x: number, y: number, z: number): boolean => capsuleKind(forms.parts, s.form, s.x, s.y, s.z, s.yaw, x, y, z, p.radius, p.height, SKIN);
+  let [oaks, banyans] = [0, 0];
+  for (let chunk = 0; chunk < CHUNKS && (oaks < 20 || banyans < 5); chunk++) {
+    for (let i = 0; i < f.source.perChunk; i++) {
+      f.source.at(chunk, i, s);
+      const [first, end] = [forms.parts.start[s.form]!, forms.parts.start[s.form + 1]!];
+      if (s.kind === kind("core:tree") && oaks < 20) {
+        oaks++;
+        // One box, its trunk, 1.4 to 2.5 m across: a body cannot stand in it, and stands free of it under its limbs, which reach 10 m and more.
+        expect([forms.mesh[s.form]!.startsWith("core:tree_"), end - first]).toEqual([true, 1]);
+        expect(meets(s.x, s.y, s.z)).toBe(true);
+        for (let k = 0; k < 8; k++) for (const d of [2.5, 6, 9]) expect(meets(s.x + Math.sin((k * TAU) / 8) * d, s.y, s.z + Math.cos((k * TAU) / 8) * d)).toBe(false);
+        // A survivor beside it, looking level at it, meets it well within the 3.5 m a use or a swing reaches.
+        const alone = new StructureStore(PROVING_DIMS, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+        alone.put(chunk, i, s.form, s.x, s.y, s.z, s.yaw, 0, 1, 1);
+        const back = box[first * 6 + 3]! + p.radius + 0.3;
+        expect(castWorld({ hf, structs: world.structs, nodes: alone }, s.x, s.y + 1.62, s.z - back, 0, 0, 1, 3.5)).toBe(HIT_NODE);
+        expect([rayHit.ref, rayHit.t <= p.radius + 0.3]).toEqual([chunk * 65536 + i, true]);
+      }
+      if (s.kind === kind("core:banyan") && banyans < 5) {
+        banyans++;
+        // Its middle trunk and each it let down from its limbs, as far as 12 m out, stop a body standing at its foot, in the
+        // node store as in its own boxes. Half way from the middle to each, the ground is free of it.
+        expect(end - first).toBeGreaterThan(3);
+        for (let b = first; b < end; b++) {
+          const [x, y, z] = placed(b);
+          expect([meets(x, y, z), capsuleFree(world, x, Math.max(y, hf.heightAt(x, z)), z, p.radius, p.height)]).toEqual([true, false]);
+          if (b > first) expect(meets((x + s.x) / 2, s.y, (z + s.z) / 2)).toBe(false);
+        }
+      }
+    }
+  }
+  expect([oaks, banyans]).toEqual([20, 5]);
+});
+
+test("a creature's way is found again when anything within the reach of the widest node or piece changes, with its own radius", () => {
+  const nodes = new StructureStore(PROVING_DIMS, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+  const pieces = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const widest = Math.max(...nodes.spread, ...pieces.spread);
+  expect(widest).toBeGreaterThan(12); // a banyan's outer trunks
+  expect(widest + Math.max(...reg.bodyRadius)).toBeLessThanOrEqual(ROUTE_MARGIN);
 });
 
 test("fuzz: bodies wandering among trees and rocks are always in free space", () => {

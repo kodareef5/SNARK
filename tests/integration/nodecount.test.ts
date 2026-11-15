@@ -7,13 +7,14 @@ import { writeMap } from "../../shared/world/mapfile.ts";
 import { flatMap } from "../fixtures/map.ts";
 import { Harness } from "../fixtures/net.ts";
 
-test("a chunk with all 256 of its nodes used up is shown bare, and with one fewer too: the count sent is not cut to a byte", () => {
+test("a chunk with all 256 of its nodes used up is shown stripped, and with one fewer too: the count sent is not cut to a byte", () => {
   const map = writeMap(flatMap(2, { nodes: [{ seed: 9, perChunk: 256, kinds: [["core:bush", 1]], allowCell: 0, allow: null }] }));
   const h = new Harness({}, 1, 60, { dev: true, map });
   const ada = h.join("ada");
   h.run(500);
   const chunk = chunkAt(h.world.dims, ada.own.x, ada.own.z);
-  const shown = (): number => ada.nodeField!.store.chunks[chunk]?.live ?? 0;
+  // Bushes standing, not stripped.
+  const shown = (): number => Array.from({ length: 256 }, (_, i) => ada.nodeField!.standing(chunk, i)).filter((k) => k !== 0).length;
   expect(shown()).toBe(256);
   // Used up as a save holds them: slot, hits left, and the tick each grows back.
   const used = (n: number): Uint8Array => {

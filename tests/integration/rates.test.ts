@@ -69,10 +69,10 @@ test("harvesting: what a blow yields by the rule for all of it and for each thin
   const fell = (server: string[], mode: string[]) => {
     const { h, ada, me } = world(server, mode);
     const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, ada, h.pilots[0]!, t))!;
-    const table = h.host.harvest!.field.store.chunks[tree.chunk]!;
+    const field = h.host.harvest!.field;
     const xp = me.xp;
     let blows = 0;
-    while (table.kind[tree.index] !== 0 && blows < 100) {
+    while (field.standing(tree.chunk, tree.index) !== 0 && blows < 100) {
       expect(h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index)).toBe(true);
       blows++;
     }
@@ -101,12 +101,13 @@ test("a node does not grow back while a survivor is near it: how near is the ser
   for (const [radius, grows] of [[1, false], [0.1, true]] as const) {
     // The hour a node takes to grow back, brought down to two game hours.
     const { h, ada, me } = world(["ResourcesRespawnPeriodMultiplier=0.07778"], [`ResourceNoReplenishRadiusPlayers=${radius}`]);
-    const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, ada, h.pilots[0]!, t))!;
-    const table = h.host.harvest!.field.store.chunks[tree.chunk]!;
-    while (table.kind[tree.index] !== 0) h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index);
-    // She stands 1.5 m away for the two game hours a regrow takes, plus a little.
+    const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, ada, h.pilots[0]!, t, 4))!;
+    const field = h.host.harvest!.field;
+    while (field.standing(tree.chunk, tree.index) !== 0) h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index);
+    // She stands 4 m from its middle for the two game hours a regrow takes, plus a little. The rule's 12 m are counted from
+    // as far as the live oak's trunk reaches, under 2 m.
     h.run(((2 * 140 + 5) * 1000));
-    expect([radius, table.kind[tree.index] !== 0]).toEqual([radius, grows]);
+    expect([radius, field.standing(tree.chunk, tree.index) !== 0]).toEqual([radius, grows]);
     void me;
   }
 });
@@ -115,13 +116,13 @@ test("a node does not grow back by a foundation or a pillar, as the reference ga
   const regrows = (piece: string, rules: string[], mode: string[] = []): boolean => {
     const { h, ada } = world(["ResourcesRespawnPeriodMultiplier=0.07778", ...rules], mode);
     const tree = nodesOf(h, "core:tree", 256, 256).find((t) => standFacing(h, ada, h.pilots[0]!, t))!;
-    const table = h.host.harvest!.field.store.chunks[tree.chunk]!;
-    while (table.kind[tree.index] !== 0) h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index);
-    // Built 4 m off, and she goes far away.
-    h.world.structs.add(id(piece), tree.x + 4, tree.y + h.world.structs.halfYOf(id(piece)), tree.z, 0, 1, 1000);
+    const field = h.host.harvest!.field;
+    while (field.standing(tree.chunk, tree.index) !== 0) h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index);
+    // Built 6 m off, and she goes far away.
+    h.world.structs.add(id(piece), tree.x + 6, tree.y + h.world.structs.halfYOf(id(piece)), tree.z, 0, 1, 1000);
     h.say(ada, "tp 256 240");
     h.run((2 * 140 + 35) * 1000);
-    return table.kind[tree.index] !== 0;
+    return field.standing(tree.chunk, tree.index) !== 0;
   };
   expect([regrows("foundation_wood", []), regrows("pillar_stone", []), regrows("storage_box", [])]).toEqual([false, false, true]);
   // Both of its settings scale the 12 m, and each other: at a fifth of it, 4 m off is far enough.

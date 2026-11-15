@@ -68,8 +68,11 @@ const SHORT_OF = 1.5;
 const ROUTE_POINTS = 32;
 /** Metres. A point of a way is reached within this, or once passed. */
 const ARRIVE = 0.5;
-/** Metres. A way holds while no chunk within this of it changes shape: further than any piece or node reaches from its middle, with a body's radius. */
-const ROUTE_MARGIN = 8;
+/**
+ * Metres. A way holds while no chunk within this of it changes shape: further than any piece or node reaches from its middle
+ * (a banyan's outer trunks, 13 m), with a body's radius.
+ */
+export const ROUTE_MARGIN = 16;
 
 /** Where a creature is with its way: heading straight, on a way, or told that no way was found. */
 const WAY_STRAIGHT = 0;

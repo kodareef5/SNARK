@@ -254,13 +254,13 @@ test("the rules that are read as a thing begins: how soon a node grows back, how
   const regrow = (m: ReturnType<typeof world>): number => {
     const { h, ada } = m;
     const tree = nodesOf(h, "core:tree", 256, 256)[0]!;
-    const table = h.host.harvest!.field.store.chunks[tree.chunk]!;
-    h.say(ada!, `tp ${(tree.x + 1.2).toFixed(3)} ${tree.z.toFixed(3)}`);
-    while (table.kind[tree.index] !== 0) h.host.harvest!.strike(h.client(ada!)!, tree.chunk, tree.index);
+    const field = h.host.harvest!.field;
+    h.say(ada!, `tp ${(tree.x + 2.5).toFixed(3)} ${tree.z.toFixed(3)}`);
+    while (field.standing(tree.chunk, tree.index) !== 0) h.host.harvest!.strike(h.client(ada!)!, tree.chunk, tree.index);
     const used = h.world.tick;
     // A node does not regrow with a survivor near, so she leaves.
     h.say(ada!, "tp 300 300");
-    while (table.kind[tree.index] === 0 && h.world.tick < used + 3 * GAME_HOUR_TICKS) h.run(1000);
+    while (field.standing(tree.chunk, tree.index) === 0 && h.world.tick < used + 3 * GAME_HOUR_TICKS) h.run(1000);
     return Math.round((h.world.tick - used) / 30) * 30;
   };
   const hour = (reg.defs[reg.index.get("core:tree")!] as NodeDef).respawnHours * GAME_HOUR_TICKS;
@@ -308,8 +308,8 @@ test("a world saved under one set of files and loaded under another is brought t
   h.host.items.mint(fire, id("wood"), 8);
   expect(h.host.stations.toggle(fireRef)).toBe(0);
   const tree = nodesOf(h, "core:tree", 256, 256)[0]!;
-  h.say(ada!, `tp ${(tree.x + 1.2).toFixed(3)} ${tree.z.toFixed(3)}`);
-  while (h.host.harvest!.field.store.chunks[tree.chunk]!.kind[tree.index] !== 0) h.host.harvest!.strike(h.client(ada!)!, tree.chunk, tree.index);
+  h.say(ada!, `tp ${(tree.x + 2.5).toFixed(3)} ${tree.z.toFixed(3)}`);
+  while (h.host.harvest!.field.standing(tree.chunk, tree.index) !== 0) h.host.harvest!.strike(h.client(ada!)!, tree.chunk, tree.index);
   h.say(ada!, `tp ${PLACE.x.toFixed(3)} ${(PLACE.z - 4).toFixed(3)}`);
   h.run(60000);
   // items.inv() applies spoilage, so only the opened box has counted its spoiled piece.
@@ -431,9 +431,9 @@ test("a world saved under one set of files and loaded under another is brought t
   expect(third.h.host.loadedUnder!.EggHatchSpeedMultiplier).toBe(20);
 
   const { h: h3 } = third;
-  const table = h3.host.harvest!.field.store.chunks[tree.chunk];
   h3.run(((want.node - (later - T) + 60) / TICK_RATE) * 1000);
-  expect([h3.host.harvest!.regrowsAt(tree.chunk, tree.index), table ? table.kind[tree.index] !== 0 : true]).toEqual([0, true]);
+  const field = h3.host.harvest!.field;
+  expect([h3.host.harvest!.regrowsAt(tree.chunk, tree.index), field.isLoaded(tree.chunk) ? field.standing(tree.chunk, tree.index) !== 0 : true]).toEqual([0, true]);
   while (h3.world.tick < eggAt + 30) h3.run(1000);
   expect([h3.host.records.byPid.has(pids.egg), h3.host.breeding.hatched]).toEqual([false, 1]);
   // Five pieces of wood at a quarter of a minute each, plus the one burning, are gone within two minutes.
