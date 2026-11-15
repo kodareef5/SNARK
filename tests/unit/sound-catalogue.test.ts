@@ -12,6 +12,7 @@ import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { GONE_DESTROYED } from "../../shared/world/structures.ts";
 import { EVENT_HIT, EVENT_KILL } from "../../shared/net/protocol.ts";
+import { ACT_SWING, HOLD_HANDS } from "../../shared/sim/weapon.ts";
 import { RemoteSample, type CombatEvent } from "../../client/core/session.ts";
 import { ActionSounds, type OwnState } from "../../client/core/sound/actions.ts";
 import { BodySounds, type Hear } from "../../client/core/sound/bodies.ts";
@@ -194,7 +195,7 @@ test("a looping bed fades in when it is wanted and out when it is not, and the i
     vitals.max.fill(100e6, 0, V_COUNT);
     vitals.value.fill(100e6, 0, V_COUNT);
     const at = { x: 380, y: hf.heightAt(380, 380), z: 380 };
-    const view: SoundView = { ownId: -1, body: null, hour: 12, trees: () => 0, own: { alive: true, ...at, act: 0, held: 0, female: false, vitals, tick: 0, level: 1, engrams: 0 } };
+    const view: SoundView = { ownId: -1, body: null, hour: 12, trees: () => 0, own: { alive: true, ...at, act: 0, actTicks: 0, held: 0, female: false, vitals, tick: 0, level: 1, engrams: 0 } };
     let now = 0;
     const frame = (): void => {
       now += 1000 / 30;
@@ -278,7 +279,7 @@ function ownState(): OwnState {
   const vitals = new Vitals();
   vitals.max.fill(100e6, 0, V_COUNT);
   vitals.value.fill(100e6, 0, V_COUNT);
-  return { alive: true, x: 380, y: hf.heightAt(380, 380), z: 380, act: 0, held: 0, female: false, vitals, tick: 0, level: 1, engrams: 0 };
+  return { alive: true, x: 380, y: hf.heightAt(380, 380), z: 380, act: 0, actTicks: 0, held: 0, female: false, vitals, tick: 0, level: 1, engrams: 0 };
 }
 
 test("a kill is heard once: the blow that killed and the kill the server credits are one occasion", () => {
@@ -293,4 +294,35 @@ test("a kill is heard once: the blow that killed and the kill the server credits
   update();
   expect(heard.filter((k) => k === "kill")).toEqual(["kill"]);
   expect(heard).toContain("hit/marker");
+});
+
+test("with the button held, every swing of a combo is heard, the player's own and another survivor's", () => {
+  const a = new ActionSounds(reg);
+  const heard: string[] = [];
+  const hear: Hear = (_o, key, entity) => heard.push(`${KEYS[key]!.key} ${entity}`);
+  const own = ownState();
+  const remote = new RemoteSample();
+  const st = new AnimState();
+  remote.count = 1;
+  remote.id[0] = 40;
+  remote.kind[0] = 1;
+  remote.x[0] = 384;
+  remote.z[0] = 380;
+  let tick = 500;
+  const update = (): void => {
+    remote.anim[0] = st.pack();
+    a.update(remote, own.x, own.y + 1.6, own.z, own, -1, 0, 1, (k) => k === 1, hear, () => {});
+  };
+  update();
+  // A held button goes straight into the next swing on the tick the last ends: the act stays a swing and starts again.
+  for (let swing = 0; swing < 3; swing++) {
+    st.setAction(ACT_SWING, HOLD_HANDS, tick);
+    for (let t = 0; t < 12; t++, tick++) {
+      own.act = ACT_SWING;
+      own.actTicks = t;
+      update();
+    }
+  }
+  expect(heard.filter((h) => h === "swing/hands -1")).toHaveLength(3);
+  expect(heard.filter((h) => h === "swing/hands 40")).toHaveLength(3);
 });

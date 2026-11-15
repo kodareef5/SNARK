@@ -27,6 +27,7 @@ export function soundView(session: ClientSession): SoundView {
       y: own.y,
       z: own.z,
       act: own.act,
+      actTicks: own.actTicks,
       held: own.held,
       female: (session.ownLook?.[LOOK_SEX] ?? 0) === 1,
       vitals: session.hasVitals ? session.vitals : null,

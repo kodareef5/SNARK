@@ -64,6 +64,8 @@ export interface OwnState {
   y: number;
   z: number;
   act: number;
+  /** Ticks into the act: back to 0 where a held button starts the next swing while the act stays a swing. */
+  actTicks: number;
   /** The content index of the item in hand, 0 for none. */
   held: number;
   female: boolean;
@@ -86,6 +88,7 @@ export class ActionSounds {
   private readonly st = new AnimState();
   private readonly acts = new Map<number, number>();
   private act = 0;
+  private actTicks = 0;
   private alive = true;
   private level = -1;
   private engrams = -1;
@@ -118,8 +121,9 @@ export class ActionSounds {
     const sex = own.female ? 1 : 0;
     const holdOf = (item: number): number => (this.reg.weapon[item] ?? FISTS).hold;
     // ---- The player's own actions, as predicted.
-    if (own.alive && own.act !== this.act) this.action(own.act, holdOf(own.held), survivor, -1, own.x, own.y, own.z, true, hear);
+    if (own.alive && (own.act !== this.act || own.actTicks < this.actTicks)) this.action(own.act, holdOf(own.held), survivor, -1, own.x, own.y, own.z, true, hear);
     this.act = own.act;
+    this.actTicks = own.actTicks;
     for (const f of this.fired) {
       const h = this.ammoHold[f.ammo]! >= 0 ? this.ammoHold[f.ammo]! : holdOf(own.held);
       hear(survivor, h === HOLD_RIFLE || h === HOLD_PISTOL ? FIRE[h]! : RELEASE[h]!, -1, f.x, f.y, f.z, 0, 1, true);
@@ -132,10 +136,12 @@ export class ActionSounds {
       if (id === ownId || !isSurvivor(remote.kind[i]!)) continue;
       seen.add(id);
       this.st.unpack(remote.anim[i]!, remote.cue[i]!);
+      // The act and the tick it began, so that a swing begun again as the last ends is heard too.
       const act = this.st.action & 7;
+      const now = act | (this.st.actionStart << 3);
       const was = this.acts.get(id);
-      if (was !== undefined && act !== was && act !== 0) this.action(act, (this.st.action >> 3) & 7, survivor, id, remote.x[i]!, remote.y[i]!, remote.z[i]!, false, hear);
-      this.acts.set(id, act);
+      if (was !== undefined && now !== was && act !== 0) this.action(act, (this.st.action >> 3) & 7, survivor, id, remote.x[i]!, remote.y[i]!, remote.z[i]!, false, hear);
+      this.acts.set(id, now);
     }
     for (const id of this.acts.keys()) if (!seen.has(id)) this.acts.delete(id);
     // ---- Combat events.
