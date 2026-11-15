@@ -42,8 +42,10 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 
 // Keep structural meshes shared across districts. Only the facade and salvage pieces vary in finish.
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
+/** Whether a shape comes in that finish: concrete always, the facade pieces and the z kit in every finish. */
+export const finished = (name: RuinShape, finish: RuinFinish): boolean => finish === "concrete" || (name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name) || name.startsWith("z")));
 export const RUIN_BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
-  (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finish === "concrete" || (name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name as RuinShape) || name.startsWith("z")))).map((finish) => ({
+  (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finished(name as RuinShape, finish)).map((finish) => ({
     type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: name === "zshrub" ? "core:creeper_3" : name === "zrooftree" ? "core:tree_1" : "box",
     half: [size[0] / 2, size[1] / 2, size[2] / 2] as const,
     ...RUIN_FINISHES[finish],
