@@ -27,7 +27,9 @@ export const AMMO: readonly Def[] = [
   // A dart is fired bare (W7): loaded with one, the Longneck "cannot use any attachments" (Longneck Rifle), so loading it
   // puts the attachment in the bag (server/items.ts load).
   { type: "item", class: "ammo", id: id("dart_tranq"), stack: 100, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart"), bare: true } },
-  { type: "item", class: "ammo", id: id("dart_shock"), stack: 100, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart"), bare: true } },
+  // The shocking dart spoils in 4 hours into a tranquilizer dart (Shocking Tranquilizer Dart, 2026-11-15: spoilsin 14400,
+  // spoilsto Tranquilizer Dart), in hours of 140 seconds.
+  { type: "item", class: "ammo", id: id("dart_shock"), stack: 100, weight: 0.2, spoilHours: 14400 / 140, spoilsInto: id("dart_tranq"), label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart"), bare: true } },
 
   // ark.wiki.gg, Scope Attachment, Silencer Attachment, Flashlight Attachment and Laser Attachment, infoboxes, 2026-11-15:
   // each weighs 0.1. What each does is W7's (planning/reference/weapons-plan.md, M10; ItemDef.attachment): the scope zooms

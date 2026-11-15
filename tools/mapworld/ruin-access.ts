@@ -90,7 +90,7 @@ export function accessPlanner(site: Site, infrastructure: readonly StaticPiece[]
       for (let d = 0; d <= length; d += 2) {
         const t = d / length; const x = from.x + (door.x - from.x) * t; const z = from.z + (door.z - from.z) * t; const y = from.y + (door.y - from.y) * Math.min(1, t / ramp);
         m.clear.push({ x, z, radius: 10 });
-        if ([-6, -4, -2, 0, 2, 4, 6].some((s) => site.ground.water[at(x + (door.x - from.x) / length * s, z + (door.z - from.z) / length * s)])) {
+        if ([-6, -4, -2, 0, 2, 4, 6].some((s) => [-4, 0, 4].some((side) => site.ground.water[at(x + (door.x - from.x) / length * s - (door.z - from.z) / length * side, z + (door.z - from.z) / length * s + (door.x - from.x) / length * side)]))) {
           m.pieces.push({ kind: "core:zruin_floor4_concrete", x, y: y - .2, z, yaw: Math.atan2(from.z - door.z, door.x - from.x) * 180 / Math.PI });
         }
       }

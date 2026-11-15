@@ -1,9 +1,11 @@
 // The asset slots of the core content, against the pack the build makes.
 import { expect, test } from "bun:test";
-import { CORE_CONTENT } from "../../content/core.ts";
+import { CORE_CONTENT, CORE_PACK } from "../../content/core.ts";
 import type { Slot } from "../../shared/content/classes.ts";
-import type { Def } from "../../shared/content/defs.ts";
+import { shapeHalf, type Def, type ShapeBox } from "../../shared/content/defs.ts";
+import { compilePacks } from "../../shared/content/packs.ts";
 import { fillSlot, slotAddress, slotsOf } from "../../shared/content/slots.ts";
+import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 const pack = corePack();
@@ -46,4 +48,26 @@ test("content with no art of its own still draws: each must slot says what stand
   expect(filled["mod:ghost#body"]).toEqual({ id: "", word: "box" });
   expect(filled["mod:ghost#rig"]).toEqual({ id: "", word: "rigid" });
   expect(filled["mod:ghost#clip/run"]).toEqual({ id: "", word: "rest" });
+});
+
+test("a static names another mesh of the pack and a shape: drawn as that mesh at the shape's origin, as its boxes until the pack has it", () => {
+  // A wreck of the car, its origin on the ground under its middle as the car's own mesh has it.
+  const boxes: ShapeBox[] = [{ at: [0, 0.55, 0], half: [0.9, 0.55, 2] }, { at: [0, 1.25, -0.2], half: [0.75, 0.25, 1.1] }];
+  const defs = [
+    { type: "shape", id: "test:shape_wreck", role: "thing", boxes },
+    { type: "structure", class: "static", id: "test:compact_wreck", mesh: "core:compact", shape: "test:shape_wreck", half: shapeHalf(boxes), color: 9, hp: 5000, material: "core:mat_metal" },
+  ] as Def[];
+  const made = compilePacks([CORE_PACK, { name: "test", defs: defs as never }]);
+  expect(made.errors).toEqual([]);
+  const reg = made.registry!;
+  const kind = reg.index.get("test:compact_wreck")!;
+  expect(reg.parts.start[kind + 1]! - reg.parts.start[kind]!).toBe(2);
+
+  const standIn = grayboxMeshes(defs).find((m) => m.id === "test:compact_wreck")!;
+  const heights = standIn.lods[0]!.positions.filter((_, i) => i % 3 === 1);
+  expect([Math.min(...heights), Math.max(...heights)].map((y) => Math.round(y * 1000) / 1000 + 0)).toEqual([0, 1.5]);
+  const slot = slotsOf(defs).find((u) => slotAddress(u) === "test:compact_wreck#mesh")!;
+  expect(slot.id).toBe("core:compact");
+  expect(fillSlot(slot, (_, id) => id === "test:compact_wreck")).toEqual({ id: "test:compact_wreck", word: "" });
+  expect(fillSlot(slot, (_, id) => id === "test:compact_wreck" || id === "core:compact")).toEqual({ id: "core:compact", word: "" });
 });

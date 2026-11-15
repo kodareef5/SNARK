@@ -16,6 +16,8 @@ import { Fixtures } from "./fixtures.ts";
 import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
+import { Urban } from "./urban.ts";
+import { VehicleContacts } from "./vehicle-contacts.ts";
 import { Entangle } from "./entangle.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
@@ -29,6 +31,7 @@ import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
+import { wirePower } from "./power.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
@@ -167,6 +170,7 @@ export interface Host {
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
+  readonly urban: Urban;
   readonly entangle: Entangle;
   readonly breeding: Breeding;
   readonly tactical: Tactical;
@@ -214,6 +218,8 @@ export interface Host {
   readonly dev: boolean;
   /** `id` is a content id. Returns the entity index, or -1. */
   spawnCreature(id: string, x: number, z: number, level: number, why?: string): number;
+  /** Creates a normal vehicle record/entity; ownerTeam is legal title, separate from its driver. */
+  spawnVehicle(id: string, x: number, z: number, ownerTeam?: number, yaw?: number): number;
   /** Recomputes a body's vitals' maxima, movement modifiers, level and gear. Call it after changing its stat points or what it carries. */
   refreshBody(rec: EntityRecord): void;
   /** Run a console line as the operator, or as `client`. Returns what it printed. */
@@ -394,9 +400,28 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const spawnCreature = (id: string, x: number, z: number, level: number, why = "wild"): number => {
     const kind = reg.index.get(id);
     const e = kind === undefined ? -1 : creatures.spawn(kind, x, z, level, why);
+    if (e >= 0 && reg.vehicle[kind!]) urban.register(e);
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
+  const parkVehicle = (id: string, x: number, z: number, ownerTeam: number, yaw: number, why: string): number => {
+    const kind = reg.index.get(id);
+    if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
+    const e = creatures.spawn(kind, x, z, 1, why);
+    if (e < 0) return e;
+    const rec = records.byPid.get(world.ents.pid[e]!)!;
+    rec.team = ownerTeam; rec.yaw = Math.round(yaw / (2 * Math.PI) * 65536) & 65535;
+    world.ents.yaw[e] = rec.yaw;
+    // Registered once turned, so the parked state it saves at once has its yaw.
+    urban.register(e);
+    world.ents.vehicleYaw[e] = Math.fround(yaw);
+    if (persistence) persistence.attach(rec, e);
+    records.dirty.add(rec.pid);
+    items.inv(rec);
+    refreshBody(rec);
+    return e;
+  };
+  const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0): number => parkVehicle(id, x, z, ownerTeam, yaw, "admin");
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus });
   const progression = new Progression(world, records, items, deadlines);
   progression.rules = rules;
@@ -437,7 +462,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       tribes,
       game,
       bus,
-      mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+      mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : urban.riding(c) ? "get out of the vehicle first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
       suspend: (rec, off) => survival.suspend(rec, off),
       adopt: (rec) => {
         survival.restore(rec, false);
@@ -469,9 +494,21 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const entangle = new Entangle({ world, game, records, buffs });
   combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
   const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec), tangled: (rec) => entangle.tangled(rec) });
+  // An unowned car is anyone's to take, and a tribe's own cars are its members'. On PvP another tribe's car
+  // can be stolen; on PvE its owner can reclaim it from someone who no longer has access,
+  // while an authorized survivor in an unowned car keeps their seat.
+  const urbanMay = (me: EntityRecord, car: EntityRecord, victim: EntityRecord | null): boolean => {
+    if (!rules.on("serverPVE")) return true;
+    if (car.team !== 0 && !tribes.may(me, car.team)) return false;
+    const kind = reg.defs[victim?.kind ?? -1];
+    if (victim && car.team !== 0 && !tribes.may(victim, car.team)) return true;
+    return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
+  };
+  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec) });
+  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e) });
   // The use button gets off a mount, and sets down what is in the arms.
-  death.riding = (c) => riding.riding(c) || carry.holding(c) >= 0;
-  death.offMount = (c) => (riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
+  death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
+  death.offMount = (c) => (urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
   const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
@@ -483,6 +520,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {
+    if (carry.holding(c) < 0) {
+      const vehicle = urban.mount(c, e);
+      if (vehicle >= 0) return vehicle;
+    }
     const rec = records.byPid.get(world.ents.pid[e]!);
     // The use button claims an unclaimed young creature.
     if (rec && breeding.unclaimed(rec)) return breeding.claim(c, rec);
@@ -498,7 +539,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   // A held creature's peck spares its carrier and is credited to it, as a mount's bite is to its rider.
   combat.riderOf = (mount) => {
     const e = records.entOf.get(mount.pid);
-    return e === undefined ? null : (riding.riderOf(e) ?? carry.carrierOf(e));
+    return e === undefined ? null : (urban.riderOf(e) ?? riding.riderOf(e) ?? carry.carrierOf(e));
   };
   combat.onHarm = (victim, points) => {
     taming.harmed(victim, points);
@@ -509,6 +550,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   fixtures.rules = rules;
   fixtures.index();
   const stations = new Stations(world, records, items, fixtures, deadlines);
+  // A powered station (the fabricator) makes things only while it burns; why it refuses is told as a notice.
+  wirePower(world, stations, progression);
+  progression.onNotice = (pid, text) => notice(pid, text);
   const beds = new Beds({
     world, game, records, tribes, fixtures, rules, bus,
     // A death refills the survivor. One that arrives or travels comes as it left.
@@ -526,7 +570,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       records.dirty.add(rec.pid);
       return RESULT_OK;
     },
-    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : urban.riding(c) ? "get out of the vehicle first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
     drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
   });
   if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
@@ -657,7 +701,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
         // The registry as the save had it, for the spoil and fuel timings.
         const old = deriveRegistry(content, { ...tuned.tuning, spoil: spoilWas, fuel: fuelWas });
         items.table = old;
-        stations.refuel(old.fuelTicks, fuelWas, now.FuelConsumptionIntervalMultiplier!);
+        stations.refuel(old, fuelWas, now.FuelConsumptionIntervalMultiplier!);
         items.respoil(old, spoilWas, now.GlobalSpoilingTimeMultiplier!);
         items.table = reg;
       }
@@ -702,6 +746,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
         const e = creatures.adopt(rec);
         if (e >= 0) {
           persistence!.attach(rec, e);
+          if (reg.vehicle[rec.kind]) urban.register(e);
           inventoryChanged.add(rec);
         }
       }
@@ -749,6 +794,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     // The herd starts in the map's first spawn zone and the hunters in its last.
     scatter(world.zones[0], opts.startingSpecies ?? "core:grazer", opts.startingCreatures ?? 0);
     scatter(world.zones[world.zones.length - 1], "core:raptor", opts.startingHunters ?? 0);
+    // The map's parked vehicles, owned by nobody. From here on the save keeps them, as it keeps any record.
+    const missed = new Map<string, number>();
+    for (const v of parsed?.vehicles ?? []) {
+      if (parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild") < 0) missed.set(v.kind, (missed.get(v.kind) ?? 0) + 1);
+    }
+    if (missed.size > 0) say(`not parked, for want of the content or of room: ${[...missed].map(([id, n]) => `${n} of the map's ${id}`).join(", ")}`);
   }
   if (spawner) {
     const fresh = !loaded || loaded.fresh;
@@ -811,12 +862,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     }
     refreshBody(rec);
     survival.suspend(rec, false);
+    // A save from a server that stopped without standing its drivers down has them inside their cars.
+    urban.settle(c.ent);
     bus.after(SESSION_SPAWN, { pid: rec.pid, first, why: first ? "made" : c.entered ? "respawned" : "returned" });
     // A session that was in the creator has its survivor only now.
     if (c.entered) joined(c);
   };
   game.onBodyGone = (c) => {
     carry.release(c.pid);
+    // Seats are not saved: a survivor in a car is saved standing beside it.
+    urban.standDown(c.pid);
     // Out of the world, a survivor neither eats nor drowns.
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
@@ -863,7 +918,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
-  game.onBeforeStep = refreshInventories;
+  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); };
   game.onStep = (tick) => {
     for (const c of game.clients) {
       if (!c?.active) continue;
@@ -895,6 +950,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     entangle.step(tick);
     death.step();
     // Riders move with their mounts before combat aims at either.
+    urban.step();
     riding.step();
     carry.step(tick);
     // Combat resolves this tick's swings and shots now that every body has moved.
@@ -902,6 +958,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     projectiles.step();
     clouds.step();
     creatures.step(tick);
+    for (const e of urban.contacts!.step()) urban.syncAfterContact(e);
     spawner?.step(tick);
     build.step();
     taming.step();
@@ -1024,15 +1081,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
     // A mount's load includes what its rider carries, at its species' share (a pteranodon's 0.85), and a survivor's half of
     // what a creature in its arms carries.
-    const rider = riding.riderOf(e);
+    const rider = urban.riderOf(e) ?? riding.riderOf(e);
     const arms = carry.heldBy(rec.pid);
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) * reg.riderWeight[rec.kind]! : 0) + (arms >= 0 ? carry.load(rec) : 0);
+    if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[e] = Math.fround(urban.payloadMass(e));
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
     // Changing a rider's pack also changes the mount's load.
     const seat = world.ents.seat[e]! - 1;
-    const mount = seat >= 0 && riding.riderOf(seat) === rec ? records.byPid.get(world.ents.pid[seat]!) : undefined;
+    const mount = seat >= 0 && (riding.riderOf(seat) === rec || urban.occupancy.seatOf(rec.pid)?.host === world.ents.pid[seat]) ? records.byPid.get(world.ents.pid[seat]!) : undefined;
     if (mount && mount !== rec) refreshBody(mount);
     // A young creature carries a share of a grown one's capacity, so its load is scaled up.
     const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));
@@ -1141,6 +1199,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     stations,
     taming,
     riding,
+    urban,
     entangle,
     breeding,
     tactical,
@@ -1179,6 +1238,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     passed: [...tuned.passed, ...spawns.passed],
     dev: opts.dev ?? false,
     spawnCreature,
+    spawnVehicle,
     refreshBody,
     exec: (line, client) => con.exec({ host, client: client ?? null }, line),
     idle: () => persistence?.idle(),
@@ -1187,8 +1247,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();
       if (!persistence) return;
-      // A creature in someone's arms is saved standing where it is set down, not where the arms had it.
+      // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
+      // sits in a car.
       carry.releaseAll();
+      urban.standDownAll();
       // Every body that can have moved is saved where it stands.
       for (let r = 0; r < world.history.rows; r++) {
         const pid = world.ents.pid[world.history.tracked(r)]!;

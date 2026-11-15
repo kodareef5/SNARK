@@ -27,7 +27,8 @@ import type { ServerWorld } from "./world.ts";
 const LATE = 1;
 /**
  * ARK angers the wild of an egg's species near where a wild egg is taken, and names who but not how near. Chosen: within
- * this many metres. Only species that do not flee are angered, which keeps ARK's exceptions (dodo, moschops, parasaur).
+ * this many metres. Species that flee are not angered, which keeps ARK's exceptions (dodo, moschops, parasaur), unless they
+ * defend their egg as the pteranodon does (D492).
  */
 export const ANGER_RANGE = 30;
 /** Places in the entity store an egg or feces lying may not take. The same as a dropped bag (server/death.ts). */
@@ -262,14 +263,16 @@ export class Eggs {
     this.ctx.place(egg);
   }
 
-  /** The wild of `species` within ANGER_RANGE of (x, z) go for `by`, unless the species flees. */
+  /** The wild of `species` within ANGER_RANGE of (x, z) go for `by`, unless the species flees and does not defend its egg. */
   private anger(species: number, x: number, z: number, by: number): void {
     const { world, creatures } = this.ctx;
-    if (by < 0 || world.reg.temper[species] === TEMPER_FLEES) return;
+    const flees = world.reg.temper[species] === TEMPER_FLEES;
+    if (by < 0 || (flees && world.reg.defendsEgg[species] === 0)) return;
     const ents = world.ents;
     this.each(x, z, ANGER_RANGE, (e) => {
       if (ents.kind[e] !== species || ents.team[e] !== 0 || (ents.flags[e]! & (F_PROP | F_AWAKE)) !== F_AWAKE) return;
-      creatures.mind.provoke(e, x, z, by);
+      if (flees) creatures.mind.defend(e, by);
+      else creatures.mind.provoke(e, x, z, by);
       this.angered++;
     });
   }

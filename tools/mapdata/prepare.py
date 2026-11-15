@@ -148,7 +148,10 @@ def main():
     rd = m.burn([(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
                  for g, p in sorted(roads, key=lambda gp: gp[1]['width_m'])], n, m.grid)
     rd[(rd > 0) & (w > 0)] = 3  # a bridge over the water, which stays beneath it
-    save(np.rint(np.clip((elev + 100) * 100, 0, 65535)).astype('uint16'), m.base / 'height.png')
+    zero = m.cfg.get('height_zero_m', -100)
+    if elev[valid].max() > zero + 655.35 or elev[valid].min() < zero:
+        raise SystemExit(f'ground from {elev[valid].min():.1f} to {elev[valid].max():.1f} m does not fit height.png over {zero} m: set height_zero_m')
+    save(np.rint(np.clip((elev - zero) * 100, 0, 65535)).astype('uint16'), m.base / 'height.png')
     save(valid.astype('uint8') * 255, m.base / 'height_valid.png')
     save(w, m.base / 'water.png')
     save(b, m.base / 'buildings.png')
@@ -159,7 +162,7 @@ def main():
                   dst_transform=m.grid, dst_crs=m.crs, resampling=Resampling.nearest)
     save(lc, m.base / 'landcover.png')
     # Fictional succession, the rule Miami's was made by; distinct from NLCD.
-    coast = nd.distance_transform_edt(w == 0) * 2
+    coast = nd.distance_transform_edt(w == 0) * 2 if w.any() else np.full((n, n), np.inf, np.float32)
     grown = np.isin(lc, [21, 31, 41, 42, 43, 52, 71, 90, 95]) | ((lc == 22) & (coast < 180))
     grown = nd.gaussian_filter(grown.astype('float32'), 4) > .48
     yy, xx = np.mgrid[:n, :n].astype(np.float32)
@@ -174,7 +177,8 @@ def main():
     biome[grown & (coast < 70)] = 4
     biome[grown & (rise < .45) & (coast < 140)] = 5
     biome[lake > 0] = 5
-    beach = lc == 31
+    # Barren land is beach by the water; inland it is bare ground (a ridge, a quarry, a lot being built on).
+    beach = (lc == 31) & (coast < 500)
     ribbon = m.city['succession'].get('sand_ribbon')
     if ribbon:
         # An authored strip of bare sand east of a given easting, as Miami Beach's.
@@ -187,7 +191,8 @@ def main():
     biome[rd == 3] = 9
     save(biome, m.base / 'biome.png')
     s = m.city['succession']
-    flooded = (w == 0) & (rd > 0) & (rd < 3) & valid & (elev < s['flood_below_navd88_m']) & (coast < s['flood_within_m']) & (b == 0)
+    flood = s.get('flood_below_navd88_m')
+    flooded = (w == 0) & (rd > 0) & (rd < 3) & valid & (elev < (flood if flood is not None else -np.inf)) & (coast < s['flood_within_m']) & (b == 0)
     flooded = nd.binary_opening(flooded, iterations=1)
     save(flooded.astype('uint8'), m.base / 'flooded_streets.png')
     stats = {'seconds': time.time() - t, 'roads': len(roads), 'water_polygons': len(water), 'buildings': len(bld),

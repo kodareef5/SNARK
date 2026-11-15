@@ -6,6 +6,7 @@ packs `var/maps/<name>.snmap`. Run one build or rasterizer batch at a time:
 
 ```sh
 bun tools/mapworld/build.ts <name>
+bun tools/mapworld/repeat-build.ts <name>
 bun tools/mapworld/walk.ts var/maps/<name>.snmap
 bun tools/mapworld/ruin-walk.ts var/maps/<name>.snmap --all
 bun tools/mapworld/access-walk.ts var/maps/<name>.snmap
@@ -68,7 +69,10 @@ shape there, its palette/material variants, then use its name in an assembly.
 Existing kinds keep their ids; new shape names sort after the original kit.
 The compatibility content module remains so the core pack needs no new import.
 
-`ruins/vocabulary.json` is the per-map grammar:
+Every city inherits [the shared rule library](rules/README.md). Its
+`ruins/vocabulary.json` extends shared objects by key and ordered choices by
+id. Districts, recipes, budgets and named compositions stay in the map folder.
+Do not copy the shared sections into a new city:
 
 - `categories` and `recipes` settle broad building use and retained height.
 - `forms` give plan, shell, interior, front, roof and window rhythm.
@@ -76,14 +80,33 @@ The compatibility content module remains so the core pack needs no new import.
   partitions and beds; offices use low dividers; storage halls stay open.
 - `choices` are ordered rules over kind, recipe, district, height, water
   distance, known construction year, trades and nearby footprint count.
-  Each match can change form or the seeded distribution of collapse modes.
+  Each match can change form, finish or an initial collapse selection.
   Names can match a regular expression and floor area can bound a choice.
+- `event` makes the final collapse selection from shoreline exposure,
+  upstream shelter and a spatially shared seed. Travel direction belongs to
+  the city; exposure bands and their failure families inherit shared defaults.
 - `damage` gives collapse radius, retained top and pancake layer count.
 - `assemblies` list shape, local x/y/z, finish and optional yaw. They carry a
   role and optional clearance note. Fronts, wrecks, signs and street remnants
-  all use this interpreter.
-- `compositions` combine regional stacks, towers, bowls, portals, ribs and
-  explicit parts. `ruins/places.json` attaches a composition to a footprint.
+  all use this interpreter. A street `passage` reserves a walkable gap;
+  `roof identity` keeps a marker whole when clearance removes its support.
+- `growth` supplies resource densities, canopy bounds, roof planting chance
+  and low-growth radii around public place kinds. Listed nodes are filtered
+  against their actual collision forms and reserved routes after construction.
+- `sightlines` reserves view corridors towards named compositions, and
+  `frontage` sets the tolerance for detecting neighbouring party walls.
+- `compositions` combine regional stacks, towers, bowls, portals, ribs,
+  rings and domes and explicit parts. `ruins/places.json` attaches a composition
+  to a footprint. A `ring` sets pieces round a centre at listed heights, turned
+  along it; a `dome` is a drum to its springing and stepped courses under a
+  hemisphere, closed from above, over an optional `arc`. A named place with the
+  layout `ground` is neither built on nor levelled: a hillside's seats.
+
+Lettered signs (`signs.ts`): a line OpenStreetMap maps with an inscription of
+capitals and a height (`blocks/signs.json`) stands up the content's letters
+(`content/lettering.ts`, 13.7 m tall) along it, each on the lowest ground under
+its foot and facing down the slope; on the level it reads from the line's first
+point. A sign mapped more than 30% taller or shorter is left out and reported.
 
 To add a rule, append one readable choice. To add a named place, add a
 composition and one footprint entry. No generator branch is needed. A new
@@ -107,3 +130,42 @@ comparison gallery using `ruins/proof.json` and optional `ruins/captions.json`.
 Line-ups isolate exact packed pieces by their recorded range, with one camera,
 light and ground plane. They are diagnostic views, not replacements for the
 required city streets and interiors.
+
+## Cars: wrecks and parked ones
+
+Today the street pass (`makeStreetPieces` in `ruins.ts`) puts a box assembly
+from `street.assemblies` on an 8 m grid, kept by a hash at `street.chance`, at a
+street's edge, in a yard or on a verge, turned 0 or 90 degrees. Its `car` is a
+`zcar` and a `zcab` box; San Francisco had 16,422 of them and 4,568 buses.
+
+Wrecks should be the car's own mesh: statics of wreck kinds such as
+`core:compact_wreck`, one piece each, set at the ground with yaw along the
+street. A wreck kind is a static whose `mesh` names the wreck's mesh and whose
+`shape` is its collider in the car's frame (origin on the ground under its
+middle, length along +z), so the piece's `y` is the ground and the far city
+draws its boxes. Tipped wrecks are kinds of their own, each its own posed mesh,
+since a piece has only a yaw. An assembly part would name a content id in place
+of a box shape, and the prop checks would take its size from the content.
+
+Cars a survivor can drive away go in `vehicles.json`
+(`[{ "kind": "core:compact", "x": 240, "z": 270, "yaw": 90 }]`, through the
+layers folder into the file's `VHCL`). The server parks each, owned by nobody,
+once in a new world; the save keeps it from then on. The rule for a point:
+
+- On a street's lane: a local or secondary centreline of `base/roads.geojson`,
+  not a highway, ramp, path, bridge deck or tunnel, set in from the centreline to
+  the kerb on the right of travel and turned along it.
+- At least 15 m from a junction (a point two lines share, or a line's end).
+- Clear of every static's boxes and of the wrecks by the car's envelope, X ±0.9,
+  Y 0 to 1.5, Z ±2.0, plus 1 m, and plus the door room its seats need (entries at
+  X ±1.25); the plants are cleared round it as round a spawn point.
+- On dry street ground, its four wheels' heights giving a ground normal no
+  steeper than the kind's `minGroundNormal` (0.85 for the compact), with margin
+  enough to drive off.
+- A density per kilometre of such street in each district, clamped to a few per
+  district, the points chosen by a hash of the map's seed so every build is the
+  same, and spread apart.
+
+The kinds and their sizes come from the compiled content: a vehicle's
+`spec` (half width, half length, height, wheelbase, track, ground limit) and its
+`seats`, so a truck or a bus needs no new code.

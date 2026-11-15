@@ -410,7 +410,13 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 3260333166 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
   // It was 3479987675 until the pteranodon's grey box (content/creatures/pteranodon.ts) took a mesh number; without the
   // pteranodon and its beach entry it is that again.
-  expect(hash).toBe(1901866876);
+  // It was 1901866876 until the sign letters' grey boxes (content/lettering.ts) and the oil rock's, crystal's, obsidian
+  // rock's and clam's (content/items/nodes.ts) took mesh numbers: 1076386992 with the letters alone, 2385450423 with the
+  // nodes alone (the eleven the proving ground lists do not move it).
+  // It was 1918661154 until the smithy's and the fabricator's grey boxes (content/items/stations.ts, S2) took mesh numbers;
+  // without the two stations, their pieces and polymer's and electronics' recipes it is that again.
+  // It was 11868317 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
+  expect(hash).toBe(802027835);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -420,7 +426,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   const saddled = lowPoly(true);
   expect(saddled.log).toEqual(log);
   expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 97, 1, 0, 0, 273]);
-  expect(saddled.hash).toBe(1277817829);
+  // It was 1277817829 until the sign letters' and the four resource nodes' grey boxes took mesh numbers, as above:
+  // 1675711496 with the letters alone, 3184345957 with the nodes alone.
+  // It was 295710133 until the smithy's and the fabricator's grey boxes (S2), as above; without them it is that again.
+  // It was 738198866 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
+  expect(saddled.hash).toBe(850823663);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

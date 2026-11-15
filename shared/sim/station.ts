@@ -8,6 +8,22 @@ export interface Fire {
   fuel: number;
   /** Ticks the item now cooking has been over the fire. */
   cook: number;
+  /**
+   * The item now burning (a content index), 0 or absent for none known. Kept and saved, and stepped by nothing until the
+   * forge's project (planning/reference/stations-plan.md, S1) leaves what a piece burns into (M4).
+   */
+  piece?: number;
+  /**
+   * What the fire is making by itself, a lane per fired recipe under way (M3): the item and the ticks its unit has been
+   * under way. Kept and saved, and stepped by nothing until S1.
+   */
+  lanes?: Lane[];
+}
+
+/** One recipe a fire makes by itself (CraftFacet.fired): the item, and the ticks its unit under way has had. */
+export interface Lane {
+  item: number;
+  ticks: number;
 }
 
 export interface Hearth {

@@ -38,6 +38,9 @@ def main():
     settings = m.city.get('world', {})
     for extra in settings.get('places', []):
         seeds[extra['name']] = [to_map.transform(*extra['at'])]
+    # Places OpenStreetMap tags as quarters that are not neighbourhoods: an administrative district, an overlay zone.
+    for name in settings.get('drop', []):
+        seeds.pop(name, None)
     labels = json.loads((m.root / 'blocks/labels.json').read_text())
     # An island or islet is a district only where a footprint stands within 60 m of its middle.
     islands = {el.get('tags', {}).get('name') for el in json.loads((m.raw / 'osm/all.json').read_text())['elements'] if el.get('tags', {}).get('place') in ('island', 'islet')}
@@ -82,6 +85,10 @@ def main():
     for want in settings.get('spawn_places', []):
         name = want if isinstance(want, str) else want['name']
         found = next((p for p in json.loads((m.root / 'blocks/places.json').read_text()) if p.get('name') == name), None)
+        if found is None and isinstance(want, dict) and want.get('at'):
+            # A place a visitor knows that OpenStreetMap draws no point for, at the position given.
+            e, n = to_map.transform(*want['at'])
+            found = {'name': name, 'kind': 'park', 'e': e, 'n': n}
         if found is None:
             raise ValueError(f'no place called {name} in blocks/places.json')
         chosen.append(found)
@@ -99,6 +106,10 @@ def main():
             break
         chosen.append(best)
     spawns = []
+    # The survivor's choosing list carries each name in at most 48 bytes (MAX_PLACE_NAME_BYTES); the server cuts a longer one.
+    long = [p['name'] for p in chosen if len(p['name'].encode()) > 48]
+    if long:
+        raise ValueError(f'spawn point names over 48 bytes: {long}; name them shorter in spawn_places with "at"')
     for p in chosen:
         d = math.hypot(p['e'], p['n']) or 1
         face = faces.get(p['name']) or (p['e'] - p['e'] / d * 300, p['n'] - p['n'] / d * 300)
@@ -121,6 +132,10 @@ def main():
                  'bridgeGapLayer': 'bridge_gaps', 'ruins': {'report': settings.get('report', 'ruins2'), 'yardDistricts': settings.get('yard_districts', [])}}
         if settings.get('container_district'):
             world['containerDistrict'] = settings['container_district']
+        if settings.get('sea') is False:
+            world['sea'] = False
+        if settings.get('easy_around_spawns_m'):
+            world['easyAroundSpawns'] = settings['easy_around_spawns_m']
         if settings.get('obelisks'):
             world['obelisks'] = settings['obelisks']
         path.write_text(json.dumps(world, indent=1, ensure_ascii=False) + '\n')

@@ -120,7 +120,8 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   for (let i = 1; i < beam.positions.length; i += 3) beam.positions[i]! += 40;
   const meshes: SourceMesh[] = [{ id: MISSING_MESH, lods: [boxMesh([0.5, 0.5, 0.5], 0)] }, waterMesh(), { id: BEAM_MESH, lods: [beam] }, eggMesh()];
   for (const d of defs) {
-    if (d.type === "structure" && d.mesh === "shape") {
+    // Under its own id: what a structure that names a mesh of the pack is drawn as until the pack has it.
+    if (d.type === "structure" && d.shape !== undefined) {
       const shape = defs.find((s) => s.type === "shape" && s.id === d.shape);
       if (shape?.type !== "shape") continue;
       const walked = partsMesh(shape.boxes, shape.hulls ?? []);

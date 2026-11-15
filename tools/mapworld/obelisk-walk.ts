@@ -175,14 +175,17 @@ const wayTo = (starts: readonly number[], spawns: ReadonlyMap<number, number>): 
   }
   return null;
 };
-/** Whether every sample on the line between two samples is free. */
+/**
+ * Whether every sample on the line between two samples is free, but for the first: a body passing near a closed sample,
+ * such as one in the padding round a rock, still stands where it stands and must not turn back for it.
+ */
 const clearLine = (a: number, b: number): boolean => {
   const [ai, aj, bi, bj] = [a % nx, Math.floor(a / nx), b % nx, Math.floor(b / nx)];
   const n = Math.max(Math.abs(bi - ai), Math.abs(bj - aj)) * 2;
   for (let s = 0; s <= n; s++) {
     const i = Math.round(ai + ((bi - ai) * s) / Math.max(1, n));
     const j = Math.round(aj + ((bj - aj) * s) / Math.max(1, n));
-    if (blocked[j * nx + i]) return false;
+    if (blocked[j * nx + i] && j * nx + i !== a) return false;
   }
   return true;
 };

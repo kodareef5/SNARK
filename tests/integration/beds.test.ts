@@ -379,3 +379,23 @@ test("on a PvP server the wait to rise after deaths at other tribes' hands follo
   h.say(ada, "setting serverPVE True");
   expect(wait()).toBe(0);
 });
+
+test("nobody travels from a bed while sitting in a car: she gets out first, as off a mount", () => {
+  const made = builder(["ada"], 40, 40);
+  const { h, at } = made;
+  const [ada] = made.sessions as [ClientSession];
+  const home = bedAt(made, ada, "piece_bed", at.x - 4, at.z + 6);
+  h.say(ada, `tp ${at.x + 6} ${at.z + 30}`);
+  bedAt(made, ada, "piece_bed", at.x + 6, at.z + 34);
+  h.say(ada, `tp ${at.x + 0.05} ${at.z + 6.1}`, 300);
+  const me = h.client(ada)!;
+  const car = h.host.spawnVehicle("core:compact", at.x - 1.45, at.z + 6, recOf(h, ada).team, 0);
+  expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);
+  h.run(800);
+  expect(me.drive).toBe(car);
+  let code = -1;
+  ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
+  ada.command(CMD_STRUCT, (w: BitWriter) => (w.u32(home), w.u8(STRUCT_TRAVEL)));
+  h.run(150);
+  expect([code, ada.sessionState, me.drive]).toEqual([RESULT_DENIED, SESSION_ALIVE, car]);
+});

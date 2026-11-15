@@ -119,7 +119,7 @@ test("vitals reach the HUD as rates: bars move with no messages, and eating is o
   expect(sv.value(rec, V_FOOD)).toBeLessThan(100);
   expect(sv.value(rec, V_FOOD)).toBeGreaterThan(99);
 
-  // Food is lowered first, so the berry's four points fit under the cap.
+  // Food is lowered first, so the berry's 1.5 fits under the cap.
   sv.add(rec, V_FOOD, -50);
   const food = sv.value(rec, V_FOOD);
   const water = sv.value(rec, V_WATER);
@@ -132,7 +132,7 @@ test("vitals reach the HUD as rates: bars move with no messages, and eating is o
   expect(items.inv(rec).total(berry)).toBe(9);
   expect(s.inventory!.total(berry)).toBe(9);
   expect(items.burned[berry]).toBe(1);
-  expect(sv.value(rec, V_FOOD)).toBeGreaterThan(food + 3.9);
+  expect(sv.value(rec, V_FOOD)).toBeGreaterThan(food + 1.4);
   expect(sv.value(rec, V_WATER)).toBeGreaterThan(water);
   expect(s.vitals.at(V_FOOD, h.world.tick)).toBe(rec.vitals!.at(V_FOOD, h.world.tick));
   codes.length = 0;
