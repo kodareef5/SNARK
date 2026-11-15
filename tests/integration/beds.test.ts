@@ -347,3 +347,34 @@ test("a bed's wait outlasts leaving and joining and a restart; so does a journey
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("on a PvP server the wait to rise after deaths at other tribes' hands follows its four settings, and a death by one's own tribe, or on a PvE server, adds none", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const ada = h.join("ada");
+  h.run(600);
+  h.say(ada, "enablecheats");
+  const rec = recOf(h, ada);
+  const beds = h.host.beds;
+  const other = rec.team + 1000;
+  /** Seconds every place waits after one more death by `team`, as she would be told. */
+  const wait = (team = other): number => {
+    beds.died(rec, team);
+    const p = beds.places(rec, CHOOSE_DIED)[0]!;
+    return p.readyAt === 0 ? 0 : Math.round((p.readyAt - h.world.tick) / TICK_RATE);
+  };
+  // bIncreasePvPRespawnInterval, IncreasePvPRespawnIntervalBaseAmount, IncreasePvPRespawnIntervalMultiplier at their defaults.
+  // A death by her own tribe neither counts nor ends the wait there is.
+  expect([wait(), wait(), wait(), wait(rec.team), wait()]).toEqual([0, 60, 120, 120, 240]);
+  h.say(ada, "setting IncreasePvPRespawnIntervalBaseAmount 30");
+  h.say(ada, "setting IncreasePvPRespawnIntervalMultiplier 3");
+  expect(wait()).toBe(30 * 3 ** 3);
+  // Past IncreasePvPRespawnIntervalCheckPeriod since the last, the count starts again.
+  h.say(ada, "setting IncreasePvPRespawnIntervalCheckPeriod 2");
+  h.run(3000);
+  expect([wait(), wait()]).toEqual([0, 30]);
+  h.say(ada, "setting bIncreasePvPRespawnInterval False");
+  expect(wait()).toBe(0);
+  h.say(ada, "setting bIncreasePvPRespawnInterval True");
+  h.say(ada, "setting serverPVE True");
+  expect(wait()).toBe(0);
+});

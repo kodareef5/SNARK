@@ -420,11 +420,13 @@ test("pieces are made as anything is: an engram at the reference's level, at its
   // The pack as assembled, where each piece carries how it is made. The item program's stations are counted apart (content/items).
   const program = new Set(ITEMS.map((d) => d.id));
   const items = CORE_CONTENT.filter((d): d is ItemDef => d.type === "item" && d.places !== undefined && !program.has(d.id));
-  // Four thatch pieces, six each of wood, stone and metal, and five things: three containers, a campfire and a bed.
-  expect(items.length).toBe(4 + 6 + 6 + 6 + 5);
+  // Four thatch pieces, six each of wood, stone and metal, and seven things: three containers, a campfire, a sleeping bag, a
+  // simple bed, and a bunk bed, which is made at a Fabricator from what does not exist yet, so nothing makes it.
+  expect(items.length).toBe(4 + 6 + 6 + 6 + 7);
+  expect(items.filter((d) => d.craft === undefined).map((d) => d.id)).toEqual(["core:piece_bunk_bed"]);
   const levels: Record<string, number[]> = {};
   const stores: [string, number][] = [];
-  for (const item of items) {
+  for (const item of items.filter((d) => d.id !== "core:piece_bunk_bed")) {
     expect(item.craft !== undefined).toBe(true);
     const engram = BUILDING_CONTENT.find((d): d is EngramDef => d.type === "engram" && d.item === item.id)!;
     expect(engram.label.toLowerCase()).toBe(item.label!);
@@ -432,7 +434,7 @@ test("pieces are made as anything is: an engram at the reference's level, at its
     else stores.push([item.id.slice(11), engram.level]);
     expect(item.places![0]).toBe(`core:${item.id.slice(11)}`);
   }
-  expect(stores).toEqual([["storage_box", 4], ["storage_large", 16], ["vault", 52], ["campfire", 2], ["bed", 7]]);
+  expect(stores).toEqual([["storage_box", 4], ["storage_large", 16], ["vault", 52], ["campfire", 2], ["sleeping_bag", 4], ["bed", 7]]);
   expect(Object.fromEntries(Object.entries(levels).map(([tier, l]) => [tier, [Math.min(...l), Math.max(...l)]]))).toEqual({ thatch: [4, 4], wood: [11, 14], stone: [24, 27], metal: [45, 47] });
   const needs = (name: string): [string, number][] => items.find((d) => d.id === `core:piece_${name}`)!.craft!.needs.map((n) => [n.item.slice(5), n.count]);
   expect(needs("wall_wood")).toEqual([["wood", 40], ["thatch", 10], ["fiber", 7]]);

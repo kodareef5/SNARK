@@ -463,12 +463,13 @@ export class Agent implements ToolHost {
     const i = typeof want === "number" ? want : typeof want === "string" ? points.findIndex((p) => p.name.toLowerCase() === want.trim().toLowerCase()) : -1;
     if (!Number.isInteger(i) || i < 0 || i >= points.length) throw new Bad("place must be a number or a name that status lists under choosing");
     const list = s.placesList;
+    const name = points[i]!.name;
     const seq = this.commands.send(CMD_RESPAWN, (w) => (w.u8(i), w.u8(list)));
     const code = seq === 0 ? 0 : await this.result(seq);
     if (code !== RESULT_OK) return this.outcome(seq, code, {});
     // The body comes with the next snapshot.
     await this.until(() => (s.sessionState === SESSION_ALIVE ? true : null));
-    return { state: "done", rose_at: points[i]?.name ?? "", self: this.self() };
+    return { state: "done", rose_at: name, self: this.self() };
   }
 
   /**

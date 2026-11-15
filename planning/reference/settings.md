@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 524 of them: 137 take effect,
-192 wait for a feature that is not built yet, and 195 have no meaning in this
+is listed here, 524 of them: 141 take effect,
+188 wait for a feature that is not built yet, and 195 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -169,6 +169,10 @@ may change a setting without a restart.
 | `MaxFallSpeedMultiplier` | 1 | The speed of a fall at which it begins to hurt. Higher survives longer falls. | yes |
 | `FastDecayInterval` | 43200 | Seconds before a foundation or pillar joined to nothing decays. Needs FastDecayUnsnappedCoreStructures. | yes |
 | `bUseCorpseLocator` | True | A beam marks where a survivor died. | yes; clients are told |
+| `bIncreasePvPRespawnInterval` | True | The wait to return to life grows for one killed again and again by other tribes, on a server that is not PvE. *The first death within the period costs no wait, the second the base amount, each after that the multiplier times the last (server/beds.ts).* | yes |
+| `IncreasePvPRespawnIntervalBaseAmount` | 60 | Seconds it grows from. | yes |
+| `IncreasePvPRespawnIntervalCheckPeriod` | 300 | Seconds within which a death counts as again. | yes |
+| `IncreasePvPRespawnIntervalMultiplier` | 2 | What it is multiplied by each time. | yes |
 | `bUseSingleplayerSettings` | False | ARK's single-player factors are put on top of what the files and the command line give: taming x2.5, hatching x9, growing up x35, the wait to mate x0.15, a tame's health per level x2.125 and its melee x2.3529; and what the dead leave lies six times as long. A value set afterwards, at the console or from the live file, is that value outright. | no |
 
 ### Command line
@@ -281,10 +285,6 @@ what is built next.
 | `bAutoPvEUseSystemTime` | False | A server that is PvE between two times of day. | Game.ini |
 | `AutoPvEStartTimeSeconds` | 0 | When that begins, in seconds of the day. | Game.ini |
 | `AutoPvEStopTimeSeconds` | 0 | When that ends. | Game.ini |
-| `bIncreasePvPRespawnInterval` | True | The wait to return to life grows for one killed again and again. | Game.ini |
-| `IncreasePvPRespawnIntervalBaseAmount` | 60 | Seconds it grows from. | Game.ini |
-| `IncreasePvPRespawnIntervalCheckPeriod` | 300 | Seconds within which a death counts as again. | Game.ini |
-| `IncreasePvPRespawnIntervalMultiplier` | 2 | What it is multiplied by each time. | Game.ini |
 | `PreventOfflinePvPConnectionInvincibleInterval` | 5 | Seconds one who has just joined cannot be harmed. | Game.ini |
 
 ### Tribes in depth: alliances, the log, wars, merges, cooldowns

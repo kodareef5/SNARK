@@ -143,7 +143,7 @@ export class Beds {
     });
     if (out.length === 0) out.push(...spawns());
     // After deaths at another tribe's hands on a PvP server, every place waits too.
-    const until = why === CHOOSE_DIED ? (this.killed.get(rec.pid)?.until ?? 0) : 0;
+    const until = why === CHOOSE_DIED ? this.killedUntil(rec) : 0;
     if (until > world.tick) for (const p of out) p.readyAt = Math.max(p.readyAt, until);
     return out;
   }
@@ -167,7 +167,7 @@ export class Beds {
     const now = bed ? this.placeOf(listed.ref, bed) : listed;
     if (!now) return RESULT_INVALID;
     const back = c.why === CHOOSE_TRAVEL && bed !== null && bed.pid === this.travelling.get(rec.pid);
-    const until = c.why === CHOOSE_DIED ? (this.killed.get(rec.pid)?.until ?? 0) : 0;
+    const until = c.why === CHOOSE_DIED ? this.killedUntil(rec) : 0;
     const readyAt = Math.max(back ? 0 : now.readyAt, until);
     // A module may refuse the place, or make the survivor wait: `wait` is seconds, and more than none refuses for now.
     const asked = { pid: c.pid, bed: listed.ref, wait: Math.max(0, Math.ceil((readyAt - world.tick) / TICK_RATE)) };
@@ -285,6 +285,12 @@ export class Beds {
     const wait = n < 2 ? 0 : rules.num("IncreasePvPRespawnIntervalBaseAmount") * rules.num("IncreasePvPRespawnIntervalMultiplier") ** (n - 2);
     this.killed.set(rec.pid, { n, at: world.tick, until: wait > 0 ? world.tick + Math.round(wait * TICK_RATE) : 0 });
     this.saved.dirty = true;
+  }
+
+  /** The tick the PvP respawn wait of `rec` ends, while the rules give one. */
+  private killedUntil(rec: EntityRecord): number {
+    const rules = this.ctx.rules;
+    return rules.on("serverPVE") || !rules.on("bIncreasePvPRespawnInterval") ? 0 : (this.killed.get(rec.pid)?.until ?? 0);
   }
 
   /** What a bed of the kind at `ref` is called until it is named. */

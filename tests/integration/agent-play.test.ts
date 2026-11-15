@@ -21,8 +21,8 @@ function follow(p: Play, seconds = 60): { walked: number; trail: [number, number
 
 test("walk_to rounds the 24 m wall by a way no more than 1.3 times the best, and one task runs at a time", async () => {
   const p = play();
-  expect((await p.ask("tools/list"))!.result.tools.map((t: { name: string }) => t.name)).toEqual(["observe", "walk_to", "harvest", "open", "attack", "pick_up", "put_down", "order", "move_item", "craft", "eat", "say", "status", "cancel", "console"]);
-  expect((await play({}, {}).ask("tools/list"))!.result.tools.length).toBe(14);
+  expect((await p.ask("tools/list"))!.result.tools.map((t: { name: string }) => t.name)).toEqual(["observe", "walk_to", "harvest", "open", "attack", "pick_up", "put_down", "order", "move_item", "craft", "eat", "say", "place", "bed", "rise", "status", "cancel", "console"]);
+  expect((await play({}, {}).ask("tools/list"))!.result.tools.length).toBe(17);
   await p.typed("enablecheats");
   await p.typed("tp 288 258");
   // The wall runs from x 276 to 300 at z 262, so the best way is round either end: twice 12.6 m.
@@ -234,11 +234,14 @@ test("health falling and death each stop the task, and the survivor wakes again"
   p.run(5000);
   expect((await p.call("status")).dangers).toBeUndefined();
 
-  // Death ends the task, and the survivor wakes at the first place offered.
+  // Death ends the task. The survivor chooses where to rise, as a player does, among the places status lists.
   expect(c.busy).toBe("walk_to");
   await p.typed("suicide");
-  expect(await p.call("status", { wait_s: 5 })).toMatchObject({ state: "danger", reason: "you died", self: { alive: false } });
+  expect(await p.call("status", { wait_s: 5 })).toMatchObject({ state: "danger", reason: "you died", self: { alive: false }, choosing: { why: "died" } });
   p.run(2500);
+  const { choosing } = (await p.call("status")) as { choosing: { places: unknown[][] } };
+  expect(choosing.places[0]!.slice(0, 3)).toEqual([0, p.h.world.spawns[0]!.name, "spawn point"]);
+  expect(await p.call("rise", { place: 0 })).toMatchObject({ state: "done", rose_at: p.h.world.spawns[0]!.name });
   expect(await p.call("status")).toMatchObject({ self: { alive: true, x: 256, z: 240, health: [100, 100] } });
   expect(c.deaths).toBe(1);
   expect(await p.call("walk_to", { x: 250, z: 246 })).toMatchObject({ state: "done" });

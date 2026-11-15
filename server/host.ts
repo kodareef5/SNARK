@@ -180,6 +180,8 @@ export interface Host {
   readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
   readonly spawner: Spawner | null;
+  /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
+  readonly beds: Beds;
   /** Bodies found inside a node or a piece as their chunk or a node near them loaded, and set free (server/place.ts). */
   readonly settled: { readonly bodies: number };
   /** The list settings that name classes, as tables, and the names this build lacks. */
@@ -1069,6 +1071,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     overhead,
     hurt,
     spawner,
+    beds,
     settled,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
