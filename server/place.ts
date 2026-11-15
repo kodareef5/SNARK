@@ -109,9 +109,8 @@ export function placeFree(world: ServerWorld, x: number, y: number, z: number, r
   return capsuleFree(world, x, y, z, r, h) && !(world.unloaded?.meets(x, y, z, r, h) ?? false);
 }
 
-/** Metres from a body that freePlace tries places at, finely at first, to SETTLE_REACH. */
+/** Metres from a body that freePlace tries places at, finely at first. */
 const RINGS = [0, 0.05, 0.1, 0.15, 0.25, 0.35, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 3.5, 4, 5, 6, 7, 8, 10, 12, 14, 16];
-export const SETTLE_REACH = RINGS[RINGS.length - 1]!;
 /** Places tried on each ring. */
 const ON_RING = 16;
 /** A body whose feet are within this of the ground under it is on the ground. */
@@ -124,7 +123,7 @@ const found = new Found();
 /**
  * The nearest free place (placeFree) to a body at (x, y, z) that it reaches by a straight line on which it is never more than
  * `climb` under the ground nor in a piece built by any team but `team`, so a body inside a piece of another team, or behind
- * one, is not set through it. Places are tried on rings out to SETTLE_REACH, on the ground for a body on the ground and else at
+ * one, is not set through it. Places are tried on rings out to 16 m, on the ground for a body on the ground and else at
  * its own height or on the ground above it, first on the side the deepest box it is in would push it out, and the nearest
  * by straight distance is taken. Fills `freeAt` and returns true, or false if there is none.
  */
