@@ -6,14 +6,37 @@ import type { VehicleSpec, VehicleState, VehicleSurface, VehicleWorld, WheelCont
 import type { CollisionWorld } from "./collide.ts";
 import { frame, frameAxes, frameOf, HALF_SIDE, sixtyOf } from "./frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "./ray.ts";
-import { Found, type StructureStore } from "./structures.ts";
+import { Found, type PartTable, type StructureStore } from "./structures.ts";
+import { capsuleKind } from "./collide.ts";
 import { vehicleSurfaceAt } from "./vehicle-surface.ts";
 
 export type VehicleSurfaceAt = (hit: number, ref: number, x: number, z: number) => VehicleSurface;
+
+/**
+ * Whether a structure of `kind` set at (sx, sy, sz) turned `syaw` would meet a vehicle's hull at (x, y, z) turned `yaw`
+ * radians: the hull as upright capsules of its half width along its length, and small ones in its corners, so a piece
+ * through its nose or boot is met as one through its middle.
+ */
+export function vehicleMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, spec: VehicleSpec, x: number, y: number, z: number, yaw: number, slack: number): boolean {
+  const sn = detSin(yaw), cs = detCos(yaw), w = spec.halfWidth, l = spec.halfLength, corner = Math.min(0.3, w / 2);
+  const along = Math.max(0, l - w), steps = Math.ceil(along / (w / 2));
+  // A point on the hull's long axis or in a corner, in the world: +X the left (cos, -sin), +Z forward (sin, cos).
+  const at = (lx: number, lz: number, r: number): boolean => capsuleKind(parts, kind, sx, sy, sz, syaw, x + cs * lx + sn * lz, y, z - sn * lx + cs * lz, r, spec.height, slack);
+  for (let i = -steps; i <= steps; i++) if (at(0, steps === 0 ? 0 : (along * i) / steps, w)) return true;
+  for (const lx of [w - corner, corner - w]) for (const lz of [l - corner, corner - l]) if (at(lx, lz, corner)) return true;
+  return false;
+}
 interface Bounds { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
 
 function overlaps(a: Bounds, b: Bounds): boolean {
   return a.minX < b.maxX && a.maxX > b.minX && a.minY < b.maxY && a.maxY > b.minY && a.minZ < b.maxZ && a.maxZ > b.minZ;
+}
+
+/** How far into each other two boxes are: the shortest push across the ground that parts them, 0 if they do not meet.
+ * Height is left out, as a hull's reach upward moves with its springs: a car rising on them goes no deeper into a wall. */
+function shared(a: Bounds, b: Bounds): number {
+  if (!overlaps(a, b)) return 0;
+  return Math.min(a.maxX - b.minX, b.maxX - a.minX, a.maxZ - b.minZ, b.maxZ - a.minZ);
 }
 
 function bounds(s: Readonly<VehicleState>, p: VehicleSpec): Bounds {
@@ -112,13 +135,19 @@ export class StaticVehicleWorld implements VehicleWorld {
         for (const z of [z0, z1]) { const x = z - diagonal; if (x >= x0 && x <= x1 && high(x, z)) return "terrain"; }
       }
     }
-    const structure = this.obstacle(this.world.structs, sweep);
+    const structure = this.obstacle(this.world.structs, sweep, a, b);
     if (structure !== null) return `structure:${structure}`;
-    const node = this.world.nodes ? this.obstacle(this.world.nodes, sweep) : null;
+    const node = this.world.nodes ? this.obstacle(this.world.nodes, sweep, a, b) : null;
     return node === null ? null : `node:${node}`;
   }
 
-  private obstacle(store: StructureStore, a: Bounds): number | null {
+  /**
+   * The lowest ref of a solid part the move meets, or null. A part the car's hull already overlaps where it starts (a
+   * piece built against a car turned across the grid, a static the map set under it) holds it only from going deeper:
+   * it may move so long as it overlaps that part no more, or it would be held there for good.
+   */
+  private obstacle(store: StructureStore, a: Bounds, from: Bounds, to: Bounds): number | null {
+    const meets = (part: Bounds): boolean => overlaps(a, part) && (!overlaps(from, part) || shared(to, part) > shared(from, part) + 1e-9);
     const n = store.query(a.minX, a.minZ, a.maxX, a.maxZ, this.found, a.minY, a.maxY);
     let hit: number | null = null;
     for (let i = 0; i < n; i++) {
@@ -138,7 +167,7 @@ export class StaticVehicleWorld implements VehicleWorld {
         const hx = (Math.abs(cs) * box[j + 3]! + Math.abs(sn) * box[j + 5]!) * stretch;
         const hz = (Math.abs(sn) * box[j + 3]! + Math.abs(cs) * box[j + 5]!) * stretch;
         const hy = box[j + 4]!;
-        if (overlaps(a, { minX: cx - hx, maxX: cx + hx, minY: cy - hy, maxY: cy + hy, minZ: cz - hz, maxZ: cz + hz })) hit = ref;
+        if (meets({ minX: cx - hx, maxX: cx + hx, minY: cy - hy, maxY: cy + hy, minZ: cz - hz, maxZ: cz + hz })) hit = ref;
       }
       const hulls = store.parts.hulls;
       if (!hulls) continue;
@@ -157,7 +186,7 @@ export class StaticVehicleWorld implements VehicleWorld {
           b.minY = Math.min(b.minY, vy); b.maxY = Math.max(b.maxY, vy);
           b.minZ = Math.min(b.minZ, vz); b.maxZ = Math.max(b.maxZ, vz);
         }
-        if (overlaps(a, b)) hit = ref;
+        if (meets(b)) hit = ref;
       }
     }
     return hit;

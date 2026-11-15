@@ -30,6 +30,38 @@ function fire(h: Harness, index: number, times: number): void {
   }
 }
 
+test("a piece cannot be built through a car's nose or boot, and one already through it holds it only from going deeper", () => {
+  const h = new Harness({}, 5, 60, { dev: true, clips: NO_CLIPS, rigs: [] });
+  try {
+    const ada = h.join("ada");
+    h.run(1200);
+    h.say(ada, "enablecheats");
+    const x = h.world.spawn.x, z = h.world.spawn.z - 8;
+    h.say(ada, `tp ${x + 1.6} ${z + 0.12}`);
+    h.run(500);
+    const car = h.host.spawnVehicle("core:compact", x, z, 0, 0), ents = h.world.ents, me = h.client(ada)!;
+    h.run(300);
+    const pillar = h.reg.index.get("core:pillar_wood")!, py = ents.y[car]! + h.world.structs.halfYOf(pillar);
+    const build = (h.host as unknown as { build: { bodyIn(kind: number, x: number, y: number, z: number, yaw: number): boolean } }).build;
+    for (const along of [-1.7, 0, 1.7]) expect(build.bodyIn(pillar, x, py, z + along, 0)).toBe(true);
+    expect(build.bodyIn(pillar, x, py, z - 2.6, 0)).toBe(false);
+    // Through the boot anyway, as a map or an older build could leave one.
+    expect(h.world.structs.add(pillar, x, py, z - 1.7, 0, 0, 10000)).toBeGreaterThanOrEqual(0);
+    expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);
+    h.run(800);
+    expect(me.drive).toBe(car);
+    const z0 = ents.z[car]!;
+    h.pilots[0]!.moveZ = -127;
+    h.run(1500);
+    expect(ents.z[car]!).toBeGreaterThan(z0 - 0.05);
+    h.pilots[0]!.moveZ = 127;
+    h.run(2000);
+    expect(ents.z[car]!).toBeGreaterThan(z0 + 3);
+  } finally {
+    h.host.shutdown();
+  }
+}, 60000);
+
 test("a passenger shooting out of the window does not hit the car it sits in", () => {
   const { h, sessions: [driver, passenger] } = setup(["driver", "passenger"]);
   try {
