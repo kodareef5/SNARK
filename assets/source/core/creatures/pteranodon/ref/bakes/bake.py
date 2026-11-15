@@ -36,7 +36,7 @@ def build():
     sys.path.insert(0, FOLDER)
     bpy.ops.wm.read_factory_settings(use_empty=True)
     bpy.context.scene.render.fps = 30
-    for name in ("rig.py", "model.py"):
+    for name in ("rig.py", "model.py", "saddle.py"):
         runpy.run_path(os.path.join(FOLDER, name), run_name="__main__")
     import model
     return bpy.data.objects["pteranodon_model"], model
@@ -86,9 +86,9 @@ def flow(model, obj):
     return out
 
 
-def surface(model, obj, fl):
+def surface(model, obj, fl, offset=0):
     """Every face's corners: texture coordinate, position in the animal's frame, normal, and the flow as a direction in
-    the picture (how far along u and v)."""
+    the picture (how far along u and v). `offset` is added to the material index."""
     mesh = obj.data
     uv = mesh.uv_layers.active.data
     reg = mesh.attributes["region"].data
@@ -115,13 +115,14 @@ def surface(model, obj, fl):
             ab = np.linalg.lstsq(J, f3, rcond=None)[0]
             ab /= max(np.linalg.norm(ab), 1e-12)
             f2.append((float(ab[0]), float(ab[1])))
-        faces.append({"m": p.material_index, "r": reg[p.index].value, "i": names[isl[p.index].value],
+        faces.append({"m": p.material_index + offset, "r": reg[p.index].value, "i": names[isl[p.index].value],
                       "uv": q, "p": [list(map(float, x)) for x in pos], "n": [list(map(float, x)) for x in nor], "f": f2})
     return faces
 
 
-def occlusion(obj, material, size, samples, name):
-    """Ambient occlusion of one material's faces from the whole animal at rest, baked into that material's texture."""
+def occlusion(obj, material, size, samples, name, others=()):
+    """Ambient occlusion of one material's faces from the whole animal at rest (and `others` in the scene, such as the
+    saddle), baked into that material's texture."""
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
     scene.cycles.device = "CPU"
@@ -144,29 +145,44 @@ def occlusion(obj, material, size, samples, name):
     other.image = bpy.data.images.new("unused", 8, 8)
     blank.node_tree.nodes.active = other
     copy.data.materials.clear()
-    for k in range(2):
+    for k in range(len(obj.data.materials)):
         copy.data.materials.append(bake if k == material else blank)
+    shadows = []
+    for other in others:
+        s = other.copy()
+        s.data = other.data.copy()
+        s.modifiers.clear()
+        s.parent = None
+        s.matrix_world = other.matrix_world
+        scene.collection.objects.link(s)
+        shadows.append(s)
     for o in scene.objects:
         o.select_set(o == copy)
-        o.hide_render = o != copy
+        o.hide_render = o != copy and o not in shadows
     bpy.context.view_layer.objects.active = copy
     bpy.ops.object.bake(type="AO", margin=8, margin_type="EXTEND", use_clear=True)
     img.filepath_raw = os.path.join(HERE, name + ".png")
     img.file_format = "PNG"
     img.save()
     bpy.data.objects.remove(copy)
+    for s in shadows:
+        bpy.data.objects.remove(s)
 
 
 def main():
     a = args()
     obj, model = build()
+    saddle = bpy.data.objects["saddle"]
     fl = flow(model, obj)
-    faces = surface(model, obj, fl)
+    faces = surface(model, obj, fl) + surface(model, saddle, np.zeros((len(saddle.data.vertices), 3)), offset=2)
     with open(SCRATCH, "w") as fh:
-        json.dump({"faces": faces, "materials": [model.BODY_MAT, model.WING_MAT], "wing_uv": model.WING_UV}, fh)
+        json.dump({"faces": faces, "materials": [model.BODY_MAT, model.WING_MAT, "pteranodon_saddle"],
+                   "wing_uv": model.WING_UV}, fh)
     if a["occlusion"]:
         occlusion(obj, 0, a["size"], a["samples"], "pteranodon_occlusion")
         occlusion(obj, 1, a["size"], a["samples"], "pteranodon_wing_occlusion")
+        # the saddle's own, in the shade of the animal it sits on
+        occlusion(saddle, 0, a["size"] // 2, a["samples"], "pteranodon_saddle_occlusion", others=(obj,))
     print(f"bake: {len(faces)} faces; now run python3 {os.path.join(HERE, 'draw.py')}")
 
 
