@@ -1129,7 +1129,8 @@ if (import.meta.main) {
     // The one near, ridden, at each level of its mesh in turn, side by side, on one tier.
     const tier = graphics ?? "medium";
     const files = await gameFiles(source, undefined, extra);
-    const meshId = saddles === "saddled" || saddles === "both" ? `${species}/saddled` : species;
+    // The saddled model where the pack has one, which is drawn in place of the body; else the body, with its worn saddle.
+    const meshId = files.manifest.meshes.some((m) => m.id === `${species}/saddled`) ? `${species}/saddled` : species;
     const mesh = files.manifest.meshes.findIndex((m) => m.id === meshId);
     const count = files.manifest.meshes[mesh]!.levels.length;
     const [W, H] = [w! * count, h!];
