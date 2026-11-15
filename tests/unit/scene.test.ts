@@ -341,8 +341,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // model, so that its grey box left this pack. It was 946480213 until low poly's sun stood where the lit tiers' does
   // and the far wood was drawn (D260): the sun alone gives 1662333099, and less the far wood's draws, buffers and the
   // palm's level, every frame is as with the sun alone but for the first frame's level uploads, where the tree's comes
-  // first, since the far wood draws it before the near store does.
-  expect(hash).toBe(133088346);
+  // first, since the far wood draws it before the near store does. It was 133088346 until the live oak grew from 0.85 to
+  // 1.2 of its model and the palm from 0.85 to 1.15, not both from 0.8 to 1.25, at which the trees near and in the far wood
+  // are drawn: with those two ranges as they were it is that again.
+  expect(hash).toBe(1199806411);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
