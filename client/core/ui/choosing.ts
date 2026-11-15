@@ -2,15 +2,16 @@
 // Why it chooses (it died, it arrived from another server, it travels from a bed) changes only the words. A row or a place on
 // the map picks one, and the button asks to rise there. The server decides.
 
-import { CHOOSE_ARRIVED, CHOOSE_TRAVEL, CMD_RESPAWN, SESSION_DEAD } from "../../../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_TRAVEL, CMD_RESPAWN, MAX_NAME_BYTES, SESSION_DEAD } from "../../../shared/net/protocol.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { latLonText, latOf, lonOf } from "../../../shared/world/coords.ts";
 import type { HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { WHOLE_MAP } from "../tactical.ts";
 import { IMAGE_MAP } from "./hud.ts";
-import { K_BUTTON, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BUTTON, S_FRAME, S_LABEL, S_MARK_DEATH, S_MARK_SELF, S_MARK_SPAWN, S_PANEL, S_TITLE } from "./style.ts";
+import { K_BUTTON, K_IMAGE, K_INPUT, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import { S_BUTTON, S_FRAME, S_INPUT, S_LABEL, S_MARK_DEATH, S_MARK_SELF, S_MARK_SPAWN, S_PANEL, S_TITLE } from "./style.ts";
+import { fitBytes } from "./tame.ts";
 
 export const KEY_CHOOSE_PANEL = 900;
 export const KEY_CHOOSE_TITLE = 901;
@@ -18,6 +19,8 @@ export const KEY_CHOOSE_TITLE = 901;
 export const KEY_CHOOSE_NOTE = 902;
 export const KEY_CHOOSE_RISE = 903;
 export const KEY_CHOOSE_MAP = 904;
+/** The field that keeps to the places whose names hold what is typed in it (ARK 265.5). */
+export const KEY_CHOOSE_FILTER = 905;
 /** One for each row of the page shown. */
 export const KEY_CHOOSE_ROW = 910;
 /** Previous page, next page, and "page 2 of 5". */
@@ -46,6 +49,11 @@ export class ChoosingScreen {
   pages = 1;
   /** The place picked, by its index in the list, or -1. */
   picked = -1;
+  /** What the filter field holds, and whether it has the keyboard. */
+  filter = "";
+  filtering = false;
+  /** Indices of the places the list shows, as of the last build. */
+  private shown: number[] = [];
   /** The list it was picked from, so a new list does not keep a pick of another place. */
   private pickedList = -1;
   /** Where the map was drawn at the last build, in interface units, and the part of the map it showed. */
@@ -58,7 +66,9 @@ export class ChoosingScreen {
       this.pickedList = session.placesList;
       this.picked = -1;
     }
-    this.pages = Math.max(1, Math.ceil(points.length / ROWS));
+    const want = this.filter.trim().toLowerCase();
+    this.shown = points.flatMap((p, i) => (want === "" || p.name.toLowerCase().includes(want) ? [i] : []));
+    this.pages = Math.max(1, Math.ceil(this.shown.length / ROWS));
     if (this.page >= this.pages) this.page = this.pages - 1;
     const [title, rise] = WORDS[session.choosing] ?? DIED_WORDS;
     const tick = session.serverTick;
@@ -67,7 +77,7 @@ export class ChoosingScreen {
     const rowH = 30;
     const pad = 12;
     const listW = 290;
-    const listH = titleH + 8 + ROWS * (rowH + 4) + (rowH + 4) + labelH + 8 + rowH;
+    const listH = titleH + 8 + (rowH + 8) + ROWS * (rowH + 4) + (rowH + 4) + labelH + 8 + rowH;
     // The map beside the list where the window is wide enough, else above it.
     const wide = f.width >= listW + 220 + pad * 3 + 16;
     const size = Math.max(64, Math.floor(wide ? Math.min(f.height - 16 - pad * 2, f.width - listW - pad * 3 - 16) : Math.min(f.width - 16 - pad * 2, f.height - 16 - pad * 3 - listH)));
@@ -107,13 +117,19 @@ export class ChoosingScreen {
     const lw = wide ? listW : w - pad * 2;
     f.text(KEY_CHOOSE_TITLE, lx, ly, lw, S_TITLE, title);
     ly += titleH + 8;
+    const field = f.add(KEY_CHOOSE_FILTER, K_INPUT, lx, ly, lw, rowH, S_INPUT);
+    field.text = this.filtering || this.filter !== "" ? this.filter : "find a place by its name";
+    field.interactive = true;
+    field.focus = this.filtering;
+    ly += rowH + 8;
     const first = this.page * ROWS;
-    const rows = Math.min(ROWS, points.length - first);
+    const rows = Math.min(ROWS, this.shown.length - first);
     for (let i = 0; i < rows; i++) {
-      const p = points[first + i]!;
+      const at = this.shown[first + i]!;
+      const p = points[at]!;
       const b = f.add(KEY_CHOOSE_ROW + i, K_BUTTON, lx, ly + i * (rowH + 4), lw, rowH, S_BUTTON);
       const wait = waitText(p.readyAt, tick);
-      b.text = `${first + i === this.picked ? "> " : ""}${p.name}${wait !== "" ? `  (${wait})` : ""}`;
+      b.text = `${at === this.picked ? "> " : ""}${p.name}${wait !== "" ? `  (${wait})` : ""}`;
       b.interactive = true;
     }
     ly += ROWS * (rowH + 4);
@@ -134,19 +150,41 @@ export class ChoosingScreen {
     ly += labelH + 8;
     const go = f.add(KEY_CHOOSE_RISE, K_BUTTON, lx, ly, lw, rowH, S_BUTTON);
     go.text = rise;
-    go.interactive = p !== undefined;
+    // A place that still waits is not a button to press (ARK 179.0).
+    go.interactive = p !== undefined && wait === "";
+  }
+
+  edit(value: string): void {
+    this.filter = fitBytes(value, MAX_NAME_BYTES);
+    this.page = 0;
+  }
+
+  /** While the filter has the keyboard: Enter keeps what it holds, Escape empties it, and every other key is typing. */
+  key(code: string, down: boolean, repeat: boolean): boolean {
+    if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape") return false;
+    if (down && !repeat) {
+      if (code === "Escape") this.edit("");
+      this.filtering = false;
+    }
+    return true;
   }
 
   /** `x` and `y` are where the pointer went down, in interface units. Returns true if the key was one of this screen's. */
   click(key: number, x: number, y: number, session: ClientSession): boolean {
     if (session.sessionState !== SESSION_DEAD) return false;
     const points = session.respawnPoints;
+    if (key === KEY_CHOOSE_FILTER) {
+      this.filtering = true;
+      return true;
+    }
+    this.filtering = false;
     if (key === KEY_CHOOSE_PAGE || key === KEY_CHOOSE_PAGE + 1) {
       this.page = Math.max(0, Math.min(this.pages - 1, this.page + (key === KEY_CHOOSE_PAGE ? -1 : 1)));
       return true;
     }
     if (key === KEY_CHOOSE_RISE) {
-      if (points[this.picked]) {
+      const p = points[this.picked];
+      if (p && waitText(p.readyAt, session.serverTick) === "") {
         const i = this.picked;
         session.command(CMD_RESPAWN, (w) => (w.u8(i), w.u8(session.placesList)));
       }
@@ -171,14 +209,15 @@ export class ChoosingScreen {
       return true;
     }
     const row = key - KEY_CHOOSE_ROW;
-    const i = this.page * ROWS + row;
-    if (row < 0 || row >= ROWS || i >= points.length) return false;
+    const i = this.shown[this.page * ROWS + row];
+    if (row < 0 || row >= ROWS || i === undefined) return false;
     this.pick(i);
     return true;
   }
 
   private pick(i: number): void {
     this.picked = i;
-    this.page = Math.floor(i / ROWS);
+    const at = this.shown.indexOf(i);
+    if (at >= 0) this.page = Math.floor(at / ROWS);
   }
 }
