@@ -143,7 +143,8 @@ export const terrainCheck: LitCheck = {
       shot.add(p, name !== "");
       if (name === "") return p;
       let fine = 0;
-      for (let t = 0; t < p.tileCount; t++) if (p.tileSource[t * 4 + 3] === SOURCE_WINDOW) fine++;
+      // Tiles drawn in a range; one in none only casts a shadow.
+      for (let t = 0; t < p.tileCount; t++) if (p.tileSource[t * 4 + 3] === SOURCE_WINDOW && (p.tilePass[t]! & 3) !== 0) fine++;
       made.held.push({ key: shot.key, frame: shot.frames.length - 1, name, pic: picture(raster, p, cam), fine, within: cam.fovY < 0.5 ? Infinity : WIDE });
       return p;
     };

@@ -217,7 +217,7 @@ export const depthCheck: LitCheck = {
         shot.add(p, true);
         if (open) continue;
         let both = 0;
-        for (let t = 0; t < p.tileCount; t++) if (p.tilePass[t] === ((1 << PASS_NEAR) | (1 << PASS_FAR))) both++;
+        for (let t = 0; t < p.tileCount; t++) if ((p.tilePass[t]! & ((1 << PASS_NEAR) | (1 << PASS_FAR))) === ((1 << PASS_NEAR) | (1 << PASS_FAR))) both++;
         made.both = Math.min(made.both, both);
         for (let x = 0; x < SEAM_W; x++) for (let y = 0; y + 1 < SEAM_H; y++) if (along(x, y) > SPLIT !== along(x, y + 1) > SPLIT) made.crossing++;
       }

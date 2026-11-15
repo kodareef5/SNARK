@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_FAR_SEE, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
+import { MAX_DRAWS, PASS_FAR, PASS_NEAR, STEP_FAR_SEE, TILE_CASTS, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -161,7 +161,8 @@ test("along a walk two ranges keep the draws and tiles one range keeps, and a fu
     expect(listB).toEqual(listA);
     doubled += b.drawCount - listB.length;
     expect(tiles(b)).toEqual(tiles(a));
-    expect([...b.tilePass.subarray(0, b.tileCount)].every((r) => r === NEAR || r === FAR || r === (NEAR | FAR))).toBe(true);
+    // A tile in no range is one only shadows need (TILE_CASTS).
+    expect([...b.tilePass.subarray(0, b.tileCount)].every((r) => (r & (NEAR | FAR)) !== 0 || r >= TILE_CASTS)).toBe(true);
     expect([a.dropped, b.dropped]).toEqual([0, 0]);
   }
   expect(doubled).toBeGreaterThan(0);
