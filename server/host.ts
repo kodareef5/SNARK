@@ -16,6 +16,7 @@ import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { growthStep, youngShare } from "../shared/sim/breeding.ts";
+import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
@@ -268,6 +269,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   world.dayOffset = offsetForHour(world.tick, 9, world.clock);
   if (opts.clips) world.anim = new HumanAnim(opts.clips);
   if (opts.clips && opts.rigs) world.rigs = buildRigs(opts.rigs, opts.clips);
+  world.anims = creatureAnims(reg, (d) => world.rigs.get(d.mesh));
   let settingsAt: { dirty: boolean; version: number } | null = null;
   let settingsToldAt = -1;
   const records = new Records(opts.worldId ?? 1);
@@ -461,6 +463,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     bus.after(BODY_OUT, { pid: rec.pid, out });
     refreshBody(rec);
     taming.out(rec, out);
+    const e = records.entOf.get(rec.pid);
+    if (e !== undefined) creatures.knocked(e, out);
   };
   survival.onInjured = (rec, on) => void (on ? buffs.give(rec, injured) : buffs.take(rec, injured));
   buffs.onChange = (rec) => refreshBody(rec);

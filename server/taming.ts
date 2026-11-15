@@ -282,6 +282,8 @@ export class Taming {
     const v = rec.vitals!;
     const hungry = v.at(V_FOOD, world.tick) <= v.max[V_FOOD]! - Math.round(food * 1e6);
     if (hungry && items.burnItem(rec, item, 1)) {
+      const e = records.entOf.get(pid);
+      if (e !== undefined) this.ctx.creatures.ate(e);
       survival.add(rec, V_FOOD, food);
       const speed = rules.num("TamingSpeedMultiplier");
       tame.affinity += pieceWorth(affinity, speed);

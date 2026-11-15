@@ -15,8 +15,9 @@ export class Past {
   z = 0;
   /** 1/65536 turns. */
   yaw = 0;
-  /** Packed pose state. See `AnimState.pack`. */
+  /** Packed pose state and cues. See `AnimState.pack` and `packCue`. */
   anim = 0;
+  cue = 0;
 }
 
 export class History {
@@ -35,6 +36,11 @@ export class History {
   private yaw: Uint16Array;
   private anim: Uint32Array;
   private gen: Uint16Array;
+  /**
+   * The cues of each tracked body that has had any in the last HISTORY_TICKS, by entity, one a tick. Cues are few and
+   * change seldom, so a body without any keeps none. Each is told of by `cued`.
+   */
+  private readonly cues = new Map<number, Uint32Array>();
 
   constructor(ents: EntityStore, capacity = 256) {
     this.ents = ents;
@@ -67,12 +73,19 @@ export class History {
     this.rowOf[e] = r;
     this.entOf[r] = e;
     for (let t = 0; t < HISTORY_TICKS; t++) this.write(r * HISTORY_TICKS + t, e);
+    if (this.ents.cue[e] !== 0) this.cues.set(e, new Uint32Array(HISTORY_TICKS).fill(this.ents.cue[e]!));
+  }
+
+  /** Call when a body's cues (EntityStore.cue) change. */
+  cued(e: number): void {
+    if (this.rowOf[e]! >= 0 && !this.cues.has(e)) this.cues.set(e, new Uint32Array(HISTORY_TICKS));
   }
 
   /** Call when it goes to sleep. record() drops destroyed entities itself. */
   untrack(e: number): void {
     const r = this.rowOf[e]!;
     if (r < 0) return;
+    this.cues.delete(e);
     this.rowOf[e] = -1;
     const last = --this.rows;
     if (r === last) return;
@@ -101,6 +114,11 @@ export class History {
       if ((flags[e]! & F_ALIVE) === 0) this.untrack(e);
       else this.write(r * HISTORY_TICKS + slot, e);
     }
+    // A body's cues are let go once it has had none for the whole window.
+    for (const [e, ring] of this.cues) {
+      ring[slot] = this.ents.cue[e]!;
+      if (ring[slot] === 0 && ring.every((c) => c === 0)) this.cues.delete(e);
+    }
   }
 
   has(tick: number): boolean {
@@ -127,6 +145,7 @@ export class History {
       out.z = ents.z[e]!;
       out.yaw = ents.yaw[e]!;
       out.anim = ents.anim[e]!;
+      out.cue = ents.cue[e]!;
       return true;
     }
     const i = r * HISTORY_TICKS + (tick & MASK);
@@ -136,6 +155,7 @@ export class History {
     out.z = this.z[i]!;
     out.yaw = this.yaw[i]!;
     out.anim = this.anim[i]!;
+    out.cue = this.cues.get(e)?.[tick & MASK] ?? 0;
     return true;
   }
 
@@ -152,7 +172,10 @@ export class History {
     if (turn > 32768) turn -= 65536;
     else if (turn < -32768) turn += 65536;
     out.yaw = (out.yaw + Math.round(turn * k)) & 0xffff;
-    if (k >= 0.5) out.anim = later.anim;
+    if (k >= 0.5) {
+      out.anim = later.anim;
+      out.cue = later.cue;
+    }
     return true;
   }
 

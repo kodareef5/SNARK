@@ -184,16 +184,16 @@ export class Riding {
     const e = c.drive;
     this.note(ride, e);
     const kind = ents.kind[e]!;
-    const def = world.reg.defs[kind];
-    const rig = def?.type === "species" ? world.rigs.get(def.mesh) : undefined;
+    const anim = world.anims[kind];
+    const rig = anim?.rig;
     const seat = this.seat;
     const socket = rig?.sockets.get("seat");
-    if (rig && socket) {
+    if (anim && rig && socket) {
       // Pose the mount as the clients do, so the seat is where they draw it.
       const st = this.st;
-      st.unpack(ents.anim[e]!);
+      st.unpack(ents.anim[e]!, ents.cue[e]!);
       st.seed = bodySeed(e);
-      creaturePose(rig, st, world.tick, world.reg.runAt[kind]!, rig.a);
+      creaturePose(anim, st, world.tick, rig.a);
       solve(rig, rig.a, rig.solved);
       boneToModel(rig.solved, socket.bone, socket.x, socket.y, socket.z, seat);
     } else {

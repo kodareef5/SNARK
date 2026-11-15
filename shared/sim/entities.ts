@@ -71,6 +71,8 @@ export class EntityStore {
   pitch: Int16Array;
   /** The pose, packed as shared/net/view.ts sends it. Whoever moves the body writes it. */
   anim: Uint32Array;
+  /** A creature's cues (AnimState.packCue), sent beside the pose. The server's Creatures sets and clears them. */
+  cue: Uint32Array;
   /** The rest of the predicted state. See `Body` in character.ts. */
   mode: Uint8Array;
   stance: Uint8Array;
@@ -138,6 +140,7 @@ export class EntityStore {
     this.yaw = new Uint16Array(cap);
     this.pitch = new Int16Array(cap);
     this.anim = new Uint32Array(cap);
+    this.cue = new Uint32Array(cap);
     this.pid = new Float64Array(cap);
     this.mode = new Uint8Array(cap);
     this.stance = new Uint8Array(cap);
@@ -198,6 +201,7 @@ export class EntityStore {
     this.yaw[i] = 0;
     this.pitch[i] = 0;
     this.anim[i] = 0;
+    this.cue[i] = 0;
     this.pid[i] = 0;
     this.mode[i] = MODE_WALK;
     this.stance[i] = 0;
@@ -244,6 +248,7 @@ export class EntityStore {
     this.yaw = wider(this.yaw, cap);
     this.pitch = wider(this.pitch, cap);
     this.anim = wider(this.anim, cap);
+    this.cue = wider(this.cue, cap);
     this.pid = wider(this.pid, cap);
     this.mode = wider(this.mode, cap);
     this.stance = wider(this.stance, cap);

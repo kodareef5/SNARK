@@ -1,10 +1,11 @@
 // Benchmark rows for bodies that die and for gaits played by the ground covered: 64 ragdolls falling at once and lying
-// still, and what keeping a gait adds to posing 500 walking creatures. Medians of many frames; a busy machine moves them.
+// still, what keeping a gait adds to posing 500 walking creatures, and 500 dodos standing about. Medians of many frames;
+// a busy machine moves them.
 
 import { Pose, sampleClip } from "../../shared/anim/clip.ts";
-import { advanceCreature, creaturePose } from "../../shared/anim/creature.ts";
+import { CreatureAnim, advanceCreature, creaturePose } from "../../shared/anim/creature.ts";
 import { Gait } from "../../shared/anim/gait.ts";
-import { AnimState, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
+import { AnimState, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
@@ -18,7 +19,7 @@ export function benchRagdoll(section: (title: string) => void, record: (name: st
   section("Ragdolls and gaits");
   const pack = corePack();
   const rigs = buildRigs(pack.header.rigs, pack.clips);
-  const kinds = ["core:raptor", "core:parasaur"].map((id) => rigs.get(id)!).filter((r) => r.ragdoll && r.death);
+  const kinds = ["core:raptor", "core:parasaur"].map((id) => new CreatureAnim(rigs.get(id)!, 4, 0)).filter((a) => a.rig.ragdoll && a.death);
   if (kinds.length === 0) return;
   // Rolling ground, two chunks a side, and nothing built on it.
   const dims = { chunksX: 4, chunksZ: 4 };
@@ -26,12 +27,12 @@ export function benchRagdoll(section: (title: string) => void, record: (name: st
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 10 + 3 * Math.sin(i * 0.2) * Math.cos(j * 0.15));
   const none = new Float32Array(1);
   const world = { hf, structs: new StructureStore(dims, none, none, none) };
-  const limp = kinds.map((rig) => {
+  const limp = kinds.map(({ rig, death }) => {
     const pose = new Pose(rig.bones);
     const [now, before] = [new Solved(rig.bones), new Solved(rig.bones)];
-    sampleClip(rig.death!, rig.ragdoll!.limp, pose);
+    sampleClip(death!, rig.ragdoll!.limp, pose);
     solve(rig, pose, now);
-    sampleClip(rig.death!, rig.ragdoll!.limp - 1, pose);
+    sampleClip(death!, rig.ragdoll!.limp - 1, pose);
     solve(rig, pose, before);
     return { rig, now, before };
   });
@@ -77,16 +78,17 @@ export function benchRagdoll(section: (title: string) => void, record: (name: st
     for (let f = 0; f < frames; f++) {
       const t = performance.now();
       for (let i = 0; i < n; i++) {
-        const rig = kinds[i % kinds.length]!;
+        const anim = kinds[i % kinds.length]!;
+        const rig = anim.rig;
         st.speed = 2 + (i % 11);
         st.seed = bodySeed(i);
         const tick = 1000 + f / 2;
         if (kept) {
           const g = gaits.get(i) ?? gaits.set(i, new Gait()).get(i)!;
           const along = ((st.speed * SPEED_STEP * f) / 60) % 1000;
-          advanceCreature(rig, g, st, tick, 4, i * 3, along, 0, 1);
-          creaturePose(rig, st, tick, 4, rig.a, g);
-        } else creaturePose(rig, st, tick, 4, rig.a);
+          advanceCreature(anim, g, st, tick, i * 3, along, 0, 1);
+          creaturePose(anim, st, tick, rig.a, g);
+        } else creaturePose(anim, st, tick, rig.a);
         solve(rig, rig.a, rig.solved);
       }
       times.push(performance.now() - t);
@@ -100,4 +102,29 @@ export function benchRagdoll(section: (title: string) => void, record: (name: st
   record("posing 500 creatures by the tick, median", byTick, "ms", null);
   record("posing them by a gait kept for each, median", byGround, "ms", null);
   record("what keeping the gaits adds", ((byGround - byTick) / byTick) * 100, "%", null);
+
+  // 500 dodos standing about, each in its idle or one of its idles, a third of them flinching, by the tick.
+  const dodo = rigs.get("core:dodo");
+  if (!dodo) return;
+  const birds = new CreatureAnim(dodo, 1, 3);
+  const standing = (frames: number): number[] => {
+    const times: number[] = [];
+    for (let f = 0; f < frames; f++) {
+      const t = performance.now();
+      for (let i = 0; i < n; i++) {
+        st.unpack(0);
+        st.seed = bodySeed(i);
+        if (i % 3 === 0) {
+          st.layer = LAYER_FLINCH;
+          st.layerStart = (1000 - (i % 14)) & 255;
+        }
+        creaturePose(birds, st, 1000 + f / 2, dodo.a);
+        solve(dodo, dodo.a, dodo.solved);
+      }
+      times.push(performance.now() - t);
+    }
+    return times;
+  };
+  standing(30);
+  record("posing 500 dodos standing, a third flinching, median", median(standing(120)), "ms", null);
 }

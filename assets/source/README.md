@@ -84,7 +84,33 @@ The game reads these from the pack, so build the asset again (or
   out: as bodies of their own they shiver against the ground. `limp` is the
   frame of the death clip at which it goes limp, as it begins to fall; the
   ragdoll finishes the fall on whatever ground is there. Without `ragdoll`
-  the death clip plays and its last frame stays.
+  the death clip plays and its last frame stays. One that dies knocked out
+  goes limp as it lies.
+
+### What it plays
+
+The engine plays a clip by the name `clips` gives it, whatever action it is
+made from (`{ name: "attack", source: "peck" }`). The names are `RIG_CLIPS`
+in `shared/anim/rigs.ts`: `idle`, `walk`, `run`, `attack` (its bite, landing
+on the tick its content's `bite.lands` says), `swim` and `swim_idle`,
+`fall` and `land`, `turn`, `startled`, `flinch`, `call`, `torpor_in`,
+`torpor_idle`, `torpor_eat`, `torpor_out` and `death`. Each clip named
+`idle_` and a word (`idle_look`) plays now and then in place of a whole turn
+of the idle, as `call` does. Without a clip, what the creature does besides
+goes on, except that knocked out it falls as its death does and lies as
+that ends. `held`, `carried` and `jump` wait for a game that does them.
+
+- A one-shot is faded in over 6 ticks from what played before it and out
+  into what plays after, so frames that meet as the animators built them
+  (`torpor_in` ending where `torpor_idle` begins) show no seam.
+- `flinch` and `torpor_eat` are layers: each frame's turns are added to each
+  bone's own, over whatever plays. They start and end at rest and turn
+  nothing from the hips down; whatever they turn there is left out.
+- `turn` is a quarter turn to its left on the spot, its body turning as a
+  smooth step over the clip. It is played by the angle the body turns, and
+  mirrored, by bones named `_l` and `_r` or `.L` and `.R`, to turn right.
+- `swim` is a gait: give it a stated stride, or it plays at its own rate at
+  the species' swim speed.
 
 Its model is either `source: { raw: "..." }`, a file under `assets/raw`
 converted as it is, or `source: { scripts: [...] }`. Scripts run in order in

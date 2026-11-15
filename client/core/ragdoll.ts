@@ -1,14 +1,14 @@
 // Bodies that die. The server takes a dead creature out of the world at once, and a client's view says it died rather than
 // left (shared/net/view.ts). The body then plays its death clip where it was last drawn, goes limp as a ragdoll
-// (shared/anim/ragdoll.ts) at the frame its asset gives, and lies where it settles. The server has no corpse: this is a
-// drawing, nothing of it is sent anywhere, and two clients may see it lie differently.
+// (shared/anim/ragdoll.ts) at the frame its asset gives, and lies where it settles. One that dies knocked out goes limp as
+// it lies. The server has no corpse: this is a drawing, nothing of it is sent anywhere, and two clients may see it lie
+// differently.
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
-import { creaturePose } from "../../shared/anim/creature.ts";
+import { creaturePose, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
 import { AnimState, bodySeed } from "../../shared/anim/pose.ts";
 import { Ragdoll } from "../../shared/anim/ragdoll.ts";
-import type { Rig } from "../../shared/anim/rigs.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { youngScale } from "../../shared/sim/breeding.ts";
@@ -26,12 +26,6 @@ const FORGET = 320;
 /** Ticks between the snapshot that said a body died and the moment drawn when it leaves, either way. */
 const TOLD = 8;
 
-/** What a kind of creature needs to die: its rig, and where its run starts. Null for a kind that is simply gone. */
-export interface Mortal {
-  readonly rig: Rig;
-  readonly runAt: number;
-}
-
 export interface Corpse {
   readonly kind: number;
   readonly id: number;
@@ -44,6 +38,8 @@ export interface Corpse {
   readonly colors: Uint8Array;
   /** The tick the death clip starts at. */
   readonly born: number;
+  /** It died knocked out, and goes limp as it lay. */
+  readonly lying: boolean;
   /** Its last pose alive, its ragdoll once limp, and the pose to draw, solved, about (x, y, z). */
   readonly alive: Pose;
   ragdoll: Ragdoll | null;
@@ -64,6 +60,7 @@ class Seen {
   kind = new Uint16Array(64);
   at = new Float64Array(64 * 4);
   anim = new Uint32Array(64);
+  cue = new Uint32Array(64);
   size = new Float32Array(64);
   colors = new Uint8Array(64 * 6);
 
@@ -73,6 +70,7 @@ class Seen {
       this.kind = wider(this.kind);
       this.at = wider(this.at);
       this.anim = wider(this.anim);
+      this.cue = wider(this.cue);
       this.size = wider(this.size);
       this.colors = wider(this.colors);
     }
@@ -84,6 +82,7 @@ class Seen {
     this.at[n * 4 + 2] = r.z[i]!;
     this.at[n * 4 + 3] = r.yaw[i]!;
     this.anim[n] = r.anim[i]!;
+    this.cue[n] = r.cue[i]!;
     this.size[n] = size;
     this.colors.set(r.colors.subarray(i * 6, i * 6 + 6), n * 6);
   }
@@ -91,7 +90,7 @@ class Seen {
 
 export class Corpses {
   readonly list: Corpse[] = [];
-  private readonly mortal: readonly (Mortal | null)[];
+  private readonly mortal: readonly (CreatureAnim | null)[];
   private readonly birthScale: Float32Array;
   private was = new Seen();
   private now = new Seen();
@@ -100,8 +99,11 @@ export class Corpses {
   private readonly a: Pose[] = [];
   private readonly before = new Map<number, Solved>();
 
-  /** `mortal` is indexed by content kind. `birthScale` is the registry's, for the size of a young one. */
-  constructor(mortal: readonly (Mortal | null)[], birthScale: Float32Array) {
+  /**
+   * `mortal` is what each kind plays, indexed by content kind, null for a kind that is simply gone. `birthScale` is the
+   * registry's, for the size of a young one.
+   */
+  constructor(mortal: readonly (CreatureAnim | null)[], birthScale: Float32Array) {
     this.mortal = mortal;
     this.birthScale = birthScale;
   }
@@ -158,13 +160,13 @@ export class Corpses {
     const kind = was.kind[i]!;
     const m = this.mortal[kind]!;
     const rig = m.rig;
-    if (!rig.death && !rig.ragdoll) return;
+    if (!m.death && !rig.ragdoll) return;
     if (this.list.length >= MOST) this.list.shift();
     const st = this.st;
-    st.unpack(was.anim[i]!);
+    st.unpack(was.anim[i]!, was.cue[i]!);
     st.seed = bodySeed(was.id[i]!);
     const alive = new Pose(rig.bones);
-    creaturePose(rig, st, this.tick, m.runAt, alive, gaits.get(was.id[i]!) ?? null);
+    creaturePose(m, st, this.tick, alive, gaits.get(was.id[i]!) ?? null);
     const c: Corpse = {
       kind,
       id: was.id[i]!,
@@ -175,6 +177,7 @@ export class Corpses {
       size: was.size[i]!,
       colors: was.colors.slice(i * 6, i * 6 + 6),
       born: this.tick,
+      lying: st.out,
       alive,
       ragdoll: null,
       solved: new Solved(rig.bones),
@@ -189,11 +192,10 @@ export class Corpses {
     return (this.a[bones] ??= new Pose(bones));
   }
 
-  /** The pose `frame` ticks into dying: the death clip, blended in from the last pose alive. Without a clip, that pose. */
+  /** The pose `frame` ticks into dying: the death clip, blended in from the last pose alive. Without a clip, or lying, that pose. */
   private dying(c: Corpse, frame: number, out: Pose): void {
-    const rig = this.mortal[c.kind]!.rig;
-    const clip = rig.death;
-    if (!clip) {
+    const clip = this.mortal[c.kind]!.death;
+    if (!clip || c.lying) {
       blendPose(out, c.alive, c.alive, 0);
       return;
     }
@@ -205,19 +207,19 @@ export class Corpses {
     const rig = this.mortal[c.kind]!.rig;
     const def = rig.ragdoll;
     const frame = tick - c.born;
+    const limp = c.lying ? 0 : (def?.limp ?? 0);
     if (c.ragdoll) {
       if (c.ragdoll.step(world, seconds)) c.ragdoll.pose(c.solved);
       return;
     }
     const pose = this.posed(rig.bones);
-    if (!def || frame < def.limp) {
+    if (!def || frame < limp) {
       this.dying(c, frame, pose);
       solve(rig, pose, c.solved);
       return;
     }
     // Limp from the pose at the frame the asset gives, moving as the clip moved over the tick before it, so the first
     // frame of the ragdoll is that pose.
-    const limp = def.limp;
     const before = (this.before.get(rig.bones) ?? this.before.set(rig.bones, new Solved(rig.bones)).get(rig.bones))!;
     this.dying(c, limp > 0 ? limp - 1 : 0, pose);
     solve(rig, pose, before);
