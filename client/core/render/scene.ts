@@ -261,6 +261,7 @@ export class Scene {
     p.beginFrame();
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
+    p.tier = this.assets.tier;
     p.viewProj.set(cam.viewProj);
     p.nearViewProj.set(cam.nearViewProj);
     p.camX = cam.x;

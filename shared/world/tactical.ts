@@ -1,13 +1,18 @@
 // What a map shows of a chunk's structures without their pieces: a summary of 16 by 16 cells of 4 m, baked by one pure
-// function of the chunk's table, with coarser copies of 8, 16 and 32 m cells derived from it. Also the marks of friends far
-// away. Their wire layouts are documented at S_TACTICAL and S_MARKS in shared/net/protocol.ts.
+// function of the chunk's table, with coarser copies of 8, 16 and 32 m cells derived from it. The same bake keeps the far
+// cells, which draw bases on the horizon. Also the marks of friends far away. Their wire layouts are documented at
+// S_TACTICAL, S_FAR and S_MARKS in shared/net/protocol.ts.
 
+import type { Registry } from "../content/registry.ts";
 import { YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import type { BitReader, BitWriter } from "../net/codec.ts";
 import type { MapExtent } from "./coords.ts";
 import type { Heightfield } from "./heightfield.ts";
 import type { ChunkTable } from "./structures.ts";
+
+/** FarRadius's default, in metres: how far from a survivor every tribe's bases are sent as far cells. */
+export const FAR_RADIUS = 2048;
 
 /** Metres to a cell at level 0. Each level doubles it. */
 export const TACTICAL_CELL = 4;
@@ -45,9 +50,47 @@ export function levelFor(metres: number): number {
   return level;
 }
 
+/**
+ * A far cell's top above the ground at its middle, in a byte: 0 for an empty cell, then half metres to 64 m and 2 m steps
+ * to 318 m. A filled cell is at least half a metre.
+ */
+export function farTopByte(above: number): number {
+  if (above <= 64) return Math.max(1, Math.round(above * 2));
+  return Math.min(255, 128 + Math.round((above - 64) / 2));
+}
+
+export function farTopMetres(byte: number): number {
+  return byte <= 128 ? byte / 2 : 64 + (byte - 128) * 2;
+}
+
+/**
+ * What the far feed shows of a chunk: per cell of 4 m, row by row, the palette colour and top (farTopByte) of its tallest
+ * piece, defence or static. Containers, stations and beds are left out, and so is every owner.
+ */
+export class FarCells {
+  readonly tint = new Uint8Array(SIDE * SIDE);
+  readonly top = new Uint8Array(SIDE * SIDE);
+  filled = 0;
+
+  same(o: FarCells): boolean {
+    if (this.filled !== o.filled) return false;
+    for (let c = 0; c < SIDE * SIDE; c++) if (this.top[c] !== o.top[c] || this.tint[c] !== o.tint[c]) return false;
+    return true;
+  }
+
+  copy(o: FarCells): void {
+    this.tint.set(o.tint);
+    this.top.set(o.top);
+    this.filled = o.filled;
+  }
+}
+
 export class Summary {
   /** Counts the bakes that changed it. 0 is never baked. */
   version = 0;
+  /** The far cells, and the bakes that changed them, apart from the map's: each moves only when its own cells do. */
+  readonly far = new FarCells();
+  farVersion = 0;
   /** Per cell, level after level: the palette colour of its tallest piece, and the byte described at CELL_FILLED. */
   readonly tint = new Uint8Array(CELLS);
   readonly info = new Uint8Array(CELLS);
@@ -81,17 +124,38 @@ export class Summary {
   }
 }
 
-/** Per content index: a structure's half extents and its palette colour. */
+/** Per content index: a structure's half extents, its palette colour, and 1 if the far feed shows it. */
 export interface PieceShapes {
   readonly halfX: Float32Array;
   readonly halfY: Float32Array;
   readonly halfZ: Float32Array;
   readonly tint: Uint8Array;
+  readonly far: Uint8Array;
 }
 
-// Scratch for a bake: per cell, the top of its tallest piece and that piece's slot.
+/** The far feed shows pieces, defences and map statics, never a container, station or bed. */
+export function pieceShapes(reg: Registry): PieceShapes {
+  const tint = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0));
+  const far = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && (d.class === "piece" || d.class === "defence" || d.class === "static") ? 1 : 0));
+  return { halfX: reg.halfX, halfY: reg.halfY, halfZ: reg.halfZ, tint, far };
+}
+
+// Scratch for a bake: per cell, the top of its tallest piece and that piece's slot, and the same among what shows far.
 const top = new Float32Array(SIDE * SIDE);
 const who = new Int32Array(SIDE * SIDE);
+const farTop = new Float32Array(SIDE * SIDE);
+const farWho = new Int32Array(SIDE * SIDE);
+
+function keep(c: number, h: number, s: number, far: boolean): void {
+  if (who[c]! < 0 || h > top[c]!) {
+    top[c] = h;
+    who[c] = s;
+  }
+  if (far && (farWho[c]! < 0 || h > farTop[c]!)) {
+    farTop[c] = h;
+    farWho[c] = s;
+  }
+}
 
 /**
  * Summarises the chunk whose corner is (x0, z0) into `out`, every level. The same table gives the same summary on any
@@ -99,9 +163,10 @@ const who = new Int32Array(SIDE * SIDE);
  */
 export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: PieceShapes, hf: Heightfield, out: Summary): void {
   who.fill(-1);
+  farWho.fill(-1);
   if (t) {
     const { kind, x, y, z } = t;
-    const { halfX, halfY, halfZ } = shapes;
+    const { halfX, halfY, halfZ, far } = shapes;
     const inv = 1 / TACTICAL_CELL;
     for (let s = 0, high = t.high; s < high; s++) {
       const k = kind[s]!;
@@ -111,6 +176,7 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
       const hz = halfZ[k]!;
       const px = x[s]! - x0;
       const pz = z[s]! - z0;
+      const shown = far[k] === 1;
       if (hx <= SMALL_HALF && hz <= SMALL_HALF) {
         let cx = (px * inv) | 0;
         let cz = (pz * inv) | 0;
@@ -118,11 +184,7 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
         else if (cx >= SIDE) cx = SIDE - 1;
         if (cz < 0) cz = 0;
         else if (cz >= SIDE) cz = SIDE - 1;
-        const c = cz * SIDE + cx;
-        if (who[c]! < 0 || h > top[c]!) {
-          top[c] = h;
-          who[c] = s;
-        }
+        keep(cz * SIDE + cx, h, s, shown);
         continue;
       }
       // A wide piece fills the cells whose centres its turned box reaches, grown by half a cell.
@@ -140,26 +202,33 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
         for (let cx = cx0; cx <= cx1; cx++) {
           const dx = (cx + 0.5) * TACTICAL_CELL - px;
           if (Math.abs(dx * cs - dz * sn) >= hx + SMALL_HALF || Math.abs(dx * sn + dz * cs) >= hz + SMALL_HALF) continue;
-          const c = cz * SIDE + cx;
-          if (who[c]! < 0 || h > top[c]!) {
-            top[c] = h;
-            who[c] = s;
-          }
+          keep(cz * SIDE + cx, h, s, shown);
         }
       }
     }
   }
   const { tint, info, teams } = out;
+  const farCells = out.far;
   let teamCount = 0;
   let filled = 0;
+  let farFilled = 0;
   for (let c = 0; c < SIDE * SIDE; c++) {
     const s = who[c]!;
+    farCells.tint[c] = 0;
+    farCells.top[c] = 0;
     if (s < 0) {
       tint[c] = 0;
       info[c] = 0;
       continue;
     }
-    const above = top[c]! - hf.heightAt(x0 + ((c % SIDE) + 0.5) * TACTICAL_CELL, z0 + (Math.floor(c / SIDE) + 0.5) * TACTICAL_CELL);
+    const ground = hf.heightAt(x0 + ((c % SIDE) + 0.5) * TACTICAL_CELL, z0 + (Math.floor(c / SIDE) + 0.5) * TACTICAL_CELL);
+    const f = farWho[c]!;
+    if (f >= 0) {
+      farCells.tint[c] = shapes.tint[t!.kind[f]!]!;
+      farCells.top[c] = farTopByte(farTop[c]! - ground);
+      farFilled++;
+    }
+    const above = top[c]! - ground;
     let band = 0;
     while (band < BAND_TOPS.length && above > BAND_TOPS[band]!) band++;
     const team = t!.owner[s]!;
@@ -176,6 +245,7 @@ export function bakeChunk(t: ChunkTable | null, x0: number, z0: number, shapes: 
   teams.fill(0, teamCount);
   out.teamCount = teamCount;
   out.filled = filled;
+  farCells.filled = farFilled;
   coarsen(out);
 }
 
@@ -282,6 +352,46 @@ export function readCells(r: BitReader, out: Cells): number {
   if (r.overflow) return -1;
   out.level = level;
   out.teamCount = teamCount;
+  return chunk;
+}
+
+/** Writes S_FAR's fields after its type: all of a chunk's far cells, in at most 802 bytes. */
+export function writeFar(w: BitWriter, chunk: number, f: FarCells): void {
+  w.u16(chunk);
+  const { tint, top } = f;
+  for (let c = 0; c < SIDE * SIDE; ) {
+    const t = top[c]!;
+    const colour = tint[c]!;
+    let run = 1;
+    while (c + run < SIDE * SIDE && top[c + run] === t && tint[c + run] === colour) run++;
+    w.bits(run - 1, 8);
+    w.bool(t !== 0);
+    if (t !== 0) {
+      w.u8(colour);
+      w.u8(t);
+    }
+    c += run;
+  }
+}
+
+/** Reads what writeFar wrote. Returns the chunk, or -1 if the message is malformed, and then `out` holds nothing of use. */
+export function readFar(r: BitReader, out: FarCells): number {
+  const chunk = r.u16();
+  let c = 0;
+  let filled = 0;
+  while (c < SIDE * SIDE && !r.overflow) {
+    const run = r.bits(8) + 1;
+    const on = r.bool();
+    const colour = on ? r.u8() : 0;
+    const t = on ? r.u8() : 0;
+    if (c + run > SIDE * SIDE || (on && t === 0)) return -1;
+    out.tint.fill(colour, c, c + run);
+    out.top.fill(t, c, c + run);
+    if (on) filled += run;
+    c += run;
+  }
+  if (r.overflow) return -1;
+  out.filled = filled;
   return chunk;
 }
 

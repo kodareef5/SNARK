@@ -20,6 +20,7 @@ import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
 import { HudModel, fillAction, fillBuffs, fillHotbar, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
+import { baseReach } from "./farcells.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
@@ -564,6 +565,7 @@ export class App {
     this.ui.settings.kept = keptLine(kept);
     this.scene.assets.tier = tierOf(this.ui.settings.tier);
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
+    session.askFar(baseReach(this.scene.assets.tier));
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);
     this.feedback.absorb(session, this.reg, nowMs);

@@ -5,6 +5,7 @@ import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { INSTANCE_BYTES } from "../../../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import type { AssetUpload } from "../assets/residency.ts";
+import { DEFAULT_TIER, tierOf, type Tier } from "../assets/tiers.ts";
 
 export const MAX_DRAWS = 4096;
 export const MAX_TILES = 1024;
@@ -60,6 +61,60 @@ export const MAX_BONES = BONES_PER_ROW * BONE_ROWS;
 export const LOOSE_BONES = 256;
 /** Skinned instances a frame may carry. Every body is several meshes. */
 export const MAX_SKINNED = MAX_VIEW * 10;
+/** Sun shadow cascades a tier may have, and shadow casters a frame may carry, in a list apart from its draws. */
+export const MAX_CASCADES = 4;
+export const MAX_CASTERS = 4096;
+/** The depth range a draw is in (`drawPass`): the near one, which `split` ends, or the far one. */
+export const PASS_NEAR = 0;
+export const PASS_FAR = 1;
+/** `tilePass` bits: 1 << PASS_NEAR for a tile drawn in the near range, 1 << PASS_FAR in the far, and TILE_CASTS << k casting into cascade k. */
+export const TILE_CASTS = 4;
+/** The pair of textures a tile reads its heights and tints from (`tileSource`): the whole map's, or the window's round the camera. */
+export const SOURCE_MAP = 0;
+export const SOURCE_WINDOW = 1;
+
+/**
+ * Where each value of the frame block (`FramePacket.frame`) is, in floats. The block is what every lit program reads,
+ * one uniform block of vec4s that FRAME_BLOCK declares, each named after its slot there. Directions are in the world
+ * and of length 1, colours are linear light, and lengths are metres.
+ */
+export const FRAME = {
+  /** fSun: the way to the sun, stepped every 0.05 degrees of its travel, and how strongly it casts, 0 to 1. */
+  sun: 0,
+  casting: 3,
+  /** fSunColor: the sun's light at the ground, and the exposure all light is multiplied by. */
+  sunColor: 4,
+  exposure: 7,
+  /** fMoon and fMoonColor: the way to the moon and its light. */
+  moon: 8,
+  moonColor: 12,
+  /** fSkyAbove and fSkyBelow: the sky's light on a surface facing up and on one facing down. */
+  skyAbove: 16,
+  skyBelow: 20,
+  /** fHaze: its density at sea level, per metre, the height over which that thins by e, and the camera's height over the sea. */
+  haze: 24,
+  hazeHeight: 25,
+  eyeHeight: 26,
+  /** fView: where the end of the view begins to fade and where it is gone, `split`, and the share of its reach a far draw fades over. */
+  ends: 28,
+  split: 30,
+  fade: 31,
+  /** fWind: the clouds' wind, x and z in metres a second, and how long it has blown, in seconds. */
+  wind: 32,
+  time: 34,
+  /** fSpheres: each cascade's sphere round its slice of the view, its camera-relative centre and radius. A pixel takes the finest that holds it. */
+  spheres: 36,
+  /** fCascades: each cascade's matrix, from camera-relative space to its clip space, as `viewProj` is for the view. */
+  cascades: 52,
+} as const;
+export const FRAME_FLOATS = FRAME.cascades + MAX_CASCADES * 16;
+/** The frame block as GLSL declares it, for any program that reads it. */
+export const FRAME_BLOCK = `layout(std140) uniform Frame {
+  highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fWind;
+  highp vec4 fSpheres[${MAX_CASCADES}];
+  highp mat4 fCascades[${MAX_CASCADES}];
+};
+`;
 
 export interface BufferUpload {
   /** Chunk index the instances belong to. */
@@ -105,6 +160,26 @@ export class FramePacket {
   light = 1;
   fogStart = 0;
   fogEnd = 1;
+  /** The tier the frame is built for. A renderer draws it with that tier's programs (programs.ts). */
+  tier: Tier = tierOf(DEFAULT_TIER);
+  /** Drawn with the lit programs, which read `frame`, or as low poly draws. */
+  lit = false;
+  /** The view-projection of the far depth range, from 98% of `split` to the end of the view. */
+  readonly farViewProj = new Float32Array(16);
+  /** The frame block. FRAME says where each value is. */
+  readonly frame = new Float32Array(FRAME_FLOATS);
+  /** Sun shadow cascades this frame: the tier's, or 0 while the sun casts nothing. */
+  cascadeCount = 0;
+  /** Their spheres and matrices, which are in `frame`. */
+  readonly spheres = this.frame.subarray(FRAME.spheres, FRAME.spheres + MAX_CASCADES * 4);
+  readonly cascades = this.frame.subarray(FRAME.cascades, FRAME.cascades + MAX_CASCADES * 16);
+  /**
+   * Which cascades' maps are drawn this frame, a bit each. Any other keeps the map it has, and its matrix stays the one
+   * that map was drawn with, moved with the camera.
+   */
+  cascadesDrawn = 0;
+  /** The draw before which the dome goes, on a lit frame. */
+  skyAt = 0;
 
   readonly uploads: BufferUpload[] = [];
   readonly drops: number[] = [];
@@ -137,12 +212,20 @@ export class FramePacket {
   readonly drawMaterial = new Uint16Array(MAX_DRAWS);
   readonly drawFirstIndex = new Uint32Array(MAX_DRAWS);
   readonly drawIndexCount = new Uint32Array(MAX_DRAWS);
+  /** The depth range each draw is in, PASS_NEAR or PASS_FAR. A draw across `split` is listed in each. */
+  readonly drawPass = new Uint8Array(MAX_DRAWS);
+  /** Where a draw that fades out with distance is gone, in metres, having faded over the tier's `fade` share of that. 0 for any other. */
+  readonly drawFade = new Float32Array(MAX_DRAWS);
 
   tileCount = 0;
   /** Per tile: camera-relative x and z of its corner, metres per quad, sample stride. */
   readonly tiles = new Float32Array(MAX_TILES * 4);
   /** Per tile: heightfield sample (i, j) of its corner. */
   readonly tileOrigin = new Int32Array(MAX_TILES * 2);
+  /** Per tile: the ranges it is drawn in and the cascades it casts into, a bit each (TILE_CASTS). One only shadows need is in no range. */
+  readonly tilePass = new Uint8Array(MAX_TILES);
+  /** Per tile: the sample (i, j) of its corner and its stride, in the samples of the pair it reads, and that pair, SOURCE_MAP or SOURCE_WINDOW. */
+  readonly tileSource = new Int32Array(MAX_TILES * 4);
 
   transientCount = 0;
   readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
@@ -153,7 +236,37 @@ export class FramePacket {
   boneCount = 0;
   readonly bones = new Float32Array(MAX_BONES * BONE_FLOATS);
 
+  /**
+   * Sun shadow casters, apart from the draws. Each is a mesh at a level in a buffer, as a draw is, with DRAW_ flags and
+   * the cascades it is drawn into, a bit each. A cut-out section is a caster by itself, DRAW_TEXTURED with its material
+   * and run of indices as a draw has them; any other caster is its whole level.
+   */
+  casterCount = 0;
+  /** Casters left out because the list was full. */
+  casterDropped = 0;
+  readonly casterMesh = new Uint16Array(MAX_CASTERS);
+  readonly casterLod = new Uint8Array(MAX_CASTERS);
+  readonly casterSlot = new Uint32Array(MAX_CASTERS);
+  readonly casterBuffer = new Uint32Array(MAX_CASTERS);
+  readonly casterFirst = new Uint32Array(MAX_CASTERS);
+  readonly casterInstances = new Uint32Array(MAX_CASTERS);
+  readonly casterOffset = new Float32Array(MAX_CASTERS * 3);
+  readonly casterFlags = new Uint16Array(MAX_CASTERS);
+  readonly casterMaterial = new Uint16Array(MAX_CASTERS);
+  readonly casterFirstIndex = new Uint32Array(MAX_CASTERS);
+  readonly casterIndexCount = new Uint32Array(MAX_CASTERS);
+  readonly casterCascades = new Uint8Array(MAX_CASTERS);
+
   triangles = 0;
+
+  /** Metres from the camera at which the far depth range begins, 0 for one range. It is kept in `frame`. */
+  get split(): number {
+    return this.frame[FRAME.split]!;
+  }
+
+  set split(metres: number) {
+    this.frame[FRAME.split] = metres;
+  }
 
   beginFrame(): void {
     this.uploads.length = 0;
@@ -164,10 +277,15 @@ export class FramePacket {
     this.texDrops.length = 0;
     this.skipped = 0;
     this.dropped = 0;
+    this.drawFade.fill(0, 0, this.drawCount);
     this.drawCount = 0;
     this.tileCount = 0;
     this.transientCount = 0;
     this.boneCount = 0;
+    this.casterCount = 0;
+    this.casterDropped = 0;
+    this.cascadeCount = 0;
+    this.cascadesDrawn = 0;
     this.triangles = 0;
   }
 }
