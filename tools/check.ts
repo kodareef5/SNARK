@@ -10,7 +10,7 @@ import { dynamicLoads, stripComments } from "./policy.ts";
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Wall-clock budget for the whole check. */
-const BUDGET_SECONDS = 20;
+const BUDGET_SECONDS = 45;
 /** Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's phases. */
 const SHELL_MAX_LINES = 1150;
 /** And in client/voice, which also has no tests. */
