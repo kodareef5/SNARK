@@ -74,6 +74,52 @@ that worked are in `recipes.json` (Stable: "TrackType: SFX, ..." in whole second
 calls with pauses). Prompts that missed: "mumble" (rumble from Stable, a human-sounding mumble from MOSS),
 "chirrup" (small-bird chirps), a squawk with wing flaps (thumps only), and MOSS "panic" (buried in wing noise).
 
+## v1: sound for the whole game (2026-11-15)
+
+The design and catalogue are in `planning/reference/round9-sound-design.md`, the engine as built in
+`planning/architecture/sound.md`, and ARK's practice in `planning/reference/round9-ark-audio-research.md`.
+
+**In this branch.**
+- The catalogue: `shared/sound/cues.ts`.
+- The engine and its producers: `client/core/sound/`.
+- The sound board: `sounds.html`.
+- `bun run sounds`.
+- Every brief: one per owner under `assets/source/core/**/sound/brief.json`. They hold 255 slots, all prompted.
+
+**Sounds accepted.**
+- 13 creatures: parasaur, raptor, rex, trike, stego, pteranodon, megalodon, sabertooth, direwolf, compy, dilophosaur,
+  spider and mammoth, besides the dodo. Their content definitions do not exist yet; their sounds are found by id
+  the day they do.
+- The survivor's voice, male and female.
+- `core:body` (water, thumps).
+- `core:node` (felled, crumbled, picked).
+
+**Still to slot in.** These are generating now, from the committed briefs, and need no code:
+- `core:surface` (steps, landings and impacts by ground and material);
+- `core:weapon`;
+- `core:structure`;
+- `core:ui`;
+- `core:world` (beds, shore, wind, water).
+
+**Making a brief's sounds.** These commands run from the worktree root:
+```
+tools/sound/.venv/bin/python -W ignore tools/sound/generate.py <brief.json>... --model moss
+tools/sound/.venv/bin/python -W ignore tools/sound/review.py <brief.json> --out tools/sound/.work/<asset>/review
+tools/sound/.venv/bin/python -W ignore tools/sound/pick.py <brief.json>
+tools/sound/.venv/bin/python -W ignore tools/sound/accept.py <brief.json> tools/sound/.work/<asset>/picks.json --replace
+bun run sounds && bun run build
+```
+
+**How takes are picked and stored.**
+- `pick.py` picks by measure:
+  - the loudest clean events, one per file first;
+  - a seamless stretch for beds;
+  - the whole file for stingers.
+- `accept.py` stores each pick as a cut, mono 24-bit, with its recipe.
+
+**Nobody has listened to the v1 takes yet; the owner listens before merging.** The probe passes when its page boots
+within 30 s. On this machine under load it boots in 30 to 60 s; it passed with a longer wait.
+
 ## On the Linux machine (2026-11-15)
 
 The machine has an RTX 4070 Laptop GPU with 8 GB, not 12 GB, and 62 GB of memory shared with other agents' jobs.
