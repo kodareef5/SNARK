@@ -17,7 +17,7 @@ import { CORE_PACK } from "../../content/core.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_STRUCT, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
-import { NO_PIN, STRUCT_LIGHT, STRUCT_USE } from "../../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -310,6 +310,38 @@ test("a bin lit across a restart keeps its clocks as they were, goes out at its 
   } finally {
     h.host.shutdown();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+for (const how of ["demolished", "destroyed"] as const) test(`a lit bin ${how} leaves its food in a cache that keeps it as the hand does, its time left a tenth of what it had in the bin`, () => {
+  const w = arena();
+  const { h } = w;
+  try {
+    const { ref, rec } = w.bin();
+    h.host.items.mint(rec, SPARK, 2);
+    expect(h.host.stations.toggle(ref)).toBe(RESULT_OK);
+    h.host.items.mint(rec, MEAT, 3);
+    const lit = rec.inv!.spoilAt[slotOf(rec, MEAT)]!;
+    expect(lit).toBe(h.world.tick + 10 * reg.spoilTicks[MEAT]!);
+    h.run(2000);
+    const caches = (): EntityRecord[] => [...h.host.records.byPid.values()].filter((r) => r.kind === id("cache"));
+    expect(caches()).toEqual([]);
+    if (how === "demolished") expect(w.act(ref, STRUCT_DEMOLISH)).toBe(RESULT_OK);
+    else expect(h.world.structs.damage(ref, 1000, h.world.tick)).toBe(0);
+    const [cache] = caches() as [EntityRecord];
+    const t = h.world.tick;
+    const at = cache.inv!.spoilAt[slotOf(cache, MEAT)]!;
+    // Out of the bin it has a tenth of the time it had left there, rounded down, as if carried out at the tick it broke.
+    expect([cache.inv!.total(MEAT), cache.inv!.total(SPARK), cache.inv!.keep]).toEqual([3, 1, 1]);
+    // Destroyed, it broke at this tick; demolished, at one of the ticks the command took to arrive.
+    const broke = Array.from({ length: how === "destroyed" ? 1 : 10 }, (_, k) => t - k).filter((d) => at === d + Math.floor((lit - d) / 10));
+    expect(broke.length).toBeGreaterThan(0);
+    // And it spoils in the cache at that tick, not ten times later.
+    h.world.tick = at;
+    expect(h.host.items.inv(cache).total(MEAT)).toBe(2);
+    expect(h.host.items.audit()).toEqual([]);
+  } finally {
+    h.host.shutdown();
   }
 });
 

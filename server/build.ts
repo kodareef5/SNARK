@@ -173,6 +173,8 @@ export class Build {
       const cache = spill(x, y, z, rec.name);
       cache.inv = rec.inv;
       rec.inv = null;
+      // A lit preserving bin's clocks run at 10 times; in the cache they run as the cache keeps things (Items.rekeep).
+      this.ctx.items.rekeep(cache, this.ctx.world.tick, rec.kind, cache.kind);
       records.dirty.add(cache.pid);
       this.spilled++;
     }
