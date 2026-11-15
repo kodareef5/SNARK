@@ -4,6 +4,7 @@ import type { Def, NodeDef, NodeVariant } from "../shared/content/defs.ts";
 import { BUILDING_CONTENT } from "./building.ts";
 import { crafted, crafting } from "./craft.ts";
 import { CREATURES } from "./creatures/index.ts";
+import { MAPS } from "./maps.ts";
 import { SPAWNS } from "./spawns.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
@@ -370,6 +371,7 @@ const ALL: readonly Def[] = [
   ...BUILDING_CONTENT,
   ...CREATURES,
   ...SPAWNS,
+  ...MAPS,
   { type: "prop", class: "projectile", id: "core:grenade_live", mesh: "core:grenade_thrown", color: 7, radius: 0.08, height: 0.12 },
   // Holds everything a survivor carried when it died.
   { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },

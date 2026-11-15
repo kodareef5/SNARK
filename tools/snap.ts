@@ -1,8 +1,9 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
 // Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
+// --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { App } from "../client/core/app.ts";
 import { Camera } from "../client/core/render/camera.ts";
@@ -32,6 +33,9 @@ import { SKY_COLOR } from "../shared/pack/palette.ts";
 import type { TextureRole } from "../shared/pack/texture.ts";
 import { Heightfield } from "../shared/world/heightfield.ts";
 import { NodeField, formOf, mix, type NodeSpot } from "../shared/world/nodes.ts";
+import { mapHeightfield, mapNodes, parseMap, placeStatics, type MapFile } from "../shared/world/mapfile.ts";
+import { NodeChanges } from "../client/core/render/farnodes.ts";
+import { chunkAt } from "../shared/coords.ts";
 import { PROVING_DIMS, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { findAssets } from "./art/assets.ts";
@@ -246,21 +250,24 @@ export interface ProvingView {
  * the boot pack at start and fetches other levels over that network, and the rasterizer draws only what was uploaded.
  * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them.
  */
-export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles): ProvingView {
+export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile): ProvingView {
   const reg = compileContent(CORE_CONTENT).registry!;
-  const hf = buildProvingHeightfield();
-  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-  populateProving(structs, hf, reg);
+  const dims = map?.dims ?? PROVING_DIMS;
+  const hf = map ? mapHeightfield(map) : buildProvingHeightfield();
+  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  if (map) placeStatics(map, structs, reg);
+  else populateProving(structs, hf, reg);
   const split = !net ? null : files ? { files: files.files.map((bytes) => ({ bytes })), manifest: files.manifest } : splitPack(corePackBytes(), "core");
   const port = split ? new FakeNet(split.files.map((f) => f.bytes), net) : null;
   const pack = parsePack(split ? split.files[0]!.bytes : corePackBytes());
-  // Fills every chunk's nodes, as a client near each would have them.
-  const nodes = new NodeField(PROVING_DIMS, reg, provingNodes(hf, reg));
-  nodes.retain(0, 64, 1, () => false);
-  const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes: nodes.store }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  // Fills every chunk's nodes, as a client near each would have them. A map's are filled round the camera, and drawn far past that as a client draws them.
+  const nodes = new NodeField(dims, reg, map ? (mapNodes(map, hf, reg) ?? { perChunk: 0, at: (_c, _i, out) => void (out.kind = 0) }) : provingNodes(hf, reg));
+  if (!map) nodes.retain(0, 64, 1, () => false);
+  const farNodes = map ? { farNodes: { nodes: nodes.source, held: (c: number) => nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(dims) } } : {};
+  const scene = new Scene({ dims, hf, structs, nodes: nodes.store, ...farNodes }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
-  cam.x = PROVING_SPAWN.x;
-  cam.z = PROVING_SPAWN.z;
+  cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
+  cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;
   cam.y = hf.heightAt(cam.x, cam.z) + 1.62;
   cam.aspect = width / height;
   const remote = new RemoteSample();
@@ -275,8 +282,10 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
     remote.flags[n] = 1; // standing on the ground
     remote.anim[n] = 0; // at rest, looking level
   };
-  place(101, "core:survivor", 254, 250, 2.6);
-  place(102, "core:grazer", 259, 254, 0.7);
+  if (!map) {
+    place(101, "core:survivor", 254, 250, 2.6);
+    place(102, "core:grazer", 259, 254, 0.7);
+  }
   const raster = new Rasterizer(width, height, pack, hf, split?.manifest);
   return {
     reg, hf, structs, nodes, pack, scene, cam, remote, raster, port,
@@ -971,6 +980,8 @@ if (import.meta.main) {
     process.exit(0);
   }
   const source = resolve(arg("source") ?? SOURCE);
+  const mapPath = arg("map");
+  const mapFile = mapPath ? parseMap(new Uint8Array(readFileSync(mapPath))) : undefined;
   const look = (arg("view") ?? "corner") as HouseView;
   if (!HOUSE_VIEWS.includes(look)) throw new Error(`--view takes ${HOUSE_VIEWS.join(", ")}, not "${look}"`);
   /** Puts what the flags ask for in front of the view's camera. */
@@ -979,6 +990,14 @@ if (import.meta.main) {
     if (pos) [view.cam.x, view.cam.y, view.cam.z] = pos as [number, number, number];
     view.cam.yaw = (Number(arg("yaw") ?? 0) * Math.PI) / 180;
     view.cam.pitch = (Number(arg("pitch") ?? -4) * Math.PI) / 180;
+    if (mapFile) {
+      // With no --pos the camera is at the map's first spawn point, at eye height and facing as it does.
+      if (!pos) {
+        view.cam.y = view.hf.heightAt(view.cam.x, view.cam.z) + 1.62;
+        if (arg("yaw") === undefined) view.cam.yaw = (mapFile.spawns[0]!.yaw / 65536) * 2 * Math.PI;
+      }
+      view.nodes.retain(chunkAt(mapFile.dims, view.cam.x, view.cam.z), 4, 1, () => false);
+    }
     if (args.includes("--house")) {
       houseScene(view, arg("house") ?? "wood");
       houseView(view, arg("house") ?? "wood", look);
@@ -1018,7 +1037,7 @@ if (import.meta.main) {
     const pixels = new Uint8ClampedArray(W * H * 4);
     for (const [i, name] of names.entries()) {
       const t1 = performance.now();
-      const view = provingView(w, h, {}, files);
+      const view = provingView(w, h, {}, files, mapFile);
       view.scene.assets.tier = tierOf(name);
       view.scene.viewHeight = h!;
       await setup(view);
@@ -1046,7 +1065,7 @@ if (import.meta.main) {
     console.log(`${out}\n${W}x${H}  ${(performance.now() - t0).toFixed(0)} ms`);
     process.exit(0);
   }
-  const view = provingView(w, h);
+  const view = provingView(w, h, undefined, undefined, mapFile);
   await setup(view);
   const t0 = performance.now();
   const packet = view.render();
