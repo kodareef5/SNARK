@@ -107,23 +107,23 @@ BONES = [
     # The lower beak hinges under the back of the eye.
     ("jaw",         "skull",      (0.000, 1.292, 0.700),    (0.000, 1.292, 1.480)),
     # The arm: upper arm, forearm, the long wing metacarpal (hand) to the knuckle where the wing finger starts.
-    ("upper_arm_l", "chest",      (0.150, 0.800, 0.000),    (0.454, 0.877, 0.065)),
-    ("forearm_l",   "upper_arm_l", (0.454, 0.877, 0.065),   (0.966, 0.958, 0.029)),
-    ("hand_l",      "forearm_l",  (0.966, 0.958, 0.029),    (1.524, 1.007, 0.048)),
+    ("upper_arm_l", "chest",      (0.150, 0.770, 0.000),    (0.454, 0.847, 0.065)),
+    ("forearm_l",   "upper_arm_l", (0.454, 0.847, 0.065),   (0.966, 0.928, 0.029)),
+    ("hand_l",      "forearm_l",  (0.966, 0.928, 0.029),    (1.524, 0.977, 0.048)),
     # The three small clawed fingers as one bone, lying forward along the leading edge; it stands on them.
-    ("fingers_l",   "hand_l",     (1.524, 1.007, 0.048),    (1.548, 0.990, 0.168)),
+    ("fingers_l",   "hand_l",     (1.524, 0.977, 0.048),    (1.548, 0.960, 0.168)),
     # The pteroid braces the front membrane from the wrist toward the shoulder.
-    ("pteroid_l",   "forearm_l",  (0.966, 0.958, 0.029),    (0.700, 0.915, 0.115)),
+    ("pteroid_l",   "forearm_l",  (0.966, 0.928, 0.029),    (0.700, 0.885, 0.115)),
     # The wing finger in four bones, the last curving back to the tip.
-    ("wing_1_l",    "hand_l",     (1.524, 1.007, 0.048),    (2.204, 0.922, -0.096)),
-    ("wing_2_l",    "wing_1_l",   (2.204, 0.922, -0.096),   (2.764, 0.828, -0.289)),
-    ("wing_3_l",    "wing_2_l",   (2.764, 0.828, -0.289),   (3.203, 0.741, -0.513)),
-    ("wing_4_l",    "wing_3_l",   (3.203, 0.741, -0.513),   (3.481, 0.672, -0.731)),
+    ("wing_1_l",    "hand_l",     (1.524, 0.977, 0.048),    (2.204, 0.892, -0.096)),
+    ("wing_2_l",    "wing_1_l",   (2.204, 0.892, -0.096),   (2.764, 0.798, -0.289)),
+    ("wing_3_l",    "wing_2_l",   (2.764, 0.798, -0.289),   (3.203, 0.711, -0.513)),
+    ("wing_4_l",    "wing_3_l",   (3.203, 0.711, -0.513),   (3.481, 0.642, -0.731)),
     # Three battens across the membrane, from the leading edge to the trailing edge: they hold it taut spread and draw
     # it in folded. Each follows the bone it hangs on.
-    ("web_1_l",     "forearm_l",  (0.454, 0.877, 0.065),    (0.450, 0.620, -0.950)),
-    ("web_2_l",     "hand_l",     (0.966, 0.958, 0.029),    (0.970, 0.800, -0.730)),
-    ("web_3_l",     "wing_2_l",   (2.204, 0.922, -0.096),   (2.200, 0.820, -0.560)),
+    ("web_1_l",     "forearm_l",  (0.454, 0.847, 0.065),    (0.450, 0.590, -0.950)),
+    ("web_2_l",     "hand_l",     (0.966, 0.928, 0.029),    (0.970, 0.770, -0.730)),
+    ("web_3_l",     "wing_2_l",   (2.204, 0.892, -0.096),   (2.200, 0.790, -0.560)),
     # The leg trails in the glide. Plantigrade: on the ground the foot lies flat and the toes grip.
     ("thigh_l",     "pelvis",     (0.080, 0.720, -0.600),   (0.140, 0.620, -0.830)),
     ("shin_l",      "thigh_l",    (0.140, 0.620, -0.830),   (0.200, 0.470, -1.080)),
@@ -132,14 +132,14 @@ BONES = [
 ]
 
 # The trailing edge of the membrane at rest, from the ankle to the wingtip: one long concave curve.
-TRAILING_EDGE = [(0.200, 0.470, -1.080), (0.450, 0.620, -0.950), (0.970, 0.800, -0.730), (1.550, 0.860, -0.620),
-                 (2.200, 0.820, -0.560), (2.800, 0.760, -0.600), (3.481, 0.672, -0.731)]
+TRAILING_EDGE = [(0.200, 0.470, -1.080), (0.450, 0.590, -0.950), (0.970, 0.770, -0.730), (1.550, 0.830, -0.620),
+                 (2.200, 0.790, -0.560), (2.800, 0.730, -0.600), (3.481, 0.642, -0.731)]
 # Where the membrane meets the body at rest: from the shoulder joint along the flank to the hip, down the outside of
 # the thigh and shin to the ankle.
-WING_ROOT = [(0.150, 0.800, 0.000), (0.165, 0.775, -0.300), (0.150, 0.725, -0.560), (0.170, 0.620, -0.830),
+WING_ROOT = [(0.150, 0.770, 0.000), (0.165, 0.775, -0.300), (0.150, 0.725, -0.560), (0.170, 0.620, -0.830),
              (0.200, 0.470, -1.080)]
 # The front membrane's leading edge at rest, from the shoulder to the wrist, bowing forward of the arm.
-FRONT_EDGE = [(0.150, 0.800, 0.020), (0.400, 0.880, 0.130), (0.700, 0.925, 0.135), (0.966, 0.958, 0.045)]
+FRONT_EDGE = [(0.150, 0.770, 0.010), (0.400, 0.850, 0.085), (0.700, 0.895, 0.125), (0.966, 0.928, 0.045)]
 
 # Named points on bones. Positions at rest; asset.ts gives each as its offset from its bone's joint.
 SOCKETS = {
@@ -147,11 +147,11 @@ SOCKETS = {
     "head":        ("skull",  (0.000, 1.360, 0.780)),   # middle of the skull: look target, head hit zone
     "overhead":    ("skull",  (0.000, 2.150, 0.600)),   # above the crest: marks over it
     # The top of the saddle pad on the midline, under the rider's hips: the rider's hip joints sit RIDER["hips"] above it.
-    "seat":        ("chest",  (0.000, 0.975, -0.120)),
-    "grip_l":      ("chest",  (0.170, 1.035, 0.220)),   # where the seated rider's hands close on the grips
-    "grip_r":      ("chest",  (-0.170, 1.035, 0.220)),
-    "rest_l":      ("chest",  (0.250, 0.395, 0.380)),   # under the ball of the seated rider's feet
-    "rest_r":      ("chest",  (-0.250, 0.395, 0.380)),
+    "seat":        ("chest",  (0.000, 1.000, -0.160)),
+    "grip_l":      ("chest",  (0.170, 1.050, 0.190)),   # where the seated rider's hands close on the grips
+    "grip_r":      ("chest",  (-0.170, 1.050, 0.190)),
+    "rest_l":      ("chest",  (0.250, 0.430, 0.360)),   # under the ball of the seated rider's feet
+    "rest_r":      ("chest",  (-0.250, 0.430, 0.360)),
     # Where a grabbed body hangs, between the feet as they close in `grab` and `carry`. On the pelvis: the clips put
     # the feet here.
     "grab":        ("pelvis", (0.000, 0.300, -0.420)),
@@ -165,23 +165,23 @@ SOCKETS = {
 
 # The seated rider, as the human seated pose must put the survivor (FL2's clip), relative to `seat` in the animal's
 # rest frame: the joints of shared/anim/human.ts, its bone lengths kept. The rider's frame is the chest bone's. The
-# rider leans 15 degrees forward of the chest's up, into the wind in the glide, so on the ground, where the chest
-# tilts back about 30 degrees, the rider leans back only about 15. Thighs run forward and down either side of the base
-# of the neck, lower legs hang in front of the wing roots, hands on the grips. RIDER_CAPSULES is the space the rider
+# rider leans 10 degrees forward of the chest's up, into the wind in the glide, so on the ground, where the chest
+# tilts back about 30 degrees, the rider leans back about 20. Thighs run forward and down either side of the base of
+# the neck, lower legs hang in front of the wing roots, hands on the grips. RIDER_CAPSULES is the space the rider
 # takes; check_clip warns when any of the block-out enters it in a clip the animal is ridden in.
 RIDER = {
     "hips":     (0.000, 0.100, 0.000),   # human hips joint
-    "chest":    (0.000, 0.334, 0.073),
-    "neck":     (0.000, 0.532, 0.105),
-    "head":     (0.000, 0.601, 0.145),   # the head joint
-    "crown":    (0.000, 0.814, 0.202),
-    "shoulder": (0.200, 0.467, 0.098),
-    "elbow":    (0.250, 0.250, 0.150),
-    "hand":     (0.170, 0.060, 0.340),   # the palm, at the grip
+    "chest":    (0.000, 0.340, 0.052),
+    "neck":     (0.000, 0.540, 0.067),
+    "head":     (0.000, 0.611, 0.100),   # the head joint
+    "crown":    (0.000, 0.828, 0.138),
+    "shoulder": (0.200, 0.474, 0.066),
+    "elbow":    (0.250, 0.270, 0.130),
+    "hand":     (0.170, 0.050, 0.350),   # the palm, at the grip
     "hip":      (0.105, 0.120, 0.000),   # each leg's joint
-    "knee":     (0.240, -0.100, 0.300),
-    "ankle":    (0.250, -0.510, 0.420),
-    "toe":      (0.250, -0.570, 0.550),
+    "knee":     (0.240, -0.080, 0.340),
+    "ankle":    (0.250, -0.500, 0.440),
+    "toe":      (0.250, -0.560, 0.570),
 }
 RIDER_CAPSULES = [  # (from, to, radius), a name with _l mirrored for the right
     ("hips", "chest", 0.14), ("chest", "neck", 0.15), ("neck", "head", 0.06), ("head", "crown", 0.12),
@@ -250,25 +250,44 @@ STANCE = {
     "head": {"pos": (0.000, 1.830, 0.150), "pitch": 0.0},
     "foot": {"pos": (0.150, 0.045, -0.430), "pitch": 158.0, "yaw": 0.0, "roll": 0.0},
     "knee": (0.200, 0.700, 0.200),
-    "hand": {"pos": (0.320, 0.035, 0.400), "pitch": 0.0, "yaw": 0.0, "roll": 0.0},
     "tail": {"lift": 0.0},
 }
 # The wing folded in STANCE: where each joint of the left wing lies, in the animal's frame, standing. The fold is
-# solved from these into turns of each bone relative to its parent, so it rides with the chest in any pose. The wing
-# finger runs back up along the outside of the arm and leg to a tip that points up and back behind the body.
+# solved from these into turns of each bone relative to its parent, so it rides with the chest in any pose. The
+# forearm and the long hand bone make one strut from the elbow, back by the flank, down to the hand on the ground; the
+# wing finger folds back up along the outside of that strut, past the elbow, and bends back to a tip that points up
+# and back behind the body at shoulder height. The battens are aimed so the skin gathers between the arm, the finger
+# and the leg without entering the body (searched; ref/blockout/checks.json).
 FOLD = {
-    "elbow":    (0.330, 0.790, -0.270),
-    "wrist":    (0.340, 0.560, 0.180),
-    "knuckle":  (0.320, 0.035, 0.400),
-    "fingers":  (0.370, 0.010, 0.510),
-    "pteroid":  (0.300, 0.780, -0.020),
-    "wing_1":   (0.400, 0.440, -0.140),
-    "wing_2":   (0.420, 0.790, -0.620),
-    "wing_3":   (0.420, 1.070, -1.020),
-    "wing_4":   (0.400, 1.290, -1.300),
-    "web_1":    (0.240, 0.420, -0.620),
-    "web_2":    (0.360, 0.660, -0.540),
-    "web_3":    (0.410, 0.950, -0.880),
+    "elbow":    (0.300, 0.780, -0.300),
+    "wrist":    (0.330, 0.420, 0.080),
+    "knuckle":  (0.320, 0.030, 0.460),
+    "fingers":  (0.370, 0.010, 0.570),
+    "pteroid":  (0.250, 0.700, -0.100),
+    "wing_1":   (0.400, 0.510, -0.030),
+    "wing_2":   (0.420, 0.940, -0.450),
+    "wing_3":   (0.420, 1.160, -0.900),
+    "wing_4":   (0.400, 1.270, -1.240),
+    "web_1":    (0.220, 0.450, -0.700),
+    "web_2":    (0.340, 0.100, 0.250),
+    "web_3":    (0.400, 0.750, -0.800),
+}
+# The wing tucked in the air, halfway to FOLD: where each joint lies with the body at rest (level). The elbow goes back
+# by the flank, the wrist forward under the shoulder, the long hand bone and the finger fold back along the body to a
+# tip trailing behind the feet. wing(fold=0.5) is this; a dive or a fall takes some of it, a landing passes through it.
+TUCK = {
+    "elbow":    (0.300, 0.700, -0.240),
+    "wrist":    (0.380, 0.700, 0.270),
+    "knuckle":  (0.430, 0.690, -0.280),
+    "fingers":  (0.470, 0.640, -0.180),
+    "pteroid":  (0.260, 0.730, 0.050),
+    "wing_1":   (0.450, 0.680, -0.980),
+    "wing_2":   (0.440, 0.660, -1.580),
+    "wing_3":   (0.420, 0.640, -2.080),
+    "wing_4":   (0.390, 0.630, -2.440),
+    "web_1":    (0.250, 0.560, -0.900),
+    "web_2":    (0.400, 0.450, -0.300),
+    "web_3":    (0.420, 0.620, -1.300),
 }
 
 # =====================================================================================================================
@@ -308,7 +327,7 @@ CREST = {
              (0.0, 1.910, 0.235)],
     "half_thickness": [0.030, 0.026, 0.020, 0.014, 0.009, 0.004],
     "half_depth": [0.100, 0.095, 0.075, 0.055, 0.035, 0.010],
-    "band": (0.33, 0.52),  # the band, as fractions of the way from the tip
+    "band": (0.15, 0.27),  # the band, as fractions of the way from the tip
 }
 EYE = {"centre": (0.072, 1.375, 0.835), "radius": 0.024}
 TAIL = {"half": 0.035}
@@ -321,18 +340,18 @@ MEMBRANE_HALF_THICKNESS = 0.006
 
 # The saddle's block-out, on the chest, the neck and the skull.
 SADDLE = {
-    "pad": {"centre": (0.0, 0.935, -0.120), "half": (0.190, 0.045, 0.250)},
-    "cantle": {"path": [(0.140, 0.950, -0.330), (0.090, 1.070, -0.340), (0.0, 1.110, -0.345), (-0.090, 1.070, -0.340),
-                        (-0.140, 0.950, -0.330)], "radius": 0.028},
-    "grip_l": [(0.110, 0.900, 0.140), (0.160, 0.990, 0.200), (0.170, 1.035, 0.220), (0.175, 1.090, 0.235)],
+    "pad": {"centre": (0.0, 0.952, -0.150), "half": (0.190, 0.050, 0.260)},
+    "cantle": {"path": [(0.140, 0.970, -0.360), (0.090, 1.090, -0.370), (0.0, 1.130, -0.375), (-0.090, 1.090, -0.370),
+                        (-0.140, 0.970, -0.360)], "radius": 0.028},
+    "grip_l": [(0.110, 0.930, 0.110), (0.160, 1.010, 0.170), (0.170, 1.050, 0.190), (0.175, 1.100, 0.205)],
     # Nothing goes round the body behind the wing roots, where the membrane grows along the flank: the girth goes round
     # the chest in front of the shoulder joints, the collar round the base of the neck.
     "girth": {"z": 0.085, "pad": 0.020, "half_width": 0.030},
     "collar": {"z": 0.170, "pad": 0.016, "half_width": 0.025},
-    "rest_l": {"strap": [(0.150, 0.780, 0.190), (0.235, 0.560, 0.320), (0.250, 0.395, 0.380)], "peg": 0.07},
+    "rest_l": {"strap": [(0.150, 0.780, 0.170), (0.235, 0.580, 0.300), (0.250, 0.430, 0.360)], "peg": 0.07},
     "halter": [{"z": 0.960, "pad": 0.010}, {"z": 0.610, "pad": 0.012}],
-    "rein_l": [(0.060, 1.330, 0.960), (0.090, 1.290, 0.700), (0.120, 1.200, 0.450), (0.160, 1.080, 0.260),
-               (0.170, 1.050, 0.225)],
+    "rein_l": [(0.060, 1.330, 0.960), (0.090, 1.290, 0.700), (0.120, 1.200, 0.450), (0.160, 1.090, 0.240),
+               (0.170, 1.060, 0.195)],
 }
 
 # =====================================================================================================================
@@ -462,14 +481,15 @@ def _bird(q):
     return b.inverted() @ m @ b
 
 
-def solve_fold():
-    """Turns of each left wing bone, relative to its parent in the animal's axes, that put the wing as FOLD has it
-    when the body stands in STANCE. Returns ({bone: turn relative to its parent}, {bone: turn relative to rest}), as
-    Blender-axes quaternions, the form Clip._rotate takes."""
+def solve_fold(targets_at=None, standing=True):
+    """Turns of each left wing bone, relative to its parent in the animal's axes, that put the wing's joints where
+    `targets_at` (FOLD by default) has them, with the body in STANCE or, not standing, at rest. Returns ({bone: turn
+    relative to its parent}, {bone: turn relative to rest}), as Blender-axes quaternions, the form Clip._rotate takes,
+    and where the knuckle lands, where STANCE plants the hand."""
+    targets_at = targets_at or FOLD
     b = Matrix(((1, 0, 0), (0, 0, -1), (0, 1, 0)))
-    chest = stance_delta("chest")  # Blender axes
-    world = {"chest": chest}
-    joint = {"chest": _stance_joint("chest")}
+    world = {"chest": stance_delta("chest") if standing else Quaternion()}
+    joint = {"chest": _stance_joint("chest") if standing else Vector(_JOINT["chest"])}
     out = {}
     targets = {"upper_arm_l": "elbow", "forearm_l": "wrist", "hand_l": "knuckle", "fingers_l": "fingers",
                "pteroid_l": "pteroid", "wing_1_l": "wing_1", "wing_2_l": "wing_2", "wing_3_l": "wing_3",
@@ -480,7 +500,7 @@ def solve_fold():
         head = joint[parent] + _bird(d_parent) @ (Vector(_JOINT[name]) - Vector(_JOINT[parent]))
         rest_dir = Vector(_TAIL[name]) - Vector(_JOINT[name])
         now = (_bird(d_parent) @ rest_dir).normalized()
-        want = (Vector(FOLD[targets[name]]) - head).normalized()
+        want = (Vector(targets_at[targets[name]]) - head).normalized()
         # The least turn that takes the bone from where its parent carries it to where it should point, in the
         # animal's axes, then expressed in Blender's.
         turn_animal = now.rotation_difference(want)
@@ -489,7 +509,7 @@ def solve_fold():
         world[name] = d
         joint[name] = head
         out[name] = d_parent.inverted() @ d
-    return out, world
+    return out, world, tuple(joint["fingers_l"])
 
 
 # =====================================================================================================================
@@ -502,7 +522,8 @@ class Rig:
     def __init__(self, obj):
         self.obj = obj
         self.clips = {}
-        self.fold, self.fold_world = solve_fold()
+        self.fold, self.fold_world, self.knuckle = solve_fold()
+        self.tuck = solve_fold(TUCK, standing=False)[0]
 
     @property
     def blockout(self):
@@ -690,11 +711,11 @@ class Clip:
         self.bone(f, "chest", pitch=s["chest"]["pitch"])
         self.head(f, s["head"]["pos"], pitch=s["head"]["pitch"])
         for side in "lr":
-            ft, hd = s["foot"], s["hand"]
+            ft = s["foot"]
             self.foot(f, side, mirrored(ft["pos"], side), pitch=ft["pitch"], yaw=ft["yaw"], roll=ft["roll"])
             self.knee(f, side, mirrored(s["knee"], side))
             self.wing(f, side, fold=1.0)
-            self.hand(f, side, mirrored(hd["pos"], side), pitch=hd["pitch"], yaw=hd["yaw"], roll=hd["roll"])
+            self.hand(f, side, mirrored(self.rig.knuckle, side))
             self.elbow(f, side, mirrored(tuple(self.rig.obj["stance_elbow"]), side))
             self.talons(f, side, 0.0)
         for name in ("tail", "neck_1", "neck_2", "neck_3", "neck_4", "jaw"):
@@ -756,14 +777,18 @@ class Clip:
         self._place(f, "ctl_elbow_" + side, pos or rest_position("ctl_elbow_" + side))
 
     def wing(self, f, side, fold=0.0, flap=0.0, sweep=0.0, twist=0.0, curl=0.0):
-        """One wing. `fold` 0 spread as at rest, 1 folded as in STANCE. `flap` degrees the whole wing turns tip-up (+)
-        or tip-down (-) at the shoulder; `sweep` degrees it swings forward (+) or back; `twist` degrees its leading
+        """One wing. `fold` 0 spread as at rest, 0.5 tucked against the body in the air (TUCK), 1 folded as in STANCE
+        (FOLD); between them it passes through TUCK, never across the body. `flap` degrees the whole wing turns tip-up
+        (+) or tip-down (-) at the shoulder; `sweep` degrees it swings forward (+) or back; `twist` degrees its leading
         edge turns up (+); `curl` degrees the wing finger bends tip-down (+) along its four bones. A planted hand
         overrides the arm's turns."""
         s = 1.0 if side == "l" else -1.0
         stroke = (animal_rotation(roll=-flap * s) @ animal_rotation(yaw=-sweep * s) @ animal_rotation(pitch=twist))
         for name in _WING_L:
-            q = Quaternion().slerp(self.rig.fold[name], fold) if fold else Quaternion()
+            if fold <= 0.5:
+                q = Quaternion().slerp(self.rig.tuck[name], fold * 2.0)
+            else:
+                q = self.rig.tuck[name].slerp(self.rig.fold[name], fold * 2.0 - 1.0)
             m = q.to_matrix()
             if side == "r":
                 m = _mirror_turn(m)
@@ -941,8 +966,7 @@ def _fit_stance_elbow(r):
     want = obj.pose.bones["upper_arm_l"].tail.copy()  # where the fold puts the elbow with the arm free
     shoulder = obj.pose.bones["upper_arm_l"].head.copy()
     wrist = obj.pose.bones["forearm_l"].tail.copy()
-    hd = STANCE["hand"]
-    c.hand(0, "l", hd["pos"], pitch=hd["pitch"], yaw=hd["yaw"], roll=hd["roll"])
+    c.hand(0, "l", r.knuckle)
     axis = (wrist - shoulder).normalized()
     mid = (shoulder + wrist) / 2
     side0 = (want - mid) - axis * (want - mid).dot(axis)

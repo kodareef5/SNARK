@@ -1,0 +1,274 @@
+{
+ "stance": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 445,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 445,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   -0.0,
+   1.062,
+   -0.294
+  ]
+ },
+ "air_half_folded": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 47,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 47,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "air_folded": {
+  "membrane_l_into_body": 30,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 425,
+  "membrane_r_into_body": 32,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 425,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "rest": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "upstroke": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 5.4,
+  "rider_intrusion_part": "membrane_r",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "upstroke_45": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 2.0,
+  "rider_intrusion_part": "front_l",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "upstroke_40_elbow_25": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.8,
+  "rider_intrusion_part": "front_l",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "downstroke": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "sweep_forward": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "sweep_12": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "head_left": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "head_right": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "head_up": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 7.4,
+  "rider_intrusion_part": "crest",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "head_up_10": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "call_stance": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 445,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 445,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   -0.0,
+   1.062,
+   -0.294
+  ]
+ },
+ "head_down": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ },
+ "bite": {
+  "membrane_l_into_body": 0,
+  "finger_l_into_body": 0,
+  "membrane_l_self": 0,
+  "membrane_r_into_body": 0,
+  "finger_r_into_body": 0,
+  "membrane_r_self": 0,
+  "wings_into_each_other": 0,
+  "rider_intrusion_cm": 0.0,
+  "rider_intrusion_part": "",
+  "seat": [
+   0.0,
+   1.0,
+   -0.16
+  ]
+ }
+}

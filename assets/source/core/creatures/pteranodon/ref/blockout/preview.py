@@ -63,15 +63,21 @@ POSES = {
 # the head's turns and the stance.
 CHECKS = {
     "stance": {"stance": True},
-    "air_half_folded": {"wings": dict(fold=0.5)},
-    "air_folded": {"wings": dict(fold=1.0)},
+    "air_quarter_folded": {"wings": dict(fold=0.25)},
+    "air_tucked": {"wings": dict(fold=0.5)},
+    "air_three_quarter_folded": {"wings": dict(fold=0.75)},
     "rest": {},
     "upstroke": POSES["upstroke"],
+    "upstroke_45": {"wings": dict(flap=45)},
+    "upstroke_40_elbow_25": {"wings": dict(flap=40), "bones": {"forearm": dict(roll=-25)}},
     "downstroke": POSES["downstroke"],
     "sweep_forward": {"wings": dict(flap=20, sweep=22)},
+    "sweep_12": {"wings": dict(flap=20, sweep=12)},
     "head_left": {"head": dict(pos=(0.05, 1.36, 0.62), yaw=80)},
     "head_right": {"head": dict(pos=(-0.05, 1.36, 0.62), yaw=-80)},
     "head_up": {"head": dict(pos=(0, 1.42, 0.62), pitch=20)},
+    "head_up_10": {"head": dict(pos=(0, 1.36, 0.64), pitch=10)},
+    "call_stance": {"stance": True, "head": dict(pos=(0, 1.95, 0.25), pitch=28), "beak": 1.0},
     "head_down": {"head": dict(pos=(0, 1.22, 0.70), pitch=-35)},
     "bite": {"head": dict(pos=(0, 1.10, 0.80), pitch=-45), "beak": 1.0},
 }
@@ -139,7 +145,9 @@ def cameras(rig):
         # Saddled, from above and behind its left side.
         "saddle_three": camera("cam_saddle_three", tb((3.4, 3.3, -3.6)), tb((0.0, 1.0, 0.1)), tb((0, 1, 0)), lens=45),
         "pose_side": camera("cam_pose_side", tb((12, 1.1, -0.1)), tb((0, 1.1, -0.1)), tb((0, 1, 0)), 4.6),
-        "pose_three": camera("cam_pose_three", tb((3.2, 5.0, 8.5)), tb((0.0, 0.8, -0.2)), tb((0, 1, 0)), lens=40),
+        "pose_three": camera("cam_pose_three", tb((2.6, 3.9, 6.4)), tb((0.0, 0.9, -0.2)), tb((0, 1, 0)), lens=32),
+        # The folded wing on the ground, close, from behind its left shoulder.
+        "fold_close": camera("cam_fold_close", tb((2.6, 1.6, -1.6)), tb((0.15, 0.75, -0.25)), tb((0, 1, 0)), lens=35),
     }
 
 
@@ -197,6 +205,9 @@ def pose(rig, r, spec):
             c.foot(0, side, rig.mirrored(ft.pop("pos"), side), **ft)
         if "talons" in spec:
             c.talons(0, side, spec["talons"])
+        for bone, turn in spec.get("bones", {}).items():
+            s = 1.0 if side == "l" else -1.0
+            c.bone(0, f"{bone}_{side}", pitch=turn.get("pitch", 0.0), yaw=turn.get("yaw", 0.0) * s, roll=turn.get("roll", 0.0) * s)
     if "beak" in spec:
         c.beak(0, spec["beak"])
     bpy.context.scene.frame_set(0)
@@ -305,6 +316,8 @@ def main():
                 pose(rig, r, spec)
                 shoot(cams["pose_side"], os.path.join(out, f"pose_{name}_side.png"), (900, 900))
                 shoot(cams["pose_three"], os.path.join(out, f"pose_{name}_three.png"), (900, 900))
+                if spec.get("stance"):
+                    shoot(cams["fold_close"], os.path.join(out, f"pose_{name}_close.png"), (900, 900))
         r.rest()
     if "checks" in opts:
         body = r.blockout
