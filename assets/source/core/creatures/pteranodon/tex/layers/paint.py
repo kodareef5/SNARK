@@ -66,6 +66,93 @@ def waves(u, v, seed, scale=1):
             +octave(u*149*scale,v*149*scale,seed+7)*.10)
 
 
+def stroke(u, v, points):
+    """Distance to an open, variable-width physical stroke (millimetres).
+
+    This is a pigment field, not a closed outline. Paths and their unequal
+    widths are the original drawing in source/marks.json.
+    """
+    pts = np.asarray(points, dtype=float)/1000
+    distance = np.full_like(u, 100)
+    for start, end in zip(pts, pts[1:]):
+        dx, dy = end[:2]-start[:2]
+        t = np.clip(((u-start[0])*dx+(v-start[1])*dy)/(dx*dx+dy*dy), 0, 1)
+        width = start[2]+t*(end[2]-start[2])
+        d = np.hypot(u-start[0]-t*dx, v-start[1]-t*dy)/np.maximum(width, .001)
+        distance = np.minimum(distance, d)
+    return distance
+
+
+def membrane_wound(mark, u, v, palette):
+    """A slit or puncture assembled from separate lips, clots and bruises.
+
+    All fields are physical X/Z fields shared by the membrane's two faces.
+    Blood is confined to disconnected strokes: no radial red bank surrounds
+    the opening. The support and its reveal clock include the runoff drops.
+    """
+    seed = mark['seed']
+    pal = {k: np.asarray(value, np.float32) for k, value in palette.items()}
+    noise = waves(u, v, seed)
+    fine = waves(u, v, seed+4, 3.5)
+    first, last = mark['reveal']
+    drawing = mark['drawing']
+    # Unequal, overlapping bruises; one side is much more heavily soaked.
+    bruise = np.full_like(u, 100)
+    for x, y, length, width in drawing['bruises_mm']:
+        d = np.hypot((u-x/1000)/(length/2000), (v-y/1000)/(width/2000))
+        bruise = np.minimum(bruise, d)
+    bruise *= 1+.22*noise+.045*fine
+    # Bruised skin must remain distinct from the near-black opening. A broad
+    # field of wound-core value would turn the entire bruise into another hole.
+    col = mix(pal['bruise_deep'],pal['bruise_skin'],smooth(.08,.95,bruise))
+    col += fine[:,None]*3+noise[:,None]*np.array([4,3,3])
+    r = bruise.copy()
+    arrival = first+(last-first)*np.clip(bruise,0,1)**1.65
+
+    if mark['shape'] == 'tear':
+        lips = np.asarray(drawing['lips_mm'])/1000
+        low = np.interp(u, lips[:,0], lips[:,1])+.0018*fine
+        high = np.interp(u, lips[:,0], lips[:,2])+.0020*noise
+        centre = (low+high)/2
+        half = np.maximum((high-low)/2, .001)
+        gap = np.abs(v-centre)/half
+        ends = smooth(lips[0,0]-.008,lips[0,0]+.003,u)*(1-smooth(lips[-1,0]-.006,lips[-1,0]+.002,u))
+        opening = (1-smooth(.72,1.10,gap))*ends
+        # Advance inward from the trailing edge; the short split arrives last.
+        progress = smooth(-.14,.16,u)
+        gap_arrival = first+.92*progress+.32*np.clip(gap,0,1)
+        arrival = np.minimum(arrival, np.where(opening>.01,gap_arrival,4))
+        # The peeled-back lip is a dark flap with short pucker folds. It is
+        # deliberately longer and farther from the gap than the other lip.
+        fold = np.full_like(u,100)
+        for path in drawing['folds_mm']:
+            fold = np.minimum(fold,stroke(u,v,path))
+        col = mix(col, pal['split']*.65, (1-smooth(.45,1,fold))*.65)
+    else:
+        # An oblique, torn aperture with intruding tongues, not a round disk.
+        opening_path = drawing['opening_mm']
+        gap = stroke(u+.0025*noise,v+.004*fine,opening_path)
+        gap *= 1+.22*noise
+        opening = 1-smooth(.58,1.12,gap)
+        arrival = np.minimum(arrival,np.where(gap<1.15,first+.30*np.clip(gap,0,1),4))
+
+    # Individually drawn clots, smears and detached drops with changing width.
+    # A thin blood lip has holes; neither bank is generated from gap distance.
+    for item in drawing['blood_strokes']:
+        d = stroke(u,v,item['path_mm'])*(1+.18*noise+.05*fine)
+        r = np.minimum(r,d)
+        pigment = 1-smooth(.42,1,d)
+        blood = pal[item['pigment']]+fine[:,None]*np.array([9,2,1])
+        col = mix(col,blood,pigment*item.get('strength',1))
+        clock = first+item['delay']+(last-first-item['delay'])*np.clip(d,0,1)**1.5
+        arrival = np.minimum(arrival,clock)
+    col = mix(col,pal['wound_core']+fine[:,None]*1.5,opening)
+    # Leave a soft, irregular final fringe rather than an opaque decal edge.
+    fringe = 2.75*smooth(.35,.65,r)+.245*smooth(.65,1,r)
+    arrival = np.maximum(arrival,fringe)
+    return r, col, arrival
+
+
 class Atlas:
     def __init__(self, name):
         self.name = name
@@ -122,6 +209,10 @@ class Atlas:
             anchor = self.pos[index]
             n = self.normal[index]
             t = np.array(mark['axis'], np.float32)
+            if mark['kind'] == 'fuzz':
+                # The local comb and its downstream sign come from the bake.
+                flow = self.flow[index].copy()
+                t = flow if np.linalg.norm(flow) > .5 else t
             t -= n*np.dot(t, n)
             t /= max(np.linalg.norm(t), 1e-8)
             b = np.cross(n, t)
@@ -144,51 +235,53 @@ class Atlas:
         warp = np.interp(a,np.linspace(-1,1,11),np.roll([.07,-.13,.03,-.09,.16,.05,-.02,.13,-.06,.1,-.08],seed%11))
         r = np.sqrt(a*a + (b+warp)**2 + (depth/max(width*.8, .04))**2)
         r *= 1 + 0.14*macro + 0.035*fine
+        kind = mark['kind']
+        if kind in ('fuzz', 'skin'):
+            # A swept mat with unequal locks, including long soaked tails.
+            # Physical 8–25 mm edge variation survives the 256-pixel store.
+            comb = waves(u*.28, v*1.9, seed+63, 1.4)
+            centre = .12*np.sin(a*3+seed)+.10*macro
+            breadth = .65+.15*np.sin(a*4+seed)+.16*comb
+            r = np.sqrt((a/(.93+.08*macro))**2 + ((b-centre)/breadth)**2
+                        + (depth/max(width*.72,.035))**2)
+            for j, (offset, shift, reach) in enumerate([(-.44,.27,.85),(-.13,.45,.90),(.24,.35,.72),(.49,.13,.67)]):
+                lock = np.sqrt(((a-shift)/reach)**2+
+                               ((b-offset-.08*macro)/(.15+.035*np.sin(seed+j)))**2+
+                               (depth/max(width*.6,.03))**2)
+                r = np.minimum(r, lock)
+            r *= 1+.085*comb+.035*fine
+        elif kind == 'membrane':
+            r, wound_col, wound_arrival = membrane_wound(mark,u,v,palette)
         mask &= r < 1
         layer = mark.get('layer', 'hurt')
         first, last = mark['reveal']
         arrival = first+(last-first)*np.clip(r, 0, 1)**2.0
         # The last narrow fringe is still partially mixed at stage three. This
         # avoids a fully opaque sticker border without using alpha as opacity.
-        arrival += (2.995-last)*smooth(.82,1,r)
+        arrival += (2.995-last)*smooth(.64,1,r)
+        if not membrane and layer == 'hurt':
+            # Fade before the mirrored midline rather than cutting a straight
+            # alpha edge into the saddle view of the back of the neck.
+            arrival = np.maximum(arrival, 2.995*smooth(-.048,-.006,self.pos[:,0]))
         # A shared physical grain is vital on the membrane's two views.
         grain = 0.45*fine if membrane else self.grain*.65+self.clump*.45+fine*.18
         pal = {k: np.array(value, np.float32) for k, value in palette.items()}
-        kind = mark['kind']
-
         if kind in ('fuzz', 'skin', 'membrane'):
-            col = mix(pal['blood'], pal['blood_edge'], smooth(.68, 1, r))
-            col += grain[:, None] * np.array([30, 12, 14])
+            col = mix(pal['blood'], pal['blood_edge'], smooth(.42, .96, r))
+            col += grain[:, None] * np.array([14, 3, 2])
             if kind == 'membrane':
-                # A bruise under thin skin is broad; the jagged gap opens at its
-                # trailing side, never between two matching flesh banks.
-                col += np.array([12,4,4])
-                pools=waves(u,v,seed+31,.23)
-                col += pools[:,None]*np.array([58,17,24])
-                col = mix(col, pal['bruise']+fine[:, None]*7, smooth(.73, 1, r)*.52)
-                vessel=smooth(.010,.002,self.vein_distance)*smooth(.45,.8,r)
-                col=mix(col,pal['bruise']*.85,vessel*.28)
-                points=np.array(mark['edge'])
-                line=np.interp(a,points[:,0],points[:,1])+.04*fine
-                end=smooth(points[0,0],points[0,0]+.11,a)*(1-smooth(points[-1,0]-.11,points[-1,0],a))
-                opening=smooth(line+.035,line-.035,b)*end
-                col = mix(col, pal['opening']+fine[:, None]*4, opening)
-                # Only the short leading bank carries exposed torn tissue.
-                lip = smooth(.09, .025, np.abs(b-line-.07))*end*smooth(-.03,.34,macro)
-                col = mix(col, pal['flesh']+fine[:, None]*10, lip*.6)
+                col, arrival = wound_col, wound_arrival
             else:
-                # Flow-aligned long clumps, retaining the actual accepted fuzz.
-                along = np.sum(self.pos*self.flow, axis=-1)
-                strands = np.sin(v*1550+np.sin(along*110)*2+seed)
-                col += strands[:, None]*np.array([6, 3, 3])
-                line = -.29+warp*.8+fine*.035
-                breadth = .11+.09*smooth(-.8,.6,a)
-                focus = smooth(.86,.4,np.abs(a+.06))*smooth(breadth,breadth-.06,np.abs(b-line))
-                col = mix(col, pal['opening']+fine[:, None]*5, focus)
-                lip = smooth(.09,.025,np.abs(b-line-breadth))*smooth(.65,.30,np.abs(a+.26))
-                col = mix(col, pal['flesh']+grain[:, None]*15, lip*.85)
-                skin = smooth(.73,.91,r)*smooth(.98,.91,r)*smooth(.05,.55,macro)*smooth(.2,.6,b)
-                col = mix(col, pal['skin']+grain[:, None]*12, skin*.75)
+                # Existing pile supplies clumps inside the stain. No skin ring
+                # or pale tissue outline around the blood-matted fuzz.
+                clots = waves(u*.25,v*2.8,seed+22,1.5)
+                col = mix(col,pal['maroon'],smooth(-.15,.45,clots)*.65)
+                line = -.12+.13*np.sin(a*4+seed)+.07*macro
+                breadth = .12+.08*smooth(.2,-.7,a)
+                focus = smooth(.85,.36,np.abs(a+.24))*smooth(breadth+.07,breadth-.03,np.abs(b-line))
+                col = mix(col, pal['wound_core']+fine[:, None]*2, focus)
+                streak = smooth(.02,.42,clots)*smooth(-.2,.5,a)
+                col = mix(col,pal['blood_edge'],streak*.7)
 
         elif kind == 'horn':
             col = np.broadcast_to(pal['horn'], (len(a),3)).copy()+fine[:, None]*9
@@ -242,23 +335,16 @@ class Atlas:
 
         elif kind == 'leather':
             col = np.broadcast_to(pal['leather'], (len(a),3)).copy()+macro[:,None]*13+fine[:,None]*4
-            # Unequal branching splits: short independent line segments. The
-            # field is X/Z-only, so upper/under splits coincide physically.
+            # Fine open creases follow supply paths and the span's stretch.
+            # No loops, light rims or cutouts exposing pale original vessels.
             split = np.zeros_like(a)
-            for centre, lo, hi, slope in [(-.33,-.7,.35,.23),(.22,-.25,.77,-.17),(.55,-.72,-.05,.40)]:
-                curve = centre+slope*a+.07*np.sin(a*8+seed)
-                dd = b-curve
-                segment = smooth(lo-.1,lo+.1,a)*(1-smooth(hi-.1,hi+.1,a))
-                split = np.maximum(split,smooth(.075,.022,np.abs(dd))*segment)
-            col = mix(col,pal['split']+fine[:,None]*3,split*.95)
-            # Leave the major vessels standing; a local raised strip retains
-            # the original drawing, while cracks live in the tissue between.
+            x,z = -self.pos[:,0],self.pos[:,2]
+            for path in mark['creases_xz_mm']:
+                d = stroke(x,z,path)*(1+.12*fine)
+                split = np.maximum(split,1-smooth(.25,1,d))
             if hasattr(self,'vein_distance'):
-                protect = smooth(.006,.019,self.vein_distance)
-                mask &= protect>.03
-                arrival = np.maximum(arrival, 2.65*(1-protect))
-            bloom = smooth(.4,.85,macro)*smooth(.63,.98,r)
-            col = mix(col,pal['bloom'],bloom*.35)
+                split *= .45+.55*smooth(.003,.012,self.vein_distance)
+            col = mix(col,pal['split']+fine[:,None]*2,split*.90)
 
         else:
             raise ValueError(kind)
