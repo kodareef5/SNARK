@@ -224,6 +224,11 @@ export class Characters {
     return this.kinds[kind] != null || this.creatures[kind] != null;
   }
 
+  /** What a creature of this kind plays, or null for a kind not drawn on a rig of its own. */
+  creature(kind: number): CreatureAnim | null {
+    return this.creatures[kind]?.anim ?? null;
+  }
+
   /** Whether this kind is on the humanoid skeleton. */
   human(kind: number): boolean {
     return this.kinds[kind] != null;

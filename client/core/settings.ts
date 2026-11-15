@@ -28,6 +28,8 @@ export class Settings {
   fov = 70;
   /** A multiple of the default. */
   voiceVolume = 1;
+  /** The world's sounds, a multiple of the default. */
+  soundVolume = 1;
   /** The talk key toggles the microphone instead of being held. */
   toggleTalk = false;
 }
@@ -55,6 +57,7 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Damage numbers", value: (s) => (s.damageNumbers ? "on" : "off"), step: (s) => void (s.damageNumbers = !s.damageNumbers) },
   { label: "Mouse sensitivity", value: (s) => `${Math.round(s.sensitivity * 100)}%`, step: (s, by) => void (s.sensitivity = clamp(Math.round((s.sensitivity + by * 0.1) * 10) / 10, SENSITIVITY_MIN, SENSITIVITY_MAX)) },
   { label: "Field of view", value: (s) => `${s.fov} degrees`, step: (s, by) => void (s.fov = clamp(s.fov + by * 5, FOV_MIN, FOV_MAX)) },
+  { label: "Sound volume", value: (s) => `${Math.round(s.soundVolume * 100)}%`, step: (s, by) => void (s.soundVolume = clamp(Math.round((s.soundVolume + by * 0.1) * 10) / 10, 0, VOLUME_MAX)) },
   { label: "Voice volume", value: (s) => `${Math.round(s.voiceVolume * 100)}%`, step: (s, by) => void (s.voiceVolume = clamp(Math.round((s.voiceVolume + by * 0.1) * 10) / 10, 0, VOLUME_MAX)) },
   { label: "Talk key (B)", value: (s) => (s.toggleTalk ? "on and off" : "hold"), step: (s) => void (s.toggleTalk = !s.toggleTalk) },
   { label: "Keep all assets", value: (s) => s.kept, step: (s) => void (s.download = true) },

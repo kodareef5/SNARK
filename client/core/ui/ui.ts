@@ -43,6 +43,8 @@ export class Ui {
   /** The app sets both once it has them. */
   registry: Registry | null = null;
   palette: Uint8Array | null = null;
+  /** A console line this client answers itself, without the server: the answer, or null for a line to send. */
+  local: ((line: string) => string | null) | null = null;
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
@@ -111,7 +113,9 @@ export class Ui {
         return true;
       case "Enter":
         con.submit((line) => {
-          if (!session || (session.text(line) === 0 && session.state !== "active")) con.print("not connected; nothing was sent");
+          const answer = this.local?.(line) ?? null;
+          if (answer !== null) con.print(answer);
+          else if (!session || (session.text(line) === 0 && session.state !== "active")) con.print("not connected; nothing was sent");
         });
         return true;
       case "ArrowUp":

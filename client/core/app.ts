@@ -44,6 +44,10 @@ import { waitWords } from "./ui/inventory.ts";
 import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
+import type { SoundSink } from "./sound/packet.ts";
+import { Sounds } from "./sound/sounds.ts";
+import { soundCommand } from "./sound/command.ts";
+import { SplitPort } from "./sound/split.ts";
 
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
@@ -122,6 +126,7 @@ export class App {
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     this.shots = new Shots(reg, pack);
     session.onResult = (seq, code) => {
       this.ui.creator.result(seq, code === RESULT_OK);
@@ -144,6 +149,10 @@ export class App {
   private usePulse = 0;
 
   voice: VoicePort | null = null;
+  /** Plays the world's sounds. Null in tests and wherever there is no audio: then no sound work is done at all. */
+  sound: SoundSink | null = null;
+  /** Made with the scene, where there is a sink and the assets stream. */
+  sounds: Sounds | null = null;
   talking = false;
   private talkMode = MODE_TALK;
   private volumeSet = -1;
@@ -484,7 +493,10 @@ export class App {
       this.shots.reg = this.shown;
     }
     if (!this.scene) {
-      this.scene = new Scene(world, this.reg, this.pack, this.stream);
+      // Sounds share the asset port, each side taking only what it asked for.
+      const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
+      this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
+      if (split) this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst);
       this.scene.shots = this.shots;
       this.scene.plainSky = this.plainSky;
       if (this.stress) {
@@ -497,7 +509,7 @@ export class App {
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
-    hud.status = this.debug ? this.scene.assets.line() : "";
+    hud.status = this.debug ? `${this.scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
 
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
     const cam = this.cam;
@@ -598,7 +610,10 @@ export class App {
     this.scene.viewHeight = height;
     this.scene.now = nowMs;
     const kept = this.scene.assets.residency.cache;
-    if (this.ui.settings.download) this.scene.assets.residency.download();
+    if (this.ui.settings.download) {
+      this.scene.assets.residency.download();
+      this.sounds?.library.download();
+    }
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
     this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), this.off);
@@ -615,6 +630,7 @@ export class App {
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     this.listen(hud);
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, this.ui.settings.soundVolume);
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder;

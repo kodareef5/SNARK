@@ -2,6 +2,7 @@
 // hold it. A client reads this first and then asks for the levels it wants.
 
 import { MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodVertices, type Pack, type PackMaterial } from "./pack.ts";
+import { soundFault, type ManifestSound } from "./sound.ts";
 import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
 
 /**
@@ -13,8 +14,8 @@ export const MANIFEST_VERSION = 3;
 export interface ManifestFile {
   name: string;
   bytes: number;
-  /** "boot" is fetched whole at start. The others are fetched a level or a step at a time. */
-  role: "boot" | "mesh" | "tex";
+  /** "boot" is fetched whole at start. The others are fetched a level, a step or a sound at a time. */
+  role: "boot" | "mesh" | "tex" | "sound";
   /** For a texture file, the variant it holds. */
   format?: TextureFormat;
 }
@@ -101,6 +102,8 @@ export interface Manifest {
   meshes: ManifestMesh[];
   materials?: PackMaterial[];
   textures?: ManifestTexture[];
+  /** Sounds, in a file of their own (shared/pack/sound.ts). */
+  sounds?: ManifestSound[];
 }
 
 const pad4 = (n: number): number => (n + 3) & ~3;
@@ -165,6 +168,8 @@ export function parseManifest(text: string): Manifest {
     mat.mask2 ??= -1;
     for (const t of [mat.base, mat.normal, mat.mro, mat.mask, mat.mask2]) if (!(t >= -1 && t < textures.length)) throw new Error(`manifest: material ${mat.id} names a texture that is not there`);
   }
+  const sounds = m.sounds ? soundFault(m.sounds, m.files) : "";
+  if (sounds !== "") throw new Error(`manifest: ${sounds}`);
   const seen = new Set<string>();
   for (const mesh of m.meshes) {
     if (typeof mesh.id !== "string" || seen.has(mesh.id)) throw new Error(`manifest: mesh "${String(mesh.id)}" is listed twice or has no id`);
