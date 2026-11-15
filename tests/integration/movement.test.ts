@@ -205,6 +205,26 @@ test("fly is stopped by what is built and by the ground, where a ghost goes thro
   expect(ents.mode[e]).toBe(MODE_GHOST);
 });
 
+test("a ghost holding sprint ramps to 600 m/s and back to 12 alike on both sides: no correction over a clean link", () => {
+  const { h, s, pilot, ents, e } = admin({ latencyMs: 60 });
+  expect(h.say(s, "ghost")).toEqual(["ghost on"]);
+  h.run(500);
+  const settled = s.stats.corrections;
+  const speed = (): number => Math.hypot(ents.vx[e]!, ents.vy[e]!, ents.vz[e]!);
+  let most = 0;
+  [pilot.pitch, pilot.moveZ, pilot.buttons] = [0.2, 1, BTN_SPRINT];
+  h.run(5000, (now) => {
+    pilot.yaw = now / 700;
+    most = Math.max(most, speed());
+  });
+  pilot.buttons = 0;
+  h.run(500);
+  expect([most, speed(), s.stats.corrections - settled]).toEqual([expect.closeTo(600, 2), expect.closeTo(12, 3), 0]);
+  pilot.moveZ = 0;
+  h.run(1000);
+  expect([s.own.x, s.own.y, s.own.z, s.stats.corrections - settled]).toEqual([ents.x[e]!, ents.y[e]!, ents.z[e]!, 0]);
+});
+
 test("a small correction is hidden by an offset that fades; the drawn position never jumps", () => {
   const h = new Harness();
   const s = h.join("ada", { latencyMs: 30 });

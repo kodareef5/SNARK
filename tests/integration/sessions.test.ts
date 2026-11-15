@@ -81,7 +81,8 @@ test("a spectator sees what a player there would see, and nobody sees it", () =>
   p.buttons = 0;
   h.run(500);
   expect(maxStep).toBeGreaterThan(1.5);
-  expect(maxStep).toBeLessThan(2.001); // 60 m/s at 30 steps a second
+  // 60 m/s at first, 150 more for each second sprint is held, at 30 steps a second.
+  expect(maxStep).toBeLessThan((60 + 150 * 2) / 30 + 0.001);
   expect(c.body.y).toBeGreaterThan(left.y + 40);
   expect(bo.own.equals(c.body)).toBe(true);
   expect(bo.stats.corrections).toBe(settled);

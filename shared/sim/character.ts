@@ -207,9 +207,14 @@ const MAX_SUBSTEPS = 16;
 const TERMINAL_SPEED = 60;
 const GROUND_PROBE = 0.02;
 const RESOLVE_ITERATIONS = 4;
-/** Metres per second, flying or a ghost. Sprint multiplies it by GHOST_SPRINT, so 8 km takes a little over two minutes. */
+/**
+ * A ghost's or a flyer's speed, in metres per second: GHOST_SPEED, and with sprint GHOST_SPRINT times that at once, gaining
+ * GHOST_RAMP each second it is held, up to GHOST_MAX. 8 km takes 17 s once at the most.
+ */
 const GHOST_SPEED = 12;
 const GHOST_SPRINT = 5;
+const GHOST_RAMP = 150;
+const GHOST_MAX = 600;
 const found = new Found();
 
 /**
@@ -721,10 +726,14 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   b.stamina = stamina;
 }
 
-/** A ghost's or a flyer's velocity, set by `flight`: along the look, rising by the jump button, at once. */
+/** A ghost's or a flyer's velocity, set by `flight`. */
 const flown = [0, 0, 0];
 
-function flight(moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
+/**
+ * Along the look, rising by the jump button, at once. The way is at most a unit long, so the speed a sprint ramps from is the
+ * length of the velocity the body kept from its last tick: no new state, and both sides ramp alike.
+ */
+function flight(b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, dt: number): void {
   let mx = moveX / 127;
   let mz = moveZ / 127;
   const m2 = mx * mx + mz * mz;
@@ -739,18 +748,32 @@ function flight(moveX: number, moveZ: number, yaw: number, pitch: number, button
   const e = pitch * YAW_TO_RAD;
   const sp = detSin(e);
   const cp = detCos(e);
-  const speed = GHOST_SPEED * ((buttons & BTN_SPRINT) !== 0 ? GHOST_SPRINT : 1);
-  flown[0] = (s * cp * mz - c * mx) * speed;
-  flown[1] = (sp * mz + ((buttons & BTN_JUMP) !== 0 ? 1 : 0)) * speed;
-  flown[2] = (c * cp * mz + s * mx) * speed;
+  let dx = s * cp * mz - c * mx;
+  let dy = sp * mz + ((buttons & BTN_JUMP) !== 0 ? 1 : 0);
+  let dz = c * cp * mz + s * mx;
+  const d2 = dx * dx + dy * dy + dz * dz;
+  if (d2 > 1) {
+    const inv = 1 / Math.sqrt(d2);
+    dx *= inv;
+    dy *= inv;
+    dz *= inv;
+  }
+  let speed = GHOST_SPEED;
+  if ((buttons & BTN_SPRINT) !== 0) {
+    const was = Math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz) + GHOST_RAMP * dt;
+    speed = was < GHOST_SPEED * GHOST_SPRINT ? GHOST_SPEED * GHOST_SPRINT : was > GHOST_MAX ? GHOST_MAX : was;
+  }
+  flown[0] = dx * speed;
+  flown[1] = dy * speed;
+  flown[2] = dz * speed;
 }
 
 /**
- * Flies as a ghost does, with no gravity, but meets the ground, pieces and nodes as a swimmer does, a substep at a time, so it
- * crosses nothing. It stands while it flies.
+ * Flies as a ghost does, with no gravity, but meets the ground, pieces and nodes as a swimmer does, half a radius at a time
+ * however fast, so it crosses nothing. It stands while it flies.
  */
 function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
-  flight(moveX, moveZ, yaw, pitch, buttons);
+  flight(b, moveX, moveZ, yaw, pitch, buttons, dt);
   let vx = flown[0]!;
   let vy = flown[1]!;
   let vz = flown[2]!;
@@ -758,18 +781,12 @@ function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: 
   const r = p.radius;
   const height = p.height;
   const tall = height > 2 * r ? height : 2 * r;
-  const dist = Math.sqrt(vx * vx + vy * vy + vz * vz) * dt;
   const maxStep = r * 0.5;
-  let n = Math.ceil(dist / maxStep);
-  let scale = dt;
-  if (n < 1) n = 1;
-  else if (n > MAX_SUBSTEPS) {
-    scale = (dt * MAX_SUBSTEPS * maxStep) / dist;
-    n = MAX_SUBSTEPS;
-  }
-  const sx = (vx * scale) / n;
-  const sy = (vy * scale) / n;
-  const sz = (vz * scale) / n;
+  // At GHOST_MAX a survivor takes a hundred.
+  const n = Math.max(1, Math.ceil((Math.sqrt(vx * vx + vy * vy + vz * vz) * dt) / maxStep));
+  const sx = (vx * dt) / n;
+  const sy = (vy * dt) / n;
+  const sz = (vz * dt) / n;
   const maxX = hf.sizeX - r;
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
@@ -856,7 +873,7 @@ function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: 
 
 /** No collision. Bounded to the map's box. */
 function stepGhost(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, dt: number): void {
-  flight(moveX, moveZ, yaw, pitch, buttons);
+  flight(b, moveX, moveZ, yaw, pitch, buttons, dt);
   const vx = flown[0]!;
   const vy = flown[1]!;
   const vz = flown[2]!;
