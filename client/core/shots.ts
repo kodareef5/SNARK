@@ -10,6 +10,7 @@ import { FLIGHT_TICKS, HITSCAN_RANGE, flyEnd, flyStep, launchSpeed, piece, type 
 import { TICK_DT } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { bodyAlong, seaHere } from "../../shared/world/water.ts";
 import { shotDir } from "../../shared/sim/aim.ts";
 import { shotRays } from "../../shared/content/registry.ts";
 import type { Camera } from "./render/camera.ts";
@@ -206,7 +207,8 @@ export class Shots {
         let length = piece.length;
         const { x, y, z, dx, dy, dz } = piece;
         let ends = --f.left <= 0 || !(length > 0);
-        if (y > sea && y + dy * length <= sea) ends = true;
+        if (y > sea && y + dy * length <= sea && seaHere(world.hf.water, x + (dx * (sea - y)) / dy, z + (dz * (sea - y)) / dy)) ends = true;
+        if (!ends && bodyAlong(world.hf.water, x, y, z, dx, dy, dz, length) <= length) ends = true;
         if (!ends && castWorld(world, x, y, z, dx, dy, dz, length) !== HIT_NONE) ends = true;
         // The body test skips a flight's first two pieces, because a shot starts inside its shooter's box.
         for (let i = 0; remote && !ends && f.left < FLIGHT_TICKS - 2 && i < remote.count; i++) {

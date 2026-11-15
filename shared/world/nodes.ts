@@ -8,6 +8,7 @@ import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import type { Heightfield } from "./heightfield.ts";
 import { StructureStore, type PartTable } from "./structures.ts";
+import { seaHere } from "./water.ts";
 
 /** A kind with a range of sizes grows at this many, evenly from its least to its most. */
 export const SIZE_STEPS = 16;
@@ -242,9 +243,10 @@ export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perCh
       if (grows === null || grows.length === 0) return;
       const y = hf.heightAt(x, z);
       let kind = grows[g % grows.length]!;
-      // A kind of the sea floor grows only under the sea, one of either anywhere, and every other only on dry ground.
+      // A kind of the sea floor grows only under the sea, not a lake; one of either anywhere; and every other only on dry
+      // ground, out of the sea and every lake.
       const sea = forms.sea[kind]!;
-      if ((sea === SEA_DRY ? y < hf.seaLevel + 0.3 : sea === SEA_UNDER && y >= hf.seaLevel) || hf.slopeCosAt(x, z) < 0.85) return;
+      if ((sea === SEA_DRY ? y < hf.waterAt(x, z) + 0.3 : sea === SEA_UNDER && (y >= hf.seaLevel || !seaHere(hf.water, x, z))) || hf.slopeCosAt(x, z) < 0.85) return;
       if (kind !== 0 && ring[kind]! > 0 && !fits(kind, chunkCx(dims, chunk) * 65536 + (h & 0xffff), chunkCz(dims, chunk) * 65536 + (h >>> 16))) kind = forms.footElse[kind]!;
       if (kind === 0) return;
       out.kind = kind;

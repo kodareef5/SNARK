@@ -430,9 +430,9 @@ export class Ragdoll {
   private substep(world: CollisionWorld, h: number): void {
     const { n, x, v, w, q, px, pq } = this;
     this.h = h;
-    const sea = world.hf.seaLevel;
+    const hf = world.hf;
     for (let i = 0; i < n; i++) {
-      const wet = x[i * 3 + 1]! < sea;
+      const wet = x[i * 3 + 1]! < hf.waterAt(x[i * 3]!, x[i * 3 + 2]!);
       const damp = 1 - (DAMP + (wet ? WATER_DAMP : 0)) * h;
       const spinDamp = 1 - (SPIN_DAMP + (wet ? WATER_DAMP : 0)) * h;
       v[i * 3 + 1]! -= GRAVITY * (wet ? SINKS : 1) * h;

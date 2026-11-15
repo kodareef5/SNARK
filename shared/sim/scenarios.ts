@@ -19,6 +19,7 @@ import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world
 import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
 import { NodeField, nodeForms, scatterNodes, type NodeSpot } from "../world/nodes.ts";
 import { StructureStore } from "../world/structures.ts";
+import { MapWater } from "../world/water.ts";
 import { frameAxes, makeAim, makeSockets, obstructed, pickSnap, poseAt, socketsOf, type Pose as SnapPose } from "../world/snap.ts";
 
 /** A tuning with an entry of every kind and numbers that do not come out even, as a server's settings might produce. */
@@ -164,6 +165,29 @@ export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; 
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * The bodies of `simHash` over the proving ground with water standing on its own surfaces: the pool's west half 1.25 m
+ * over the sea in its east half, a pond 2 m up over the foot of the slopes, and a puddle 0.6 m deep on the plaza where the
+ * first survivor starts. Equal on both engines means swimming into, out of and between waters of different heights is
+ * predicted as the server steps it.
+ */
+export function waterHash(reg: Registry, ticks = 3000): string {
+  const hf = buildProvingHeightfield();
+  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  populateProving(structs, hf, reg);
+  const side = (PROVING_DIMS.chunksX * 64) / 2;
+  const grid = new Uint16Array(side * side);
+  const fill = (x0: number, z0: number, x1: number, z1: number, b: number): void => {
+    for (let j = z0 / 2; j < z1 / 2; j++) for (let i = x0 / 2; i < x1 / 2; i++) grid[j * side + i] = b;
+  };
+  fill(140, 220, 172, 292, 1);
+  fill(196, 276, 246, 300, 2);
+  fill(248, 234, 264, 250, 3);
+  const level = (m: number): number => Math.round((m - hf.minY) / hf.stepY);
+  hf.water = MapWater.fromGrid(PROVING_DIMS, hf.minY, hf.stepY, 2, [{ name: "Raised pool", level: level(0.75) }, { name: "Slope pond", level: level(2) }, { name: "Puddle", level: level(0.6) }], grid);
+  return simHash(reg, ticks, { hf, structs });
 }
 
 /** Poses of the human clips in `anim` over every state a body can be in, and what three rays hit. */

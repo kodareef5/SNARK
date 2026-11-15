@@ -92,8 +92,9 @@ const BASE_KINDS = ["core:foundation", "core:wall", "core:wall", "core:ceiling",
 
 /**
  * The siege scene: a base under siege seen from inside the fight, the camera at eye height looking west at it with the
- * morning sun behind. The bench's base of 2,000 pieces 60 m ahead; every kind of structure the content has, 20 of each
- * in each of the nine chunks round the camera; a chunk beside the base holding 20,000 walls up to 60 m; 300 survivors
+ * morning sun behind. The bench's base of 2,000 pieces 60 m ahead; every kind of building piece the content has
+ * (`structure/piece`: no station, container, bed or static, so a new station never moves it), 20 of each in each of the
+ * nine chunks round the camera; a chunk beside the base holding 20,000 walls up to 60 m; 300 survivors
  * in armour with rifles and 100 raptors, running and fighting within 80 m all round. A map 1 km square, the bench's hills.
  */
 export function siegeScene(reg: Registry, pack: Pack, tier: Tier): { scene: Scene; cam: Camera; remote: RemoteSample } {
@@ -111,7 +112,7 @@ export function siegeScene(reg: Registry, pack: Pack, tier: Tier): { scene: Scen
   const put = (kind: number, x: number, z: number, storey: number): void => void structs.add(kind, x, ground(x, z) + storey * 3.3 + structs.halfYOf(kind), z, rng.int(4) * 16384, 1, 1000);
   const baseKinds = BASE_KINDS.map((id) => reg.index.get(id)!);
   for (let n = 0; n < 2000; n++) put(baseKinds[rng.int(baseKinds.length)]!, cx + 60 + (rng.int(15) - 7) * 3, cz + (rng.int(15) - 7) * 3, rng.int(4));
-  const all = reg.defs.flatMap((d, k) => (d?.type === "structure" ? [k] : []));
+  const all = reg.defs.flatMap((d, k) => (d?.type === "structure" && d.class === "piece" ? [k] : []));
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) for (const kind of all) for (let n = 0; n < 20; n++) put(kind, cx + dx * 64 + rng.range(-31, 31), cz + dz * 64 + rng.range(-31, 31), rng.int(3));
   const wall = reg.index.get("core:wall")!;
   for (let n = 0; n < 20000; n++) {
