@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage as ndi
 from scipy.spatial import ConvexHull
+from scipy.stats import spearmanr
 
 ROOT=Path(__file__).resolve().parent
 OUT=ROOT/'checks'
@@ -261,7 +262,7 @@ def purpose(base,normal,orm):
     # The supplied concept is a painted close crop, without camera metadata.
     # A declared 10 cm blade / 12 px registration gives 120 px per metre.
     # Compare both at that ART scale as well as the calibrated 90-degree view.
-    concept=Image.open(ROOT/'feedback/concept_crown_detail.png').convert('RGB')
+    concept=Image.open(ROOT/'feedback/concept_crown_detail.jpg').convert('RGB')
     crop_box=(580,50,940,302)
     ref=concept.crop(crop_box)
     matched=render(30,7200)
@@ -287,6 +288,62 @@ def purpose(base,normal,orm):
                 measurements={name:results[30][name]['measurements'] for name in lights},
                 screenshot_scale_1600={name:screenshot_scale[name]['measurements'] for name in lights},
                 note='Cells 0/2 on top; cells 1/3 around and below the rim. Per-card mip filtering, alpha cut 0.5, shared rounded macro normals plus rotated delivered detail normals. AO affects sky only; matte sky sheen uses ORM. No cast shadow, bounce, rim light, exposure adjustment or coverage boost.')
+
+
+def round6_checks(base,kinds,composition,metrics,require):
+    """Colour-only regression against the incoming round-5 atlas.
+
+    Leaf ordering and contrast are measured on mature tissue, excluding the
+    intentionally fixed twigs/brown leaves and independently lifted fresh tips.
+    The game tint is a preview in linear space, never baked into the texture.
+    """
+    reference=json.loads((ROOT/'source/round5_preservation_reference.json').read_text())
+    def ah(a):return hashlib.sha256(a.tobytes()).hexdigest()
+    fixed=(base[:1024,:1024,3]>=128)&np.isin(kinds[:1024,:1024],[1,6,7])
+    current=dict(base_alpha=ah(base[...,3]),base_mass=ah(base[1024:]),
+                 base_accessories=ah(base[:1024,1024:]),card_fixed_rgb=ah(base[:1024,:1024,:3][fixed]))
+    preservation={}
+    for name,digest in current.items():
+        same=digest==reference['pixel_hashes'][name]
+        preservation[name]=dict(sha256=digest,byte_identical=same)
+        require(same,f'round-5 {name} pixel bytes unchanged')
+    for path,expected in reference['file_hashes'].items():
+        digest=hashlib.sha256((ROOT/path).read_bytes()).hexdigest()
+        preservation[path]=dict(sha256=digest,byte_identical=digest==expected)
+        require(digest==expected,f'round-5 {path} file bytes unchanged')
+    digest=hashlib.sha256(json.dumps(composition['composition'],sort_keys=True).encode()).hexdigest()
+    same=digest==reference['composition_sha256']
+    preservation['composition']=dict(sha256=digest,byte_identical=same)
+    require(same,'round-5 complete leaf and mass composition unchanged')
+    metrics['round5_preservation']=preservation
+    ids=np.array(Image.open(ROOT/'source/detail_leaf_ids.png'))
+    tint=np.array([.96,1.,.72]);luma=np.array([.2126,.7152,.0722])
+    tones=[];panels=[];labels=[]
+    for i,r in enumerate(LAYOUT['cells'][:4]):
+        x,y,X,Y=r['box'];b=base[y:Y,x:X];k=kinds[y:Y,x:X];ident=ids[y:Y,x:X]
+        visible=b[...,3]>=128;mature=visible&(k==2)
+        lum=np.sum(b[...,:3].astype(float)*luma,axis=-1)
+        old=reference['clusters'][i];old_means=[];new_means=[]
+        for leaf in old['mature_leaf_means']:
+            mask=mature&(ident==leaf['id'])
+            old_means.append(leaf['luminance']);new_means.append(float(lum[mask].mean()))
+        rank=float(spearmanr(old_means,new_means).statistic)
+        percentiles=np.percentile(lum[mature],[10,90])
+        contrast=float(np.diff(percentiles)[0]/np.diff(old['mature_luminance_p10_p90'])[0])
+        require(rank>.995,f'cluster {i}: mature leaf brightness ordering retained (rank correlation >0.995)')
+        require(.95<contrast<1.10,f'cluster {i}: mature leaf value spread retained within -5/+10 percent')
+        brightest=mature&(lum>=np.percentile(lum[mature],90))
+        tinted=srgb(linear(b[...,:3].astype(float))*tint)
+        tone=dict(cell=i,mature_leaf_rank_correlation=rank,
+                  mature_luminance_p10_p90=percentiles.tolist(),contrast_ratio_to_round5=contrast,
+                  brightest_mature_tenth_rgb=b[...,:3][brightest].mean(0).tolist(),
+                  linear_tinted_rgb_mean=tinted[visible].mean(0).tolist())
+        tones.append(tone)
+        rgba=b.copy();rgba[...,:3]=np.rint(tinted).astype(np.uint8)
+        panels.extend([composite(b),composite(rgba)])
+        labels.extend([f'Cell {i} / delivered sRGB',f'Cell {i} / game linear tint'])
+    metrics['round6_colour']=dict(game_linear_tint=tint.tolist(),tint_baked_into_asset=False,clusters=tones)
+    save(sheet(panels,labels,2,384,384),'spray_tint_preview.png')
 
 
 def main():
@@ -397,21 +454,23 @@ def main():
             require(entry['turned_leaf_fraction']<.03,f'cluster {i}: undersides below 3 percent')
             require(float(co[...,1][mask & (kinds[sl]!=1)].min()/255)>=.929 and entry['roughness_max']<=.973,f'cluster {i}: leaf roughness 0.93–0.97 (twig 0.85)')
             require(entry['occlusion_min']>=.749,f'cluster {i}: AO at least 0.75')
-            target=[128,132,70] if i in [0,2] else [86,98,62]
+            target=[150,152,76] if i in [0,2] else [96,108,64]
             entry['leaf_ecotype']='sun' if i in [0,2] else 'shade'
             entry['rgb_target']=target
             require(np.max(np.abs(np.array(entry['rgb_mean'])-target))<1.2,f'cluster {i}: prescribed mean colour')
             if i in [0,2]:
                 mature=mask&(kinds[sl]==2)
                 entry['mature_rgb_max']=cb[...,:3][mature].max(0).tolist()
-                require(np.all(np.array(entry['mature_rgb_max'])<=[161,156,83]),
+                require(np.all(np.array(entry['mature_rgb_max'])<=[182,179,90]),
                         f'cluster {i}: mature sun pigments bounded below fresh tips')
+                require(np.max(np.abs(np.array(entry['mature_rgb_max'])-[185,182,92]))<=5,
+                        f'cluster {i}: brightest mature faces approach 185,182,92')
             if i==2:
                 fresh=mask&(kinds[sl]==5)
                 entry['fresh_rgb_mean']=cb[...,:3][fresh].mean(0).tolist()
                 entry['fresh_rgb_p95']=np.percentile(cb[...,:3][fresh],95,axis=0).tolist()
-                require(np.max(np.abs(np.array(entry['fresh_rgb_p95'])-[165,160,85]))<6,
-                        'cluster 2: brightest fresh tips near 165,160,85')
+                require(np.max(np.abs(np.array(entry['fresh_rgb_p95'])-[185,182,92]))<3,
+                        'cluster 2: brightest fresh tips near 185,182,92')
             outline_data.append(dict(cell=i,definition='fixed native convex hull of alpha >= 0.5; attachment included',
                                      native_scalloped_area_px=float(env.sum()),native_convex_area_px=float(hull.sum())))
         if i==4:
@@ -533,7 +592,9 @@ def main():
         mean=np.array(metrics['regions'][i]['rgb_mean'])
         metrics['ecotype_tones']['clusters'].append(dict(top_rgb_mean=v.tolist(),difference_from_mass_top=(v-exposed[-1]).tolist()))
         if i in [1,3]:
-            require(np.max(np.abs(mean-exposed[-1]))<7,f'cluster {i}: shade mean matches mass upper leaves within 7 RGB levels')
+            # Round 6 lifts shade cards by 10/10/2; the interior stays at round 5.
+            require(np.max(np.abs(mean-[10,10,2]-exposed[-1]))<7,
+                    f'cluster {i}: lifted shade mean retains relation to unchanged mass upper leaves')
         else:
             require(np.all(mean[:2]-exposed[-1][:2]>25),f'cluster {i}: sun leaves lighter than interior upper leaves')
     sun=np.mean([metrics['regions'][i]['rgb_mean'] for i in [0,2]],axis=0)
@@ -626,6 +687,7 @@ def main():
     metrics['mass_pool_area_change']=dict(before=old,after={k:new[k] for k in old})
     require(new['ao_below_060_fraction']>old['ao_below_060_fraction']+.15,'mass pooled AO below 0.60 expanded by more than 15 percentage points')
     require(new['dark_green_below_65_fraction']>.20,'mass cool deep pigment occupies more than 20 percent of its area')
+    round6_checks(b,kinds,composition,metrics,require)
     metrics['purpose_test']=purpose(b,n,o)
     for i,p in enumerate(metrics['purpose_test']['cards']):
         require(p['cell'] in ([0,2] if p['role']=='sun_top' else [1,3]),f'purpose card {i} uses the specified ecotype for its placement')

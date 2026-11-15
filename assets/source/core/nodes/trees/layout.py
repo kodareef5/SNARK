@@ -52,21 +52,36 @@ LEAVES = {
 CLUSTERS = (0, 1, 2, 3)
 MASS = (0.0, 0.5, 1.0, 1.0)
 
-# The opaque crown materials (crowns.py): where each picture holds its kind's crown skin as sun leaves and as shade
-# leaves, and the metres one skin spans across. The oak's fill its picture; the fig's and the mangrove's its upper half,
-# over what the figs swallowed (RUINS) and over the prop roots (ROOTS_AT).
-CROWN_SKIN = {
-    "oak_crown": (((0.0, 0.0, 1.0, 0.5), (0.0, 0.5, 1.0, 1.0)), 4.8),
-    "fig_crown": (((0.0, 0.0, 1.0, 0.25), (0.0, 0.25, 1.0, 0.5)), 6.4),
-    "mangrove_crown": (((0.0, 0.0, 1.0, 0.25), (0.0, 0.25, 1.0, 0.5)), 4.0),
-}
+# Where the mangrove's crown picture holds the prop roots' picture, under its heads of leaves (crowns.py).
 ROOTS_AT = (0.0, 0.5, 1.0, 1.0)
 
 
-def crown_mass(name):
-    """A crown skin as broadleaf.skin takes it: its material, its rectangles of sun and shade leaves, the metres across."""
-    rects, width = CROWN_SKIN[name]
-    return (name, rects, width)
+# A crown of heads of leaves (heads.py) wears cells of its crown picture, a quarter of it across and down, each a disc
+# with a head's top at its middle, or a head's underside; and a tiling rectangle of the crown's dark interior, `metres`
+# across. The oak's picture is all heads: rows 1 to 3 the tops by tier (sun, middle, shade), four heads a row; row 4 two
+# undersides and the interior. The fig's keeps what the figs swallowed in its lower half (RUINS): its upper half holds
+# two heads a tier, one underside and the interior. Cells are (column, row).
+HEAD_CELLS = {
+    "oak_crown": {"tops": [[(v, t) for v in range(4)] for t in range(3)], "under": [(0, 3), (1, 3)], "core": (0.5, 0.75, 1.0, 1.0), "metres": 4.8},
+    "fig_crown": {"tops": [[(0, 0), (1, 0)], [(2, 0), (3, 0)], [(0, 1), (1, 1)]], "under": [(2, 1)], "core": (0.75, 0.25, 1.0, 0.5), "metres": 2.4},
+    "mangrove_crown": {"tops": [[(0, 0), (1, 0)], [(2, 0), (3, 0)], [(0, 1), (1, 1)]], "under": [(2, 1)], "core": (0.75, 0.25, 1.0, 0.5), "metres": 2.4},
+}
+
+
+def _cell(c, r):
+    return (c * 0.25, r * 0.25, (c + 1) * 0.25, (r + 1) * 0.25)
+
+
+def head_cell(name, tier, variant):
+    """The rectangle of a crown picture whose disc is the top of a head of `tier` and `variant`."""
+    cells = HEAD_CELLS[name]["tops"][tier]
+    return _cell(*cells[variant % len(cells)])
+
+
+def under_cell(name, k):
+    """The rectangle of a crown picture whose disc is the underside of a head, its `k`th."""
+    cells = HEAD_CELLS[name]["under"]
+    return _cell(*cells[k % len(cells)])
 
 
 def leaf_cell(k):

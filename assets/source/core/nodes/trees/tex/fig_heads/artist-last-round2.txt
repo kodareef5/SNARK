@@ -1,0 +1,5 @@
+Updated all five populations to the warmer, greener targets, within 0.03 RGB value. Leaves, scale, folds and layout are preserved; height, normal and ORM files remain byte-identical.
+
+**117 checks pass**, and all four maps rebuild byte-for-byte. Superseded outputs were replaced and temporary copies removed.
+
+[Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/fig_heads/REPORT.md) · [Atlas preview](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/fig_heads/checks/atlas_preview.png)

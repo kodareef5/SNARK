@@ -59,6 +59,12 @@ ORDERS = {"orders": [
     {"count": (2, 3), "along": (0.4, 0.9), "turn": (25, 50), "rise": (10, 28), "length": (1.5, 2.5), "girth": (0.5, 0.7), "points": 5, "wander": 0.2, "droop": 5},
 ]}
 SPECS = {b["name"]: b for b in BANYANS}
+# How far apart the heads of leaves stand over the roof (heads.py), as the fig's; on the coarser levels they are
+# gathered into so many against the finest's count, or so many in all.
+SPACING = 2.2
+GATHERED = {2: 0.45, 3: 34, 4: 11}
+# The share of each level's sprays a head of the roof carries: it has many heads, and its sprays cost a pixel as much as any.
+SPRAYS = 0.75
 # The flat levels draw only the pillars this thick or more.
 FAR_PILLAR = 0.25
 
@@ -240,11 +246,14 @@ def banyan(name, lod):
         drawn = [p for p in pillars if p.r >= FAR_PILLAR]
         big = max(drawn, key=lambda p: p.r) if drawn else None
         post = ((big.foot[0], big.foot[2]), big.r * 2.0, big.under()) if big else None
-        return far.crown(banyan(name, 3), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name, posts=[post] if post else ())
-    m = Mesh(lod <= 2)
+        return far.crown(banyan(name, 4), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name, posts=[post] if post else ())
+    m = Mesh(lod <= 3)
     rng = rng_for(name, "level", lod)
     beams, pillars, stub, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
+    heads, _ = bl.heads_of(name, beams, lobes, shade, SPACING, roof=True, under=1.05, tall=(0.34, 0.52), low=(0.2, 0.3), lean=0.15, size=(0.95, 1.4))
+    if lod in (2, 3):
+        heads = bl.gathered(heads, GATHERED[lod], name)
     wall = trunk_wall(spec)
     sides, rings = {0: (48, 20), 1: (24, 8), 2: (10, 4), 3: (8, 3), 4: (6, 2)}[lod]
     under = -0.6 * (spec["stem"] * 1.4) - 0.1
@@ -266,18 +275,18 @@ def banyan(name, lod):
         if m.textured:
             # Snapped off long ago, its end grown over with bark. (A fourth material, the cut wood, is one more than a
             # level may be drawn with beside the car's.)
-            s = bl.coarser(stub, {0: 8, 1: 4, 2: 2}[lod])
+            s = bl.coarser(stub, {0: 8, 1: 4, 2: 2, 3: 2}[lod])
             tube(m, s.pts, s.radii, order_sides[0], BARK, uv=(0.0, 2.0, 0.0, 2.0), caps=(True, True), cap_uv=lambda p, c, e1, e2: (0.5 + dot(sub(p, c), e1), 0.5 + dot(sub(p, c), e2)))
         else:
             bl.bark_tube(m, bl.coarser(stub, 1), order_sides[0], BARK, STEM, caps=(True, True))
     if spec.get("car") and lod <= 2:
         car(m, lod)
-    if lod <= 2:
-        bl.crown(m, lobes, lod, rng, ATLAS, 1.2, figs.MASS, shade=shade, grain=1.35)
+    if lod <= 3:
+        bl.head_crown(m, heads, lod, rng, ATLAS, figs.CROWN, shade, SPRAYS, solid=1.35)
         if lod <= 1:
             figs.curtains(m, spec["name"], beams, lobes, lod, count=spec["curtains"], reach=(2.0, 5.0))
     else:
-        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 14 if lod == 3 else 7)
+        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
     return m
 
 
