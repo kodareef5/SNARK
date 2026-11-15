@@ -34,6 +34,35 @@ for each box. The site exposes footprints, district data, ground samples and
 plant clearing masks. The ground builder leaves the footprints bare when
 `world.heaps` is false. Resource nodes are placed after all static layers.
 
+## Lakes above the sea
+
+`tools/mapdata/prepare.py` keeps a lake whose hydro-flattened lidar stands more
+than 2 m over the city's sea out of the sea, in `base/perched_water.geojson`.
+The builder (`lakes.ts`) makes each one water standing on its own surface, a
+body of the map file's water layer (`water.json` and `water.png` among the
+layers; [maps](../../planning/reference/maps.md)), and carves its bed:
+
+- Its surface is the mode of its outline's lidar, to 10 cm, put on the heights'
+  lattice. A sample of the outline more than `bank` (0.25 m) over it is bank and
+  stays land, as does one under a footprint; past a misdrawn outline the water
+  goes on up to `past` (10) samples where the lidar is flat at its surface.
+- Its bed falls from `shoreDepth` (0.3 m) at the shore by `slope` (0.08) a metre
+  out, to `deepest` (8 m), as a gentle sea shore does here. Its squares reach a
+  sample over its shore, so the shore line is the ground meeting the surface.
+- Flowing water (TIGER's H3 codes, a river's or a canal's channel) falls along
+  its length: its lidar smoothed over 20 m is cut into reaches `reach` (0.25 m)
+  apart, each a body.
+- An outline the lidar did not flatten (under `flattened`, 30%, of it within
+  `bank` of the surface) or that its ground does not hold in (more than `leaks`,
+  20%, of its shore more than `bank` under the surface) is no lake: it stays the
+  marsh it was, and the build says why.
+
+`world.lakes` in `world.json` changes any of these numbers, and `false` leaves
+every lake marsh. A city whose base has no `perched_water.geojson` (Miami,
+Tampa) builds the same bytes as before. A mapped pier or breakwater over a lake
+stands over its surface as one over the sea does over the sea. `stats.json`
+lists each lake made and each left, with its reason.
+
 ## Obelisks
 
 Where survivors leave for another server of the cluster. `world.json` lists
