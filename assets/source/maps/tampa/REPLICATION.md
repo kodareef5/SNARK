@@ -2,8 +2,8 @@
 
 Tampa was built from the same kinds of public data by the pipeline that built Miami, to find what in that pipeline is
 Miami's. The first agent took about 45 minutes from its start to its last commit (11:17 to 12:01 local, 2026-11-15),
-10 of them downloading; the reset stopped it before this page. Its successor merged main, applied one generator change
-and checked everything again on the merged branch. Tampa was not tuned: Miami's third round of ruins lands first and
+10 of them downloading; the reset stopped it before this page. Its successor merged main, applied the proof tools' change
+(finding 17) and checked everything again on the merged branch. Tampa was not tuned: Miami's third round of ruins lands first and
 Tampa inherits it.
 
 ```sh
@@ -89,8 +89,8 @@ of Art and others): `reports/ruins2/access-test.json`.
 16. **The container port is found by its name.** `ground.ts` and `ruins.ts` look for a district called "The Port", so
     Tampa's port district is called that, and gets 3,521 container stacks.
 17. **The proof tools were Miami's.** `bridge-walk.ts`, `access-walk.ts`, `ruin-walk.ts` and `server-bench.ts` wrote
-    into Miami's report folder and read Miami's broken spans. They take the city from the map file's id now (the one
-    generator change on this branch). `walk.ts` and `views.ts` were already general.
+    into Miami's report folder and read Miami's broken spans. They take the city from the map file's id now. With finding 5's
+    `base.ts`, these are the generator's only changes on this branch. `walk.ts` and `views.ts` were already general.
 18. **The pictures tool does not draw the far city.** `views.ts` predates it; `tools/map/cityviews.ts` draws what a
     client sees but has no spawn-point views. On the medium tier the city reaches 2,048 m, so from the middle of
     Hillsborough Bay (2.6 km) downtown is not drawn; on high it is (`reports/world1/farcity/`).
