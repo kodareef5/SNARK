@@ -38,6 +38,7 @@
 
 import type { Clip, ClipSet } from "../anim/clip.ts";
 import { hashBytes, hashString } from "../hash.ts";
+import { ATLAS_MOST, CELL, atlasBytes, type PackDetails } from "./details.ts";
 import { stepOf, type TextureRole } from "./texture.ts";
 
 export const PACK_MAGIC = 0x4b504e53; // "SNPK" little-endian
@@ -178,6 +179,8 @@ export interface PackHeader {
   clips: PackClip[];
   materials?: PackMaterial[];
   textures?: PackTexture[];
+  /** Small details: their atlas, effects and cue sheets (shared/pack/details.ts). The boot file carries them. */
+  details?: PackDetails;
 }
 
 export interface Pack {
@@ -245,6 +248,9 @@ export function parsePack(file: Uint8Array): Pack {
     }
   });
   if (header.paletteOffset + 1024 > blob.length) throw new Error("pack: palette outside the file");
+  const d = header.details;
+  if (d && !(d.atlas.side >= CELL && d.atlas.side <= ATLAS_MOST && (d.atlas.side & (d.atlas.side - 1)) === 0)) throw new Error(`pack: the details atlas is ${d.atlas.side} pixels across`);
+  if (d && d.atlas.offset + atlasBytes(d.atlas.side) > blob.length) throw new Error("pack: the details atlas is outside the file");
   header.rigs ??= [];
   header.clips ??= [];
   return { header, blob, blobAt: 12 + jsonLength, palette: blob.subarray(header.paletteOffset, header.paletteOffset + 1024), meshIndex, clips: decodeClips(header.clips, blob) };
@@ -277,6 +283,12 @@ function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSet {
     return { id: c.id, bones: c.bones, frames: c.frames, loop: c.loop, rot, root };
   });
   return { clips, index, hash };
+}
+
+/** The details atlas, every mip largest first, as a view into the pack; empty for a pack without details. */
+export function detailsAtlas(pack: Pack): Uint8Array {
+  const d = pack.header.details;
+  return d ? pack.blob.subarray(d.atlas.offset, d.atlas.offset + atlasBytes(d.atlas.side)) : new Uint8Array(0);
 }
 
 /** lodVertices and lodIndices return views into the pack. Indices are little-endian, `indexBytes` each. */

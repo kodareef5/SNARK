@@ -1,0 +1,5 @@
+Saved all seven named textures as 1024×1024 RGBA PNGs. Grayscale, alpha, and transparent-margin checks passed.
+
+[Preview](./preview.png) · [Report](./REPORT.md) · [Prompts](./sources.json)
+
+Made with imagegen and scripted finishing; source artwork and rebuild scripts are included. The preview simulates placement; in-game rendering remains untested.

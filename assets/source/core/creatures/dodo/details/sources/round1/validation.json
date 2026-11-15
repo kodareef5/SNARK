@@ -1,0 +1,277 @@
+{
+  "contour": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "alpha_bbox": [
+      252,
+      64,
+      772,
+      960
+    ],
+    "clear_margins_ltrb_px": [
+      252,
+      64,
+      252,
+      64
+    ],
+    "neutral_rgb": true,
+    "alpha_matches_regions": true,
+    "region_rgb_codes": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        255,
+        0,
+        0
+      ],
+      [
+        255,
+        255,
+        0
+      ]
+    ],
+    "opaque_pixels": 262954,
+    "partial_coverage_pixels": 44186,
+    "opaque_gray_p01_p50_p99": [
+      217.0,
+      232.0,
+      250.0
+    ],
+    "source_bbox": [
+      294,
+      61,
+      955,
+      1200
+    ],
+    "source_gray_median": 209.21,
+    "fitted_size": [
+      520,
+      896
+    ],
+    "undyed_quill_starts_at_y": 862,
+    "master_sha256": "1d3c7371e13a090a5e7cf170166078eb9b1903bf3af09af942816a8630f2d57e"
+  },
+  "contour_plain": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "alpha_bbox": [
+      182,
+      64,
+      842,
+      960
+    ],
+    "clear_margins_ltrb_px": [
+      182,
+      64,
+      182,
+      64
+    ],
+    "neutral_rgb": true,
+    "alpha_matches_regions": true,
+    "region_rgb_codes": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        255,
+        0,
+        0
+      ]
+    ],
+    "opaque_pixels": 336215,
+    "partial_coverage_pixels": 57355,
+    "opaque_gray_p01_p50_p99": [
+      216.0,
+      232.0,
+      247.0
+    ],
+    "source_bbox": [
+      200,
+      79,
+      1029,
+      1204
+    ],
+    "source_gray_median": 209.28,
+    "fitted_size": [
+      660,
+      896
+    ],
+    "undyed_quill_starts_at_y": 891,
+    "master_sha256": "82d4df9e35ff64390351bf3e0743fcf549a3cb3cec9d598bf427490151023780"
+  },
+  "down": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "alpha_bbox": [
+      110,
+      64,
+      914,
+      960
+    ],
+    "clear_margins_ltrb_px": [
+      110,
+      64,
+      110,
+      64
+    ],
+    "neutral_rgb": true,
+    "alpha_matches_regions": true,
+    "region_rgb_codes": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        255,
+        0,
+        255
+      ]
+    ],
+    "opaque_pixels": 254044,
+    "partial_coverage_pixels": 176739,
+    "opaque_gray_p01_p50_p99": [
+      214.0,
+      233.0,
+      246.0
+    ],
+    "source_bbox": [
+      176,
+      96,
+      1081,
+      1105
+    ],
+    "source_gray_median": 220.28,
+    "fitted_size": [
+      804,
+      896
+    ],
+    "undyed_quill_starts_at_y": 896,
+    "master_sha256": "17c7e96b39a022bedfedc60421bfc3c3845d37b397b44e7f8e6fd94892feacfa"
+  },
+  "flight": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "alpha_bbox": [
+      330,
+      64,
+      694,
+      960
+    ],
+    "clear_margins_ltrb_px": [
+      330,
+      64,
+      330,
+      64
+    ],
+    "neutral_rgb": true,
+    "alpha_matches_regions": true,
+    "region_rgb_codes": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        255,
+        255,
+        0
+      ]
+    ],
+    "opaque_pixels": 192050,
+    "partial_coverage_pixels": 18515,
+    "opaque_gray_p01_p50_p99": [
+      216.0,
+      232.0,
+      246.5
+    ],
+    "source_bbox": [
+      385,
+      18,
+      878,
+      1231
+    ],
+    "source_gray_median": 208.21,
+    "fitted_size": [
+      364,
+      896
+    ],
+    "undyed_quill_starts_at_y": 852,
+    "master_sha256": "676a838b8dfe1aaa779519c18d7e20514037fdacc60caf0bc77a27c02ad258a4"
+  },
+  "tail": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "alpha_bbox": [
+      265,
+      64,
+      758,
+      960
+    ],
+    "clear_margins_ltrb_px": [
+      265,
+      64,
+      266,
+      64
+    ],
+    "neutral_rgb": true,
+    "alpha_matches_regions": true,
+    "region_rgb_codes": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        255,
+        0,
+        0
+      ],
+      [
+        255,
+        255,
+        0
+      ]
+    ],
+    "opaque_pixels": 231470,
+    "partial_coverage_pixels": 28030,
+    "opaque_gray_p01_p50_p99": [
+      214.0,
+      232.0,
+      249.0
+    ],
+    "source_bbox": [
+      265,
+      11,
+      940,
+      1239
+    ],
+    "source_gray_median": 200.0,
+    "fitted_size": [
+      493,
+      896
+    ],
+    "undyed_quill_starts_at_y": 841,
+    "master_sha256": "8147f77cafc37e34566bcc3b8973850e59da5f35fa4dc24d6d4c5a5e75362256"
+  }
+}

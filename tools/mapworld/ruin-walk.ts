@@ -9,7 +9,7 @@ import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { RuinRecord } from "./ruins.ts";
 
-const folder = "assets/source/maps/miami/reports/ruins1";
+const folder = "assets/source/maps/miami/reports/ruins2";
 const map = parseMap(new Uint8Array(readFileSync(process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "var/maps/miami.snmap")));
 const compiled = compileContent(CORE_CONTENT);
 if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
@@ -63,8 +63,26 @@ for (const r of sample) for (let ri = 0; ri < r.routes.length; ri++) {
   nodes?.retain(chunk, 1, -1, () => false);
   results.push({ part: r.part, name: r.name, floors: route.floors, route: ri, startHeight: route.y, ok, message });
 }
-const failed = results.filter((r) => !r.ok);
-const report = { includes: "terrain and resource-node collision; ascent, landing turns, roof exit and descent to ground", sampledBuildings: sample.length, stairRoutes: results.length, passed: results.length - failed.length, failed: failed.length, results };
+const escapeResults: { part: number; route: number; ok: boolean; message: string }[] = [];
+for (const r of sample) for (let ri = 0; ri < (r.escapes?.length ?? 0); ri++) {
+  const points = r.escapes[ri]!.points; const first = points[0]!; const b = new Body(); b.x = first.x; b.y = first.y + 1; b.z = first.z;
+  nodes?.retain(chunkAt(map.dims, b.x, b.z), 1, 1, () => false);
+  for (let t = 0; t < 60; t++) stepBody(world, b, 0, 0, 0, 0, 0, params, TICK_DT);
+  let message = "";
+  for (const p of points.slice(1)) {
+    for (let t = 0; t < 220 && Math.hypot(b.x - p.x, b.z - p.z) > .15; t++) {
+      const yaw = Math.round(Math.atan2(p.x - b.x, p.z - b.z) * 65536 / (Math.PI * 2)) & 65535;
+      stepBody(world, b, 0, 90, yaw, 0, 0, params, TICK_DT);
+    }
+    for (let t = 0; t < 45; t++) stepBody(world, b, 0, 0, 0, 0, 0, params, TICK_DT);
+    if (Math.hypot(b.x - p.x, b.z - p.z) > .3 || Math.abs(b.y - p.y) > .15) { message = `target ${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)} reached ${b.x.toFixed(1)},${b.y.toFixed(1)},${b.z.toFixed(1)}`; break; }
+  }
+  escapeResults.push({ part: r.part, route: ri, ok: !message, message });
+}
+const failed = results.filter((r) => !r.ok); const escapeFailed = escapeResults.filter((r) => !r.ok);
+const report = { mapHash: map.hash, includes: "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent 2 m drop routes", sampledBuildings: sample.length, stairRoutes: results.length, passed: results.length - failed.length, failed: failed.length, escapeRoutes: escapeResults.length, escapePassed: escapeResults.length - escapeFailed.length, escapeFailed: escapeFailed.length, results, escapeResults };
 writeFileSync(`${folder}/circulation.json`, `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify({ ...report, results: failed }, null, 2));
-process.exit(failed.length === 0 ? 0 : 1);
+const summary = { ...report, results: failed, escapeResults: escapeFailed };
+writeFileSync(`${folder}/route-test.json`, `${JSON.stringify(summary, null, 2)}\n`);
+console.log(JSON.stringify(summary, null, 2));
+process.exit(failed.length + escapeFailed.length === 0 ? 0 : 1);

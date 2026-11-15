@@ -47,6 +47,27 @@ export interface WeaponParams {
   readonly clip: number;
   /** Works under water. */
   readonly wet: boolean;
+  // Stubs of planning/reference/weapons-plan.md, compiled from the weapon's facet and read by nothing yet. Each is absent
+  // where the facet does not say, which is what every weapon does today; the project named builds it.
+  /** W2: the held primary button fires every `swingTicks` (M4). */
+  readonly auto?: boolean;
+  /** W2: a reload adds one round each `reloadTicks` until full, and the primary button ends it after the round under way (M4). */
+  readonly reloadEach?: boolean;
+  /** W2: the gun's blow with the melee button: its whole swing and the tick of it that lands (M4). */
+  readonly meleeTicks?: number;
+  readonly meleeStrikeTick?: number;
+  /**
+   * W1: the cone a shot leaves within, half angles in degrees (M1): from the hip and aimed at rest, what full speed adds,
+   * what each shot adds (bloom), and how much it narrows back a tick.
+   */
+  readonly coneHip?: number;
+  readonly coneAim?: number;
+  readonly coneMove?: number;
+  readonly coneBloom?: number;
+  readonly coneRecover?: number;
+  /** W1: degrees of pitch a shot kicks the aim up, and how much of it comes back a tick (M2). */
+  readonly recoilKick?: number;
+  readonly recoilRecover?: number;
 }
 
 /** A swing's ticks unless its weapon says otherwise. The swing as drawn takes this long. */

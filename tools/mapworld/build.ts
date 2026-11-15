@@ -54,7 +54,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree.
   const near = spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2] as const);
-  const nodes = makeNodes(ground, world, (col, row) => site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1 || near.some(([c, r]) => (c - col) ** 2 + (r - row) ** 2 < 16));
+  const nodes = makeNodes(ground, world, (col, row) => site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1 || near.some(([c, r]) => (c - col) ** 2 + (r - row) ** 2 < 16), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1);
   lap("nodes");
 
   const layers = join(ROOT, "var/maps", name, "layers");

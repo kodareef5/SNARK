@@ -1,0 +1,52 @@
+{
+  "pictures": {
+    "dust_1": { "file": "pictures/dust_1.png", "flat": "puff" },
+    "dust_2": { "file": "pictures/dust_2.png", "flat": "puff" },
+    "dust_3": { "file": "pictures/dust_3.png", "flat": "puff" },
+    "dust_4": { "file": "pictures/dust_4.png", "flat": "puff" },
+    "grit": { "file": "pictures/grit.png", "flat": "grain" },
+    "drop": { "file": "pictures/drop.png", "flat": "drop" },
+    "ripple": { "file": "pictures/ripple.png", "flat": "ring" }
+  },
+  "effects": {
+    "dust_ring": {
+      "pictures": ["dust_1", "dust_2", "dust_3", "dust_4"],
+      "count": [10, 13], "shape": { "ring": 0.32 }, "speed": [0.6, 1.2], "up": 0.12,
+      "size": [0.22, 0.3], "grow": 2.4, "life": [0.9, 1.4], "fade": 0.7,
+      "drag": 3.2, "gravity": -0.04, "wind": 0.6, "flutter": { "turn": 0.35 },
+      "colour": "ground", "vary": 0.06, "face": "camera", "pass": "blend", "reach": 45
+    },
+    "scuff": {
+      "pictures": ["dust_1", "dust_2", "dust_3", "dust_4"],
+      "count": [4, 6], "shape": { "disc": 0.18 }, "speed": [0.3, 0.8], "up": 0.25,
+      "size": [0.14, 0.2], "grow": 2, "life": [0.6, 1], "fade": 0.5,
+      "drag": 3.5, "gravity": -0.03, "wind": 0.6, "flutter": { "turn": 0.4 },
+      "colour": "ground", "vary": 0.06, "face": "camera", "pass": "blend", "reach": 35
+    },
+    "sand_kick": {
+      "pictures": ["dust_1", "dust_2", "dust_3", "dust_4"],
+      "count": [1, 2], "speed": [0.3, 0.7], "up": 0.4,
+      "size": [0.08, 0.12], "grow": 1.8, "life": [0.35, 0.6], "fade": 0.3,
+      "drag": 3, "gravity": -0.02, "wind": 0.4,
+      "colour": "ground", "vary": 0.05, "face": "camera", "pass": "blend", "reach": 15
+    },
+    "grit": {
+      "pictures": ["grit"],
+      "count": [1, 2], "speed": [0.5, 0.9], "up": 0.75,
+      "size": [0.1, 0.14], "grow": 1.3, "life": [0.3, 0.45], "fade": 0.2,
+      "drag": 1, "gravity": 1, "colour": "ground", "vary": 0.08, "face": "camera", "pass": "blend", "reach": 12
+    },
+    "splash_drops": {
+      "pictures": ["drop"],
+      "count": [10, 16], "shape": { "ring": 0.18 }, "speed": [1.6, 3.2], "up": 0.78,
+      "size": [0.03, 0.06], "life": [0.6, 1.2], "fade": 0.08,
+      "drag": 0.4, "gravity": 1, "settle": 0.02,
+      "colour": [214, 228, 236], "vary": 0.04, "face": "camera", "pass": "blend", "reach": 40
+    },
+    "splash_ring": {
+      "pictures": ["ripple"],
+      "count": [2, 2], "size": [0.35, 0.5], "grow": 4.5, "life": [1.1, 1.6], "fade": 0.9,
+      "gravity": 0, "colour": [222, 234, 240], "face": "flat", "pass": "blend", "reach": 40
+    }
+  }
+}

@@ -5,7 +5,7 @@
 import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
-export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset;
+export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset | WaterAsset | DetailsAsset;
 
 /** The zones a hit can land in. Content multiplies damage by zone (SpeciesDef.zones). */
 export const ZONES = { head: ZONE_HEAD, torso: ZONE_TORSO, armL: ZONE_ARM_L, armR: ZONE_ARM_R, handL: ZONE_HAND_L, handR: ZONE_HAND_R, legL: ZONE_LEG_L, legR: ZONE_LEG_R, footL: ZONE_FOOT_L, footR: ZONE_FOOT_R } as const;
@@ -343,4 +343,12 @@ export interface WaterAsset {
   readonly kind: "water";
   readonly long: string;
   readonly short: string;
+}
+
+/**
+ * The small details' pack (shared/pack/details.ts): every asset's detail pictures in one atlas, the shared effects in
+ * this folder's effects.json, and every creature's cues.json. No Blender. assets/source/DETAILS.md says how to write them.
+ */
+export interface DetailsAsset {
+  readonly kind: "details";
 }

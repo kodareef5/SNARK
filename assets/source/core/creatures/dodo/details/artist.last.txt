@@ -1,0 +1,5 @@
+Created all ten 1024×1024 RGBA textures. Neutral colour, matching alpha, transparent margins, and dye regions validated.
+
+[Full preview](/home/user/dev/SNARK/.claude/worktrees/agent-a83b80b37f4ec7d1c/assets/source/core/creatures/dodo/details/preview.png) · [Game-size preview](/home/user/dev/SNARK/.claude/worktrees/agent-a83b80b37f4ec7d1c/assets/source/core/creatures/dodo/details/preview_game.png) · [Report](/home/user/dev/SNARK/.claude/worktrees/agent-a83b80b37f4ec7d1c/assets/source/core/creatures/dodo/details/REPORT.md)
+
+Built-in imagegen masters, exact prompts, and rebuild/check scripts are retained in the folder.

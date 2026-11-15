@@ -1,0 +1,106 @@
+{
+  "cues": {
+    "thrown": { "effects": [{ "effect": "feathers_shed", "from": "body" }] },
+    "land": {
+      "sounds": ["land"],
+      "effects": [
+        { "effect": "feathers_burst", "from": "body" },
+        { "effect": "quills", "from": "body", "count": [0, 1] },
+        { "effect": "fluff", "from": "body", "count": [0, 1] },
+        { "effect": "scuff", "from": "ground" }
+      ]
+    },
+    "struck": { "sounds": ["hurt"], "effects": [{ "effect": "feathers_struck", "from": "hit" }] },
+    "down": {
+      "sounds": ["hurt", { "sound": "land", "at": "down" }],
+      "effects": [
+        { "effect": "dust_ring", "from": "ground", "at": "down" },
+        { "effect": "feathers_fall", "from": "body", "at": "down", "count": [1, 1] }
+      ]
+    },
+    "death": {
+      "sounds": ["hurt", { "sound": "land", "at": "down" }],
+      "effects": [
+        { "effect": "dust_ring", "from": "ground", "at": "down" },
+        { "effect": "feathers_fall", "from": "body", "at": "down" },
+        { "effect": "quills", "from": "body", "at": "down", "count": [0, 1] },
+        { "effect": "fluff", "from": "body", "at": "down", "count": [0, 1] }
+      ]
+    },
+    "up": {
+      "effects": [
+        { "effect": "feathers_shake", "from": "body", "at": "down" },
+        { "effect": "fluff", "from": "body", "at": "down" },
+        { "effect": "scuff", "from": "ground", "at": "down", "count": [2, 3] }
+      ]
+    },
+    "splash": { "effects": [{ "effect": "splash_drops", "from": "body" }, { "effect": "splash_ring", "from": "ground" }] },
+    "step": { "sounds": ["step/sand"], "effects": [{ "effect": "sand_kick", "from": "foot", "on": ["sand"] }] },
+    "peck": { "sounds": ["peck"], "effects": [{ "effect": "grit", "from": "beak_tip", "on": ["sand", "grass"] }] }
+  },
+  "effects": {
+    "feathers_burst": {
+      "pictures": ["contour", "contour", "contour_plain"],
+      "count": [3, 5], "shape": { "sphere": 0.12 }, "speed": [1.4, 2.6], "up": 0.7,
+      "size": [0.11, 0.15], "life": [5, 7], "fade": 0.6,
+      "drag": 2.6, "gravity": 1, "fall": 0.42, "wind": 1,
+      "flutter": { "sway": 0.1, "hz": 1.1, "rock": 0.7, "turn": 1.2 },
+      "settle": 4, "colour": "body", "vary": 0.06, "face": "free", "pass": "cutout", "reach": 40
+    },
+    "feathers_shed": {
+      "pictures": ["contour", "contour_plain", "contour_plain", "flight"],
+      "count": [2, 3], "shape": { "sphere": 0.1 }, "speed": [0.3, 0.9], "up": 0.5,
+      "size": [0.11, 0.15], "life": [6, 8], "fade": 0.6,
+      "drag": 2.6, "gravity": 1, "fall": 0.42, "wind": 1,
+      "flutter": { "sway": 0.12, "hz": 1, "rock": 0.75, "turn": 1.2 },
+      "settle": 4, "colour": "body", "vary": 0.06, "face": "free", "pass": "cutout", "reach": 40
+    },
+    "feathers_struck": {
+      "pictures": ["contour", "contour_plain"],
+      "count": [1, 2], "speed": [1.4, 2.6], "up": 0.45,
+      "size": [0.11, 0.14], "life": [5, 7], "fade": 0.6,
+      "drag": 2.6, "gravity": 1, "fall": 0.42, "wind": 1,
+      "flutter": { "sway": 0.1, "hz": 1.1, "rock": 0.7, "turn": 1.2 },
+      "settle": 4, "colour": "body", "vary": 0.06, "face": "free", "pass": "cutout", "reach": 40
+    },
+    "feathers_fall": {
+      "pictures": ["contour", "contour_plain"],
+      "count": [2, 3], "shape": { "sphere": 0.14 }, "speed": [0.7, 1.5], "up": 0.75,
+      "size": [0.11, 0.15], "life": [5, 7], "fade": 0.6,
+      "drag": 2.6, "gravity": 1, "fall": 0.42, "wind": 1,
+      "flutter": { "sway": 0.1, "hz": 1.1, "rock": 0.7, "turn": 1.2 },
+      "settle": 4, "colour": "body", "vary": 0.06, "face": "free", "pass": "cutout", "reach": 40
+    },
+    "feathers_shake": {
+      "pictures": ["contour_plain"],
+      "count": [1, 2], "shape": { "sphere": 0.12 }, "speed": [0.8, 1.4], "up": 0.6,
+      "size": [0.1, 0.12], "life": [5, 6], "fade": 0.6,
+      "drag": 2.6, "gravity": 1, "fall": 0.4, "wind": 1,
+      "flutter": { "sway": 0.1, "hz": 1.2, "rock": 0.7, "turn": 1.3 },
+      "settle": 3, "colour": "body", "vary": 0.06, "face": "free", "pass": "cutout", "reach": 30
+    },
+    "fluff": {
+      "pictures": ["down"],
+      "count": [1, 2], "shape": { "sphere": 0.1 }, "speed": [0.8, 1.6], "up": 0.75,
+      "size": [0.1, 0.13], "life": [4, 6], "fade": 0.6,
+      "drag": 3, "gravity": 1, "fall": 0.28, "wind": 1.2,
+      "flutter": { "sway": 0.14, "hz": 0.8, "rock": 0.5, "turn": 1.6 },
+      "settle": 2.5, "colour": "body", "vary": 0.06, "face": "free", "pass": "blend", "reach": 25
+    },
+    "quills": {
+      "pictures": ["flight", "tail"],
+      "count": [1, 1], "shape": { "sphere": 0.12 }, "speed": [1, 2], "up": 0.7,
+      "size": [0.16, 0.2], "life": [5, 7], "fade": 0.6,
+      "drag": 2.2, "gravity": 1, "fall": 0.55, "wind": 0.8,
+      "flutter": { "sway": 0.08, "hz": 0.9, "rock": 0.5, "turn": 0.9 },
+      "settle": 4, "colour": "body", "vary": 0.05, "face": "free", "pass": "cutout", "reach": 40
+    }
+  },
+  "pictures": {
+    "contour": { "file": "details/contour.png", "regions": "details/contour_regions.png", "flat": "feather" },
+    "contour_plain": { "file": "details/contour_plain.png", "regions": "details/contour_plain_regions.png", "flat": "feather" },
+    "down": { "file": "details/down.png", "regions": "details/down_regions.png", "flat": "feather" },
+    "flight": { "file": "details/flight.png", "regions": "details/flight_regions.png", "flat": "feather" },
+    "tail": { "file": "details/tail.png", "regions": "details/tail_regions.png", "flat": "feather" }
+  }
+}

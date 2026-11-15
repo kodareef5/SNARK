@@ -179,6 +179,14 @@ function terrainLines(r: DeviceReport): string[] {
   out.push("over the other, which D253 holds under 2. draw and gpu: medians with rows/without, our code's ms handing the frame to");
   out.push("WebGL and the GPU's by timer query. jumps: frames until each jump's window was in (! for not before the next); coarser:");
   out.push("tiles drawn a level coarser a frame while it came");
+  const cities = t.flights.filter((f) => f.city);
+  if (cities.length > 0) {
+    out.push("city      the map's own buildings past the near rows (far city): medians a frame, the worst ms making its tiles, frames");
+    out.push("          with a tile in view and reach not yet made, and for each jump the frames until none was (! for not before the next)");
+    const cw = [8, 6, 9, 7, 7, 20];
+    out.push(row(["tier", "draws", "k tris", "make", "unseen", "jumps"], cw));
+    for (const f of cities) out.push(row([f.tier, String(f.city!.draws), String(f.city!.triangles), String(f.city!.makeWorst), String(f.city!.unseenFrames), f.city!.fills.map((x) => (x < 0 ? "!" : String(x))).join(" ")], cw));
+  }
   if (t.far.length === 0) return out;
   out.push(`far       bases as blocks at medium in chunks within 2 km of the map's middle, the camera 30 m up turning once round in 2 s; a rung holds as the ladder's do`);
   const fw = [8, 8, 7, 6, 6, 6, 6, 6, 6, 5, 6];
