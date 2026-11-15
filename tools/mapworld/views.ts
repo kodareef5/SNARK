@@ -2,8 +2,8 @@
 // with the asset files read once: bun tools/mapworld/views.ts <file.snmap> <views.json> <out folder> [tier] [only name]
 //
 // views.json is a list of { "name", "x", "z", "yaw", "pitch", and "up": metres above the ground for the eye, or "y" for a
-// height above the sea; "fov" in degrees; "spawn": a spawn point's name, whose place and facing are used }. Engine
-// metres and degrees as the map's folder has them.
+// height above the sea; "fov" in degrees; "spawn": a spawn point's name, whose place and facing are used; "look": [x, z,
+// metres above the ground] to face, with "pitch" then added }. Engine metres and degrees as the map's folder has them.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -26,6 +26,7 @@ interface View {
   pitch?: number;
   fov?: number;
   size?: [number, number];
+  look?: [number, number, number?];
 }
 
 const [path, list, folder, tierName = "medium", only] = process.argv.slice(2);
@@ -51,6 +52,14 @@ for (const v of views) {
   cam.y = v.y ?? view.hf.heightAt(cam.x, cam.z) + (v.up ?? 1.62);
   cam.yaw = v.yaw !== undefined ? (v.yaw * Math.PI) / 180 : spawn ? (spawn.yaw / 65536) * 2 * Math.PI : 0;
   cam.pitch = ((v.pitch ?? -4) * Math.PI) / 180;
+  if (v.look) {
+    // Faces a point: x and z, and metres above the ground there.
+    const [lx, lz, up = 0] = v.look;
+    const dx = lx - cam.x;
+    const dz = lz - cam.z;
+    cam.yaw = Math.atan2(dx, dz);
+    cam.pitch = Math.atan2(view.hf.heightAt(lx, lz) + up - cam.y, Math.hypot(dx, dz)) + ((v.pitch ?? 0) * Math.PI) / 180;
+  }
   if (v.fov !== undefined) cam.fovY = (v.fov * Math.PI) / 180;
   view.nodes.retain(chunkAt(map.dims, cam.x, cam.z), 4, 1, () => false);
   const frames = settle(view);

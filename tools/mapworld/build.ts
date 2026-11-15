@@ -117,7 +117,30 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     for (let i = 0; i < n * n; i++) if (ground.surface[i] === value) m++;
     surfaces[key.toLowerCase()] = Math.round(m * 4);
   }
-  const tallest = ground.heaps.ruins.reduce((a, r) => (r.crest > a.crest ? r : a));
+  // The tallest ruins as they stand, and for each a place on a street 60 to 140 m off to see it from.
+  const top = new Float32Array(ground.heaps.ruins.length);
+  for (let i = 0; i < n * n; i++) {
+    const o = ground.heaps.owner[i]!;
+    if (o >= 0 && ground.surface[i] !== S.SPILL) top[o] = Math.max(top[o]!, ground.heaps.lift[i]!);
+  }
+  const order = [...top.keys()].sort((a, b) => top[b]! - top[a]!);
+  const landmarks = order.slice(0, 8).map((k) => {
+    const b = ground.heaps.ruins[k]!.building;
+    const [c0, r0] = [(b.e + half) / 2, (half - b.n) / 2];
+    let best: [number, number] | null = null;
+    for (let r = Math.round(r0) - 70; r <= r0 + 70 && !best; r++) {
+      for (let c = Math.round(c0) - 70; c <= c0 + 70; c++) {
+        const d = Math.hypot(c - c0, r - r0) * 2;
+        const i = r * n + c;
+        if (d < 60 || d > 140 || r < 0 || c < 0 || r >= n || c >= n) continue;
+        if (ground.surface[i] === S.STREET || ground.surface[i] === S.HIGHWAY) {
+          best = [size - c * 2, size - r * 2];
+          break;
+        }
+      }
+    }
+    return { top: Number(top[k]!.toFixed(1)), x: Math.round(size - c0 * 2), z: Math.round(size - r0 * 2), district: world.districts[ground.heaps.ruins[k]!.district - 1]?.name ?? "", from: best };
+  });
   const stats = {
     id: world.id,
     bytes: bytes.length,
@@ -125,7 +148,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     buildSeconds: Number(built.toFixed(1)),
     deepestWater: Number(deepest.toFixed(2)),
     highestGround: Number(highest.toFixed(2)),
-    tallestRuin: { crest: Number(tallest.crest.toFixed(1)), storeys: Math.round(tallest.storeys), at: [Number((size - (half + tallest.building.e)).toFixed(0)), Number((half + tallest.building.n).toFixed(0))] },
+    landmarks,
     ruins: ground.heaps.ruins.length,
     landShareWalkable: Number((walkable / land).toFixed(4)),
     landSquareMetres: land * 4,

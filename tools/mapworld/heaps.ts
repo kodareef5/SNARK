@@ -163,6 +163,7 @@ export function makeHeaps(input: HeapInput): Heaps {
     }
     const slope = Math.tan(((30 + 18 * rand3(b.id, 3, 0)) * Math.PI) / 180);
     const plinth = 0.5 + 1.2 * rand3(b.id, 4, 0);
+    const step = 1.7 + 0.7 * rand3(b.id, 8, 0);
     // Slabs lying across the heap: a centre on the footprint, a length, a width, a turn and a rise from one end to the other.
     const slabs: number[] = [];
     if (kind === RUIN_HEAP && crest > 5) {
@@ -173,9 +174,9 @@ export function makeHeaps(input: HeapInput): Heaps {
         slabs.push((at % ww) * cell, Math.floor(at / ww) * cell, 6 + 8 * rand3(b.id, 21, s), 2 + 2 * rand3(b.id, 22, s), Math.PI * rand3(b.id, 23, s), 1 + 0.25 * crest * rand3(b.id, 24, s));
       }
     }
-    const coreX = core < 0 ? 0 : (core % ww) * cell;
-    const coreZ = core < 0 ? 0 : Math.floor(core / ww) * cell;
-    const stub = storeys > 22 ? 3 + 5 * rand3(b.id, 6, 0) : 0;
+    // A tower's core and lower floors still stand out of its heap, in the building's own outline, broken off unevenly.
+    const stub = storeys > 18 && core >= 0 ? crest * (0.3 + 0.5 * rand3(b.id, 6, 0)) : 0;
+    const coreDepth = Math.max(4, 0.3 * Math.sqrt(deepest) * cell);
     for (let j = 0; j < wh; j++) {
       for (let i = 0; i < ww; i++) {
         const k = j * ww + i;
@@ -214,14 +215,22 @@ export function makeHeaps(input: HeapInput): Heaps {
           h = Math.min(crest, edge + dIn * slope);
           const rough = fbm(x, z, 6, (b.id >>> 5) & 0xffff);
           h *= 0.82 + 0.36 * rough;
+          // A tall heap is its floors fallen one on another: ledges a body can stand on, risers it must jump, and here
+          // and there a stretch where the rubble has run into a slope that walks.
+          if (crest > 6 && fbm(x, z, 12, (b.id >>> 9) & 0xffff) > 0.3) {
+            const f = h / step;
+            const k = Math.floor(f);
+            h = h * 0.25 + (k + Math.min(1, Math.max(0, (f - k - 0.65) / 0.35))) * step * 0.75;
+          }
           h += (fbm(x, z, 2.5, (b.id >>> 7) & 0xffff) - 0.5) * 0.12 * crest * Math.min(1, dIn / 3);
           for (let s = 0; s < slabs.length; s += 6) {
             const dx = (i * cell - slabs[s]!) * Math.cos(slabs[s + 4]!) + (j * cell - slabs[s + 1]!) * Math.sin(slabs[s + 4]!);
             const dz = -(i * cell - slabs[s]!) * Math.sin(slabs[s + 4]!) + (j * cell - slabs[s + 1]!) * Math.cos(slabs[s + 4]!);
             if (Math.abs(dx) < slabs[s + 2]! / 2 && Math.abs(dz) < slabs[s + 3]! / 2) h = Math.max(h, Math.min(crest * 1.1, h * 0.6 + slabs[s + 5]! * (0.5 + dx / slabs[s + 2]!) + 0.8));
           }
-          if (stub > 0 && Math.abs(i * cell - coreX) <= 3 && Math.abs(j * cell - coreZ) <= 3) {
-            h = Math.max(h, crest + stub);
+          if (stub > 0 && dIn >= coreDepth) {
+            const broken = fbm(x, z, 8, (b.id >>> 11) & 0xffff);
+            h = Math.max(h, crest + stub * (broken < 0.35 ? 0.45 : 1) + (fbm(x, z, 3, 991) - 0.5) * 3);
             p = PART_WALL;
           }
         }

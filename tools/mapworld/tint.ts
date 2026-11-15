@@ -1,7 +1,7 @@
 // The ground's colour: one palette index a sample (shared/pack/palette.ts), by what the ground is and, for a ruin, by
 // the district it stood in. The earth tones run dark to light in steps of one index, so a step either way is the same
-// colour in more or less light. Variation is by noise of several metres and by ruin, never by sample, since far ground
-// is drawn from every fourth sample and sample-to-sample speckle would crawl there.
+// colour in more or less light. Variation is by smooth noise of many metres and by ruin, never by sample, since far
+// ground is drawn from every fourth sample and sample-to-sample speckle would crawl there.
 
 import { S, type Ground, type World } from "./ground.ts";
 import { fbm, hash3 } from "./raster.ts";
@@ -22,7 +22,7 @@ const GROUND: Record<number, readonly number[]> = {
   [S.FORD]: [99, 98, 129],
   [S.COURT]: [151, 150, 98],
   [S.OPEN]: [101, 100, 150, 151],
-  [S.YARD]: [102, 86, 179, 101],
+  [S.YARD]: [102, 101, 86],
   [S.GREEN]: [197, 150, 196, 151],
   [S.CANOPY]: [195, 137, 196, 138],
   [S.MANGROVE]: [138, 117, 137],
@@ -35,10 +35,14 @@ const RUIN: Record<string, readonly number[]> = {
   concrete: [100, 101, 88, 99, 89],
   deco: [113, 112, 104, 135, 92, 114],
   terracotta: [205, 206, 183, 112],
-  warehouse: [172, 180, 98, 173],
+  // Warehouses painted over: most are brick and block, and many still carry their murals.
+  mural: [172, 98, 59, 65, 69, 61, 180, 99],
   residential: [104, 103, 114, 102],
   industrial: [102, 89, 179, 101],
 };
+
+/** Shipping containers, a colour each. */
+const CONTAINERS = [179, 181, 41, 89, 205, 196, 53];
 
 export function makeTint(ground: Ground, world: World): Uint8Array {
   const { n, surface, heaps } = ground;
@@ -56,21 +60,26 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
       const style = world.districts[d - 1]?.style ?? "residential";
       const list = RUIN[style] ?? RUIN.residential!;
       let k = list[hash3(ruin, 7, 0) % list.length]!;
-      const v = fbm(x, z, 7, 401);
+      const v = fbm(x, z, 10, 401, 2);
       if (s === S.SPILL || s === S.FLOOR) k = v < 0.45 ? k - 1 : k;
       else k = v < 0.33 ? k - 1 : v > 0.68 ? k + 1 : k;
       // Weeds take the spill and the low floors of halls.
-      if ((s === S.SPILL || s === S.FLOOR) && fbm(x, z, 9, 402) > 0.62) k = 150;
+      if ((s === S.SPILL || s === S.FLOOR) && fbm(x, z, 14, 402, 2) > 0.6) k = 150;
       tint[i] = k;
+      continue;
+    }
+    if (s === S.CONTAINER) {
+      tint[i] = CONTAINERS[ground.container[i]! % CONTAINERS.length]!;
       continue;
     }
     const list = GROUND[s] ?? [15];
     let k = list[0]!;
     if (list.length > 1) {
-      const v = fbm(x, z, s === S.FLAT || s === S.DEEP ? 28 : 9, 300 + s);
+      const wet = s === S.FLAT || s === S.DEEP || s === S.CHANNEL || s === S.SHALLOW;
+      const v = fbm(x, z, wet ? 60 : 16, 300 + s, 2);
       if (v > 0.58) k = list[1]!;
-      if (list.length > 2 && v < 0.36) k = list[2]!;
-      if (list.length > 3 && v > 0.7) k = list[3]!;
+      if (list.length > 2 && v < 0.38) k = list[2]!;
+      if (list.length > 3 && v > 0.68) k = list[3]!;
     }
     tint[i] = k;
   }

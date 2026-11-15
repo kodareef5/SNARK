@@ -23,7 +23,13 @@ export const PLANTS: readonly Zone[] = [
   { name: "marsh", kinds: { "core:mangrove": 3, "core:fern": 2, "core:palmetto": 1, "core:bush": 1 }, bare: 9 },
   { name: "yard", kinds: { "core:tree": 1, "core:bush": 1, "core:creeper": 1 }, bare: 26 },
   { name: "spill", kinds: { "core:creeper": 2, "core:fern": 1, "core:bush": 1, "core:tree": 1 }, bare: 18 },
-  { name: "beach hammock", kinds: { "core:palm": 4, "core:seagrape": 3, "core:palmetto": 3, "core:tree": 2, "core:bush": 1 }, bare: 5 },
+  // Among the towers the ground was paved: palms that lined the avenues, and weeds in the cracks.
+  { name: "plaza", kinds: { "core:palm": 2, "core:tree": 1, "core:bush": 1, "core:creeper": 1 }, bare: 36 },
+  { name: "tower ruin", kinds: { "core:fig": 1, "core:creeper": 2, "core:fern": 1 }, bare: 28 },
+  // A city park or a garden square gone wild, open enough to see the ruins round it.
+  { name: "park", kinds: { "core:tree": 3, "core:oak": 2, "core:palm": 2, "core:fig": 1, "core:banyan": 1, "core:bush": 1, "core:fern": 1 }, bare: 14 },
+  // Behind a beach: palms, sea grape and palmetto, low enough that the ruins behind show over them.
+  { name: "coast park", kinds: { "core:palm": 5, "core:seagrape": 3, "core:palmetto": 2, "core:tree": 1, "core:bush": 1 }, bare: 12 },
 ];
 
 /** Stones: limestone, the concrete of the ruins, and metal where the port, its yards and the wrecks are. */
@@ -40,6 +46,9 @@ export const PLANT_SLOTS = 160;
 export const STONE_SLOTS = 64;
 
 const zoneIndex = (list: readonly Zone[], name: string): number => list.findIndex((z) => z.name === name) + 1;
+
+/** Districts whose woods are parks and squares among the ruins, not hammock. */
+const URBAN = new Set(["concrete", "deco", "terracotta", "mural"]);
 
 /** Each zone's picture, north up, a byte a square, and the layers that name them. `clear` is true where nothing may stand. */
 export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean): { plants: Uint8Array; stones: Uint8Array; side: number; layers: unknown[] } {
@@ -59,6 +68,7 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
       const s = surface[i]!;
       const h = height[i]!;
       const industrial = styleAt(i) === "industrial";
+      const towers = (world.districts[ground.district[i]! - 1]?.tall ?? 0) >= 0.5;
       const ruin = heaps.owner[i]!;
       let plant = 0;
       let stone = 0;
@@ -76,20 +86,23 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           stone = T("shore stones");
           break;
         case S.CANOPY:
-          plant = shore[i]! < 30 && h < 1.4 ? P("mangrove fringe") : styleAt(i) === "deco" ? P("beach hammock") : P("hammock");
+          plant = shore[i]! < 30 && h < 1.4 ? P("mangrove fringe") : ground.sand[i]! < 150 ? P("coast park") : URBAN.has(styleAt(i)) ? P("park") : P("hammock");
           stone = T("limestone");
           break;
         case S.GREEN:
-          plant = shore[i]! < 20 && h < 1.2 ? P("mangrove fringe") : P("old garden");
+          plant = shore[i]! < 20 && h < 1.2 ? P("mangrove fringe") : ground.sand[i]! < 150 ? P("coast park") : P("old garden");
           stone = T("limestone");
           break;
         case S.OPEN:
         case S.COURT:
-          plant = P("open ground");
+          plant = towers ? P("plaza") : P("open ground");
           stone = T("street blocks");
           break;
         case S.YARD:
           plant = P("yard");
+          stone = T("scrap");
+          break;
+        case S.CONTAINER:
           stone = T("scrap");
           break;
         case S.MARSH:
@@ -97,7 +110,7 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           break;
         case S.HEAP:
         case S.FLOOR:
-          plant = industrial ? P("yard") : P("ruin");
+          plant = industrial ? P("yard") : towers ? P("tower ruin") : P("ruin");
           stone = industrial ? T("scrap") : T("rubble");
           break;
         case S.SPILL:

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Base } from "./base.ts";
 import { makeHeaps, readBuildings, PART_COURT, PART_FLOOR, PART_HEAP, PART_POOL, PART_SPILL, PART_WALL, type Heaps } from "./heaps.ts";
-import { blur, distanceField, fbm, fillPolygon, regions } from "./raster.ts";
+import { blur, distanceField, fbm, fillPolygon, hash3, regions, share } from "./raster.ts";
 
 /** What a sample's ground is, for its colour and for what lives on it. */
 export const S = {
@@ -34,6 +34,7 @@ export const S = {
   MARSH: 22,
   WRECK: 23,
   YARD: 24,
+  CONTAINER: 25,
 } as const;
 
 export interface District {
@@ -62,6 +63,10 @@ export interface Ground {
   readonly heaps: Heaps;
   /** Metres from each land sample to the water, and from each water sample to the land. */
   readonly shore: Float32Array;
+  /** Per sample of a container stack, which container it is, for its colour. */
+  readonly container: Uint8Array;
+  /** Metres from each sample to the nearest real beach. */
+  readonly sand: Float32Array;
   readonly bridges: { standing: number; fords: number; gaps: number };
 }
 
@@ -89,6 +94,26 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const toWater = distanceField((i) => water[i] === 1, n, n);
   const shore = new Float32Array(N);
   for (let i = 0; i < N; i++) shore[i] = Math.sqrt(water[i] ? toLand[i]! : toWater[i]!) * cell;
+  // How much of the ground round each sample is beach, and how far each is from one.
+  const beach = share((i) => biome[i] === 6, n, n, 20);
+  const toBeach = distanceField((i) => biome[i] === 6 && beach[i]! > 0.25, n, n);
+  const sand = new Float32Array(N);
+  for (let i = 0; i < N; i++) sand[i] = Math.sqrt(toBeach[i]!) * cell;
+
+  // The land's own lie, with the survey's centimetre noise smoothed out over a sample or two: it is not seen, and it is
+  // most of what a map file would otherwise spend its bytes on.
+  const raw = new Float32Array(N);
+  const weight = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    if (water[i]) continue;
+    raw[i] = Number.isNaN(dem[i]!) ? bathy[i]! : dem[i]!;
+    weight[i] = 1;
+  }
+  const radius = 1;
+  const sum = radius > 0 ? blur(raw, n, n, radius, 2) : raw;
+  const part = radius > 0 ? blur(weight, n, n, radius, 2) : weight;
+  const land = new Float32Array(N);
+  for (let i = 0; i < N; i++) land[i] = water[i] ? 0 : sum[i]! / Math.max(1e-6, part[i]!);
 
   let pools = 0;
   for (let i = 0; i < N; i++) {
@@ -105,7 +130,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
       height[i] = Math.min(shallowest, Math.max(deepest, bathy[i]! - sea));
       continue;
     }
-    let h = (Number.isNaN(dem[i]!) ? bathy[i]! : dem[i]!) - sea;
+    let h = land[i]! - sea;
     if (h < 0.12) {
       const b = biome[i]!;
       if (b === 5 || b === 4) {
@@ -282,7 +307,9 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     if (surface[i] !== 0) continue;
     const h = height[i]!;
     if (water[i]) {
-      surface[i] = h < -7 ? S.CHANNEL : h < -3 ? S.DEEP : h < -1.2 ? S.FLAT : S.SHALLOW;
+      // Off a beach the bed is sand well out; elsewhere it is seagrass on the flats and mud in the deeps.
+      const sandy = beach[nearLand[i]!]! > 0.25 && shore[i]! < 250 && h > -7;
+      surface[i] = h < -7 ? S.CHANNEL : sandy ? S.SHALLOW : h < -3 ? S.DEEP : h < -1.2 ? S.FLAT : S.SHALLOW;
       continue;
     }
     if (h < 0) {
@@ -300,5 +327,34 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     else if (b === 3) surface[i] = S.GREEN;
     else surface[i] = styleOf(i) === "industrial" ? S.YARD : S.OPEN;
   }
-  return { n, height, surface, district, heaps, shore, bridges: { standing: decks, fords, gaps: gapCount } };
+  // The port's yards are rows of containers along the island, one or two high, some gone, with lanes between.
+  const container = new Uint8Array(N);
+  const port = world.districts.findIndex((d) => d.name === "The Port") + 1;
+  let stacks = 0;
+  if (port > 0) {
+    const ring = world.districts[port - 1]!.ring.map(([lon, lat]) => base.tm.forward(lon, lat));
+    const angle = Math.atan2(ring[1]![1] - ring[0]![1], ring[1]![0] - ring[0]![0]);
+    const [ca, sa] = [Math.cos(angle), Math.sin(angle)];
+    for (let i = 0; i < N; i++) {
+      if (surface[i] !== S.YARD || district[i] !== port || shore[i]! < 8) continue;
+      const c = i % n;
+      const r = (i - c) / n;
+      const e = -half + c * cell;
+      const no = half - r * cell;
+      const u = e * ca + no * sa;
+      const v = -e * sa + no * ca;
+      const row = Math.floor(v / 14);
+      const seg = Math.floor(u / 28);
+      if (v - row * 14 >= 8 || u - seg * 28 >= 24) continue;
+      const pick = hash3(row, seg, 0x2c);
+      if (pick % 100 >= 55) continue;
+      const high = pick % 7 < 2 ? 2 : 1;
+      height[i] = height[i]! + 2.6 * high;
+      surface[i] = S.CONTAINER;
+      container[i] = (pick >>> 8) & 255;
+      stacks++;
+    }
+  }
+  log(`ground: ${Math.round(stacks * 4)} square metres of container stacks`);
+  return { n, height, surface, district, heaps, shore, container, sand, bridges: { standing: decks, fords, gaps: gapCount } };
 }
