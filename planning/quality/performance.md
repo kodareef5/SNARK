@@ -188,21 +188,29 @@ a run across the split counted in both ranges:
 
 | | Low poly | Medium | High | Ultra |
 | --- | --- | --- | --- | --- |
-| Reach; every box, lattice, mass 4 m to | 1,024 m; 340, 600, none | 2,048 m; 400, 900, none | 3,072 m; 500, 1,300, 2,000 m | 4,096 m; 600, 1,800, 2,800 m |
-| Draws, the most in a view | 65 | 216 | 283 | 338 |
-| Triangles, the most in a view | 204 k | 393 k | 773 k | 1.04 M |
-| On the card, the most in a view | 9.3 MB | 15.6 MB | 29.7 MB | 42.9 MB |
-| Frame build, median in the slowest view | 0.31 ms | 0.23 ms | 0.28 ms | 0.23 ms |
+| Reach; every box, lattice, mass 4 m to | 2,048 m; 340, 600, none | 2,048 m; 400, 900, none | 3,072 m; 500, 1,300, 2,000 m | 4,096 m; 600, 1,800, 2,800 m |
+| Draws, the most in a view | 158 | 216 | 283 | 338 |
+| Triangles, the most in a view | 283 k | 393 k | 773 k | 1.04 M |
+| On the card, the most in a view | 12.3 MB | 15.6 MB | 29.7 MB | 42.9 MB |
+| Frame build, median in the slowest view | 0.38 ms | 0.30 ms | 0.22 ms | 0.22 ms |
 
 A ghost at 600 m/s 120 to 150 m over downtown on medium, six seconds each way, near
-chunks never held whole: with 2 ms a frame of making, frame build 1.3 to 2.2 ms
-median, 5.4 ms at worst, and no tile in view and reach ever unmade. With 0.5 ms, as
-a phone four times slower would have 2 ms, tiles in view are unmade only past
-2,021 m, inside the last tenth of reach where they fade in anyway, for at most
-133 ms, and up to 13 tiles at a time are drawn a level coarser than wanted. Walking
-through downtown at 6 m/s, a frame in which a chunk changes hands builds in
-0.65 ms median and 1.13 ms at worst: a tile holds every chunk and a draw takes the
-runs drawn far, so nothing is remade.
+chunks never held whole: with 2 ms a frame of making, frame build 1.5 to 2.2 ms
+median, 2.9 ms at the 99th percentile and 6.4 to 10.9 ms in one frame of each run,
+and a tile in view unmade in 1 or 2 frames of 360, past 2,040 m. With 0.5 ms, as a
+phone four times slower would have 2 ms, tiles in view are unmade only past 2,020 m,
+inside the last tenth of reach where they fade in anyway, for at most 133 ms, and
+up to 14 tiles at a time are drawn a level coarser than wanted. Walking through
+downtown at 6 m/s, a frame in which a chunk changes hands builds in 0.64 ms median
+and 1.10 ms at worst: a tile holds every chunk and a draw takes the runs drawn far,
+so nothing is remade.
+
+The device page's terrain flight over the city (`bun run device -- --self terrain
+--terrain --map var/maps/miami.snmap`, headless Chrome on the M5, 60 m up at
+100 m/s with a jump of 2 km or more every 10 s) held 16.7 ms on medium and low poly:
+the far city 41 and 15 draws and 34 k and 11 k triangles a frame (median, at
+800 by 600), at most 4.9 and 5.9 ms of making in a frame, and after each jump 15 to
+95 frames before no tile in view was unmade.
 
 ### Far trees, rocks and bushes (D353, D354)
 
