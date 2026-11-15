@@ -23,6 +23,8 @@ import type { ServerWorld } from "./world.ts";
 
 /** The vital each stat a use may change at once is, or -1 for stamina, which is the body's. */
 const VITAL: Readonly<Record<string, number>> = { health: V_HEALTH, food: V_FOOD, water: V_WATER, oxygen: V_OXYGEN, torpidity: V_TORPOR, stamina: -1 };
+/** Water one drink from the sea or a lake gives: a tenth of a survivor's first 100. */
+export const DRINK = 10;
 
 export interface UseContext {
   readonly world: ServerWorld;
@@ -95,6 +97,19 @@ export class Use {
     const e = records.entOf.get(rec.pid);
     if (e === undefined) return false;
     return world.ents.y[e]! < world.hf.waterAt(world.ents.x[e]!, world.ents.z[e]!) && world.ents.mode[e] !== MODE_SWIM;
+  }
+
+  /**
+   * ARK's drink from water (patch 187.0): E with nothing else to use, standing or swimming in water, the sea or a lake, is a
+   * drink of DRINK water (DEV162). False out of water, where E does nothing.
+   */
+  drink(c: Client): boolean {
+    const { world, records, survival } = this.ctx;
+    const rec = records.byPid.get(c.pid);
+    const e = rec ? records.entOf.get(rec.pid) : undefined;
+    if (!rec || e === undefined || !(world.ents.y[e]! < world.hf.waterAt(world.ents.x[e]!, world.ents.z[e]!))) return false;
+    survival.add(rec, V_WATER, DRINK);
+    return true;
   }
 
   /**
