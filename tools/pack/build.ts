@@ -4,7 +4,8 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
-import type { Def } from "../../shared/content/defs.ts";
+import type { Def, ShapeBox } from "../../shared/content/defs.ts";
+import { hullOf, hullPoint, type HullDef } from "../../shared/world/convex.ts";
 import { FAR_HEIGHT, FAR_MESH, FAR_TILE_METRES } from "../../client/core/render/far.ts";
 import { WATER_TILE } from "../../client/core/render/shading.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
@@ -14,7 +15,7 @@ import { SOURCE, filesUnder, readPacks, type SourceArt } from "../art/source.ts"
 import { importGlb } from "./glb.ts";
 import { mannequinMeshes } from "./mannequin.ts";
 import { weaponMeshes } from "./weapons.ts";
-import { boxMesh, buildPack, type SourceMesh } from "./write.ts";
+import { boxMesh, buildPack, type SourceLod, type SourceMesh } from "./write.ts";
 
 export const MISSING_MESH = "core:missing";
 export const WATER_MESH = "core:water";
@@ -71,6 +72,28 @@ function eggMesh(): SourceMesh {
   return { id: EGG_MESH, lods: [{ positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(REGION_BASE), indices: Uint32Array.from(indices) }] };
 }
 
+/** Boxes and convex parts as one level: each face of a part its corners round it, in a fan. */
+function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[]): SourceLod {
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (const b of boxes) {
+    const one = boxMesh(b.half, REGION_BASE);
+    const first = positions.length / 3;
+    for (let i = 0; i < one.positions.length; i++) positions.push(one.positions[i]! + b.at[i % 3]!);
+    for (const v of one.indices) indices.push(v + first);
+  }
+  for (const h of hulls) {
+    const made = hullOf(h);
+    if (typeof made === "string") throw new Error(made);
+    for (const ring of made.rings) {
+      const first = positions.length / 3;
+      for (const c of ring) positions.push(...hullPoint(h.corners[c]!, h.sixty === true));
+      for (let k = 2; k < ring.length; k++) indices.push(first, first + k - 1, first + k);
+    }
+  }
+  return { positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(REGION_BASE), indices: Uint32Array.from(indices) };
+}
+
 /** Their single colour is region 0, so the definition's colour applies per instance. */
 export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   // The beam marks where a survivor died, visible from far off.
@@ -81,17 +104,9 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
     if (d.type === "structure" && d.mesh === "shape") {
       const shape = defs.find((s) => s.type === "shape" && s.id === d.shape);
       if (shape?.type !== "shape") continue;
-      const positions: number[] = [];
-      const colors: number[] = [];
-      const indices: number[] = [];
-      for (const b of shape.boxes) {
-        const one = boxMesh(b.half, REGION_BASE);
-        const first = positions.length / 3;
-        for (let i = 0; i < one.positions.length; i++) positions.push(one.positions[i]! + b.at[i % 3]!);
-        colors.push(...one.colors);
-        for (const v of one.indices) indices.push(v + first);
-      }
-      meshes.push({ id: d.id, lods: [{ positions: Float32Array.from(positions), colors: Uint8Array.from(colors), indices: Uint32Array.from(indices) }] });
+      const walked = partsMesh(shape.boxes, shape.hulls ?? []);
+      // A shape drawn otherwise than it is walked, a flight's treads over its ramp, is drawn as walked one level coarser.
+      meshes.push({ id: d.id, lods: shape.look ? [partsMesh(shape.look.boxes ?? [], shape.look.hulls ?? []), walked] : [walked] });
       continue;
     }
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;

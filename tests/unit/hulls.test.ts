@@ -129,10 +129,10 @@ function rayReference(pts: V[], o: V, d: V): number {
 }
 
 test("a part is the hull of its corners: a wedge and a triangle have five faces and nine edges, a slab six and twelve", () => {
-  const parts = hullRegistry().parts.hulls!;
+  const reg = hullRegistry();
+  const parts = reg.parts.hulls!;
   const count = (p: number): number[] => [parts.corner[p + 1]! - parts.corner[p]!, parts.face[p + 1]! - parts.face[p]!, parts.edge[p + 1]! - parts.edge[p]!];
-  // Kinds are in the order of their ids: the ramp, the roof, the triangle.
-  expect([0, 1, 2].map(count)).toEqual([
+  expect(["test:ramp", "test:roof", "test:triangle"].map((id) => count(parts.start[reg.index.get(id)!]!))).toEqual([
     [6, 5, 9],
     [8, 6, 12],
     [6, 5, 9],
@@ -164,14 +164,21 @@ test("six triangles on 60 degree frames close a ring exactly at every facing, by
   expect(open).toEqual([]);
 });
 
+/** The first part of each test kind: the ramp, the roof slab and the triangle. */
+function testParts(): number[] {
+  const reg = hullRegistry();
+  return ["test:ramp", "test:roof", "test:triangle"].map((id) => reg.parts.hulls!.start[reg.index.get(id)!]!);
+}
+
 test("a capsule meets a part where an independent closest-point search says, as deep, at any turn", () => {
   const parts = hullRegistry().parts.hulls!;
+  const tested = testParts();
   const rng = new Rng(17);
   const wrong: string[] = [];
   let overlaps = 0;
   let shallow = 0;
   for (let n = 0; n < 900; n++) {
-    const p = n % 3;
+    const p = tested[n % 3]!;
     const yaw = rng.int(65536);
     const pts = corners(parts, p, yaw);
     const r = [0.4, 0.6, 1.1][rng.int(3)]!;
@@ -204,11 +211,12 @@ test("a capsule meets a part where an independent closest-point search says, as 
 
 test("a ray meets a part where it first crosses one of its faces, and reports that face", () => {
   const parts = hullRegistry().parts.hulls!;
+  const tested = testParts();
   const rng = new Rng(23);
   const wrong: string[] = [];
   let hits = 0;
   for (let n = 0; n < 3000; n++) {
-    const p = n % 3;
+    const p = tested[n % 3]!;
     const yaw = rng.int(65536);
     const pts = corners(parts, p, yaw);
     const o: V = [rng.range(-6, 6), rng.range(-4, 4), rng.range(-6, 6)];
