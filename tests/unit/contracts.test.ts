@@ -82,8 +82,9 @@ test("the new columns change nothing for content that does not use them", () => 
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
     // Prime meat (content/corpses.ts) is what the young give in place of raw meat.
     if (d.id !== "core:meat") expect(reg.youngItem[i]).toBe(0);
-    // Eggs, feces and prime meat lie on the ground for a time; nothing else declares one yet.
-    const prime = d.id === "core:meat_prime" || d.id === "core:meat_prime_cooked";
+    // Eggs, feces, prime meat and jerky (decomposesin 120, Cooked Meat Jerky, Prime Meat Jerky) lie on the ground for a time;
+    // nothing else declares one yet.
+    const prime = ["core:meat_prime", "core:meat_prime_cooked", "core:jerky", "core:jerky_prime"].includes(d.id);
     if (!(d.type === "item" && (d.class === "egg" || d.class === "feces")) && !prime) expect(reg.decomposeTicks[i]).toBe(0);
   }
 });

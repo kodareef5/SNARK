@@ -53,6 +53,18 @@ SPEED = {"walk": 2.6, "fly": 6.0, "fly_fast_wild": 16.5, "fly_fast_tame": 18.975
 # Metres travelled in one turn of the walk (a step of each hand and each foot). The engine plays it by distance over
 # stride, so a planted hand or foot moves back exactly stride / frames each frame. asset.ts: gaits.
 STRIDE = {"walk": 1.5}
+# The engine lifts a flyer from the first tick of its take-off (shared/sim/character.ts, D497): up at
+# sqrt(2 x 12 x 1.5) = 6 m/s, slowing at its 12 m/s2 flying acceleration to a hover 1.5 m up, in half a second. A
+# clip marked "lifted" holds the ground it leaves for the push, so its ground falls away by this much.
+TAKE_OFF = {"speed": 6.0, "rise": 1.5}
+
+
+def take_off_lift(f):
+    """How far the engine has lifted the body f frames into a take-off."""
+    a = TAKE_OFF["speed"] ** 2 / (2.0 * TAKE_OFF["rise"])
+    t = min(f / FPS, TAKE_OFF["speed"] / a)
+    return TAKE_OFF["speed"] * t - 0.5 * a * t * t
+
 
 # Triangles at each level, finest first, for the bare animal. Level 0 is model.py's: the membrane is a closed thin slab
 # whose two faces are textured apart, gridded finely enough to bend smoothly at the knuckle and along the battens
@@ -206,6 +218,7 @@ RIDER_CAPSULES = [  # (from, to, radius), a name with _l mirrored for the right
 #           it starts unturned unless `from` names the clip whose first frame it starts on, and ends unturned unless
 #           `into` names the one it ends on; a held loop holds its own pose throughout
 #   ridden  the rider may be on it: the block-out must keep out of RIDER_CAPSULES
+#   lifted  the engine lifts the body from its first frame (take_off_lift), so the ground it left falls away under it
 #   optional  made only if needed; asset.ts lists it once it is made
 _NECK_HEAD = ["neck_1", "neck_2", "neck_3", "neck_4", "skull", "jaw"]
 _LEGS = ["thigh_l", "shin_l", "foot_l", "toes_l", "thigh_r", "shin_r", "foot_r", "toes_r"]
@@ -219,7 +232,7 @@ CLIPS = {
     "idle_stretch": {"owner": "move", "loop": False, "frames": 90, "min": 60, "max": 150, "start": "ground", "end": "ground"},
     "walk":         {"owner": "move", "loop": True,  "frames": 20, "min": 14, "max": 30, "start": "gait", "stride": STRIDE["walk"], "ridden": True},
     "turn":         {"owner": "move", "loop": False, "frames": 24, "min": 12, "max": 36, "start": "ground", "end": "ground", "optional": True, "ridden": True},
-    "take_off":     {"owner": "move", "loop": False, "frames": 36, "min": 24, "max": 54, "start": "ground", "ridden": True},
+    "take_off":     {"owner": "move", "loop": False, "frames": 36, "min": 24, "max": 54, "start": "ground", "lifted": True, "ridden": True},
     "hover":        {"owner": "move", "loop": True,  "frames": 27, "min": 18, "max": 40, "ridden": True},
     "fly":          {"owner": "move", "loop": True,  "frames": 30, "min": 20, "max": 45, "ridden": True},
     "fly_fast":     {"owner": "move", "loop": True,  "frames": 18, "min": 12, "max": 27, "ridden": True},
@@ -1594,8 +1607,9 @@ def check_clip(rig, clip):
                 moved.add(f"{name}: {pb.name} is scaled; the engine keeps rotations only")
         for k in tracks:
             tracks[k].append(Vector(rig.socket(k)))
+        ground = -take_off_lift(f) if spec.get("lifted") else 0.0
         for b in DEFORM:
-            lowest = min(lowest, to_animal(obj.pose.bones[b].head)[1], to_animal(obj.pose.bones[b].tail)[1])
+            lowest = min(lowest, to_animal(obj.pose.bones[b].head)[1] - ground, to_animal(obj.pose.bones[b].tail)[1] - ground)
     errors += sorted(moved)
     grounded = spec.get("start") in ("ground", "gait") or spec.get("end") == "ground"
     if grounded and lowest < -0.02:

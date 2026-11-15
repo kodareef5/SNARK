@@ -12,7 +12,9 @@ For each clip, into DIR (default: this folder):
   the ground's lines 25 cm apart moving under a gait so a planted hand or foot holds still against them; a loop
   plays four times.
 
-The engine's own motion is drawn: the take-off rises as the engine lifts it (clips_move.rise), the turn turns. A clip
+The engine's own motion is drawn: the take-off rises as the engine lifts it (rig.take_off_lift) from ground lines
+that stay put, the camera framed a metre higher, so its hands and feet are seen to hold the ground for the push; the
+turn turns. A clip
 the animal is ridden in has the seated rider drawn on its seat, as capsules (rig.RIDER_CAPSULES). Swim clips have the
 water's surface (clips_move.WATERLINE) as an opaque plane.
 """
@@ -194,7 +196,7 @@ def pose_at(r, rig, cm, clip, f, lines, water, body):
     scene.frame_set(f)
     moved = spec.get("stride", 0.0) * f / spec["frames"]
     lines.location = rig.to_blender((0, 0, -moved))
-    lines.hide_render = clip in AIR or clip.startswith("swim")
+    lines.hide_render = (clip in AIR and clip != "take_off") or clip.startswith("swim")
     turned = 0.0
     if clip == "turn":
         s = min(1.0, f / (spec["frames"] - 1))
@@ -233,7 +235,7 @@ def sheet(r, rig, cm, clip, out, tmp, lines, water, cams, body):
     cols = min(len(frames), 20)
     blocks = (len(frames) + cols - 1) // cols
     canvas = np.ones((blocks * (band + gap), cols * CELL, 3), dtype=np.float32) * np.array(BACKGROUND, dtype=np.float32)
-    lift_cams = clip == "take_off"
+    lift_cams = clip == "take_off"  # framed a metre higher, still, so the ground it leaves stays in view
     for k, f in enumerate(frames):
         pose_at(r, rig, cm, clip, f, lines, water, body)
         col, block = k % cols, k // cols
@@ -242,9 +244,12 @@ def sheet(r, rig, cm, clip, out, tmp, lines, water, cams, body):
         for v in views:
             cam = cams[v]
             saved = cam.location.copy()
-            if lift_cams and v != "three":
-                cam.location = saved + Vector((0, 0, cm.rise(f)))
+            if lift_cams:
+                cam.location = saved + Vector((0, 0, 1.0))
+            shown = lines.hide_render
+            lines.hide_render = shown or v == "below"
             px = render(scene, cam, CELL, os.path.join(tmp, "v.png"), SKY if v == "below" else BACKGROUND)
+            lines.hide_render = shown
             cam.location = saved
             canvas[y:y + CELL, col * CELL:(col + 1) * CELL] = px[::-1]
             y += CELL
@@ -253,8 +258,11 @@ def sheet(r, rig, cm, clip, out, tmp, lines, water, cams, body):
             cam = cams["small"]
             saved = cam.location.copy()
             if lift_cams:
-                cam.location = saved + Vector((0, 0, cm.rise(f)))
+                cam.location = saved + Vector((0, 0, 1.0))
+            shown = lines.hide_render
+            lines.hide_render = shown or in_air
             px = render(scene, cam, size, os.path.join(tmp, "s.png"), SKY if in_air else BACKGROUND)
+            lines.hide_render = shown
             cam.location = saved
             # The middle of the small view, cropped to a cell's width and the row's height.
             mid = size // 2
@@ -290,7 +298,7 @@ def film(r, rig, cm, clip, out, tmp, lines, water, cams, body):
     for i, f in enumerate(order):
         pose_at(r, rig, cm, clip, f, lines, water, body)
         if clip == "take_off":
-            cam.location = saved + Vector((0, 0, 0.6 * cm.rise(f)))
+            cam.location = saved + Vector((0, 0, 0.5 * cm.rise(f)))
         render(scene, cam, (480, 360), os.path.join(folder, f"{i:04d}.png"), SKY if clip in AIR else BACKGROUND)
     cam.location = saved
     r.obj.rotation_euler = (0, 0, 0)

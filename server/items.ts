@@ -198,6 +198,35 @@ export class Items {
     }
   }
 
+  /**
+   * The record's kind changed at tick `t` from `from` to `to`, which keep things for different times: a preserving bin lit or
+   * gone out (server/preserve.ts). Its inventory is settled to `t` as `from` kept things, then every stack's clock is
+   * rescaled by `carried`, as food moved between two inventories is, so the time each top item had left at `t` is scaled
+   * and nothing is fresher. What lies under a top item has not started, and keeps by `to` from then on. Called with `t`
+   * the tick it happened, however long ago, so a bin that went out unobserved is worked out exactly when next looked at.
+   */
+  rekeep(rec: EntityRecord, t: number, from: number, to: number): void {
+    const inv = rec.inv;
+    const was = this.reg.keeps[from]!;
+    const is = this.reg.keeps[to]!;
+    if (!inv) return;
+    if (was !== is) {
+      const before = inv.version;
+      inv.keep = was;
+      this.settle(rec, inv, t, this.table);
+      for (let s = 0; s < inv.cap; s++) {
+        const at = inv.spoilAt[s]!;
+        if (at === 0 || inv.item[s] === 0) continue;
+        const next = carried(at, t, was, is);
+        if (next === at) continue;
+        inv.spoilAt[s] = next;
+        inv.mod[s] = ++inv.version;
+      }
+      if (inv.version !== before) this.changed(rec);
+    }
+    inv.keep = is;
+  }
+
   /** Settles spoilage up to tick `at` and no further, for a caller replaying an earlier moment. */
   spoilTo(rec: EntityRecord, at: number): void {
     const inv = rec.inv;

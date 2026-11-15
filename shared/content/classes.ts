@@ -77,8 +77,8 @@ const ITEM = {
   youngFor: f("text", "prime meat from the young in place of raw meat", { refs: { "": "item" } }),
   eat: f("facet", "UseItemAddCharacterStatusValues"),
   fuel: f("number"),
-  // The stations wave's (planning/reference/stations-plan.md, S0), each read once its project builds it.
-  burnsInto: stub("stations", "text", "the charcoal a fire leaves for each piece of wood burnt out", { refs: { "": "item" } }),
+  // The stations wave's (planning/reference/stations-plan.md, S0, read since S1): what a piece of fuel leaves when it burns out.
+  burnsInto: f("text", "the charcoal a fire leaves for each piece of wood burnt out", { refs: { "": "item" } }),
   saddle: f("facet", "equipment type DinoSaddle", { refs: { fits: "species/creature" } }),
   dose: f("facet", "UseItemAddCharacterStatusValues"),
   cooks: f("facet", "", { refs: { into: "item" } }),
@@ -94,7 +94,7 @@ const ITEM = {
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
-  craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" }, stubs: { fired: "stations" } }),
+  craft: f("facet", "BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP", { refs: { "needs[].item": "item", at: "structure/station" } }),
   description: stub("polish", "text", "ItemDescription"),
   folder: stub("polish", "text", "DefaultFolderPaths"),
   spoilsInto: f("text", "SpoilingItem", { refs: { "": "item" } }),
@@ -190,13 +190,14 @@ const STRUCTURE = {
   once: f("switch"),
   floor: f("switch"),
   rise: f("vec3"),
-  // The stations wave's (planning/reference/stations-plan.md, S0). `burns` is read (Registry.stationFuel) and `powered`
-  // (Progression, server/power.ts, S2); the rest are stubs, each read once its project builds it.
+  // The stations wave's (planning/reference/stations-plan.md, S0). `burns` is read (Registry.stationFuel), `powered`
+  // (Progression, server/power.ts, S2), `cooks` (the hearth, S1 and S3), `keeps` (server/preserve.ts, S3) and `dry`
+  // (S1); the rest are stubs, each read once its project builds it.
   burns: f("list", "the fuel a station takes and how long each piece burns in it", { refs: { "[].item": "item" } }),
-  cooks: stub("stations", "switch", "whether a lit station cooks raw meat, as a campfire does and a forge does not"),
-  keeps: stub("stations", "number", "GetSpoilingTimeMultiplier of its inventory"),
+  cooks: f("switch", "whether a lit station cooks raw meat, as a campfire does and a forge does not"),
+  keeps: f("number", "GetSpoilingTimeMultiplier of its inventory"),
   powered: f("switch", "bRequiresPower: its crafting runs only while it is on"),
-  dry: stub("stations", "switch", "not lit, or not working, under water"),
+  dry: f("switch", "not lit, or not working, under water"),
 } satisfies Fields<StructureDef>;
 
 const NODE = {
