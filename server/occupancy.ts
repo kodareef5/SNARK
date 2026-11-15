@@ -1,3 +1,5 @@
+import { MAX_SEATS, SEAT_ID } from '../shared/sim/seats.ts';
+
 /** Server-owned seat transitions. Persistent IDs are independent of entity slots.
  * Callers apply returned effects synchronously before publishing the tick. Authority
  * callbacks must be pure; they own permissions, door corridors and safe landings.
@@ -99,13 +101,13 @@ export class Occupancy {
   /** Definitions are registered once. Recycled runtime hosts must be removed first. */
   addHost(pid: number, hostHandle: number, seats: readonly OccupancySeat[]): void {
     if (!positive(pid) || !handle(hostHandle) || this.hosts.has(pid) ||
-      this.hosts.size >= this.limits.maxHosts || seats.length < 1 || seats.length > 16) {
+      this.hosts.size >= this.limits.maxHosts || seats.length < 1 || seats.length > MAX_SEATS) {
       throw new Error('Invalid or duplicate occupancy host');
     }
     const states = new Map<string, SeatState>();
     let drivers = 0;
     for (const seat of seats) {
-      if (!/^[a-z][a-z0-9_]{0,47}$/.test(seat.id) || states.has(seat.id)) throw new Error('Invalid seat name');
+      if (!SEAT_ID.test(seat.id) || states.has(seat.id)) throw new Error('Invalid seat name');
       if (seat.driver && ++drivers > 1) throw new Error('Multiple driver seats');
       states.set(seat.id, { driver: !!seat.driver, actor: 0, actorHandle: 0, revision: 0, claim: 0 });
     }

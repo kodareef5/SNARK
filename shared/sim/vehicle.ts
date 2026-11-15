@@ -2,6 +2,7 @@
 // Occupancy grants control; this module does not grant ownership or spend inventory items.
 import { TICK_DT } from "../coords.ts";
 import { clamp, detAtan2, detCos, detSin, TAU } from "../math/scalar.ts";
+import { validateSeats, type Seat } from "./seats.ts";
 import { DEFAULT_DRIVETRAIN, stepDrivetrain, validateDrivetrainSpec, vehicleMass, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "./vehicle-drivetrain.ts";
 
 export interface VehicleSpec {
@@ -46,19 +47,8 @@ export interface VehicleSpec {
   readonly dragScale?: number;
 }
 
-/** Points are in the chassis frame: metres, +X the driver's left, +Y up, +Z forward, the origin on the ground. */
-export interface VehicleSeat {
-  /** Saved and sent by name: `driver`, `passenger`, `rear_left`... */
-  readonly id: string;
-  /** The one seat whose occupant drives. */
-  readonly driver?: boolean;
-  /** Where the occupant's pelvis sits: the server pins it there and every client draws it there. */
-  readonly anchor: readonly [number, number, number];
-  /** Where a body stands to take or leave the seat. Its side (the sign of x) is the side it gets out on. */
-  readonly entry: readonly [number, number, number];
-  /** The door (an index into `doors`) that opens while someone takes or leaves this seat, or none. */
-  readonly door?: number;
-}
+/** A vehicle's seats are seats like any host's (shared/sim/seats.ts), in its chassis frame. */
+export type VehicleSeat = Seat;
 
 /** A hinged part of the rig. `open` is radians about `axis` (in the bone's frame) when it is fully open. */
 export interface VehicleDoor {
@@ -78,8 +68,6 @@ export interface VehicleWheel {
 
 /** At most this many doors a vehicle: their open fractions travel in four bits each (shared/sim/vehicle-body.ts). */
 export const MAX_VEHICLE_DOORS = 4;
-/** At most this many seats a vehicle (server/occupancy.ts holds the same). */
-export const MAX_VEHICLE_SEATS = 16;
 
 /** One kind of vehicle: its mechanics, its seats and the parts of its rig that move. Content, never code, says each. */
 export interface VehicleDefinition {
@@ -101,7 +89,6 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   validateVehicleSpec(d.spec);
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
   const bone = (n: unknown): boolean => typeof n === "string" && n.length > 0 && n.length <= 64;
-  if (!Array.isArray(d.seats) || d.seats.length < 1 || d.seats.length > MAX_VEHICLE_SEATS) throw new Error("a vehicle has 1 to 16 seats");
   if (!Array.isArray(d.doors) || d.doors.length > MAX_VEHICLE_DOORS) throw new Error("a vehicle has at most 4 doors");
   if (!Array.isArray(d.wheels) || d.wheels.length > 16 || !d.wheels.every((w) => bone(w.bone))) throw new Error("invalid vehicle wheels");
   for (const door of d.doors) {
@@ -113,16 +100,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
   if (!Number.isInteger(d.actionTicks) || d.actionTicks < 1 || d.actionTicks > 300) throw new Error("invalid vehicle action ticks");
   if (!Number.isFinite(d.beltline) || d.beltline <= d.spec.clearance || d.beltline > d.spec.height) throw new Error("invalid vehicle belt line");
-  const names = new Set<string>();
-  let drivers = 0;
-  for (const seat of d.seats) {
-    // The same names server/occupancy.ts accepts, so content that compiles always registers.
-    if (!/^[a-z][a-z0-9_]{0,47}$/.test(seat.id) || names.has(seat.id) || !vec(seat.anchor) || !vec(seat.entry) ||
-      (seat.door !== undefined && !(Number.isInteger(seat.door) && seat.door >= 0 && seat.door < d.doors.length))) throw new Error("invalid vehicle seat");
-    names.add(seat.id);
-    if (seat.driver) drivers++;
-  }
-  if (drivers !== 1) throw new Error("a vehicle must have one driver seat");
+  validateSeats(d.seats, d.doors.length, "vehicle");
 }
 
 /** Physical surface values, independent of terrain palette or art material names. */

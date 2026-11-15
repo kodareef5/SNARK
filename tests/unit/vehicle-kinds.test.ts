@@ -10,6 +10,8 @@ import { EntityStore } from "../../shared/sim/entities.ts";
 import { MAX_VEHICLE_DOORS, validateVehicleDefinition, type VehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { packVehiclePose, vehicleDoor, withVehicleDoor } from "../../shared/sim/vehicle-body.ts";
 import { COMPACT, COMPACT_SPECIES } from "../../content/vehicles/compact.ts";
+import { validateSeats, type Seat } from "../../shared/sim/seats.ts";
+import { Occupancy } from "../../server/occupancy.ts";
 
 /** A pickup with a bench of three and a tailgate: four doors, three seats, a wheel bone named its own way. */
 export const PICKUP: VehicleDefinition = {
@@ -91,4 +93,20 @@ test("four doors travel in one word, each on its own, and a door alone costs an 
   w.reset();
   writeViewDelta(w, sent, rolled, new SentView(), 8192, 0, store);
   expect(w.pos - doorOnly).toBe(16);
+});
+
+test("a saddle's seats are seats as a car's are: the same check, and occupancy takes them as it takes a car's", () => {
+  // A passenger saddle on a large mount: the rider steers, two sit behind, no doors.
+  const saddle: Seat[] = [
+    { id: "driver", driver: true, anchor: [0, 4.1, 0.6], entry: [2.6, 0, 0.6] },
+    { id: "passenger_left", anchor: [0.5, 4, -0.6], entry: [2.6, 0, -0.6] },
+    { id: "passenger_right", anchor: [-0.5, 4, -0.6], entry: [-2.6, 0, -0.6] },
+  ];
+  expect(() => validateSeats(saddle, 0, "saddle")).not.toThrow();
+  expect(() => validateSeats([{ ...saddle[1]!, door: 0 }], 0, "saddle")).toThrow("invalid saddle seat");
+  expect(() => validateSeats(saddle.slice(1), 0, "saddle")).toThrow("a saddle must have one driver seat");
+  const occupancy = new Occupancy({ actor: () => null, host: () => null, check: () => ({ ok: true }), canControl: () => true }, { runtimeEpoch: 1 });
+  occupancy.addHost(7, 1, saddle);
+  occupancy.addHost(8, 2, PICKUP.seats);
+  expect([occupancy.occupant(7, "passenger_right"), occupancy.occupant(8, "bed")]).toEqual([0, 0]);
 });
