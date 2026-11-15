@@ -1,0 +1,56 @@
+[
+  {
+    "source": "top_heads_generated.png",
+    "generation": "exec-3b3225dd-2a42-485e-8e1e-adeedf7d67ff.png",
+    "sha256": "e52c2505bc1dea97c8d683a914ee683e180bb148ade5583176d183be82e037cd",
+    "decision": "Superseded: blades too large; reduced-scale revision requested.",
+    "prompt_file": "tops_prompt.txt",
+    "tool": "built-in imagegen",
+    "input_image": null
+  },
+  {
+    "source": "underside_generated.png",
+    "generation": "exec-32f1f0a6-6efb-453e-9e59-ff9a0ee54bce.png",
+    "sha256": "923b3ae14b5b47522f7ebbce17f700cd968970e4b3960684289b03cc5fc883ff",
+    "decision": "Superseded: blades too large; reduced-scale revision requested.",
+    "prompt_file": "underside_prompt.txt",
+    "tool": "built-in imagegen",
+    "input_image": null
+  },
+  {
+    "source": "interior_generated.png",
+    "generation": "exec-3508d88a-6c31-4bb5-b8f7-c8848330e2dd.png",
+    "sha256": "7fd5b965573cf0f95fcc12ac24bc3261b39a627987fdc7abe915aaf4e3b66716",
+    "decision": "Superseded: blades too large; reduced-scale revision requested.",
+    "prompt_file": "interior_prompt.txt",
+    "tool": "built-in imagegen",
+    "input_image": null
+  },
+  {
+    "source": "top_heads_generated.png",
+    "generation": "exec-1fa74b31-d555-41bd-8dbb-9031814dc020.png",
+    "sha256": "505f0178cbd7ec66293662100fd76faa685a0601f2d1f0bba0027fff194e8799",
+    "decision": "Selected reduced-scale original; not modified after generation.",
+    "prompt_file": "tops_scale_revision_prompt.txt",
+    "tool": "built-in imagegen",
+    "input_image": "top_heads_generated.png (previous generation)"
+  },
+  {
+    "source": "underside_generated.png",
+    "generation": "exec-9119cc79-6ebf-4fa6-b4be-0a52e3f6be94.png",
+    "sha256": "ae0e83caebe9172c54a37329b9dccf3eb7798d2999da1071e10cd49614f5dcde",
+    "decision": "Selected reduced-scale original; not modified after generation.",
+    "prompt_file": "underside_scale_revision_prompt.txt",
+    "tool": "built-in imagegen",
+    "input_image": "underside_generated.png (previous generation)"
+  },
+  {
+    "source": "interior_generated.png",
+    "generation": "exec-f48f5e9c-b39e-4e46-9d0d-eb42f7370733.png",
+    "sha256": "bfb515778ae27970923185b153f6f588b30abd3555be58bd4306206ceadfc385",
+    "decision": "Selected reduced-scale original; not modified after generation.",
+    "prompt_file": "interior_scale_revision_prompt.txt",
+    "tool": "built-in imagegen",
+    "input_image": "interior_generated.png (previous generation)"
+  }
+]

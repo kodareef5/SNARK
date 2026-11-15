@@ -1,0 +1,211 @@
+{
+  "size": [
+    2048,
+    1024
+  ],
+  "cell_size": 512,
+  "disc_centre": [
+    255.5,
+    255.5
+  ],
+  "disc_radius_px": 240.64,
+  "disc_surface_radius_mm": 1100,
+  "interior_period_mm": [
+    2400,
+    2400
+  ],
+  "height_encoding_mm": [
+    0,
+    160
+  ],
+  "source_sha256": "d75c79e643ed9d6e0506a9a0af65a4f4d78e7f325c36e541b0753098d607c605",
+  "blade_dimensions_mm": {
+    "length": [
+      90,
+      130
+    ],
+    "width": [
+      40,
+      60
+    ]
+  },
+  "supersampling": 2,
+  "cells": [
+    {
+      "index": 0,
+      "population": "sun",
+      "seed": 20261115,
+      "pitch_mm": 4.571143617021277,
+      "mean_rgb": [
+        92.00058267370272,
+        115.99885664028145,
+        50.001126868953385
+      ],
+      "brown_visible_fraction": 0.022672053649956024,
+      "height_actual_mm": [
+        20.525215533684293,
+        76.55878538185702
+      ],
+      "removed_axis_plane": [
+        -0.17420567549612365,
+        0.05024442877354356
+      ],
+      "leaf_count": 6058,
+      "twig_count": 6923
+    },
+    {
+      "index": 1,
+      "population": "sun",
+      "seed": 20261252,
+      "pitch_mm": 4.571143617021277,
+      "mean_rgb": [
+        91.99958773087072,
+        115.99996701846966,
+        50.00031332453826
+      ],
+      "brown_visible_fraction": 0.019386268689533862,
+      "height_actual_mm": [
+        21.445639734493017,
+        75.42595559624628
+      ],
+      "removed_axis_plane": [
+        -0.11179004218667438,
+        -0.30516908256425046
+      ],
+      "leaf_count": 6052,
+      "twig_count": 6917
+    },
+    {
+      "index": 2,
+      "population": "middle",
+      "seed": 20261389,
+      "pitch_mm": 4.571143617021277,
+      "mean_rgb": [
+        67.99957673702727,
+        92.00046723834653,
+        44.00056068601583
+      ],
+      "brown_visible_fraction": 0.021017480211081793,
+      "height_actual_mm": [
+        21.819180590524148,
+        76.66620889600976
+      ],
+      "removed_axis_plane": [
+        0.19092928491238026,
+        0.1844959797030498
+      ],
+      "leaf_count": 6106,
+      "twig_count": 6971
+    },
+    {
+      "index": 3,
+      "population": "middle",
+      "seed": 20261526,
+      "pitch_mm": 4.571143617021277,
+      "mean_rgb": [
+        68.0016160949868,
+        92.00021437994722,
+        43.99987906772208
+      ],
+      "brown_visible_fraction": 0.018032651715039576,
+      "height_actual_mm": [
+        20.974441138323034,
+        76.09491111619745
+      ],
+      "removed_axis_plane": [
+        0.0712180478997253,
+        0.051396332776554025
+      ],
+      "leaf_count": 6022,
+      "twig_count": 6887
+    },
+    {
+      "index": 4,
+      "population": "shade",
+      "seed": 20261663,
+      "pitch_mm": 4.571143617021277,
+      "mean_rgb": [
+        47.99755386983289,
+        70.00140171503958,
+        40.001165347405454
+      ],
+      "brown_visible_fraction": 0.027575307827616535,
+      "height_actual_mm": [
+        20.45929655909056,
+        76.5685511558709
+      ],
+      "removed_axis_plane": [
+        -0.20734084537359887,
+        -0.2546720890291828
+      ],
+      "leaf_count": 6076,
+      "twig_count": 6941
+    },
+    {
+      "index": 5,
+      "population": "shade",
+      "seed": 20261800,
+      "pitch_mm": 4.571143617021277,
+      "mean_rgb": [
+        47.99853781882146,
+        69.9989390941073,
+        39.999758135444154
+      ],
+      "brown_visible_fraction": 0.021139786719437115,
+      "height_actual_mm": [
+        22.40512703135729,
+        77.01533531700618
+      ],
+      "removed_axis_plane": [
+        0.22893774723029459,
+        0.1868540908473785
+      ],
+      "leaf_count": 6124,
+      "twig_count": 6989
+    },
+    {
+      "index": 6,
+      "population": "underside",
+      "seed": 20261937,
+      "pitch_mm": 4.571143617021277,
+      "mean_rgb": [
+        79.9968172823219,
+        94.00294635004397,
+        56.001495162708885
+      ],
+      "brown_visible_fraction": 0.018670294635004397,
+      "height_actual_mm": [
+        22.549172198062106,
+        74.93522545204853
+      ],
+      "removed_axis_plane": [
+        -0.004000952210387265,
+        0.02365538415194566
+      ],
+      "leaf_count": 6210,
+      "twig_count": 7129
+    },
+    {
+      "index": 7,
+      "population": "interior",
+      "seed": 20262074,
+      "pitch_mm": 4.6875,
+      "mean_rgb": [
+        28.008934020996094,
+        43.99681854248047,
+        30.002338409423828
+      ],
+      "brown_visible_fraction": 0.02024555206298828,
+      "height_actual_mm": [
+        21.43587396047913,
+        76.37079423208972
+      ],
+      "removed_axis_plane": [
+        0.0,
+        0.0
+      ],
+      "leaf_count": 6058,
+      "twig_count": 6923
+    }
+  ]
+}

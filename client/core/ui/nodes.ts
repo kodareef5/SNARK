@@ -9,7 +9,7 @@ export const K_PANEL = 0;
 export const K_TEXT = 1;
 /** A track filled from the left to `value` (0 to 1). */
 export const K_BAR = 2;
-/** A picture from the frame's image table, stretched to the rectangle. */
+/** A picture from the frame's image table, stretched to the rectangle: the whole of it, or the part `sx` to `sh` say. */
 export const K_IMAGE = 3;
 /** A text field the viewer types into. `text` is its content, owned by core. */
 export const K_INPUT = 4;
@@ -34,6 +34,11 @@ export interface UiNode {
   value: number;
   /** Index into the frame's image table, for K_IMAGE. */
   image: number;
+  /** For K_IMAGE, the part of the image shown, in its pixels: left, top, width, height. A width of 0 shows all of it. */
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
   interactive: boolean;
   /** Should hold the keyboard focus, for K_INPUT. */
   focus: boolean;
@@ -50,6 +55,17 @@ export interface UiImage {
   data: Uint8ClampedArray;
   /** Changes when `data` does. */
   version: number;
+  /**
+   * A file the page fetches the picture from, for an image too large to hand over by its pixels: a sheet of inventory
+   * pictures. `data` may then be empty, and is the same picture where a tool fills it.
+   */
+  url?: string;
+}
+
+/** Where a screen finds the picture of a definition (client/core/assets/icons.ts). */
+export interface UiIcons {
+  /** Points a K_IMAGE node at the picture of the definition `owner`, and is true; false where it has none. */
+  place(n: UiNode, owner: string): boolean;
 }
 
 export class UiFrame {
@@ -58,6 +74,8 @@ export class UiFrame {
   count = 0;
   readonly nodes: UiNode[] = [];
   readonly images: (UiImage | null)[] = [null];
+  /** The inventory pictures, or null where there are none: then every item shows its swatch. */
+  icons: UiIcons | null = null;
 
   /** `aspect` is width over height. */
   begin(aspect: number): void {
@@ -69,7 +87,7 @@ export class UiFrame {
   add(key: number, kind: number, x: number, y: number, w: number, h: number, style: number): UiNode {
     let n = this.nodes[this.count];
     if (!n) {
-      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", value: 0, image: 0, interactive: false, focus: false, tint: -1, alpha: 1 };
+      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", value: 0, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1 };
       this.nodes.push(n);
     }
     this.count++;
@@ -83,6 +101,7 @@ export class UiFrame {
     n.text = "";
     n.value = 0;
     n.image = 0;
+    n.sx = n.sy = n.sw = n.sh = 0;
     n.interactive = false;
     n.focus = false;
     n.tint = -1;
@@ -95,6 +114,18 @@ export class UiFrame {
     const n = this.add(key, K_TEXT, x, y, w, lineHeight(style), style);
     n.text = text;
     return n;
+  }
+
+  /**
+   * The picture of the definition `owner` as a K_IMAGE node, where there is one. Null where there is not, and nothing is
+   * added: the caller draws what stands in.
+   */
+  picture(key: number, x: number, y: number, w: number, h: number, style: number, owner: string): UiNode | null {
+    if (!this.icons) return null;
+    const n = this.add(key, K_IMAGE, x, y, w, h, style);
+    if (this.icons.place(n, owner)) return n;
+    this.count--;
+    return null;
   }
 
   find(key: number): UiNode | null {

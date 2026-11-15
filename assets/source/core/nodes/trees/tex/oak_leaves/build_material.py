@@ -377,22 +377,24 @@ def cluster_pigment(p,cell):
     Preserve twig and brown-leaf colour. Fresh cell-2 tissue remains the
     brightest yellow-green; calibrate the remaining tissue to the card mean.
     Geometry, alpha, height, roughness and occlusion are untouched.
+    Round 6 changes only these pigment targets and ceilings. Additive offsets
+    retain face-to-face value differences; the engine applies its own tint.
     """
-    target=np.array([128.,132.,70.] if cell in [0,2] else [86.,98.,62.])
+    target=np.array([150.,152.,76.] if cell in [0,2] else [96.,108.,64.])
     visible=p['alpha']>=.5
     fixed=np.isin(p['kind'],[1,6])
     fresh=p['kind']==5
     mutable=visible&~fixed&~fresh
     if fresh.any():
         variation=p['rgb'][fresh]-p['rgb'][fresh&visible].mean(0)
-        p['rgb'][fresh]=np.array([162.,157.,83.])+variation*.65
+        p['rgb'][fresh]=np.array([183.,180.,90.])+variation*.65
     for _ in range(8):
         correction=(target-p['rgb'][visible].mean(0))*visible.sum()/mutable.sum()
         p['rgb'][~fixed&~fresh]+=correction
         if cell in [0,2]:
             # Bound mature pigment (including mixed leaf-boundary samples),
             # leaving the fresh tips as the brightest oak yellow-green.
-            p['rgb'][~fixed&~fresh]=np.minimum(p['rgb'][~fixed&~fresh],[161,156,83])
+            p['rgb'][~fixed&~fresh]=np.minimum(p['rgb'][~fixed&~fresh],[182,179,90])
     return p
 
 
@@ -593,7 +595,7 @@ def main():
         orm[sl][...,0]=np.rint(p['ao']*255).astype(np.uint8)
         orm[sl][...,1]=np.rint(p['rough']*255).astype(np.uint8)
         kinds[sl]=p['kind'];leaf_ids[sl]=p['ids']
-    png_save(base,ROOT/'oak_leaves_base.png',True,'Set 2 round 5. Sun-leaf cells 0/2, shade-leaf cells 1/3, cool interior mass. Round-4 geometry and alpha; unchanged moss and fern. Straight RGBA. Alpha cut 0.5.')
+    png_save(base,ROOT/'oak_leaves_base.png',True,'Set 2 round 6. Brighter sun-leaf cells 0/2 and lifted shade-leaf cells 1/3. Unchanged geometry, alpha, interior mass, moss and fern. Straight RGBA. Alpha cut 0.5.')
     png_save(height,ROOT/'oak_leaves_height.png',False,'16-bit linear relief; black 0 mm, white 160 mm. Tilted leaf planes, layered shoot tips and pooled recesses.')
     z=np.asarray(Image.open(ROOT/'oak_leaves_height.png')).astype(float)*HEIGHT_MM/65535
     normals=np.zeros((N,N,3),np.uint8)
@@ -607,9 +609,9 @@ def main():
     png_save(leaf_ids,SRC/'detail_leaf_ids.png')
     manifest=dict(height_range_mm=HEIGHT_MM,layout=LAYOUT,composition=records,
         material_ids={'0':'transparent','1':'twig','2':'oak','3':'moss','4':'fern','5':'fresh oak','6':'brown oak','7':'turned oak'},
-        source_method='Round-5 ecotype pigments and deeper interior occlusion on unchanged round-4 geometry. Full-cell clusters reuse round-3 generated oval tissue and metric tilted laminae. Moss and fern unchanged.',
-        pigment=dict(sun_cells=[0,2],shade_cells=[1,3],sun_mean=[128,132,70],shade_mean=[86,98,62],
-            fresh_mean=[162,157,83],mature_sun_ceiling=[161,156,83],mass_mean=[66,78,48],mass_pigment_floor=[34,44,34],
+        source_method='Round-6 brighter ecotype pigments on unchanged round-4 geometry. Round-5 interior mass and occlusion retained. Full-cell clusters reuse round-3 generated oval tissue and metric tilted laminae. Moss and fern unchanged.',
+        pigment=dict(sun_cells=[0,2],shade_cells=[1,3],sun_mean=[150,152,76],shade_mean=[96,108,64],
+            fresh_mean=[183,180,90],mature_sun_ceiling=[182,179,90],mass_mean=[66,78,48],mass_pigment_floor=[34,44,34],
             mass_depth_anchors_mm=[40,60,80,100],mass_depth_anchor_rgb=[[34,44,34],[54,68,40],[74,88,50],[86,98,62]],
             mass_ao_depth_interval_mm=[64,108],mass_ao_range=[.35,.97],
             note='Depth anchors are complete-leaf pigments before mean calibration, never a lighting function. Twig and brown colours retained.'))
