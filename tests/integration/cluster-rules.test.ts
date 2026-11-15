@@ -4,7 +4,7 @@
 // machinery carries any record.
 
 import { afterAll, expect, test } from "bun:test";
-import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ClientSession } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -260,6 +260,13 @@ test("a save that was in a cluster starts only in it, with its own folder, and t
   const b = t.server("Miami", "guards", clock);
   expect(b.world).toBe(2);
   b.h.host.shutdown();
+});
+
+test("a server whose save is in a folder not made yet makes it, with the cluster's folder beside the save", () => {
+  const host = createHost(reg, { dbPath: join(t.dir, "var", "cluster", "miami.db"), config: loadConfig({}, ["-clusterid=florida"]).rules, log: () => {} });
+  expect(host.cluster!.world).toBe(1);
+  expect(existsSync(join(t.dir, "var", "cluster", "clusters", "florida", "servers", "1.json"))).toBe(true);
+  host.shutdown();
 });
 
 test("a transfer's file carries any record, as a save keeps it: a creature with its saddle and inventory, a loose stack", () => {

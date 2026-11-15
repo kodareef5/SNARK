@@ -5,7 +5,8 @@ import { Database, type Statement } from "bun:sqlite";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
 import type { EntityRecord } from "../records.ts";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { RecordCodec, WITHOUT, idMap, type RecordRow } from "./codec.ts";
 import { listBackups } from "./backup.ts";
 import { refuseNetworkDisk } from "./disk.ts";
@@ -129,6 +130,8 @@ export class WorldStore {
 
   constructor(path: string, reg: Registry, opts: StoreOptions = {}) {
     if (path === "" || path === ":memory:") throw new Error("a save needs a file: write-ahead logging does not work in memory");
+    // A save in a folder not made yet makes it, as ARK makes its SavedArks.
+    mkdirSync(dirname(resolve(path)), { recursive: true });
     if (!opts.allowNetworkDisk) refuseNetworkDisk(path);
     this.path = path;
     this.allowMissing = opts.allowMissingContent ?? false;

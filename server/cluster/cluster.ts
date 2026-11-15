@@ -1,6 +1,7 @@
 // The servers of a cluster as one of them sees them, and the survivors that leave it for another and come from one. The
 // design, its durable states and how each is recovered are in planning/architecture/transfers.md.
 
+import { resolve } from "node:path";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -106,7 +107,7 @@ export class Cluster {
     this.world = world;
     this.lock = lock;
     this.saveId = store.saveId;
-    this.savePath = store.path;
+    this.savePath = resolve(store.path);
     this.first = first;
   }
 
@@ -119,7 +120,7 @@ export class Cluster {
    */
   static open(root: string, id: string, store: WorldStore): Cluster {
     const folder = new ClusterFolder(root);
-    const blank = (world: number): Announcement => ({ world, saveId: store.saveId, save: store.path, name: "", map: "", port: 0, url: "", players: 0, max: 0, content: 0, survivors: false, items: false, at: 0 });
+    const blank = (world: number): Announcement => ({ world, saveId: store.saveId, save: resolve(store.path), name: "", map: "", port: 0, url: "", players: 0, max: 0, content: 0, survivors: false, items: false, at: 0 });
     const was = store.meta("cluster");
     if (was !== null && String(was) !== id) throw new Error(`this save is in the cluster ${was}, not ${id}: start it with -clusterid=${was}`);
     const own = folder.announcements().find((a) => a.saveId === store.saveId);

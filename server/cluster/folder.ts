@@ -16,7 +16,7 @@ import { holdSave, type SaveLock } from "../persist/lock.ts";
 /** What a server says of itself in the folder. Rewritten every few seconds while it runs; `at` 0 says it has stopped. */
 export interface Announcement {
   world: number;
-  /** The save that took this world id, which no other may use (WorldStore.saveId), and where it is. */
+  /** The save that took this world id, which no other may use (WorldStore.saveId), and its whole path. */
   saveId: string;
   save: string;
   /** SessionName, or the map's id where there is none. */

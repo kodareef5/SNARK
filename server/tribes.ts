@@ -213,7 +213,8 @@ export class Tribes {
   /**
    * The survivor left for another server of the cluster, in its tribe still. Its team goes with it and what the tribe owns here
    * keeps it, so it is the tribe's again when the survivor comes back. A tribe is listed where its members are: this one
-   * passes to its longest-standing member here, if its owner left, and with nobody left here it is forgotten here.
+   * passes to its longest-standing member here, if its owner left, and with nobody left here it is forgotten here. Nobody is
+   * told: ARK's tribe log has no line for a survivor's transfer.
    */
   departed(rec: EntityRecord): void {
     this.invites.delete(rec.pid);
@@ -230,7 +231,6 @@ export class Tribes {
         this.records.dirty.add(heir.pid);
       }
     }
-    for (const pid of tribe.members) this.onNotice?.(pid, `${rec.name} has gone to another server.`);
     this.version++;
     this.onSave?.();
   }
@@ -260,7 +260,6 @@ export class Tribes {
     }
     rec.rank = tribe.owner === rec.pid ? RANK_OWNER : RANK_MEMBER;
     this.records.dirty.add(rec.pid);
-    for (const pid of tribe.members) if (pid !== rec.pid) this.onNotice?.(pid, `${rec.name} has come from another server.`);
     this.version++;
     this.onSave?.();
   }
