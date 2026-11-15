@@ -1,0 +1,154 @@
+{
+  "dust_1.png": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "neutral_rgb": true,
+    "clear_margin_px_LTRB": [
+      163,
+      104,
+      126,
+      142
+    ],
+    "alpha_max": 197,
+    "alpha_centroid_xy": [
+      529.05,
+      520.71
+    ],
+    "occupied_percent": 39.86,
+    "nonzero_alpha_levels": 197
+  },
+  "dust_2.png": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "neutral_rgb": true,
+    "clear_margin_px_LTRB": [
+      119,
+      164,
+      107,
+      126
+    ],
+    "alpha_max": 202,
+    "alpha_centroid_xy": [
+      510.73,
+      513.44
+    ],
+    "occupied_percent": 36.42,
+    "nonzero_alpha_levels": 202
+  },
+  "dust_3.png": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "neutral_rgb": true,
+    "clear_margin_px_LTRB": [
+      126,
+      98,
+      119,
+      122
+    ],
+    "alpha_max": 178,
+    "alpha_centroid_xy": [
+      543.98,
+      508.51
+    ],
+    "occupied_percent": 40.51,
+    "nonzero_alpha_levels": 178
+  },
+  "dust_4.png": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "neutral_rgb": true,
+    "clear_margin_px_LTRB": [
+      119,
+      168,
+      123,
+      127
+    ],
+    "alpha_max": 199,
+    "alpha_centroid_xy": [
+      533.21,
+      508.08
+    ],
+    "occupied_percent": 38.79,
+    "nonzero_alpha_levels": 199
+  },
+  "grit.png": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "neutral_rgb": true,
+    "clear_margin_px_LTRB": [
+      166,
+      208,
+      177,
+      196
+    ],
+    "alpha_max": 255,
+    "alpha_centroid_xy": [
+      502.08,
+      514.81
+    ],
+    "occupied_percent": 1.26,
+    "nonzero_alpha_levels": 255
+  },
+  "drop.png": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "neutral_rgb": true,
+    "clear_margin_px_LTRB": [
+      174,
+      174,
+      174,
+      174
+    ],
+    "alpha_max": 255,
+    "alpha_centroid_xy": [
+      511.5,
+      511.5
+    ],
+    "occupied_percent": 34.19,
+    "nonzero_alpha_levels": 252
+  },
+  "ripple.png": {
+    "size": [
+      1024,
+      1024
+    ],
+    "mode": "RGBA",
+    "neutral_rgb": true,
+    "clear_margin_px_LTRB": [
+      125,
+      124,
+      124,
+      125
+    ],
+    "alpha_max": 199,
+    "alpha_centroid_xy": [
+      519.14,
+      501.87
+    ],
+    "occupied_percent": 4.81,
+    "nonzero_alpha_levels": 199
+  },
+  "ripple_checks": {
+    "interior_clear": true,
+    "exterior_clear": true,
+    "single_crest": true
+  }
+}

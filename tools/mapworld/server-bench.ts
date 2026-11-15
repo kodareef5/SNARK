@@ -14,5 +14,5 @@ const host = createHost(compiled.registry, { map: bytes, wild: true, clips: pack
 const ready = performance.now();
 const memory = process.memoryUsage();
 const report = { milliseconds: Number((ready - start).toFixed(1)), residentMiB: Number((memory.rss / 1048576).toFixed(1)), heapMiB: Number((memory.heapUsed / 1048576).toFixed(1)), peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)), mapBytes: bytes.length, spawnRegions: host.spawner?.regions.length, scope: "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients" };
-writeFileSync("assets/source/maps/miami/reports/ruins1/server.json", `${JSON.stringify(report, null, 2)}\n`);
+writeFileSync("assets/source/maps/miami/reports/ruins2/server.json", `${JSON.stringify(report, null, 2)}\n`);
 console.log(JSON.stringify(report, null, 2)); host.shutdown();

@@ -8,6 +8,7 @@ import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "../../../shared/pack/pack.ts";
+import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { StructureStore } from "../../../shared/world/structures.ts";
@@ -18,6 +19,7 @@ import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
 import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortU32 } from "../../../shared/sort.ts";
+import { Details } from "../details/details.ts";
 import type { Falling } from "../rubble.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
@@ -25,9 +27,10 @@ import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
+import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
 import { FarNodes, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
@@ -46,6 +49,8 @@ export interface RenderWorld {
   readonly far?: FarSource;
   /** Trees, rocks and bushes past the near node field (farnodes.ts). */
   readonly farNodes?: FarNodeSource;
+  /** The map's own buildings past the near rows (farcity.ts). */
+  readonly city?: CitySource;
 }
 
 /** The viewer's own body, which is not among the remote entities. */
@@ -244,6 +249,8 @@ export class Scene {
   /** The piece shown where it would be built. kind is 0 for none, x, y, z are metres, yaw is in wire units, color is a palette index. */
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
+  /** Small details: feathers knocked loose, dust thrown up. */
+  readonly details: Details;
   /** A bag of one stack, drawn as its item lying (dropped.ts). */
   private readonly dropped: Dropped;
   /** Null draws no body for the viewer. The app sets it before build(). */
@@ -265,6 +272,8 @@ export class Scene {
   private readonly far: FarBlocks | null;
   /** Nodes past the near node field, given a source of them. */
   readonly nodesFar: FarNodes | null;
+  /** The map's own buildings where the near store does not hold their chunks whole, given a source of them. */
+  readonly city: FarCity | null;
   /** Sun shadows: the cascades fitted this frame. */
   readonly cascades = new Cascades();
   /** Whether anything casts this frame, how far the true sun climbs (its unit vector's y), and frames fitted, for a cascade drawn every other frame. */
@@ -370,6 +379,8 @@ export class Scene {
     this.transientF32 = new Float32Array(t.buffer, t.byteOffset, t.byteLength >> 2);
     this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
     this.characters = new Characters(reg, pack, this.assets);
+    this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind));
+    if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
     this.dropped = new Dropped(reg, bind);
     const p = this.packet as unknown as Record<string, unknown>;
     this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => p[k] as Uint8Array);
@@ -379,7 +390,8 @@ export class Scene {
 
     const far = table.find(FAR_MESH);
     const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : this.meshOfKind[k]!);
-    this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
+    this.city = world.city && far >= 0 ? new FarCity(world.city, world.dims, world.hf, far, pack.header.meshes[far]!) : null;
+    this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown), this.city) : null;
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.bootLevel(mesh, table.tris[mesh]!.length - 1);
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last };
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
@@ -400,6 +412,7 @@ export class Scene {
     this.terrain.reset();
     this.far?.reset();
     this.nodesFar?.reset();
+    this.city?.reset();
     this.cascades.clear();
   }
 
@@ -446,6 +459,7 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency, this.casting ? this.castBox : undefined);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
+    if (this.city) this.farCity(cam);
     if (this.far) this.farBlocks(cam);
     if (this.nodesFar) this.farNodes(cam);
     if (this.casting && !this.terrain.casters(cam, p, this.viewDistance, this.castBox)) p.casterDropped++;
@@ -458,6 +472,7 @@ export class Scene {
     if (this.ghost.kind !== 0) this.showGhost(cam);
     if (this.things.length > 0) this.showThings(cam);
     if (sea > -Infinity && this.waterMesh >= 0) this.water(cam, sea);
+    this.showDetails(cam, remote);
     // The viewer's own body goes over everything else, water included.
     this.characters.flush(p, this.transient, true, this.drawBody, this.casting ? this.castBody : null);
     this.order();
@@ -643,6 +658,25 @@ export class Scene {
     p.drawCount = total;
   }
 
+  /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
+  private showDetails(cam: Camera, remote: RemoteSample | null): void {
+    const p = this.packet;
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? [], this.own, this.world.hf, this.assets.tier, this.now);
+    for (const [first, count, flags] of [[0, cut, DRAW_CUTOUT], [cut, p.detailCount - cut, DRAW_BLEND]] as const) {
+      const d = p.drawCount;
+      if (count === 0) continue;
+      if (d + this.doubled + 1 > MAX_DRAWS) {
+        p.dropped++;
+        continue;
+      }
+      [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [0, 0, 0, 0, first, count, DRAW_DETAILS | flags];
+      p.drawOffset.fill(0, d * 3, d * 3 + 3);
+      this.passOf[d] = NEAR;
+      p.drawCount = d + 1;
+      p.triangles += count * 2;
+    }
+  }
+
   /** Bases as blocks to the tier's reach, faded over the last of it, in place of chunks the near store does not hold whole. */
   private farBlocks(cam: Camera): void {
     const p = this.packet;
@@ -668,6 +702,33 @@ export class Scene {
     p.drawCount = d + 1;
     this.doubled += copies - 1;
     p.triangles += triangles * copies;
+  };
+
+  /** The map's buildings to the tier's reach, in place of chunks the near store does not hold whole, faded over the last of it. */
+  private farCity(cam: Camera): void {
+    const p = this.packet;
+    const tier = this.assets.tier;
+    p.frame[FRAME.fade] = tier.fade;
+    this.city!.update(p, this.assets.residency, cam, tier.city.levels, tier.reach.city, tier.fade, this.world.structs, this.world.far?.cells ?? null);
+    this.city!.draw(cam, tier.reach.city, this.drawCity);
+  }
+
+  /** A run of a far city tile's chunks at one of its levels: one instance, gone or come at `fade` (farcity.ts). */
+  private readonly drawCity = (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number): void => {
+    const p = this.packet;
+    const d = p.drawCount;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
+    [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [this.city!.mesh, 0, slot, CITY_BUFFER, 0, 1, DRAW_RANGED];
+    [p.drawFirstIndex[d], p.drawIndexCount[d], p.drawFade[d]] = [firstIndex, indexCount, fade];
+    p.drawOffset.set([ox, oy, oz], d * 3);
+    this.passOf[d] = passes;
+    p.drawCount = d + 1;
+    this.doubled += copies - 1;
+    p.triangles += (indexCount / 3) * copies;
   };
 
   /** Trees, rocks and bushes past the near node field, each kind to its reach at its last level, faded over the last of it. */
@@ -987,7 +1048,7 @@ export class Scene {
         continue;
       }
       // Until the near store holds it whole, a chunk the far feed has cells of is drawn as blocks.
-      if (base === 0 && this.far?.isFar(chunk)) continue;
+      if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk))) continue;
       let batch = this.batches.get(id);
       if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;

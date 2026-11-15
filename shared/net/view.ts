@@ -6,10 +6,13 @@
 //     id gap varint: this id minus the previous id (first: id + 1), so always >= 1
 //     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
 //     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], then its appearance:
-//             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16],
+//             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16, on 1],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
 //             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][31]]: the action is sent again with a change of cues
+//
+// `on` is whether the held item's attachment is switched on (protocol 13; always 0 until W7 of
+// planning/reference/weapons-plan.md, and read past).
 //
 // Appearance is sent only on create. A change bumps the entity's revision, and the next delta then sends a create for it again.
 // Only a remove is sent whatever it costs. Every other op waits its turn when a snapshot is full.
@@ -68,7 +71,7 @@ export interface Looks {
 function createBits(v: Looks, id: number): number {
   const name = v.name[id]!;
   // The optional fields: a look, gear, a team, a seat, an age.
-  const look = (v.look[id] ? LOOK_BYTES * 8 : 0) + (v.gear[id] ? GEAR_COUNT * 16 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 40 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
+  const look = (v.look[id] ? LOOK_BYTES * 8 : 0) + (v.gear[id] ? GEAR_COUNT * 16 + 1 : 0) + (v.team[id] !== 0 ? 40 : 0) + (v.seat[id] !== 0 ? 40 : 0) + (v.span[id] !== 0 || v.grown[id] !== 0 ? 64 : 0);
   if (name === "") return CREATE_BITS + look;
   let bytes = 1;
   for (let i = 0; i < name.length; i++) {
@@ -745,7 +748,10 @@ export function writeViewDelta(w: BitWriter, base: SentView | null, cur: SentVie
       if (look) for (let q = 0; q < LOOK_BYTES; q++) w.u8(look[q]!);
       const gear = looks.gear[id]!;
       w.bool(gear !== null);
-      if (gear) for (let q = 0; q < GEAR_COUNT; q++) w.u16(gear[q]!);
+      if (gear) {
+        for (let q = 0; q < GEAR_COUNT; q++) w.u16(gear[q]!);
+        w.bool(false);
+      }
       // Team, seat and growth are each sent only when set.
       w.bool(looks.team[id] !== 0);
       if (looks.team[id] !== 0) w.varint(looks.team[id]!);
@@ -888,6 +894,7 @@ export function readViewDelta(r: BitReader, base: EntityView | null, next: Entit
       if (r.bool()) {
         gear = new Uint16Array(GEAR_COUNT);
         for (let q = 0; q < GEAR_COUNT; q++) gear[q] = r.u16();
+        r.bool();
       }
       const team = r.bool() ? r.varint() : 0;
       const seat = r.bool() ? r.varint() : 0;

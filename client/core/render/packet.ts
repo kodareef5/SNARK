@@ -18,7 +18,7 @@ export const MAX_WATER_TILES = 256;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
- * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 512 are taken; the next flag takes 1024, then 2048, up
+ * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 4096 are taken; the next flag takes 8192, then 16384, up
  * to 32768. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth.
  */
 export const DRAW_BLEND = 1;
@@ -60,6 +60,27 @@ export const DRAW_WATER = 512;
  * reach. The level the draw names is only a run of indices from 0, as many as the longest of its rows.
  */
 export const DRAW_PULLED = 1024;
+/**
+ * Small details (client/core/details/): a draw of particles from the packet's `details`, `drawFirst` the first and
+ * `drawInstances` how many, each a card of two triangles. With DRAW_CUTOUT it is drawn solid with the opaque, with
+ * DRAW_BLEND see-through; it names no mesh, level or buffer.
+ */
+export const DRAW_DETAILS = 2048;
+/** Particles a frame may carry, and the floats of each, as `details` lays them out (DETAIL_). */
+export const MAX_DETAILS = 8192;
+export const DETAIL_FLOATS = 13;
+/**
+ * Where each value of a particle is, in floats: its middle (camera-relative), the half axes of its card, along its length
+ * and across it, the height of the ground under it (camera-relative), then three words of four bytes: its first colour
+ * and its second (sRGB), and its atlas cell, its shape and flags (DETAIL_), how much of it shows of 255, and the grey of
+ * its picture of 255.
+ */
+export const DETAIL = { middle: 0, along: 3, across: 6, floor: 9, colourA: 10, colourB: 11, misc: 12 } as const;
+/** The flags of a particle, in its misc word's second byte over its shape (FLAT_SHAPES): lit, and lit as a puff of something. */
+export const DETAIL_LIT = 8;
+export const DETAIL_PUFF = 16;
+/** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
+export const DRAW_RANGED = 4096;
 export const ATLAS_REGION = 4;
 /**
  * The far nodes' meshes as a float texture ATLAS_WIDTH texels wide, a row a mesh: in its first texel its reach and its
@@ -349,6 +370,13 @@ export class FramePacket {
 
   triangles = 0;
 
+  /** Small details this frame, DETAIL_FLOATS each, as DETAIL lays them out; the words are the same memory. */
+  detailCount = 0;
+  readonly details = new Float32Array(MAX_DETAILS * DETAIL_FLOATS);
+  readonly detailWords = new Uint32Array(this.details.buffer);
+  /** The share of the screen the blended details cover, counted once a quad. */
+  detailFill = 0;
+
   /** Rows of `atlas` to put on the card before this frame's draws, from the first; 0 for none. The card keeps them. */
   atlasRows = 0;
   readonly atlas = new Float32Array(ATLAS_WIDTH * ATLAS_ROWS * 4);
@@ -385,6 +413,8 @@ export class FramePacket {
     this.cascadeCount = 0;
     this.cascadesDrawn = 0;
     this.triangles = 0;
+    this.detailCount = 0;
+    this.detailFill = 0;
   }
 }
 

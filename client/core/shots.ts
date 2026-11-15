@@ -8,10 +8,12 @@ import { EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NONE, castWorld, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { shotDir } from "../../shared/sim/aim.ts";
 import type { Camera } from "./render/camera.ts";
 import type { Characters } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
+import type { ShotEnd } from "./occasions.ts";
 import type { ClientSession, RemoteSample } from "./session.ts";
 
 export const TRACER_MS = 90;
@@ -42,7 +44,12 @@ interface Tracer {
   until: number;
 }
 
+/** Shot ends kept for small details, which find what a shot struck (client/core/occasions.ts). */
+const ENDS = 32;
+
 export class Shots {
+  /** Where shots lately ended, newest last: where the last piece began, its way, and when, in milliseconds. */
+  readonly ends: ShotEnd[] = [];
   readonly flying: Flying[] = [];
   readonly tracers: Tracer[] = [];
   readonly blasts: { x: number; y: number; z: number; radius: number; born: number }[] = [];
@@ -69,7 +76,8 @@ export class Shots {
     const reg = this.reg;
     const d = this.dir;
     for (const s of session.fired) {
-      lookDirection(s.yaw, s.pitch, d);
+      // Its own shot leaves along the server's ray: the same aim, cone and seed (shared/sim/aim.ts).
+      shotDir(s.seed, 0, s.yaw, s.pitch, s.cone, d);
       const full = reg.ammoSpeed[s.ammo]!;
       if (full <= 0) {
         const reach = castWorld(world, s.x, s.y, s.z, d[0]!, d[1]!, d[2]!, HITSCAN_RANGE) === HIT_NONE ? HITSCAN_RANGE : rayHit.t;
@@ -113,6 +121,7 @@ export class Shots {
     const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
     if (!(length > 0.01)) return;
     if (this.tracers.length >= MAX_TRACERS) this.tracers.shift();
+    this.ended(x, y, z, dx / length, dy / length, dz / length, nowMs);
     this.tracers.push({ x, y, z, dx: dx / length, dy: dy / length, dz: dz / length, length: length > TRACER_REACH ? TRACER_REACH : length, until: nowMs + TRACER_MS });
   }
 
@@ -142,12 +151,20 @@ export class Shots {
           if (reg.move[kind] === null || r <= 0) continue;
           if (rayBox(x, y, z, dx, dy, dz, remote.x[i]! - r, remote.y[i]!, remote.z[i]! - r, remote.x[i]! + r, remote.y[i]! + reg.bodyHeight[kind]!, remote.z[i]! + r) < length) ends = true;
         }
-        if (ends) continue;
+        if (ends) {
+          this.ended(x, y, z, dx, dy, dz, nowMs);
+          continue;
+        }
         flyEnd(f, f.gravity);
         this.flying[kept++] = f;
       }
       this.flying.length = kept;
     }
+  }
+
+  private ended(x: number, y: number, z: number, dx: number, dy: number, dz: number, at: number): void {
+    if (this.ends.length >= ENDS) this.ends.shift();
+    this.ends.push({ x, y, z, dx, dy, dz, at });
   }
 
   /** `tick` may be fractional. A flight is drawn that far along its next piece. */

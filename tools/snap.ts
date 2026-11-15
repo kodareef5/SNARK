@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 
@@ -56,6 +56,7 @@ import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./snap/font.ts";
 import { encodePng } from "./snap/png.ts";
 import { PICK_SKY, Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
+import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
 export function houseScene(view: ProvingView, tier: string): void {
@@ -1098,6 +1099,39 @@ if (import.meta.main) {
     if (chop) chopAt(view, chop[0]!, chop[1]!, chop[2]!, chop[3] ?? 8);
   };
   const graphics = arg("graphics");
+  const sequence = arg("details");
+  if (sequence !== undefined) {
+    // A dodo's details as they play, frames at moments after the occasion, from 3 m and from 20 m, on one tier.
+    if (!(DETAIL_SEQUENCES as readonly string[]).includes(sequence)) throw new Error(`--details takes ${DETAIL_SEQUENCES.join(", ")}, not "${sequence}"`);
+    const tier = graphics ?? "medium";
+    const [fw, fh] = (arg("size") ?? "320x240").split("x").map(Number) as [number, number];
+    const view = provingView(fw, fh, {}, await gameFiles(source), mapFile);
+    view.scene.assets.tier = tierOf(tier);
+    view.scene.viewHeight = fh;
+    const t0 = performance.now();
+    const seq = playDetails(view, sequence, fw, fh, { settle: (v) => void settle(v), zoom: Number(arg("zoom") ?? 1) });
+    // A sheet for each distance, four frames across.
+    const cols = 4;
+    const rows = Math.ceil(MOMENTS.length / cols);
+    const [W, H] = [cols * fw, rows * fh];
+    const base = arg("out") ?? `artifacts/details/${sequence}-${tier}`;
+    seq.frames.forEach((frames, j) => {
+      const pixels = new Uint8ClampedArray(W * H * 4);
+      frames.forEach((frame, i) => {
+        const [ox, oy] = [(i % cols) * fw, Math.floor(i / cols) * fh];
+        for (let y = 0; y < fh; y++) pixels.set(frame.subarray(y * fw * 4, (y + 1) * fw * 4), ((oy + y) * W + ox) * 4);
+        label(pixels, W, seq.labels[i]!, ox + 6, oy + 6);
+      });
+      label(pixels, W, `${sequence} on ${seq.ground}, ${tier}, ${j === 0 ? "near" : "20 m"}, a phone's pixels a metre`, 6, H - 22);
+      const out = resolve(`${base}-${j === 0 ? "near" : "far"}.png`);
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, encodePng(W, H, pixels));
+      console.log(out);
+    });
+    seq.counts.forEach((c, i) => console.log(`${seq.labels[i]!.padEnd(7)} ${c}`));
+    console.log(`${W}x${H}  ${(performance.now() - t0).toFixed(0)} ms`);
+    process.exit(0);
+  }
   if (graphics !== undefined) {
     // As a client on a graphics tier draws it, its assets read from disk where a client fetches them, once the card
     // holds all it wants. With "all", the four tiers side by side.
@@ -1160,6 +1194,9 @@ if (import.meta.main) {
     hud.nearby = view.remote.count;
     hud.clock = "06:30";
     hud.formatReadout();
+    // --cone DEGREES: the crosshair opened to a held weapon's cone (shared/sim/aim.ts).
+    const cone = arg("cone");
+    if (cone !== undefined) hud.cone = Math.tan((Number(cone) * Math.PI) / 180) / Math.tan(cam.fovY / 2);
     [1, 0.6, 0.8, 0.45].forEach((v, i) => (hud.vitals[i]!.fraction = v));
     hud.markers.push({ kind: "creature", u: mapU(view.hf, 259), v: mapV(view.hf, 254) }, { kind: "self", u: mapU(view.hf, cam.x), v: mapV(view.hf, cam.z) });
     ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(view.hf, view.pack.palette, MINIMAP_SIZE), version: 1 };

@@ -124,6 +124,12 @@ for fid, L in labels.items():
     out[str(fid)] = {"name": names[0] if names else None, "also": names[1:], "kind": kind, "height_m": h, "height_from": "osm" if L["heights"] else ("usa_structures" if survey_h else None), "use": use, "primary_use": a.get("PRIM_OCC"),
                      "levels": max(L["levels"]) if L["levels"] else None, "address": L["address"], "uses": dict(L["uses"].most_common(6)), "area_m2": round(feet[fid]["area"]),
                      "e": round(feet[fid]["e"], 1), "n": round(feet[fid]["n"], 1)}
+# Reviewed corrections survive a fresh geographic join; evidence and previous values stay beside the labels.
+corrections_path = os.path.join(HERE, "height-corrections.json")
+if os.path.exists(corrections_path):
+    for fid, correction in json.load(open(corrections_path)).items():
+        if fid not in out: raise ValueError("Correction has no footprint: " + fid)
+        out[fid].update(correction["set"])
 json.dump(out, open(os.path.join(HERE, "labels.json"), "w"), indent=0, ensure_ascii=False)
 json.dump(places, open(os.path.join(HERE, "places.json"), "w"), indent=0, ensure_ascii=False)
 

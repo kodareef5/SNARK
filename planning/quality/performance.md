@@ -174,6 +174,49 @@ At 480 chunks: 17.7, 56.3, 61.3 and 61.3 far draws by tier (plan: 9 to 17, then
 35 to 70). A castle's blocks are 324 triangles, the 2,000-piece pile 716 (M).
 1.7 MB on the card at 480 chunks (D257).
 
+### The far city
+
+Miami's ruins with round two's bridges, wings and district colours, built from
+main at 3d88e06 on 2026-11-15: 1,188,264 statics in 6,893 chunks (`bun
+tools/bench/city.ts var/maps/miami.snmap`, M). Held by chunk on the client in 19 ms
+and 18.2 MB. A busy chunk (the 200 with most pieces) takes, median and worst: every
+box 0.57, 1.92 ms; the lattice 0.49, 1.01; mass in 4 m cells 1.09, 2.66; in 8 m
+cells 0.39, 1.25; the far feed's tops and what they show gone 0.05, 0.10.
+
+The eight cameras of `assets/source/maps/miami/reports/farcity/views.json` at
+1,920 by 1,080, the near window held whole; draws and triangles as listed in the
+packet, a run across the split counted in both ranges:
+
+| | Low poly | Medium | High | Ultra |
+| --- | --- | --- | --- | --- |
+| Reach; every box, lattice, mass 4 m to | 2,048 m; 340, 600, none | 2,048 m; 400, 900, none | 3,072 m; 500, 1,300, 2,000 m | 4,096 m; 600, 1,800, 2,800 m |
+| Draws, the most in a view | 160 | 220 | 297 | 350 |
+| Triangles, the most in a view | 376 k | 517 k | 994 k | 1.32 M |
+| On the card, the most in a view | 17.2 MB | 21.4 MB | 37.3 MB | 51.7 MB |
+| Frame build, median in the slowest view | 0.39 ms | 0.23 ms | 0.20 ms | 0.23 ms |
+
+The worst views are from the air over downtown (`air-handover`, `air-wide`); from
+the bay at 2 km medium draws 70 runs and 86 k triangles. Ending medium's lattice at
+700 m in place of 900 m takes about a quarter off its worst view.
+
+A ghost at 600 m/s 120 to 150 m over downtown on medium, six seconds each way, near
+chunks never held whole: with 2 ms a frame of making, frame build 2.2 to 2.3 ms
+median, 3.0 ms at the 99th percentile and 5.2 to 6.5 ms in its worst frame, and a
+tile in view unmade in 2 to 5 frames of 360, for one frame each, past 2,041 m.
+With 0.5 ms, as a phone four times slower would have 2 ms, tiles in view are unmade
+only past 1,985 m, in the last tenth of reach where they are fading in anyway, up
+to 7 at a time, none for more than 183 ms; up to 18 tiles at a time are drawn a
+level coarser than wanted. Walking through downtown at 6 m/s, a frame in which a
+chunk changes hands builds in 0.74 ms median and 2.1 ms at worst: a tile holds every
+chunk and a draw takes the runs drawn far, so nothing is remade.
+
+The device page's terrain flight over the city before round two's bridges (`bun run
+device -- --self terrain --terrain --map var/maps/miami.snmap`, headless Chrome on
+the M5, 60 m up at 100 m/s with a jump of 2 km or more every 10 s) held 16.7 ms on
+medium and low poly: the far city 41 and 15 draws and 34 k and 11 k triangles a
+frame (median, at 800 by 600), at most 4.9 and 5.9 ms of making in a frame, and after
+each jump 15 to 95 frames before no tile in view was unmade.
+
 ### Far trees, rocks and bushes (D353, D354)
 
 The bench map's wood, every slot filled, from its middle (M): `core:tree`,
@@ -209,6 +252,21 @@ Under a sun 10 degrees up, which stretches casters furthest (M).
 | All 81 near chunks built up to 30 m, made up: entries | 1,850 | 3,412 | 4,845 |
 
 The list holds 4,096 entries; no real scene has passed 933.
+
+### Small details (round 9)
+
+`bun tools/bench/details.ts`, three quiet runs, the details' own work (reading what bodies did, making bursts, moving
+particles, writing the packet), after a warm-up run (M).
+
+| | Medium: forty dodos landing 5 to 25 m off | Medium: a hundred going down within 40 m | Low poly: forty | Low poly: a hundred |
+| --- | --- | --- | --- | --- |
+| Median frame | 0.034 to 0.035 ms | 0.022 ms | 0.020 ms | 0.009 to 0.010 ms |
+| Worst of 600 | 0.24 to 0.26 ms | 0.46 to 0.76 ms | 0.15 to 0.16 ms | 0.22 to 0.23 ms |
+| Particles alive at most (pool), drawn at most | 286 (1,536), 235 | 593 (1,536), 480 | 143 (384), 116 | 291 (384), 233 |
+| Bytes sent at most | 11.9 KB | 24.4 KB | 5.9 KB | 11.8 KB |
+| See-through fill at most | 0.02 screens | 0.42 screens | 0.01 | 0.24 |
+
+Two draws a frame at most, two triangles a particle; the atlas is 1.33 MB on every tier.
 
 ## The GPU on this Mac
 
@@ -306,6 +364,8 @@ Reasoned from the rows, in the order a growing world meets them.
 - Whether a phone skips the cut-out pixels an opaque surface drawn before them hides (trees design, decision 5):
   `bun run device -- --tunnel --terrain` and the Tree order, which draws the young wood and the elders' stand with
   their cut-outs last, as made and first, and judges the read-back times against wood.ts's count of the same view.
+- Small details on a phone: the fill of a hundred dust rings near the camera, and the details program's cost a
+  megapixel beside LIT's. `bun run snap -- --details fight` shows the scene; a phone run is to time it.
 - Real network congestion; WebSocket send cost under load; Firefox.
 
 ## Still moving

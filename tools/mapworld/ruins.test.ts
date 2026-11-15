@@ -118,3 +118,34 @@ test("a Deco treatment cannot turn a labelled low hotel into a speculative tower
     expect(top).toBeLessThanOrEqual(height + .2);
   }
 });
+
+test("a low roof reserves body clearance under a viaduct", async () => {
+  const { bridgeHoles } = await import("./bridges.ts");
+  const f = frame(0);
+  const clipped = bridgeHoles(f, [{ a: [100, 128], b: [156, 128], width: 4, low: 8, high: 11 }], 3.5, 4);
+  expect(clipped.rings.length).toBe(2);
+  expect(tilesOf(clipped, 8).every((t) => Math.abs(t.v) >= 8)).toBe(true);
+});
+
+test("a compound has separate heights, cores and exits while staying in its footprint", async () => {
+  const { layout } = await import("./ruin-layouts.ts");
+  const f = frame(17); f.width = 200; f.depth = 200; f.rings = [[[-100, -100], [100, -100], [100, 100], [-100, 100]]];
+  const m = new Mason(f, .5);
+  layout(m, { ...rule, recipe: "shop", bay: 4, height: 16 }, { seed: 31, playable: 4, detail: 0 });
+  expect(m.wings.length).toBeGreaterThan(4);
+  expect(new Set(m.wings.map((w) => w.height)).size).toBe(3);
+  expect(m.routes.length).toBeGreaterThan(4);
+  expect(m.entries.length).toBeGreaterThan(8);
+  expect(m.escapes.length).toBeGreaterThan(4);
+});
+
+test("mapped water on both sides removes a wide earth bridge bank but keeps its approaches", async () => {
+  const { cutBridgeWater } = await import("./ways.ts");
+  const n = 101; const height = new Float32Array(n * n).fill(2); const water = new Uint8Array(n * n);
+  for (let row = 5; row < 96; row++) for (let col = 0; col < n; col++) if (row < 35 || row > 65) water[row * n + col] = 1;
+  const way: import("./ways.ts").Way = { id: 1, kind: "road_bridge", name: null, class: "primary", lanes: 2, layer: 1, width_m: null, closed: false, length_m: 80, points: [] };
+  expect(cutBridgeWater([{ way, points: [[60, 100], [140, 100]], width: 12, outline: false }], height, water, n)).toBeGreaterThan(100);
+  expect(height[50 * n + 50]).toBe(-3);
+  expect(water[50 * n + 50]).toBe(1);
+  expect(height[50 * n + 10]).toBe(2);
+});

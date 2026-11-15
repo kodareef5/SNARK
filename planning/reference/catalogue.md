@@ -10,7 +10,7 @@ declare, what it may, and which assets it expects. A field that is in neither
 list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
-There are 40 classes: 27 built, 5 partly built, and 8 stubs that
+There are 41 classes: 27 built, 5 partly built, and 9 stubs that
 wait for a feature. The core pack holds 393 definitions, and 79 renames of ids
 that are no longer defined.
 
@@ -84,7 +84,7 @@ Asset slots:
 
 ARK's names: `stack` is MaxItemQuantity; `weight` is BaseItemWeight; `spoilHours` is SpoilingTime; `decomposeHours` is the time a dropped item decomposes in; `youngFor` is prime meat from the young in place of raw meat; `eat` is UseItemAddCharacterStatusValues; `saddle` is equipment type DinoSaddle; `dose` is UseItemAddCharacterStatusValues; `label` is DescriptiveNameBase; `weapon` is WeaponTemplate; `wear` is equipment type and ItemStatInfos; `attachment` is item type WeaponAttachment; `places` is StructureToBuild; `craft` is BaseCraftingResourceRequirements, BlueprintTimeToCraft, BaseCraftingXP; `description` is ItemDescription; `folder` is DefaultFolderPaths; `spoilsInto` is SpoilingItem; `blueprint` is whether it may be a blueprint (a crafted item may, unless false); `use` is UseItemAddCharacterStatusValues and the buffs a consumable gives.
 
-What names what: `youngFor` names a `item`; `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item`; `weapon.fits[]` names a `item/attachment`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `craft.needs[].item` names a `item`; `craft.at` names a `structure/station`; `spoilsInto` names a `item`; `use.buffs[]` names a `buff`.
+What names what: `youngFor` names a `item`; `saddle.fits` names a `species/creature`; `cooks.into` names a `item`; `weapon.ammo[]` names a `item`; `weapon.fits[]` names a `item/attachment`; `weapon.cloud.prop` names a `prop/cloud`; `weapon.cloud.buff` names a `buff`; `ammo.buff` names a `buff`; `places[]` names a `structure`; `craft.needs[].item` names a `item`; `craft.at` names a `structure/station`; `spoilsInto` names a `item`; `use.buffs[]` names a `buff`.
 
 Packs may add to: `weapon`, `places`.
 
@@ -219,12 +219,14 @@ Packs may add to: `yields`.
 | `prop/container` | a death cache, a dropped bag | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 4 |
 | `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 2 |
 | `prop/egg` | a laid or dropped egg, fertilised or not | built | `mesh`, `color`, `radius`, `height` | `size`, `item`, `fertile` | 3 |
+| `prop/cloud` | the gas and smoke actors of grenades | stub: polish | `mesh`, `color`, `radius`, `height` |  | 0 |
 | `prop/crate` | SupplyCrate_ | stub: loot | `mesh`, `color`, `radius`, `height` | `slots` | 0 |
 
 - **`prop`** on shelf `props`. Stands in the world and neither moves nor lives.
 - **`prop/container`** on shelf `props/containers`. Holds what was dropped or left by the dead.
 - **`prop/projectile`** on shelf `props/projectiles`. Something loosed or thrown, where it lies. How it flies is on the ammunition.
 - **`prop/egg`** on shelf `props/eggs`. An egg where it lies: taken up as its item, and hatching where it lies if fertilised.
+- **`prop/cloud`** on shelf `props/clouds`. Smoke or gas that stays where a grenade burst, as far as its radius, for its grenade's seconds, giving its buff to the bodies inside it (planning/reference/weapons-plan.md, W5).
 - **`prop/crate`** on shelf `props/crates`. Comes down with loot and goes when it is emptied.
 
 Asset slots:
@@ -232,6 +234,7 @@ Asset slots:
 - `prop/container`: `#mesh` mesh, must, from `{mesh}`, else `box`.
 - `prop/projectile`: `#mesh` mesh, must, from `{mesh}`, else `box`.
 - `prop/egg`: `#mesh` mesh, must, from `{mesh}`, else `box`.
+- `prop/cloud`: `#mesh` mesh, must, from `{mesh}`, else `box`.
 - `prop/crate`: `#mesh` mesh, must, from `{mesh}`, else `box`.
 
 ARK's names: `size` is the egg's size class; `item` is the egg item a dropped egg is; `fertile` is the egg item a fertilised egg is.
@@ -242,7 +245,7 @@ What names what: `item` names a `item/egg`; `fertile` names a `item/egg`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `buff` | Buff_ | built | `label`, `color` | `seconds`, `again`, `health`, `torpor`, `damage`, `speed`, `dealt`, `taken`, `root`, `immune`, `good` | 8 |
+| `buff` | Buff_ | built | `label`, `color` | `seconds`, `again`, `health`, `torpor`, `damage`, `speed`, `dealt`, `taken`, `root`, `immune`, `good`, `only`, `survivorSeconds`, `after` | 8 |
 
 - **`buff`** on shelf `buffs`. Acts on a body for a time.
 
@@ -250,7 +253,9 @@ Asset slots:
 
 - `buff`: `#icon` icon, may, from `{id}/icon`, else `swatch`; `#effect` effect, may, from `{id}/effect`, else `none`.
 
-ARK's names: `seconds` is DeactivateAfterTime; `health` is ValuesToAddPerSecond; `torpor` is ValuesToAddPerSecond; `speed` is CharacterMultiplier; `dealt` is CharacterMultiplier; `taken` is CharacterMultiplier.
+ARK's names: `seconds` is DeactivateAfterTime; `health` is ValuesToAddPerSecond; `torpor` is ValuesToAddPerSecond; `speed` is CharacterMultiplier; `dealt` is CharacterMultiplier; `taken` is CharacterMultiplier; `only` is the species a bola takes (Bola); `survivorSeconds` is a bola's time on a survivor.
+
+What names what: `only[]` names a `species`; `after` names a `buff`.
 
 ## Damage types
 
@@ -334,7 +339,7 @@ built.
 
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot` (partly built), `species.loot`.
-- **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
+- **Small behaviours of things already built.** `prop/cloud`, `damage` (partly built), `game`, `item.weapon.structures`, `item.weapon.cloud`, `item.ammo.pellets`, `item.ammo.falloff`, `item.ammo.blast`, `item.ammo.pierce`, `item.ammo.light`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `buff.only`, `buff.survivorSeconds`, `buff.after`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
 - **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
 - **Skins, dyes, costumes and shields.** `item/shield`, `item/costume`, `item/skin`, `item/dye`.
@@ -346,7 +351,7 @@ built.
 
 **`item/consumable`** (9): narcoberry, meat_prime, meat_prime_cooked, waterskin, spoiled_meat, berry, meat, meat_cooked, narcotic.
 
-**`item/weapon`** (10): club, slingshot, pick, hatchet, spear, bow, crossbow, rifle, pistol, grenade.
+**`item/weapon`** (10): club, slingshot, bow, crossbow, rifle, pistol, grenade, pick, hatchet, spear.
 
 **`item/ammo`** (7): arrow_stone, arrow_tranq, arrow_flame, round_rifle, round_pistol, dart_tranq, dart_shock.
 
@@ -362,7 +367,7 @@ built.
 
 **`item/feces`** (4): feces_small, feces_medium, feces_large, feces_massive.
 
-**`engram`** (77): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-bow, engram-arrow_stone, engram-ingot, engram-arrow_tranq, engram-gunpowder, engram-crossbow, engram-flashlight, engram-scope, engram-arrow_flame, engram-pistol, engram-round_pistol, engram-rifle, engram-round_rifle, engram-silencer, engram-grenade, engram-laser, engram-dart_tranq, engram-dart_shock, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
+**`engram`** (77): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-bow, engram-crossbow, engram-pistol, engram-rifle, engram-arrow_stone, engram-arrow_tranq, engram-flashlight, engram-scope, engram-arrow_flame, engram-round_pistol, engram-round_rifle, engram-silencer, engram-laser, engram-dart_tranq, engram-dart_shock, engram-grenade, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-ingot, engram-gunpowder, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
 
 **`levels`** (1): levels.
 

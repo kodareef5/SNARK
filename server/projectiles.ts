@@ -4,7 +4,9 @@
 import { TAU } from "../shared/math/scalar.ts";
 import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { aimSeed, aimShot, scopeFitted, shotAim, shotDir } from "../shared/sim/aim.ts";
+import { Body, stanceEye } from "../shared/sim/character.ts";
+import { FISTS } from "../shared/sim/weapon.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { QUALITY_MUL } from "../shared/sim/items.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, WATER_SPEED, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../shared/sim/projectiles.ts";
@@ -104,6 +106,7 @@ export class Projectiles {
   private readonly liveKind: number;
   private readonly rng: Rng;
   private readonly dir = [0, 0, 0];
+  private readonly body = new Body();
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
 
   constructor(ctx: ProjectilesContext, seed: number) {
@@ -130,6 +133,11 @@ export class Projectiles {
     return this.thrown[i]!;
   }
 
+  /**
+   * Fires one round of `ammo` from `weapon` from the eye of `c`'s body, judged at its view tick. The seams later work adds
+   * to (planning/reference/weapons-plan.md, "Files more than one project touches"): `aim` gives each ray's direction, `ray`
+   * judges a round with no speed and `flight` sends one that flies.
+   */
   launch(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number): void {
     const { world, combat } = this.ctx;
     const ents = world.ents;
@@ -137,51 +145,79 @@ export class Projectiles {
     const e = c.ent;
     if (e < 0 || ammo === 0) return;
     const d = this.dir;
-    lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
+    this.aim(c, rec, weapon, 0, d);
     const ox = ents.x[e]!;
     const oy = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
     const oz = ents.z[e]!;
-    const now = world.tick;
     const view = combat.viewTick(c);
     this.fired++;
-    const full = reg.ammoSpeed[ammo]!;
+    if (reg.ammoSpeed[ammo]! <= 0) this.ray(c, rec, weapon, quality, ammo, ox, oy, oz, d, view);
+    else this.flight(c, rec, weapon, quality, ammo, draw, ox, oy, oz, d, view);
+  }
+
+  /**
+   * The direction ray `k` of a shot from `weapon` leaves `c`'s body in, into `out`: the look as the input gave it, with the
+   * body's kick and, through a scope, its sway, within the weapon's cone, at the place the seed of the body's handle and
+   * this tick gives (shared/sim/aim.ts). The body is as this tick's step left it, as the shooter's client predicted it, so
+   * its own tracer is this ray. The rays of a shot of many (W3) are more `k`.
+   */
+  private aim(c: Client, rec: EntityRecord, weapon: number, k: number, out: number[]): void {
+    const { world, items } = this.ctx;
+    const ents = world.ents;
+    const reg = world.reg;
+    const e = c.ent;
+    const b = this.body;
+    ents.loadBody(e, b);
+    const inv = items.inv(rec);
+    const slot = inv.hotbar >= 0 && rec.held >= 0 ? inv.hotbar + rec.held : -1;
+    const handle = ents.handleOf(e);
+    aimShot(b, c.heldButtons, reg.weapon[weapon] ?? FISTS, reg.tamedMove[b.kind]!, ents.yaw[e]!, ents.pitch[e]!, scopeFitted(reg, inv, slot), handle, world.tick);
+    shotDir(aimSeed(handle, world.tick), k, shotAim.yaw, shotAim.pitch, shotAim.cone, out);
+  }
+
+  /** A round with no speed is not flown. It is one piece along `d` from the origin, tested at the shooter's view tick. */
+  private ray(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, ox: number, oy: number, oz: number, d: readonly number[], view: number): void {
+    const { world, combat } = this.ctx;
+    const e = c.ent;
+    const sea = world.hf.seaLevel;
+    let reach = HITSCAN_RANGE;
+    let on = -1;
+    // Water stops a round fired from above it.
+    if (oy > sea && d[1]! < 0 && (sea - oy) / d[1]! < reach) {
+      reach = (sea - oy) / d[1]!;
+      on = -2;
+    }
+    let built = -1;
+    const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
+    if (what !== HIT_NONE) {
+      reach = rayHit.t;
+      on = -1;
+      if (what === HIT_STRUCTURE) built = rayHit.ref;
+    }
+    const target = combat.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach, 0, view);
+    const t = target >= 0 ? combat.t : reach;
+    const x = ox + d[0]! * t;
+    const y = oy + d[1]! * t;
+    const z = oz + d[2]! * t;
+    this.tell(c, ox, oy, oz, ammo, false, x, y, z, 0);
+    if (target >= 0) this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, target, combat.zone, x, y, z);
+    else {
+      this.ended(x, y, z, on);
+      if (built >= 0) combat.hitStructure(this.bring(rec, weapon, quality, ammo, 1, ox, oz), built, x, y, z);
+    }
+  }
+
+  /** A round that flies leaves along `d`, and is flown from the view tick up to now before it joins the others. */
+  private flight(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, d: readonly number[], view: number): void {
+    const world = this.ctx.world;
+    const reg = world.reg;
+    const now = world.tick;
     const sea = world.hf.seaLevel;
     const wet = reg.weapon[weapon]?.wet ?? false;
-
-    if (full <= 0) {
-      // A round with no speed is not flown. It is one piece, tested at the shooter's view tick.
-      let reach = HITSCAN_RANGE;
-      let on = -1;
-      // Water stops a round fired from above it.
-      if (oy > sea && d[1]! < 0 && (sea - oy) / d[1]! < reach) {
-        reach = (sea - oy) / d[1]!;
-        on = -2;
-      }
-      let built = -1;
-      const what = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach);
-      if (what !== HIT_NONE) {
-        reach = rayHit.t;
-        on = -1;
-        if (what === HIT_STRUCTURE) built = rayHit.ref;
-      }
-      const target = combat.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach, 0, view);
-      const t = target >= 0 ? combat.t : reach;
-      const x = ox + d[0]! * t;
-      const y = oy + d[1]! * t;
-      const z = oz + d[2]! * t;
-      this.tell(c, ox, oy, oz, ammo, false, x, y, z, 0);
-      if (target >= 0) this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, target, combat.zone, x, y, z);
-      else {
-        this.ended(x, y, z, on);
-        if (built >= 0) combat.hitStructure(this.bring(rec, weapon, quality, ammo, 1, ox, oz), built, x, y, z);
-      }
-      return;
-    }
-
-    const speed = launchSpeed(full, draw) * (wet && oy < sea ? WATER_SPEED : 1);
+    const speed = launchSpeed(reg.ammoSpeed[ammo]!, draw) * (wet && oy < sea ? WATER_SPEED : 1);
     const f: Flying = {
       x: ox, y: oy, z: oz, vx: d[0]! * speed, vy: d[1]! * speed, vz: d[2]! * speed,
-      gravity: reg.ammoGravity[ammo]!, ammo, weapon, quality, draw, by: rec.pid, self: e, ox, oy, oz,
+      gravity: reg.ammoGravity[ammo]!, ammo, weapon, quality, draw, by: rec.pid, self: c.ent, ox, oy, oz,
       until: now + FLIGHT_TICKS, flown: now, wet, under: oy < sea,
     };
     // Nearby clients get its launch state and fly their own copy from there.
@@ -469,9 +505,10 @@ export class Projectiles {
 
   /**
    * Sends the shot to every nearby client but the shooter. `a`, `b`, `c` are its velocity if it flies,
-   * else where it ended. `back` is how many ticks ago it left.
+   * else where it ended. `back` is how many ticks ago it left. A shot is one ray from no seed and is never silenced until
+   * W3 and W7 of planning/reference/weapons-plan.md pass the others.
    */
-  private tell(shooter: Client, ox: number, oy: number, oz: number, ammo: number, flies: boolean, a: number, b: number, c: number, back: number): void {
+  private tell(shooter: Client, ox: number, oy: number, oz: number, ammo: number, flies: boolean, a: number, b: number, c: number, back: number, rays = 1, seed = 0, silenced = false): void {
     const game = this.ctx.game;
     const ents = this.ctx.world.ents;
     for (const other of game.clients) {
@@ -490,6 +527,9 @@ export class Projectiles {
       w.f32(b);
       w.f32(c);
       if (flies) w.u8(back);
+      w.u8(rays);
+      w.u32(seed);
+      w.bool(silenced);
       game.endOwn(other);
     }
   }
