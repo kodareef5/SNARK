@@ -19,22 +19,28 @@ from common import Manifest, folder_arg, get  # noqa: E402
 def keep(m, man, name, url, source, licence, params=None, data=None, accept=None, method=None):
     path = m.raw / name
     full = requests.Request('GET', url, params=params).prepare().url if data is None else url
-    if not path.exists():
+    fresh = not path.exists()
+    if fresh:
         path.parent.mkdir(parents=True, exist_ok=True)
         r = get(url, params=params, data=data, accept=accept)
         path.write_bytes(r.content)
-    if name not in man.records:
+    if fresh or name not in man.records:
         man.record(name, full, source, licence, path.read_bytes(), method or ('POST' if data is not None else 'GET'), data)
     return path
 
 
+def counties(t):
+    return t.get('counties') or [t['county']]
+
+
 def tiger(m, man):
     t = m.city['tiger']
-    for layer in t['layers']:
-        name = f"tl_{t['year']}_{t['county']}_{layer}.zip"
-        p = keep(m, man, name, f"https://www2.census.gov/geo/tiger/TIGER{t['year']}/{layer.upper()}/{name}", t['source'], t['licence'])
-        zipfile.ZipFile(p).testzip()
-        print('tiger', layer, p.stat().st_size, flush=True)
+    for county in counties(t):
+        for layer in t['layers']:
+            name = f"tl_{t['year']}_{county}_{layer}.zip"
+            p = keep(m, man, name, f"https://www2.census.gov/geo/tiger/TIGER{t['year']}/{layer.upper()}/{name}", t['source'], t['licence'])
+            zipfile.ZipFile(p).testzip()
+            print('tiger', county, layer, p.stat().st_size, flush=True)
 
 
 def dem(m, man):
@@ -71,7 +77,8 @@ def dem(m, man):
         raise ValueError(f"unknown elevation source kind {d['kind']}")
     (m.root / 'dem_selection.json').write_text(json.dumps(tiles, indent=1) + '\n')
     print('DEM tiles selected:', len(tiles), flush=True)
-    if tiles and tiles[0].get('metadata'):
+    # Some projects name an index page rather than a metadata file.
+    if tiles and (tiles[0].get('metadata') or '').endswith('.xml'):
         keep(m, man, 'dem/' + tiles[0]['name'].replace('.tif', '.xml'), tiles[0]['metadata'], d['source'], d['licence'])
     with ThreadPoolExecutor(4) as pool:
         for k, _ in enumerate(pool.map(lambda t: keep(m, man, 'dem/' + t['name'], t['url'], d['source'], d['licence']), tiles)):
@@ -125,11 +132,12 @@ def osm(m, man):
     o = m.city['osm']
     w, s, e, n = m.lonlat_bounds()
     bbox = f'{math.floor(s * 1e4) / 1e4},{math.floor(w * 1e4) / 1e4},{math.ceil(n * 1e4) / 1e4},{math.ceil(e * 1e4) / 1e4}'
-    for name in ['osm', 'ways']:
+    names = ['osm', 'ways'] + (['buildings'] if m.city['footprints'].get('split_by_osm') else [])
+    for name in names:
         query = (HERE / f'{name}.overpassql').read_text().replace('{bbox}', bbox)
         (m.root / 'blocks').mkdir(exist_ok=True)
         (m.root / 'blocks' / f'{name}.overpassql').write_text(query)
-        target = f"osm/{'all' if name == 'osm' else 'ways'}.json"
+        target = f"osm/{'all' if name == 'osm' else name}.json"
         if (m.raw / target).exists():
             continue
         for server in o['servers']:

@@ -27,30 +27,35 @@ HIGHWAY = ('S1100', 'S1200')
 
 def tiger(m, name):
     t = m.city['tiger']
-    path = m.raw / f"tl_{t['year']}_{t['county']}_{name}.zip"
-    out = m.raw / 'tiger'
-    with zipfile.ZipFile(path) as z:
-        z.extractall(out)
-    reader = shapefile.Reader(str(out / path.stem))
-    fields = [f[0] for f in reader.fields[1:]]
     to_map = Transformer.from_crs(4269, m.crs, always_xy=True).transform
     bbox = Transformer.from_crs(m.crs, 4269, always_xy=True).transform_bounds(*m.b)
     clip = box(*m.b)
     widths = m.city['roads']['widths_m']
-    features = []
-    for sr in reader.iterShapeRecords(bbox=bbox):
-        g = project(to_map, make_valid(shape(sr.shape.__geo_interface__))).intersection(clip)
-        if g.is_empty:
-            continue
-        p = dict(zip(fields, sr.record))
-        if name == 'roads':
-            # Cartographic corridor widths for the game, not measured road edges.
-            code = p['MTFCC']
-            p = {'id': str(p['LINEARID']), 'mtfcc': code, 'name': p.get('FULLNAME'),
-                 'width_m': widths.get(code, m.city['roads']['other_width_m'])}
-        else:
-            p = {'id': str(p['HYDROID']), 'mtfcc': p['MTFCC'], 'name': p.get('FULLNAME')}
-        features.append((g, p))
+    features, seen = [], set()
+    # A frame may span counties; a line on a county boundary is in both files under one id.
+    for county in t.get('counties') or [t['county']]:
+        path = m.raw / f"tl_{t['year']}_{county}_{name}.zip"
+        out = m.raw / 'tiger'
+        with zipfile.ZipFile(path) as z:
+            z.extractall(out)
+        reader = shapefile.Reader(str(out / path.stem))
+        fields = [f[0] for f in reader.fields[1:]]
+        for sr in reader.iterShapeRecords(bbox=bbox):
+            g = project(to_map, make_valid(shape(sr.shape.__geo_interface__))).intersection(clip)
+            if g.is_empty:
+                continue
+            p = dict(zip(fields, sr.record))
+            if name == 'roads':
+                # Cartographic corridor widths for the game, not measured road edges.
+                code = p['MTFCC']
+                p = {'id': str(p['LINEARID']), 'mtfcc': code, 'name': p.get('FULLNAME'),
+                     'width_m': widths.get(code, m.city['roads']['other_width_m'])}
+            else:
+                p = {'id': str(p['HYDROID']), 'mtfcc': p['MTFCC'], 'name': p.get('FULLNAME')}
+            if p['id'] in seen:
+                continue
+            seen.add(p['id'])
+            features.append((g, p))
     m.write_features(name, features)
     print(name, len(features), flush=True)
     return features
