@@ -1,0 +1,576 @@
+{
+  "asset": "core/creatures/dodo",
+  "review": "../ref/sound",
+  "about": "A slow, dim, flightless bird about knee height on a person, pear-shaped, with a huge hooked beak. It waddles about beaches and grassland, mumbling and chirping as it strolls; when hit it squawks, throws its head up, flings its wings out and runs. Heard before it is seen.",
+  "notes": "A MOSS run always denoises 30 s and costs about 5 minutes here whatever length is asked, so its prompts ask for several calls or steps per file. Stable Audio takes about a second, so it gets more prompts and seeds. Stable prompts with 'animal vocalisation' gave broadband noise, and Stable lengths of 1.2, 1.5 and 2.5 s gave full-scale noise or hiss through the MLX path while 1, 2, 3 and 6 s were clean: keep Stable to whole seconds.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 40,
+      "level": -20,
+      "vary": 1.0,
+      "want": "calm, dim, low throaty pigeon-like mumble, coo or bubbling burble; one call",
+      "prompts": [
+        {
+          "id": "coo",
+          "seed": 1,
+          "takes": 4,
+          "takes_moss": 2,
+          "seconds": 3,
+          "text": "A big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+          "text_stable": "TrackType: SFX, a big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+          "settings": {
+            "moss": {
+              "dit": "bf16"
+            }
+          }
+        },
+        {
+          "id": "mumble",
+          "models": [
+            "stable"
+          ],
+          "seed": 101,
+          "takes": 4,
+          "seconds": 3,
+          "text": "TrackType: SFX, a large flightless bird mumbles to itself while it wanders: a short run of low gurgling murmurs and soft chirps, dopey and content. Close recording, dry, no other animals."
+        },
+        {
+          "id": "grunt-coo",
+          "models": [
+            "stable"
+          ],
+          "seed": 201,
+          "takes": 4,
+          "seconds": 2.5,
+          "text": "TrackType: SFX, animal vocalisation, a goose-sized bird makes a low, guttural, rolling coo, like a pigeon but deeper and slower, a lazy contented call. Dry close-up recording."
+        },
+        {
+          "id": "coos-m",
+          "models": [
+            "moss"
+          ],
+          "seed": 501,
+          "takes": 2,
+          "seconds": 8,
+          "text": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+          "settings": {
+            "moss": {
+              "dit": "bf16"
+            }
+          }
+        },
+        {
+          "id": "mumble-m",
+          "models": [
+            "moss"
+          ],
+          "seed": 601,
+          "takes": 2,
+          "seconds": 8,
+          "text": "A large flightless bird mumbles to itself as it wanders: now and then a short run of low gurgling murmurs and soft chirps, dopey and content, with quiet gaps. Close recording, dry, no other animals."
+        },
+        {
+          "id": "coo2",
+          "models": [
+            "stable"
+          ],
+          "seed": 301,
+          "takes": 6,
+          "seconds": 3,
+          "text": "TrackType: SFX, a wood pigeon coos softly, one low throaty call, calm. Close-miked, dry, quiet background."
+        },
+        {
+          "id": "burble",
+          "models": [
+            "stable"
+          ],
+          "seed": 401,
+          "takes": 6,
+          "seconds": 2.5,
+          "text": "TrackType: SFX, a fat bird makes a soft, low, bubbling burble in its throat, like a pigeon coo crossed with a turkey's contented purr. Calm, close-miked, dry."
+        },
+        {
+          "id": "chirrup",
+          "models": [
+            "stable"
+          ],
+          "seed": 701,
+          "takes": 6,
+          "seconds": 2.5,
+          "text": "TrackType: SFX, a heavy ground bird gives two or three lazy, low, chirruping notes, sleepy and content. Close-miked, dry, no other birds."
+        },
+        {
+          "id": "cluck",
+          "models": [
+            "stable"
+          ],
+          "seed": 801,
+          "takes": 4,
+          "seconds": 2.5,
+          "text": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry."
+        },
+        {
+          "id": "burble-3s",
+          "models": [
+            "stable"
+          ],
+          "seed": 901,
+          "takes": 6,
+          "seconds": 3,
+          "text": "TrackType: SFX, a fat bird makes a soft, low, bubbling burble in its throat, like a pigeon coo crossed with a turkey's contented purr. Calm, close-miked, dry."
+        },
+        {
+          "id": "chirrup-3s",
+          "models": [
+            "stable"
+          ],
+          "seed": 1001,
+          "takes": 6,
+          "seconds": 3,
+          "text": "TrackType: SFX, a heavy ground bird gives two or three lazy, low, chirruping notes, sleepy and content. Close-miked, dry, no other birds."
+        },
+        {
+          "id": "cluck-3s",
+          "models": [
+            "stable"
+          ],
+          "seed": 1101,
+          "takes": 4,
+          "seconds": 3,
+          "text": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 60,
+      "level": -14,
+      "vary": 1.0,
+      "want": "sudden, loud, higher, alarmed squawk; clearly frightened",
+      "prompts": [
+        {
+          "id": "squawk",
+          "models": [
+            "stable"
+          ],
+          "seed": 1,
+          "takes": 4,
+          "seconds": 2,
+          "text": "TrackType: SFX, a big clumsy bird is startled and lets out one sudden, loud, alarmed squawk, a harsh rising honk. Close-miked, dry, outdoors."
+        },
+        {
+          "id": "squawk-flap",
+          "models": [
+            "stable"
+          ],
+          "seed": 101,
+          "takes": 4,
+          "seconds": 2,
+          "text": "TrackType: SFX, a large flightless bird panics: a shrill frightened squawk and a quick flurry of flapping wings. Close, dry recording."
+        },
+        {
+          "id": "shriek",
+          "models": [
+            "stable"
+          ],
+          "seed": 201,
+          "takes": 4,
+          "seconds": 1.5,
+          "text": "TrackType: SFX, animal vocalisation, a turkey-sized bird shrieks in alarm, a sharp, cracking, panicked squawk, loud and high. Dry close-up recording."
+        },
+        {
+          "id": "squawks-m",
+          "models": [
+            "moss"
+          ],
+          "seed": 501,
+          "takes": 2,
+          "seconds": 8,
+          "text": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors."
+        },
+        {
+          "id": "panic-m",
+          "models": [
+            "moss"
+          ],
+          "seed": 601,
+          "takes": 2,
+          "seconds": 6,
+          "text": "A large flightless bird panics: a shrill frightened squawk and a quick flurry of flapping wings, then another squawk as it runs off. Close, dry recording."
+        },
+        {
+          "id": "squawk-b",
+          "models": [
+            "stable"
+          ],
+          "seed": 5,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, a big clumsy bird is startled and lets out one sudden, loud, alarmed squawk, a harsh rising honk. Close-miked, dry, outdoors."
+        },
+        {
+          "id": "hen-alarm",
+          "models": [
+            "stable"
+          ],
+          "seed": 301,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, a hen squawks loudly in sudden alarm, one harsh shrill squawk. Close-miked, dry, outdoors."
+        },
+        {
+          "id": "goose-alarm",
+          "models": [
+            "stable"
+          ],
+          "seed": 401,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, a goose is startled and gives one loud, harsh alarm honk. Close-miked, dry."
+        },
+        {
+          "id": "screech",
+          "models": [
+            "stable"
+          ],
+          "seed": 701,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 45,
+      "level": -16,
+      "vary": 1.0,
+      "want": "short pained cry when hit",
+      "prompts": [
+        {
+          "id": "yelp",
+          "models": [
+            "stable"
+          ],
+          "seed": 1,
+          "takes": 4,
+          "seconds": 1.2,
+          "text": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry."
+        },
+        {
+          "id": "cry",
+          "models": [
+            "stable"
+          ],
+          "seed": 101,
+          "takes": 4,
+          "seconds": 1.2,
+          "text": "TrackType: SFX, animal vocalisation, a plump goose-like bird cries out in pain, one brief hoarse squawk. Dry close recording, no background."
+        },
+        {
+          "id": "yelps-m",
+          "models": [
+            "moss"
+          ],
+          "seed": 501,
+          "takes": 2,
+          "seconds": 8,
+          "text": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry.",
+          "takes_moss-pt": 4
+        },
+        {
+          "id": "hen-pain",
+          "models": [
+            "stable"
+          ],
+          "seed": 301,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, a chicken gives one short pained squawk when struck. Close-miked, dry."
+        },
+        {
+          "id": "goose-yelp",
+          "models": [
+            "stable"
+          ],
+          "seed": 401,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, a goose gives one short hoarse yelp of pain. Close, dry, no background."
+        },
+        {
+          "id": "yelp-2s",
+          "models": [
+            "stable"
+          ],
+          "seed": 701,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry."
+        }
+      ]
+    },
+    "peck": {
+      "kind": "impact",
+      "range": 15,
+      "level": -24,
+      "vary": 1.5,
+      "want": "a beak striking: short knock or jab on ground, plant or body",
+      "prompts": [
+        {
+          "id": "ground",
+          "models": [
+            "stable"
+          ],
+          "seed": 1,
+          "takes": 4,
+          "seconds": 1,
+          "text": "TrackType: SFX, a single hard peck of a big bird's beak into dry earth, a short dull knock with a little soil crunch. Close-miked, dry."
+        },
+        {
+          "id": "wood",
+          "models": [
+            "stable"
+          ],
+          "seed": 101,
+          "takes": 4,
+          "seconds": 1,
+          "text": "TrackType: SFX, one quick jab of a heavy bird's beak against a wooden stick, a short hollow knock. Close-up, dry, no room sound."
+        },
+        {
+          "id": "plant",
+          "models": [
+            "stable"
+          ],
+          "seed": 201,
+          "takes": 4,
+          "seconds": 1,
+          "text": "TrackType: SFX, a bird's beak snaps once at a leafy plant, a quick jab with a crisp leaf rustle and a small stem snap. Close, dry."
+        },
+        {
+          "id": "pecks-m",
+          "models": [
+            "moss"
+          ],
+          "seed": 501,
+          "takes": 1,
+          "seconds": 6,
+          "text": "A big bird slowly pecks at the ground a few times: single sharp beak knocks into dry earth, with pauses in between. Close-miked, dry.",
+          "takes_moss-pt": 4
+        },
+        {
+          "id": "wood-m",
+          "models": [
+            "moss"
+          ],
+          "seed": 601,
+          "takes": 0,
+          "seconds": 6,
+          "text": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound.",
+          "takes_moss-pt": 4
+        },
+        {
+          "id": "board",
+          "models": [
+            "stable"
+          ],
+          "seed": 301,
+          "takes": 4,
+          "seconds": 1,
+          "text": "TrackType: SFX, foley, a single beak peck on a wooden board, a short sharp knock. Close-miked, dry."
+        },
+        {
+          "id": "body",
+          "models": [
+            "stable"
+          ],
+          "seed": 401,
+          "takes": 4,
+          "seconds": 1,
+          "text": "TrackType: SFX, foley, a single quick jab into flesh, a short dull meaty thud. Close, dry."
+        },
+        {
+          "id": "soil",
+          "models": [
+            "stable"
+          ],
+          "seed": 701,
+          "takes": 4,
+          "seconds": 1,
+          "text": "TrackType: SFX, foley, a bird pecks the ground once, a short dull tap in soft soil. Close, dry."
+        }
+      ]
+    },
+    "land": {
+      "kind": "impact",
+      "range": 25,
+      "level": -20,
+      "vary": 1.0,
+      "want": "soft heavy feathered thump, maybe a flutter",
+      "prompts": [
+        {
+          "id": "thump",
+          "models": [
+            "stable"
+          ],
+          "seed": 1,
+          "takes": 4,
+          "seconds": 1.5,
+          "text": "TrackType: SFX, a plump turkey-sized bird drops onto grassy ground: a soft, heavy, feathered thump and a quick ruffle of feathers. Close-miked outdoors, dry."
+        },
+        {
+          "id": "flutter",
+          "models": [
+            "stable"
+          ],
+          "seed": 101,
+          "takes": 4,
+          "seconds": 1.5,
+          "text": "TrackType: SFX, a heavy bird flaps its stubby wings briefly and lands with a dull thud on soft earth. Close, dry recording."
+        },
+        {
+          "id": "drops-m",
+          "models": [
+            "moss"
+          ],
+          "seed": 501,
+          "takes": 1,
+          "seconds": 8,
+          "text": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry.",
+          "takes_moss-pt": 4
+        },
+        {
+          "id": "drop",
+          "models": [
+            "stable"
+          ],
+          "seed": 301,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, foley, a heavy feathered body drops onto soft ground, one dull thump with a feather ruffle. Close-miked, dry."
+        },
+        {
+          "id": "flutter-land",
+          "models": [
+            "stable"
+          ],
+          "seed": 401,
+          "takes": 6,
+          "seconds": 2.5,
+          "text": "TrackType: SFX, foley, a turkey flutters its wings briefly and lands on grass with one soft thud. Close, dry."
+        },
+        {
+          "id": "featherbag",
+          "models": [
+            "stable"
+          ],
+          "seed": 701,
+          "takes": 4,
+          "seconds": 2,
+          "text": "TrackType: SFX, foley, a soft heavy bag of feathers is dropped on grass, a single muffled thump. Close, dry."
+        },
+        {
+          "id": "flutter-2s",
+          "models": [
+            "stable"
+          ],
+          "seed": 901,
+          "takes": 6,
+          "seconds": 2,
+          "text": "TrackType: SFX, foley, a turkey flutters its wings briefly and lands on grass with one soft thud. Close, dry."
+        }
+      ]
+    },
+    "step/grass": {
+      "kind": "step",
+      "range": 20,
+      "level": -28,
+      "vary": 1.5,
+      "want": "single padded footfalls of a knee-high three-toed bird on grass",
+      "prompts": [
+        {
+          "id": "walk",
+          "seed": 1,
+          "takes": 3,
+          "takes_moss": 1,
+          "seconds": 6,
+          "seconds_moss": 8,
+          "text": "Slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors.",
+          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors.",
+          "takes_moss-pt": 4
+        },
+        {
+          "id": "toes",
+          "models": [
+            "stable"
+          ],
+          "seed": 101,
+          "takes": 3,
+          "seconds": 6,
+          "text": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry."
+        }
+      ]
+    },
+    "step/sand": {
+      "kind": "step",
+      "range": 20,
+      "level": -28,
+      "vary": 1.5,
+      "want": "single padded footfalls of a knee-high three-toed bird on sand",
+      "prompts": [
+        {
+          "id": "walk",
+          "seed": 1,
+          "takes": 3,
+          "takes_moss": 1,
+          "seconds": 6,
+          "seconds_moss": 8,
+          "text": "Slow footsteps of a heavy goose waddling on dry beach sand: soft crunchy padded steps, well spaced. Close-miked, dry, no waves.",
+          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy goose waddling on dry beach sand: soft crunchy padded steps, well spaced. Close-miked, dry, no waves.",
+          "takes_moss-pt": 4
+        },
+        {
+          "id": "toes",
+          "models": [
+            "stable"
+          ],
+          "seed": 101,
+          "takes": 3,
+          "seconds": 6,
+          "text": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves."
+        }
+      ]
+    },
+    "step/stone": {
+      "kind": "step",
+      "range": 20,
+      "level": -28,
+      "vary": 1.5,
+      "want": "single padded footfalls of a knee-high three-toed bird on stone",
+      "prompts": [
+        {
+          "id": "walk",
+          "seed": 1,
+          "takes": 3,
+          "takes_moss": 1,
+          "seconds": 6,
+          "seconds_moss": 8,
+          "text": "Slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors.",
+          "text_stable": "TrackType: SFX, foley, slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors.",
+          "takes_moss-pt": 4
+        },
+        {
+          "id": "toes",
+          "models": [
+            "stable"
+          ],
+          "seed": 101,
+          "takes": 3,
+          "seconds": 6,
+          "text": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry."
+        }
+      ]
+    }
+  }
+}

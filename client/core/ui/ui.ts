@@ -24,6 +24,8 @@ import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } f
 const CHAT_KEYS: Record<string, number> = { Enter: TEXT_GLOBAL, NumpadEnter: TEXT_GLOBAL, Insert: TEXT_LOCAL, Slash: TEXT_TRIBE };
 
 export class Ui {
+  /** Hears an occasion of the interface by its cue (shared/sound/cues.ts): set by the app where there is sound. */
+  hear: ((cue: string) => void) | null = null;
   readonly frame = new UiFrame();
   readonly console = new ConsoleState();
   readonly chat = new ChatState();
@@ -47,6 +49,8 @@ export class Ui {
   /** The app sets both once it has them. */
   registry: Registry | null = null;
   palette: Uint8Array | null = null;
+  /** A console line this client answers itself, without the server: the answer, or null for a line to send. */
+  local: ((line: string) => string | null) | null = null;
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
@@ -97,6 +101,9 @@ export class Ui {
           const character = code === "KeyP" && !this.character;
           const options = code === "KeyO" && !this.options;
           const inventory = code === "KeyI" && !this.inventory.open;
+          const opened = map ? "map" : character ? "character" : options ? "options" : inventory ? "inventory" : "";
+          const shut = this.map ? "map" : this.character ? "character" : this.options ? "options" : this.inventory.open ? "inventory" : "";
+          this.hear?.(opened !== "" ? `screen/${opened}/open` : `screen/${shut || "inventory"}/close`);
           this.map = map;
           this.character = character;
           this.options = options;
@@ -118,7 +125,9 @@ export class Ui {
         return true;
       case "Enter":
         con.submit((line) => {
-          if (!session || (session.text(line) === 0 && session.state !== "active")) con.print("not connected; nothing was sent");
+          const answer = this.local?.(line) ?? null;
+          if (answer !== null) con.print(answer);
+          else if (!session || (session.text(line) === 0 && session.state !== "active")) con.print("not connected; nothing was sent");
         });
         return true;
       case "ArrowUp":
@@ -148,6 +157,7 @@ export class Ui {
       this.creator.pointer(kind, key, x, session);
       return;
     }
+    if (kind === 0 && key !== 0) this.hear?.("click");
     if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;

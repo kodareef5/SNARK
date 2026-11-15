@@ -18,6 +18,8 @@ import { join, resolve } from "node:path";
 import { parsePack } from "../shared/pack/pack.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
+import { boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
+import { CUES } from "../shared/sound/cues.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -170,6 +172,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
   const mapRoute = mapRoutes(host.mapFile!, host.world.mapId, host.world.mapHash);
+  // The shared families of sounds are the owners the catalogue's fallbacks name.
+  const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
+  const board: BoardGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
   if (opts.probeScene) {
     const ents = host.world.ents;
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
@@ -253,6 +258,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         measured(result);
         return new Response("ok");
       }
+      const sounds = soundBoard(req, srv.requestIP(req)?.address ?? "", board, join(clientDir, "sounds.html"), () => boardOwners(registry, families));
+      if (sounds) return sounds;
       return mapRoute(url.pathname, req.headers.get("accept-encoding") ?? "") ?? serveFile(clientDir, req);
     },
     websocket: {

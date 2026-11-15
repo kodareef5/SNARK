@@ -28,6 +28,13 @@ export class Settings {
   fov = 70;
   /** A multiple of the default. */
   voiceVolume = 1;
+  /** Every sound but voice chat, then each bus of them (client/core/sound/packet.ts): a multiple of the default. */
+  masterVolume = 1;
+  /** Effects: creatures, steps, fighting, building. */
+  soundVolume = 1;
+  ambienceVolume = 1;
+  musicVolume = 1;
+  interfaceVolume = 1;
   /** The talk key toggles the microphone instead of being held. */
   toggleTalk = false;
 }
@@ -49,6 +56,10 @@ export interface SettingRow {
 
 const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v);
 
+function volume(label: string, key: "masterVolume" | "soundVolume" | "ambienceVolume" | "musicVolume" | "interfaceVolume"): SettingRow {
+  return { label, value: (s) => `${Math.round(s[key] * 100)}%`, step: (s, by) => void (s[key] = clamp(Math.round((s[key] + by * 0.1) * 10) / 10, 0, VOLUME_MAX)) };
+}
+
 const TIER_LABEL: Readonly<Record<Tier["name"], string>> = { lowpoly: "low poly", medium: "medium", high: "high", ultra: "ultra" };
 
 export const SETTING_ROWS: readonly SettingRow[] = [
@@ -57,6 +68,11 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Field of view", value: (s) => `${s.fov} degrees`, step: (s, by) => void (s.fov = clamp(s.fov + by * 5, FOV_MIN, FOV_MAX)) },
   { label: "Voice volume", value: (s) => `${Math.round(s.voiceVolume * 100)}%`, step: (s, by) => void (s.voiceVolume = clamp(Math.round((s.voiceVolume + by * 0.1) * 10) / 10, 0, VOLUME_MAX)) },
   { label: "Talk key (B)", value: (s) => (s.toggleTalk ? "on and off" : "hold"), step: (s) => void (s.toggleTalk = !s.toggleTalk) },
+  volume("Master volume", "masterVolume"),
+  volume("Effects volume", "soundVolume"),
+  volume("Ambience volume", "ambienceVolume"),
+  volume("Music volume", "musicVolume"),
+  volume("Interface volume", "interfaceVolume"),
   { label: "Keep all assets", value: (s) => s.kept, step: (s) => void (s.download = true) },
   { label: "Graphics", value: (s) => TIER_LABEL[s.tier], step: (s, by) => {
       // A tier not offered here is above those that are.

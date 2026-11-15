@@ -1,0 +1,979 @@
+{
+  "takes": {
+    "takes/call/moss-pt-3441-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "p3440",
+      "prompt": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3441,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3441.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 33.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f9e2740015c3171675de721d6021eb53c0a934b2f0cb7a1865748af05ffac624",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "589cd155e0576b19f28cf40e6c7cacebdb4cabf5f549e12b82713b9d856ea138",
+      "cut": {
+        "source_file": "moss-pt-3441.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          104400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-3440-07155.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "p3440",
+      "prompt": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3440,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3440.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "11954745c109e7eba5710334e6c20d360ad4e46e090dc8d29d607df5fccb35f6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "01fcbe68ce64fd5acaa0cdd1227bd5ffeaca7961bd69758c97afb8f3ac362c63",
+      "cut": {
+        "source_file": "moss-pt-3440.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          341040,
+          374880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-3441-06165.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "p3440",
+      "prompt": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3441,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3441.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 33.6,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1dd4958550f816d5536bc8059babdf7ff0893da1683e02e0f74e79363d9c60b4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "589cd155e0576b19f28cf40e6c7cacebdb4cabf5f549e12b82713b9d856ea138",
+      "cut": {
+        "source_file": "moss-pt-3441.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          293520,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-3440-04990.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "p3440",
+      "prompt": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3440,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3440.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant spider clicks its mandibles and chitters softly, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "464a61812c0d531433ef3ac0e3417910d97f58feeb577a87706aea09a2839a04",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "01fcbe68ce64fd5acaa0cdd1227bd5ffeaca7961bd69758c97afb8f3ac362c63",
+      "cut": {
+        "source_file": "moss-pt-3440.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          237120,
+          257760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-3450-04945.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "p3450",
+      "prompt": "A giant spider hisses loudly and screeches, three separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3450,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3450.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant spider hisses loudly and screeches, three separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "47a52d6757d4cbd676410703d02be9f142af9c3f66a71c59adff3ccf5cdb3c64",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6307717425dc31a5487d9e85ed9ff429ea8e0d98d6804065412225f887c2decb",
+      "cut": {
+        "source_file": "moss-pt-3450.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          234960,
+          348000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-3450-00825.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "p3450",
+      "prompt": "A giant spider hisses loudly and screeches, three separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3450,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3450.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant spider hisses loudly and screeches, three separate hisses with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e23f303a1ddc4505e5aabc211fc326e6c450377fbccf319c3b1a92cc44e901e6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6307717425dc31a5487d9e85ed9ff429ea8e0d98d6804065412225f887c2decb",
+      "cut": {
+        "source_file": "moss-pt-3450.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          37199,
+          157440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-3460-00070.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "p3460",
+      "prompt": "A giant insect screeches and hisses in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3460,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3460.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant insect screeches and hisses in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "91b75a40fa3aa598ee4d52806f84a29cdfb88efa988534cc081f4bc3382b1147",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f5bd9b32051f8e680d5b49866d7c543f8d0a5391c22c0efeecb76541af3ed49e",
+      "cut": {
+        "source_file": "moss-pt-3460.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          960,
+          91440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-3470-00095.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "p3470",
+      "prompt": "A giant insect's legs twitch and scrape as it dies with a fading hiss, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3470,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3470.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant insect's legs twitch and scrape as it dies with a fading hiss, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "aa65d30aecfd65db0c120ffaf60706f0d03d246f7a0fe5b12859c0caff2cd607",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "4d09503c1459d2454b71be5510d20ace3fdfeb751009cce22a319c6c44bb5cfd",
+      "cut": {
+        "source_file": "moss-pt-3470.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          2160,
+          65520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-3470-03025.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "p3470",
+      "prompt": "A giant insect's legs twitch and scrape as it dies with a fading hiss, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3470,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3470.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant insect's legs twitch and scrape as it dies with a fading hiss, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "683171bc81acc6a8b17685235c9b060a41a6a97903d85b614ce50936c00a8a86",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "4d09503c1459d2454b71be5510d20ace3fdfeb751009cce22a319c6c44bb5cfd",
+      "cut": {
+        "source_file": "moss-pt-3470.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          142800,
+          240240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-3480-04175.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "p3480",
+      "prompt": "A giant spider lunges and bites: a wet crunching snap and a hiss, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3480,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3480.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant spider lunges and bites: a wet crunching snap and a hiss, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "423944a0e97a260a8f806ef1c310b24897c405059bd4dd16e691fe683f6c466e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "263d9ae9e02ebfd5fb3fe40492f337dcda068b4414d2d5314c88d6ed56cbb1ac",
+      "cut": {
+        "source_file": "moss-pt-3480.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          198000,
+          245280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-3480-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "p3480",
+      "prompt": "A giant spider lunges and bites: a wet crunching snap and a hiss, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3480,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3480.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A giant spider lunges and bites: a wet crunching snap and a hiss, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1cb187f9224703c5a097534c7f175675eeb9a9175110ec6c9514928b36cdf990",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "263d9ae9e02ebfd5fb3fe40492f337dcda068b4414d2d5314c88d6ed56cbb1ac",
+      "cut": {
+        "source_file": "moss-pt-3480.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          46561
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-3490-01527.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "p3490",
+      "prompt": "Many hard insect legs patter and skitter across stone: fast clicking scuttling, separate bursts. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3490,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3490.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Many hard insect legs patter and skitter across stone: fast clicking scuttling, separate bursts. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "57259344a1770545c16bc54e67fa4a3ee7d92071ae8f5b1bd2a67270717f6130",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a26ef87c84c852c2048bd8066c106594ee0e693a66b0f2c10dd8731b0fb9e3f9",
+      "cut": {
+        "source_file": "moss-pt-3490.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          70896,
+          99360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-3490-05937.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "p3490",
+      "prompt": "Many hard insect legs patter and skitter across stone: fast clicking scuttling, separate bursts. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 3490,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-3490.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Many hard insect legs patter and skitter across stone: fast clicking scuttling, separate bursts. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "538260cc3627a226aa6f19f92744d6c25d31fde8b6948b501d9d180b5c916cf8",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a26ef87c84c852c2048bd8066c106594ee0e693a66b0f2c10dd8731b0fb9e3f9",
+      "cut": {
+        "source_file": "moss-pt-3490.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          282576,
+          299520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "asset": "core/creatures/pteranodon",
+  "review": "../ref/sound",
+  "about": "A great leathery-winged flying reptile that soars over the sea and screeches as it dives.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 120,
+      "level": -20,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p3070",
+          "models": [
+            "moss"
+          ],
+          "seed": 3070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large flying reptile gives raspy screeching cries like a giant seabird, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 120,
+      "level": -20,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p3080",
+          "models": [
+            "moss"
+          ],
+          "seed": 3080,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large flying reptile shrieks a loud alarmed squawk, three separate shrieks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 120,
+      "level": -20,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p3090",
+          "models": [
+            "moss"
+          ],
+          "seed": 3090,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large flying reptile squawks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 120,
+      "level": -20,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p3100",
+          "models": [
+            "moss"
+          ],
+          "seed": 3100,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large flying reptile gives a weak fading dying squawk, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 120,
+      "level": -18,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p3110",
+          "models": [
+            "moss"
+          ],
+          "seed": 3110,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large flying reptile snaps its long beak shut with a hiss, five separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 72,
+      "level": -24,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p3120",
+          "models": [
+            "moss"
+          ],
+          "seed": 3120,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Huge leathery wings flapping: deep slow whooshing wingbeats, several separate takeoffs. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "flap": {
+      "kind": "voice",
+      "range": 120,
+      "level": -20,
+      "vary": 0.5,
+      "want": "wingbeats in flight",
+      "prompts": [
+        {
+          "id": "p3130",
+          "models": [
+            "moss"
+          ],
+          "seed": 3130,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Huge leathery wings beat slowly in flight: deep rhythmic whooshing flaps. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}
