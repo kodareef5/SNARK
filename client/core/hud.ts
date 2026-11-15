@@ -54,6 +54,8 @@ export interface HotbarCell {
   /** 0xRRGGBB, or -1 for an empty slot. */
   tint: number;
   number: string;
+  /** The item's content id, which its picture is found by (ui/hud.ts). */
+  id?: string;
 }
 
 export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg: Registry, palette: Uint8Array): void {
@@ -71,8 +73,10 @@ export function fillHotbar(m: HudModel, inv: Inventory | null, held: number, reg
       cell.label = "";
       cell.tint = -1;
       cell.number = "";
+      cell.id = "";
       continue;
     }
+    cell.id = def.id;
     const name = def.label ?? def.id.slice(def.id.indexOf(":") + 1);
     const c = (def.color ?? 15) * 4;
     cell.label = name.slice(0, 4);

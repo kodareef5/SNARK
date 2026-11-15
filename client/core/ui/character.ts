@@ -25,6 +25,8 @@ const LIST_KEYS = 2 * 65536;
 export const KEY_CHAR_ENGRAM = 200000;
 /** Per item that can be made, in content order: its line, then its button. */
 export const KEY_CHAR_RECIPE = KEY_CHAR_ENGRAM + LIST_KEYS;
+/** Per item that can be made, in content order: its picture. Past both lists, and as clear of every other key. */
+export const KEY_CHAR_RECIPE_PICTURE = KEY_CHAR_RECIPE + LIST_KEYS;
 export const TAB_STATS = 0;
 export const TAB_ENGRAMS = 1;
 export const TAB_MAKE = 2;
@@ -90,8 +92,8 @@ export class CharacterScreen {
     });
     y += ROW + 10;
 
-    // `button` is "" for a row without one.
-    const rows: { key: number; text: string; button: string }[] = [];
+    // `button` is "" for a row without one. A row of the Make tab has the picture of what it makes at its left, where there is one.
+    const rows: { key: number; text: string; button: string; picture?: { key: number; owner: string } }[] = [];
     if (this.tab === TAB_STATS) {
       STAT_NAMES.forEach((name, i) => {
         // Only stats a point can raise are listed. Torpidity is not one.
@@ -111,14 +113,17 @@ export class CharacterScreen {
         const def = reg.defs[k] as ItemDef;
         if (!known.has(def.id)) return;
         const needs = def.craft!.needs.map((need) => `${need.count} ${itemLabel(reg, reg.index.get(need.item)!)}`).join(", ");
-        rows.push({ key: KEY_CHAR_RECIPE + n * 2, text: `${def.label ?? itemLabel(reg, k)}: ${needs}`, button: "make" });
+        rows.push({ key: KEY_CHAR_RECIPE + n * 2, text: `${def.label ?? itemLabel(reg, k)}: ${needs}`, button: "make", picture: { key: KEY_CHAR_RECIPE_PICTURE + n, owner: def.id } });
       });
     }
     const perPage = Math.max(1, Math.floor((y0 + h - PAD - ROW - 6 - y) / ROW));
     this.pages = Math.max(1, Math.ceil(rows.length / perPage));
     if (this.page >= this.pages) this.page = this.pages - 1;
     for (const row of rows.slice(this.page * perPage, (this.page + 1) * perPage)) {
-      f.text(row.key, x + PAD, y + 2, inner - BUTTON - 8, S_LABEL, row.text.slice(0, cols));
+      // Rows keep one edge whether or not each has a picture, where any may.
+      const indent = row.picture && f.icons ? ROW : 0;
+      if (row.picture) f.picture(row.picture.key, x + PAD, y, ROW - 2, ROW - 2, S_LABEL, row.picture.owner);
+      f.text(row.key, x + PAD + indent, y + 2, inner - BUTTON - 8 - indent, S_LABEL, row.text.slice(0, cols - (indent > 0 ? columns(indent, S_LABEL) : 0)));
       if (row.button !== "") {
         const b = f.add(row.key + 1, K_BUTTON, x + w - PAD - BUTTON, y + 1, BUTTON, ROW - 3, S_BUTTON);
         b.text = row.button;

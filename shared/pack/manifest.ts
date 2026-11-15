@@ -1,20 +1,24 @@
 // The directory of the asset files: what meshes there are, how detailed each level is, and which bytes of which file
 // hold it. A client reads this first and then asks for the levels it wants.
 
+import { checkIcons, type ManifestIcons } from "./icons.ts";
 import { MOST_SECTIONS, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodVertices, type Pack, type PackMaterial } from "./pack.ts";
 import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, stepBytes, stepOf, topIn, type TextureFormat, type TextureRole } from "./texture.ts";
 
 /**
- * Versions 1 and 2 are still read. Version 2 had no part stored deflated. Version 1 had flat levels only, and no
- * materials or textures.
+ * Versions 1 to 3 are still read. Version 3 had no inventory pictures. Version 2 had no part stored deflated. Version 1
+ * had flat levels only, and no materials or textures.
  */
-export const MANIFEST_VERSION = 3;
+export const MANIFEST_VERSION = 4;
 
 export interface ManifestFile {
   name: string;
   bytes: number;
-  /** "boot" is fetched whole at start. The others are fetched a level or a step at a time. */
-  role: "boot" | "mesh" | "tex";
+  /**
+   * "boot" is fetched whole at start. "mesh" and "tex" are fetched a level or a step at a time. "icon" is a PNG sheet of
+   * inventory pictures (shared/pack/icons.ts), fetched whole when one of its pictures is first shown.
+   */
+  role: "boot" | "mesh" | "tex" | "icon";
   /** For a texture file, the variant it holds. */
   format?: TextureFormat;
 }
@@ -101,6 +105,8 @@ export interface Manifest {
   meshes: ManifestMesh[];
   materials?: PackMaterial[];
   textures?: ManifestTexture[];
+  /** The inventory pictures, from version 4. A build adds them; a manifest without them has none. */
+  icons?: ManifestIcons;
 }
 
 const pad4 = (n: number): number => (n + 3) & ~3;
@@ -143,8 +149,9 @@ export function describePack(pack: Pack, file: { name: string; bytes: number }, 
 /** Throws with a reason if the text is not a manifest this build can use. */
 export function parseManifest(text: string): Manifest {
   const m = JSON.parse(text) as Manifest;
-  if (m.version !== MANIFEST_VERSION && m.version !== 2 && m.version !== 1) throw new Error(`manifest: version ${String(m.version)} is not supported`);
+  if (m.version !== MANIFEST_VERSION && m.version !== 3 && m.version !== 2 && m.version !== 1) throw new Error(`manifest: version ${String(m.version)} is not supported`);
   if (!Array.isArray(m.files) || !Array.isArray(m.meshes) || m.files[m.boot]?.role !== "boot") throw new Error("manifest: no boot pack");
+  if (m.icons) checkIcons(m.icons, (file) => m.files[file]?.role);
   const textures = m.textures ?? [];
   const materials = m.materials ?? [];
   for (const t of textures) {

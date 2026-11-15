@@ -125,9 +125,12 @@ export function buildHud(f: UiFrame, m: HudModel): void {
       const box = f.add(KEY_HOTBAR + i * 3, K_PANEL, x, y0, cell, cell, S_SLOT);
       if (i === m.held) box.tint = 0x5a6a7a;
       if (c.tint < 0) continue;
-      const swatch = f.add(KEY_HOTBAR + i * 3 + 1, K_PANEL, x + 3, y0 + 3, cell - 6, cell - 6 - small, S_SWATCH);
-      swatch.tint = c.tint;
-      swatch.text = c.label;
+      // The item's picture where it has one, else its colour and the first letters of its name.
+      if (!f.picture(KEY_HOTBAR + i * 3 + 1, x + 2, y0 + 2, cell - 4, cell - 4, S_SLOT_TEXT, c.id ?? "")) {
+        const swatch = f.add(KEY_HOTBAR + i * 3 + 1, K_PANEL, x + 3, y0 + 3, cell - 6, cell - 6 - small, S_SWATCH);
+        swatch.tint = c.tint;
+        swatch.text = c.label;
+      }
       f.text(KEY_HOTBAR + i * 3 + 2, x + 2, y0 + cell - small, cell - 4, S_SLOT_TEXT, c.number);
     }
     if (m.ammo !== "") f.text(KEY_AMMO, Math.max(MARGIN, W / 2 - 150), y0 - lineHeight(S_PROMPT) - 3, Math.min(300, W - MARGIN * 2), S_PROMPT, m.ammo);

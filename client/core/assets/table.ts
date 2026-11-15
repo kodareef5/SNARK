@@ -1,5 +1,6 @@
 // What the client knows of every asset without its bytes: its levels, its size, what it hangs on, what it is drawn
-// with. Meshes and materials are read from the manifest, and rigs and clips from the boot pack, which is whole at start.
+// with. Meshes, materials and inventory pictures are read from the manifest, and rigs and clips from the boot pack, which
+// is whole at start.
 
 import type { Slot } from "../../../shared/content/classes.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
@@ -33,6 +34,8 @@ export class AssetTable {
   private readonly index: ReadonlyMap<string, number>;
   private readonly rigs: ReadonlySet<string>;
   private readonly clips: ReadonlyMap<string, number>;
+  /** The ids of the inventory pictures, as `#icon` slots name them (shared/pack/icons.ts). */
+  private readonly icons: ReadonlySet<string>;
 
   constructor(manifest: Manifest, boot: Pack) {
     const meshes = manifest.meshes;
@@ -52,6 +55,7 @@ export class AssetTable {
     this.bone = Uint8Array.from(meshes, (m) => m.bone ?? 0);
     this.rigs = new Set(boot.header.rigs.map((r) => r.id));
     this.clips = boot.clips.index;
+    this.icons = new Set(Object.keys(manifest.icons?.cells ?? {}));
   }
 
   /** The index of the mesh with this id, or -1. */
@@ -60,5 +64,5 @@ export class AssetTable {
   }
 
   /** Whether an asset of this kind and id exists. */
-  readonly has = (asset: Slot["asset"], id: string): boolean => (asset === "mesh" ? this.index.has(id) : asset === "rig" ? this.rigs.has(id) : asset === "clip" ? this.clips.has(id) : false);
+  readonly has = (asset: Slot["asset"], id: string): boolean => (asset === "mesh" ? this.index.has(id) : asset === "rig" ? this.rigs.has(id) : asset === "clip" ? this.clips.has(id) : asset === "icon" ? this.icons.has(id) : false);
 }
