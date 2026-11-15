@@ -75,7 +75,7 @@
       "Los Feliz": "terracotta", "Hancock Park": "terracotta", "Windsor Square": "terracotta", "Larchmont": "terracotta", "Wilton Historic District": "terracotta"
     },
     "obelisks": [
-      {"name": "Griffith Observatory", "at": [-118.3012, 34.1192], "face": [-118.3004, 34.1182]},
+      {"name": "Griffith Observatory", "at": [-118.3005, 34.1203], "face": [-118.3004, 34.1182], "why": "on the parking north of the lawn: on the lawn its 70 m column stood over the planetarium dome from the city"},
       {"name": "Hollywood and Highland", "at": [-118.33802, 34.10160], "face": [-118.3410, 34.1018]},
       {"name": "Lake Hollywood Park", "at": [-118.3262, 34.1265], "face": [-118.3217, 34.1341]}
     ],

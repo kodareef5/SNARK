@@ -12,7 +12,7 @@ canopy.
 tools/mapdata/.venv/bin/pip install -r tools/mapart/requirements.txt
 bun tools/mapdata/city.ts san-francisco                            # every step below, then the map file
 bun tools/mapdata/city.ts san-francisco labels build               # from one step to another
-bun tools/mapdata/steep.ts var/maps/san-francisco.snmap 15         # the steepest streets and stairs, walked
+bun tools/mapdata/steep.ts var/maps/san-francisco.snmap 15         # ground past the walkable angle, and the steepest streets and stairs, walked
 ```
 
 Python 3.9 as macOS ships it is linked to LibreSSL 2.8, which the Overpass servers refuse; Miami's pinned packages
@@ -29,16 +29,21 @@ install and give byte-identical layers on 3.12. Run every Python tool with `-I`:
 | fine | `fine.py` | `*_fine.png` at 8,192 pixels, endpoint corrections, `painted_canopy*` by rule, `reports/canonical-layers.json` |
 | bathymetry | `bathy.py` | `base/bathymetry/<file>.tif` and `source.json` |
 | labels | `labels.py` | `blocks/labels.json`, `blocks/places.json`, `blocks/height-units.json` (OpenStreetMap's bare heights read as feet where a city's run near 3.28 times USA Structures') |
-| ways | `ways.py` | `blocks/ways.json` (with `bridge:structure`), `blocks/supports.json` (bridge towers mapped in three dimensions), `blocks/stairs.json` |
+| ways | `ways.py` | `blocks/ways.json` (with `bridge:structure`), `blocks/supports.json` (bridge towers mapped in three dimensions), `blocks/stairs.json`, `blocks/signs.json` (lines with an inscription of capitals and a height: letters standing on the ground) |
 | world | `world.py [--accept]` | `world/proposed.json`: districts round OpenStreetMap's places and spawn points on named parks; `world/world.json` when there is none or with `--accept` |
 | vocabulary | `vocabulary.py` | `ruins/vocabulary.json`: the reference map's rule sections, the city's districts, recipes and compositions, and budgets scaled to its footprints |
 | build | `bun tools/mapworld/build.ts <name>` | `var/maps/<name>.snmap` |
 
-The settings `city.json` holds, beyond the sources: `tiger.counties` (a frame may span counties), `dem.fill` (older
-lidar projects used only where the newest has no ground), `footprints.split_by_osm` and `split_cover`,
-`succession.perched_above_sea_m` (2 m), `world` (`seaNavd88`, `minY`, `report`, `yard_districts`,
-`container_district`, extra district seeds as `places`, `styles`, `spawn_places` with what each faces, and `obelisks`), `ruins`
-(`rules_from`, `blocks_per_footprint`) and `future` (spans by road, wrecks by position). The named places'
+The settings `city.json` holds, beyond the sources: `height_zero_m` (the height height.png's zero stands for, -100 m
+unless the ground stands over 555 m), `tiger.counties` (a frame may span counties), `dem.fill` (older lidar projects
+used only where the newest has no ground), `footprints.split_by_osm`, `split_cover` and `split_remainder_m2` (a
+footprint this large that OpenStreetMap only partly draws is cut into its buildings and the remainder),
+`succession.perched_above_sea_m` (2 m) and `flood_below_navd88_m` (null for none), `world` (`sea: false` for a frame
+with no sea, `seaNavd88`, `minY`, `report`, `yard_districts`, `container_district`, extra district seeds as `places`,
+places to `drop`, `styles`, `spawn_places` with what each faces and, where OpenStreetMap has no point, an `at`,
+`easy_around_spawns_m`, and `obelisks`), `ruins` (`rules_from`, `blocks_per_footprint`) and `future` (spans by road,
+wrecks by position). A frame with no sea leaves out `bathymetry`. Spawn point names are held to the 48 bytes the
+choosing list carries. The named places'
 compositions are `ruins/compositions.json` with `ruins/places.json`, written by hand.
 
 `fetch.py` asks one thing of one server at a time and waits longer after each refusal. The elevation source is

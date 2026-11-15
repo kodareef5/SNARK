@@ -82,8 +82,18 @@ The compatibility content module remains so the core pack needs no new import.
 - `assemblies` list shape, local x/y/z, finish and optional yaw. They carry a
   role and optional clearance note. Fronts, wrecks, signs and street remnants
   all use this interpreter.
-- `compositions` combine regional stacks, towers, bowls, portals, ribs and
-  explicit parts. `ruins/places.json` attaches a composition to a footprint.
+- `compositions` combine regional stacks, towers, bowls, portals, ribs,
+  rings and domes and explicit parts. `ruins/places.json` attaches a composition
+  to a footprint. A `ring` sets pieces round a centre at listed heights, turned
+  along it; a `dome` is a drum to its springing and stepped courses under a
+  hemisphere, closed from above, over an optional `arc`. A named place with the
+  layout `ground` is neither built on nor levelled: a hillside's seats.
+
+Lettered signs (`signs.ts`): a line OpenStreetMap maps with an inscription of
+capitals and a height (`blocks/signs.json`) stands up the content's letters
+(`content/lettering.ts`, 13.7 m tall) along it, each on the lowest ground under
+its foot and facing down the slope; on the level it reads from the line's first
+point. A sign mapped more than 30% taller or shorter is left out and reported.
 
 To add a rule, append one readable choice. To add a named place, add a
 composition and one footprint entry. No generator branch is needed. A new
