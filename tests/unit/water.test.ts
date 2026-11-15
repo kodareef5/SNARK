@@ -1,12 +1,15 @@
 // The sea on the lit tiers (D270): how deep it is, read as the WATER program reads the ground's two pictures; what it
-// mirrors, lets through and glints with, by the twin the lit probe holds a GPU to; and the draw the scene gives it.
+// mirrors, lets through and glints with, by the twin the lit probe holds a GPU to; the draw the scene gives it; and the
+// pictures of its waves.
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { DRAW_BLEND, DRAW_WATER, FRAME, FRAME_FLOATS, SOURCE_WINDOW } from "../../client/core/render/packet.ts";
 import { domeLight, hourOfSun, skyFrame, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { COARSE, groundSize } from "../../client/core/render/terrain.ts";
-import { BREEZE, WATER_MATERIAL, seaDepth, seaFrame, seaPixel, waveStrength } from "../../client/core/render/water.ts";
+import { BREEZE, RMS_SLOPE, SLOPE_MOST, SQUARE_MOST, WATER_MATERIAL, seaDepth, seaFrame, seaPixel, waveStrength } from "../../client/core/render/water.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { readPicture, seam } from "../../tools/pack/image.ts";
 import { sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
 
 const sky = theSky();
@@ -151,5 +154,21 @@ test("on a lit tier the sea seen from above is a WATER draw with the waves' mate
   w.cam.y = 1.2;
   w.scene.assets.tier = tierOf("lowpoly");
   old();
+});
+
+test("the waves' pictures tile, hold RMS_SLOPE of slope about level, and their blue is the mean square of it", () => {
+  for (const file of ["long.png", "short.png"]) {
+    const p = readPicture(join(import.meta.dir, "../../assets/source/core/water", file));
+    expect(Math.max(...seam(p))).toBeLessThan(1.5);
+    let [sx, sy, square, blue] = [0, 0, 0, 0];
+    const n = p.width * p.height;
+    for (let i = 0; i < n; i++) {
+      const [x, y] = [((p.data[i * 4]! - 128) / 127) * SLOPE_MOST, ((p.data[i * 4 + 1]! - 128) / 127) * SLOPE_MOST];
+      [sx, sy, square, blue] = [sx + x, sy + y, square + x * x + y * y, blue + (p.data[i * 4 + 2]! / 255) * SQUARE_MOST];
+    }
+    expect(Math.abs(sx / n) + Math.abs(sy / n)).toBeLessThan(0.002);
+    expect(Math.sqrt(square / n)).toBeCloseTo(RMS_SLOPE, 2);
+    expect(blue / n).toBeCloseTo(square / n, 3);
+  }
 });
 

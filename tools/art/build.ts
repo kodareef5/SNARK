@@ -17,7 +17,7 @@ import type { Asset } from "./assets.ts";
 import { RAW, blender, withScratch } from "./blender.ts";
 import { convertBodies, convertClipLibraries } from "./human.ts";
 import { describe, materialsOf, type Described } from "./materials.ts";
-import type { CreatureAsset, PiecesAsset, SkyAsset } from "./spec.ts";
+import type { CreatureAsset, PiecesAsset, SkyAsset, WaterAsset } from "./spec.ts";
 
 export interface Built {
   meshes: SourceMesh[];
@@ -149,12 +149,15 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
   for (const mesh of out.meshes) out.lines.push(`${mesh.id.padEnd(28)} triangles ${triangles(mesh)}`);
 }
 
-/** The sky's pictures as the one material of a mesh of one triangle that is never drawn (SkyAsset). No Blender. */
-export function convertSky(asset: Asset & { spec: SkyAsset }, out: Built): void {
+/**
+ * The sky's or the sea's pictures as the one material of a mesh of one triangle that is never drawn (SkyAsset,
+ * WaterAsset). No Blender. The sea's mesh is named apart from the flat mesh core:water the sea is drawn with.
+ */
+export function convertSky(asset: Asset & { spec: SkyAsset | WaterAsset }, out: Built): void {
   const made = describe(materialsOf(asset)[0]!, stepSize(LAST_STEP), defaultPalette());
   out.faults.push(...made.faults);
   out.meshes.push({
-    id: asset.id,
+    id: asset.spec.kind === "water" ? `${asset.id}/maps` : asset.id,
     flat: 1,
     materials: [made.material],
     textures: made.textures,
@@ -182,7 +185,7 @@ export function buildAsset(asset: Asset): Built {
       const files = Object.fromEntries(spec.pieces.map((p) => [p.object, join(dir, `${p.object}.glb`)]));
       scripted(spec.source.scripts, { pieces: files });
       convertPieces({ ...asset, spec }, files, out);
-    } else if (spec.kind === "sky") {
+    } else if (spec.kind === "sky" || spec.kind === "water") {
       convertSky({ ...asset, spec }, out);
     } else if (spec.kind === "human-clips") {
       const made = convertClipLibraries(spec);
