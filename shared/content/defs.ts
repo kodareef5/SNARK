@@ -3,7 +3,7 @@
 // `type` is a definition's family. A family with several classes also says which: shared/content/classes.ts has what
 // each class must and may declare.
 
-import type { VehicleDefinition } from "../sim/vehicle.ts";
+import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
 import { hullPoint, type HullDef } from "../world/convex.ts";
 
@@ -165,6 +165,8 @@ export interface ShapeDef extends Named {
 }
 
 export interface StructureDef extends Named {
+  /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
+  readonly vehicleSurface?: VehicleSurface;
   readonly type: "structure";
   readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
   readonly id: string;

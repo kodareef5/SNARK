@@ -2,6 +2,8 @@
 // Only the small boot header/blob and manifest are merged; the usual browser entrypoints are bundled separately.
 import { copyFileSync, linkSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { ROADS } from "../../content/urban/roads.ts";
+import { grayboxMeshes } from "../pack/build.ts";
 import { COMPACT, COPPER_COMPACT, compactMesh, compactRig } from "./source.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack, setTexture, textureOf, type PackHeader } from "../../shared/pack/pack.ts";
@@ -93,7 +95,7 @@ export async function buildIntegratedAssets(opts:{baseDist?:string;dist?:string;
   const palette=defaultPalette();
   if(oldBoot.palette.some((value,index)=>value!==palette[index]))throw new Error("core source palette differs from this checkout");
 
-  const added=splitPack(buildPack([compactMesh(),compactMesh(COPPER_COMPACT)],palette,[],[compactRig()]),"urban");
+  const added=splitPack(buildPack([compactMesh(),compactMesh(COPPER_COMPACT),...grayboxMeshes(ROADS).filter(mesh=>mesh.id.startsWith("urban:"))],palette,[],[compactRig()]),"urban");
   // A GPU picks one variant globally. Encode all three for only these six small maps, on one worker.
   const textures=await buildTextures(added.manifest,compactTextureSources(),"urban",{workers:1});
   const addBoot=parsePack(added.files[0]!.bytes),rigOffset=oldBoot.header.rigs.length;

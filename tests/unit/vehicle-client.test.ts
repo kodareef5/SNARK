@@ -141,16 +141,21 @@ test("camera target damping is frame-rate independent and snaps safely across a 
   expect(a.x).toBe(100);
 });
 
-test("driving telemetry shifts with speed, identifies reverse and braking, and never feeds slip while airborne", () => {
+test("driving instruments read mechanical gear/RPM, including neutral, and never invent a speed-based shift", () => {
   const v = new VehicleTelemetry(), b = new Body(), spec = reg.vehicle[compact]!.spec;
   b.vehicle = b.grounded = true; b.fuel = spec.fuelCapacity;
-  for (let i = 0; i < 500; i++) { b.vz = i * .07; v.update(4, b, 1, false, spec, 16); }
-  expect(v.gear).toBeGreaterThanOrEqual(3);
-  expect(v.rpm).toBeGreaterThan(2000);
-  expect(v.rpm).toBeLessThanOrEqual(6200);
+  b.vehicleGear = 2; b.vehicleRpm = 3700; b.vz = 35;
+  v.update(4, b, 1, false, spec, 16);
+  expect(v.gear).toBe(2); expect(v.rpm).toBe(3700); expect(v.load).toBe(1);
+  b.vehicleShiftTime = spec.drivetrain!.shiftCooldown; v.update(4, b, 1, false, spec, 16);
+  expect(v.load).toBe(.35);
+  b.vehicleShiftTime = .1; v.update(4, b, 1, false, spec, 16);
+  expect(v.load).toBe(1); expect(v.redline).toBe(spec.drivetrain!.redlineRpm);
   v.update(4, b, -1, false, spec, 16);
   expect(v.brake).toBe(1);
-  b.vz = -3; v.update(4, b, -1, false, spec, 16);
+  b.vehicleGear = 0; b.vehicleRpm = 850; v.update(4, b, 0, false, spec, 16);
+  expect(v.gear).toBe(0); expect(v.rpm).toBe(850);
+  b.vehicleGear = -1; b.vz = -3; v.update(4, b, -1, false, spec, 16);
   expect(v.gear).toBe(-1); expect(v.brake).toBe(0);
   b.vx = 4; b.vz = 10; v.update(4, b, 1, true, spec, 16);
   expect(v.slip).toBeGreaterThan(.5);

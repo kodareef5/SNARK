@@ -4,11 +4,10 @@ import { TAU, clamp } from "../math/scalar.ts";
 import type { CollisionWorld } from "../world/collide.ts";
 import { StaticVehicleWorld } from "../world/vehicle.ts";
 import { BTN_JUMP, MODE_NONE, MODE_WALK, type Body, stepOut } from "./character.ts";
-import { stepVehicle, type VehicleDefinition, type VehicleState, type VehicleSurface } from "./vehicle.ts";
+import { stepVehicle, type VehicleDefinition, type VehicleState } from "./vehicle.ts";
 
-const OFFROAD: VehicleSurface = { id: "ground", grip: 5.5, rolling: 0.45, drag: 0.012 };
 const worlds = new WeakMap<CollisionWorld, StaticVehicleWorld>();
-const state: VehicleState = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0 };
+const state: VehicleState = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0 };
 
 /** Inputs use the same signed bytes as walking. Space is the handbrake; reverse first brakes. */
 export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, dt = TICK_DT): void {
@@ -16,7 +15,7 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   stepOut.landSpeed = 0;
   if (b.mode === MODE_NONE) { b.vx = b.vy = b.vz = 0; return; }
   let world = worlds.get(w);
-  if (!world) { world = new StaticVehicleWorld(w, () => OFFROAD); worlds.set(w, world); }
+  if (!world) { world = new StaticVehicleWorld(w); worlds.set(w, world); }
   state.x = b.x; state.y = b.y; state.z = b.z;
   state.vy = b.vy; state.grounded = b.grounded;
   state.yawRate = b.vehicleYawRate;
@@ -27,6 +26,7 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   state.rideOffset = b.vehicleRideOffset;
   state.rideVelocity = b.vehicleRideVelocity;
 
+  state.gear = b.vehicleGear; state.engineRpm = b.vehicleRpm; state.shiftTime = b.vehicleShiftTime; state.payloadMass = b.vehiclePayloadMass;
   state.yaw = b.vehicle ? b.vehicleYaw : b.yaw * TAU / 65536;
   state.pitch = b.vehiclePitch; state.roll = b.vehicleRoll;
   state.vx = b.vx; state.vz = b.vz; state.steering = b.steering;
@@ -38,6 +38,7 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
   b.vx = Math.fround(state.vx); b.vy = Math.fround(state.vy); b.vz = Math.fround(state.vz);
   b.vehicleYaw = Math.fround(state.yaw); b.vehiclePitch = Math.fround(state.pitch); b.vehicleRoll = Math.fround(state.roll);
   b.steering = Math.fround(state.steering); b.wheelAngle = Math.fround(state.wheelAngle); b.fuel = Math.fround(state.fuel);
+  b.vehicleGear = state.gear; b.vehicleRpm = Math.fround(state.engineRpm); b.vehicleShiftTime = Math.fround(state.shiftTime); b.vehiclePayloadMass = Math.fround(state.payloadMass);
   b.vehicleYawRate = Math.fround(state.yawRate);
   b.vehiclePitchRate = Math.fround(state.pitchRate);
   b.vehicleRollRate = Math.fround(state.rollRate);
@@ -71,3 +72,11 @@ export const vehicleRideGrounded = (n: number): boolean => (n & 0x40000000) !== 
 export const packVehicleDoors = (left: number, right: number): number => Math.round(clamp(left, 0, 1) * 255) | (Math.round(clamp(right, 0, 1) * 255) << 8);
 export const unpackVehicleDoorLeft = (n: number): number => (n & 255) / 255;
 export const unpackVehicleDoorRight = (n: number): number => (n >>> 8) / 255;
+
+/** Observer engine state is presentation data; the driver's prediction receives the full mechanical Body. */
+export function packVehicleDrive(gear: number, rpm: number, shifting: boolean): number {
+  return ((Math.round(clamp(gear, -1, 12)) + 1) | (Math.round(clamp(rpm, 0, 32767)) << 4) | (shifting ? 1 << 19 : 0)) >>> 0;
+}
+export const unpackVehicleGear = (n: number): number => (n & 15) - 1;
+export const unpackVehicleRpm = (n: number): number => (n >>> 4) & 32767;
+export const vehicleShifting = (n: number): boolean => (n & (1 << 19)) !== 0;

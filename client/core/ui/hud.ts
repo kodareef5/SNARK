@@ -93,8 +93,8 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     const v = m.vehicle, width = 212, x = W - MARGIN - width, y = mapY + MINIMAP_SIZE + 28;
     f.add(KEY_VEHICLE, K_PANEL, x, y, width, 104, S_FRAME).alpha = .9;
     f.text(KEY_VEHICLE + 1, x + 10, y + 7, 132, S_TITLE, `${Math.round(v.speed * 3.6).toString().padStart(3, "0")} km/h`);
-    f.text(KEY_VEHICLE + 2, x + 158, y + 8, 44, S_TITLE, v.gear < 0 ? "R" : `D${v.gear}`);
-    f.add(KEY_VEHICLE + 3, K_BAR, x + 10, y + 34, width - 20, 4, S_STAMINA).value = Math.min(1, v.rpm / 6200);
+    f.text(KEY_VEHICLE + 2, x + 158, y + 8, 44, S_TITLE, v.gear < 0 ? "R" : v.gear === 0 ? "N" : `D${v.gear}`);
+    f.add(KEY_VEHICLE + 3, K_BAR, x + 10, y + 34, width - 20, 4, S_STAMINA).value = Math.min(1, v.rpm / v.redline);
     f.text(KEY_VEHICLE + 4, x + 10, y + 42, 100, S_LABEL, `${Math.round(v.rpm / 100) * 100} rpm`);
     f.text(KEY_VEHICLE + 5, x + 118, y + 42, 84, S_LABEL, `Fuel ${Math.round(v.fuel * 100)}%`);
     f.text(KEY_VEHICLE + 6, x + 10, y + 63, width - 20, S_LABEL, v.handbrake ? "HANDBRAKE" : v.brake > 0 ? "BRAKING" : "W/S drive · A/D steer");

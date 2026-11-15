@@ -5,7 +5,7 @@ export interface VehicleSoundTargets { firing: number; engine: number; intake: n
 const unit = (n: number): number => Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0;
 
 export function vehicleSoundTargets(v: Readonly<VehicleTelemetry>): VehicleSoundTargets {
-  const rpm = Number.isFinite(v.rpm) ? Math.max(0, Math.min(6500, v.rpm)) : 0;
+  const rpm = Number.isFinite(v.rpm) ? Math.max(0, Math.min(16000, v.rpm)) : 0;
   const running = v.active && v.fuel > 0 && rpm > 0;
   const load = unit(v.load), tire = v.active && v.grounded ? unit(v.slip) : 0;
   return { firing: Math.max(20, rpm / 30), engine: running ? .22 + load * .2 : 0, intake: running ? .012 + load * .065 : 0, filter: 380 + rpm * .17 + load * 600, tire: tire * tire * .14, tireHz: 650 + tire * 430 };

@@ -5,14 +5,20 @@ import type { VehicleDefinition, VehicleSpec, VehicleSurface } from "../../share
 export const COMPACT: VehicleSpec = {
   halfWidth: 0.9, halfLength: 2, height: 1.5, clearance: 0.12,
   wheelbase: 2.5, track: 1.56, wheelRadius: 0.3,
-  acceleration: 8, brake: 13, maxForward: 34, maxReverse: 6,
+  acceleration: 8, brake: 13, maxForward: 34, maxReverse: 6, mass: 1100,
+  drivetrain: {
+    torqueCurve: [[850, 180], [1800, 280], [3200, 310], [4800, 300], [6200, 270], [6800, 210]],
+    idleRpm: 850, redlineRpm: 6800, launchRpm: 2100, rpmResponse: 12000,
+    forwardRatios: [3.2, 2.12, 1.55, 1.17, 0.92], reverseRatio: 3.05, finalDrive: 3.9, efficiency: 0.9,
+    upshiftRpm: 5800, downshiftRpm: 2050, shiftDuration: 0.16, shiftCooldown: 0.65, engineBrakeNm: 24,
+  },
   maxSteer: 0.55, steerRate: 2.4, maxRise: 0.25, maxDrop: 0.4,
   minGroundNormal: 0.85, fuelCapacity: 40, fuelPerSecond: 0.003,
   // A responsive road coupe: stable rear tires, progressive steering and a short recoverable handbrake flick.
   frontGrip: 1.2, rearGrip: 1.25, corneringStiffness: 8.5,
   yawInertia: 1.35, yawDamping: 1.1, steerSpeed: 22, handbrakeGrip: 0.23,
   suspensionFrequency: 10, suspensionDamping: 0.9, suspensionTravel: 0.19,
-  pitchResponse: 0.0095, rollResponse: 0.014, gravity: 18, airDrag: 0.035, dragScale: 0.5,
+  pitchResponse: 0.0095, rollResponse: 0.014, gravity: 18, airDrag: 0.035, dragScale: 0.25,
 };
 
 export const ASPHALT: VehicleSurface = { id: "urban:asphalt", grip: 7, rolling: 0.15, drag: 0.009 };

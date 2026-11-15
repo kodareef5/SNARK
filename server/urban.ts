@@ -17,6 +17,8 @@ import { vehiclePoint, vehicleRotation } from '../shared/sim/vehicle-frame.ts';
 import type { VehicleDefinition, VehicleState } from '../shared/sim/vehicle.ts';
 import { capsuleFree, groundUnder } from '../shared/world/collide.ts';
 import type { Connection } from '../shared/net/transport.ts';
+import type { Items } from './items.ts';
+import type { VehicleContacts } from './vehicle-contacts.ts';
 import type { Creatures } from './creatures.ts';
 import type { Client, GameServer } from './game.ts';
 import { Occupancy, type OccupancyAction, type OccupancyApproval, type OccupancyEffect } from './occupancy.ts';
@@ -27,6 +29,7 @@ interface UrbanContext {
   world: ServerWorld;
   game: GameServer;
   records: Records;
+  items: Items;
   creatures: Creatures;
   rigs: readonly PackRig[];
   refresh(rec: EntityRecord): void;
@@ -38,11 +41,12 @@ export interface UrbanIncident { action: number; tick: number; offender: number;
 const ACTION_TICKS = 18;
 /** Namespaced extension, preserved by the normal record codec even in builds without vehicles. */
 const VEHICLE_COMPONENT = 0x757262;
-const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz"] as const;
+const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
 const PLAIN = defaultLook();
 
 export class Urban {
   readonly occupancy: Occupancy;
+  contacts: VehicleContacts | null = null;
   /** Bounded live incident feed; production save components are a separate follow-up. */
   readonly incidents: UrbanIncident[] = [];
   private readonly ctx: UrbanContext;
@@ -89,16 +93,17 @@ export class Urban {
       this.body.vehicleYaw = this.body.yaw * TAU / 65536;
       this.body.vehiclePitch = this.body.vehicleRoll = this.body.steering = this.body.wheelAngle = 0;
       this.body.fuel = definition.spec.fuelCapacity;
+      this.body.vehicleRpm = definition.spec.drivetrain?.idleRpm ?? 0;
       const saved = this.ctx.records.byPid.get(pid)?.extra.get(VEHICLE_COMPONENT);
       if (saved) {
-        const count = saved[0] === 1 ? 6 : saved[0] === 2 ? 13 : saved[0] === 3 ? VEHICLE_FIELDS.length : 0;
-        if (!count || saved.length !== 1 + count * 4 + (saved[0] === 3 ? 1 : 0)) throw new Error('Unsupported saved vehicle component');
+        const count = saved[0] === 1 ? 6 : saved[0] === 2 ? 13 : saved[0] === 3 ? 16 : saved[0] === 4 ? VEHICLE_FIELDS.length : 0;
+        if (!count || saved.length !== 1 + count * 4 + (saved[0]! >= 3 ? 1 : 0)) throw new Error('Unsupported saved vehicle component');
         const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
         const values = Array.from({ length: count }, (_, i) => view.getFloat32(1 + i * 4, true));
         if (!values.every(Number.isFinite) || values[5]! < 0 || values[5]! > definition.spec.fuelCapacity) throw new Error('Invalid saved vehicle state');
         for (let i = 0; i < count; i++) this.body[VEHICLE_FIELDS[i]!] = values[i]!;
         if (saved[0] === 1) { this.body.vehicleGroundPitch = this.body.vehiclePitch; this.body.vehicleGroundRoll = this.body.vehicleRoll; }
-        if (saved[0] === 3) {
+        if (saved[0]! >= 3) {
           const grounded = saved[saved.length - 1]!;
           if (grounded > 1) throw new Error('Invalid saved vehicle contact state');
           this.body.grounded = grounded === 1;
@@ -106,13 +111,40 @@ export class Urban {
           // Earlier components stored a parked pose without translational velocity.
           this.body.vehicleYawRate = this.body.vehiclePitchRate = this.body.vehicleRollRate = this.body.vehicleRideVelocity = 0;
         }
+        if (saved[0] === 4 && (!Number.isInteger(this.body.vehicleGear) || this.body.vehicleGear < -1 || this.body.vehicleGear > (definition.spec.drivetrain?.forwardRatios.length ?? 12) || this.body.vehicleRpm < 0 || this.body.vehicleRpm > 32767 || this.body.vehicleShiftTime < 0 || this.body.vehicleShiftTime > 60 || this.body.vehiclePayloadMass < 0 || this.body.vehiclePayloadMass > 1e6)) throw new Error('Invalid saved drivetrain state');
         this.body.yaw = Math.round(this.body.vehicleYaw * 65536 / TAU) & 65535;
       }
       ents.storeBody(e, this.body);
     }
+    ents.vehiclePayloadMass[e] = Math.fround(this.payloadMass(e));
     world.history.track(e);
     this.save(e);
     return true;
+  }
+
+  /** Curb mass is content; cargo and the mass/possessions of every committed occupant are authority data. */
+  payloadMass(e: number): number {
+    const { world, records, items } = this.ctx, ents = world.ents;
+    const pid = ents.pid[e]!, rec = records.byPid.get(pid), host = this.hosts.get(pid);
+    let mass = rec?.inv ? items.inv(rec).weight(items.table) : 0;
+    if (host) for (const seat of host.definition.seats) {
+      const actor = this.occupancy.occupant(pid, seat.id), ae = this.entity(actor), occupant = records.byPid.get(actor);
+      if (!occupant || ae < 0 || makeHandle(ae, ents.gen[ae]!) !== this.occupancy.occupantHandle(pid, seat.id)) continue;
+      mass += world.reg.mass[occupant.kind]! || 80;
+      if (occupant.inv) mass += items.inv(occupant).weight(items.table);
+    }
+    return Math.max(0, Math.min(1e6, mass));
+  }
+
+  /** A server contact may move the chassis after creature motion; publish the same final frame for every occupant. */
+  syncAfterContact(e: number): void {
+    const { world } = this.ctx, ents = world.ents, host = this.hosts.get(ents.pid[e]!);
+    if (!host || host.handle !== makeHandle(e, ents.gen[e]!)) return;
+    for (const seat of host.definition.seats) {
+      const pid = this.occupancy.occupant(ents.pid[e]!, seat.id), actor = this.entity(pid);
+      if (actor >= 0 && makeHandle(actor, ents.gen[actor]!) === this.occupancy.occupantHandle(ents.pid[e]!, seat.id)) this.pin(actor, e, seat.anchor, !!seat.driver);
+    }
+    ents.pose(e, world.tick); this.save(e);
   }
 
   riding(c: Client): boolean { return this.occupancy.seatOf(c.pid) !== null; }
@@ -181,6 +213,7 @@ export class Urban {
       if (c?.closed && this.occupancy.seatOf(pid) && !this.occupancy.pending(pid)) this.dismount(c);
     }
     for (const effect of this.occupancy.step(world.tick)) this.apply(effect);
+    for (const host of this.hosts.values()) if (makeHandle(host.entity, ents.gen[host.entity]!) === host.handle) this.contacts?.capture(host.entity);
     // A driver released by death/disconnect stops owning movement even if a seat is retained for a blocked exit.
     for (const c of game.clients) {
       if (!c || c.drive < 0 || !world.reg.vehicle[ents.kind[c.drive]!]) continue;
@@ -267,7 +300,7 @@ export class Urban {
   private state(e: number): VehicleState {
     const ents = this.ctx.world.ents;
     return { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!,
-      vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[e]!, pitchRate: ents.vehiclePitchRate[e]!, rollRate: ents.vehicleRollRate[e]!, groundPitch: ents.vehicleGroundPitch[e]!, groundRoll: ents.vehicleGroundRoll[e]!, rideOffset: ents.vehicleRideOffset[e]!, rideVelocity: ents.vehicleRideVelocity[e]!, steering: ents.steering[e]!, wheelAngle: ents.wheelAngle[e]!, fuel: ents.fuel[e]! };
+      vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[e]!, pitchRate: ents.vehiclePitchRate[e]!, rollRate: ents.vehicleRollRate[e]!, groundPitch: ents.vehicleGroundPitch[e]!, groundRoll: ents.vehicleGroundRoll[e]!, rideOffset: ents.vehicleRideOffset[e]!, rideVelocity: ents.vehicleRideVelocity[e]!, steering: ents.steering[e]!, wheelAngle: ents.wheelAngle[e]!, fuel: ents.fuel[e]!, gear: ents.vehicleGear[e]!, engineRpm: ents.vehicleRpm[e]!, shiftTime: ents.vehicleShiftTime[e]!, payloadMass: ents.vehiclePayloadMass[e]! };
   }
   private free(p: Point, actor: number, ignored: readonly number[], ignoredHost = 0): boolean {
     const { world } = this.ctx, ents = world.ents;
@@ -344,6 +377,8 @@ export class Urban {
       if (c) game.release(c);
       const e = this.entity(effect.actor);
       if (e >= 0 && makeHandle(e, ents.gen[e]!) === effect.actorHandle) { ents.setSeat(e, -1); ents.driven[e] = 0; }
+      const host = this.hosts.get(effect.host), rec = records.byPid.get(effect.host);
+      if (host && rec && host.handle === effect.hostHandle && makeHandle(host.entity, ents.gen[host.entity]!) === host.handle) this.ctx.refresh(rec);
       return;
     }
     const action = effect.action, host = this.hosts.get(action.host)!;
@@ -386,7 +421,7 @@ export class Urban {
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec) return;
     const bytes = new Uint8Array(2 + VEHICLE_FIELDS.length * 4), view = new DataView(bytes.buffer);
-    bytes[0] = 3;
+    bytes[0] = 4;
     const values = VEHICLE_FIELDS.map(field => ents[field][e]!);
     for (let i = 0; i < values.length; i++) view.setFloat32(1 + i * 4, values[i]!, true);
     bytes[bytes.length - 1] = (ents.flags[e]! & F_GROUNDED) !== 0 ? 1 : 0;

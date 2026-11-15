@@ -6,6 +6,7 @@ import { DEV_CONFIG, liveFileOf, startServer } from "../../server/main.ts";
 import { formatReport, loadConfigFolder } from "../../server/settings/config.ts";
 import { stopOnSignals } from "../../server/signals.ts";
 import type { Host } from "../../server/host.ts";
+import { seedUrbanRoads } from "./fixtures.ts";
 import { buildIntegratedAssets, bundleIntegratedClient, DEFAULT_CORE_DIST, INTEGRATED_DIST } from "./build-integrated.ts";
 
 /** Place a small development fixture in the real map, once per isolated save. Normal players/dinos/resources remain. */
@@ -43,7 +44,7 @@ if(import.meta.main){
   const dbPath=resolve(value("--db")??resolve(root,"var/urban-v1/world.db"));mkdirSync(dirname(dbPath),{recursive:true});
   const live=liveFileOf(folder),map=value("--map");
   const server=startServer({dev:true,hostname:value("--host")??"127.0.0.1",port:Number(value("--port")??process.env.PORT??8787),clientDir:INTEGRATED_DIST,dbPath,config:rules,...(live?{live}:{}),...(map?{map:resolve(map)}:{})});
-  try{seedUrbanVehicles(server.host);}catch(error){server.stop();throw error;}
+  try{seedUrbanVehicles(server.host);const roads=seedUrbanRoads(server.host);if(roads)console.log(`Added ${roads} native paving pieces southeast of spawn: asphalt, gravel, mud.`);}catch(error){server.stop();throw error;}
   stopOnSignals(()=>server.stop());
   console.log(`SNARK with compact vehicles: http://localhost:${server.port}`);
   console.log(`Existing game UI/world and core art; isolated save: ${dbPath}`);

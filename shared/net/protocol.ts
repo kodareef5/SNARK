@@ -37,7 +37,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 14;
+export const PROTOCOL_VERSION = 15;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -463,6 +463,10 @@ export function writeBody(w: BitWriter, b: Body): void {
     w.f32(b.vehicleGroundRoll);
     w.f32(b.vehicleRideOffset);
     w.f32(b.vehicleRideVelocity);
+    w.u8(b.vehicleGear + 1);
+    w.f32(b.vehicleRpm);
+    w.f32(b.vehicleShiftTime);
+    w.f32(b.vehiclePayloadMass);
 
   }
   w.varint(b.seat);
@@ -505,6 +509,10 @@ export function readBody(r: BitReader, b: Body): void {
   b.vehicleGroundRoll = b.vehicle ? r.f32() : 0;
   b.vehicleRideOffset = b.vehicle ? r.f32() : 0;
   b.vehicleRideVelocity = b.vehicle ? r.f32() : 0;
+  b.vehicleGear = b.vehicle ? r.u8() - 1 : 0;
+  b.vehicleRpm = b.vehicle ? r.f32() : 0;
+  b.vehicleShiftTime = b.vehicle ? r.f32() : 0;
+  b.vehiclePayloadMass = b.vehicle ? r.f32() : 0;
 
   b.seat = r.varint();
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;

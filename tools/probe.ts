@@ -63,10 +63,10 @@ async function pageTarget(): Promise<string | null> {
   const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json() as { type: string; webSocketDebuggerUrl: string }[];
   return targets.find(t => t.type === "page")?.webSocketDebuggerUrl ?? null;
 }
-async function pageCommand(target: string, method: string, params: object = {}): Promise<any> {
+async function pageCommand(target: string, method: string, params: object = {}, timeoutMs = 5000): Promise<any> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(target);
-    const timer = setTimeout(() => { ws.close(); reject(new Error(`${method} timeout`)); }, 5000);
+    const timer = setTimeout(() => { ws.close(); reject(new Error(`${method} timeout`)); }, timeoutMs);
     ws.onopen = () => ws.send(JSON.stringify({ id: 1, method, params }));
     ws.onmessage = event => {
       const reply = JSON.parse(String(event.data));
@@ -79,6 +79,24 @@ async function pageCommand(target: string, method: string, params: object = {}):
 }
 // A real browser input event unlocks audio; the application must never manufacture its own gesture.
 let finished = false;
+// Preserve progress even when expensive shader compilation or a stalled main thread prevents the final report.
+// This observes the real page. It changes no graphics settings, controls, deadlines or pass criteria.
+const progress: unknown[] = [];
+const observing = integrated ? (async () => {
+  while (!finished) {
+    await Bun.sleep(2000);
+    if (finished) break;
+    try {
+      const target = await pageTarget();
+      if (!target) { progress.push({ at: Date.now(), stage: "no-page" }); continue; }
+      const reply = await pageCommand(target, "Runtime.evaluate", {
+        returnByValue: true,
+        expression: `({at:performance.now(),ready:document.readyState,title:document.title,body:document.querySelector('#ui')?.textContent?.slice(0,500),game:globalThis.snarkProbe?.()??null,resources:performance.getEntriesByType('resource').slice(-16).map(r=>({name:r.name.split('/').pop(),duration:r.duration,bytes:r.transferSize}))})`,
+      }, 2000);
+      progress.push(reply.exceptionDetails ? { error: reply.exceptionDetails } : reply.result.value);
+    } catch (error) { progress.push({ at: Date.now(), error: String(error) }); }
+  }
+})() : Promise.resolve();
 const gesture = drive ? (async () => {
   for (let tries = 0; tries < 24 && !finished; tries++) {
     await Bun.sleep(500);
@@ -93,6 +111,7 @@ const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
 const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean } | null;
 finished = true;
 await gesture;
+await observing;
 let second: { ok?: boolean } | null | undefined;
 if (report && process.argv.includes("--voice")) {
   // The first page keeps talking. A second page with its own profile joins and must hear it.
@@ -104,11 +123,15 @@ if (report && process.argv.includes("--voice")) {
   rmSync(profile2, { recursive: true, force: true });
 }
 if (integrated) {
+  const dir = join(import.meta.dir, "../artifacts/urban-integrated"); mkdirSync(dir, { recursive: true });
+  const name = `${drive ? "driving" : "probe"}-${integratedTier}`;
+  // Write evidence before a screenshot request, which can itself time out behind a busy renderer.
+  writeFileSync(join(dir, `${name}-diagnostics.json`), JSON.stringify({ url, report, progress }, null, 2) + "\n");
+  writeFileSync(join(dir, `${name}-chrome.log`), readFileSync(join(profile, "chrome.log")));
   try {
     const target = await pageTarget();
     if (!target) throw new Error("native probe has no browser target");
     const screenshot = await pageCommand(target, "Page.captureScreenshot", { format: "png" });
-    const dir = join(import.meta.dir, "../artifacts/urban-integrated"); mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, drive ? "driving.png" : "browser.png"), Buffer.from(screenshot.data, "base64"));
     writeFileSync(join(dir, drive ? "driving.json" : "probe.json"), JSON.stringify(report, null, 2) + "\n");
   } catch (error) { console.error("integrated screenshot:", error); }

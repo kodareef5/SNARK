@@ -5,7 +5,7 @@ import { readBody, writeBody } from "../../shared/net/protocol.ts";
 import { EntityView, SentView, readViewDelta, writeViewDelta } from "../../shared/net/view.ts";
 import { Body, BTN_JUMP } from "../../shared/sim/character.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
-import { packVehiclePose, packVehicleRide, packVehicleDoors, quantVehicleWheel, stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering } from "../../shared/sim/vehicle-body.ts";
+import { packVehiclePose, packVehicleRide, packVehicleDoors, packVehicleDrive, quantVehicleWheel, stepVehicleBody, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering } from "../../shared/sim/vehicle-body.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
 test("a vehicle restores through the real Body wire and replays exactly from a mid-turn snapshot", () => {
@@ -14,6 +14,7 @@ test("a vehicle restores through the real Body wire and replays exactly from a m
   const kind = world.kind("urban:compact");
   authority.kind = kind; authority.x = 40; authority.z = 40;
   authority.vehicle = true; authority.fuel = COMPACT_VEHICLE.spec.fuelCapacity;
+  authority.vehiclePayloadMass = 380;
   const store = new EntityStore(world.dims, 4);
   const e = store.create(kind, 40, 0, 40, 0);
   const w = new BitWriter(128), r = new BitReader();
@@ -78,18 +79,31 @@ test("vehicle-only visual changes travel in entity deltas and preserve the occup
   r.reset(w.bytes()); expect(readViewDelta(r, updated, shown)).toBe(true);
   expect(shown.vehicleRide[0]).toBe(cur.vehicleRide[0]!);
   expect(shown.vehicleDoors[0]).toBe(cur.vehicleDoors[0]!);
+  // Engine-only changes must survive a delta, including RPM above the former 14-bit ceiling.
+  cur.vehicleDrive[0] = packVehicleDrive(3, 30000, true);
+  const geared = new SentView(), engine = new EntityView(); w.reset();
+  writeViewDelta(w, suspended, cur, geared, 8192, 0, store);
+  r.reset(w.bytes()); expect(readViewDelta(r, shown, engine)).toBe(true);
+  expect(unpackVehicleGear(engine.vehicleDrive[0]!)).toBe(3);
+  expect(unpackVehicleRpm(engine.vehicleDrive[0]!)).toBe(30000);
+  expect(vehicleShifting(engine.vehicleDrive[0]!)).toBe(true);
+  expect(engine.vehicleRide[0]).toBe(shown.vehicleRide[0]!);
 });
 
 test("growing and recycling entity slots cannot retain a vehicle's fuel or seat claim", () => {
   const store = new EntityStore({ chunksX: 2, chunksZ: 2 }, 2, 4);
   const a = store.create(1, 10, 0, 10, 0), b = store.create(2, 10, 0, 10, 0);
   store.vehicle[a] = 1; store.fuel[a] = 17; store.vehicleRoll[a] = 0.25;
+  store.vehicleGear[a] = 3; store.vehicleRpm[a] = 4300;
+  store.vehicleShiftTime[a] = .5; store.vehiclePayloadMass[a] = 380;
   store.setSeat(b, a, 2);
   store.create(1, 12, 0, 10, 0);
   expect(store.fuel[a]).toBe(17); expect(store.seatGen[b]).toBe(store.gen[a]!);
+  expect([store.vehicleGear[a], store.vehicleRpm[a], store.vehicleShiftTime[a], store.vehiclePayloadMass[a]]).toEqual([3, 4300, .5, 380]);
   store.create(1, 14, 0, 10, 0); store.destroy(a);
   const recycled = store.create(2, 16, 0, 10, 0);
   expect(recycled).toBe(a);
   expect([store.vehicle[a], store.fuel[a], store.vehicleRoll[a], store.seatSlot[a], store.seatGen[a]]).toEqual([0, 0, 0, 0, 0]);
+  expect([store.vehicleGear[a], store.vehicleRpm[a], store.vehicleShiftTime[a], store.vehiclePayloadMass[a]]).toEqual([0, 0, 0, 0]);
   expect(store.seatGen[b]).not.toBe(store.gen[a]!);
 });

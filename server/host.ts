@@ -15,6 +15,7 @@ import { Fixtures } from "./fixtures.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Urban } from "./urban.ts";
+import { VehicleContacts } from "./vehicle-contacts.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
 import { Carry } from "./carry.ts";
 import { Corpses, DEADLINE_CORPSE } from "./corpses.ts";
@@ -428,7 +429,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
   const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
-  const urban = new Urban({ world, game, records, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec) });
+  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec) });
+  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e) });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
   death.offMount = (c) => (urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
@@ -828,6 +830,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     combat.step();
     projectiles.step();
     creatures.step(tick);
+    for (const e of urban.contacts!.step()) urban.syncAfterContact(e);
     spawner?.step(tick);
     build.step();
     taming.step();
@@ -983,12 +986,13 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const rider = urban.riderOf(e) ?? riding.riderOf(e);
     const arms = carry.heldBy(rec.pid);
     const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0) + (arms >= 0 ? carry.load(rec) : 0);
+    if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[e] = Math.fround(urban.payloadMass(e));
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
     // Changing a rider's pack also changes the mount's load.
     const seat = world.ents.seat[e]! - 1;
-    const mount = seat >= 0 && riding.riderOf(seat) === rec ? records.byPid.get(world.ents.pid[seat]!) : undefined;
+    const mount = seat >= 0 && (riding.riderOf(seat) === rec || urban.occupancy.seatOf(rec.pid)?.host === world.ents.pid[seat]) ? records.byPid.get(world.ents.pid[seat]!) : undefined;
     if (mount && mount !== rec) refreshBody(mount);
     // A young creature carries a share of a grown one's capacity, so its load is scaled up.
     const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));

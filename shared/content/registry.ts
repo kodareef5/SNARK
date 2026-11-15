@@ -1,6 +1,7 @@
 // Dense indices are assigned in id order, so every process that loads the same definitions gets the same indices and hash.
 // Index 0 is reserved. It marks an empty structure slot and stands in for content that no longer exists.
 
+import { validVehicleSurface } from "../world/vehicle-surface.ts";
 import { validateVehicleSpec, type VehicleDefinition } from "../sim/vehicle.ts";
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
@@ -381,6 +382,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
       if (d.damage !== undefined && !DAMAGE_TYPES.includes(d.damage)) errors.push(`${d.id}: damage must name a kind of damage`);
     } else if (d.type === "structure") {
+      if (d.vehicleSurface !== undefined && !validVehicleSurface(d.vehicleSurface)) errors.push(`${d.id}: invalid vehicleSurface grip/resistance`);
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
       positive(d, "half[2]", d.half[2], MAX_STRUCTURE_HALF);
@@ -683,7 +685,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     return d?.type === "structure" && d.shape !== undefined ? (shapes.get(d.shape)!.hulls ?? []) : [];
   };
   const anyHull = defs.some((_, k) => hullsOf(k).length > 0);
-  const parts: PartTable = { start: partStart, box: Float32Array.from(partBox), ...(anyHull ? { hulls: hullTable(n, hullsOf) } : {}) };
+  const parts: PartTable = { vehicleSurface: defs.map(d => d?.type === "structure" && d.vehicleSurface ? Object.freeze({ ...d.vehicleSurface }) : null), start: partStart, box: Float32Array.from(partBox), ...(anyHull ? { hulls: hullTable(n, hullsOf) } : {}) };
   // A second pass resolves references, now that every definition has its index.
   for (let i = 1; i < n; i++) {
     const d = defs[i]!;

@@ -24,6 +24,7 @@ import { VoiceIo } from "../voice/voice.ts";
 import { UiView } from "./ui.ts";
 import { VehicleAudio } from "./vehicle-audio.ts";
 import { VehicleSelfcheck } from "../core/vehicle-selfcheck.ts";
+import { probeProgress } from "../core/diagnostics.ts";
 
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
@@ -66,6 +67,7 @@ async function boot(): Promise<void> {
     nodes: (ground, content) => mapNodes(map, ground, content),
   });
   const app = new App(session, reg, pack, { manifest, port });
+  session.prediction.enabled = selfcheck;
   app.stress = params.has("stress");
   app.debug = app.stress || params.has("debug");
   app.steer = driveCheck || !selfcheck && !device;
@@ -97,6 +99,7 @@ async function boot(): Promise<void> {
   let restored = 0;
   let keptBefore = 0;
   let still = 0;
+  if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames, still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive }) });
   canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
   canvas.addEventListener("webglcontextrestored", () => {
     renderer.init();
@@ -200,6 +203,7 @@ async function boot(): Promise<void> {
         frameMsMedian: times[times.length >> 1],
         snapshots: session.stats.snapshots,
         corrections: session.stats.corrections,
+        progress: selfcheck ? probeProgress(app) : undefined,
       };
       document.title = report.ok ? "SNARK self-check passed" : "SNARK self-check FAILED";
       void fetch("__selfcheck", { method: "POST", body: JSON.stringify(report) });

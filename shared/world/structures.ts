@@ -2,6 +2,7 @@
 // Each slot records the table version that last changed it, so a client is brought up to date by a scan, without an op log.
 
 import { CHUNK_SIZE, STRUCT_UNITS, chunkAt, chunkCount, type MapDims } from "../coords.ts";
+import type { VehicleSurface } from "../sim/vehicle.ts";
 import { hullPoint, type HullTable } from "./convex.ts";
 import { HALF_SIDE, STRETCH_MOST, frame, frameOf } from "./frame.ts";
 
@@ -11,6 +12,7 @@ export const GRID_CELL = 4;
  * `box`: its centre, measured from the structure's origin, then its half extents.
  */
 export interface PartTable {
+  readonly vehicleSurface?: readonly (VehicleSurface | null)[];
   readonly start: Uint32Array;
   readonly box: Float32Array;
   /** Convex parts, for kinds with sloped or three-sided forms. */

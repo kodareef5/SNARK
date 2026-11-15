@@ -7,6 +7,7 @@ import type { CollisionWorld } from "./collide.ts";
 import { frame, frameAxes, frameOf, HALF_SIDE, sixtyOf } from "./frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "./ray.ts";
 import { Found, type StructureStore } from "./structures.ts";
+import { vehicleSurfaceAt } from "./vehicle-surface.ts";
 
 export type VehicleSurfaceAt = (hit: number, ref: number, x: number, z: number) => VehicleSurface;
 interface Bounds { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
@@ -56,7 +57,7 @@ export class StaticVehicleWorld implements VehicleWorld {
   private readonly axes = new Int32Array(4);
   private readonly supportWorld: CollisionWorld;
 
-  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt) {
+  constructor(world: CollisionWorld, surfaceAt: VehicleSurfaceAt = (hit, ref) => vehicleSurfaceAt(world, hit, ref)) {
     this.world = world;
     this.surfaceAt = surfaceAt;
     // Resource nodes obstruct the chassis but are not road support. Soft vegetation never becomes an elevated road.

@@ -2,6 +2,7 @@
 // Occupancy grants control; this module does not grant ownership or spend inventory items.
 import { TICK_DT } from "../coords.ts";
 import { clamp, detAtan2, detCos, detSin, TAU } from "../math/scalar.ts";
+import { DEFAULT_DRIVETRAIN, stepDrivetrain, validateDrivetrainSpec, vehicleMass, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "./vehicle-drivetrain.ts";
 
 export interface VehicleSpec {
   readonly halfWidth: number;
@@ -11,7 +12,11 @@ export interface VehicleSpec {
   readonly wheelbase: number;
   readonly track: number;
   readonly wheelRadius: number;
+  /** Legacy nominal acceleration, used only by definitions without a drivetrain component. */
   readonly acceleration: number;
+  /** Curb mass in kilograms. Cargo and occupants live in VehicleState.payloadMass. */
+  readonly mass?: number;
+  readonly drivetrain?: VehicleDrivetrainSpec;
   readonly brake: number;
   readonly maxForward: number;
   readonly maxReverse: number;
@@ -69,7 +74,7 @@ export interface WheelContact {
   surface: VehicleSurface;
 }
 
-export interface VehicleState {
+export interface VehicleState extends VehicleDrivetrainState {
   x: number;
   y: number;
   z: number;
@@ -100,6 +105,8 @@ export interface VehicleInput {
   steer: number;
   brake: number;
   handbrake: boolean;
+  /** Disengages the transmission for coasting/free revving; an optional future input binding. */
+  neutral?: boolean;
 }
 
 export interface VehicleWorld {
@@ -116,9 +123,15 @@ export interface VehicleStep {
 }
 
 export function validateVehicleSpec(s: VehicleSpec): void {
+  if (!s || typeof s !== "object" || Array.isArray(s)) throw new Error("invalid vehicle specification");
+  for (const key of ["halfWidth", "halfLength", "height", "clearance", "wheelbase", "track", "wheelRadius", "acceleration", "brake", "maxForward", "maxReverse", "maxSteer", "steerRate", "maxRise", "maxDrop", "minGroundNormal", "fuelCapacity", "fuelPerSecond"] as const) {
+    if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid vehicle ${key}`);
+  }
   const zero = new Set(["yawDamping", "pitchResponse", "rollResponse", "airDrag", "dragScale"]);
-  for (const [key, value] of Object.entries(s)) if (value !== undefined &&
+  for (const [key, value] of Object.entries(s)) if (key !== "drivetrain" && value !== undefined &&
     (!Number.isFinite(value) || (zero.has(key) ? value < 0 : value <= 0))) throw new Error("invalid vehicle specification");
+  if (s.mass !== undefined && (s.mass < 50 || s.mass > 1000000)) throw new Error("invalid vehicle mass");
+  if (s.drivetrain !== undefined) validateDrivetrainSpec(s.drivetrain);
   if (s.clearance >= s.height || s.track > 2 * s.halfWidth || s.wheelbase > 2 * s.halfLength || s.maxSteer >= 1.2 || s.minGroundNormal > 1 ||
     (s.handbrakeGrip ?? 0.18) > 1 || (s.suspensionDamping ?? 0.85) > 2 || (s.suspensionFrequency ?? 10) > 24 ||
     (s.suspensionTravel ?? 0.18) > 1) throw new Error("inconsistent vehicle geometry or steering limits");
@@ -129,7 +142,8 @@ export function createVehicle(s: VehicleSpec, x: number, y: number, z: number, y
   if (![x, y, z, yaw, fuel].every(Number.isFinite) || fuel < 0 || fuel > s.fuelCapacity) throw new Error("invalid vehicle state");
   return { x, y, z, yaw, pitch: 0, roll: 0, vx: 0, vy: 0, vz: 0, grounded: true,
     yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0,
-    rideOffset: 0, rideVelocity: 0, steering: 0, wheelAngle: 0, fuel };
+    rideOffset: 0, rideVelocity: 0, steering: 0, wheelAngle: 0, fuel,
+    gear: 0, engineRpm: fuel > 0 ? (s.drivetrain ?? DEFAULT_DRIVETRAIN).idleRpm : 0, shiftTime: 0, payloadMass: 0 };
 }
 
 function approach(n: number, target: number, by: number): number {
@@ -205,7 +219,8 @@ export function stepVehicle(s: VehicleState, input: VehicleInput, p: VehicleSpec
   const result: VehicleStep = { blocked: null, impactSpeed: 0, fuelUsed: 0, surface: "air" };
   const throttle = command(input.throttle, -1, 1), steer = command(input.steer, -1, 1), brake = command(input.brake, 0, 1);
   const dt = TICK_DT / 4, beforeFuel = s.fuel;
-  const frequency = p.suspensionFrequency ?? 10, damping = p.suspensionDamping ?? 0.85, travel = p.suspensionTravel ?? 0.18;
+  const drivetrain = p.drivetrain ?? DEFAULT_DRIVETRAIN, curbMass = p.mass ?? 1100, mass = vehicleMass(p, s), massRatio = curbMass / mass;
+  const frequency = (p.suspensionFrequency ?? 10) * Math.sqrt(massRatio), damping = p.suspensionDamping ?? 0.85, travel = p.suspensionTravel ?? 0.18;
   const gravity = p.gravity ?? 18, frontLever = p.wheelbase * 0.45, rearLever = p.wheelbase * 0.55;
   const inertia = (p.wheelbase * p.wheelbase + p.track * p.track) / 12 * (p.yawInertia ?? 1.2);
   for (let i = 0; i < 4; i++) {
@@ -222,24 +237,27 @@ export function stepVehicle(s: VehicleState, input: VehicleInput, p: VehicleSpec
     const forward = s.vx * sn + s.vz * cs, lateral = s.vx * cs - s.vz * sn;
     const speed = length2(s.vx, s.vz), steeringLimit = p.maxSteer / (1 + square(Math.abs(forward) / (p.steerSpeed ?? 18)));
     s.steering = approach(s.steering, steer * steeringLimit, p.steerRate * (steer === 0 ? 1.35 : 1) * dt);
+    const mechanical = stepDrivetrain(s, { throttle, forward, wheelRadius: p.wheelRadius, running: s.fuel > 0,
+      disengaged: brake > 0 || input.handbrake || !s.grounded, neutral: input.neutral === true }, drivetrain, dt);
+    // A running engine spends fuel while revving in neutral/air or during a gear change too.
+    const demand = s.fuel > 0 ? Math.abs(throttle) * p.fuelPerSecond * dt : 0;
+    const spent = Math.min(s.fuel, demand); s.fuel -= spent;
     let longitudinal = 0, sideways = 0;
     if (s.grounded && ground) {
       result.surface = ground.front.grip <= ground.rear.grip ? ground.front.id : ground.rear.id;
       const grip = (ground.front.grip * (p.frontGrip ?? 1.08) + ground.rear.grip * (p.rearGrip ?? 1.05)) / 2;
       const rolling = (ground.front.rolling + ground.rear.rolling) / 2;
       const drag = (ground.front.drag + ground.rear.drag) / 2 * (p.dragScale ?? 1);
-      const opposing = throttle * forward < -0.12;
-      const powered = s.fuel > 0 && brake === 0 && !opposing && !input.handbrake;
-      const demand = powered ? Math.abs(throttle) * p.fuelPerSecond * dt : 0;
-      const spent = Math.min(s.fuel, demand); s.fuel -= spent;
-      const limit = throttle >= 0 ? p.maxForward : p.maxReverse;
-      const fraction = clamp(Math.abs(forward) / limit, 0, 1);
-      const resistance = rolling + drag * forward * forward;
-      const torque = p.acceleration * (throttle < 0 ? 0.65 : 1) * (1 - fraction * fraction) + resistance * fraction;
-      let drive = demand > 0 ? throttle * torque * spent / demand : 0;
+      const resistance = rolling + drag * forward * forward * massRatio + mechanical.engineDrag / mass;
+      const legacyScale = p.drivetrain ? 1 : p.acceleration / 8;
+      let drive = demand > 0 ? mechanical.drive / mass * legacyScale * spent / demand : 0;
       drive = clamp(drive, -grip * 0.95, grip * 0.95);
+      // A speed governor only removes available torque; it never invents thrust to cancel drag.
+      // Overspeed still coasts down, and axle friction sees the reduced force actually transmitted.
+      if (drive > 0) drive = Math.min(drive, Math.max(0, resistance + (p.maxForward - forward) / dt));
+      else if (drive < 0) drive = Math.max(drive, Math.min(0, -resistance + (-p.maxReverse - forward) / dt));
       const pedal = brake * (0.25 + 0.75 * brake);
-      const braking = Math.min(grip * 1.5, p.brake * Math.max(pedal, opposing ? Math.abs(throttle) : 0, input.handbrake ? 0.55 : 0));
+      const braking = Math.min(grip * 1.5, p.brake * massRatio * Math.max(pedal, mechanical.opposingBrake, input.handbrake ? 0.55 : 0));
       // Brake and rolling forces stop at zero; no oscillating backwards creep at rest.
       const slowed = approach(forward, 0, (braking + resistance) * dt);
       longitudinal = drive + (slowed - forward) / dt;

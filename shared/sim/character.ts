@@ -141,6 +141,10 @@ export class Body {
   vehicle = false;
   vehicleYaw = 0;
   vehicleYawRate = 0;
+  vehicleGear = 0;
+  vehicleRpm = 0;
+  vehicleShiftTime = 0;
+  vehiclePayloadMass = 0;
   vehiclePitchRate = 0;
   vehicleRollRate = 0;
   vehicleGroundPitch = 0;
@@ -187,6 +191,10 @@ export class Body {
     this.vehicle = o.vehicle;
     this.vehicleYaw = o.vehicleYaw;
     this.vehicleYawRate = o.vehicleYawRate;
+    this.vehicleGear = o.vehicleGear;
+    this.vehicleRpm = o.vehicleRpm;
+    this.vehicleShiftTime = o.vehicleShiftTime;
+    this.vehiclePayloadMass = o.vehiclePayloadMass;
     this.vehiclePitchRate = o.vehiclePitchRate;
     this.vehicleRollRate = o.vehicleRollRate;
     this.vehicleGroundPitch = o.vehicleGroundPitch;
@@ -230,6 +238,10 @@ export class Body {
       this.vehicle === o.vehicle &&
       this.vehicleYaw === o.vehicleYaw &&
       this.vehicleYawRate === o.vehicleYawRate &&
+      this.vehicleGear === o.vehicleGear &&
+      this.vehicleRpm === o.vehicleRpm &&
+      this.vehicleShiftTime === o.vehicleShiftTime &&
+      this.vehiclePayloadMass === o.vehiclePayloadMass &&
       this.vehiclePitchRate === o.vehiclePitchRate &&
       this.vehicleRollRate === o.vehicleRollRate &&
       this.vehicleGroundPitch === o.vehicleGroundPitch &&

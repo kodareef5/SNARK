@@ -61,7 +61,9 @@ test('normal use/input/snapshot path drives a real vehicle with a real passenger
     expect(Number.isFinite(remote.vehiclePitch[seen]!)).toBe(true);
     expect(remote.wheelAngle[seen]).not.toBe(0);
     h.pilots[0]!.moveZ = 0; h.pilots[0]!.buttons = BTN_JUMP; h.pilots[1]!.moveZ = 0;
-    h.run(700); h.pilots[0]!.buttons = 0;
+    for (let waited = 0; waited < 3000 && Math.hypot(ents.vx[car]!, ents.vz[car]!) > .03; waited += 100) h.run(100);
+    expect(Math.hypot(ents.vx[car]!, ents.vz[car]!)).toBeLessThan(.03);
+    h.pilots[0]!.buttons = 0;
     use(h, 0, car);
     expect(me.drive).toBe(-1); expect(ents.seatSlot[me.ent]).toBe(0);
     expect(rec.team).toBe(owner); expect(h.host.items.inv(rec).total(item)).toBe(3);
@@ -145,11 +147,11 @@ test('the upgraded suspension loads the first playable build vehicle save withou
     expect(restored.world.ents.wheelAngle[e]).toBe(1.25);
     expect(restored.world.ents.vehicleGroundPitch[e]).toBe(Math.fround(.04));
     expect(restored.world.ents.vehicleYawRate[e]).toBe(0);
-    expect(restored.host.records.byPid.get(pid)!.extra.get(0x757262)![0]).toBe(3);
+    expect(restored.host.records.byPid.get(pid)!.extra.get(0x757262)![0]).toBe(4);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('a real SQLite restart retains airborne velocity and suspension together', () => {
+test('a real SQLite restart retains airborne velocity, suspension and transmission together', () => {
   const dir = mkdtempSync(join(tmpdir(), 'snark-urban-flight-')), dbPath = join(dir, 'world.db');
   let active: Harness | null = null;
   try {
@@ -158,8 +160,9 @@ test('a real SQLite restart retains airborne velocity and suspension together', 
     ents.loadBody(car, body);
     body.y += 8; body.vx = 3; body.vy = -4; body.vz = 6; body.grounded = false;
     body.vehicleYawRate = .12; body.vehiclePitchRate = .08; body.vehicleRollRate = -.03;
+    body.vehicleGear = 3; body.vehicleRpm = 4300; body.vehicleShiftTime = .6;
     ents.storeBody(car, body); h.run(100);
-    const fields = ['y', 'vx', 'vy', 'vz', 'vehicleYawRate', 'vehiclePitchRate', 'vehicleRollRate', 'vehicleRideOffset', 'vehicleRideVelocity'] as const;
+    const fields = ['y', 'vx', 'vy', 'vz', 'vehicleYawRate', 'vehiclePitchRate', 'vehicleRollRate', 'vehicleRideOffset', 'vehicleRideVelocity', 'vehicleGear', 'vehicleRpm', 'vehicleShiftTime'] as const;
     const expected = fields.map(field => ents[field][car]);
     expect(ents.flags[car]! & F_GROUNDED).toBe(0);
     h.host.shutdown(); active = null;
@@ -168,4 +171,24 @@ test('a real SQLite restart retains airborne velocity and suspension together', 
     expect(fields.map(field => restored.world.ents[field][e])).toEqual(expected);
     expect(restored.world.ents.flags[e]! & F_GROUNDED).toBe(0);
   } finally { active?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('vehicle payload follows cargo and every occupant, and a dead passenger releases its mass', () => {
+  const { h, car, me, x, z } = setup();
+  try {
+    h.say(h.sessions[1]!, `tp ${x - 4} ${z}`);
+    expect(h.host.urban.mount(me, car)).toBe(RESULT_OK); h.run(800);
+    const passenger = h.host.spawnCreature('urban:civilian', x - 1.25, z + .12, 1);
+    expect(h.host.urban.seatNpc(passenger, car, 'passenger')).toBe(RESULT_OK); h.run(800);
+    const ents = h.world.ents, cargo = h.host.records.byPid.get(ents.pid[car]!)!, rec = h.host.records.byPid.get(ents.pid[passenger]!)!;
+    const before = ents.vehiclePayloadMass[car]!, stone = h.reg.index.get('core:stone')!;
+    expect(before).toBeGreaterThanOrEqual(160);
+    h.host.items.mint(cargo, stone, 40); h.host.items.mint(rec, stone, 20); h.run(100);
+    expect(ents.vehiclePayloadMass[car]).toBeCloseTo(before + 30, 3);
+    const lost = (h.reg.mass[rec.kind]! || 80) + h.host.items.inv(rec).weight(h.host.items.table);
+    h.host.survival.hurt(rec, 10000, me.pid); h.run(100);
+    expect(h.host.records.entOf.has(rec.pid)).toBe(false);
+    expect(h.host.urban.occupancy.occupant(cargo.pid, 'passenger')).toBe(0);
+    expect(ents.vehiclePayloadMass[car]).toBeCloseTo(before + 30 - lost, 3);
+  } finally { h.host.shutdown(); }
 });

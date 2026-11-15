@@ -12,6 +12,7 @@ import { KNOCKOUT } from "./knockout.ts";
 import { MAPS } from "./maps.ts";
 import { RUIN_BLOCKS } from "./miami-ruins.ts";
 import { SPAWNS } from "./spawns.ts";
+import { ROADS } from "./urban/roads.ts";
 import { COMPACT_SPECIES } from "./urban/compact.ts";
 import { CIVILIAN } from "./urban/civilian.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
@@ -397,6 +398,7 @@ const ALL: readonly Def[] = [
   ...BUILDING_CONTENT,
   ...CREATURES,
   COMPACT_SPECIES,
+  ...ROADS,
   CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,
