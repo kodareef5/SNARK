@@ -657,8 +657,8 @@ export class ClientSession {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
     const buttons = inp.buttons[i]!;
-    // The body steps with the move parameters of the kind the server last sent: its own species or its mount's.
-    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.move[this.own.kind] ?? this.move!, TICK_DT);
+    // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
+    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];

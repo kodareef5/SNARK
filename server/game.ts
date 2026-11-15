@@ -362,8 +362,9 @@ export class GameServer {
   onReplicate: ((c: Client) => void) | null = null;
   /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
   allows: ((c: Client, op: number) => boolean) | null = null;
-  /** speed is in metres per second. */
+  /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
+  onMountLand: ((e: number, speed: number) => void) | null = null;
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -464,7 +465,8 @@ export class GameServer {
       const e = driving ? c.drive : c.ent;
       if (e >= 0) {
         ents.loadBody(e, b);
-        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[b.kind]!, TICK_DT);
+        // A survivor's tamed numbers are its own. A body that is driven is a tame's.
+        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
         if (!driving) {
           // Hits are resolved later, once every body has moved.
           stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
@@ -481,7 +483,10 @@ export class GameServer {
         ents.storeBody(e, b);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
-        if (!driving && stepOut.landSpeed > 0) this.onLand?.(c, stepOut.landSpeed);
+        if (stepOut.landSpeed > 0) {
+          if (driving) this.onMountLand?.(e, stepOut.landSpeed);
+          else this.onLand?.(c, stepOut.landSpeed);
+        }
       } else {
         b.kind = c.kind;
         stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[c.kind]!, TICK_DT);

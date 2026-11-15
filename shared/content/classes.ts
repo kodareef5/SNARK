@@ -219,6 +219,7 @@ const BUFF = {
   again: f("text"),
   health: f("number", "ValuesToAddPerSecond"),
   torpor: f("number", "ValuesToAddPerSecond"),
+  damage: f("text"),
   speed: f("number", "CharacterMultiplier"),
   dealt: f("number", "CharacterMultiplier"),
   taken: f("number", "CharacterMultiplier"),
@@ -410,7 +411,7 @@ row("prop/projectile", "prop", PROP, { parent: "prop", ark: "a projectile actor"
 row("prop/egg", "prop", PROP, { parent: "prop", ark: "a dropped fertilised egg", shelf: "props/eggs", must: PROP_BODY, may: ["size", "item"], slots: PROP_SLOTS, doc: "An egg where it was laid, until it hatches." });
 row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "stub", waits: "loot", shelf: "props/crates", must: PROP_BODY, may: ["slots"], slots: PROP_SLOTS, doc: "Comes down with loot and goes when it is emptied." });
 
-row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
+row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "damage", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
 
 row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
 row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });

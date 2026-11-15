@@ -3,10 +3,14 @@
 
 import { TICK_RATE } from "../shared/coords.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
+import { CUE_DEAD } from "../shared/anim/pose.ts";
+import { EVENT_TAMED, MAX_NAME_BYTES, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_STALE, S_EVENT, WHISTLE_RANGE } from "../shared/net/protocol.ts";
+import { STANCE_YOURS } from "./behavior.ts";
 import type { Creatures } from "./creatures.ts";
 import type { Progression } from "./progression.ts";
 import { Rng } from "../shared/rng.ts";
+import { stanceEye } from "../shared/sim/character.ts";
+import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { POINT_CAP, WILD_STATS } from "../shared/sim/genome.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { bonusLevels, effectiveness, harmCost, pieceCost, pieceWorth, tameNeeded } from "../shared/sim/taming.ts";
@@ -21,6 +25,7 @@ import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
 import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
+import { HIT_NONE, castWorld } from "../shared/world/ray.ts";
 
 export const DEADLINE_TAME = 7;
 
@@ -28,6 +33,8 @@ const TAME_ALLOW = event("tame.allow");
 const TAME_DONE = event("tame.done");
 const CREATURE_ORDER = event("creature.order");
 const NAME_SET = event("name.set");
+/** Metres. The furthest a survivor may set her creatures on what she looks at. Chosen: ARK's whistle reach is not published. */
+const ATTACK_REACH = 100;
 
 export interface TamingContext {
   readonly world: ServerWorld;
@@ -470,20 +477,28 @@ export class Taming {
     return RESULT_OK;
   }
 
-  /** Orders one creature of the session's tribe, or with ORDER_ALL every one within WHISTLE_RANGE. */
+  /**
+   * Orders one creature of the session's tribe, or with ORDER_ALL every one within WHISTLE_RANGE. ORDER_ATTACK carries the
+   * entity to go for, which must be alive, of no tribe of hers, within ATTACK_REACH and in her sight.
+   */
   order(c: Client, r: BitReader): number {
     const which = r.u32();
     const what = r.u8();
+    const target = what === ORDER_ATTACK ? r.u32() : 0;
     if (r.overflow) return RESULT_INVALID;
     const { world, records, tribes, creatures, progression } = this.ctx;
     const ents = world.ents;
     const me = records.byPid.get(c.pid);
     if (!me || c.ent < 0 || me.dead) return RESULT_DENIED;
-    const stance = what - ORDER_STANCE;
+    const stance = what === ORDER_YOURS ? STANCE_YOURS : what - ORDER_STANCE;
     const mate = what === ORDER_MATE || what === ORDER_UNMATE;
-    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && !mate && !(stance >= 0 && stance < 3) && what < ORDER_LEVEL) return RESULT_INVALID;
+    if (what !== ORDER_STAY && what !== ORDER_FOLLOW && what !== ORDER_UNSADDLE && what !== ORDER_WANDER && what !== ORDER_ATTACK && !mate && !(what >= ORDER_STANCE && stance >= 0 && stance <= STANCE_YOURS) && what < ORDER_LEVEL) return RESULT_INVALID;
+    if (what === ORDER_ATTACK) {
+      const seen = this.mayAttack(c, me, target);
+      if (seen !== RESULT_OK) return seen;
+    }
     const obey = (e: number, rec: EntityRecord): number => {
-      const order = what === ORDER_STAY ? "stay" : what === ORDER_FOLLOW ? "follow" : what === ORDER_UNSADDLE ? "unsaddle" : what === ORDER_MATE ? "mate" : what === ORDER_UNMATE ? "unmate" : what >= ORDER_LEVEL ? "level" : "stance";
+      const order = what === ORDER_STAY ? "stay" : what === ORDER_FOLLOW ? "follow" : what === ORDER_WANDER ? "wander" : what === ORDER_ATTACK ? "attack" : what === ORDER_UNSADDLE ? "unsaddle" : what === ORDER_MATE ? "mate" : what === ORDER_UNMATE ? "unmate" : what >= ORDER_LEVEL ? "level" : "stance";
       const refused = this.ctx.game.bus.before(CREATURE_ORDER, { pid: rec.pid, byPid: me.pid, order });
       if (refused !== "") {
         this.ctx.onNotice?.(me.pid, refused);
@@ -501,7 +516,17 @@ export class Taming {
         if (done !== RESULT_OK) return done;
       } else if (what === ORDER_STAY || what === ORDER_FOLLOW) {
         rec.follow = what === ORDER_FOLLOW ? c.pid : 0;
+        rec.wander = false;
         creatures.mind.follow(e, what === ORDER_FOLLOW ? c.ent : -1);
+      } else if (what === ORDER_WANDER) {
+        rec.follow = 0;
+        rec.wander = true;
+        creatures.mind.wander(e);
+      } else if (what === ORDER_ATTACK) {
+        // A ridden creature goes where its rider takes it, and none goes for one of its own tribe or for itself.
+        if (ents.driven[e] !== 0) return RESULT_BUSY;
+        if (target === e || ents.team[target] === rec.team) return RESULT_INVALID;
+        creatures.mind.attack(e, target);
       } else if (what >= ORDER_LEVEL) {
         const done = progression.spend(rec, what - ORDER_LEVEL);
         if (done !== RESULT_OK) return done;
@@ -515,7 +540,7 @@ export class Taming {
       return RESULT_OK;
     };
     if (which === ORDER_ALL) {
-      // A whistle cannot give levels, take saddles off or order mating.
+      // A whistle cannot give levels, take saddles off or order mating. Each that hears obeys as it can.
       if (what >= ORDER_LEVEL || what === ORDER_UNSADDLE || mate) return RESULT_INVALID;
       for (const e of creatures.mind.owned) {
         const rec = records.byPid.get(ents.pid[e]!);
@@ -534,6 +559,23 @@ export class Taming {
     const dz = ents.z[e]! - ents.z[c.ent]!;
     if (dx * dx + dz * dz > WHISTLE_RANGE * WHISTLE_RANGE) return RESULT_FAR;
     return obey(e, rec);
+  }
+
+  /** Whether `me` may set her creatures on entity `target`: a live body of no tribe of hers, near enough and in her sight. */
+  private mayAttack(c: Client, me: EntityRecord, target: number): number {
+    const { world, tribes } = this.ctx;
+    const ents = world.ents;
+    if (target >= ents.cap || (ents.flags[target]! & (F_ALIVE | F_PROP)) !== F_ALIVE || (ents.cue[target]! & CUE_DEAD) !== 0 || target === c.ent) return RESULT_INVALID;
+    if (ents.team[target] !== 0 && tribes.may(me, ents.team[target]!)) return RESULT_INVALID;
+    const eye = ents.y[c.ent]! + stanceEye(world.reg.move[ents.kind[c.ent]!]!, ents.stance[c.ent]!);
+    const dx = ents.x[target]! - ents.x[c.ent]!;
+    const dy = ents.y[target]! + world.reg.bodyHeight[ents.kind[target]!]! * 0.55 - eye;
+    const dz = ents.z[target]! - ents.z[c.ent]!;
+    const far = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (far > ATTACK_REACH) return RESULT_FAR;
+    // Nothing built, grown or ground may stand between her eye and its middle: she cannot point at what she cannot see.
+    if (far > 0.5 && castWorld(world, ents.x[c.ent]!, eye, ents.z[c.ent]!, dx / far, dy / far, dz / far, far) !== HIT_NONE) return RESULT_DENIED;
+    return RESULT_OK;
   }
 
   /** The command carries an entity handle and the name. */

@@ -242,7 +242,7 @@ What names what: `item` names a `item/egg`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `buff` | Buff_ | built | `label`, `color` | `seconds`, `again`, `health`, `torpor`, `speed`, `dealt`, `taken`, `root`, `immune`, `good` | 7 |
+| `buff` | Buff_ | built | `label`, `color` | `seconds`, `again`, `health`, `torpor`, `damage`, `speed`, `dealt`, `taken`, `root`, `immune`, `good` | 7 |
 
 - **`buff`** on shelf `buffs`. Acts on a body for a time.
 

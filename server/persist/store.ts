@@ -398,7 +398,7 @@ export class WorldStore {
       }
       this.part(COMP_BREED2);
     }
-    if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0) {
+    if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander) {
       c.reset();
       c.f32(rec.te);
       c.bool(rec.tame !== null);
@@ -410,8 +410,9 @@ export class WorldStore {
       // Older saves end before the stance and the follow target.
       c.u8(rec.stance);
       c.uint53(rec.follow);
-      // Some saves have those two and end before the saddle.
+      // Some saves have those two and end before the saddle, and some end before the wander.
       c.varint(rec.saddle === 0 ? 0 : this.toSaved[rec.saddle]!);
+      c.bool(rec.wander);
       this.part(COMP_TAME);
     }
     if (rec.at >= 0) {
@@ -684,6 +685,7 @@ export class WorldStore {
             if (c.pos + 8 <= blob.length * 8) {
               const saved = c.varint();
               rec.saddle = saved === 0 ? 0 : (this.toRuntime[saved] ?? 0);
+              if (c.pos + 1 <= blob.length * 8) rec.wander = c.bool();
             }
           }
         } else if (component === COMP_BREED || component === COMP_BREED2) {

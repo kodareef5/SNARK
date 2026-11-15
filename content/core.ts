@@ -401,7 +401,7 @@ const ALL: readonly Def[] = [
   { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // Holds items dropped on the ground.
   { type: "prop", class: "container", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
-  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8 },
+  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8, damage: "fire" },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
   // A narcotic at work. Doses run one after another.
   { type: "buff", id: "core:drugged", label: "Drugged", color: 9, seconds: 8 },
