@@ -17,7 +17,7 @@ import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_HELD, CUE_OUT, STAGE_WORST } from "../..
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_USE, MODE_SWIM } from "../../shared/sim/character.ts";
+import { BTN_USE, MF_OUT, MF_ROOTED, MODE_SWIM } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -750,4 +750,91 @@ test("a body over a building lands on its roof, one over the pool sinks to its b
   // The raptor's ragdoll lies on the roof.
   const lowest = Math.min(...Array.from({ length: raptor!.pose!.pos.length / 3 }, (_, k) => raptor!.pose!.pos[k * 3 + 1]!));
   expect(raptor!.y + lowest).toBeGreaterThan(top - 0.3);
+});
+
+/** Each landing Survival is told of for `rec`: the speed, and the health it took. */
+function landings(h: Harness, rec: EntityRecord): [number, number][] {
+  const sv = h.host.survival;
+  const before = sv.landed.bind(sv);
+  const seen: [number, number][] = [];
+  sv.landed = (r, speed) => {
+    const health = sv.value(r, V_HEALTH);
+    before(r, speed);
+    if (r === rec) seen.push([speed, health - sv.value(r, V_HEALTH)]);
+  };
+  return seen;
+}
+
+/** D385: a creature lands unhurt below 16 m/s, and loses 7 x 2/3 health for each metre a second over. */
+const creatureFall = (speed: number): number => (speed - 16) * 7 * (2 / 3);
+
+test("a stand-in knocked out 100 m up falls, lands at the step's 60 m/s, is hurt for D385's 205 of its 210, and wakes where it landed", () => {
+  const { h, at } = camp();
+  const ents = h.world.ents;
+  const sv = h.host.survival;
+  const e = h.host.spawnCreature("core:pteranodon", at.x, at.z + 6, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  h.run(500);
+  expect(sv.value(rec, V_HEALTH)).toBe(210);
+  const seen = landings(h, rec);
+  const ground = aloft(h, e, 100);
+  sv.add(rec, V_TORPOR, rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
+  expect([rec.out, (ents.mflags[e]! & MF_OUT) !== 0]).toEqual([true, true]);
+  const [x, z] = [ents.x[e]!, ents.z[e]!];
+  for (let k = 0; k < 40 && seen.length === 0; k++) h.run(100);
+  // It fell straight down, knocked out the whole way, and hit the ground at the step's terminal speed.
+  expect(seen.length).toBe(1);
+  const [speed, lost] = seen[0]!;
+  expect(speed).toBeCloseTo(60, 3);
+  expect(lost).toBeCloseTo(creatureFall(speed), 4);
+  expect([rec.out, h.host.records.byPid.has(rec.pid), Math.abs(ents.y[e]! - ground) < 0.01, Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 1e-3]).toEqual([true, true, true, true]);
+  expect(sv.value(rec, V_HEALTH)).toBeCloseTo(210 - creatureFall(60), 1);
+  // Its torpor run out, it wakes where it lies, and is not hurt again.
+  h.run(2000);
+  sv.add(rec, V_TORPOR, -1e9);
+  h.run(1000);
+  expect([rec.out, (ents.mflags[e]! & MF_OUT) !== 0, seen.length, Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 1e-3, Math.abs(ents.y[e]! - ground) < 0.01]).toEqual([false, false, 1, true, true]);
+});
+
+test("a ridden stand-in bola'd 100 m up comes down where it was caught with its rider on it, is hurt by the landing and she is not, and stands rooted until its 30 s are out", () => {
+  const { h, ada, at, me, id } = camp();
+  const ents = h.world.ents;
+  const sv = h.host.survival;
+  sv.gods.delete(me.pid);
+  const c = h.client(ada)!;
+  const e = h.host.spawnCreature("core:pteranodon", at.x, at.z + 3, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  rec.team = me.team;
+  rec.saddle = id("core:saddle_pteranodon");
+  h.host.refreshBody(rec);
+  h.run(300);
+  expect(h.host.riding.mount(c, e)).toBe(RESULT_OK);
+  h.run(500);
+  const hers = sv.value(me, V_HEALTH);
+  const mount = landings(h, rec);
+  const rider = landings(h, me);
+  // Up 100 m with her pressing on, and caught there. The bola's own list is the weapons team's, and gains the pteranodon
+  // with them: the buff a hit gives is given here.
+  const pilot = h.pilots[0]!;
+  pilot.moveZ = 127;
+  const ground = aloft(h, e, 100);
+  const [x, z] = [ents.x[e]!, ents.z[e]!];
+  expect(h.host.buffs.give(rec, id("core:entangled"), 0)).toBe(true);
+  const caught = h.world.tick;
+  h.run(100);
+  expect((ents.mflags[e]! & MF_ROOTED) !== 0).toBe(true);
+  for (let k = 0; k < 40 && mount.length === 0; k++) h.run(100);
+  // Straight down, not where she steered, and she is still on it, on its back.
+  expect([mount.length, Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 0.01, Math.abs(ents.y[e]! - ground) < 0.01, h.host.riding.riding(c)]).toEqual([1, true, true, true]);
+  expect(mount[0]![1]).toBeCloseTo(creatureFall(mount[0]![0]), 4);
+  const her = h.ent(ada);
+  expect([Math.hypot(ents.x[her]! - x, ents.z[her]! - z) < 1, ents.y[her]! > ents.y[e]!]).toEqual([true, true]);
+  // It lies rooted until the bola's 30 s are out, then walks on under her.
+  h.run(((caught + 30 * TICK_RATE - h.world.tick) / TICK_RATE) * 1000 - 300);
+  expect([Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 0.01, (ents.mflags[e]! & MF_ROOTED) !== 0, h.host.riding.riding(c)]).toEqual([true, true, true]);
+  h.run(2500);
+  expect([Math.hypot(ents.x[e]! - x, ents.z[e]! - z) > 1, (ents.mflags[e]! & MF_ROOTED) !== 0]).toEqual([true, false]);
+  expect([rider.length, sv.value(me, V_HEALTH) >= hers]).toEqual([0, true]);
 });
