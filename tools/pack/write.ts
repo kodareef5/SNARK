@@ -138,15 +138,26 @@ function pool(meshes: readonly SourceMesh[]): { materials: PackMaterial[]; textu
  * them. `place` is where the pack has each of the mesh's materials.
  */
 function inSections(lod: SourceLod, place: readonly number[]): { indices: Uint32Array; sections: number[] } {
-  const of = Array.from({ length: lod.indices.length / 3 }, (_, t) => place[lod.sections?.[t] ?? 0]!);
-  const order = [...of.keys()].sort((a, b) => of[a]! - of[b]! || a - b);
-  const indices = new Uint32Array(order.length * 3);
+  const n = lod.indices.length / 3;
+  // Counted out by material, each material's triangles in the order they came: a stable sort, at the cost of one pass.
+  const of = new Int32Array(n);
+  let most = 0;
+  for (let t = 0; t < n; t++) most = Math.max(most, (of[t] = place[lod.sections?.[t] ?? 0]! + 1));
+  const start = new Uint32Array(most + 2);
+  for (let t = 0; t < n; t++) start[of[t]! + 1]!++;
   const sections: number[] = [];
-  order.forEach((t, k) => {
-    indices.set(lod.indices.subarray(t * 3, t * 3 + 3), k * 3);
-    if (of[t] !== sections[sections.length - 3]) sections.push(of[t]!, k * 3, 0);
-    sections[sections.length - 1]! += 3;
-  });
+  for (let m = 0; m <= most; m++) {
+    if (start[m + 1]! > 0) sections.push(m - 1, start[m]! * 3, start[m + 1]! * 3);
+    start[m + 1]! += start[m]!;
+  }
+  const indices = new Uint32Array(n * 3);
+  const from = lod.indices;
+  for (let t = 0; t < n; t++) {
+    const k = start[of[t]!]!++ * 3;
+    indices[k] = from[t * 3]!;
+    indices[k + 1] = from[t * 3 + 1]!;
+    indices[k + 2] = from[t * 3 + 2]!;
+  }
   return { indices, sections };
 }
 
