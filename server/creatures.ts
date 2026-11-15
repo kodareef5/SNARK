@@ -276,7 +276,10 @@ export class Creatures {
       if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0)) && (this.wet[e] === 0 || cold)) {
         const cap = ents.staminaMax[e]! * STAMINA_UNITS;
         const had = ents.stamina[e]!;
-        if (had < cap) {
+        // As the step counts them: a flyer's roll, and its wait after flying before any stamina comes back.
+        if (ents.rollWait[e]! > 0) ents.rollWait[e] = ents.rollWait[e]! - 1;
+        if (ents.regenWait[e]! > 0) ents.regenWait[e] = ents.regenWait[e]! - 1;
+        else if (had < cap) {
           const now = had + p.staminaRegen < cap ? had + p.staminaRegen : cap;
           ents.stamina[e] = now;
           if ((ents.mflags[e]! & MF_WINDED) !== 0 && now * 4 >= cap) ents.mflags[e] = ents.mflags[e]! & ~MF_WINDED;

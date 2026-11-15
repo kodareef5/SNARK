@@ -899,7 +899,7 @@ function flight(b: Body, moveX: number, moveZ: number, yaw: number, pitch: numbe
 /** Flies as a ghost does, with no gravity, but meets the ground, pieces and nodes (flyThrough). It stands while it flies. */
 function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   flight(b, moveX, moveZ, yaw, pitch, buttons, dt);
-  flyThrough(w, b, flown[0]!, flown[1]!, flown[2]!, p, dt, false);
+  flyThrough(w, b, flown[0]!, flown[1]!, flown[2]!, p, dt, -Infinity);
   b.grounded = false;
   b.stance = STANCE_STAND;
 }
@@ -993,12 +993,15 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
     vy += sp * p.rollBurst;
     vz += c * cp * p.rollBurst;
   }
-  flyThrough(w, b, vx, vy, vz, p, dt, true);
+  // Flyers do not go under water (ARK's Flying page): it skims the surface, and going down it settles to its float line.
+  const hf = w.hf;
+  const afloat = hf.seaLevel - p.height * SWIM_FLOAT;
+  flyThrough(w, b, vx, vy, vz, p, dt, down ? afloat : hf.seaLevel);
   b.grounded = false;
   b.stance = STANCE_STAND;
+  if (b.y >= WORLD_MAX_Y && b.vy > 0) b.vy = 0;
   if (!down || b.vy > 0) return;
-  // Going down, it sets down on what it can stand on, as a walker comes to rest, or on water deep enough to swim in.
-  const hf = w.hf;
+  // Going down, it sets down on what it can stand on, as a walker comes to rest, or afloat on water deep enough to swim in.
   const under = groundUnder(hf, b.x, b.z, p.radius);
   const on = b.y - under <= GROUND_PROBE ? b.y : restingAt(w, b.x, b.y, b.z, p.radius, p.height, GROUND_PROBE, p.slopeCos);
   if (!Number.isNaN(on)) {
@@ -1007,7 +1010,7 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
     b.grounded = true;
     b.mode = MODE_WALK;
     stepOut.setDown = true;
-  } else if (b.y <= hf.seaLevel + GROUND_PROBE && hf.seaLevel - under > p.height * SWIM_ENTER) {
+  } else if (b.y <= afloat + GROUND_PROBE && hf.seaLevel - under > p.height * SWIM_ENTER) {
     b.mode = MODE_SWIM;
     stepOut.setDown = true;
   }
@@ -1015,11 +1018,10 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
 
 /**
  * Moves a body by (vx, vy, vz) for dt with no gravity, meeting the ground, pieces and nodes as a swimmer does, half a radius at
- * a time however fast, so it crosses nothing; over the ground it skims up a small rise. A creature's flight (`floats`) goes no
- * lower than the surface of water deep enough to swim in, though it may rise from under it, and stops rising at the world's
- * top. Stores its position and velocity.
+ * a time however fast, so it crosses nothing; over the ground it skims up a small rise. Over water deep enough to swim in it
+ * goes no lower than `floor`, though it may rise from under it: -Infinity for the admin's fly. Stores its position and velocity.
  */
-function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: number, p: MoveParams, dt: number, floats: boolean): void {
+function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: number, p: MoveParams, dt: number, floor: number): void {
   const hf = w.hf;
   const r = p.radius;
   const height = p.height;
@@ -1048,10 +1050,7 @@ function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: numb
     if (nz < r) nz = r;
     else if (nz > maxZ) nz = maxZ;
     // The world's top is the ceiling (ARK has one; its height is not published).
-    if (ny > WORLD_MAX_Y) {
-      ny = WORLD_MAX_Y;
-      if (floats && vy > 0) vy = 0;
-    }
+    if (ny > WORLD_MAX_Y) ny = WORLD_MAX_Y;
     // Over the ground it skims up a small rise, else along one axis, else stays.
     let h = groundUnder(hf, nx, nz, r);
     if (ny < h) {
@@ -1077,9 +1076,8 @@ function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: numb
         if (vy < 0) vy = 0;
       }
     }
-    // Flyers do not go under water (ARK's Flying page).
-    if (floats && ny < sea && ny < y && sea - h > deep) {
-      ny = y < sea ? y : sea;
+    if (ny < floor && ny < y && sea - h > deep) {
+      ny = y < floor ? y : floor;
       if (vy < 0) vy = 0;
     }
     for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
