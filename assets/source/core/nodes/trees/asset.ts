@@ -26,11 +26,17 @@ const picture = (name: string, more: Partial<MaterialSpec> = {}): MaterialSpec =
  * then 20 pixels tall. A broadleaf tree's crown of billows is heavier, so its second level stops at 40 m and its flat
  * ones begin where it stands 100 and then 24 pixels tall, as far off as a wood's crowns still read as rounded masses in
  * flat greens. A stump's levels change at 8 m, 25 m and 60 m. The check prints where each tier draws each.
+ *
+ * A tree's last level (far.py) is the far layer's, a few solids it draws out to kilometres. Its error of 0.6 m keeps the
+ * near store and the shadow casters off it inside 2 km.
  */
 const MEDIUM = 3505;
+const FAR = 0.6;
 const at = (metres: number[]): number[] => metres.map((d) => Math.round((d / MEDIUM) * 1e4) / 1e4);
-const tree = (object: string, height: number): number[] =>
-  at(object.startsWith("palm") ? [14, 55, (height * 771) / 55, (height * 771) / 20] : [14, 40, (height * 771) / 100, (height * 771) / 24]);
+const tree = (object: string, height: number): number[] => [
+  ...at(object.startsWith("palm") ? [14, 55, (height * 771) / 55, (height * 771) / 20] : [14, 40, (height * 771) / 100, (height * 771) / 24]),
+  FAR,
+];
 const STUMP = at([8, 25, 60]);
 
 /** The trees, by object name, and how tall each stands in metres. Each leaves a stump, `<name>_depleted`. */
@@ -66,5 +72,5 @@ export default {
     mangrove_roots: picture("mangrove_roots"),
     mangrove_leaves: picture("mangrove_leaves", { cutout: true }),
   }).filter(([name]) => ONLY.length === 0 || ONLY.some((k) => USES[k]!.includes(name)))),
-  budgets: { triangles: [40000, 12000, 2000, 1000, 400], texture: { top: 2048, megabytes: 240 } },
+  budgets: { triangles: [40000, 12000, 2000, 1000, 400, 16], texture: { top: 2048, megabytes: 240 } },
 } satisfies PiecesAsset;

@@ -3,6 +3,8 @@
 # skeletons the meshes are built from, in metres from the mesh's origin at its modelled size. Run with python3 from
 # this folder and paste the lines over the kinds' variants.
 
+import math
+
 import banyans
 import figs
 import mangroves
@@ -19,7 +21,20 @@ KINDS = {
 }
 
 
+def grounded(box):
+    """A box standing on the ground carried below it as the mesh is: 0.6 of the way out to its farthest corner, so it
+    still meets ground falling away from the node at 32 degrees."""
+    (x, y, z), (hx, hy, hz) = box["at"], box["half"]
+    bottom, top = y - hy, y + hy
+    if bottom > 0.05:
+        return box
+    reach = max(math.hypot(x + sx * hx, z + sz * hz) for sx in (-1, 1) for sz in (-1, 1))
+    bottom = min(bottom, -0.6 * reach)
+    return {"at": [x, round((top + bottom) / 2, 2), z], "half": [hx, round((top - bottom) / 2, 2), hz]}
+
+
 def ts(boxes):
+    boxes = [grounded(b) for b in boxes]
     return "[" + ", ".join(f"{{ at: [{', '.join(f'{v:g}' for v in b['at'])}], half: [{', '.join(f'{v:g}' for v in b['half'])}] }}" for b in boxes) + "]"
 
 

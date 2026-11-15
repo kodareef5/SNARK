@@ -6,6 +6,7 @@
 import math
 
 import broadleaf as bl
+import far
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, sheet, sub, tube, unit
 from layout import CUTS, FIG_ROOTS, ROOTS_SIZE, RUIN_SIZE, RUINS
 
@@ -64,6 +65,12 @@ def wall(spec):
                       windows=spec["windows"], recess=HALF[spec["thing"]] * 0.8)
 
 
+def buried(wall_):
+    """How deep the root wall is carried: 0.6 of how far out its foot reaches, so it stands in ground falling away at 32
+    degrees."""
+    return -0.6 * max(wall_.radius(2 * math.pi * k / 96, -0.1) for k in range(96)) - 0.1
+
+
 def ropes(spec, wall_):
     """The free roots of the wall: ropes 10 to 30 cm thick running down its face from high on the stem into the
     ground, half sunk into it, some straight down and some braiding across the others, splaying out at the foot. They
@@ -97,7 +104,7 @@ def ropes(spec, wall_):
             radii.append(thick * (0.75 + 0.25 * t + 0.4 * foot))
         # Down into the ground.
         last = pts[-1]
-        pts.append((last[0] * 1.15, -0.6 * (spec["stem"] * 1.5) - 0.1, last[2] * 1.15))
+        pts.append((last[0] * 1.15, -0.6 * math.hypot(last[0], last[2]) * 1.15 - 0.15, last[2] * 1.15))
         radii.append(radii[-1] * 0.8)
         out.append(bl.Branch(pts, radii, 1))
     return out
@@ -210,13 +217,15 @@ def swallowed(m, spec, lod, cut=None):
 
 def fig(name, lod):
     spec = SPECS[name]
+    if lod == far.LEVEL:
+        return far.broadleaf(fig(name, lod - 1), skeleton(spec)[2], (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
     m = Mesh(lod <= 2)
     rng = rng_for(name, "level", lod)
     limbs, stub, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
     ribbons = wall(spec)
     sides, rings = {0: (48, 24), 1: (24, 8), 2: (10, 4), 3: (8, 3), 4: (6, 2)}[lod]
-    under = -0.6 * (spec["stem"] * 1.5) - 0.1
+    under = buried(ribbons)
     fork = spec["fork"]
     hs = [under, -0.1] + [mix(0.0, fork + 0.5, (i / (rings - 1)) ** 1.2) for i in range(rings)]
     bl.fluted(m, hs, ribbons.radius if lod <= 2 else (lambda az, h: ribbons.base(h) * 1.12), sides, BARK, STEM)
@@ -282,7 +291,7 @@ def stump(name, lod):
     rng = rng_for(name, "stump")
     cut = 0.8 + 0.2 * (hash01(name, "cut") - 0.5)
     sides = {0: 40, 1: 20, 2: 10, 3: 6}[lod]
-    under = -0.6 * (spec["stem"] * 1.5) - 0.1
+    under = buried(ribbons)
     hs = [under, -0.1, 0.0, 0.3, cut]
     rr = ribbons.base(cut) * 1.3
 
@@ -329,4 +338,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else bl.LEVELS
+    return 4 if piece.endswith("_depleted") else far.LEVEL + 1
