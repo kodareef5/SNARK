@@ -381,14 +381,15 @@ export interface WeaponFacet {
   /** The degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick (DEV129). */
   readonly recoil?: { readonly kick: number; readonly recover: number };
   /**
+   * What its damage is multiplied by against a structure (W6, M8; D435). 1 where not given. ARK gives each explosive its own
+   * damage to what is built beside its damage to bodies (Table of explosives): the grenade's 175 is 788 to wood, about 4.5.
+   */
+  readonly structures?: number;
+  /**
    * A gun's rays a shot, in place of its round's `ammo.pellets` (W3): ARK's pump-action fires the same shells as the
    * double-barrel, 14 pellets to its 10 (Pump-Action Shotgun). Omitted, a shot sends its round's.
    */
   readonly pellets?: number;
-  // Stubs of the same plan: declared, checked and compiled, and read by nothing until the project named builds them
-  // (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
-  /** W6: what its damage is multiplied by against a structure. 1 where not given. ARK's grenade is 4.5 (Table of explosives). */
-  readonly structures?: number;
   /**
    * W5: thrown, it bursts into a cloud: the prop/cloud it makes, the seconds the cloud lasts, and the buff it gives the bodies
    * inside it (none for smoke). The cloud reaches as far as its prop's radius.
@@ -423,12 +424,19 @@ export interface AmmoFacet {
   readonly pellets?: number;
   /** Its damage falls evenly from all of it at `full` metres to none at `none` (shared/sim/damage.ts `falloff`). */
   readonly falloff?: { readonly full: number; readonly none: number };
-  // Stubs of the same plan, as the weapon facet's are. Omitted, a round does what all do today.
-  /** W6: where it ends it goes off as a grenade does, reaching this many metres. The blast is the whole of its damage. */
+  // Built by W6 (M8, M12, and the flare of M9).
+  /**
+   * Where it ends (a body, the world, something built, water) it goes off as a grenade does, reaching this many metres; the
+   * blast is the whole of its damage, so a body hit straight on is not harmed twice. The weapon's `structures` still counts.
+   */
   readonly blast?: number;
-  /** W6: the share of armor, 0 to 1, it goes through (the metal arrow's "-90% armor bypass" is 0.9). */
+  /** The share of armor, 0 to 1, it goes through (the metal arrow's "-90% armor bypass" is 0.9). */
   readonly pierce?: number;
-  /** A light it carries while it flies: reach in metres and a palette colour. Rendering's to build (M9); a flare's until then is a bright mesh. */
+  /**
+   * A light it carries: reach in metres and a palette colour. Such a round flies as a prop every client draws, rises and
+   * then sinks slowly, harms nothing and goes out where it lands (the flare). The light itself is rendering's to build (M9,
+   * D436); until then the flare is its bright mesh.
+   */
   readonly light?: { readonly reach: number; readonly color: number };
 }
 
