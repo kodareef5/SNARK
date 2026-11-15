@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/mammoth",
+  "review": "../ref/sound",
+  "about": "A woolly mammoth: trumpets through its trunk, rumbles low, and shakes the ground as it walks.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 120,
+      "level": -16,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p3500",
+          "models": [
+            "moss"
+          ],
+          "seed": 3500,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woolly mammoth rumbles a deep low rumble and a soft trunk trumpet, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 120,
+      "level": -16,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p3510",
+          "models": [
+            "moss"
+          ],
+          "seed": 3510,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A mammoth trumpets a loud blaring alarm through its trunk, three separate trumpets with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 120,
+      "level": -16,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p3520",
+          "models": [
+            "moss"
+          ],
+          "seed": 3520,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A mammoth trumpets and bellows in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 120,
+      "level": -16,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p3530",
+          "models": [
+            "moss"
+          ],
+          "seed": 3530,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A mammoth gives a long deep dying groan, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 120,
+      "level": -14,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p3540",
+          "models": [
+            "moss"
+          ],
+          "seed": 3540,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A mammoth swings its tusks and trumpets angrily with a heavy impact, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 72,
+      "level": -20,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p3550",
+          "models": [
+            "moss"
+          ],
+          "seed": 3550,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Huge heavy footsteps of a giant four-legged animal: deep booming thuds, slow and well spaced. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

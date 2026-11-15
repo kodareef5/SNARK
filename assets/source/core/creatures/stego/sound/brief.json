@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/stego",
+  "review": "../ref/sound",
+  "about": "A plated plant-eating dinosaur with a spiked tail; it hoots softly and swings its tail with a whoosh.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p3010",
+          "models": [
+            "moss"
+          ],
+          "seed": 3010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large plated herbivore dinosaur gives soft deep hooting moans, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p3020",
+          "models": [
+            "moss"
+          ],
+          "seed": 3020,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large herbivore dinosaur bellows a loud alarmed honking moan, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p3030",
+          "models": [
+            "moss"
+          ],
+          "seed": 3030,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large herbivore dinosaur moans in pain, short hurt bellows, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p3040",
+          "models": [
+            "moss"
+          ],
+          "seed": 3040,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large herbivore dinosaur sighs a long deep dying moan, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 90,
+      "level": -16,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p3050",
+          "models": [
+            "moss"
+          ],
+          "seed": 3050,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy spiked tail swings through the air and smashes: a deep whoosh and a crunching thwack, four separate swings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 54,
+      "level": -22,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p3060",
+          "models": [
+            "moss"
+          ],
+          "seed": 3060,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Heavy footsteps of a large four-legged animal on earth: deep heavy padded thuds, well spaced. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}
