@@ -211,8 +211,9 @@ test("a rider is shot where she sits; a saddle is her mount's armor; a mount tha
   h.run(500);
   const rider = h.ent(ada);
   expect(ents.y[rider]! - at.y).toBeGreaterThan(1.2);
-  // Rays from her side at rising heights find her in some zone. The highest passes over her head.
-  const rays = [0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.1, 1.3].map((up) => [combat.castBodies(h.ent(bob), ents.x[rider]! - 12, ents.y[rider]! + up, ents.z[rider]!, 1, 0, 0, 40), combat.zone]);
+  // Rays from her side at rising heights find her in some zone. The highest passes over her head: sitting up astride, her
+  // crown is about 1.5 m over her origin, which hangs 0.55 m under the seat.
+  const rays = [0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.1, 1.3, 1.4, 1.65].map((up) => [combat.castBodies(h.ent(bob), ents.x[rider]! - 12, ents.y[rider]! + up, ents.z[rider]!, 1, 0, 0, 40), combat.zone]);
   const found = rays.filter((r) => r[0] === rider);
   expect(found.length).toBeGreaterThan(2);
   expect(found.every((r) => r[1] !== ZONE_NONE)).toBe(true);

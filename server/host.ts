@@ -77,7 +77,7 @@ import { parseMap } from "../shared/world/mapfile.ts";
 import { Tactical } from "./tactical.ts";
 import type { ClipSet } from "../shared/anim/clip.ts";
 import { defaultLook } from "../shared/anim/look.ts";
-import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
+import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import { Cluster } from "./cluster/cluster.ts";
@@ -494,6 +494,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const entangle = new Entangle({ world, game, records, buffs });
   combat.entangle = (victim, buff, by) => void entangle.give(victim, buff, by);
   const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec), tangled: (rec) => entangle.tangled(rec) });
+  // A saddle stays on while anyone sits on it, steering or not.
+  taming.ridden = (e) => riding.occupied(e);
   // An unowned car is anyone's to take, and a tribe's own cars are its members'. On PvP another tribe's car
   // can be stolen; on PvE its owner can reclaim it from someone who no longer has access,
   // while an authorized survivor in an unowned car keeps their seat.
@@ -524,6 +526,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       const vehicle = urban.mount(c, e);
       if (vehicle >= 0) return vehicle;
     }
+    // Using whoever sits on a creature is using the creature, as using a car's occupant is using the car.
+    const on = world.ents.seat[e]! - 1;
+    if (on >= 0 && world.ents.seatSlot[e] !== 0 && world.ents.gen[on] === world.ents.seatGen[e] && (world.ents.flags[on]! & F_ALIVE) !== 0) e = on;
     const rec = records.byPid.get(world.ents.pid[e]!);
     // The use button claims an unclaimed young creature.
     if (rec && breeding.unclaimed(rec)) return breeding.claim(c, rec);
@@ -870,8 +875,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   };
   game.onBodyGone = (c) => {
     carry.release(c.pid);
-    // Seats are not saved: a survivor in a car is saved standing beside it.
+    // Seats are not saved: a survivor in a car or on a creature is saved standing beside it.
     urban.standDown(c.pid);
+    riding.standDown(c.pid);
     // Out of the world, a survivor neither eats nor drowns.
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
@@ -918,7 +924,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
-  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); };
+  game.onBeforeStep = () => { refreshInventories(); urban.beforeStep(); riding.beforeStep(); };
   game.onStep = (tick) => {
     for (const c of game.clients) {
       if (!c?.active) continue;
@@ -1079,18 +1085,20 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     survival.init(rec);
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
-    // A mount's load includes what its rider carries, at its species' share (a pteranodon's 0.85), and a survivor's half of
+    // A mount's load includes what its riders carry, at its species' share (a pteranodon's 0.85), and a survivor's half of
     // what a creature in its arms carries.
-    const rider = urban.riderOf(e) ?? riding.riderOf(e);
+    const driver = urban.riderOf(e);
+    let carried = driver?.inv ? items.inv(driver).weight(items.table) : 0;
+    for (const rider of riding.riders(e)) if (rider.inv) carried += items.inv(rider).weight(items.table);
     const arms = carry.heldBy(rec.pid);
-    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) * reg.riderWeight[rec.kind]! : 0) + (arms >= 0 ? carry.load(rec) : 0);
+    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + carried * reg.riderWeight[rec.kind]! + (arms >= 0 ? carry.load(rec) : 0);
     if (reg.vehicle[rec.kind]) world.ents.vehiclePayloadMass[e] = Math.fround(urban.payloadMass(e));
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
     // Changing a rider's pack also changes the mount's load.
     const seat = world.ents.seat[e]! - 1;
-    const mount = seat >= 0 && (riding.riderOf(seat) === rec || urban.occupancy.seatOf(rec.pid)?.host === world.ents.pid[seat]) ? records.byPid.get(world.ents.pid[seat]!) : undefined;
+    const mount = seat >= 0 && (riding.occupancy.seatOf(rec.pid)?.host === world.ents.pid[seat] || urban.occupancy.seatOf(rec.pid)?.host === world.ents.pid[seat]) ? records.byPid.get(world.ents.pid[seat]!) : undefined;
     if (mount && mount !== rec) refreshBody(mount);
     // A young creature carries a share of a grown one's capacity, so its load is scaled up.
     const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));
@@ -1248,9 +1256,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       bus.flush();
       if (!persistence) return;
       // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
-      // sits in a car.
+      // sits in a car or on a creature.
       carry.releaseAll();
       urban.standDownAll();
+      riding.standDownAll();
       // Every body that can have moved is saved where it stands.
       for (let r = 0; r < world.history.rows; r++) {
         const pid = world.ents.pid[world.history.tracked(r)]!;
