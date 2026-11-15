@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def, ItemDef, SpeciesDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import { slotsOf } from "../../shared/content/slots.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
 import { W_BOW } from "../../shared/sim/weapon.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -44,9 +45,13 @@ test("the wooden club and the slingshot: their engrams, what they cost and how t
   expect(item("club").craft).toEqual({ needs: [{ item: "core:wood", count: 4 }, { item: "core:fiber", count: 15 }], seconds: 5, xp: 2.8 });
   expect(item("slingshot").craft).toEqual({ needs: [{ item: "core:hide", count: 1 }, { item: "core:wood", count: 5 }, { item: "core:fiber", count: 20 }], seconds: 5, xp: 3.8 });
   expect([reg.weight[at("club")], reg.uses[at("club")], reg.weight[at("slingshot")], reg.uses[at("slingshot")]]).toEqual([2, 40, 3, 40]);
-  // The slingshot fires the stone a survivor gathers, drawn as a bow is.
+  // The slingshot fires the stone a survivor gathers, drawn as a bow is, and a stone in flight is drawn as one.
   expect(reg.weapon[at("slingshot")]!.kind).toBe(W_BOW);
   expect(item("slingshot").weapon!.ammo).toEqual(["core:stone"]);
+  const slots = slotsOf(CORE_CONTENT);
+  expect(slots.filter((u) => u.slot === "shot" && u.owner === "core:stone").map((u) => u.id)).toEqual(["core:stone_shot"]);
+  expect(slots.filter((u) => u.slot === "shot" && reg.defs[reg.index.get(u.owner)!]?.type === "item" && (reg.defs[reg.index.get(u.owner)!] as ItemDef).class === "resource").map((u) => u.owner)).toEqual(["core:stone"]);
+  expect(slots.find((u) => u.slot === "held" && u.owner === "core:club")!.id).toBe("core:club");
   // A narcotic is five narcoberries and a piece of meat.
   expect(item("narcotic").craft!.needs).toEqual([{ item: "core:narcoberry", count: 5 }, { item: "core:meat", count: 1 }]);
 });

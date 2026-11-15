@@ -68,17 +68,18 @@ function club(): Box[] {
   ];
 }
 
-/** A forked stick held upright, the band drawn back from its prongs toward the shooter at -X to a hide pouch. */
+/** A forked stick held upright, its prongs spreading across the shot, the band back from their tips toward -X to a hide pouch. */
 function slingshot(): Box[] {
-  return [
-    [0, -0.03, 0, 0.017, 0.075, 0.017, WOOD],
-    [0, 0.055, 0, 0.016, 0.014, 0.05, WOOD],
-    [0, 0.115, 0.042, 0.013, 0.05, 0.013, WOOD_LIGHT],
-    [0, 0.115, -0.042, 0.013, 0.05, 0.013, WOOD_LIGHT],
-    [-0.05, 0.15, 0.03, 0.05, 0.004, 0.004, HIDE],
-    [-0.05, 0.15, -0.03, 0.05, 0.004, 0.004, HIDE],
-    [-0.105, 0.15, 0, 0.012, 0.014, 0.034, HIDE],
+  const boxes: Box[] = [
+    [0, -0.035, 0, 0.016, 0.075, 0.016, WOOD],
+    [0, 0.05, 0, 0.015, 0.015, 0.03, WOOD],
+    [-0.035, 0.155, 0, 0.01, 0.014, 0.022, HIDE],
   ];
+  for (const side of [1, -1]) {
+    boxes.push([0, 0.085, side * 0.034, 0.012, 0.028, 0.012, WOOD], [0, 0.135, side * 0.048, 0.011, 0.028, 0.011, WOOD_LIGHT]);
+    boxes.push([-0.012, 0.157, side * 0.036, 0.014, 0.004, 0.004, HIDE]);
+  }
+  return boxes;
 }
 
 /** Ids are the mesh ids that content names. */
