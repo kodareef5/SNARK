@@ -241,14 +241,17 @@ export interface CreatureAsset {
   /** What goes limp when it dies. Without it the death clip plays and its last frame stays. */
   readonly ragdoll?: RagdollSpec;
   /**
-   * How a saddle is drawn on it, by one of two ways or both: declared by the flyers' contracts and built by FL5
-   * (planning/reference/flyers-plan.md). Either way the creature's gear names the saddle it wears, and riding asks only
-   * that it wears one, never how it looks. The meshes either names are not the bare body's; every other mesh is.
+   * How a saddle is drawn on it, by one of two ways or both (D491). Either way the creature's gear names the saddle it
+   * wears, and riding asks only that it wears one, never how it looks. The mesh objects either names are not the bare
+   * body's; every other skinned mesh object is. Both are read as the body is, on the same armature, so their vertices
+   * follow its bones; the hit zones and sockets are fitted to the bare body alone, and serve both.
    * - `worn`: a mesh made in the same session on the same armature, weighted to the body's bones, written as its item's
-   *   "<item>/worn" mesh and drawn on the body while that item is worn.
+   *   "<item>/worn" mesh and drawn on the body's bones, at the body's level, while that item is worn.
    * - `saddled`: the whole creature as it is saddled, written as "<asset id>/saddled" and drawn in place of the bare body
    *   while any saddle is worn, on the same skeleton, clips, sockets and hit zones.
-   * Where it has both, the saddled model wins and no worn mesh is drawn over it.
+   * Where it has both, the saddled model wins and no worn mesh is drawn over it. A material of either that is named as one
+   * of the `regions` is dyed as the body is; any other with no pictures is drawn in the palette colour nearest its base
+   * colour, as nothing in ARK dyes a saddle.
    */
   readonly worn?: readonly WornSpec[];
   readonly saddled?: SaddledSpec;
@@ -260,8 +263,12 @@ export interface WornSpec {
   readonly item: string;
   /** The Blender mesh object, "<object>_LOD<n>" for its levels as a body's are. */
   readonly object: string;
-  /** Its own materials, as the body's are named, three at most; drawn flat in palette colours without them. */
+  /**
+   * Its own materials, three at most, in the one list of names the body's are in: it may name one of the body's, and a
+   * name is one material. Drawn flat without them.
+   */
   readonly materials?: Readonly<Record<string, MaterialSpec>>;
+  /** Its triangles at each level. Its maps are stored as the body's are and count in the body's `texture` budget, so its own `texture` is not read. */
   readonly budgets: { readonly triangles: readonly number[]; readonly texture?: TextureBudget };
   /** The first level drawn flat, as the body's `flat`. */
   readonly flat?: number;
@@ -271,9 +278,10 @@ export interface WornSpec {
 export interface SaddledSpec {
   /** The Blender mesh objects that make it, with their levels named as a body's are. */
   readonly objects: readonly string[];
-  /** Its materials, as the body's are named; the body's where not given. */
+  /** Its materials besides the body's, which it may name too; flat as the body is where neither has any. */
   readonly materials?: Readonly<Record<string, MaterialSpec>>;
   readonly budgets: { readonly triangles: readonly number[]; readonly texture?: TextureBudget };
+  /** The first level drawn flat, the body's where not given. */
   readonly flat?: number;
 }
 
