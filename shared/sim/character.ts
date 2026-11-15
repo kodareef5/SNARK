@@ -34,6 +34,8 @@ export const MODE_WALK = 1;
 export const MODE_SWIM = 2;
 /** Free flight with no collision. Set only by the server (admins, spectators). */
 export const MODE_GHOST = 3;
+/** Flight as a ghost's, but meeting the ground, pieces and nodes. Set only by the server (admins). */
+export const MODE_FLY = 4;
 
 /** Stamina is stored in thousandths of a point, so it steps in exact integers. */
 export const STAMINA_UNITS = 1000;
@@ -205,7 +207,7 @@ const MAX_SUBSTEPS = 16;
 const TERMINAL_SPEED = 60;
 const GROUND_PROBE = 0.02;
 const RESOLVE_ITERATIONS = 4;
-/** Metres per second. Sprint multiplies it by GHOST_SPRINT. */
+/** Metres per second, flying or a ghost. Sprint multiplies it by GHOST_SPRINT, so 8 km takes a little over two minutes. */
 const GHOST_SPEED = 12;
 const GHOST_SPRINT = 5;
 const found = new Found();
@@ -223,7 +225,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     return;
   }
   // The facing follows the look, at once or at turnRate. The body then moves the way it faces.
-  if (p.turnRate <= 0 || b.mode === MODE_GHOST) b.yaw = yaw & 0xffff;
+  if (p.turnRate <= 0 || b.mode === MODE_GHOST || b.mode === MODE_FLY) b.yaw = yaw & 0xffff;
   else {
     let turn = ((yaw - b.yaw + 32768) & 0xffff) - 32768;
     if (turn > p.turnRate) turn = p.turnRate;
@@ -234,6 +236,10 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   if (!p.strafe) moveX = 0;
   if (b.mode === MODE_GHOST) {
     stepGhost(w, b, moveX, moveZ, yaw, pitch, buttons, dt);
+    return;
+  }
+  if (b.mode === MODE_FLY) {
+    stepFly(w, b, moveX, moveZ, yaw, pitch, buttons, p, dt);
     return;
   }
   if (b.mode === MODE_SWIM) {
@@ -715,8 +721,10 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   b.stamina = stamina;
 }
 
-/** No collision. Bounded to the map's box. */
-function stepGhost(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, dt: number): void {
+/** A ghost's or a flyer's velocity, set by `flight`: along the look, rising by the jump button, at once. */
+const flown = [0, 0, 0];
+
+function flight(moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number): void {
   let mx = moveX / 127;
   let mz = moveZ / 127;
   const m2 = mx * mx + mz * mz;
@@ -732,9 +740,126 @@ function stepGhost(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw
   const sp = detSin(e);
   const cp = detCos(e);
   const speed = GHOST_SPEED * ((buttons & BTN_SPRINT) !== 0 ? GHOST_SPRINT : 1);
-  const vx = (s * cp * mz - c * mx) * speed;
-  const vy = (sp * mz + ((buttons & BTN_JUMP) !== 0 ? 1 : 0)) * speed;
-  const vz = (c * cp * mz + s * mx) * speed;
+  flown[0] = (s * cp * mz - c * mx) * speed;
+  flown[1] = (sp * mz + ((buttons & BTN_JUMP) !== 0 ? 1 : 0)) * speed;
+  flown[2] = (c * cp * mz + s * mx) * speed;
+}
+
+/**
+ * Flies as a ghost does, with no gravity, but meets the ground, pieces and nodes as a swimmer does, a substep at a time, so it
+ * crosses nothing. It stands while it flies.
+ */
+function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
+  flight(moveX, moveZ, yaw, pitch, buttons);
+  let vx = flown[0]!;
+  let vy = flown[1]!;
+  let vz = flown[2]!;
+  const hf = w.hf;
+  const r = p.radius;
+  const height = p.height;
+  const tall = height > 2 * r ? height : 2 * r;
+  const dist = Math.sqrt(vx * vx + vy * vy + vz * vz) * dt;
+  const maxStep = r * 0.5;
+  let n = Math.ceil(dist / maxStep);
+  let scale = dt;
+  if (n < 1) n = 1;
+  else if (n > MAX_SUBSTEPS) {
+    scale = (dt * MAX_SUBSTEPS * maxStep) / dist;
+    n = MAX_SUBSTEPS;
+  }
+  const sx = (vx * scale) / n;
+  const sy = (vy * scale) / n;
+  const sz = (vz * scale) / n;
+  const maxX = hf.sizeX - r;
+  const maxZ = hf.sizeZ - r;
+  const maxSide2 = r * r;
+  const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
+  let x = b.x;
+  let y = b.y;
+  let z = b.z;
+  for (let i = 0; i < n; i++) {
+    let nx = x + sx;
+    let ny = y + sy;
+    let nz = z + sz;
+    if (nx < r) nx = r;
+    else if (nx > maxX) nx = maxX;
+    if (nz < r) nz = r;
+    else if (nz > maxZ) nz = maxZ;
+    if (ny > WORLD_MAX_Y) ny = WORLD_MAX_Y;
+    // Over the ground it skims up a small rise, else along one axis, else stays.
+    let h = groundUnder(hf, nx, nz, r);
+    if (ny < h) {
+      if (h - ny > maxRise) {
+        const hx = groundUnder(hf, nx, z, r);
+        if (ny >= hx || hx - ny <= maxRise) {
+          nz = z;
+          h = hx;
+        } else {
+          const hz = groundUnder(hf, x, nz, r);
+          if (ny >= hz || hz - ny <= maxRise) {
+            nx = x;
+            h = hz;
+          } else {
+            nx = x;
+            nz = z;
+            h = groundUnder(hf, x, z, r);
+          }
+        }
+      }
+      if (ny < h) {
+        ny = h;
+        if (vy < 0) vy = 0;
+      }
+    }
+    for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
+      let moved = false;
+      for (let pass = 0; pass < 2; pass++) {
+        const store = pass === 0 ? w.structs : w.nodes;
+        if (!store) continue;
+        const count = store.query(nx - r, nz - r, nx + r, nz + r, found, ny - r, ny + tall + r);
+        // In ref order, as on land.
+        sortU32(found.refs, count);
+        for (let k = 0; k < count; k++) {
+          if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
+          nx += push.x;
+          ny += push.y;
+          nz += push.z;
+          moved = true;
+        }
+      }
+      if (!moved) break;
+    }
+    h = groundUnder(hf, nx, nz, r);
+    if (ny < h && h - ny <= maxRise) ny = h;
+    const ddx = nx - x;
+    const ddz = nz - z;
+    const ddy = ny - y;
+    if (ddx * ddx + ddz * ddz > maxSide2 || ddy > maxRise || ddy < -maxRise || !capsuleFree(w, nx, ny, nz, r, height)) {
+      vx = 0;
+      vy = 0;
+      vz = 0;
+      break;
+    }
+    x = nx;
+    y = ny;
+    z = nz;
+  }
+  b.x = Math.fround(x);
+  b.y = Math.fround(y);
+  b.z = Math.fround(z);
+  b.vx = Math.fround(vx);
+  b.vy = Math.fround(vy);
+  b.vz = Math.fround(vz);
+  b.grounded = false;
+  b.stance = STANCE_STAND;
+}
+
+/** No collision. Bounded to the map's box. */
+function stepGhost(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, dt: number): void {
+  flight(moveX, moveZ, yaw, pitch, buttons);
+  const vx = flown[0]!;
+  const vy = flown[1]!;
+  const vz = flown[2]!;
   let x = b.x + vx * dt;
   let y = b.y + vy * dt;
   let z = b.z + vz * dt;
