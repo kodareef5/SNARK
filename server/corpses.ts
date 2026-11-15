@@ -309,7 +309,7 @@ export class Corpses {
    * in water weighing a quarter and slowed as a ragdoll's bodies are, so that it sinks. It lies where something holds it
    * up, where it can go no further, or after DROP_TICKS.
    */
-  private fall(b: Body): void {
+  private descend(b: Body): void {
     const world = this.ctx.world;
     const m = b.drop!;
     const p = world.reg.move[b.kind]!;
@@ -425,7 +425,7 @@ export class Corpses {
     let still = 0;
     for (const b of dropping) {
       if (!b.drop || this.bodies.get(b.rec.pid) !== b) continue;
-      this.fall(b);
+      this.descend(b);
       if (b.drop) dropping[still++] = b;
     }
     dropping.length = still;
