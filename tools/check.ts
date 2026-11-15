@@ -1,7 +1,7 @@
 // `bun run check`, the one command every change must pass. It enforces the rules that keep this project fast to change.
 // Raising a budget or widening an allow-list is a decision. Record it in planning/decisions.md in the same change.
 
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { dynamicLoads, stripComments } from "./policy.ts";
@@ -192,6 +192,18 @@ async function sharedPack(dir: string): Promise<Record<string, string>> {
   }
 }
 
+/** Each test file's milliseconds in the last check that passed, as `bun test --timings` reads them. */
+const TEST_TIMES = join(ROOT, ".cache/test-times.json");
+
+function keepTimes(junit: string): void {
+  const files: Record<string, number> = {};
+  for (const m of junit.matchAll(/<testsuite name="([^"]+)"[^>]*? time="([\d.]+)"/g)) files[m[1]!] = Math.round(Number(m[2]) * 1000);
+  mkdirSync(dirname(TEST_TIMES), { recursive: true });
+  // Whole or not at all, for a check started beside this one.
+  writeFileSync(`${TEST_TIMES}.${process.pid}`, JSON.stringify({ version: 1, files }));
+  renameSync(`${TEST_TIMES}.${process.pid}`, TEST_TIMES);
+}
+
 async function checkTests(): Promise<void> {
   const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
   if (!hasTests) return;
@@ -200,9 +212,13 @@ async function checkTests(): Promise<void> {
   // when more work waits than there are cores, up to two minutes.
   const hung = Math.round(20000 * Math.min(6, Math.max(1, loadavg()[0]! / cpus().length)));
   const dir = mkdtempSync(join(tmpdir(), "snark-check-"));
+  const report = join(dir, "junit.xml");
+  // The slowest files start first, by their times in the last check, or the last of them may start when the rest are done.
+  const timed = existsSync(TEST_TIMES) ? ["--timings", TEST_TIMES] : [];
   let r: { ok: boolean; out: string };
   try {
-    r = await run(["bun", "test", "--parallel", "--timeout", String(hung)], true, { ...process.env, ...(await sharedPack(dir)) });
+    r = await run(["bun", "test", "--parallel", "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...(await sharedPack(dir)) });
+    if (r.ok) keepTimes(readFileSync(report, "utf8"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
