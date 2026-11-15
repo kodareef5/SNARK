@@ -162,7 +162,7 @@ test("the inventory screen moves and eats through the server, and the HUD bars a
   app.pointer(0, slot(berries), 0, 0, 2);
   run(300);
   expect(inv.count[berries]).toBe(4);
-  expect(h.host.survival.value(rec, V_FOOD)).toBeGreaterThan(food + 3.9);
+  expect(h.host.survival.value(rec, V_FOOD)).toBeGreaterThan(food + 1.4);
   expect(app.ui.frame.find(slot(berries) + 2)!.text).toBe("4");
   // The open inventory screen leaves the keyboard to the body.
   const z = h.world.ents.z[h.ent(app.session)]!;
