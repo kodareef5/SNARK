@@ -640,6 +640,20 @@ test("the barrel roll: crouch in the air bursts 10 m/s along its look for 90 sta
   }
 });
 
+test("flying, it keeps the capsule it walks with: 1.5 m wide, it does not pass a doorway a survivor walks through", () => {
+  const w = flatWorld();
+  const p = ptera(w);
+  const door = w.kind("core:doorframe_wood");
+  w.structs.add(door, 64, w.reg.halfY[door]!, 30, 0, 0, 1);
+  const b = hovering(w, 64, 24, 0.2);
+  for (let i = 0; i < 120; i++) stepBody(w, b, 0, FWD, NORTH, 0, BTN_JUMP, p, TICK_DT);
+  // Held where its round sides meet the posts, short of the frame's middle.
+  expect([b.mode, b.z < 29.7, b.vz, capsuleFree(w, b.x, b.y, b.z, p.radius, p.height)]).toEqual([MODE_FLYER, true, 0, true]);
+  const s = bodyAt(w, 64, 24);
+  run(w, s, 120, 0, FWD, NORTH);
+  expect(s.z).toBeGreaterThan(32);
+});
+
 test("at the world's top it climbs no higher", () => {
   const w = flatWorld(16);
   const p = ptera(w);

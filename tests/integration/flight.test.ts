@@ -3,6 +3,10 @@
 // a pilot holds jump to keep it up, as the client will hold it for a press of Space.
 
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { HostOptions } from "../../server/host.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { BTN_BRAKE, BTN_JUMP, BTN_ROLL, BTN_SPRINT, MF_NO_JUMP, MF_WINDED, MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
@@ -19,8 +23,8 @@ const p = reg.tamedMove[PTERA]!;
  * Ada, an admin on a link of `latencyMs`, on a saddled pteranodon of her tribe that stood beside her on the plaza south of
  * the proving ground's blocks.
  */
-function ridden(latencyMs = 60) {
-  const h = new Harness({}, 1, 60, { dev: true });
+function ridden(latencyMs = 60, host: HostOptions = {}) {
+  const h = new Harness({}, 1, 60, { dev: true, ...host });
   const s = h.join("ada", { latencyMs });
   h.run(500);
   h.say(s, "enablecheats");
@@ -213,4 +217,34 @@ test("too heavy, it does not take off, and loaded so in the air it is put down u
   h.host.items.mint(rec, id("stone"), 260);
   h.run(6000);
   expect([ents.mode[e], ents.y[e]! - r.ground() < 0.01, r.health()]).toEqual([MODE_WALK, true, health]);
+});
+
+test("saved flying 30 m up and loaded without its rider, it does not fall: its jump let go, it goes down and sets down unhurt", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-flight-"));
+  try {
+    const dbPath = join(dir, "world.db");
+    const r = ridden(60, { dbPath });
+    climb(r, 30);
+    const pid = r.rec.pid;
+    const health = r.health();
+    r.h.host.shutdown();
+    const h = new Harness({}, 1, 60, { dev: true, dbPath });
+    h.join("bob");
+    const ents = h.world.ents;
+    const e = h.host.records.entOf.get(pid)!;
+    const rec = h.host.records.byPid.get(pid)!;
+    const ground = (): number => groundUnder(h.world.hf, ents.x[e]!, ents.z[e]!, p.radius);
+    expect([ents.mode[e], ents.y[e]! - ground() > 25]).toEqual([MODE_FLYER, true]);
+    // No faster down than its descent, twice its flying speed, and in flight until it touches.
+    let fastest = 0;
+    let early = false;
+    h.run(8000, () => {
+      fastest = Math.max(fastest, -ents.vy[e]!);
+      early ||= ents.mode[e] !== MODE_FLYER && ents.y[e]! - ground() > 0.01;
+    });
+    expect([fastest <= 2 * p.flySpeed + 1e-4, early, ents.mode[e], ents.y[e]! - ground() < 0.01, h.host.survival.value(rec, V_HEALTH)]).toEqual([true, false, MODE_WALK, true, health]);
+    h.host.shutdown();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
