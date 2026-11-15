@@ -236,7 +236,10 @@ const NODES: NodeDef[] = [
 /** Levels are the reference game's. */
 const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
-  ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["narcoberry", 5], ["meat", 1]]),
+  // ark.wiki.gg, Narcotic, infobox, 2026-11-15: at the mortar and pestle, 5 narcoberries and 1 spoiled meat, in 5 s,
+  // craftingxp 2 (our 8, D465's four times); level 6, 6 engram points (moved from the hand and raw meat by S6). The
+  // chemistry bench's 20 and 4 for 6 waits for the bench.
+  ...making("narcotic", "Narcotic", 6, 6, 1, 5, [["narcoberry", 5], ["spoiled_meat", 1]], 8, "mortar"),
   // The metal ingot has no engram and is not made in the hand, as in ARK, where the refining forge makes it (by the user,
   // 2026-11-15, on planning/reference/stations-plan.md's question 2: no rename, no refund). The forge's recipe is S1's; until
   // then ingots come from what is given. A save that knew the engram "Smelting" loads without it, and a job of ingots it was

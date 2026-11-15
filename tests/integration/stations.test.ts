@@ -185,8 +185,9 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   };
   const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
 
-  // The client lists what the mortar makes, from content: the item names it in craft.at.
-  expect(stationRecipes(reg, id("mortar"))).toEqual([spark]);
+  // The client lists what the mortar makes, from content: the item names it in craft.at. Since S6, the narcotic and
+  // cementing paste too (tests/unit/ark-stations.test.ts).
+  expect(stationRecipes(reg, id("mortar")).sort((a, b) => a - b)).toEqual([spark, id("narcotic"), id("paste")].sort((a, b) => a - b));
   expect([reg.craftAt[spark], reg.craftAt[id("pick")]]).toEqual([id("mortar"), 0]);
   // With nothing open, or a box that is no station open, nothing is made at one.
   expect(at_(ada, spark, 1)).toBe(RESULT_DENIED);
@@ -234,10 +235,12 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   f.begin(16 / 9);
   const panel = new StationPanel();
   panel.build(f, ada, reg, 400, 100, 474);
-  expect([f.find(KEY_STATION_RECIPE)?.text, f.find(KEY_STATION_RECIPE + 1)?.text, f.find(KEY_STATION_JOB)?.text]).toEqual(["sparkpowder x2: 2 flint, 1 stone", "make", "nothing being made"]);
+  // Its line is where sparkpowder comes in content order among what the mortar makes (the narcotic and paste too, since S6).
+  const row = KEY_STATION_RECIPE + 2 * stationRecipes(reg, id("mortar")).indexOf(spark);
+  expect([f.find(row)?.text, f.find(row + 1)?.text, f.find(KEY_STATION_JOB)?.text]).toEqual(["sparkpowder x2: 2 flint, 1 stone", "make", "nothing being made"]);
   let clicked = -1;
   ada.onResult = (seq, c) => void (seq !== 0 && (clicked = c));
-  expect(panel.click(KEY_STATION_RECIPE + 1, ada, reg)).toBe(true);
+  expect(panel.click(row + 1, ada, reg)).toBe(true);
   h.run(150);
   expect(clicked).toBe(RESULT_SHORT);
 

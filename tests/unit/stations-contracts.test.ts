@@ -65,7 +65,8 @@ test("the eight resources are plain items at their pages' weights and stacks, an
   const yielded = new Set(CORE_CONTENT.flatMap((d) => (d.type === "node" ? d.yields.map((y) => y.item) : [])));
   expect([plain.filter((n) => reg.recipeOf[id(reg, n)] !== null), plain.filter((n) => yielded.has(`core:${n}`))]).toEqual([["polymer", "electronics"], ["oil", "crystal", "obsidian", "silica_pearls"]]);
   const paste = CORE_CONTENT.find((d) => d.id === "core:paste" && d.type === "item") as ItemDef;
-  expect(paste).toMatchObject({ class: "resource", stack: 100, weight: 0.01, label: "cementing paste", color: 15, craft: { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 } });
+  // S0 moved it unchanged; S6 made it at the mortar and pestle at ARK's numbers (tests/unit/ark-stations.test.ts).
+  expect(paste).toMatchObject({ class: "resource", stack: 100, weight: 0.01, label: "cementing paste", color: 15, craft: { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 1, xp: 4.8, at: "core:mortar" } });
   expect(RESOURCES.filter((d) => d.id === "core:paste" || d.id === "core:engram-paste" || d.id === "core:make-paste").map((d) => d.type).sort()).toEqual(["engram", "item", "rename"]);
   expect(BUILDING_CONTENT.some((d) => d.id.includes("paste"))).toBe(false);
   // The ingot: no engram, no recipe, made at no station yet; its recipe's old id still reads as it.
@@ -83,8 +84,8 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   expect(structures.filter((k) => reg.stationCooks[k] !== 1 || reg.structKeeps[k] !== 1 || reg.powered[k] !== 0 || reg.dry[k] !== 0)).toEqual(fabricator);
   expect(fabricator.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.powered[k], reg.dry[k]])).toEqual(fabricator.map(() => [fabricator[0], 0, 1, 1]));
   expect([reg.firedAt.every((v) => v === 0), reg.burnsInto.every((v) => v === 0)]).toEqual([true, true]);
-  // Sparkpowder is made at the mortar, as before.
-  expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar"))]).toEqual([id(reg, "mortar"), [id(reg, "sparkpowder")]]);
+  // Sparkpowder is made at the mortar, as before, and since S6 the narcotic and cementing paste (tests/unit/ark-stations.test.ts).
+  expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]).sort()]).toEqual([id(reg, "mortar"), ["core:narcotic", "core:paste", "core:sparkpowder"]]);
 });
 
 /** A test station that lights, named by its unlit and lit ids, burning only sparkpowder 2 s a piece, and a loaf made at it. */
