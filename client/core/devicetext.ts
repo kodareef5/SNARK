@@ -51,7 +51,7 @@ function onThis(g: Record<string, unknown>): string {
   return `${identify(nav.userAgent ?? "", nav.maxTouchPoints ?? 0)}, ${screen.width ?? "?"} by ${screen.height ?? "?"} at ${g.devicePixelRatio ?? "?"}x`;
 }
 
-const TESTS: Readonly<Record<Mode, string>> = { quick: "Quick look, about 3 minutes", ladder: "Load ladder, about 5 minutes", soak: "Soak, 10 minutes", governed: "Soak with the governor on, 10 minutes", terrain: "Terrain flight, about 3 minutes" };
+const TESTS: Readonly<Record<Mode, string>> = { quick: "Quick look, about 3 minutes", ladder: "Load ladder, about 5 minutes", soak: "Soak, 10 minutes", governed: "Soak with the governor on, 10 minutes", terrain: "Terrain flight, about 3 minutes", trees: "Tree order, about 4 minutes" };
 const buttons = (modes: readonly Mode[]): string => modes.map((m) => `<button data-mode="${m}" style="display:block;width:100%;max-width:26em;margin:10px 0;padding:14px;font:inherit;font-size:17px;border-radius:10px;border:0;background:#2a6;color:#fff">${TESTS[m]}</button>`).join("");
 
 /** What a page shows before a test: the device it takes itself to be on, and the tests to tap. */
@@ -198,6 +198,29 @@ function terrainLines(r: DeviceReport): string[] {
   return out;
 }
 
+/** The tree order: each wood on each tier in each order, the server's count of the view, and what they say together. */
+function treesLines(r: DeviceReport): string[] {
+  const t = r.trees!;
+  const s = t.surface;
+  const out = ["trees     cut-outs drawn last, as made and first among their step's opaque draws, in the map's young wood at its middle and the"];
+  out.push("          elders' stand, from eye height turning once round a window: each order two windows, then two more read back");
+  out.push(`          a layer of SURFACE ${s?.slope != null ? `${s.slope} ms a megapixel, +-${s.error}` : `not timed${s?.note ? `: ${s.note}` : ""}`}; the view counted ${t.view[0]} by ${t.view[1]} CSS pixels, ${t.view[2]} degrees high${t.counted ? `: ${t.counted}` : ""}`);
+  const widths = [6, 7, 6, 6, 7, 6, 6, 11, 6, 11, 6];
+  const n = (x: number | null): string => (x === null ? "-" : String(x));
+  out.push(row(["wood", "tier", "order", "frames", "median", "p95", "mean", "windows", "read", "windows", "gpu"], widths));
+  for (const g of t.rungs) {
+    for (const o of g.orders) out.push(row([g.wood, g.tier, o.order, String(o.frames), String(o.frameMs.median), String(o.frameMs.p95), String(o.meanMs), o.means.join("/"), String(o.readMs), o.reads.join("/"), n(o.gpuMs)], widths));
+    const c = t.counts.find((x) => x.wood === g.wood && x.tier === g.tier);
+    const counted = c ? `${c.cut} cut-out layers a pixel, ${c.front} in front of the nearest opaque, ${c.old} as made, ${c.first} of the ground` : "not counted";
+    out.push(`          ${g.wood} ${g.tier} at ${g.at.map(Math.round).join(", ")}, canvas ${g.canvas.join("x")}, ${count(g.calls)} draws, ${count(g.tris)} triangles; ${g.invalid ? `invalid: ${g.invalid}; ` : ""}${counted}`);
+    if (g.verdict) out.push(`          ${g.verdict}`);
+  }
+  out.push("median, p95, mean: ms between frames, the mean of each window after; read: ms from handing a frame to WebGL to a pixel of it read");
+  out.push("back, median, each window's after; gpu: by timer query. The counts are of the same view (wood.ts), in layers a pixel");
+  out.push(`verdict   ${t.verdict || "not judged"}`);
+  return out;
+}
+
 function soakLines(r: DeviceReport): string[] {
   const s = r.soak!;
   const l = s.load;
@@ -291,6 +314,7 @@ export function deviceTable(r: DeviceReport): string[] {
   if (r.ladder || r.reloadedDuring?.startsWith("memory")) out.push("", ...ladderLines(r));
   if (r.soak) out.push("", ...soakLines(r));
   if (r.terrain) out.push("", ...terrainLines(r));
+  if (r.trees) out.push("", ...treesLines(r));
   for (const line of r.skipped) out.push(`not run   ${line}`);
   if (r.hidden.length > 0) out.push(`hidden    the page was hidden during: ${r.hidden.join(", ")}`);
   for (const e of r.errors) out.push(`error     ${e}`);

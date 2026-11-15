@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { JOIN_MS } from "../../client/core/governor.ts";
-import { DeviceProbe, MEMORY_MB, deviceScenarios, newReport, spread, type DeviceBrowser, type DeviceReport, type RendererLike, type RungReport, type Timing } from "../../client/core/device.ts";
+import { DeviceProbe, MEMORY_MB, TREE_TIERS, WOODS, deviceScenarios, newReport, spread, type DeviceBrowser, type DeviceReport, type RendererLike, type RungReport, type Timing } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
 import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, filesChanged, lacking, servedFiles } from "../../tools/device.ts";
@@ -16,11 +16,11 @@ import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
-const TIMING: Timing = { measureMs: 300, rungMs: 100, settleMs: 3000, loadMs: 20000, soakMs: 2000, holdMs: 100, flightMs: 2000, teleportMs: 500 };
+const TIMING: Timing = { measureMs: 300, rungMs: 100, settleMs: 3000, loadMs: 20000, soakMs: 2000, holdMs: 100, flightMs: 2000, teleportMs: 500, turnMs: 200 };
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 27_2_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.8103.37 Mobile/15E148 Safari/604.1";
 
 /** A browser made of numbers. Its timers never fire, so nothing is waited out. `frameMs` is the display's interval. */
-function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; tests?: string; frameMs?: number } = {}) {
+function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; tests?: string; frameMs?: number; stand?: (k: number) => number[] | null; layers?: (path: string) => unknown } = {}) {
   const posts: DeviceReport[] = [];
   const asked: number[] = [];
   const page = { text: "", whole: false, saved: opts.saved ?? null };
@@ -36,7 +36,7 @@ function browser(opts: { saved?: string; clock?: () => number; expected?: Record
     fetch: (path, body) => {
       if (path === "report") posts.push(JSON.parse(body!) as DeviceReport);
       if (path.startsWith("base/")) asked.push(Number(path.slice(5)));
-      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : path === "report" ? { skipped: 3 + posts.length, overflows: 1 } : { pieces: asked.at(-1) };
+      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : path === "report" ? { skipped: 3 + posts.length, overflows: 1 } : path.startsWith("stand/") ? (opts.stand?.(Number(path.slice(6))) ?? null) : path.startsWith("layers/") ? (opts.layers?.(path) ?? null) : { pieces: asked.at(-1) };
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(value) });
     },
     load: () => page.saved,
@@ -358,6 +358,53 @@ test("the terrain flight is offered only by its own server's link, flies the cam
   expect(deviceTable(probe.report).some((line) => line.startsWith("soak      high: turning once a minute (the terrain map's wood and 480 far base chunks round its middle"))).toBe(true);
 });
 
+test("the tree order is offered by the terrain server's link, stands in each wood on medium and high, draws each order in its windows and then reads them back, and judges them by the server's count of its view", async () => {
+  const { h, pack, app, expected } = client();
+  const offers = async (tests?: string): Promise<boolean> => {
+    const shown = browser({ expected, ...(tests ? { tests } : {}) });
+    void new DeviceProbe(TOKEN, shown.b, TIMING).before();
+    await settle();
+    return shown.page.text.includes('data-mode="trees"');
+  };
+  expect([await offers(), await offers("terrain,trees,soak,governed")]).toEqual([false, true]);
+  const card = renderer();
+  let reads = 0;
+  card.r.readPixel = () => (reads++, [0, 0, 0]);
+  const [stood, views] = [[] as number[], [] as string[]];
+  const counts = TREE_TIERS.flatMap((tier) => WOODS.map((wood) => ({ wood, tier, cut: 20, front: 0.2, old: 2, first: 19.8 })));
+  // The server stands the body where it is, and answers the third time it is asked that it has counted.
+  const stand = (k: number): number[] => (stood.push(k), [app.session.own.x, app.session.own.z]);
+  const layers = (path: string): unknown => (views.push(path), views.length < 3 ? { state: "counting" } : { state: "done", counts });
+  const { b } = browser({ clock: () => h.now + card.spent(), expected, mode: "trees", tests: "terrain,trees", stand, layers });
+  const probe = new DeviceProbe(TOKEN, b, TIMING);
+  await probe.before();
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
+  // The order each frame was drawn in while the rung read its frames back, or did not.
+  const drawn = new Set<string>();
+  await run(probe, h, app, card.r, 120000, { each: () => void (probe.report.stage.startsWith("trees ") && drawn.add(`${app.scene!.cutouts} ${probe.report.stage.endsWith("read back")}`)) });
+  const r = probe.report;
+  expect([r.done, r.errors, r.mode, r.probes, r.gpuTests]).toEqual([true, [], "trees", null, null]);
+  const t = r.trees!;
+  expect(t.rungs.map((g) => `${g.wood} ${g.tier}`)).toEqual(["young medium", "elder medium", "young high", "elder high"]);
+  expect(stood).toEqual([0, 1, 0, 1]);
+  expect([views[0], views.length, t.counted, t.counts.length, t.view]).toEqual(["layers/390/844/70", 3, "", 4, [390, 844, 70]]);
+  for (const g of t.rungs) {
+    expect([g.invalid, g.orders.map((o) => o.order)]).toEqual(["", ["last", "made", "first"]]);
+    for (const o of g.orders) expect([o.frames > 5, o.means.length, o.reads.length]).toEqual([true, 2, 2]);
+    expect(g.verdict).not.toBe("");
+  }
+  expect([...drawn].sort()).toEqual(["first false", "first true", "last false", "last true", "made false", "made true"]);
+  expect(reads).toBeGreaterThan(4 * 6 * 3);
+  // The SURFACE pass alone was timed, for the cost of a layer, and the verdict says what was found.
+  expect([t.surface?.name, t.surface?.slope !== null, t.verdict !== ""]).toEqual(["surface", true, true]);
+  expect(lacking(r, "trees")).toEqual([]);
+  // After it the game draws its cut-outs last again.
+  expect(app.scene!.cutouts).toBe("last");
+  const table = deviceTable(r);
+  expect(table.some((line) => line.startsWith("verdict   "))).toBe(true);
+  expect(table.some((line) => /^elder +high +made +\d+ /.test(line))).toBe(true);
+});
+
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {
   const ladder = { display: 16.7, rungs: [], memory: { variant: "astc", gameMB: 40, heldMB: 1024, failedMB: null, slowMB: null, how: "", rungs: [{ mb: 1024, frameMs: 17, p95: 18, worst: 20, oursMs: 0.3, held: true }] } };
   const saved = JSON.stringify({ token: TOKEN, report: { ...newReport("0011223344556677", "ladder"), seq: 7, stage: "memory 1536 MB", ladder } });
@@ -439,17 +486,32 @@ test("a run whose frames stop ends, saying why, and one whose game never starts 
 const dir = mkdtempSync(join(tmpdir(), "snark-device-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-function server() {
+/** The probe's routes. With `terrain`, a terrain server's too: two spots to stand at, and views it counts. */
+function server(terrain = false) {
   const said: string[] = [];
   const done: string[] = [];
   const bases: number[] = [];
-  const { routes } = deviceRoutes({ dir, token: TOKEN, code: "bqzk", password: "secret", expected: { sim: "abc" }, say: (line) => said.push(line), done: (_, file) => done.push(file), base: (n) => (bases.push(n), Math.min(n, 1000)), held: () => ({ skipped: 7, overflows: 2 }) });
+  const [stood, counted] = [[] as number[], [] as number[][]];
+  const trees = { stand: (k: number) => (stood.push(k), k < 2 ? [100 + k, 200] : null), layers: (w: number, h: number, fov: number) => (counted.push([w, h, fov]), { state: "counting" as const }) };
+  const { routes } = deviceRoutes({ dir, token: TOKEN, code: "bqzk", password: "secret", expected: { sim: "abc" }, say: (line) => said.push(line), done: (_, file) => done.push(file), base: (n) => (bases.push(n), Math.min(n, 1000)), held: () => ({ skipped: 7, overflows: 2 }), ...(terrain ? trees : {}) });
   const ask = async (path: string, init: RequestInit = {}): Promise<Response | null> => {
     const req = new Request(`http://127.0.0.1${path}`, init);
     return (await routes(req, new URL(req.url))) ?? null;
   };
-  return { ask, said, done, bases };
+  return { ask, said, done, bases, stood, counted };
 }
+
+test("a terrain server stands the body at the tree order's spots and counts views of sizes a page can have, each only with the token", async () => {
+  const plain = server();
+  for (const path of ["/__device/stand/0", "/__device/layers/390/844/70"]) expect((await plain.ask(`${path}?token=${TOKEN}`, { method: "POST" }))!.status).toBe(404);
+  const { ask, stood, counted } = server(true);
+  for (const path of ["/__device/stand/0", "/__device/layers/390/844/70", `/__device/stand/0?token=${TOKEN.slice(1)}`]) expect((await ask(path, { method: "POST" }))!.status).toBe(404);
+  expect(await (await ask(`/__device/stand/1?token=${TOKEN}`, { method: "POST" }))!.json()).toEqual([101, 200]);
+  expect([(await ask(`/__device/stand/2?token=${TOKEN}`, { method: "POST" }))!.status, (await ask(`/__device/stand/1?token=${TOKEN}`))!.status]).toEqual([400, 404]);
+  expect(await (await ask(`/__device/layers/390/844/70?token=${TOKEN}`, { method: "POST" }))!.json()).toEqual({ state: "counting" });
+  for (const path of ["/__device/layers/9999/844/70", "/__device/layers/390/844/10", "/__device/layers/40/844/70"]) expect((await ask(`${path}?token=${TOKEN}`, { method: "POST" }))!.status).toBe(400);
+  expect([stood, counted]).toEqual([[1, 2], [[390, 844, 70]]]);
+});
 
 const post = (report: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(report) });
 

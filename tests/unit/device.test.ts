@@ -1,10 +1,11 @@
 // The device probe's pieces that need no game: its statistics, what it reads off a browser and a graphics context, the
-// ladder's order, the soak's amounts, the layouts it stands in view, texture memory, and its words.
+// ladder's order, the soak's amounts, the layouts it stands in view, texture memory, the tree order's verdict, and its
+// words.
 
 import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
-import { AXES, LadderPlan, RUNGS, failedHow, featuresOf, formatsOf, gpuOf, judgeRung, newReport, soakLoad, spread, type PhaseReport, type RungReport, type Within } from "../../client/core/device.ts";
-import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene, farBases, farSpots } from "../../client/core/devicescene.ts";
+import { AXES, LadderPlan, RUNGS, failedHow, featuresOf, formatsOf, gpuOf, judgeRung, newReport, orderVerdict, soakLoad, spread, treesVerdict, type LayerCount, type OrderRung, type OrderTime, type PhaseReport, type RungReport, type TreesReport, type Within } from "../../client/core/device.ts";
+import { BASE_MOST, STAND, TextureMemory, WOOD, basePieces, bodySpots, crowdScene, farBases, farSpots, terrainWood } from "../../client/core/devicescene.ts";
 import { fakeGl } from "../fixtures/gl.ts";
 import { farRegistry } from "../fixtures/farworld.ts";
 import { deviceTable, escape, identify, limitsLine, materialsLacking } from "../../client/core/devicetext.ts";
@@ -223,4 +224,49 @@ test("a tier that has materials and drew none of them is said to lack them, plai
   r.texturesMade = 40;
   expect(materialsLacking(r)).toEqual({ drawn: ["medium"], lacking: ["high"] });
   expect(deviceTable(r)).toContain("materials drawn on medium: the renderer made 40 textures; none drawn on high, which have them: a lack, as their textures never arrived or the card refused them");
+});
+
+test("the tree order's verdict sets drawn first against drawn last beside what the counts predict at the device's cost of a layer", () => {
+  /** A rung whose orders read back in `last`, `made` and `first` ms, each order's two windows `apart` ms apart. */
+  const rung = (last: number, made: number, first: number, apart = 0, invalid = ""): OrderRung => ({
+    wood: "elder", tier: "medium", at: [1024, 1024], canvas: [1000, 590], settleMs: 3, settled: true, invalid, calls: 900, tris: 4e6, mat: 600, verdict: "",
+    orders: ([["last", last], ["made", made], ["first", first]] as const).map(([order, ms]): OrderTime => ({ order, frames: 60, frameMs: spread([ms]), meanMs: ms, means: [ms, ms], readMs: ms, reads: [ms - apart / 2, ms + apart / 2], gpuMs: null })),
+  });
+  const elders: LayerCount = { wood: "elder", tier: "medium", cut: 23, front: 0.2, old: 2, first: 22.9 };
+  // 0.85 ms a megapixel a layer over 0.59 megapixels: 22.7 layers are 11.4 ms, 1.8 are 0.9 ms.
+  const skipped = orderVerdict(rung(18, 19, 29), elders, 0.85);
+  expect([skipped.skipped, skipped.judged, Math.round(skipped.predicted * 10) / 10, Math.round(skipped.saving * 10) / 10]).toEqual([true, true, 11.4, 0.9]);
+  expect(skipped.line).toBe("first against last +11.00 ms read back, +11.38 predicted if hidden pixels are skipped (97%); made against last +1.00, +0.90 predicted: skipped");
+  expect(orderVerdict(rung(30, 30.2, 30.5), elders, 0.85).skipped).toBe(false);
+  expect(orderVerdict(rung(20, 21, 24), elders, 0.85).line).toEndWith("partly skipped");
+  // Too small beside what the counts predict, or beside how far an order's two windows lie apart.
+  expect(orderVerdict(rung(18, 18, 18.2), { ...elders, first: 1, front: 0.3 }, 0.85).line).toEndWith("too small to tell, against 0 ms between an order's two windows");
+  expect(orderVerdict(rung(18, 19, 29, 7), elders, 0.85).judged).toBe(false);
+  expect(orderVerdict(rung(18, 19, 29, 0, "never settled"), elders, 0.85).line).toBe("not judged: invalid, never settled");
+  expect(orderVerdict(rung(18, 19, 29), undefined, 0.85).line).toBe("not judged: the server did not count this view");
+  expect(orderVerdict(rung(18, 19, 29), elders, null).line).toBe("not judged: no cost of a layer was measured");
+
+  // The line over all is the judged rung that predicts most.
+  const young: OrderRung = { ...rung(17, 17.1, 17.3), wood: "young" };
+  const t: TreesReport = { view: [390, 844, 70], surface: { name: "surface", per: "megapixel", timer: null, slope: 0.85, error: 0.02, k: 64, note: "" }, counts: [elders, { wood: "young", tier: "medium", cut: 1.5, front: 0.34, old: 0.5, first: 1.5 }], counted: "", rungs: [young, rung(18, 19, 29)], verdict: "" };
+  t.verdict = treesVerdict(t);
+  expect(t.verdict).toBe("skipped: drawn first, the elder oaks' cut-outs on medium took 11.0 ms more than drawn last, where the counts predict 11.4 ms if the GPU skips what an opaque surface drawn before hides; drawn last saves 1.0 ms of 0.9 predicted against the order they were made in");
+  expect(treesVerdict({ ...t, counts: [], counted: "the server did not answer" })).toBe("not judged: the server did not answer");
+  const r = newReport("0123456789abcdef", "trees");
+  r.trees = t;
+  const table = deviceTable(r);
+  expect(table).toContain(`verdict   ${t.verdict}`);
+  expect(table.some((line) => /^elder +medium +first +60 +29 /.test(line))).toBe(true);
+});
+
+test("the terrain map's wood is the far nodes' bench's but in the elders' stand, whose trees are elder oaks", () => {
+  const dims = { chunksX: 128, chunksZ: 128 };
+  const wood = terrainWood(dims);
+  const at = (x: number, z: number): number => wood.zone[Math.floor(z / CHUNK_SIZE) * dims.chunksX + Math.floor(x / CHUNK_SIZE)]!;
+  expect([wood.seed, wood.perChunk, wood.zones[0]!.kinds]).toEqual([WOOD.seed, WOOD.perChunk, WOOD.kinds]);
+  expect(wood.zones[1]!.kinds).toEqual([["core:oak", 3], ["core:rock", 2], ["core:bush", 1]]);
+  expect([at(STAND.x, STAND.z), at(STAND.x + STAND.reach - 40, STAND.z), at(STAND.x + STAND.reach + 40, STAND.z), at(4096, 4096)]).toEqual([2, 2, 1, 1]);
+  // Past the farthest any tier draws trees from the map's middle, and wider than any tier's band.
+  expect(Math.hypot(4096 - STAND.x, 4096 - STAND.z) - STAND.reach).toBeGreaterThan(Math.max(...TIERS.map((t) => t.reach.trees)));
+  expect(STAND.reach).toBeGreaterThan(Math.max(...TIERS.map((t) => t.nodes.band[1])));
 });
