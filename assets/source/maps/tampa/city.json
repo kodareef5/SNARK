@@ -63,7 +63,7 @@
   "future": {
     "spans": [
       {"road": "Davis Islands Brg", "length_m": 30, "width_m": 30, "why": "The islands' one road link: Davis Islands becomes a swim, as Miami's causeways made Miami Beach"},
-      {"road": "Selmon Expy", "length_m": 40, "width_m": 50, "why": "The expressway viaduct over the river mouth, fallen; both carriageways"},
+      {"road": "Selmon Expy", "length_m": 40, "width_m": 90, "why": "The expressway viaduct over the river mouth, fallen; wide enough to take both carriageways, which OpenStreetMap maps 30 m apart"},
       {"road": "S Harbour Island Blvd", "length_m": 26, "width_m": 24, "why": "One of Harbour Island's two bridges; Beneficial Dr still stands"}
     ],
     "wrecks": [
