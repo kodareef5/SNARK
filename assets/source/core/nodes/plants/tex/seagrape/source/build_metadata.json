@@ -1,0 +1,797 @@
+{
+  "height_range_mm": 20,
+  "normal_convention": "OpenGL, +Y toward image top",
+  "normal_formula": "normalize(-dH/dx, +dH/dy_image, 1); central differences; one-sided at UV island x borders; periodic bark y",
+  "bark_px_per_m": 2925.714285714286,
+  "elements": {
+    "leaf1": {
+      "description": "Mature olive, pale veins",
+      "transform": {
+        "crop": [
+          33,
+          5,
+          1226,
+          1247
+        ],
+        "factor_xy": [
+          0.2673931265716681,
+          0.2673107890499195
+        ],
+        "offset": [
+          47,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.245
+    },
+    "leaf2": {
+      "description": "Mature deep green, broad kidney shape",
+      "transform": {
+        "crop": [
+          11,
+          17,
+          1242,
+          1239
+        ],
+        "factor_xy": [
+          0.24857839155158407,
+          0.2479541734860884
+        ],
+        "offset": [
+          36,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.235
+    },
+    "leaf3": {
+      "description": "Mature mottled green, pink veins",
+      "transform": {
+        "crop": [
+          33,
+          14,
+          1230,
+          1237
+        ],
+        "factor_xy": [
+          0.27151211361737676,
+          0.2714636140637776
+        ],
+        "offset": [
+          37,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.25
+    },
+    "leaf4": {
+      "description": "Small young yellow-green",
+      "transform": {
+        "crop": [
+          64,
+          33,
+          1183,
+          1220
+        ],
+        "factor_xy": [
+          0.1742627345844504,
+          0.17438921651221567
+        ],
+        "offset": [
+          41,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.15
+    },
+    "leaf5": {
+      "description": "Green, strong red veins",
+      "transform": {
+        "crop": [
+          14,
+          14,
+          1297,
+          1184
+        ],
+        "factor_xy": [
+          0.24318004676539362,
+          0.24358974358974358
+        ],
+        "offset": [
+          44,
+          34
+        ],
+        "raw_shape": [
+          1199,
+          1312
+        ]
+      },
+      "blade_width_m": 0.24
+    },
+    "leaf6": {
+      "description": "Old orange with green remnants",
+      "transform": {
+        "crop": [
+          27,
+          20,
+          1227,
+          1236
+        ],
+        "factor_xy": [
+          0.24916666666666668,
+          0.24917763157894737
+        ],
+        "offset": [
+          43,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.23
+    },
+    "leaf7": {
+      "description": "Old brick red and amber",
+      "transform": {
+        "crop": [
+          18,
+          14,
+          1237,
+          1240
+        ],
+        "factor_xy": [
+          0.23954060705496308,
+          0.2398042414355628
+        ],
+        "offset": [
+          42,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.225
+    },
+    "leaf8": {
+      "description": "Yellowing, green interveinal patches",
+      "transform": {
+        "crop": [
+          8,
+          8,
+          1246,
+          1246
+        ],
+        "factor_xy": [
+          0.2520193861066236,
+          0.2520193861066236
+        ],
+        "offset": [
+          46,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.24
+    },
+    "leaf9": {
+      "description": "Mature green, four insect holes",
+      "transform": {
+        "crop": [
+          24,
+          10,
+          1230,
+          1244
+        ],
+        "factor_xy": [
+          0.263681592039801,
+          0.26418152350081037
+        ],
+        "offset": [
+          38,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.245
+    },
+    "leaf10": {
+      "description": "Mature green, torn right edge",
+      "transform": {
+        "crop": [
+          26,
+          8,
+          1229,
+          1232
+        ],
+        "factor_xy": [
+          0.2593516209476309,
+          0.2589869281045752
+        ],
+        "offset": [
+          42,
+          34
+        ],
+        "raw_shape": [
+          1254,
+          1254
+        ]
+      },
+      "blade_width_m": 0.24
+    },
+    "fruit1": {
+      "description": "Green fruit, hanging",
+      "transform": {
+        "crop": [
+          352,
+          18,
+          664,
+          1518
+        ],
+        "factor_xy": [
+          0.21794871794871795,
+          0.21666666666666667
+        ],
+        "offset": [
+          35,
+          34
+        ],
+        "raw_shape": [
+          1536,
+          1024
+        ]
+      },
+      "berries": [
+        {
+          "center": [
+            90.84,
+            78.458
+          ],
+          "radius_px": 11.409,
+          "diameter_m": 0.01755
+        },
+        {
+          "center": [
+            47.25,
+            96.442
+          ],
+          "radius_px": 11.254,
+          "diameter_m": 0.01731
+        },
+        {
+          "center": [
+            88.442,
+            113.558
+          ],
+          "radius_px": 11.569,
+          "diameter_m": 0.0178
+        },
+        {
+          "center": [
+            47.25,
+            128.725
+          ],
+          "radius_px": 11.27,
+          "diameter_m": 0.01734
+        },
+        {
+          "center": [
+            87.353,
+            147.142
+          ],
+          "radius_px": 11.272,
+          "diameter_m": 0.01734
+        },
+        {
+          "center": [
+            45.942,
+            158.625
+          ],
+          "radius_px": 11.174,
+          "diameter_m": 0.01719
+        },
+        {
+          "center": [
+            89.968,
+            178.342
+          ],
+          "radius_px": 11.102,
+          "diameter_m": 0.01708
+        },
+        {
+          "center": [
+            50.301,
+            190.258
+          ],
+          "radius_px": 10.85,
+          "diameter_m": 0.01669
+        },
+        {
+          "center": [
+            85.173,
+            208.675
+          ],
+          "radius_px": 10.735,
+          "diameter_m": 0.01652
+        },
+        {
+          "center": [
+            46.814,
+            216.258
+          ],
+          "radius_px": 10.622,
+          "diameter_m": 0.01634
+        },
+        {
+          "center": [
+            87.788,
+            233.592
+          ],
+          "radius_px": 10.596,
+          "diameter_m": 0.0163
+        },
+        {
+          "center": [
+            49.865,
+            243.125
+          ],
+          "radius_px": 10.692,
+          "diameter_m": 0.01645
+        },
+        {
+          "center": [
+            85.827,
+            261.108
+          ],
+          "radius_px": 10.737,
+          "diameter_m": 0.01652
+        },
+        {
+          "center": [
+            49.865,
+            271.292
+          ],
+          "radius_px": 10.379,
+          "diameter_m": 0.01597
+        },
+        {
+          "center": [
+            82.994,
+            289.275
+          ],
+          "radius_px": 10.596,
+          "diameter_m": 0.0163
+        },
+        {
+          "center": [
+            49.647,
+            302.925
+          ],
+          "radius_px": 10.561,
+          "diameter_m": 0.01625
+        },
+        {
+          "center": [
+            85.173,
+            315.925
+          ],
+          "radius_px": 10.296,
+          "diameter_m": 0.01584
+        },
+        {
+          "center": [
+            55.532,
+            330.225
+          ],
+          "radius_px": 9.914,
+          "diameter_m": 0.01525
+        },
+        {
+          "center": [
+            71.769,
+            348.642
+          ],
+          "radius_px": 9.801,
+          "diameter_m": 0.01508
+        }
+      ],
+      "berry_count": 19
+    },
+    "fruit2": {
+      "description": "Mixed ripening fruit, hanging",
+      "transform": {
+        "crop": [
+          362,
+          8,
+          650,
+          1506
+        ],
+        "factor_xy": [
+          0.21875,
+          0.21695594125500667
+        ],
+        "offset": [
+          35,
+          34
+        ],
+        "raw_shape": [
+          1536,
+          1024
+        ]
+      },
+      "berries": [
+        {
+          "center": [
+            47.516,
+            74.613
+          ],
+          "radius_px": 11.198,
+          "diameter_m": 0.01723
+        },
+        {
+          "center": [
+            82.953,
+            91.102
+          ],
+          "radius_px": 10.888,
+          "diameter_m": 0.01675
+        },
+        {
+          "center": [
+            48.609,
+            113.665
+          ],
+          "radius_px": 10.941,
+          "diameter_m": 0.01683
+        },
+        {
+          "center": [
+            86.234,
+            130.588
+          ],
+          "radius_px": 10.991,
+          "diameter_m": 0.01691
+        },
+        {
+          "center": [
+            45.984,
+            146.426
+          ],
+          "radius_px": 10.938,
+          "diameter_m": 0.01683
+        },
+        {
+          "center": [
+            83.828,
+            161.179
+          ],
+          "radius_px": 11.026,
+          "diameter_m": 0.01696
+        },
+        {
+          "center": [
+            47.516,
+            179.403
+          ],
+          "radius_px": 10.941,
+          "diameter_m": 0.01683
+        },
+        {
+          "center": [
+            85.797,
+            191.118
+          ],
+          "radius_px": 10.947,
+          "diameter_m": 0.01684
+        },
+        {
+          "center": [
+            46.641,
+            210.428
+          ],
+          "radius_px": 10.514,
+          "diameter_m": 0.01617
+        },
+        {
+          "center": [
+            83.391,
+            220.191
+          ],
+          "radius_px": 10.638,
+          "diameter_m": 0.01637
+        },
+        {
+          "center": [
+            45.766,
+            234.51
+          ],
+          "radius_px": 10.514,
+          "diameter_m": 0.01617
+        },
+        {
+          "center": [
+            86.453,
+            247.527
+          ],
+          "radius_px": 10.638,
+          "diameter_m": 0.01637
+        },
+        {
+          "center": [
+            49.484,
+            262.931
+          ],
+          "radius_px": 10.681,
+          "diameter_m": 0.01643
+        },
+        {
+          "center": [
+            84.484,
+            273.128
+          ],
+          "radius_px": 10.546,
+          "diameter_m": 0.01623
+        },
+        {
+          "center": [
+            45.766,
+            289.616
+          ],
+          "radius_px": 10.588,
+          "diameter_m": 0.01629
+        },
+        {
+          "center": [
+            81.859,
+            304.586
+          ],
+          "radius_px": 10.529,
+          "diameter_m": 0.0162
+        },
+        {
+          "center": [
+            49.703,
+            319.99
+          ],
+          "radius_px": 10.762,
+          "diameter_m": 0.01656
+        },
+        {
+          "center": [
+            66.984,
+            344.289
+          ],
+          "radius_px": 11.577,
+          "diameter_m": 0.01781
+        }
+      ],
+      "berry_count": 18
+    },
+    "fruit3": {
+      "description": "Mostly purple fruit, hanging",
+      "transform": {
+        "crop": [
+          358,
+          12,
+          654,
+          1523
+        ],
+        "factor_xy": [
+          0.21621621621621623,
+          0.21508934480476505
+        ],
+        "offset": [
+          35,
+          34
+        ],
+        "raw_shape": [
+          1536,
+          1024
+        ]
+      },
+      "berries": [
+        {
+          "center": [
+            87.797,
+            71.463
+          ],
+          "radius_px": 10.502,
+          "diameter_m": 0.01616
+        },
+        {
+          "center": [
+            49.959,
+            89.746
+          ],
+          "radius_px": 10.768,
+          "diameter_m": 0.01657
+        },
+        {
+          "center": [
+            86.932,
+            103.296
+          ],
+          "radius_px": 11.13,
+          "diameter_m": 0.01712
+        },
+        {
+          "center": [
+            50.824,
+            118.138
+          ],
+          "radius_px": 10.097,
+          "diameter_m": 0.01553
+        },
+        {
+          "center": [
+            83.473,
+            133.624
+          ],
+          "radius_px": 11.132,
+          "diameter_m": 0.01713
+        },
+        {
+          "center": [
+            46.5,
+            149.756
+          ],
+          "radius_px": 11.233,
+          "diameter_m": 0.01728
+        },
+        {
+          "center": [
+            80.878,
+            165.887
+          ],
+          "radius_px": 11.141,
+          "diameter_m": 0.01714
+        },
+        {
+          "center": [
+            47.797,
+            181.804
+          ],
+          "radius_px": 11.246,
+          "diameter_m": 0.0173
+        },
+        {
+          "center": [
+            84.986,
+            195.785
+          ],
+          "radius_px": 10.854,
+          "diameter_m": 0.0167
+        },
+        {
+          "center": [
+            48.446,
+            213.207
+          ],
+          "radius_px": 11.479,
+          "diameter_m": 0.01766
+        },
+        {
+          "center": [
+            82.176,
+            229.984
+          ],
+          "radius_px": 11.085,
+          "diameter_m": 0.01705
+        },
+        {
+          "center": [
+            47.365,
+            244.395
+          ],
+          "radius_px": 11.041,
+          "diameter_m": 0.01699
+        },
+        {
+          "center": [
+            83.689,
+            262.032
+          ],
+          "radius_px": 11.289,
+          "diameter_m": 0.01737
+        },
+        {
+          "center": [
+            48.446,
+            274.938
+          ],
+          "radius_px": 10.996,
+          "diameter_m": 0.01692
+        },
+        {
+          "center": [
+            81.959,
+            291.715
+          ],
+          "radius_px": 11.246,
+          "diameter_m": 0.0173
+        },
+        {
+          "center": [
+            48.014,
+            306.986
+          ],
+          "radius_px": 11.05,
+          "diameter_m": 0.017
+        },
+        {
+          "center": [
+            74.392,
+            326.559
+          ],
+          "radius_px": 11.016,
+          "diameter_m": 0.01695
+        },
+        {
+          "center": [
+            50.824,
+            347.423
+          ],
+          "radius_px": 11.197,
+          "diameter_m": 0.01723
+        }
+      ],
+      "berry_count": 18
+    },
+    "twig1": {
+      "description": "Crooked pale grey twig with seven young leaves",
+      "transform": {
+        "crop": [
+          140,
+          37,
+          802,
+          1512
+        ],
+        "factor_xy": [
+          0.37009063444108764,
+          0.3701694915254237
+        ],
+        "offset": [
+          35,
+          34
+        ],
+        "raw_shape": [
+          1536,
+          1024
+        ]
+      },
+      "leaf_count": 7
+    }
+  },
+  "files_sha256": {
+    "seagrape_base.png": "8c12c60e58230ce5f1014cf1cd2c5311af7de19a9f47056bf9dcb328a09911f3",
+    "seagrape_height.png": "6bad16a02fe8e95e939650a208c426d099fc0942d26bfacd9e334a486ab4d81e",
+    "seagrape_normal.png": "8ae474acea4d68648aa15296884ebef411f0f31fe86e58111741cc70b65f2ca0",
+    "seagrape_orm.png": "21100b3aec5668a91fa93b5dbb26ae1d2aad6023aa7d656582a29c01ef47c392"
+  },
+  "build_seconds": 8.511
+}

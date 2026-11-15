@@ -1,0 +1,66 @@
+{
+  "bunch1": {
+    "source_anchor": [628, 64],
+    "scale_xy": [0.09, 0.09],
+    "radius_scale": 0.09,
+    "berries": [
+      {"circle": [723, 844, 84], "calyx": false, "depth_mm": 2.0},
+      {"circle": [511, 533, 78]},
+      {"circle": [393, 626, 82]},
+      {"circle": [301, 749, 82]},
+      {"circle": [258, 888, 80]},
+      {"circle": [368, 1043, 84]},
+      {"circle": [864, 1052, 85]},
+      {"circle": [692, 1105, 85]},
+      {"circle": [514, 1104, 85]},
+      {"circle": [611, 963, 85]},
+      {"circle": [427, 906, 85]},
+      {"circle": [518, 744, 85], "calyx": false},
+      {"circle": [639, 607, 80]},
+      {"circle": [886, 619, 80]},
+      {"circle": [986, 827, 85]},
+      {"circle": [848, 913, 85]},
+      {"circle": [755, 691, 84]},
+      {"circle": [622, 814, 85], "depth_mm": 8.0}
+    ]
+  },
+  "bunch2": {
+    "source_anchor": [625, 39],
+    "scale_xy": [0.12, 0.108],
+    "y_projection": [[39, 6], [180, 24], [350, 59], [1280, 124]],
+    "radius_scale": 0.105,
+    "berries": [
+      {"circle": [707, 756, 66], "calyx": false, "depth_mm": 2.4},
+      {"circle": [786, 382, 65]},
+      {"circle": [408, 498, 65]},
+      {"circle": [638, 498, 67]},
+      {"circle": [542, 616, 67]},
+      {"circle": [835, 624, 67]},
+      {"circle": [441, 730, 68]},
+      {"circle": [501, 854, 68]},
+      {"circle": [795, 845, 68]},
+      {"circle": [710, 980, 67]},
+      {"circle": [493, 1125, 64]},
+      {"circle": [665, 1185, 63]},
+      {"circle": [603, 918, 67]},
+      {"circle": [627, 710, 70], "depth_mm": 8.0}
+    ]
+  },
+  "bunch3": {
+    "source_anchor": [625, 100],
+    "scale_xy": [0.096, 0.09],
+    "radius_scale": 0.079,
+    "berries": [
+      {"circle": [516, 692, 97], "calyx": false, "depth_mm": 2.4},
+      {"circle": [816, 791, 84], "calyx": false, "depth_mm": 2.4},
+      {"circle": [360, 662, 95]},
+      {"circle": [721, 594, 90]},
+      {"circle": [891, 655, 94]},
+      {"circle": [705, 1039, 94]},
+      {"circle": [431, 886, 96]},
+      {"circle": [778, 853, 95]},
+      {"circle": [558, 987, 94]},
+      {"circle": [601, 763, 97], "depth_mm": 8.0}
+    ]
+  }
+}

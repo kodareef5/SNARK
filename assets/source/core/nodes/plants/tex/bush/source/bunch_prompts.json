@@ -1,0 +1,23 @@
+[
+  {
+    "name": "bunch1",
+    "prompt": "Use case: stylized-concept. Asset type: transparent botanical game-atlas source cutout. Generate ONE isolated hanging berry bunch seen orthographically from the SIDE, entire object in frame, on true transparent alpha. Same botanical construction as the top-right fruit in the repository twig concept: a short green-brown stalk enters from TOP CENTRE, splits into very thin curving pedicels of unequal length, berries hanging downward gathered into a compact rounded mass. Berries are small smooth spheres about 1cm in diameter. Whole object is about 6cm wide, 9cm from top stalk to lowest berry. Some berries overlap, with small gaps at the perimeter; not a spray of disconnected dots. NO leaves, no woody twig, no flowers. Flat unlit neutral dark-grey berry albedo RGB approximately 84,84,84, with small darker calyx dots on forward-facing berries; small berry-to-berry grey variation. No painted shadows or highlights. Thin olive green-brown pedicels RGB around 105,110,53. Natural botanical cutout, precise clean edges. Transparent square canvas with generous margins. No text or background. Fuller and rounder variant: exactly 18 berries in a compact broad roughly circular fruit cluster, several overlap. Short top stalk followed by unequal drooping pedicels; avoid a pyramidal grape shape.",
+    "tool": "built-in image_gen",
+    "source_file": "bunch1_original.png",
+    "reference": "../../ref/concept/berry/twig.png inspected before generation; botanical reference only."
+  },
+  {
+    "name": "bunch2",
+    "prompt": "Use case: stylized-concept. Asset type: transparent botanical game-atlas source cutout. Generate ONE isolated hanging berry bunch seen orthographically from the SIDE, entire object in frame, on true transparent alpha. Same botanical construction as the top-right fruit in the repository twig concept: a short green-brown stalk enters from TOP CENTRE, splits into very thin curving pedicels of unequal length, berries hanging downward gathered into a compact rounded mass. Berries are small smooth spheres about 1cm in diameter. Whole object is about 6cm wide, 9cm from top stalk to lowest berry. Some berries overlap, with small gaps at the perimeter; not a spray of disconnected dots. NO leaves, no woody twig, no flowers. Flat unlit neutral dark-grey berry albedo RGB approximately 84,84,84, with small darker calyx dots on forward-facing berries; small berry-to-berry grey variation. No painted shadows or highlights. Thin olive green-brown pedicels RGB around 105,110,53. Natural botanical cutout, precise clean edges. Transparent square canvas with generous margins. No text or background. Longer and looser variant: exactly 14 berries forming an elongated oval cluster, a little asymmetric, unequal curved pedicels with two lower berries hanging below the mass. Several touching or overlapping neighbours; not scattered dots. Whole object 6cm wide by 10.5cm tall.",
+    "tool": "built-in image_gen",
+    "source_file": "bunch2_original.png",
+    "reference": "../../ref/concept/berry/twig.png inspected before generation; botanical reference only."
+  },
+  {
+    "name": "bunch3",
+    "prompt": "Use case: stylized-concept. Asset type: transparent botanical game-atlas source cutout. Generate ONE isolated hanging berry bunch seen orthographically from the SIDE, entire object in frame, on true transparent alpha. Same botanical construction as the top-right fruit in the repository twig concept: a short green-brown stalk enters from TOP CENTRE, splits into very thin curving pedicels of unequal length, berries hanging downward gathered into a compact rounded mass. Berries are small smooth spheres about 1cm in diameter. Whole object is about 6cm wide, 9cm from top stalk to lowest berry. Some berries overlap, with small gaps at the perimeter; not a spray of disconnected dots. NO leaves, no woody twig, no flowers. Flat unlit neutral dark-grey berry albedo RGB approximately 84,84,84, with small darker calyx dots on forward-facing berries; small berry-to-berry grey variation. No painted shadows or highlights. Thin olive green-brown pedicels RGB around 105,110,53. Natural botanical cutout, precise clean edges. Transparent square canvas with generous margins. No text or background. Smaller variant: exactly 11 berries forming a small irregular rounded cluster, with two rear berries half hidden behind front berries; unequal short thin pedicels. Whole object 5cm wide by 7.5cm tall.",
+    "tool": "built-in image_gen",
+    "source_file": "bunch3_original.png",
+    "reference": "../../ref/concept/berry/twig.png inspected before generation; botanical reference only."
+  }
+]

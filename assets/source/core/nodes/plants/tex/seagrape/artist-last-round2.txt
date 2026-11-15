@@ -1,0 +1,7 @@
+Updated the packed layer and [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/seagrape/REPORT.md).
+
+- Mean occlusion: **0.8512**
+- Mean leaf roughness: **0.6959**
+- Mean fruit roughness: **0.5996**
+
+All layers rebuilt; `check_atlas.py` passed. Base colour, height, normals, layout, stalks and bark remain exactly unchanged.

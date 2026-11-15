@@ -1,0 +1,7 @@
+Done. The mat now averages **RGB (30, 42, 14)**, with deeper occlusion, roughness ≈0.8 and shallow relief. **Every pixel outside the mat is unchanged.**
+
+Removed unused sources, updated documentation and rewrote the standalone check. All **35 outputs rebuild byte for byte**.
+
+[Report with before/after picture](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/creeper/REPORT.md)
+
+The built-in imagegen [source](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/creeper/source/mat_original.png) and exact [prompt](/home/user/dev/SNARK/.claude/worktrees/agent-a66008bd945b7ef45/assets/source/core/nodes/plants/tex/creeper/source/prompts.json) are saved.

@@ -1,0 +1,34 @@
+{
+  "height_range_mm": 16.0,
+  "normal_convention": "OpenGL +Y up",
+  "bark_mm_per_pixel_xy": [
+    0.7692307692307693,
+    0.29296875
+  ],
+  "edge_bleed_px": 40,
+  "dependencies": [
+    "Pillow",
+    "numpy",
+    "scipy"
+  ],
+  "originals": {
+    "bark_original.png": "6790e462cb03de6f0b74a9b18f88dd02ba4933a2ec7c29be791437f29aada642",
+    "bunch1_original.png": "98bf1782bb94a4672252c35a7412029d8f98ffa7133acf22c3c9ba58e9c618dd",
+    "bunch2_original.png": "acfb54a2964504f9d95dda2f300076886b05589e41661db474fb6568330e1af7",
+    "bunch3_original.png": "b6f8f026f880206b984359918e068acc3a74343c29974ea4a0abaa4e5fb65e19",
+    "fallen1_original.png": "d8d9954be741b2a9222a6159854d0a992ff236dc346f3aa0eb497f80d79e2dc9",
+    "inner1_original.png": "75cfae780ce7b1a0fef5e329485f88be97433b52550665ccc08dd7e8fb4fcd51",
+    "inner2_original.png": "e85371f2e3fd8aea72d4b798389d908e666245f64055577e264705167955d439",
+    "leaf1_original.png": "6fc87d9aa0cee6d9407ada65f7ac25b817b77b55953c6bf35780e3f95d8f8880",
+    "leaf2_original.png": "d2c1844cf288339724a142092920e37ac370e123ff1380d35f4872f3ea1d05a3",
+    "leaf3_original.png": "39c9cb372e358a1fd6270613b0b15762755248b1c1d4b9f7436f60a4980b6429",
+    "spray1_original.png": "d9d42e9edfb7e0eff4a3aea4f30b38060712b4d2e5c668a31b2da188fe7ea946",
+    "spray2_original.png": "1cff8b68292a49e26279dcf45c6887f6f920cc46540f5943c645c4f7761838ce",
+    "spray3_original.png": "e0203f109980559626d72ffbad5dcffef43a984cdca31af68e0ddadb2b41d99e",
+    "spray4_original.png": "75bdc22457d607f7557fe4ea12e5de3fbbdc50e9875baf7d9c1715fd58d2e515",
+    "spray5_original.png": "747e6192578bbbffdccc32994427056625d86aef334784deb7a252c619edc150",
+    "spray6_original.png": "e630829f5633fca77a0a448e29f87cde305a21dcd1145b7d92a8767eff479bcb",
+    "stripped1_original.png": "68ad28a1712a887c9ae40241aa5d7f9d82605d790daa6bdcc1accf8ff949a8af",
+    "stripped2_original.png": "3cc0a3569768ee69a27e87d3da651aea868e7fb79907a02b4bf3ec188b6a4cdd"
+  }
+}
