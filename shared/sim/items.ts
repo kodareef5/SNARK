@@ -134,7 +134,12 @@ export class Inventory {
 
   weight(t: ItemTable): number {
     let kg = 0;
-    for (let s = 0; s < this.cap; s++) if (this.item[s] !== 0) kg += t.weight[this.item[s]!]! * this.count[s]!;
+    for (let s = 0; s < this.cap; s++) {
+      if (this.item[s] === 0) continue;
+      kg += t.weight[this.item[s]!]! * this.count[s]!;
+      if (this.loaded[s]! > 0) kg += t.weight[this.ammo[s]!]! * this.loaded[s]!;
+      if (this.attach[s] !== 0) kg += t.weight[this.attach[s]!]!;
+    }
     return kg;
   }
 
