@@ -57,10 +57,10 @@ export function slopesScene(view: View, which: string, look: "near" | "far"): La
     if (!(SLOPE_NAMES as readonly string[]).includes(which)) throw new Error(`--slopes takes ${SLOPE_NAMES.join(", ")} or scene, not "${which}"`);
     const k = kind(slopeKind(which));
     // Resting on the ground, its high end away from a camera that looks at it from its low end's side and above.
-    put(slopeKind(which), 0, reg.halfY[k]!, 0, 0, which.replace("_", " "));
+    put(slopeKind(which), 0, reg.halfY[k]!, 0, 0, look === "near" ? which.replace("_", " ") : undefined);
     // From the side and the low end, above: the slope and the treads in view.
     const span = Math.max(reg.halfX[k]!, reg.halfY[k]!, reg.halfZ[k]!);
-    const d = look === "near" ? 2.6 * span + 4 : 90;
+    const d = look === "near" ? 2.6 * span + 4 : 40;
     camAt([0.6 * d, 0.45 * d + 1, -0.75 * d], [0, reg.halfY[k]!, 0]);
     return labels;
   }

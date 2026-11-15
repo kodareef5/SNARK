@@ -124,8 +124,10 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
       const shape = defs.find((s) => s.type === "shape" && s.id === d.shape);
       if (shape?.type !== "shape") continue;
       const walked = partsMesh(shape.boxes, shape.hulls ?? []);
-      // A shape drawn otherwise than it is walked, a flight's treads over its ramp, is drawn as walked one level coarser.
-      meshes.push({ id: d.id, lods: shape.look ? [partsMesh(shape.look.boxes ?? [], shape.look.hulls ?? [], true), walked] : [walked] });
+      // A shape drawn otherwise than it is walked, a flight's treads over its ramp, is drawn as walked at its coarsest level.
+      // Its look is the first two, since low poly draws from the second.
+      const look = shape.look ? partsMesh(shape.look.boxes ?? [], shape.look.hulls ?? [], true) : null;
+      meshes.push({ id: d.id, lods: look ? [look, look, walked] : [walked] });
       continue;
     }
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;
