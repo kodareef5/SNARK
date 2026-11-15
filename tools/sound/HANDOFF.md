@@ -97,12 +97,22 @@ The design and catalogue are in `planning/reference/round9-sound-design.md`, the
 - `core:body` (water, thumps).
 - `core:node` (felled, crumbled, picked).
 
-**Still to slot in.** These are generating now, from the committed briefs, and need no code:
-- `core:surface` (steps, landings and impacts by ground and material);
-- `core:weapon`;
-- `core:structure`;
-- `core:ui`;
-- `core:world` (beds, shore, wind, water).
+**The shared families.** Each family's sounds and what still has none:
+- `core:surface`: steps and landings on nine grounds, impacts on eleven materials, drags. Nothing missing.
+- `core:weapon`: swings, draws, releases, shots and reloads by hold, flight, whizzes, ricochets, blasts, debris and
+  confirmation sounds. Nothing missing.
+- `core:structure`: placed and destroyed by tier, doors, chests, locks, collapse, repair, fires and grinding.
+  `fire/out` has no take: its only file is too quiet.
+- `core:ui`: 25 of 26 slots. `notice` has no take: its file is a steady tone.
+- `core:world`: beds by place and time, sea, underwater, shore, wind, rain, river, waterfall, fire and stingers,
+  looping in 12 s. `thunder` has no take: it came out as noise, and it waits on weather.
+
+**Coverage, from `bun run sounds`.** 227 of 265 occasions are heard: 184 through shared sounds and 43 by owners' own
+sounds. Of the 38 that are silent, 25 wait on a feature.
+
+**The build.** 258 sounds, 554 takes, 724.5 s of sound in 24.4 MB, fetched as they are wanted.
+
+**The sources.** About 112 MB of cut takes.
 
 **Making a brief's sounds.** These commands run from the worktree root:
 ```

@@ -145,6 +145,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A wooden longbow is drawn back slowly: creaking wood and a tightening string, four separate draws with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "draw-clear",
+          "models": [
+            "moss"
+          ],
+          "seed": 4011,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A wooden recurve bow is drawn slowly: a clear creak of bending wood and a stretching bowstring, four separate draws with silence between. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },
@@ -381,6 +392,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person draws a tool from a leather belt: leather slide and a grip, five separate draws with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "equip-clear",
+          "models": [
+            "moss"
+          ],
+          "seed": 4021,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A wooden tool handle is grabbed firmly from a table: a quick knock and grip, five separate grabs with silence between. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

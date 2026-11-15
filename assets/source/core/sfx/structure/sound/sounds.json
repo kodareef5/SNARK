@@ -1,0 +1,163 @@
+{
+  "sounds": {
+    "place/thatch": {
+      "range": 40, "level": -18, "vary": 0.6,
+      "takes": [
+        {"file": "takes/place/thatch/moss-pt-2200-01625.wav", "from": "moss", "start": 0.05, "end": 0.27},
+        {"file": "takes/place/thatch/moss-pt-2200-02725.wav", "from": "moss", "start": 0.05, "end": 0.28}
+      ]
+    },
+    "destroy/thatch": {
+      "range": 90, "level": -12, "vary": 0.5,
+      "takes": [
+        {"file": "takes/destroy/thatch/moss-pt-2210-00000.wav", "from": "moss", "start": 0.0, "end": 0.568},
+        {"file": "takes/destroy/thatch/moss-pt-2210-01975.wav", "from": "moss", "start": 0.05, "end": 1.093}
+      ]
+    },
+    "place/wood": {
+      "range": 40, "level": -18, "vary": 0.6,
+      "takes": [
+        {"file": "takes/place/wood/moss-pt-2220-07305.wav", "from": "moss", "start": 0.05, "end": 0.465},
+        {"file": "takes/place/wood/moss-pt-2220-03000.wav", "from": "moss", "start": 0.05, "end": 0.405}
+      ]
+    },
+    "destroy/wood": {
+      "range": 90, "level": -12, "vary": 0.5,
+      "takes": [
+        {"file": "takes/destroy/wood/moss-pt-2230-01975.wav", "from": "moss", "start": 0.05, "end": 0.753}
+      ]
+    },
+    "place/stone": {
+      "range": 40, "level": -18, "vary": 0.6,
+      "takes": [
+        {"file": "takes/place/stone/moss-pt-2240-00480.wav", "from": "moss", "start": 0.05, "end": 0.5},
+        {"file": "takes/place/stone/moss-pt-2240-05870.wav", "from": "moss", "start": 0.05, "end": 0.465}
+      ]
+    },
+    "destroy/stone": {
+      "range": 90, "level": -12, "vary": 0.5,
+      "takes": [
+        {"file": "takes/destroy/stone/moss-pt-2250-00070.wav", "from": "moss", "start": 0.05, "end": 0.28},
+        {"file": "takes/destroy/stone/moss-pt-2250-03590.wav", "from": "moss", "start": 0.05, "end": 0.485}
+      ]
+    },
+    "place/metal": {
+      "range": 40, "level": -18, "vary": 0.6,
+      "takes": [
+        {"file": "takes/place/metal/moss-pt-2260-03595.wav", "from": "moss", "start": 0.05, "end": 0.515},
+        {"file": "takes/place/metal/moss-pt-2260-00165.wav", "from": "moss", "start": 0.05, "end": 0.525}
+      ]
+    },
+    "destroy/metal": {
+      "range": 90, "level": -12, "vary": 0.5,
+      "takes": [
+        {"file": "takes/destroy/metal/moss-pt-2270-06235.wav", "from": "moss", "start": 0.05, "end": 0.72},
+        {"file": "takes/destroy/metal/moss-pt-2270-00000.wav", "from": "moss", "start": 0.0, "end": 0.555}
+      ]
+    },
+    "door/open/wood": {
+      "range": 30, "level": -20, "vary": 0.5,
+      "takes": [
+        {"file": "takes/door/open/wood/moss-pt-2280-03315.wav", "from": "moss", "start": 0.05, "end": 0.69}
+      ]
+    },
+    "door/close/wood": {
+      "range": 35, "level": -18, "vary": 0.5,
+      "takes": [
+        {"file": "takes/door/close/wood/moss-pt-2290-04115.wav", "from": "moss", "start": 0.05, "end": 0.685},
+        {"file": "takes/door/close/wood/moss-pt-2290-06995.wav", "from": "moss", "start": 0.05, "end": 0.73}
+      ]
+    },
+    "box/open/wood": {
+      "range": 20, "level": -22, "vary": 0.5,
+      "takes": [
+        {"file": "takes/box/open/wood/moss-pt-2300-06905.wav", "from": "moss", "start": 0.05, "end": 0.38},
+        {"file": "takes/box/open/wood/moss-pt-2300-04020.wav", "from": "moss", "start": 0.05, "end": 0.465}
+      ]
+    },
+    "box/close/wood": {
+      "range": 20, "level": -22, "vary": 0.5,
+      "takes": [
+        {"file": "takes/box/close/wood/moss-pt-2310-05050.wav", "from": "moss", "start": 0.05, "end": 0.25},
+        {"file": "takes/box/close/wood/moss-pt-2310-06285.wav", "from": "moss", "start": 0.05, "end": 0.285}
+      ]
+    },
+    "door/open/metal": {
+      "range": 30, "level": -20, "vary": 0.5,
+      "takes": [
+        {"file": "takes/door/open/metal/moss-pt-2320-02500.wav", "from": "moss", "start": 0.05, "end": 1.595}
+      ]
+    },
+    "door/close/metal": {
+      "range": 35, "level": -18, "vary": 0.5,
+      "takes": [
+        {"file": "takes/door/close/metal/moss-pt-2330-02305.wav", "from": "moss", "start": 0.05, "end": 0.75}
+      ]
+    },
+    "box/open/metal": {
+      "range": 20, "level": -22, "vary": 0.5,
+      "takes": [
+        {"file": "takes/box/open/metal/moss-pt-2340-02855.wav", "from": "moss", "start": 0.05, "end": 0.44},
+        {"file": "takes/box/open/metal/moss-pt-2340-00000.wav", "from": "moss", "start": 0.0, "end": 0.365}
+      ]
+    },
+    "box/close/metal": {
+      "range": 20, "level": -22, "vary": 0.5,
+      "takes": [
+        {"file": "takes/box/close/metal/moss-pt-2350-06970.wav", "from": "moss", "start": 0.05, "end": 0.25},
+        {"file": "takes/box/close/metal/moss-pt-2350-04970.wav", "from": "moss", "start": 0.05, "end": 0.245}
+      ]
+    },
+    "door/locked": {
+      "range": 20, "level": -22, "vary": 0.5,
+      "takes": [
+        {"file": "takes/door/locked/moss-pt-2360-03700.wav", "from": "moss", "start": 0.05, "end": 1.053}
+      ]
+    },
+    "lock": {
+      "range": 12, "level": -24, "vary": 0.5,
+      "takes": [
+        {"file": "takes/lock/moss-pt-2370-03690.wav", "from": "moss", "start": 0.05, "end": 0.295},
+        {"file": "takes/lock/moss-pt-2370-00380.wav", "from": "moss", "start": 0.05, "end": 0.24}
+      ]
+    },
+    "collapse": {
+      "range": 150, "level": -10, "vary": 0.4,
+      "takes": [
+        {"file": "takes/collapse/moss-pt-2380-00600.wav", "from": "moss", "start": 0.05, "end": 9.27}
+      ]
+    },
+    "repair": {
+      "range": 30, "level": -22, "vary": 0.8,
+      "takes": [
+        {"file": "takes/repair/moss-pt-2390-03975.wav", "from": "moss", "start": 0.05, "end": 0.25},
+        {"file": "takes/repair/moss-pt-2390-04475.wav", "from": "moss", "start": 0.05, "end": 0.245}
+      ]
+    },
+    "demolish": {
+      "range": 40, "level": -18, "vary": 0.6,
+      "takes": [
+        {"file": "takes/demolish/moss-pt-2400-03840.wav", "from": "moss", "start": 0.05, "end": 0.695},
+        {"file": "takes/demolish/moss-pt-2400-07095.wav", "from": "moss", "start": 0.05, "end": 0.305}
+      ]
+    },
+    "fire/light": {
+      "range": 20, "level": -20, "vary": 0.6,
+      "takes": [
+        {"file": "takes/fire/light/moss-pt-2410-03015.wav", "from": "moss", "start": 0.05, "end": 0.275}
+      ]
+    },
+    "grind": {
+      "range": 15, "level": -24, "vary": 0.3, "loop": true,
+      "takes": [
+        {"file": "takes/grind/moss-pt-2430-01500.wav", "from": "moss", "start": 0.0, "end": 8.75}
+      ]
+    },
+    "bed/use": {
+      "range": 1, "level": -26, "vary": 0.5,
+      "takes": [
+        {"file": "takes/bed/use/moss-pt-2440-02080.wav", "from": "moss", "start": 0.05, "end": 1.04}
+      ]
+    }
+  }
+}

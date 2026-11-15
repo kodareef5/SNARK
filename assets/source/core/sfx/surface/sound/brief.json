@@ -96,6 +96,17 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on dry beach sand: soft crunchy squeaking steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "sand-loud",
+          "models": [
+            "moss"
+          ],
+          "seed": 4001,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Loud close-up footsteps of a heavy person in boots walking slowly on dry beach sand: each step a distinct crunchy squeaky thud, well spaced, with silence between. Close-miked, dry, no music, no voices, quiet background."
         }
       ],
       "keep": 10

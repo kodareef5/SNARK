@@ -1,0 +1,118 @@
+{
+  "sounds": {
+    "bed/beach/day": {
+      "range": 1, "level": -30, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/bed/beach/day/moss-pt-2000-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "bed/beach/night": {
+      "range": 1, "level": -30, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/bed/beach/night/moss-pt-2010-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "bed/jungle/day": {
+      "range": 1, "level": -30, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/bed/jungle/day/moss-pt-2020-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "bed/jungle/night": {
+      "range": 1, "level": -30, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/bed/jungle/night/moss-pt-2030-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "bed/grass/day": {
+      "range": 1, "level": -30, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/bed/grass/day/moss-pt-2040-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "bed/grass/night": {
+      "range": 1, "level": -30, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/bed/grass/night/moss-pt-2050-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "bed/ruins": {
+      "range": 1, "level": -30, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/bed/ruins/moss-pt-2060-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "bed/sea": {
+      "range": 1, "level": -30, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/bed/sea/moss-pt-2070-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "underwater": {
+      "range": 1, "level": -28, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/underwater/moss-pt-2080-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "shore": {
+      "range": 40, "level": -24, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/shore/moss-pt-2090-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "wind/light": {
+      "range": 1, "level": -32, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/wind/light/moss-pt-2100-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "wind/strong": {
+      "range": 1, "level": -26, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/wind/strong/moss-pt-2110-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rain/light": {
+      "range": 1, "level": -28, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/rain/light/moss-pt-2120-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "rain/heavy": {
+      "range": 1, "level": -24, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/rain/heavy/moss-pt-2130-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "river": {
+      "range": 35, "level": -26, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/river/moss-pt-2150-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "waterfall": {
+      "range": 60, "level": -22, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/waterfall/moss-pt-2160-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "fire": {
+      "range": 15, "level": -24, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/fire/moss-pt-2170-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "stinger/dawn": {
+      "range": 1, "level": -24, "vary": 0.0,
+      "takes": [
+        {"file": "takes/stinger/dawn/moss-pt-2180-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "stinger/dusk": {
+      "range": 1, "level": -26, "vary": 0.0,
+      "takes": [
+        {"file": "takes/stinger/dusk/moss-pt-2190-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    }
+  }
+}
