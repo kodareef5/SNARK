@@ -266,6 +266,17 @@ export class Sounds {
     }
   }
 
+  /** Stops every voice and every loop at once: the world is gone, as when the session closes. */
+  hush(sink: SoundSink): void {
+    if (this.loops.size === 0 && this.mixer.playing === 0) return;
+    const p = this.packet;
+    p.clear();
+    this.mixer.silence(p);
+    this.loops.clear();
+    this.pending.length = 0;
+    sink.apply(p);
+  }
+
   /** Plays a sound at (x, y, z) as soon as it is held, or not at all if that takes more than five seconds. */
   ask(sound: number, x: number, y: number, z: number, nowMs: number): void {
     this.asked.push({ sound, x, y, z, untilMs: nowMs + 5000 });

@@ -5,6 +5,7 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import type { SoundPacket, SoundSink } from "../../client/core/sound/packet.ts";
 import { START_FIELDS } from "../../client/core/sound/packet.ts";
+import { LOOP } from "../../client/core/sound/mixer.ts";
 import { CAUSE_KILLED } from "../../server/survival.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
@@ -79,4 +80,37 @@ test("a client hears a dodo before it, startled and fleeing on soft feet when st
   run(1500);
   expect(ears.heard.map((x) => x.name)).toEqual(expect.arrayContaining(["hurt", "land"]));
   expect(deaf.sounds).toBeNull();
+});
+
+test("when the session closes, everything playing stops, the bed under it too", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const withBeds = builtSounds(1, true);
+  const manifest = manifestWithSounds(pack, bytes.length, withBeds);
+  const net = new FakeNet([bytes, withBeds.file], { latencyMs: 30, bytesPerSecond: 2e6 });
+  const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, pack, { manifest, port: net });
+  // The device as client/sound keeps it: the voices it plays, stopped before started.
+  const playing = new Set<number>();
+  let loops = 0;
+  app.sound = {
+    running: true,
+    apply(p: SoundPacket): void {
+      for (const s of p.stops) playing.delete(s);
+      for (let i = 0; i < p.starts.length; i += START_FIELDS) {
+        playing.add(p.starts[i]!);
+        if ((p.starts[i + 10]! & LOOP) !== 0) loops++;
+      }
+    },
+  };
+  const run = (ms: number): void =>
+    h.run(ms, (now) => {
+      net.advance(now);
+      app.frame(now, 1280, 720);
+    });
+  run(3000);
+  expect(loops).toBeGreaterThan(0);
+  expect(playing.size).toBeGreaterThan(0);
+  h.ends[0]!.close();
+  run(500);
+  expect(app.session.state).toBe("closed");
+  expect(playing.size).toBe(0);
 });

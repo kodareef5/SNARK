@@ -703,6 +703,7 @@ export class App {
       // Only the reasons a player can act on are spelled out.
       hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
+      if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
@@ -713,6 +714,7 @@ export class App {
     if (session.state !== "active" || !world) {
       hud.status = "connecting";
       this.ui.build(aspect, hud, session);
+      if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
     if (this.shown !== session.registry) {

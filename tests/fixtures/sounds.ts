@@ -21,10 +21,20 @@ export function chirp(seconds: number, rate: number, amp = 0.5): Float32Array {
   return out;
 }
 
-/** The dodo's sounds, made of chirps: two makers' calls, a startle, pain, a peck, a landing and steps on two grounds. */
-export function builtSounds(file = 1): { sounds: NonNullable<Manifest["sounds"]>; file: Uint8Array } {
+/**
+ * The dodo's sounds, made of chirps: two makers' calls, a startle, pain, a peck, a landing and steps on two grounds.
+ * With `beds`, the world's grass beds by day and by night as well, which loop.
+ */
+export function builtSounds(file = 1, beds = false): { sounds: NonNullable<Manifest["sounds"]>; file: Uint8Array } {
   const root = mkdtempSync(join(tmpdir(), "snark-sound-"));
   try {
+    if (beds) {
+      const world = join(root, "core", "world", "sound");
+      mkdirSync(join(world, "takes"), { recursive: true });
+      writeFileSync(join(world, "takes", "bed.wav"), writeWav(chirp(1, 32000), 32000));
+      const bed = { range: 1, level: -30, loop: true, takes: [{ file: "takes/bed.wav" }] };
+      writeFileSync(join(world, "sounds.json"), JSON.stringify({ sounds: { "bed/grass/day": bed, "bed/grass/night": bed } }));
+    }
     const dir = join(root, "core", "creatures", "dodo", "sound");
     mkdirSync(join(dir, "takes"), { recursive: true });
     writeFileSync(join(dir, "takes", "a.wav"), writeWav(chirp(0.4, 44100), 44100));
