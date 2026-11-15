@@ -10,6 +10,7 @@ import { DeviceProbe, MEMORY_MB, deviceScenarios, newReport, type DeviceBrowser,
 import { deviceTable } from "../../client/core/devicetext.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, lacking } from "../../tools/device.ts";
+import { fakeGl } from "../fixtures/gl.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 
@@ -51,32 +52,24 @@ function browser(opts: { saved?: string; clock?: () => number; expected?: Record
 function renderer(room = 300) {
   const heard = new Map<string, () => void>();
   let [tiles, error] = [0, 0];
-  const r: RendererLike = {
-    gl: {
-      getParameter: (n: number) => (n === 0x0d33 ? 2048 : n === 0x84e0 ? 0x84c0 : 4),
-      getExtension: () => null,
+  const gl = fakeGl({
+    params: { 0x0d33: 2048 },
+    with: {
       getSupportedExtensions: () => ["WEBGL_compressed_texture_astc"],
-      getShaderPrecisionFormat: () => ({ precision: 23 }),
-      getContextAttributes: () => ({ antialias: true }),
-      createTexture: () => ({}),
       deleteTexture: () => void tiles--,
-      bindTexture: () => {},
-      activeTexture: () => {},
       texStorage2D: () => void (++tiles > room && (error = 0x0505)),
-      compressedTexSubImage2D: () => {},
-      texSubImage2D: () => {},
       getError: () => [error, (error = 0)][0]!,
-      isContextLost: () => false,
       canvas: { addEventListener: (type: string, fn: () => void) => heard.set(type, fn) },
-      drawingBufferWidth: 390,
-      drawingBufferHeight: 844,
     },
+  });
+  const r: RendererLike = {
+    gl,
     rendererName: "a test GPU",
     format: "astc",
     drawCalls: 50,
     readPixel: () => [0, 0, 0],
   };
-  return { r, fire: (type: string) => heard.get(type)!(), tiles: () => tiles };
+  return { r, gl, fire: (type: string) => heard.get(type)!(), tiles: () => tiles };
 }
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
@@ -181,11 +174,15 @@ test("the ladder climbs until a rung breaks, asks the server for the base, and e
   expect(l.rungs.every((g) => g.limit === "the GPU")).toBe(true);
   // The base was asked for on each tier's pieces rung, and let go after.
   expect(asked).toEqual([64, 0, 64, 0, 64, 0]);
-  expect(l.memory).toEqual({ variant: "astc", gameMB: 0, heldMB: 256, failedMB: 512, how: "out of memory", rungs: [{ mb: 128, frameMs: 16.7 }, { mb: 256, frameMs: 16.7 }] });
+  // Every amount was sampled and read back as the colour its blocks decode to; the harness's frames are slow for a display this fast.
+  const rung = { frameMs: 16.7, p95: 16.7, worst: 16.7, oursMs: 0, held: false };
+  expect(l.memory).toEqual({ variant: "astc", gameMB: 0, heldMB: 256, failedMB: 512, slowMB: 128, how: "out of memory", rungs: [{ mb: 128, ...rung }, { mb: 256, ...rung }] });
   expect(card.tiles()).toBe(0);
   expect(MEMORY_MB[2]).toBe(512);
+  // The probe binds its textures only on units the renderer leaves free.
+  expect([...card.gl.boundOn].sort((a, b) => a - b)).toEqual([4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
   const table = deviceTable(r);
-  expect(table).toContain("memory    256 MB of astc textures held besides the game's 0 MB, frames 128 MB 16.7 ms, 256 MB 16.7 ms; at 512 MB: out of memory");
+  expect(table).toContain("memory    256 MB of astc textures held and sampled besides the game's 0 MB; frames first fell behind the display's rate at 128 MB; frames 128 MB 16.7! ms, 256 MB 16.7! ms; at 512 MB: out of memory");
   expect(table.some((line) => line.startsWith("broke     medium bodies 25: frames 16.7 ms"))).toBe(true);
 });
 
@@ -218,7 +215,7 @@ test("the soak counts a long frame while the page is shown as a stall, and leave
   // The stall took its share of the soak's 8 s, so fewer frames were drawn in it; the hidden 5 s took none.
   expect(m.frames).toBeGreaterThan((8000 - 2600) / 16.7 - 2);
   expect(m.frames).toBeLessThan((8000 - 2400) / 16.7 + 2);
-  expect(deviceTable(probe.report).some((line) => /^1 +\d+ +16\.7 +16\.7 +16\.7 +25\d\d\.\d +[\d.]+ +[\d.]+ +1 +0$/.test(line))).toBe(true);
+  expect(deviceTable(probe.report).some((line) => /^1 +\d+ +16\.7 +16\.7 +16\.7 +25\d\d\.\d +[\d.]+ +[\d.]+ +\d+ +1 +0$/.test(line))).toBe(true);
 });
 
 test("a rung that did not draw all it was given, or never settled, is invalid: neither held nor broke, and not counted as held", async () => {
@@ -247,7 +244,7 @@ test("a rung that did not draw all it was given, or never settled, is invalid: n
 });
 
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {
-  const ladder = { display: 16.7, rungs: [], memory: { variant: "astc", gameMB: 40, heldMB: 1024, failedMB: null, how: "", rungs: [{ mb: 1024, frameMs: 17 }] } };
+  const ladder = { display: 16.7, rungs: [], memory: { variant: "astc", gameMB: 40, heldMB: 1024, failedMB: null, slowMB: null, how: "", rungs: [{ mb: 1024, frameMs: 17, p95: 18, worst: 20, oursMs: 0.3, held: true }] } };
   const saved = JSON.stringify({ token: TOKEN, report: { ...newReport("0011223344556677", "ladder"), seq: 7, stage: "memory 1536 MB", ladder } });
   const { b, posts, page } = browser({ saved });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
@@ -255,7 +252,7 @@ test("a page the browser reloads in the middle of a run shows and sends what it 
   await settle();
   expect([probe.report.run, probe.report.reloadedDuring, posts.length, posts[0]!.seq, posts[0]!.done]).toEqual(["0011223344556677", "memory 1536 MB", 1, 8, true]);
   expect(page.text).toContain("Stopped early.</b> Sent.");
-  expect(page.text).toContain("memory    1024 MB of astc textures held besides the game&#39;s 40 MB, frames 1024 MB 17 ms; the page was reloaded while it took 1536 MB of textures: the browser dropped the tab");
+  expect(page.text).toContain("memory    1024 MB of astc textures held and sampled besides the game&#39;s 40 MB; every amount kept the display&#39;s rate; frames 1024 MB 17 ms; the page was reloaded while it took 1536 MB of textures: the browser dropped the tab");
   probe.start("quick");
   expect(await going).toBe(true);
   expect([probe.report.run, probe.report.mode, probe.report.reloadedDuring, probe.report.done]).toEqual(["fedcba9876543201", "quick", null, false]);

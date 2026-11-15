@@ -1,9 +1,10 @@
 // The device probe. A page opened with ?device=<token> asks which test to run, then measures the device it is on by
 // itself and reports to tools/device.ts. Every test loads the game, reads the self-check's probes and runs the
-// simulation's hashes. Then the quick look measures each graphics tier in three light scenes; the load ladder adds
-// bodies, building pieces, triangles and draws a rung at a time until frames break, then texture memory until the device
-// refuses it; the soak turns through a heavy scene for ten minutes. What it adds is in devicescene.ts, and the table and
-// pages it shows in devicetext.ts. What only a browser can say comes from the shell (client/shell/device.ts).
+// simulation's hashes. Then the quick look asks the GPU questions round 8 leans on (devicegpu.ts) and measures each
+// graphics tier in three light scenes; the load ladder adds bodies, building pieces, triangles and draws a rung at a time
+// until frames break, then texture memory, sampled as it is drawn, until the device refuses it; the soak turns through a
+// heavy scene for ten minutes. What it adds is in devicescene.ts, and the table and pages it shows in devicetext.ts. What
+// only a browser can say comes from the shell (client/shell/device.ts).
 
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
@@ -16,7 +17,8 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
-import { BodyCopies, LOOK, TextureMemory, rocks, type GlMemory } from "./devicescene.ts";
+import { GpuQuestions, type Gl2, type GpuReport } from "./devicegpu.ts";
+import { BodyCopies, LOOK, TextureMemory, rocks } from "./devicescene.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, type FramePacket } from "./render/packet.ts";
 import type { Thing } from "./render/scene.ts";
@@ -75,6 +77,13 @@ export interface Spread {
 }
 
 const tenth = (x: number): number => Math.round(x * 10) / 10;
+
+/** Draws a frame asked to have drawn with their materials. */
+function texturedDraws(p: FramePacket): number {
+  let n = 0;
+  for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) n++;
+  return n;
+}
 
 /** Rounded to a tenth. Nothing gives zeros. */
 export function spread(values: readonly number[]): Spread {
@@ -142,12 +151,14 @@ export interface MemoryReport {
   variant: string;
   /** Megabytes of textures the game itself held on the card besides, when the step ended. */
   gameMB: number;
-  /** The most held and watched with frames still coming, and the amount at which the device refused, or null if it never did. */
+  /** The most held, sampled and watched with frames still coming, and the amount at which the device refused, or null if it never did. */
   heldMB: number;
   failedMB: number | null;
+  /** The first amount whose frames did not keep the display's rate (D246's test), or null. */
+  slowMB: number | null;
   how: string;
-  /** For each amount held: the median frame while it was. */
-  rungs: { mb: number; frameMs: number }[];
+  /** For each amount held: its frames while every tile was sampled, our code's ms a frame in sampling, and whether it kept the rate. */
+  rungs: { mb: number; frameMs: number; p95: number; worst: number; oursMs: number; held: boolean }[];
 }
 
 export interface SoakReport {
@@ -156,8 +167,8 @@ export interface SoakReport {
   load: { bodies: number; pieces: number; near: number; far: number; stress: boolean };
   from: string;
   minutesWanted: number;
-  /** Each minute's frames, with `long` the frames of LONG display intervals or more while the page was shown. */
-  minutes: { minute: number; frames: number; frameMs: Spread; long: number; buildMs: number; drawMs: number; missed: number }[];
+  /** Each minute's frames, with `long` the frames of LONG display intervals or more while the page was shown, and `mat` the most draws with materials in one. */
+  minutes: { minute: number; frames: number; frameMs: Spread; long: number; buildMs: number; drawMs: number; missed: number; mat: number }[];
   /** Times the page was hidden, and how long in all. The soak's clock stops while it is. */
   hidden: number;
   hiddenMs: number;
@@ -182,10 +193,16 @@ export interface GpuInfo {
   maxArrayLayers: number;
   maxSamples: number;
   vertexTextures: number;
-  /** Textures a draw may read, colour targets it may write at once, and the most anisotropy, 0 for none. */
+  /** Textures a draw may read in its fragments and in all, colour targets it may write at once, and the most anisotropy, 0 for none. */
   textureUnits: number;
+  combinedUnits: number;
   drawBuffers: number;
   anisotropy: number;
+  /** A uniform block's most bytes, blocks a vertex and a fragment program may read, bindings, and the step a block's offset is in. */
+  uniformBytes: number;
+  uniformBlocks: number[];
+  uniformBindings: number;
+  uniformAlign: number;
   highp: boolean;
   antialias: boolean;
   extensions: string[];
@@ -246,6 +263,8 @@ export interface DeviceReport {
   again: PhaseReport | null;
   ladder: { display: number; rungs: RungReport[]; memory: MemoryReport | null } | null;
   soak: SoakReport | null;
+  /** The quick look's answers to what round 8's depth, sky and shadows lean on (devicegpu.ts). */
+  gpuTests: GpuReport | null;
   skipped: string[];
   /** Textures the renderer made once the game had started. A material is drawn from them. */
   texturesMade: number;
@@ -260,7 +279,7 @@ export function newReport(run: string, mode: Mode = "quick"): DeviceReport {
   return {
     run, mode, seq: 0, stage: "starting", done: false, device: null, gpu: null, idleFrameMs: null, wakeLock: "not asked",
     link: { httpMs: null, gameMs: null, snapshots: 0, missed: 0, missedLoading: 0, missedHidden: 0, server: null, longestGapMs: 0, bytesIn: 0, clockJumps: 0, corrections: 0, undecodable: 0 },
-    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
+    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
   };
 }
 
@@ -314,7 +333,7 @@ export interface GlLike {
   getShaderPrecisionFormat(shader: number, type: number): { precision: number } | null;
   getContextAttributes(): { antialias?: boolean } | null;
 }
-const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245 };
+const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_COMBINED_TEXTURE_IMAGE_UNITS: 0x8b4d, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245, MAX_UNIFORM_BLOCK_SIZE: 0x8a30, MAX_VERTEX_UNIFORM_BLOCKS: 0x8a2b, MAX_FRAGMENT_UNIFORM_BLOCKS: 0x8a2d, MAX_UNIFORM_BUFFER_BINDINGS: 0x8a2f, UNIFORM_BUFFER_OFFSET_ALIGNMENT: 0x8a34 };
 
 export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
   const n = (name: number): number => Number(gl.getParameter(name));
@@ -327,11 +346,16 @@ export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
     maxSamples: n(GL.MAX_SAMPLES),
     vertexTextures: n(GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
     textureUnits: n(GL.MAX_TEXTURE_IMAGE_UNITS),
+    combinedUnits: n(GL.MAX_COMBINED_TEXTURE_IMAGE_UNITS),
     drawBuffers: n(GL.MAX_DRAW_BUFFERS),
     // Asked only once the extension is on, or the question is an error.
     anisotropy: gl.getExtension("EXT_texture_filter_anisotropic") ? n(GL.MAX_ANISOTROPY) : 0,
     highp: (gl.getShaderPrecisionFormat(GL.FRAGMENT_SHADER, GL.HIGH_FLOAT)?.precision ?? 0) > 0,
     antialias: gl.getContextAttributes()?.antialias === true,
+    uniformBytes: n(GL.MAX_UNIFORM_BLOCK_SIZE),
+    uniformBlocks: [n(GL.MAX_VERTEX_UNIFORM_BLOCKS), n(GL.MAX_FRAGMENT_UNIFORM_BLOCKS)],
+    uniformBindings: n(GL.MAX_UNIFORM_BUFFER_BINDINGS),
+    uniformAlign: n(GL.UNIFORM_BUFFER_OFFSET_ALIGNMENT),
     extensions: gl.getSupportedExtensions() ?? [],
     variant,
   };
@@ -460,11 +484,13 @@ export interface DeviceSide {
   base(n: number): Promise<number | null>;
   /** Texture memory for the ladder's last step, in the renderer's variant. Null where the renderer gives none. */
   memory: TextureMemory | null;
+  /** The GPU questions, made when the quick look comes to them, once the canvas has its size. Null where the renderer gives none. */
+  questions: (() => GpuQuestions) | null;
   /** The display's interval between frames, which a rung holds or not. */
   display: number;
 }
 
-type Stage = "load" | "probes" | "hashes" | "steps" | "memory" | "soak" | "done";
+type Stage = "load" | "probes" | "hashes" | "gpu" | "steps" | "memory" | "soak" | "done";
 
 export class DeviceRun {
   readonly report: DeviceReport;
@@ -512,9 +538,12 @@ export class DeviceRun {
   private snapAt = 0;
   private longestGap = 0;
   private readonly rtt: number[] = [];
-  /** The memory step's amount under way, and how long it has held it. */
+  /** The memory step's amount under way, how long it has held it, and the sweeps over every tile when it began to. */
   private memoryRung = 0;
   private heldSince = -1;
+  private sweepsAt = 0;
+  /** The quick look's GPU questions, while they are asked. */
+  private questions: GpuQuestions | null = null;
   /** The soak's amounts, clock and minute under way. */
   private readonly soakFrom: { load: Omit<Load, "tier" | "yaw">; from: string };
   private soakMs = 0;
@@ -534,7 +563,7 @@ export class DeviceRun {
     if (mode === "ladder") report.ladder = { display: side.display, rungs: [], memory: null };
     if (skipLoad) {
       this.lastFrameAt = side.now();
-      this.begin();
+      this.ask();
     }
   }
 
@@ -558,9 +587,10 @@ export class DeviceRun {
     if (this.stage === "load") news = this.load(now);
     else if (this.stage === "probes") news = this.probes(read);
     else if (this.stage === "hashes") news = this.hashes();
+    else if (this.stage === "gpu") news = this.gpu();
     else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
     else if (this.stage === "memory") news = this.memory(now, gap);
-    else if (this.stage === "soak") news = this.soak(now, gap, buildMs, drawMs);
+    else if (this.stage === "soak") news = this.soak(now, gap, p, buildMs, drawMs);
     if (news) this.sync();
     return news;
   }
@@ -588,6 +618,7 @@ export class DeviceRun {
 
   lost(): void {
     this.lostCount++;
+    this.questions?.lost();
   }
 
   /** About once a second while the page is shown. True if the run had to end, because nothing was drawn for too long. */
@@ -655,7 +686,31 @@ export class DeviceRun {
       const got = run();
       return { name, got, want: side.expected?.[name] ?? null, ms: tenth(side.now() - t) };
     });
-    this.begin();
+    this.ask();
+    return true;
+  }
+
+  /** The quick look asks the GPU questions first, where the renderer gives them. The other tests begin at once. */
+  private ask(): void {
+    const make = this.side.questions;
+    if (this.mode !== "quick" || !make) return this.begin();
+    this.questions = make();
+    this.report.gpuTests = this.questions.report;
+    this.stage = "gpu";
+    this.report.stage = "gpu questions";
+  }
+
+  /** A step of the GPU questions after the game's frame. News when one is answered. */
+  private gpu(): boolean {
+    const q = this.questions!;
+    const was = q.stage;
+    if (q.frame()) {
+      this.questions = null;
+      this.begin();
+      return true;
+    }
+    if (q.stage === was) return false;
+    this.report.stage = `gpu ${q.stage}`;
     return true;
   }
 
@@ -716,9 +771,7 @@ export class DeviceRun {
     s.calls.push(drawCalls);
     s.tris.push(p.triangles);
     s.bones.push(p.boneCount);
-    let textured = 0;
-    for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) textured++;
-    s.textured.push(textured);
+    s.textured.push(texturedDraws(p));
     this.dropped += p.dropped;
     this.skipped += p.skipped;
     if (s.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));
@@ -764,7 +817,7 @@ export class DeviceRun {
     if (!rung) {
       this.apply(bare(tierOf(DEFAULT_TIER), 0));
       this.stage = this.side.memory ? "memory" : "done";
-      if (this.side.memory) this.report.ladder!.memory = { variant: this.report.gpu?.variant ?? "rgba", gameMB: 0, heldMB: 0, failedMB: null, how: "", rungs: [] };
+      if (this.side.memory) this.report.ladder!.memory = { variant: this.report.gpu?.variant ?? "rgba", gameMB: 0, heldMB: 0, failedMB: null, slowMB: null, how: "", rungs: [] };
       return this.stage === "done" ? this.end() : void (this.report.stage = `memory ${MEMORY_MB[0]} MB`);
     }
     this.go({ kind: "rung", load: rungLoad(rung.tier, rung.axis, rung.n), axis: rung.axis, n: rung.n }, `${rung.tier.name} ${rung.axis} ${rung.n}`);
@@ -821,15 +874,26 @@ export class DeviceRun {
     const state = mem.grow(want, MEMORY_STEP);
     if (state === "out of memory" || state === "context lost" || this.lostCount > this.lostAt) return finish(state === "growing" || state === "held" ? "context lost" : state, want);
     if (state === "growing") return false;
+    const t = this.side.now();
+    mem.touch();
+    const ours = this.side.now() - t;
+    if (mem.read !== "" && mem.read !== "right") return finish(`the textures ${mem.read}`, want);
     if (this.heldSince < 0) {
-      this.heldSince = now;
-      this.samples.frame.length = 0;
+      [this.heldSince, this.sweepsAt] = [now, mem.sweeps];
+      this.samples.frame.length = this.samples.build.length = 0;
       return false;
     }
     this.samples.frame.push(gap);
-    if (now - this.heldSince < this.timing.holdMs) return false;
+    this.samples.build.push(ours);
+    // Held for its time, and every tile sampled in it: two sweeps ended means one ran wholly inside.
+    const sampled = mem.sweeps - this.sweepsAt >= 2;
+    if (!sampled && now - this.heldSince > this.timing.settleMs) return finish(`did not finish: every texture was not sampled within ${this.timing.settleMs / 1000} s`, want);
+    if (now - this.heldSince < this.timing.holdMs || !sampled) return false;
+    const frames = spread(this.samples.frame);
+    const held = frames.median <= this.side.display * HOLD_MEDIAN && frames.p95 <= this.side.display * HOLD_P95;
     report.heldMB = want;
-    report.rungs.push({ mb: want, frameMs: spread(this.samples.frame).median });
+    report.rungs.push({ mb: want, frameMs: frames.median, p95: frames.p95, worst: frames.worst, oursMs: spread(this.samples.build).median, held });
+    if (!held) report.slowMB ??= want;
     this.heldSince = -1;
     this.memoryRung++;
     // Said before it is tried, so a page the browser has to reload says which amount it was trying.
@@ -838,7 +902,7 @@ export class DeviceRun {
   }
 
   /** The soak: the camera turns once a minute through every scene at once, and each minute is measured by itself. */
-  private soak(now: number, gap: number, buildMs: number, drawMs: number): boolean {
+  private soak(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number): boolean {
     const report = this.report.soak!;
     if (this.at < 0) this.at = now;
     if (!this.measuring) {
@@ -861,10 +925,11 @@ export class DeviceRun {
     s.frame.push(gap);
     s.build.push(buildMs);
     s.draw.push(drawMs);
+    s.textured.push(texturedDraws(p));
     const minute = report.minutes.length;
     if (this.soakMs < (minute + 1) * 60000 && this.soakMs < this.timing.soakMs) return false;
     const long = s.frame.filter((g) => g >= this.side.display * LONG).length;
-    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase) });
+    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured) });
     for (const list of Object.values(s)) list.length = 0;
     this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
     if (this.soakMs >= this.timing.soakMs) this.end();
@@ -978,7 +1043,7 @@ export interface DeviceBrowser {
 
 /** What the probe reads of the shell's renderer. A WebGL 2 context is a GlLike with these besides. */
 export interface RendererLike {
-  gl: GlLike & GlMemory & { canvas: unknown; drawingBufferWidth: number; drawingBufferHeight: number };
+  gl: GlLike & Gl2 & { canvas: unknown; drawingBufferWidth: number; drawingBufferHeight: number };
   rendererName: string;
   /** The texture variant it took. */
   format?: string;
@@ -1125,6 +1190,7 @@ export class DeviceProbe {
       bodies: new BodyCopies(side.app.session, side.hf),
       base: (n) => this.within(() => b.fetch(`base/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
       memory: new TextureMemory(gl, create, gpu.variant),
+      questions: () => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight]),
       display: this.report.idleFrameMs ?? 16.7,
     };
     this.run = new DeviceRun(this.report, this.side, this.mode ?? "quick", this.timing);

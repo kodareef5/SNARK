@@ -173,6 +173,12 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   if (mode === "quick") {
     if (!r.again) out.push("no again");
     for (const t of TIERS) if (r.phases.filter((p) => p.tier === t.name).length !== SCENES.length) out.push(`tier ${t.name} did not run every scene`);
+    // A desktop answers every GPU question. An answer a phone may give, such as "ignored" or "hard", is not a lack.
+    const q = r.gpuTests;
+    if (!q) out.push("no gpu questions");
+    for (const [name, answer] of Object.entries({ depthRange: q?.depthRange, depthArray: q?.depthArray, compareArray: q?.compareArray, compare2d: q?.compare2d, texture3d: q?.texture3d })) if (q && /^(did not finish|failed|not asked|lost)/.test(answer ?? "")) out.push(`gpu ${name}: ${answer}`);
+    for (const p of q?.passes ?? []) if (p.note !== "" || p.slope === null) out.push(`gpu ${p.name}: ${p.note || "no slope"}`);
+    if (q?.lostDuring) out.push(`gpu: the context was lost during ${q.lostDuring}`);
   }
   if (mode === "ladder") {
     const rungs = r.ladder?.rungs ?? [];
@@ -181,6 +187,7 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
     if (!m || (m.failedMB === null && m.heldMB !== MEMORY_MB.at(-1)) || m.heldMB === 0) out.push(`texture memory did not finish: ${m ? m.how : "no memory step"}`);
   }
   if (mode === "soak" && (r.soak?.minutes.length ?? 0) < (r.soak?.minutesWanted ?? 1)) out.push("the soak did not run its minutes");
+  if (mode === "soak" && r.soak && TIERS.find((t) => t.name === r.soak!.tier)!.texture > 0 && !r.soak.minutes.some((m) => m.mat > 0)) out.push(`the soak drew nothing with materials on ${r.soak.tier}, which has them`);
   return out;
 }
 

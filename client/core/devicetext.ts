@@ -3,6 +3,8 @@
 
 import type { Axis, DeviceReport, GpuInfo, Mode, PhaseReport } from "./device.ts";
 import { AXES, LONG, MODES, RUNGS, formatsOf } from "./device.ts";
+import { FRAME_BLOCK_BYTES } from "./devicegpu.ts";
+import { UNIT } from "./render/programs.ts";
 
 const yes = (b: unknown): string => (b ? "yes" : "no");
 const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
@@ -95,8 +97,31 @@ function ladderLines(r: DeviceReport): string[] {
   out.push(`most held ${top("bodies")} bodies, ${top("pieces")} pieces, ${top("triangles")} triangles, ${top("draws")} draws, on any tier; the rungs: ${AXES.map((a) => `${a} ${RUNGS[a].join(" ")}`).join("; ")}`);
   const m = l.memory;
   const crashed = r.reloadedDuring?.startsWith("memory") ? r.reloadedDuring.replace("memory ", "") : null;
-  const held = m ? `${m.heldMB} MB of ${m.variant} textures held besides the game's ${m.gameMB} MB, frames ${m.rungs.map((x) => `${x.mb} MB ${x.frameMs} ms`).join(", ") || "none"}` : "none held";
+  const slow = m?.slowMB == null ? "every amount kept the display's rate" : `frames first fell behind the display's rate at ${m.slowMB} MB`;
+  const held = m ? `${m.heldMB} MB of ${m.variant} textures held and sampled besides the game's ${m.gameMB} MB; ${slow}; frames ${m.rungs.map((x) => `${x.mb} MB ${x.frameMs}${x.held === false ? "!" : ""} ms`).join(", ") || "none"}` : "none held";
   if (m || crashed) out.push(`memory    ${held}; ${crashed ? `the page was reloaded while it took ${crashed} of textures: the browser dropped the tab` : m!.failedMB !== null ? `at ${m!.failedMB} MB: ${m!.how}` : m!.how}`);
+  return out;
+}
+
+/** The GPU questions' answers, and a pass's time a line each. */
+function gpuLines(r: DeviceReport): string[] {
+  const q = r.gpuTests!;
+  const g = r.gpu;
+  const gap = (m: number | null, at: string): string => (m === null ? `no gap tried at ${at}` : `${m} m at ${at}`);
+  const out = [`depth     the screen's ${q.depthBits} bits; depthRange ${q.depthRange}; quads drawn in order ${gap(q.nearGap, "380 m in the near range")} apart, ${gap(q.farGap, "2 km in the far")}`];
+  out.push(`shadows   a 16-bit depth array ${q.depthArray}; compared lookups in it ${q.compareArray}, in a plain depth texture ${q.compare2d}; an RGBA8 3D texture ${q.texture3d}`);
+  if (g) {
+    const units = Math.max(...Object.values(UNIT)) + 1;
+    out.push(`units     ${g.textureUnits} textures a draw in fragments, ${g.vertexTextures} in vertices, ${g.combinedUnits} in all; the lit programs use units 0 to ${units - 1}, so ${g.textureUnits >= units ? "they fit" : "they do not fit"}`);
+    out.push(`uniforms  a block holds ${g.uniformBytes} bytes, and the frame block takes ${FRAME_BLOCK_BYTES}; ${g.uniformBlocks[0]} blocks a vertex program, ${g.uniformBlocks[1]} a fragment one; ${g.uniformBindings} bindings; offsets in steps of ${g.uniformAlign}`);
+  }
+  out.push(`gpu time  ${q.timers ? "by timer queries, and" : "no timer queries here, so only"} by the slope of time against k passes timed across a readback, with its standard error`);
+  const widths = [18, 15, 8, 8, 7, 5];
+  out.push(row(["pass", "per", "timer", "slope", "+-", "k"], widths));
+  const n = (x: number | null): string => (x === null ? "-" : String(x));
+  for (const p of q.passes) out.push(row([p.name, p.per === "draw" ? "µs a draw" : `ms a ${p.per === "megapixel" ? "megapixel" : "100k tris"}`, n(p.timer), n(p.slope), n(p.error), String(p.k)], widths) + (p.note ? `  ${p.note}` : ""));
+  out.push(`full screen at ${q.screen.join("x")}; depth into a 16-bit depth array; a draw is a uniform, a vertex array, a buffer, two pointers and the draw`);
+  if (q.lostDuring) out.push(`lost      the graphics context was lost during ${q.lostDuring}`);
   return out;
 }
 
@@ -104,10 +129,11 @@ function soakLines(r: DeviceReport): string[] {
   const s = r.soak!;
   const l = s.load;
   const out = [`soak      ${s.tier}: ${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, turning once a minute (${s.from}); ${s.minutes.length} of ${s.minutesWanted} minutes`];
-  const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5];
-  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "long", "miss"], widths));
-  for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.long ?? "?"), String(m.missed)], widths));
-  out.push(`long: frames of ${LONG} display intervals or more while the page was shown; time it was hidden is left out, a stall is not`);
+  const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5];
+  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss"], widths));
+  for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed)], widths));
+  out.push(`mat: the most draws with materials in a frame. long: frames of ${LONG} display intervals or more while the page was shown;`);
+  out.push("time it was hidden is left out, a stall is not");
   const [first, final] = [s.minutes[0], s.minutes.at(-1)];
   if (first && final && final !== first) out.push(`warming   minute ${final.minute} against minute 1: frames ${final.frameMs.median} against ${first.frameMs.median} ms, 95th ${final.frameMs.p95} against ${first.frameMs.p95}, our code ${final.buildMs} against ${first.buildMs} ms`);
   out.push(`screen    ${s.hidden === 0 ? "never hidden" : `hidden ${s.hidden} times, ${secs(s.hiddenMs)} s in all; the soak's clock stopped while it was and went on after`}; wake lock ${r.wakeLock}`);
@@ -156,7 +182,8 @@ export function deviceTable(r: DeviceReport): string[] {
     out.push(`hashes    ${r.hashes.length - differ.length} of ${r.hashes.length} as the server's${differ.map((h) => `; ${h.name} ${h.got}, server ${h.want ?? "?"}`).join("")}; ${r.hashes.map((h) => `${h.name} ${h.ms} ms`).join(", ")}`);
   }
   const shown = [...r.phases, ...(r.ladder?.rungs ?? [])].map((p) => ("textured" in p ? { tier: p.tier, mat: p.textured } : { tier: p.tier, mat: p.mat }));
-  const asked = [...new Set(shown.filter((p) => p.mat > 0).map((p) => p.tier))];
+  const soaked = r.soak?.minutes.some((m) => (m.mat ?? 0) > 0) ? [r.soak.tier] : [];
+  const asked = [...new Set([...shown.filter((p) => p.mat > 0).map((p) => p.tier), ...soaked])];
   out.push(`materials ${asked.length === 0 ? "none asked for" : r.texturesMade > 0 ? `drawn on ${asked.join(", ")}: the renderer made ${r.texturesMade} textures` : `asked for on ${asked.join(", ")}, but the renderer made no textures, so drawn flat`}`);
   if (r.phases.length > 0) {
     out.push(`tiers run ${[...new Set(r.phases.map((p) => p.tier))].join(", ")}`);
@@ -168,6 +195,7 @@ export function deviceTable(r: DeviceReport): string[] {
     out.push("calls: WebGL draws. mat: draws with materials. drop, skip: what the frame left out.");
     out.push("MB, fail, miss: fetched, fetches failed and snapshots missed while the phase settled and ran.");
   }
+  if (r.gpuTests) out.push("", ...gpuLines(r));
   if (r.ladder || r.reloadedDuring?.startsWith("memory")) out.push("", ...ladderLines(r));
   if (r.soak) out.push("", ...soakLines(r));
   for (const line of r.skipped) out.push(`not run   ${line}`);

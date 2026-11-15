@@ -4,7 +4,8 @@
 import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { AXES, LadderPlan, RUNGS, featuresOf, formatsOf, gpuOf, judgeRung, newReport, soakLoad, spread, type PhaseReport, type RungReport, type Within } from "../../client/core/device.ts";
-import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene, type GlMemory } from "../../client/core/devicescene.ts";
+import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene } from "../../client/core/devicescene.ts";
+import { fakeGl } from "../fixtures/gl.ts";
 import { deviceTable, escape, identify, limitsLine } from "../../client/core/devicetext.ts";
 import { PROVING_DIMS, PROVING_SPAWN } from "../../shared/world/proving.ts";
 
@@ -44,7 +45,7 @@ test("features are read off a global object, and what a browser lacks or will no
   expect(String(some.decompress).split(" ")).toEqual(expect.arrayContaining(["gzip", "deflate", "deflate-raw"]));
 });
 
-const params: Record<number, unknown> = { 0x1f00: "WebKit", 0x9245: "Apple Inc.", 0x1f02: "WebGL 2.0", 0x0d33: 16384, 0x88ff: 2048, 0x8d57: 4, 0x8b4c: 16, 0x8872: 16, 0x8824: 8, 0x84ff: 16 };
+const params: Record<number, unknown> = { 0x1f00: "WebKit", 0x9245: "Apple Inc.", 0x1f02: "WebGL 2.0", 0x0d33: 16384, 0x88ff: 2048, 0x8d57: 4, 0x8b4c: 16, 0x8872: 16, 0x8b4d: 32, 0x8824: 8, 0x84ff: 16, 0x8a30: 16384, 0x8a2b: 12, 0x8a2d: 12, 0x8a2f: 24, 0x8a34: 256 };
 const context = (exts: string[], debug = true) => ({
   getParameter: (n: number) => params[n],
   getExtension: (name: string) => ((debug && name === "WEBGL_debug_renderer_info") || (name === "EXT_texture_filter_anisotropic" && exts.includes(name)) ? {} : null),
@@ -56,7 +57,7 @@ const context = (exts: string[], debug = true) => ({
 test("a graphics context is read for its limits by WebGL's own numbers, anisotropy only once its extension is on", () => {
   const phone = ["EXT_color_buffer_float", "EXT_color_buffer_half_float", "EXT_clip_control", "EXT_texture_filter_anisotropic", "WEBGL_compressed_texture_astc", "WEBGL_compressed_texture_etc", "WEBGL_multi_draw"];
   const g = gpuOf(context(phone), "Apple GPU", "astc");
-  expect(g).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, textureUnits: 16, drawBuffers: 8, anisotropy: 16, highp: true, antialias: true, extensions: phone, variant: "astc" });
+  expect(g).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, textureUnits: 16, combinedUnits: 32, drawBuffers: 8, anisotropy: 16, uniformBytes: 16384, uniformBlocks: [12, 12], uniformBindings: 24, uniformAlign: 256, highp: true, antialias: true, extensions: phone, variant: "astc" });
   expect(gpuOf(context([], false), "Apple GPU")).toMatchObject({ vendor: "WebKit", anisotropy: 0, variant: "rgba" });
   // What lighting may count on: this phone draws to 32-bit float but cannot filter or blend it.
   expect(limitsLine(g)).toBe("16-bit float targets yes, filtered yes; 32-bit float targets yes, filtered no, blended no; antialiasing up to 4x; 8 targets at once; 16 textures a draw, 16 in vertex shaders; textures to 16384 px; anisotropy 16; reversed depth yes; GPU timers no; multi-draw yes; compressed astc etc2");
@@ -158,20 +159,16 @@ test("the crowd scene stands behind the spawn point: the thatch near, and every 
 function card(room: number, lose = false) {
   const made: object[] = [];
   let error = 0;
-  let unit = 0x84c0;
-  const gl: GlMemory = {
-    createTexture: () => ({}),
-    deleteTexture: (t) => void made.splice(made.indexOf(t as object), 1),
-    bindTexture: (_target, t) => void (t && !made.includes(t as object) && made.push(t as object)),
-    activeTexture: (u) => void (unit = u),
-    texStorage2D: () => void (made.length > room && (error = 0x0505)),
-    compressedTexSubImage2D: () => {},
-    texSubImage2D: () => {},
-    getError: () => [error, (error = 0)][0]!,
-    isContextLost: () => lose && made.length > room,
-    getParameter: () => unit,
-  };
-  return { gl, made, unit: () => unit };
+  const gl = fakeGl({
+    with: {
+      createTexture: () => made[made.push({}) - 1],
+      deleteTexture: (t: object) => void made.splice(made.indexOf(t), 1),
+      texStorage2D: () => void (made.length > room && (error = 0x0505)),
+      getError: () => [error, (error = 0)][0]!,
+      isContextLost: () => lose && made.length > room,
+    },
+  });
+  return { gl, made, unit: () => gl.getParameter(0x84e0) };
 }
 
 test("texture memory grows a megabyte at a time on a spare unit, and says when the context runs out or is lost", () => {
