@@ -94,8 +94,9 @@ const tree = (name: string, hits: number, half: NodeDef["half"], top: NonNullabl
 const plant = (name: string, color: number, hits: number, half: NodeDef["half"], yields: NodeDef["yields"], size: NodeDef["size"], variants: NodeVariant[]): NodeDef => ({ type: "node", id: id(name), mesh: "box", color, half, soft: true, hits, respawnHours: REGROW, yields, xp: 0.5, size, variants });
 
 // What each kind grows as, with what is left of it used up, as the art's makers print them: `python3
-// assets/source/core/nodes/trees/content.py` and `bun assets/source/core/nodes/plants/facts.ts`. A plant's first
-// individual is the grown one, and grows twice as often as each of the others.
+// assets/source/core/nodes/trees/content.py`, `bun assets/source/core/nodes/plants/facts.ts` and `python3
+// assets/source/core/nodes/rocks/content.py`. A plant's first individual is the grown one, and grows twice as often as
+// each of the others.
 const PALMS: NodeVariant[] = [
   { mesh: "core:palm_1", weight: 3, boxes: [{ at: [0.01, 0.99, 0.01], half: [0.26, 1.21, 0.26] }, { at: [0.03, 3, 0.02], half: [0.24, 0.8, 0.24] }, { at: [0.05, 4.6, 0.03], half: [0.26, 0.8, 0.26] }, { at: [0.07, 6.2, 0.05], half: [0.26, 0.8, 0.26] }, { at: [0.09, 7.8, 0.08], half: [0.25, 0.8, 0.25] }, { at: [0.12, 9.4, 0.11], half: [0.23, 0.8, 0.23] }, { at: [0.15, 11, 0.14], half: [0.21, 0.8, 0.21] }, { at: [0.18, 12.6, 0.18], half: [0.19, 0.8, 0.2] }, { at: [0.21, 14.1, 0.22], half: [0.18, 0.7, 0.18] }],
     depleted: { mesh: "core:palm_1_depleted", boxes: [{ at: [0, 0.22, 0], half: [0.26, 0.44, 0.26] }] } },
@@ -171,6 +172,36 @@ const SEAGRAPES: NodeVariant[] = [
   { mesh: "core:seagrape_2", boxes: [{ at: [-0.23, 0.43, 0], half: [0.44, 0.43, 0.96] }], depleted: { mesh: "core:seagrape_2_depleted", boxes: [{ at: [-0.27, 0.35, -0.04], half: [0.3, 0.35, 0.81] }] } },
   { mesh: "core:seagrape_3", boxes: [{ at: [-0.13, 0.79, 0.13], half: [1.31, 0.79, 1.55] }], depleted: { mesh: "core:seagrape_3_depleted", boxes: [{ at: [-0.2, 0.64, 0.04], half: [1.1, 0.64, 1.19] }] } },
 ];
+const ROCKS: NodeVariant[] = [
+  { mesh: "core:rock_1", weight: 4, boxes: [{ at: [0.08, 0.3, -0.08], half: [1.0, 0.6, 0.8] }, { at: [0.13, 0.05, 0.07], half: [1.25, 0.35, 0.75] }, { at: [0.03, 0.4, -0.03], half: [0.55, 0.7, 0.65] }, { at: [-0.07, 0.47, -0.03], half: [0.35, 0.78, 0.45] }, { at: [0.33, 0.05, -0.13], half: [0.75, 0.35, 0.85] }],
+    depleted: { mesh: "core:rock_1_depleted", boxes: [{ at: [0.13, 0.03, -0.03], half: [1.15, 0.33, 0.85] }, { at: [0.28, -0.05, 0.07], half: [1.5, 0.25, 0.25] }, { at: [0.53, 0.05, 0.12], half: [0.55, 0.35, 0.5] }, { at: [-0.02, -0.05, -0.08], half: [1.1, 0.25, 0.9] }, { at: [-0.87, 0.0, -0.13], half: [0.15, 0.3, 1.05] }] } },
+  { mesh: "core:rock_2", weight: 3, boxes: [{ at: [0.02, 0.5, -0.02], half: [1.0, 0.8, 0.75] }, { at: [-0.23, 0.62, -0.02], half: [0.45, 0.93, 0.65] }, { at: [-0.08, 0.3, -0.02], half: [0.6, 0.6, 0.85] }, { at: [0.92, 0.28, 0.13], half: [0.2, 0.57, 0.6] }],
+    depleted: { mesh: "core:rock_2_depleted", boxes: [{ at: [-0.03, 0.0, -0.02], half: [0.95, 0.3, 0.75] }, { at: [-0.33, 0.05, -0.02], half: [0.35, 0.35, 0.85] }, { at: [-0.53, 0.1, 0.23], half: [0.45, 0.4, 0.3] }, { at: [0.02, -0.03, -0.02], half: [0.6, 0.28, 0.85] }, { at: [0.02, -0.03, -0.02], half: [1.0, 0.28, 0.55] }] } },
+  { mesh: "core:rock_3", weight: 3, boxes: [{ at: [-0.05, 0.2, -0.05], half: [1.25, 0.5, 0.7] }, { at: [-0.45, 0.28, 0.05], half: [0.75, 0.57, 0.5] }, { at: [0.1, -0.03, -0.05], half: [1.3, 0.28, 0.8] }, { at: [-0.05, 0.05, 0.15], half: [1.45, 0.35, 0.4] }, { at: [-0.75, 0.33, 0.05], half: [0.35, 0.62, 0.4] }],
+    depleted: { mesh: "core:rock_3_depleted", boxes: [{ at: [-0.3, -0.03, -0.05], half: [1.1, 0.28, 0.8] }, { at: [-0.8, 0.03, 0.1], half: [0.6, 0.33, 0.65] }, { at: [-0.95, -0.03, -0.3], half: [0.25, 0.28, 1.15] }, { at: [-0.15, -0.05, 0.15], half: [1.45, 0.25, 0.3] }, { at: [0.15, -0.12, -0.15], half: [1.35, 0.17, 0.8] }] } },
+  { mesh: "core:rock_4", weight: 2, boxes: [{ at: [-0.34, 0.0, 0.04], half: [1.25, 0.3, 0.95] }, { at: [-0.39, 0.07, -0.16], half: [0.8, 0.38, 0.45] }, { at: [-0.29, -0.07, -0.06], half: [1.7, 0.23, 0.55] }, { at: [-0.19, -0.07, -0.01], half: [0.9, 0.23, 1.1] }, { at: [-0.84, 0.03, 0.19], half: [0.85, 0.33, 0.5] }],
+    depleted: { mesh: "core:rock_4_depleted", boxes: [{ at: [-0.24, -0.05, -0.01], half: [1.35, 0.25, 1.0] }, { at: [-0.74, -0.03, 0.04], half: [1.15, 0.28, 0.45] }, { at: [0.26, -0.1, -0.31], half: [1.15, 0.2, 0.8] }, { at: [0.26, 0.0, -0.46], half: [0.55, 0.3, 0.35] }, { at: [-0.34, -0.03, 0.09], half: [0.25, 0.28, 1.0] }] } },
+  { mesh: "core:rock_5", weight: 3, boxes: [{ at: [0.11, 0.07, -0.06], half: [0.85, 0.38, 0.7] }, { at: [0.11, 0.0, -0.01], half: [1.15, 0.3, 0.35] }, { at: [0.01, -0.05, -0.11], half: [0.55, 0.25, 0.95] }, { at: [0.06, 0.12, 0.04], half: [0.6, 0.42, 0.5] }, { at: [-0.24, 0.0, 0.54], half: [0.7, 0.3, 0.2] }],
+    depleted: { mesh: "core:rock_5_depleted", boxes: [{ at: [0.11, -0.07, -0.11], half: [1.05, 0.23, 0.65] }, { at: [0.11, -0.1, -0.36], half: [0.25, 0.2, 1.2] }, { at: [1.61, -0.03, 0.14], half: [0.15, 0.28, 0.3] }, { at: [-0.24, -0.1, 0.29], half: [1.0, 0.2, 0.45] }, { at: [0.66, -0.03, -0.31], half: [0.3, 0.28, 0.25] }] } },
+  { mesh: "core:rock_6", weight: 1, boxes: [{ at: [0.08, 0.4, 0.07], half: [1.0, 0.7, 0.8] }, { at: [-0.07, 0.85, -0.03], half: [0.25, 1.15, 0.4] }, { at: [0.08, 0.23, 0.02], half: [1.2, 0.53, 0.55] }, { at: [0.03, 0.23, 0.02], half: [0.75, 0.53, 0.95] }, { at: [-0.02, 0.5, 0.02], half: [0.6, 0.8, 0.55] }],
+    depleted: { mesh: "core:rock_6_depleted", boxes: [{ at: [0.03, 0.0, -0.08], half: [0.85, 0.3, 0.95] }, { at: [0.13, -0.03, -0.08], half: [1.15, 0.28, 0.45] }, { at: [0.03, 0.03, -0.33], half: [0.65, 0.33, 0.4] }, { at: [-0.67, -0.03, -1.18], half: [0.25, 0.28, 0.15] }, { at: [0.08, 0.05, 0.57], half: [0.3, 0.35, 0.2] }] } },
+];
+const RUBBLE: NodeVariant[] = [
+  { mesh: "core:rubble_1", weight: 2, boxes: [{ at: [0.02, 0.3, -0.14], half: [1.05, 0.6, 0.75] }, { at: [-0.03, -0.03, 0.11], half: [1.4, 0.28, 0.7] }, { at: [-0.63, 0.42, -0.14], half: [0.4, 0.72, 0.65] }, { at: [0.02, -0.05, -0.04], half: [0.75, 0.25, 1.05] }, { at: [-0.33, 0.35, -0.04], half: [0.4, 0.65, 0.75] }],
+    depleted: { mesh: "core:rubble_1_depleted", boxes: [{ at: [0.04, -0.05, -0.02], half: [1.2, 0.25, 0.75] }, { at: [0.04, -0.1, -0.02], half: [0.8, 0.2, 0.95] }, { at: [-0.11, -0.03, -0.02], half: [0.85, 0.28, 0.35] }, { at: [0.04, -0.1, 0.03], half: [1.4, 0.2, 0.5] }, { at: [0.04, -0.12, -0.02], half: [0.6, 0.17, 1.05] }] } },
+  { mesh: "core:rubble_2", weight: 2, boxes: [{ at: [0.09, 0.17, -0.19], half: [0.95, 0.47, 0.7] }, { at: [-0.01, -0.05, 0.16], half: [1.15, 0.25, 0.75] }, { at: [0.04, 0.3, -0.69], half: [0.9, 0.6, 0.2] }, { at: [0.04, 0.0, 0.01], half: [0.5, 0.3, 1.0] }, { at: [-0.01, 0.05, -0.04], half: [1.25, 0.35, 0.25] }],
+    depleted: { mesh: "core:rubble_2_depleted", boxes: [{ at: [0.01, -0.05, 0.0], half: [0.9, 0.25, 0.75] }, { at: [-0.04, -0.1, 0.0], half: [1.15, 0.2, 0.45] }, { at: [0.06, -0.1, -0.05], half: [0.45, 0.2, 1.0] }, { at: [-0.34, -0.03, -0.05], half: [0.35, 0.28, 0.3] }, { at: [0.06, -0.12, -0.05], half: [1.15, 0.17, 0.6] }] } },
+  { mesh: "core:rubble_3", weight: 2, boxes: [{ at: [-0.11, 0.2, -0.14], half: [1.35, 0.5, 0.65] }, { at: [0.14, -0.03, -0.04], half: [1.3, 0.28, 1.05] }, { at: [0.34, 0.33, -0.09], half: [0.9, 0.62, 0.3] }, { at: [0.04, 0.0, 0.06], half: [1.6, 0.3, 0.65] }, { at: [-0.31, 0.17, -0.19], half: [0.45, 0.47, 0.8] }],
+    depleted: { mesh: "core:rubble_3_depleted", boxes: [{ at: [-0.01, -0.05, -0.01], half: [1.15, 0.25, 0.85] }, { at: [0.04, -0.1, -0.01], half: [1.6, 0.2, 0.65] }, { at: [-0.01, -0.1, -0.01], half: [0.75, 0.2, 1.05] }, { at: [-0.01, -0.03, -0.01], half: [0.75, 0.28, 0.45] }, { at: [0.09, -0.07, 0.14], half: [1.35, 0.23, 0.5] }] } },
+];
+const METAL_ROCKS: NodeVariant[] = [
+  { mesh: "core:metal_rock_1", weight: 2, boxes: [{ at: [-0.11, 0.45, -0.14], half: [1.15, 0.75, 0.85] }, { at: [0.09, 0.1, -0.09], half: [1.15, 0.4, 1.0] }, { at: [-0.11, 0.55, -0.39], half: [0.75, 0.85, 0.5] }, { at: [-0.01, 0.23, -0.14], half: [1.35, 0.53, 0.45] }],
+    depleted: { mesh: "core:metal_rock_1_depleted", boxes: [{ at: [-0.06, 0.03, -0.19], half: [1.2, 0.33, 0.9] }, { at: [0.14, -0.07, 0.11], half: [1.1, 0.23, 0.9] }, { at: [-0.81, 0.05, -0.09], half: [0.55, 0.35, 0.4] }, { at: [-0.41, 0.05, -0.74], half: [0.75, 0.35, 0.25] }, { at: [0.04, -0.03, -0.19], half: [1.4, 0.28, 0.3] }] } },
+  { mesh: "core:metal_rock_2", weight: 2, boxes: [{ at: [-0.01, 0.45, -0.04], half: [1.05, 0.75, 0.8] }, { at: [-0.46, 0.68, -0.24], half: [0.5, 0.97, 0.5] }, { at: [-0.21, 0.1, -0.04], half: [0.75, 0.4, 0.9] }, { at: [0.09, 0.28, 0.21], half: [1.05, 0.57, 0.55] }, { at: [-0.01, 0.1, -0.09], half: [1.15, 0.4, 0.35] }],
+    depleted: { mesh: "core:metal_rock_2_depleted", boxes: [{ at: [-0.21, 0.05, 0.01], half: [0.85, 0.35, 0.85] }, { at: [-0.01, -0.05, 0.06], half: [1.05, 0.25, 0.7] }, { at: [-0.81, 0.1, -0.09], half: [0.35, 0.4, 0.35] }, { at: [0.19, -0.05, -1.04], half: [0.25, 0.25, 0.2] }, { at: [-0.81, 0.12, 0.26], half: [0.25, 0.42, 0.4] }] } },
+  { mesh: "core:metal_rock_3", weight: 2, boxes: [{ at: [0.06, 0.17, -0.06], half: [1.35, 0.47, 0.75] }, { at: [0.11, 0.3, -0.11], half: [1.0, 0.6, 0.3] }, { at: [-0.09, 0.03, -0.01], half: [1.0, 0.33, 0.9] }, { at: [0.01, 0.03, -0.11], half: [1.5, 0.33, 0.4] }, { at: [-0.19, 0.23, -0.06], half: [0.9, 0.53, 0.45] }],
+    depleted: { mesh: "core:metal_rock_3_depleted", boxes: [{ at: [-0.04, 0.0, 0.04], half: [1.35, 0.3, 0.85] }, { at: [-0.44, 0.03, 0.24], half: [1.05, 0.33, 0.45] }, { at: [0.21, -0.05, -0.31], half: [1.3, 0.25, 0.6] }, { at: [0.16, -0.03, -0.01], half: [1.65, 0.28, 0.2] }, { at: [0.66, -0.07, -1.21], half: [0.15, 0.23, 0.2] }] } },
+];
 const NODES: NodeDef[] = [
   // Hardwood hammock trees: the common harvest tree is a young live oak, 11 to 24 m across. The full-grown ones are their
   // own kind, a giant here and there among the figs and banyans.
@@ -184,10 +215,14 @@ const NODES: NodeDef[] = [
   { ...tree("banyan", 30, [1, 3, 1], { half: [5, 2.5, 5], color: 7 }, [0.9, 1.15], BANYANS), footing: { reach: 12, fall: 7.2, else: "core:fig" } },
   tree("mangrove", 8, [0.25, 1.4, 0.25], { half: [1.8, 1, 1.8], color: 12 }, [0.8, 1.2], MANGROVES),
   // Limestone boulders. Only these hold a little ore, as the rocks always have here.
-  { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: REGROW, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.6, 1.5] },
-  { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.6, 1.4] },
+  // A stone base reaches at most 3.15 m out (the widest limestone at its largest), so the ground under these three kinds is
+  // judged 4 m out, two of its samples. It may fall away there by the least of a kind's burials for its reach: 1.2 m for
+  // 2.52 m in the limestone, 1.05 m for 2.26 m in the rubble, 0.8 m for 1.62 m in the metal rocks. Where it falls further,
+  // nothing grows.
+  { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: REGROW, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.8, 1.25], variants: ROCKS, footing: { reach: 4, fall: 1.9 } },
+  { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.85, 1.15], variants: RUBBLE, footing: { reach: 4, fall: 1.85 } },
   // A metal rock, darker and veined, which a player learns to spot. It is harder than limestone, and a pick gets its ore.
-  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }], xp: 1, size: [0.7, 1.4] },
+  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
   // Berry bushes, their berries red.
   plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }], [0.8, 1.2], BUSHES),
   // Saw palmetto bears a few berries. A fern bears none.

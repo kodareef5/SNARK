@@ -92,6 +92,8 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // sea seen from above with WATER, past the map to the end of the view (D270; alone 60ea88d4, and 38466578 again with a
   // plain sky, which draws the sea as it was). Together they give 5a53ee48, which this was until the elder oak became a kind
   // of its own, its grey box numbering the meshes after it on and its slots taking some of the proving ground's bare ground
-  // (90f764f0 alone), and a banyan whose footing fails grew a strangler fig in its place.
-  expect(hash.toString(16)).toBe("6dad72dc");
+  // (90f764f0 alone), and a banyan whose footing fails grew a strangler fig in its place. It was 6dad72dc until the stone
+  // kinds took a footing and 100 of the proving ground's slots grew nothing where the ground falls away under a stone's
+  // base; the stones' sizes and variants alone leave it 6dad72dc, and the footing alone gives this.
+  expect(hash.toString(16)).toBe("62da330");
 });

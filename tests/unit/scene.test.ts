@@ -344,8 +344,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // first, since the far wood draws it before the near store does. It was 133088346 until the trees grew at the art's sizes:
   // the palm from 0.85 to 1.15 of its model, not 0.8 to 1.25 (with the tree at 0.85 to 1.2 as well, 1199806411); the elder
   // oak a kind of its own, whose grey box numbers the meshes after it on (3610121629); and the common tree a young oak from
-  // 0.4 to 0.75, at which the far wood is two draws fewer over the 300 frames.
-  expect(hash).toBe(3057706620);
+  // 0.4 to 0.75, at which the far wood is two draws fewer over the 300 frames. It was 3057706620 until the limestone grew
+  // at 0.8 to 1.25 of its models, not 0.6 to 1.5: the two rocks here are the first of its six at the first and the eleventh
+  // of its sizes, drawn as the kind's grey box in this pack. Its variants and its footing alone leave it as it was.
+  expect(hash).toBe(1700240194);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
