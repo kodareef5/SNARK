@@ -3,7 +3,7 @@
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
-// --flight draws the block-out pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts).
+// --flight draws the block-out pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -941,13 +941,21 @@ if (import.meta.main) {
           view.scene.build(view.cam, view.remote);
           continue;
         }
-        frameFlight(f, shots[next]!, view.cam);
+        frameFlight(f, shots[next]!, view.cam, (x, z) => view.hf.heightAt(x, z));
         // The rasterizer saw none of the uploads the frames before carried.
         view.scene.resetUploads();
         view.render();
         const [ox, oy] = [(next % across) * fw, Math.floor(next / across) * fh];
         for (let y = 0; y < fh; y++) pixels.set(view.raster.color.subarray(y * fw * 4, (y + 1) * fw * 4), ((oy + y) * W + ox) * 4);
         label(pixels, W, shots[next]!.label, ox + 6, oy + 6);
+        // --each DIR: each moment as a picture of its own as well.
+        const each = arg("each");
+        if (each) {
+          const one = view.raster.color.slice();
+          label(one, fw, shots[next]!.label, 6, 6);
+          mkdirSync(resolve(each), { recursive: true });
+          writeFileSync(resolve(each, `${String(next + 1).padStart(2, "0")}-${shots[next]!.label.replace(/[^a-z0-9]+/g, "-").replace(/-$/, "")}.png`), encodePng(fw, fh, one));
+        }
         next++;
       }
     }

@@ -72,12 +72,12 @@ export function moments(f: Flight): Moment[] {
     if (i >= 0) out.push({ label, at: i, around, above, far });
   };
   const last = (part: string): number => f.ticks.findLastIndex((t) => t.part === part);
-  find("on the ground", "taking off", () => true, 60, 8, 9);
-  find("taking off, 4", "taking off", (s, i) => s.cue === CUE_TAKEOFF && since(i) === 4, 60, 8, 9);
-  find("taking off, 10", "taking off", (s, i) => s.cue === CUE_TAKEOFF && since(i) === 10, 60, 8, 9);
-  find("taking off, 22", "taking off", (s, i) => s.cue === CUE_TAKEOFF && since(i) === 22, 60, 8, 9);
-  out.push({ label: "hovering", at: last("taking off"), around: 50, above: 5, far: 10 });
-  find("flying off", "flying off", (s) => s.speed >= 3, 70, 10, 11);
+  find("on the ground", "taking off", () => true, 60, 12, 7);
+  find("taking off, 3", "taking off", (s, i) => s.cue === CUE_TAKEOFF && since(i) === 3, 70, 8, 7);
+  find("taking off, 10", "taking off", (s, i) => s.cue === CUE_TAKEOFF && since(i) === 10, 70, 6, 8);
+  find("taking off, 20", "taking off", (s, i) => s.cue === CUE_TAKEOFF && since(i) === 20, 70, 4, 8);
+  out.push({ label: "hovering", at: last("taking off"), around: 50, above: 0, far: 8 });
+  find("flying off", "flying off", (s) => s.speed >= 3, 80, -4, 8);
   /** The tick of `part` banked the most. */
   const banked = (part: string): number => {
     let most = -1;
@@ -87,20 +87,21 @@ export function moments(f: Flight): Moment[] {
     return most;
   };
   const left = banked("turning left");
-  if (left >= 0) out.push({ label: `turning left, bank ${of(left).bank}`, at: left, around: 0, above: 6, far: 9 });
-  find("climbing", "climbing", (s) => s.pitch >= 9, 90, 0, 9);
-  find("sprinting", "sprinting", (s) => s.speed >= 8, 80, 10, 10);
+  if (left >= 0) out.push({ label: `turning left, bank ${of(left).bank}`, at: left, around: 15, above: -8, far: 8 });
+  find("climbing", "climbing", (s) => s.pitch >= 9, 90, -4, 8);
+  find("sprinting", "sprinting", (s) => s.speed >= 8, 70, -4, 9);
   const right = banked("turning hard");
-  if (right >= 0) out.push({ label: `turning hard right, bank ${of(right).bank}`, at: right, around: 0, above: 6, far: 10 });
-  find("diving", "diving", (s) => s.pitch <= -18 && s.speed >= 3, 90, 5, 9);
-  find("braking", "braking", (s) => s.speed <= 1, 60, 5, 10);
-  find("rolling, 7", "rolling", (s, i) => s.cue === CUE_ROLL && since(i) === 7, 10, 6, 11);
-  find("rolling, 15", "rolling", (s, i) => s.cue === CUE_ROLL && since(i) === 15, 10, 6, 11);
-  find("gliding", "gliding", (s) => s.pitch <= -5, 70, 12, 9);
-  find("landing, 4", "skimming in", (s, i) => s.mode !== MODE_FLYER && s.cue === CUE_LAND && since(i) === 4, 70, 10, 9);
-  find("setting down", "setting down", (s) => s.speed >= 4, 60, 0, 11);
-  find("landing, 10", "setting down", (s, i) => s.mode !== MODE_FLYER && s.cue === CUE_LAND && since(i) === 10, 60, 8, 9);
-  find("landing, 26", "setting down", (s, i) => s.mode !== MODE_FLYER && s.cue === CUE_LAND && since(i) === 26, 60, 8, 9);
+  if (right >= 0) out.push({ label: `turning hard right, bank ${of(right).bank}`, at: right, around: -15, above: -10, far: 9 });
+  find("diving", "diving", (s) => s.pitch <= -18 && s.speed >= 3, -95, 10, 8);
+  find("braking", "braking", (s) => s.speed <= 1, 60, 0, 8);
+  find("rolling, 7", "rolling", (s, i) => s.cue === CUE_ROLL && since(i) === 7, 20, -4, 8);
+  find("rolling, 15", "rolling", (s, i) => s.cue === CUE_ROLL && since(i) === 15, 20, -4, 8);
+  find("gliding", "gliding", (s) => s.pitch <= -5, 70, -2, 8);
+  find("skimming in, landing 4", "skimming in", (s, i) => s.mode !== MODE_FLYER && s.cue === CUE_LAND && since(i) === 4, 70, 10, 7);
+  find("setting down", "setting down", (s) => s.speed >= 4, 60, -4, 8);
+  find("landing, 8", "setting down", (s, i) => s.mode !== MODE_FLYER && s.cue === CUE_LAND && since(i) === 8, 60, 10, 7);
+  find("landing, 18", "setting down", (s, i) => s.mode !== MODE_FLYER && s.cue === CUE_LAND && since(i) === 18, 60, 10, 7);
+  find("landing, 30", "setting down", (s, i) => s.mode !== MODE_FLYER && s.cue === CUE_LAND && since(i) === 30, 60, 10, 7);
   return out;
 }
 
@@ -120,15 +121,15 @@ export function stage(f: Flight, i: number, r: RemoteSample): void {
   }
 }
 
-/** The camera beside the flyer at moment `m`, looking at its middle. */
-export function frame(f: Flight, m: Moment, cam: Camera): void {
+/** The camera beside the flyer at moment `m`, looking at its middle, and no nearer the ground below it than 1.5 m. */
+export function frame(f: Flight, m: Moment, cam: Camera, ground: (x: number, z: number) => number): void {
   const b = f.ticks[m.at]!.bodies[0]!;
   const a = b.yaw + Math.PI + (m.around * Math.PI) / 180;
   const e = (m.above * Math.PI) / 180;
   const [cx, cy, cz] = [b.x, b.y + 0.9, b.z];
   cam.x = cx + m.far * Math.sin(a) * Math.cos(e);
-  cam.y = cy + m.far * Math.sin(e);
   cam.z = cz + m.far * Math.cos(a) * Math.cos(e);
+  cam.y = Math.max(cy + m.far * Math.sin(e), ground(cam.x, cam.z) + 1.5);
   cam.yaw = Math.atan2(cx - cam.x, cz - cam.z);
   cam.pitch = Math.atan2(cy - cam.y, Math.hypot(cx - cam.x, cz - cam.z));
   cam.fovY = 0.75;
