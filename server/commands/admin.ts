@@ -2,7 +2,8 @@ import { parseNumber } from "../../shared/console.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
 import { Genome, POINT_CAP, STAT_NAMES } from "../../shared/sim/genome.ts";
-import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
+import { groundUnder } from "../../shared/world/collide.ts";
+import { placeFree } from "../place.ts";
 import { named, type Console, type ConsoleCommand } from "../console.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { CAUSE_KILLED, statOf } from "../survival.ts";
@@ -36,7 +37,7 @@ export function addAdminCommands(con: Console): void {
         const e = c.ent;
         if (ents.mode[e] !== MODE_GHOST) return "you are not a ghost";
         const p = world.reg.move[ents.kind[e]!]!;
-        if (!capsuleFree(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)) return "you are inside something; move to open space first";
+        if (!placeFree(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)) return "you are inside something; move to open space first";
         ents.mode[e] = MODE_WALK;
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
         return "ghost off";
@@ -69,7 +70,7 @@ export function addAdminCommands(con: Console): void {
         const p = world.reg.move[ents.kind[e]!]!;
         // Without a height given, it stands on the ground there, which on a slope is above the ground under its middle.
         const at = args.length === 3 ? y : groundUnder(world.hf, x, z, p.radius);
-        if (ents.mode[e] !== MODE_GHOST && !capsuleFree(world, x, at, z, p.radius, p.height)) return "that spot is inside something";
+        if (ents.mode[e] !== MODE_GHOST && !placeFree(world, x, at, z, p.radius, p.height)) return "that spot is inside something";
         ents.setPosition(e, x, at, z);
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
         return `at ${x} ${at.toFixed(2)} ${z}`;

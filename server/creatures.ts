@@ -10,7 +10,8 @@ import type { GameServer } from "./game.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Rng } from "../shared/rng.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
+import { groundUnder } from "../shared/world/collide.ts";
+import { placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
@@ -153,7 +154,7 @@ export class Creatures {
     const p = world.reg.move[kind];
     if (!p) return -1;
     const y = groundUnder(world.hf, x, z, p.radius);
-    if (!capsuleFree(world, x, y, z, p.radius, p.height)) return -1;
+    if (!placeFree(world, x, y, z, p.radius, p.height)) return -1;
     let colours = "";
     if (this.bus.n[CREATURE_SPAWN] !== 0) {
       const asked = { kind: world.reg.ids[kind]!, why, x, z, level, colours };

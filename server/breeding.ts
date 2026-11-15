@@ -9,10 +9,11 @@ import { MF_NO_SPRINT } from "../shared/sim/character.ts";
 import { F_AWAKE } from "../shared/sim/entities.ts";
 import { breed } from "../shared/sim/genome.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
+import { groundUnder } from "../shared/world/collide.ts";
 import type { Creatures } from "./creatures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
+import { placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
@@ -230,7 +231,7 @@ export class Breeding {
       egg.z = ents.z[e]! + Math.cos(a) * off;
       const ground = eggKind !== 0 ? groundUnder(world.hf, egg.x, egg.z, reg.bodyRadius[eggKind]!) : world.hf.heightAt(egg.x, egg.z);
       egg.y = ground > ents.y[e]! ? ground : ents.y[e]!;
-      if (eggKind !== 0 && !capsuleFree(world, egg.x, egg.y, egg.z, reg.bodyRadius[eggKind]!, reg.bodyHeight[eggKind]!)) {
+      if (eggKind !== 0 && !placeFree(world, egg.x, egg.y, egg.z, reg.bodyRadius[eggKind]!, reg.bodyHeight[eggKind]!)) {
         egg.x = ents.x[e]!;
         egg.y = ents.y[e]!;
         egg.z = ents.z[e]!;

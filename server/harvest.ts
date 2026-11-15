@@ -86,6 +86,7 @@ export class Harvest {
     this.per = this.field.source.perChunk;
     this.version = new Uint32Array(chunkCount(world.dims));
     this.rng = new Rng(seed);
+    world.unloaded!.usedUp = (chunk, index) => this.regrowsAt(chunk, index) > 0;
   }
 
   private key(chunk: number, index: number): number {

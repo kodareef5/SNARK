@@ -61,9 +61,10 @@ import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
+import { groundUnder } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import { Guesses } from "./guesses.ts";
+import { placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
@@ -652,7 +653,7 @@ export class GameServer {
   /**
    * Spawns at `at`, else where the survivor was last seen, else the spawn point. If that spot is taken, the first free one on the
    * ground around it, or one beside another body if every one is taken. An `exact` place, a bed, is stood on whoever else is
-   * there, as in ARK, and nowhere else. False if there is no room: a body is never put inside anything.
+   * there, as in ARK, and nowhere else. False if there is no room: a body is never put inside anything, loaded or not.
    */
   private spawnBody(c: Client, at?: { x: number; y: number; z: number; yaw: number }, exact = false): boolean {
     const world = this.world;
@@ -668,7 +669,7 @@ export class GameServer {
     // A place on the ground, or one saved before bodies stood on their lower sphere, is lifted to where the body rests there.
     // A bed is stood on as it is.
     const wantY = want ? (exact ? want.y : Math.max(want.y, groundUnder(world.hf, want.x, want.z, p.radius))) : 0;
-    if (want && capsuleFree(world, want.x, wantY, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, wantY, want.z)))) {
+    if (want && placeFree(world, want.x, wantY, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, wantY, want.z)))) {
       x = want.x;
       y = wantY;
       z = want.z;
@@ -686,7 +687,7 @@ export class GameServer {
         x = cx + detSin(a) * ring * 1.5;
         z = cz + detCos(a) * ring * 1.5;
         y = groundUnder(world.hf, x, z, p.radius);
-        if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
+        if (!placeFree(world, x, y, z, p.radius, p.height)) continue;
         free = !this.occupied(x, y, z);
         if (!free && !beside) {
           beside = true;
