@@ -83,6 +83,8 @@ function world(width: number, height: number, files?: GameFiles): World {
   const scene = new Scene({ dims, hf, structs }, reg, pack, files && port ? { manifest: files.manifest, port } : undefined);
   scene.assets.tier = tierOf("medium");
   scene.viewHeight = height;
+  // The judged frames are held to the rasterizer, which draws no haze and no clouds; the pictures are what a player sees.
+  scene.plainSky = !files;
   const cam = new Camera();
   cam.aspect = width / height;
   const w: World = { reg, hf, pack: bytes, structs, remote: new RemoteSample(), scene, cam, raster: files ? null : new Rasterizer(width, height, pack, hf), port, boxes: [] };

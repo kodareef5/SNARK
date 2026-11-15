@@ -4,15 +4,16 @@
 
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
+import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT } from "./glsl.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
-import { SKY_GLSL } from "./sky.ts";
-import { DOME_VERTEX, SURFACE_VERTEX, domeFragment, surfaceFragment } from "./surface.ts";
+import { SURFACE_VERTEX, surfaceFragment } from "./surface.ts";
 
 /**
  * Texture units. 0 to 3 hold the palette, the whole map's heights and tints, and the bones. A material's five maps go
- * on 4 to 8, base colour first, and so do the clouds' and the sea's, which are materials. 9 holds the shadow maps, 10
- * the sky table, and 11 and 12 the terrain window's heights and tints. 13 to 15 are free.
+ * on 4 to 8, base colour first, and so do the sky's (the moon on 4, the cloud layers on 7 and 8) and the sea's, which
+ * are materials. 9 holds the shadow maps, 10 the sky table, and 11 and 12 the terrain window's heights and tints. 13
+ * to 15 are free.
  */
 export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12 } as const;
 
@@ -29,10 +30,13 @@ const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
 const GROUND = { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint };
 const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
 
-/** A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which looks the sun's shadow up. */
+/**
+ * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
+ * the haze and looks the sun's shadow up.
+ */
 function flatOr(tier: Tier, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
-  return { vertex, fragment: lit, defines: shadowDefines(tier.shadows, hard), samplers: { ...samplers, uShadow: UNIT.shadow } };
+  return { vertex, fragment: lit, defines: shadowDefines(tier.shadows, hard), samplers: { ...samplers, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
 }
 
 /**
@@ -56,11 +60,12 @@ export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureForma
   far: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
   surface: (tier, format, hard = false) => ({
     vertex: SURFACE_VERTEX,
-    fragment: surfaceFragment(format, SKY_GLSL),
+    fragment: surfaceFragment(format, AIR),
     defines: shadowDefines(tier.shadows, hard),
     samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4, uSkyTable: UNIT.sky, uShadow: UNIT.shadow },
   }),
-  sky: () => ({ vertex: DOME_VERTEX, fragment: domeFragment(SKY_GLSL), defines: "", samplers: { uSkyTable: UNIT.sky } }),
+  // The dome, and over it the sky material's pictures on its units as a material's: the moon as its base colour and the cloud layers as its two masks.
+  sky: () => ({ vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: "", samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }),
   // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
   depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones } }),
   depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps } }),

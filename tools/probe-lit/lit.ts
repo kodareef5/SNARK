@@ -89,6 +89,7 @@ export const litCheck: LitCheck = {
     const shot = new Shot("lit", W, H, view.hf, buildCorePack());
     for (const hour of HOURS) {
       view.scene.hour = hour;
+      view.scene.plainSky = true;
       for (let f = 0; f < 3; f++) shot.add(view.render(), f === 2);
       const r = view.raster;
       pictures.push({ hour, frame: shot.read.at(-1)!, color: r.color.slice(), depth: r.depth.slice(), pickKind: r.pickKind.slice(), pickId: r.pickId.slice() });

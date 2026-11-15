@@ -114,26 +114,35 @@ export const FRAME = {
   /** fSkyScale, fSkyAbove's fourth: the light one unit of the sky table stands for (sky.ts). */
   skyScale: 19,
   skyBelow: 20,
-  /** fHaze: its density at sea level, per metre, the height over which that thins by e, and the camera's height over the sea. */
+  /**
+   * fHaze: its density at sea level, per metre (0 for none), the height over which that thins by e, the camera's
+   * height over the sea, and 1 where the dome draws the sun, the moon, the stars and the clouds over the table, 0 for
+   * the table alone, as the rasterizer draws it (atmosphere.ts).
+   */
   haze: 24,
   hazeHeight: 25,
   eyeHeight: 26,
-  /** fView: where the end of the view begins to fade and where it is gone, `split`, and the share of its reach a far draw fades over. */
+  skyDetail: 27,
+  /** fView: where the end of the view begins to fade into the dome and where it is gone (none if not after), `split`, and the share of its reach a far draw fades over. */
   ends: 28,
   split: 30,
   fade: 31,
-  /** fWind: the clouds' wind, x and z in metres a second, and how long it has blown, in seconds. */
-  wind: 32,
-  time: 34,
+  /**
+   * fClouds: where the camera is over each cloud layer's tile, wind and all, as a share of the tile, x and z: the low
+   * layer's, then the high's. Core works them out in double precision, which a shader has not.
+   */
+  clouds: 32,
+  /** fCloudSun: the sun's light as the low cloud layer sees it, from higher than the ground does. */
+  cloudSun: 36,
   /** fSpheres: each cascade's sphere round its slice of the view, its camera-relative centre and radius. A pixel takes the finest that holds it. */
-  spheres: 36,
+  spheres: 40,
   /** fCascades: each cascade's matrix, from camera-relative space to its clip space, as `viewProj` is for the view. */
-  cascades: 52,
+  cascades: 56,
 } as const;
 export const FRAME_FLOATS = FRAME.cascades + MAX_CASCADES * 16;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
-  highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fWind;
+  highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
 };

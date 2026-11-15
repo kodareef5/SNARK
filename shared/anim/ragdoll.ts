@@ -2,7 +2,8 @@
 // with Extended Position Based Dynamics", 2020), stepped in short substeps with one pass of the constraints each. A body
 // is a bone carrying a hit capsule. Every bone the asset does not list stays rigid with the nearest body above it, as it
 // was when the body went limp. A joint keeps a body within the swing and twist its asset allows from the rest pose, then
-// holds its joint to its parent body. Bodies meet the terrain and the boxes of structures and nodes, with friction.
+// holds its joint to its parent body. Bodies meet the terrain and the boxes of structures and nodes, with friction and
+// rolling resistance.
 // Only a client runs it, so it need not agree across engines; the same steps give the same result.
 
 import { chunkAt } from "../coords.ts";
@@ -31,7 +32,10 @@ const MOST_STEP = 0.1;
 /** A contact holds where it would slide less than this share of how far it was pushed out. Sliding loses this share of the speed of the push. */
 const STATIC = 1;
 const DYNAMIC = 0.8;
-/** Flesh is not a wheel: a body touching the world loses spin by this share of the speed of the push over its radius. */
+/**
+ * Flesh is not a wheel: a body resists turning about where it touches as if it pressed on the world this share of its
+ * radius to either side of that point. A body whose weight lies farther out than that tips over.
+ */
 const ROLL = 0.6;
 /** Damping a second: of motion, of spin, and of a body's spin against its parent. */
 const DAMP = 1.5;
@@ -704,7 +708,10 @@ export class Ragdoll {
     dy -= along * ny;
     dz -= along * nz;
     // Static friction: a point that would slide less than its share of the push holds where it was.
-    if (dx * dx + dy * dy + dz * dz < STATIC * STATIC * deep * deep) this.push(i, ax, ay, az, -dx, -dy, -dz);
+    if (dx * dx + dy * dy + dz * dz < STATIC * STATIC * deep * deep) {
+      this.push(i, ax, ay, az, -dx, -dy, -dz);
+      this.roll(i, lx, ly, lz, deep);
+    }
     const c = this.nc;
     if (c >= MOST_CONTACTS) return;
     this.nc++;
@@ -716,35 +723,81 @@ export class Ragdoll {
   }
 
   /**
-   * At contact `c`: no motion into the surface or away from it, by an impulse at the point that may turn the body; spin
-   * lost to the ground; and sliding slowed by friction, taken from the body's motion as a whole.
+   * Rolling resistance holds a turn as static friction holds a point: where stopping body `i`'s turn this substep about
+   * its held point (lx, ly, lz) in its frame takes no more than rolling resistance gives, it is turned back to how it
+   * was. It presses with no more than its own weight: a deeper push is a joint pressing a limb into the world, and the
+   * limb must give to its joint. Without this a body resting on a slope rolls on by what gravity pulls it each substep.
+   */
+  private roll(i: number, lx: number, ly: number, lz: number, deep: number): void {
+    const { q, pq } = this;
+    const o = i * 4;
+    // The turn this substep, q * conj(pq), as a small rotation.
+    const ax = q[o]!, ay = q[o + 1]!, az = q[o + 2]!, aw = q[o + 3]!;
+    const bx = -pq[o]!, by = -pq[o + 1]!, bz = -pq[o + 2]!, bw = pq[o + 3]!;
+    const s = aw * bw - ax * bx - ay * by - az * bz < 0 ? -2 : 2;
+    const tx = (aw * bx + ax * bw + ay * bz - az * by) * s;
+    const ty = (aw * by - ax * bz + ay * bw + az * bx) * s;
+    const tz = (aw * bz + ax * by - ay * bx + az * bw) * s;
+    const turn = Math.sqrt(tx * tx + ty * ty + tz * tz);
+    if (turn < 1e-12) return;
+    quatRotate(q, o, lx, ly, lz, u3, 0);
+    const rx = u3[0]!, ry = u3[1]!, rz = u3[2]!;
+    // Stopping it about the point, by the parallel axis, against pressing on the world that share of the radius off it.
+    const cx = ty * rz - tz * ry, cy = tz * rx - tx * rz, cz = tx * ry - ty * rx;
+    const press = Math.min(deep, GRAVITY * this.h * this.h);
+    if ((turn * this.invM[i]!) / this.invI[i]! + (cx * cx + cy * cy + cz * cz) / turn > ROLL * this.rad[i]! * press) return;
+    quatRotate(pq, o, lx, ly, lz, t3, 0);
+    this.x[i * 3]! += rx - t3[0]!;
+    this.x[i * 3 + 1]! += ry - t3[1]!;
+    this.x[i * 3 + 2]! += rz - t3[2]!;
+    for (let k = 0; k < 4; k++) q[o + k] = pq[o + k]!;
+  }
+
+  /**
+   * At contact `c`: no motion into the surface or away from it, by an impulse at the point that may turn the body; its
+   * turning about the point slowed by rolling resistance, the point moving on as it was; and the point's sliding slowed
+   * by friction, taken from the body's motion as a whole.
    */
   private slide(c: number, h: number): void {
     const i = this.cb[c]!;
     const v = this.v;
     const w = this.w;
     const o = i * 3;
+    const invM = this.invM[i]!, invI = this.invI[i]!;
     const load = this.cd[c]! / h;
-    const spin = Math.sqrt(w[o]! * w[o]! + w[o + 1]! * w[o + 1]! + w[o + 2]! * w[o + 2]!);
-    const roll = (ROLL * load) / this.rad[i]!;
-    const keep = spin > roll ? 1 - roll / spin : 0;
-    w[o]! *= keep;
-    w[o + 1]! *= keep;
-    w[o + 2]! *= keep;
     const nx = this.cn[c * 3]!, ny = this.cn[c * 3 + 1]!, nz = this.cn[c * 3 + 2]!;
     const rx = this.cr[c * 3]!, ry = this.cr[c * 3 + 1]!, rz = this.cr[c * 3 + 2]!;
-    const vx = v[o]! + w[o + 1]! * rz - w[o + 2]! * ry;
-    const vy = v[o + 1]! + w[o + 2]! * rx - w[o]! * rz;
-    const vz = v[o + 2]! + w[o]! * ry - w[o + 1]! * rx;
-    const vn = vx * nx + vy * ny + vz * nz;
+    let vx = v[o]! + w[o + 1]! * rz - w[o + 2]! * ry;
+    let vy = v[o + 1]! + w[o + 2]! * rx - w[o]! * rz;
+    let vz = v[o + 2]! + w[o]! * ry - w[o + 1]! * rx;
+    let vn = vx * nx + vy * ny + vz * nz;
     const cx = ry * nz - rz * ny, cy = rz * nx - rx * nz, cz = rx * ny - ry * nx;
-    const j = -vn / (this.invM[i]! + this.invI[i]! * (cx * cx + cy * cy + cz * cz));
-    v[o]! += nx * j * this.invM[i]!;
-    v[o + 1]! += ny * j * this.invM[i]!;
-    v[o + 2]! += nz * j * this.invM[i]!;
-    w[o]! += cx * j * this.invI[i]!;
-    w[o + 1]! += cy * j * this.invI[i]!;
-    w[o + 2]! += cz * j * this.invI[i]!;
+    const j = -vn / (invM + invI * (cx * cx + cy * cy + cz * cz));
+    v[o]! += nx * j * invM;
+    v[o + 1]! += ny * j * invM;
+    v[o + 2]! += nz * j * invM;
+    w[o]! += cx * j * invI;
+    w[o + 1]! += cy * j * invI;
+    w[o + 2]! += cz * j * invI;
+    vx = v[o]! + w[o + 1]! * rz - w[o + 2]! * ry;
+    vy = v[o + 1]! + w[o + 2]! * rx - w[o]! * rz;
+    vz = v[o + 2]! + w[o]! * ry - w[o + 1]! * rx;
+    vn = vx * nx + vy * ny + vz * nz;
+    const spin = Math.sqrt(w[o]! * w[o]! + w[o + 1]! * w[o + 1]! + w[o + 2]! * w[o + 2]!);
+    if (spin > 1e-12) {
+      // Its turning about the point, by the parallel axis, against what pressing that share of the radius off the point
+      // takes away; what is taken leaves the point moving as it was.
+      const ux = w[o + 1]! * rz - w[o + 2]! * ry, uy = w[o + 2]! * rx - w[o]! * rz, uz = w[o]! * ry - w[o + 1]! * rx;
+      const about = (spin * invM) / invI + (ux * ux + uy * uy + uz * uz) / spin;
+      const most = ROLL * this.rad[i]! * load;
+      const less = most < about ? most / about : 1;
+      v[o]! += ux * less;
+      v[o + 1]! += uy * less;
+      v[o + 2]! += uz * less;
+      w[o]! -= w[o]! * less;
+      w[o + 1]! -= w[o + 1]! * less;
+      w[o + 2]! -= w[o + 2]! * less;
+    }
     const tx = vx - vn * nx, ty = vy - vn * ny, tz = vz - vn * nz;
     const vt = Math.sqrt(tx * tx + ty * ty + tz * tz);
     if (vt < 1e-9) return;

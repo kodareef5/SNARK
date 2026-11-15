@@ -89,6 +89,8 @@ export class App {
   fps = 60;
   /** False while the self-check holds the body still. */
   steer = true;
+  /** The dome drawn as the sky table alone and nothing hazed, as the rasterizer draws, so the self-check's colours are the twins'. */
+  plainSky = false;
 
   /** The registry last handed to the UI and shots. frame() swaps it when the session's changes. */
   private shown: Registry;
@@ -453,6 +455,7 @@ export class App {
     if (!this.scene) {
       this.scene = new Scene(world, this.reg, this.pack, this.stream);
       this.scene.shots = this.shots;
+      this.scene.plainSky = this.plainSky;
       if (this.stress) {
         const made = stressThings(this.scene.assets, world.hf, PROVING_SPAWN, world.hf.heightAt(PROVING_SPAWN.x, PROVING_SPAWN.z) + 1.62);
         this.scene.things = made.things;

@@ -45,6 +45,8 @@ function world(reg: Registry, pack: Pack, chunks: number, height: (x: number, z:
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const scene = new Scene({ dims, hf, structs }, reg, pack);
   scene.assets.tier = tierOf("medium");
+  // The rasterizer draws no haze (D264), so these frames carry none.
+  scene.plainSky = true;
   scene.viewHeight = h;
   const cam = new Camera();
   cam.aspect = width / h;

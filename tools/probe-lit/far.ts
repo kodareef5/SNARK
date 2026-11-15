@@ -7,7 +7,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
+import type { FramePacket } from "../../client/core/render/packet.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { castle, farWorld, type FarWorld } from "../../tests/fixtures/farworld.ts";
 import { buildCorePack } from "../pack/build.ts";
@@ -68,6 +68,8 @@ const TOWER = spot(1100, -256);
 
 function worldFor(tier: string, bytes: Uint8Array): { w: FarWorld; chunks: number[] } {
   const w = farWorld({ chunks: 64, ground, tier: tierOf(tier), width: W, height: H, pack: parsePack(bytes) });
+  // The rasterizer draws no haze (D264), so these frames carry none.
+  w.scene.plainSky = true;
   const chunks: number[] = [];
   for (const [x, z] of [...BASES.map((d, k) => spot(d, SIDES[k]!)), spot(EDGE, 384)]) chunks.push(castle(w, x, z, w.hf.heightAt(x, z) - 0.5));
   // A narrow tower of pillars, 36 m tall.
@@ -81,11 +83,10 @@ function picture(w: FarWorld): Picture {
   return { color: Uint8Array.from(w.raster.color), kind: w.raster.pickKind.slice(), id: w.raster.pickId.slice() };
 }
 
-/** Builds a frame into `shot` as the rasterizer draws it, with no haze, which only the GPU draws (D264). */
+/** Builds a frame into `shot` as the rasterizer draws it. */
 function frame(w: FarWorld, shot: Shot, read: boolean): FramePacket {
   w.scene.now += 1000 / 60;
   const p = w.scene.build(w.cam, null);
-  p.frame[FRAME.haze] = 0;
   w.raster.render(p);
   shot.add(p, read);
   return p;

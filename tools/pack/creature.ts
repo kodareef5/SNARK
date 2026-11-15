@@ -162,7 +162,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
   const materials = spec.regions.map((r) => r.material);
   // With pictures the finest level alone is read, with its surface: a primitive is a section, drawn with its material.
   const pictured = Object.keys(spec.materials ?? {});
-  const levels: { positions: number[]; colors: number[]; bones: number[]; indices: number[]; uvs: number[]; normals: number[]; tangents: number[]; joints: number[]; weights: number[]; sections: number[] }[] = [];
+  const levels: { positions: number[]; colors: number[]; bones: number[]; indices: number[]; uvs: number[]; normals: number[]; tangents: number[]; joints: number[]; weights: number[]; sections: number[]; loose: number[] }[] = [];
   const weights = { vertices: 0, none: 0, over: 0, shared: 0 };
   let passed = 0;
   for (const node of nodes) {
@@ -172,7 +172,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
       passed++;
       continue;
     }
-    const level = (levels[at] ??= { positions: [], colors: [], bones: [], indices: [], uvs: [], normals: [], tangents: [], joints: [], weights: [], sections: [] });
+    const level = (levels[at] ??= { positions: [], colors: [], bones: [], indices: [], uvs: [], normals: [], tangents: [], joints: [], weights: [], sections: [], loose: [] });
     const { positions, colors, bones, indices } = level;
     for (const prim of g.json.meshes![node.mesh]!.primitives) {
       const a = prim.attributes;
@@ -183,6 +183,8 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
       const material = g.json.materials?.[prim.material ?? -1]?.name ?? "";
       let region = materials.indexOf(material);
       const section = pictured.indexOf(material);
+      // Cards drawn with a cutout material: plumage, hair, loose tips.
+      const loose = spec.materials?.[material]?.cutout ? 1 : 0;
       if (pictured.length > 0) {
         if (section < 0) faults.push(`material "${material}" has no pictures in asset.ts`);
         if (a.TEXCOORD_0 === undefined || a.NORMAL === undefined) throw new Error(`${g.path}: material "${material}" is on faces with no texture coordinates or no normals`);
@@ -199,6 +201,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
       const base = positions.length / 3;
       for (let v = 0; v < pos.count; v++) {
         for (let k = 0; k < 3; k++) positions.push(pos.data[v * 3 + k]! * scale);
+        level.loose.push(loose);
         let best = 0;
         let count = 0;
         for (let k = 0; k < 4; k++) {
@@ -250,6 +253,11 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
   };
 
   // A fitted hit capsule runs along the line between two joints, as far as its vertices reach, with a radius that holds 85% of them.
+  // It fits the body and not its loose cards, unless cards are all a zone has, as a tail of quills is.
+  const bodyOf = (verts: number[]): number[] => {
+    const own = verts.filter((v) => fine.loose[v] === 0);
+    return own.length > 0 ? own : verts;
+  };
   const caps: number[] = [];
   const jointAt = (name: string): number[] => {
     const n = nodes.findIndex((node) => node.name === name);
@@ -262,7 +270,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
       caps.push(carrier, ZONES[z.zone], ...z.a, ...z.b, z.radius);
       continue;
     }
-    const verts = vertsOf(z.covers);
+    const verts = bodyOf(vertsOf(z.covers));
     const fitted = verts.length === 0 ? null : fitCapsule(positions, verts, z.from === undefined ? null : jointAt(z.from), z.to === undefined ? null : jointAt(z.to));
     if (!fitted) {
       warnings.push(`zone on "${z.on}" covers nothing: left out`);

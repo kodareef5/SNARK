@@ -17,7 +17,7 @@ import type { Asset } from "./assets.ts";
 import { RAW, blender, withScratch } from "./blender.ts";
 import { convertBodies, convertClipLibraries } from "./human.ts";
 import { describe, materialsOf, type Described } from "./materials.ts";
-import type { CreatureAsset, PiecesAsset } from "./spec.ts";
+import type { CreatureAsset, PiecesAsset, SkyAsset } from "./spec.ts";
 
 export interface Built {
   meshes: SourceMesh[];
@@ -149,6 +149,20 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
   for (const mesh of out.meshes) out.lines.push(`${mesh.id.padEnd(28)} triangles ${triangles(mesh)}`);
 }
 
+/** The sky's pictures as the one material of a mesh of one triangle that is never drawn (SkyAsset). No Blender. */
+export function convertSky(asset: Asset & { spec: SkyAsset }, out: Built): void {
+  const made = describe(materialsOf(asset)[0]!, stepSize(LAST_STEP), defaultPalette());
+  out.faults.push(...made.faults);
+  out.meshes.push({
+    id: asset.id,
+    flat: 1,
+    materials: [made.material],
+    textures: made.textures,
+    lods: [{ positions: Float32Array.from([0, 0, 0, 1, 0, 0, 0, 0, 1]), colors: new Uint8Array(3), indices: Uint32Array.from([0, 2, 1]), uvs: Float32Array.from([0, 0, 1, 0, 0, 1]), normals: Float32Array.from([0, 1, 0, 0, 1, 0, 0, 1, 0]), tangents: Float32Array.from([1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1]) }],
+  });
+  out.lines.push(...made.textures.map((t) => `${t.id.padEnd(28)} ${t.role.padEnd(6)} ${t.top} pixels`));
+}
+
 export function buildAsset(asset: Asset): Built {
   const spec = asset.spec;
   const out: Built = { meshes: [], rigs: [], clips: [], lines: [], warnings: [], faults: [] };
@@ -168,6 +182,8 @@ export function buildAsset(asset: Asset): Built {
       const files = Object.fromEntries(spec.pieces.map((p) => [p.object, join(dir, `${p.object}.glb`)]));
       scripted(spec.source.scripts, { pieces: files });
       convertPieces({ ...asset, spec }, files, out);
+    } else if (spec.kind === "sky") {
+      convertSky({ ...asset, spec }, out);
     } else if (spec.kind === "human-clips") {
       const made = convertClipLibraries(spec);
       out.clips.push(...made.clips);

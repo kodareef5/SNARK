@@ -7,7 +7,7 @@ import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type
 import { REGION_BASE, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, STEP0_SIZE, stepSize, type TextureRole } from "../../shared/pack/texture.ts";
 import type { TextureSource } from "../pack/encode.ts";
-import { baseMips, packMro, readPicture, type Picture } from "../pack/image.ts";
+import { baseMips, packMro, packedMips, readPicture, type Picture } from "../pack/image.ts";
 import { checkMasks, maskMips, readMasks, readRegions } from "../pack/mask.ts";
 import { materialMips, type MaterialMaps } from "../pack/texture.ts";
 import { findAssets, type Asset } from "./assets.ts";
@@ -26,6 +26,7 @@ export interface Material {
 
 export function materialsOf(asset: Asset): Material[] {
   const spec = asset.spec;
+  if (spec.kind === "sky") return [{ name: "sky", id: `${asset.id}/sky`, spec: { base: spec.moon, regions: { mask: spec.low, mask2: spec.high }, data: true }, dir: asset.dir }];
   if (spec.kind !== "creature" && spec.kind !== "pieces") return [];
   return Object.entries(spec.materials ?? {}).map(([name, m]) => ({ name, id: m.id ?? `${asset.id}/${name}`, spec: m, dir: m.dir ?? asset.dir }));
 }
@@ -78,6 +79,7 @@ export interface Described {
  * come, up to `top`, and the packed map and the masks one size under the base colour.
  */
 export function describe(m: Material, top: number, palette: Uint8Array): Described {
+  if (m.spec.data) return describeData(m);
   const faults: string[] = [];
   const maps = readMaps(m);
   for (const [what, p] of Object.entries(maps) as [string, Picture][]) {
@@ -141,8 +143,25 @@ export function describe(m: Material, top: number, palette: Uint8Array): Describ
   return { material, textures, maps, flat, faults };
 }
 
+/** A material whose pictures are data: each texture as large as its picture, plain, drawn flat in palette colour 0, which it never is. */
+function describeData(m: Material): Described {
+  const files = pictureFiles(m);
+  const textures = (["base", "mask", "mask2"] as const).filter((role) => files[role] !== undefined).map((role): PackTexture => {
+    const p = readPicture(files[role]!);
+    if (p.width !== p.height || sideOf(p) < STEP0_SIZE) throw new Error(`${m.id}: its ${role} picture is ${p.width} by ${p.height}, and a texture is square and ${STEP0_SIZE} at least`);
+    return { id: `${m.id}/${role}`, role, top: Math.min(sideOf(p), stepSize(LAST_STEP)) };
+  });
+  const place = (role: TextureRole): number => textures.findIndex((t) => t.role === role);
+  const material: PackMaterial = { id: m.id, base: place("base"), normal: -1, mro: -1, mask: place("mask"), mask2: place("mask2"), tint: [1, 1, 1], grey: 1, emissive: 0, flags: 0, cutoff: 0, span: 0 };
+  return { material, textures, maps: {}, flat: 0, faults: [] };
+}
+
 /** The mips of one of a material's textures: RGBA8, smallest first, from one pixel across up to `top`. */
 export function mipsOf(m: Material, role: TextureRole, top: number): Uint8Array[] {
+  if (m.spec.data) {
+    const picture = readPicture(pictureFiles(m)[role]!);
+    return (role === "base" ? baseMips(picture) : packedMips(picture)).slice(0, Math.log2(top) + 1);
+  }
   const mips = materialMips(readMaps(m, [role]))[role];
   if (!mips || mips.length < Math.log2(top) + 1) throw new Error(`${m.id}: its pictures do not make a ${role} texture ${top} pixels across`);
   return mips.slice(0, Math.log2(top) + 1);
