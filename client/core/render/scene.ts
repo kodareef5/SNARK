@@ -26,6 +26,7 @@ import { Characters, showMaterials, type BodyShadows, type CastFn } from "./char
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
+import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
@@ -137,8 +138,10 @@ export class Scene {
   hour = 12;
   /** The height of the view in pixels. With the field of view, it says how large a level's error is on screen. */
   viewHeight = 720;
-  /** The time of this frame, in milliseconds, for what the asset library waits on. */
+  /** The time of this frame, in milliseconds, for what the asset library waits on and how far the clouds have blown. */
   now = 0;
+  /** On a lit tier, the dome is drawn as the table alone and nothing is hazed, as the rasterizer draws: for checks that hold a GPU to it. */
+  plainSky = false;
   /** Loose meshes to draw: the stress scene's. */
   things: Thing[] = [];
 
@@ -204,6 +207,8 @@ export class Scene {
   private readonly transientF32: Float32Array;
   private readonly transientU16: Uint16Array;
   private readonly waterMesh: number;
+  /** The material whose pictures the dome draws, or -1 where the pack has none. */
+  private readonly skyMaterial: number;
   private readonly beamMesh: number;
   /** Places to mark with a beam, x, y, z each. The app sets them before build(). */
   readonly beams: number[] = [];
@@ -342,6 +347,7 @@ export class Scene {
     this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
+    this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
     for (let k = 0; k < 3; k++) {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
@@ -373,13 +379,18 @@ export class Scene {
     p.camZ = cam.z;
     // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
     p.light = flatLight(this.hour, p.sun);
-    // Lit tiers take their light from the sky table.
-    if (p.tier.lit) skyFrame(this.hour, theSky(), p.frame);
+    // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
+    if (p.tier.lit) {
+      skyFrame(this.hour, theSky(), p.frame);
+      airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
+      if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);
+    }
     this.fit(cam);
 
     // Under water the view is short and the fog is the water's colour, dimmed.
     const sea = this.world.hf.seaLevel;
-    p.frame[FRAME.eyeHeight] = cam.y - sea;
+    // Over a map with no sea the air is measured from 0, and the camera is never under water.
+    p.frame[FRAME.eyeHeight] = sea > -Infinity ? cam.y - sea : Math.max(cam.y, 0);
     if (cam.y < sea) {
       for (let k = 0; k < 3; k++) p.sky[k] = this.deepColor[k]! * p.light;
       p.fogStart = 0;

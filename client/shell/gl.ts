@@ -2,6 +2,7 @@
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
 import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
@@ -97,6 +98,8 @@ export class GlRenderer {
   private readonly materials: readonly PackMaterial[];
   /** What each mesh's stored texture coordinates span, four numbers a mesh. */
   private readonly uv: Float32Array;
+  /** The material whose pictures the dome draws over the sky, if the pack has it. */
+  private readonly sky: PackMaterial | undefined;
   private readonly forced: string | null;
 
   constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null) {
@@ -107,7 +110,8 @@ export class GlRenderer {
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
-    this.uv = Float32Array.from(manifest.meshes.flatMap((m) => m.uv ?? [0, 0, 1, 1]));
+    this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
+    this.uv =Float32Array.from(manifest.meshes.flatMap((m) => m.uv ?? [0, 0, 1, 1]));
     this.forced = forced;
     this.init();
   }
@@ -345,6 +349,12 @@ export class GlRenderer {
     gl.uniform1f(prog.uniform("uGrey"), mat.grey);
     gl.uniform1f(prog.uniform("uCutoff"), (p.drawFlags[d]! & DRAW_CUTOUT) !== 0 ? mat.cutoff : 0);
     gl.uniform4fv(prog.uniform("uUv"), this.uv, p.drawMesh[d]! * 4, 4);
+    this.maps(mat);
+  }
+
+  /** A material's maps on their five units, or the neutral pixel of each it lacks or has not been sent. */
+  private maps(mat: PackMaterial | undefined): void {
+    const gl = this.gl;
     if (this.neutral.length === 0) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
       this.bound.length = 0;
@@ -357,7 +367,7 @@ export class GlRenderer {
       });
     }
     for (let r = 0; r < TEXTURE_ROLES.length; r++) {
-      const t = mat[TEXTURE_ROLES[r]!];
+      const t = mat?.[TEXTURE_ROLES[r]!] ?? -1;
       const texture = (t >= 0 && this.textures.get(t)) || this.neutral[r]!;
       if (this.bound[r] === texture) continue;
       gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);
@@ -503,6 +513,7 @@ export class GlRenderer {
     // A lit frame's dome goes at the far end of the view, where the opaque steps left it.
     if (s === STEP_FAR_SEE && p.lit) {
       this.use("sky", p);
+      this.maps(this.sky);
       this.set(false, false, false);
       gl.bindVertexArray(null);
       gl.depthFunc(gl.LEQUAL);

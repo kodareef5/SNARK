@@ -2,8 +2,9 @@
 import { expect, test } from "bun:test";
 import { DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { AMBIENT } from "../../client/core/render/shading.ts";
+import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { SKY_GLSL } from "../../client/core/render/sky.ts";
-import { DIELECTRIC, DOME_VERTEX, KNEE, NEUTRAL, SMOOTHEST, SURFACE_VERTEX, domeFragment, dyed, lit, linearToSrgb, skyShare, srgbToLinear, surfaceFragment } from "../../client/core/render/surface.ts";
+import { DIELECTRIC, KNEE, NEUTRAL, SMOOTHEST, SURFACE_VERTEX, dyed, lit, linearToSrgb, skyShare, srgbToLinear, surfaceFragment } from "../../client/core/render/surface.ts";
 import { buildRig } from "../../shared/anim/rigs.ts";
 import { quatAxis } from "../../shared/math/quat.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
@@ -137,13 +138,13 @@ test("the sky's share of a highlight is what the sun's highlight comes to over t
 });
 
 test("the SURFACE program's text is written from the same numbers", () => {
-  const text = surfaceFragment("bc", SKY_GLSL);
+  const text = surfaceFragment("bc", AIR);
   for (const n of [DIELECTRIC, SMOOTHEST, KNEE]) expect(text.split(String(n)).length).toBeGreaterThan(1);
   // A normal's x and y are in red and green, but in the astc variant in the colours and alpha.
-  expect([text.includes("texture(uNormal, vUv).rg;"), surfaceFragment("rgba", SKY_GLSL) === text, surfaceFragment("astc", SKY_GLSL).includes("texture(uNormal, vUv).ra;")]).toEqual([true, true, true]);
+  expect([text.includes("texture(uNormal, vUv).rg;"), surfaceFragment("rgba", AIR) === text, surfaceFragment("astc", AIR).includes("texture(uNormal, vUv).ra;")]).toEqual([true, true, true]);
   // Smooth surfaces mirror the sky table.
   expect(text.includes(SKY_GLSL)).toBe(true);
-  for (const part of [text, SURFACE_VERTEX, DOME_VERTEX, domeFragment(SKY_GLSL)]) {
+  for (const part of [text, SURFACE_VERTEX, SKY_VERTEX, SKY_FRAGMENT]) {
     expect(part.startsWith("#version 300 es\n")).toBe(true);
     expect([part.split("{").length, part.split("(").length]).toEqual([part.split("}").length, part.split(")").length]);
   }

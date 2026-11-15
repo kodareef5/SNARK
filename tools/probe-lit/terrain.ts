@@ -8,7 +8,7 @@
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
-import { FRAME, SOURCE_WINDOW, type FramePacket } from "../../client/core/render/packet.ts";
+import { SOURCE_WINDOW, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -128,6 +128,8 @@ export const terrainCheck: LitCheck = {
     const structs = new StructureStore(hf.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
     const scene = new Scene({ dims: hf.dims, hf, structs }, reg, pack);
     scene.assets.tier = tierOf("medium");
+    // The rasterizer draws no haze (D264), so these frames carry none.
+    scene.plainSky = true;
     scene.viewHeight = H;
     const raster = new Rasterizer(W, H, pack, hf);
     const cam = new Camera();
@@ -138,8 +140,6 @@ export const terrainCheck: LitCheck = {
     const build = (shot: Shot, name = ""): FramePacket => {
       scene.now += 1000 / 60;
       const p = scene.build(cam, null);
-      // The rasterizer draws no haze (D264), so these frames carry none.
-      p.frame[FRAME.haze] = 0;
       shot.add(p, name !== "");
       if (name === "") return p;
       let fine = 0;

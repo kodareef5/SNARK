@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { FRAME, TILE_QUADS, type FramePacket } from "../../client/core/render/packet.ts";
+import { TILE_QUADS, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -104,6 +104,8 @@ export const seamsCheck: LitCheck = {
       const structs = new StructureStore(hf.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
       const scene = new Scene({ dims: hf.dims, hf, structs }, reg, pack);
       scene.assets.tier = tierOf(tier);
+      // The rasterizer draws no haze (D264), so these frames carry none.
+      scene.plainSky = true;
       scene.viewHeight = H;
       const raster = new Rasterizer(W, H, pack, hf);
       const cam = new Camera();
@@ -112,8 +114,6 @@ export const seamsCheck: LitCheck = {
       const build = (name: string, change?: (p: FramePacket) => void): void => {
         scene.now += 1000 / 60;
         const p = scene.build(cam, null);
-        // The rasterizer draws no haze (D264), so these frames carry none.
-        p.frame[FRAME.haze] = 0;
         raster.render(p);
         change?.(p);
         shot.add(p, true);

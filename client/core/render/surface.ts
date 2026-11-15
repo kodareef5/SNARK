@@ -185,14 +185,15 @@ export function tone(out: Out, c: Numbers): void {
 }
 
 /**
- * What is drawn: light times the frame's exposure, through the tone curve, clamped and shown as display values, then
- * in the fog `dist` metres off, which is the flat renderer's.
+ * What is drawn: light times the frame's exposure, through the tone curve, clamped and shown as display values. Under
+ * water it is then in the fog `dist` metres off, the flat renderer's. Above water the GLSL puts the air in first
+ * (atmosphere.ts `hazed`), which the rasterizer leaves out (D264).
  */
 export function shown(out: Out, light: Numbers, dist: number, p: FramePacket): void {
   const exposure = p.frame[FRAME.exposure]!;
   for (let c = 0; c < 3; c++) out[c] = light[c]! * exposure;
   tone(out, out);
-  let fog = (dist - p.fogStart) / (p.fogEnd - p.fogStart);
+  let fog = p.frame[FRAME.eyeHeight]! >= 0 ? 0 : (dist - p.fogStart) / (p.fogEnd - p.fogStart);
   fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
   for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(out[c]!, 0), 1)) * (1 - fog) + p.sky[c]! * fog;
 }
@@ -273,7 +274,11 @@ void main() {
   gl_Position = uViewProj * vec4(p, 1.0);
 }`;
 
-/** The light's GLSL, which LIT and SURFACE share: the frame block, the fog's two uniforms, and the twins of `skyShare`, `skyOn`, `direct`, `lit`, `tone` and `shown`. */
+/**
+ * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
+ * `skyShare`, `skyOn`, `direct`, `lit`, `tone` and `shown`. `shown` takes where the point is from the eye, and the air
+ * between (atmosphere.ts `hazed`, which a program defines after this) above water; under water, today's fog.
+ */
 export const LIGHT = `${FRAME_BLOCK}uniform vec3 uSky;
 uniform vec2 uFog;
 vec3 skyShare(vec3 f0, float rough, float nv) {
@@ -313,11 +318,15 @@ vec3 tone(vec3 c) {
   float white = 1.0 - 1.0 / (${f(WHITEN)} * (peak - top) + 1.0);
   return mix(c * (top / peak), vec3(top), white);
 }
-vec3 shown(vec3 light, float dist) {
-  vec3 c = clamp(tone(light * fSunColor.w), 0.0, 1.0);
-  c = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
-  float fog = clamp((dist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-  return mix(c, uSky, fog * fog);
+vec3 display(vec3 c) {
+  c = clamp(tone(c), 0.0, 1.0);
+  return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+}
+vec3 hazed(vec3 light, vec3 rel);
+vec3 shown(vec3 light, vec3 rel) {
+  if (fHaze.z >= 0.0) return display(hazed(light, rel) * fSunColor.w);
+  float fog = clamp((length(rel) - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
+  return mix(display(light * fSunColor.w), uSky, fog * fog);
 }
 `;
 
@@ -332,7 +341,7 @@ export function skyFrom(out: Out, frame: Float32Array, r: Numbers, look: (view: 
 }
 
 /** `skyFrom` as GLSL, with the sky table on its unit: `sky` is the table's lookup (sky.ts SKY_GLSL). */
-const skyFromText = (sky: string): string => `uniform highp sampler3D uSkyTable;
+export const skyFromGlsl = (sky: string): string => `uniform highp sampler3D uSkyTable;
 ${sky}
 vec3 skyFrom(vec3 r) {
   return skyLook(uSkyTable, r, fTrueSun) * fSkyScale;
@@ -340,37 +349,14 @@ vec3 skyFrom(vec3 r) {
 `;
 
 /**
- * The dome where nothing else is drawn: the sky table in the view's direction, as light shown as surfaces are, at no
- * distance. Under water, where the frame's eye is below the sea, it is the fog's colour, as low poly clears to.
- */
-export const DOME_VERTEX = `#version 300 es
-uniform mat4 uViewProj;
-out vec3 vRay;
-void main() {
-  vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
-  vRay = inverse(mat3(uViewProj[0].xyw, uViewProj[1].xyw, uViewProj[2].xyw)) * vec3(at, 1.0);
-  gl_Position = vec4(at, 1.0, 1.0);
-}`;
-
-export function domeFragment(sky: string): string {
-  return `#version 300 es
-precision highp float;
-in vec3 vRay;
-out vec4 o;
-${LIGHT}${skyFromText(sky)}void main() {
-  o = vec4(fHaze.z < 0.0 ? uSky : shown(skyFrom(normalize(vRay)), 0.0), 1.0);
-}`;
-}
-
-/**
  * The fragment text for a variant of the textures: `astc` keeps a normal's x in the colour channels and its y in
  * alpha, the others keep them in red and green. The base colour is an sRGB texture, so it is sampled as light, and
  * every texture repeats, since a material may run along a mesh more than once. `uCutoff` is the material's for a
  * cut-out draw and 0 for any other. A cut-out draw writes as alpha how much of the pixel lies on the solid side, for
  * alpha to coverage to take as samples. The rasterizer tests each pixel's middle, so the two differ only along a cut.
- * `sky` is the sky table's lookup, which smooth surfaces mirror.
+ * `air` is the sky table's lookup, which smooth surfaces mirror, and the air (atmosphere.ts AIR).
  */
-export function surfaceFragment(format: TextureFormat, sky: string): string {
+export function surfaceFragment(format: TextureFormat, air: string): string {
   return `#version 300 es
 precision highp float;
 precision highp sampler2D;
@@ -382,7 +368,7 @@ uniform sampler2D uBase, uNormal, uMro, uMask, uMask2;
 uniform vec3 uTint;
 uniform float uCutoff;
 out vec4 o;
-${LIGHT}${skyFromText(sky)}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
+${LIGHT}${air}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
   return base * uTint * (1.0 - dot(mask + mask2, vec3(1.0)) + vDye * mask + vDye2 * mask2);
 }
 vec3 bumped(vec2 b) {
@@ -400,6 +386,6 @@ void main() {
   if (cover == 0.0) discard;
   vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
-  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, n, v, skyFrom(reflect(-v, n))), length(vRel)), cover);
+  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, n, v, skyFrom(reflect(-v, n))), vRel), cover);
 }`;
 }

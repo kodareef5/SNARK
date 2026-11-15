@@ -3,14 +3,15 @@
 
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
+import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
 import { FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT } from "./glsl.ts";
-import { SKY_GLSL } from "./sky.ts";
-import { DOME_VERTEX, SURFACE_VERTEX, domeFragment, surfaceFragment } from "./surface.ts";
+import { SURFACE_VERTEX, surfaceFragment } from "./surface.ts";
 
 /**
  * Texture units. 0 to 3 hold the palette, the whole map's heights and tints, and the bones. A material's five maps go
- * on 4 to 8, base colour first, and so do the clouds' and the sea's, which are materials. 9 holds the shadow maps, 10
- * the sky table, and 11 and 12 the terrain window's heights and tints. 13 to 15 are free.
+ * on 4 to 8, base colour first, and so do the sky's (the moon on 4, the cloud layers on 7 and 8) and the sea's, which
+ * are materials. 9 holds the shadow maps, 10 the sky table, and 11 and 12 the terrain window's heights and tints. 13
+ * to 15 are free.
  */
 export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12 } as const;
 
@@ -24,6 +25,8 @@ export interface ProgramText {
 }
 
 const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
+/** A lit tier's flat programs read the sky table as well, for the haze. */
+const lit = (tier: Tier, samplers: Record<string, number>): Record<string, number> => (tier.lit ? { ...samplers, uSkyTable: UNIT.sky } : samplers);
 
 /**
  * The programs by name. A lit tier draws flat with LIT where low poly has FLAT, and draws the dome, "sky", where low
@@ -32,8 +35,8 @@ const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
  * see-through, which low poly does not either.
  */
 export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat) => ProgramText>> = {
-  flat: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_FRAGMENT : FLAT_FRAGMENT, defines: "", samplers: MESH }),
-  terrain: (tier) => ({ vertex: FLAT_TERRAIN_VERTEX, fragment: tier.lit ? LIT_FRAGMENT : FLAT_FRAGMENT, defines: "", samplers: { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint } }),
+  flat: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_FRAGMENT : FLAT_FRAGMENT, defines: "", samplers: lit(tier, MESH) }),
+  terrain: (tier) => ({ vertex: FLAT_TERRAIN_VERTEX, fragment: tier.lit ? LIT_FRAGMENT : FLAT_FRAGMENT, defines: "", samplers: lit(tier, { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint }) }),
   // The same, for the tiles that read the window round the camera (terrain.ts).
   terrainWindow: (tier, format) => {
     const t = PROGRAMS.terrain!(tier, format);
@@ -41,9 +44,10 @@ export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureForma
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
-  seeThrough: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_SPLIT_FRAGMENT : FLAT_SPLIT_FRAGMENT, defines: "", samplers: MESH }),
+  seeThrough: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_SPLIT_FRAGMENT : FLAT_SPLIT_FRAGMENT, defines: "", samplers: lit(tier, MESH) }),
   // Far blocks (far.ts), which fade out over the last of their reach. A program of their own keeps the discard out of the rest.
-  far: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_FAR_FRAGMENT : FLAT_FAR_FRAGMENT, defines: "", samplers: MESH }),
-  surface: (_, format) => ({ vertex: SURFACE_VERTEX, fragment: surfaceFragment(format, SKY_GLSL), defines: "", samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4, uSkyTable: UNIT.sky } }),
-  sky: () => ({ vertex: DOME_VERTEX, fragment: domeFragment(SKY_GLSL), defines: "", samplers: { uSkyTable: UNIT.sky } }),
+  far: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_FAR_FRAGMENT : FLAT_FAR_FRAGMENT, defines: "", samplers: lit(tier, MESH) }),
+  surface: (_, format) => ({ vertex: SURFACE_VERTEX, fragment: surfaceFragment(format, AIR), defines: "", samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4, uSkyTable: UNIT.sky } }),
+  // The dome, and over it the sky material's pictures on its units as a material's: the moon as its base colour and the cloud layers as its two masks.
+  sky: () => ({ vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: "", samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }),
 };

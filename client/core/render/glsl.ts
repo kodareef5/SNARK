@@ -7,6 +7,7 @@ import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { FADE_ORDER } from "./far.ts";
 import { BONES_PER_ROW, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
+import { AIR } from "./atmosphere.ts";
 import { LIGHT } from "./surface.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -47,7 +48,7 @@ flat in vec3 vColor;
 uniform vec3 uCamMod;
 uniform float uSolid, uAlpha;
 out vec4 o;
-${LIGHT}void main() {
+${LIGHT}${AIR}void main() {
   vec3 n = normalize(cross(dFdx(vRel), dFdy(vRel)));
   vec3 w = vRel + uCamMod - n * ${f(CHECK_INSET)};
   if (uSolid < 0.5) w.y = 0.0;
@@ -61,7 +62,7 @@ ${LIGHT}void main() {
   }
   vec3 c = vColor * shade;
   vec3 albedo = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
-  o = vec4(shown(lit(albedo, vec3(1.0, 1.0, 0.0), n, -vRel / d, vec3(0.0)), d), uAlpha);
+  o = vec4(shown(lit(albedo, vec3(1.0, 1.0, 0.0), n, -vRel / d, vec3(0.0)), vRel), uAlpha);
 }`;
 
 export const FLAT_MESH_VERTEX = `#version 300 es
