@@ -17,7 +17,7 @@ import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_HELD, CUE_OUT, STAGE_WORST } from "../..
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_USE } from "../../shared/sim/character.ts";
+import { BTN_USE, MODE_SWIM } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -691,4 +691,63 @@ test("a stand-in killed 100 m up falls to the ground in 3.2 s and lies there the
   swing(h, h.pilots[0]!, 1, SWING_TICKS);
   expect([h.host.corpses.blows - blows, ptero!.left < ptero!.max, have("core:hide") + have("core:meat") > 0]).toEqual([1, true, true]);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a body over a building lands on its roof, one over the pool sinks to its bottom, and one that dies afloat sinks there as slowly as a ragdoll does, each the same for every client", () => {
+  const { h, at, me, id } = camp();
+  const bob = h.join("bob");
+  h.run(500);
+  h.say(bob, "enablecheats");
+  h.say(bob, `tp ${(at.x + 2).toFixed(3)} ${at.z.toFixed(3)}`);
+  const w = watchers(h, at);
+  w.run(500);
+  const ents = h.world.ents;
+  const sea = h.world.hf.seaLevel;
+  // A roof of four ceilings, six metres square and five metres up, at the far end of the level ground.
+  const ceiling = id("core:ceiling_wood");
+  const roof = { x: at.x - 8, z: at.z + 16 };
+  const floor = h.world.hf.heightAt(roof.x, roof.z) + 5;
+  for (const dx of [-1.5, 1.5]) for (const dz of [-1.5, 1.5]) h.world.structs.add(ceiling, roof.x + dx, floor, roof.z + dz, 0, 0, 10000);
+  const top = floor + h.reg.halfY[ceiling]!;
+  const spawn = (kind: string, x: number, z: number): EntityRecord => {
+    const e = h.host.spawnCreature(kind, x, z, 1);
+    h.host.creatures.mind.stay(e, 0xffffffff);
+    return h.host.records.byPid.get(ents.pid[e]!)!;
+  };
+  const entOf = (rec: EntityRecord): number => h.host.records.entOf.get(rec.pid)!;
+  const onRoof = [spawn("core:pteranodon", roof.x + 1.2, roof.z), spawn("core:raptor", roof.x - 1, roof.z + 0.5)];
+  const inPool = spawn("core:pteranodon", PROVING_POOL.x, PROVING_POOL.z);
+  const afloat = spawn("core:dodo", PROVING_POOL.x + 3, PROVING_POOL.z);
+  w.run(3000);
+  // The dodo swims at the surface; the rest are lifted 100 m and all four killed.
+  expect([ents.mode[entOf(afloat)], ents.y[entOf(afloat)]! > sea - 1]).toEqual([MODE_SWIM, true]);
+  for (const rec of [...onRoof, inPool]) aloft(h, entOf(rec), 100);
+  const before = new Set(h.host.corpses.bodies.keys());
+  for (const rec of [...onRoof, inPool, afloat]) h.host.survival.hurt(rec, 1e6, me.pid);
+  const [ptero, raptor, sunk, dodo] = since(h, before);
+  const t0 = h.world.tick;
+  let dodoAt = -1;
+  for (let k = 0; k < 120 && h.host.corpses.falling > 0; k++) {
+    w.run(250);
+    if (dodoAt < 0 && dodo!.drop === null) dodoAt = h.world.tick;
+  }
+  expect([h.host.corpses.falling, dodoAt > 0]).toEqual([0, true]);
+  // On the roof, not through it.
+  expect([Math.abs(ptero!.y - top) < 0.01, Math.abs(raptor!.y - top) < 0.01]).toEqual([true, true]);
+  // At the bottom of the pool, 8 m under.
+  const bottom = (b: Body): number => h.world.hf.heightAt(b.x, b.z);
+  expect([sunk!.y < sea - 6, Math.abs(sunk!.y - bottom(sunk!)) < 0.3, dodo!.y < sea - 6, Math.abs(dodo!.y - bottom(dodo!)) < 0.3]).toEqual([true, true, true, true]);
+  // The dodo sank from the surface at about 0.55 m/s.
+  const took = (dodoAt - t0) / TICK_RATE;
+  expect(took).toBeGreaterThan(9);
+  expect(took).toBeLessThan(18);
+  w.run(10000);
+  const cat = h.join("cat");
+  w.run(1500);
+  for (const b of [ptero!, sunk!]) for (const s of h.sessions) expect(w.sampled(s, b.e)).toEqual([b.x, b.y, b.z]);
+  sameEverywhere(h, w.drawn, raptor!, cat);
+  sameEverywhere(h, w.drawn, dodo!, cat);
+  // The raptor's ragdoll lies on the roof.
+  const lowest = Math.min(...Array.from({ length: raptor!.pose!.pos.length / 3 }, (_, k) => raptor!.pose!.pos[k * 3 + 1]!));
+  expect(raptor!.y + lowest).toBeGreaterThan(top - 0.3);
 });
