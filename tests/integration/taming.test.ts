@@ -448,7 +448,7 @@ test("at its tribe's limit a creature fed full waits, and whoever is looking int
   expect([rec.team, rec.tame, notices()]).toEqual([me.team, null, 2]);
 });
 
-test("a hungry tame eats of the meat its kill leaves it, with nobody looking into it", () => {
+test("a hungry tame's kill leaves its body where it fell, and the tame carries none of it off (Raw Meat)", () => {
   const { h, ada, at } = camp();
   const ents = h.world.ents;
   const mine = tameNow(h, ada, at, "raptor", 0, 3);
@@ -463,11 +463,9 @@ test("a hungry tame eats of the meat its kill leaves it, with nobody looking int
   h.host.creatures.provoke(mine.e, ents.x[prey]!, ents.z[prey]!, prey);
   for (let k = 0; k < 40 && h.host.records.byPid.has(preyRec.pid); k++) h.run(250);
   expect(h.host.records.byPid.has(preyRec.pid)).toBe(false);
-  // A grazer leaves three pieces at least, and the raptor has room for two.
+  // The meat is in the grazer's body, for a tool. The raptor eats only what it is given.
   h.run(1000);
-  const meals = h.host.taming.meals;
-  expect([meals >= 2, h.host.items.inv(mine.rec).total(id("meat")) > 0, mine.rec.mealDue > h.world.tick]).toEqual([true, true, true]);
-  expect(h.host.survival.value(mine.rec, V_FOOD)).toBeGreaterThan(mine.rec.vitals!.max[V_FOOD]! / 1e6 - 50);
+  expect([h.host.taming.meals, h.host.items.inv(mine.rec).total(id("meat")), h.host.corpses.count]).toEqual([0, 0, 1]);
   expect(h.host.items.audit()).toEqual([]);
 });
 

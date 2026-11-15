@@ -1,12 +1,13 @@
 // The surface and skin entries of a level (laid out in shared/pack/pack.ts), written and read back, and what a source
 // may leave to be worked out: its tangents, and how much surface a texture spans.
 
+import { len3 } from "../../shared/math/scalar.ts";
 import { SKIN_BYTES, SURFACE_BYTES } from "../../shared/pack/pack.ts";
 import type { SourceLod } from "./write.ts";
 
 /** A direction in 10 bits a part, as INT_2_10_10_10_REV has it, with `top` in the two bits above. */
 function pack10(x: number, y: number, z: number, top: number): number {
-  const length = Math.hypot(x, y, z) || 1;
+  const length = len3(x, y, z) || 1;
   const q = (c: number): number => Math.round((c / length) * 511) & 1023;
   return (q(x) | (q(y) << 10) | (q(z) << 20) | (top << 30)) >>> 0;
 }
@@ -144,6 +145,8 @@ function edges(lod: Textured, each: (t: number, e1: number[], e2: number[], du1:
 }
 
 const cross = (a: ArrayLike<number>, b: ArrayLike<number>): number[] => [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
+/** The length of a three-vector, the same on every machine (Math.hypot is not; see len3). */
+const lenOf = (v: ArrayLike<number>): number => len3(v[0]!, v[1]!, v[2]!);
 
 /**
  * A tangent for every vertex: x, y, z and the sign of the bitangent, as glTF has them. The tangent runs across the
@@ -173,11 +176,11 @@ export function tangentsOf(lod: Textured & { normals: Float32Array }, mixed?: nu
   const sense = new Uint8Array(ids.size);
   edges(lod, (t, e1, e2, du1, dv1, du2, dv2) => {
     const det = du1 * dv2 - du2 * dv1;
-    const area = Math.hypot(...cross(e1, e2));
+    const area = lenOf(cross(e1, e2));
     if (det === 0 || area === 0) return;
     const u = e1.map((e, k) => (e * dv2 - e2[k]! * dv1) / det);
     const w = e2.map((e, k) => (e * du1 - e1[k]! * du2) / det);
-    const [lu, lw] = [Math.hypot(...u) || 1, Math.hypot(...w) || 1];
+    const [lu, lw] = [lenOf(u) || 1, lenOf(w) || 1];
     for (let c = 0; c < 3; c++) {
       sense[group[indices[t * 3 + c]!]!]! |= det > 0 ? 1 : 2;
       const g = group[indices[t * 3 + c]!]! * 3;
@@ -195,8 +198,8 @@ export function tangentsOf(lod: Textured & { normals: Float32Array }, mixed?: nu
     const dot = normal[0]! * alongU[g]! + normal[1]! * alongU[g + 1]! + normal[2]! * alongU[g + 2]!;
     let tangent = [alongU[g]! - normal[0]! * dot, alongU[g + 1]! - normal[1]! * dot, alongU[g + 2]! - normal[2]! * dot];
     // With nothing to go by, any direction square to the normal will do.
-    if (Math.hypot(...tangent) < 1e-9) tangent = cross(normal, Math.abs(normal[0]!) < 0.9 ? [1, 0, 0] : [0, 1, 0]);
-    const length = Math.hypot(...tangent) || 1;
+    if (lenOf(tangent) < 1e-9) tangent = cross(normal, Math.abs(normal[0]!) < 0.9 ? [1, 0, 0] : [0, 1, 0]);
+    const length = lenOf(tangent) || 1;
     const bitangent = cross(normal, tangent);
     for (let k = 0; k < 3; k++) out[v * 4 + k] = tangent[k]! / length;
     out[v * 4 + 3] = bitangent[0]! * alongV[g]! + bitangent[1]! * alongV[g + 1]! + bitangent[2]! * alongV[g + 2]! > 0 ? -1 : 1;
@@ -213,7 +216,7 @@ export function spanOf(lod: SourceLod, material: number): number {
   let picture = 0;
   edges({ ...lod, uvs: lod.uvs ?? new Float32Array((lod.positions.length / 3) * 2) }, (t, e1, e2, du1, dv1, du2, dv2) => {
     if ((lod.sections?.[t] ?? 0) !== material) return;
-    surface += Math.hypot(...cross(e1, e2));
+    surface += lenOf(cross(e1, e2));
     picture += Math.abs(du1 * dv2 - du2 * dv1);
   });
   return picture > 0 ? Math.round(Math.sqrt(surface / picture) * 1e4) / 1e4 : 1;

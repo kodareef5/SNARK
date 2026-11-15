@@ -93,10 +93,14 @@ export interface MoveParams {
   readonly swimSpeed: number;
   readonly swimSprintMul: number;
   readonly accelSwim: number;
-  /** Stamina units per tick while sprinting, per tick while resting, and per jump. */
+  /**
+   * Stamina units per tick while sprinting, per tick while resting, and per jump. A body whose walking costs stamina
+   * (staminaWalk units a tick) gets none back while it walks on land.
+   */
   readonly staminaSprint: number;
   readonly staminaRegen: number;
   readonly staminaJump: number;
+  readonly staminaWalk: number;
   /** In 1/65536 turns per tick. 0 means it faces the look at once, as a survivor does. */
   readonly turnRate: number;
   /** False for a body that moves only the way it faces. */
@@ -283,7 +287,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const s = detSin(a);
   const c = detCos(a);
   const sprint = m2 > 0 && standing && canSprint(b, buttons);
-  let stamina = spendStamina(b, p, sprint);
+  let stamina = spendStamina(b, p, sprint, m2 > 0 ? p.staminaWalk : 0);
   const speed = p.walkSpeed * (b.speedQ / 1000) * (sprint ? p.sprintMul : standing ? 1 : stance === STANCE_CROUCH ? p.crouchMul : p.proneMul);
   let dvx = (s * mz - c * mx) * speed - b.vx;
   let dvz = (c * mz + s * mx) * speed - b.vz;
@@ -532,12 +536,15 @@ function canSprint(b: Body, buttons: number): boolean {
   return (buttons & BTN_SPRINT) !== 0 && (b.mflags & (MF_NO_SPRINT | MF_ROOTED | MF_WINDED)) === 0 && b.stamina > 0;
 }
 
-/** Sets and clears MF_WINDED on the body. Returns the new stamina, which the caller stores after taking any jump cost from it. */
-function spendStamina(b: Body, p: MoveParams, sprint: boolean): number {
+/**
+ * Sets and clears MF_WINDED on the body. Returns the new stamina, which the caller stores after taking any jump cost from it.
+ * `walk` is what walking costs this tick, 0 when it does not move or walking is free.
+ */
+function spendStamina(b: Body, p: MoveParams, sprint: boolean, walk = 0): number {
   const cap = b.staminaMax * STAMINA_UNITS;
   let stamina = b.stamina > cap ? cap : b.stamina;
-  if (sprint) {
-    stamina -= p.staminaSprint;
+  if (sprint || walk > 0) {
+    stamina -= sprint ? p.staminaSprint : walk;
     if (stamina <= 0) {
       stamina = 0;
       b.mflags |= MF_WINDED;

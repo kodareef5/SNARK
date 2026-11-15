@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { CLASSES, FIELDS, classFaults, classOf, defFaults, type Field } from "../../shared/content/classes.ts";
@@ -16,11 +17,13 @@ import { CORPSES } from "../../content/corpses.ts";
 import { EGGS } from "../../content/eggs.ts";
 import { FOODS } from "../../content/foods.ts";
 import { KNOCKOUT } from "../../content/knockout.ts";
+import { ITEMS } from "../../content/items/index.ts";
 import { CATALOGUE_PAGE, cataloguePage } from "../../tools/catalogue.ts";
 
 // What the creature files bring is counted apart, so a new creature moves no number here, and so is what the files of
-// the creature features bring, so that those built side by side do not each move the same numbers.
-const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS];
+// the creature features and of the item program (content/items) bring, so that those built side by side do not each move
+// the same numbers.
+const FEATURES_CONTENT = [...KNOCKOUT, ...CORPSES, ...EGGS, ...FOODS, ...ITEMS];
 const ofCreatures = new Set([...CREATURES, ...FEATURES_CONTENT].map((d) => `${d.type} ${d.id}`));
 const rest = CORE_CONTENT.filter((d) => !ofCreatures.has(`${d.type} ${d.id}`));
 const classes = CORE_CONTENT.map(classOf);
@@ -36,13 +39,13 @@ test("the core pack's definitions fall into the classes, each passing its row, a
   for (const d of rest) counts[classOf(d)] = (counts[classOf(d)] ?? 0) + 1;
   expect(counts).toEqual({
     "item/resource": 11,
-    "item/consumable": 5,
+    "item/consumable": 4,
     "item/weapon": 8,
     "item/ammo": 7,
     "item/attachment": 4,
     "item/armor": 20,
     "item/structure": 27,
-    engram: 71,
+    engram: 70,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
@@ -50,7 +53,7 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 1,
-    "structure/static": 8,
+    "structure/static": 8 + RUIN_BLOCKS.length,
     shape: 14,
     material: 4,
     node: 14,
@@ -59,9 +62,9 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     buff: 7,
     spawns: 4,
     map: 1,
-    rename: 75,
+    rename: 74,
   });
-  expect(rest.length).toBe(326);
+  expect(rest.length).toBe(323 + RUIN_BLOCKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
@@ -88,7 +91,7 @@ test("a definition says its class, and its class says what it may be", () => {
   const as = (more: Record<string, unknown>): string[] => defFaults({ ...spear, ...more } as Def);
   expect(as({ eat: { food: 1 } })).toEqual(['core:spear: class item/weapon may not declare "eat"']);
   expect(as({ weapon: undefined })).toEqual(['core:spear: class item/weapon must declare "weapon"']);
-  expect(as({ class: "consumable" })).toEqual(['core:spear: class item/consumable must declare one of "eat", "dose"', 'core:spear: class item/consumable may not declare "weapon"']);
+  expect(as({ class: "consumable" })).toEqual(['core:spear: class item/consumable must declare one of "eat", "dose", "use"', 'core:spear: class item/consumable may not declare "weapon"']);
   expect(as({ weight: "heavy", weapon: [] })).toEqual(['core:spear: "weight" must be a number', 'core:spear: "weapon" must be a group of fields']);
   expect(as({ class: "sword" })[0]).toContain('an item says its class: resource, consumable, weapon');
   expect(as({ class: undefined })[0]).toContain("an item says its class: resource");
@@ -114,8 +117,6 @@ const STUBS: ContentPack = {
   name: "stub",
   requires: ["core"],
   defs: [
-    { id: "stub:egg", type: "item", class: "egg", stack: 100, eat: { food: 10 }, spoilHours: 48, spoilsInto: "core:stone" },
-    { id: "stub:dung", type: "item", class: "feces", stack: 100, weight: 0.1, spoilHours: 48, decomposeHours: 12 },
     { id: "stub:shield", type: "item", class: "shield", stack: 1, description: "Blocks.", folder: "Armor/Shields", blueprint: true, craft: { needs: [{ item: "core:wood", count: 20 }], seconds: 8, xp: 4, at: "core:campfire", level: 80 } },
     { id: "stub:hat", type: "item", class: "costume", stack: 1 },
     { id: "stub:skin", type: "item", class: "skin", stack: 1 },

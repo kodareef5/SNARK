@@ -23,8 +23,10 @@ const CHUNK_FORMAT = 1;
  * knows back without what was added. Revision 1 grew without being raised (a tame's stance and saddle, a bed's wait, a fire,
  * the slot in hand), so builds from before each of those read newer saves and dropped them. 2 is all of that.
  * 3 saves buffs. A build without them would keep the part unread and leave a buff's rates in the vitals with no end.
+ * 4 saves what a one of a kind in a slot stands for (a fertilised egg's record). A build without it would keep the part
+ * unread, and an egg taken up would never hatch.
  */
-const RECORD_FORMAT = 3;
+const RECORD_FORMAT = 4;
 /** The first revision whose vitals hold, beyond a body's own rates, only what its saved buffs give. */
 const FORMAT_BUFFS = 3;
 // A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
@@ -63,6 +65,10 @@ const COMP_FIXTURE = 14;
 const COMP_PROGRESSION = 4;
 /** The buffs on it (server/buffs.ts): each one's content, the tick it ends, who gave it and the torpor a second it adds. */
 const COMP_BUFFS = 19;
+/** The slots of its inventory that stand for a record (Inventory.ref): each slot and that record's pid. */
+const COMP_REFS = 20;
+/** A creature's body (EntityRecord.corpse). A build without bodies has no core:corpse either, so it never passes over one. */
+const COMP_CORPSE = 21;
 /** The most bytes of one part that a save holds. */
 const MAX_PART = 1 << 20;
 /** The most slots a converted COMP_INVENTORY may be laid out in. */
@@ -371,7 +377,9 @@ export class WorldStore {
     const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
     const hasBreed = rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null;
-    w.varint((used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + rec.extra.size);
+    let refs = 0;
+    for (let slot = 0; inv?.ref && slot < inv.cap; slot++) if (inv.item[slot] !== 0 && inv.ref[slot] !== 0) refs++;
+    w.varint((refs > 0 ? 1 : 0) + (used > 0 ? 1 : 0) + (rec.vitals ? 1 : 0) + (rec.genome ? 1 : 0) + (rec.keyHash ? 1 : 0) + (rec.look ? 1 : 0) + (rec.markers.length > 0 ? 1 : 0) + (hasState ? 1 : 0) + (hasProgress ? 1 : 0) + (rec.team !== 0 ? 1 : 0) + (rec.at >= 0 ? 1 : 0) + (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 ? 1 : 0) + (hasBreed ? 1 : 0) + (rec.buffs.length > 0 ? 1 : 0) + (rec.corpse ? 1 : 0) + rec.extra.size);
     if (rec.buffs.length > 0) {
       c.reset();
       c.varint(rec.buffs.length);
@@ -398,7 +406,7 @@ export class WorldStore {
       }
       this.part(COMP_BREED2);
     }
-    if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0) {
+    if (rec.tame || rec.te > 0 || rec.follow !== 0 || rec.stance !== 1 || rec.saddle !== 0 || rec.wander) {
       c.reset();
       c.f32(rec.te);
       c.bool(rec.tame !== null);
@@ -410,8 +418,9 @@ export class WorldStore {
       // Older saves end before the stance and the follow target.
       c.u8(rec.stance);
       c.uint53(rec.follow);
-      // Some saves have those two and end before the saddle.
+      // Some saves have those two and end before the saddle, and some end before the wander.
       c.varint(rec.saddle === 0 ? 0 : this.toSaved[rec.saddle]!);
+      c.bool(rec.wander);
       this.part(COMP_TAME);
     }
     if (rec.at >= 0) {
@@ -491,6 +500,28 @@ export class WorldStore {
       }
       this.part(COMP_SLOTS2);
     }
+    if (inv && refs > 0) {
+      c.reset();
+      c.varint(refs);
+      for (let slot = 0; slot < inv.cap; slot++) {
+        if (inv.item[slot] === 0 || inv.ref![slot] === 0) continue;
+        c.varint(slot);
+        c.uint53(inv.ref![slot]!);
+      }
+      this.part(COMP_REFS);
+    }
+    if (rec.corpse) {
+      const b = rec.corpse;
+      c.reset();
+      c.varint(this.toSaved[b.species]!);
+      c.f64(b.max);
+      c.f64(b.left);
+      c.varint(b.span);
+      c.bool(b.young);
+      c.bool(b.out);
+      c.uint53(b.life);
+      this.part(COMP_CORPSE);
+    }
     const v = rec.vitals;
     if (v) {
       // Maxima come from stats and are not saved.
@@ -559,6 +590,8 @@ export class WorldStore {
       let stale = format < FORMAT_BUFFS;
       rec.name = r.string(256);
       const c = this.cr;
+      /** Slot and pid pairs, put on the inventory once every part is read. */
+      const refs: number[] = [];
       for (let n = r.varint(); n > 0 && !r.overflow; n--) {
         const component = r.varint();
         const blob = r.blob(MAX_PART);
@@ -684,6 +717,7 @@ export class WorldStore {
             if (c.pos + 8 <= blob.length * 8) {
               const saved = c.varint();
               rec.saddle = saved === 0 ? 0 : (this.toRuntime[saved] ?? 0);
+              if (c.pos + 1 <= blob.length * 8) rec.wander = c.bool();
             }
           }
         } else if (component === COMP_BREED || component === COMP_BREED2) {
@@ -715,10 +749,17 @@ export class WorldStore {
             if (on.buff !== 0) rec.buffs.push(on);
             else stale = true;
           }
+        } else if (component === COMP_REFS) {
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) refs.push(c.varint(), c.uint53());
+        } else if (component === COMP_CORPSE) {
+          // A body of a species this build lacks keeps 0, and Corpses lets it go with what it held.
+          rec.corpse = { species: this.toRuntime[c.varint()] ?? 0, max: c.f64(), left: c.f64(), span: c.varint(), young: c.bool(), out: c.bool(), life: c.uint53() };
         } else rec.extra.set(component, blob);
         if (c.overflow) throw new Error(`entity ${row.pid}: unreadable component ${component}`);
       }
       if (r.overflow) throw new Error(`entity ${row.pid}: truncated record`);
+      // A slot whose item was left out with its content stands for nothing. Its record is let go when eggs resume.
+      for (let k = 0; k < refs.length && rec.inv; k += 2) if (refs[k]! < rec.inv.cap && rec.inv.item[refs[k]!] !== 0) rec.inv.setRef(refs[k]!, refs[k + 1]!);
       if (kind === 0) {
         this.drop(row.kind, 1);
         this.dropped.pids.push(row.pid);

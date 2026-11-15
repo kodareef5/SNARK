@@ -15,7 +15,7 @@ import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
-import { AnimState, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortU32 } from "../../../shared/sort.ts";
 import type { Falling } from "../rubble.ts";
@@ -686,18 +686,21 @@ export class Scene {
       let wanted = 0;
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
-        if (!ch.has(kind) || remote.id[i] === this.skip) continue;
+        // A dead creature's body is drawn where it lies, by ch.corpses.
+        if (!ch.has(kind) || remote.id[i] === this.skip || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
         let x = remote.x[i]! - cam.x;
         let y = remote.y[i]! - cam.y;
         let z = remote.z[i]! - cam.z;
         let yaw = remote.yaw[i]!;
-        // A rider is drawn on its mount's seat. The viewer's own mount is placed as predicted, any other as the server sent it.
+        // A rider is drawn on its mount's seat, and a creature held in someone's arms in them. The viewer's own body is
+        // placed as predicted, any other as the server sent it.
         const on = remote.seat[i]! - 1;
         if (on >= 0) {
           const at = this.seatAt;
+          const held = (remote.cue[i]! & CUE_HELD) !== 0;
           let found = false;
           if (own && own.id === on) {
-            found = ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at);
+            found = held ? ch.heldAt(remote.id[i]!, kind, on, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, at) : ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at);
             yaw = own.yaw;
           } else {
             for (let j = 0; j < remote.count && !found; j++) {
@@ -705,13 +708,13 @@ export class Scene {
               const ms = this.mountState;
               ms.unpack(remote.anim[j]!, remote.cue[j]!);
               ms.seed = bodySeed(on);
-              found = ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at);
+              found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at);
               yaw = remote.yaw[j]!;
             }
           }
           if (found) {
             x = at[0]!;
-            y = at[1]! - SEAT_DROP;
+            y = at[1]! - (held ? 0 : SEAT_DROP);
             z = at[2]!;
           }
         }

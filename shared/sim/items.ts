@@ -43,6 +43,11 @@ export class Inventory {
   version = 0;
   /** How many times as long things keep here before they spoil. Whoever holds the inventory sets it (server/items.ts). */
   keep = 1;
+  /**
+   * For an item that is one of a kind (a fertilised egg): the record it stands for, by pid, or 0. Such an item stacks to 1,
+   * moves with its slot and is never sent. Null until a slot has one.
+   */
+  ref: Float64Array | null = null;
 
   constructor(cap: number, bag = cap) {
     this.cap = cap;
@@ -79,7 +84,18 @@ export class Inventory {
     this.ammo[slot] = 0;
     this.loaded[slot] = 0;
     this.attach[slot] = 0;
+    if (this.ref) this.ref[slot] = 0;
     this.mod[slot] = ++this.version;
+  }
+
+  refOf(slot: number): number {
+    return this.ref ? this.ref[slot]! : 0;
+  }
+
+  setRef(slot: number, pid: number): void {
+    if (pid === 0 && !this.ref) return;
+    this.ref ??= new Float64Array(this.cap);
+    this.ref[slot] = pid;
   }
 
   setGear(slot: number, ammo: number, loaded: number, attach: number): void {
@@ -184,16 +200,16 @@ export class Inventory {
 
   /**
    * Applies spoilage up to `now`. Each stack loses one item per interval since its top item went bad, and `lost` gets what
-   * disappeared. One call gives exactly what a call every tick would.
+   * disappeared, with the record a one of a kind stood for. One call gives exactly what a call every tick would.
    */
-  settle(now: number, t: ItemTable, lost: (item: number, n: number) => void): void {
+  settle(now: number, t: ItemTable, lost: (item: number, n: number, ref: number) => void): void {
     for (let s = 0; s < this.cap; s++) {
       const at = this.spoilAt[s]!;
       if (at === 0 || at > now || this.item[s] === 0) continue;
       const item = this.item[s]!;
       const interval = Math.round(t.spoilTicks[item]! * this.keep) || 1;
       const gone = Math.min(this.count[s]!, 1 + Math.floor((now - at) / interval));
-      lost(item, gone);
+      lost(item, gone, this.refOf(s));
       if (gone === this.count[s]) this.set(s, 0, 0, 0, 0, 0);
       else {
         this.count[s] = this.count[s]! - gone;
@@ -233,10 +249,14 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   // An armor slot takes only its own kind of piece, and an item swapped back must fit its slot too.
   if (!fitsSlot(b, sb, item, t) || (other !== 0 && other !== item && !fitsSlot(a, sa, other, t))) return 0;
   const sp = carried(a.spoilAt[sa]!, now, a.keep, b.keep);
+  const ref = a.refOf(sa);
   if (other === 0) {
     b.set(sb, item, n, a.quality[sa]!, a.dur[sa]!, sp);
-    // A weapon moved whole keeps its rounds and attachment.
-    if (n === have) b.setGear(sb, a.ammo[sa]!, a.loaded[sa]!, a.attach[sa]!);
+    // A weapon moved whole keeps its rounds and attachment, and a one of a kind what it stands for.
+    if (n === have) {
+      b.setGear(sb, a.ammo[sa]!, a.loaded[sa]!, a.attach[sa]!);
+      b.setRef(sb, ref);
+    }
     a.remove(sa, n);
     return n;
   }
@@ -257,10 +277,13 @@ export function moveSlot(a: Inventory, sa: number, b: Inventory, sb: number, n: 
   const ammo = a.ammo[sa]!;
   const loaded = a.loaded[sa]!;
   const attach = a.attach[sa]!;
+  const otherRef = b.refOf(sb);
   a.set(sa, other, b.count[sb]!, b.quality[sb]!, b.dur[sb]!, carried(b.spoilAt[sb]!, now, b.keep, a.keep));
   a.setGear(sa, b.ammo[sb]!, b.loaded[sb]!, b.attach[sb]!);
+  a.setRef(sa, otherRef);
   b.set(sb, item, have, q, d, sp);
   b.setGear(sb, ammo, loaded, attach);
+  b.setRef(sb, ref);
   return have;
 }
 

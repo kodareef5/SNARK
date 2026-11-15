@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 
@@ -16,7 +16,9 @@ import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
-import { AnimState, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
+import { sizeSpan } from "../shared/anim/corpse.ts";
+import { youngScale } from "../shared/sim/breeding.ts";
 import type { Rig } from "../shared/anim/rigs.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
@@ -24,6 +26,7 @@ import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../shared/net/protocol.ts";
 import { dress } from "../server/commands/combat.ts";
 import { Inventory } from "../shared/sim/items.ts";
+import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -220,10 +223,21 @@ function ragdollScene(view: ProvingView, seconds: number): void {
   view.render();
   r.tick += 0.5;
   view.render();
-  // They die: gone from the view, as the server takes a dead creature out of the world.
-  const keep = [4, 5, 6];
-  for (const k of ["id", "kind", "x", "y", "z", "yaw", "flags", "anim", "span", "grown", "seat", "hasLook"] as const) for (let j = 0; j < 3; j++) r[k][j] = r[k][keep[j]!]!;
-  r.count = 3;
+  // They die: each one's entity goes and its body's comes where it stood (ids 8 to 11), as the server sends them.
+  const order = [4, 5, 6, 0, 1, 2, 3];
+  const keys = ["id", "kind", "x", "y", "z", "yaw", "flags", "anim", "cue", "span", "grown", "seat", "hasLook"] as const;
+  const was = keys.map((k) => Array.from(r[k]));
+  const died = new Map<number, number>();
+  order.forEach((from, j) => {
+    keys.forEach((k, q) => (r[k][j] = was[q]![from]!));
+    if (j < 3) return;
+    died.set(r.id[j]!, Math.floor(r.tick));
+    // A young one's body keeps the size it died at, sent as its span.
+    if (r.grown[j] !== 0) r.span[j] = sizeSpan(youngScale(reg.birthScale[r.kind[j]!]!, r.span[j]!, r.grown[j]!, r.tick));
+    [r.id[j], r.cue[j], r.grown[j]] = [5 + j, CUE_DEAD, 0];
+  });
+  r.died = died;
+  r.count = 7;
   for (let f = 0; f < seconds * 60; f++) {
     r.tick += 0.5;
     view.scene.build(cam, r);
@@ -595,7 +609,7 @@ export function gearScene(view: ProvingView, facing: number): void {
   tiers.forEach((tier, i) => {
     for (const sex of [0, 1]) rows[0]!.push({ sex, held: weapons[(i * 2 + sex + 3) % weapons.length]!, worn: pieces.map((p) => `${tier}_${p}`) });
   });
-  weapons.forEach((w, i) => rows[1]!.push({ sex: i % 2, held: w, worn: [] }));
+  [...weapons, "club", "slingshot"].forEach((w, i) => rows[1]!.push({ sex: i % 2, held: w, worn: [] }));
   rows[1]!.push({ sex: 0, held: "", worn: ["hide_hat", "", "", "flak_pants", "cloth_boots"] });
   rows.forEach((row, j) => {
     row.forEach((b, i) => {
@@ -875,25 +889,27 @@ if (import.meta.main) {
     process.exit(0);
   }
   if (args.includes("--fight")) {
-    // A survivor faces a dummy in flak six metres off. --fight takes "punch" (up close, as the blow lands), "bow" (at full draw),
-    // "loosed" (the arrow in the air) or "rifle" (the round's tracer).
+    // A survivor faces a dummy in flak six metres off. --fight takes "punch" or "club" (up close, as the blow lands), "bow" or
+    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air) or "rifle" (the round's tracer).
     const what = arg("fight") ?? "bow";
+    const close = what === "punch" || what === "club";
+    const sling = what === "slingshot" || what === "slung";
     const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
       const s = app.session;
       const ents = hh.world.ents;
       const e = hh.ent(s);
       const rec = hh.host.records.byPid.get(ents.pid[e]!)!;
-      const far = what === "punch" ? 1.4 : 6;
+      const far = close ? 1.4 : 6;
       const d = hh.host.spawnCreature("core:dummy", ents.x[e]!, ents.z[e]! + far, 1);
       const drec = hh.host.records.byPid.get(ents.pid[d]!)!;
       ents.yaw[d] = drec.yaw = 32768;
       for (const part of ["hat", "shirt", "gloves", "pants", "boots"]) dress(hh.host, drec, hh.reg.index.get(`core:flak_${part}`)!);
       hh.host.refreshBody(drec);
       const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
-      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : "bow";
+      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
       if (weapon !== "") {
         hh.host.items.mint(rec, k(weapon), 1);
-        hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : "arrow_stone"), 20);
+        if (weapon !== "club") hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : sling ? "stone" : "arrow_stone"), 20);
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
@@ -904,20 +920,75 @@ if (import.meta.main) {
       }
       app.view.thirdPerson = args.includes("--third");
       app.controls.yaw = args.includes("--third") ? 0.5 : 0;
-      app.controls.pitch = what === "punch" ? 0.02 : -0.02;
+      app.controls.pitch = close ? 0.02 : -0.02;
       run(200);
       app.controls.mouseButton(0, true);
-      if (what === "punch") run(260);
+      if (close) run(260);
       else if (what === "rifle") run(1000 / 60);
       else {
         run(1400);
-        if (what === "loosed") {
+        if (what === "loosed" || what === "slung") {
           app.controls.mouseButton(0, false);
           run(1000 / 30);
         }
       }
     });
     const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--overhead")) {
+    // Before a survivor: her Pip, a pair of hers mating, a wild dodo knocked out and half tamed, her baby, and Bob's Bolt.
+    // --overhead names the one she looks at: tame, pair, taming, baby or enemy.
+    const what = arg("overhead") ?? "tame";
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
+      const ents = hh.world.ents;
+      const me = hh.ent(app.session);
+      const ada = hh.host.records.byPid.get(ents.pid[me]!)!;
+      const [x, z] = [ents.x[me]!, ents.z[me]!];
+      const other = hh.join("bob");
+      run(500);
+      hh.say(other, "enablecheats");
+      hh.say(other, `tp ${(x + 8).toFixed(3)} ${(z - 8).toFixed(3)}`);
+      hh.say(other, "tribe create Reef");
+      const bob = hh.host.records.byPid.get(hh.client(other)!.pid)!;
+      const dodo = (dx: number, dz: number, owner: typeof ada | null, female: boolean, name = "") => {
+        const e = hh.host.spawnCreature("core:dodo", x + dx, z + dz, 12);
+        const rec = hh.host.records.byPid.get(ents.pid[e]!)!;
+        rec.genome!.female = female;
+        if (owner) hh.host.taming.give(rec, owner, 1);
+        hh.host.creatures.mind.stay(e, 0xffffffff);
+        ents.yaw[e] = rec.yaw = 32768;
+        rec.name = name;
+        hh.host.refreshBody(rec);
+        return { e, rec };
+      };
+      const pip = dodo(0, 3.2, ada, false, "Pip");
+      const f = dodo(-2.2, 5.5, ada, true);
+      const m = dodo(-1.1, 6.2, ada, false);
+      f.rec.mating = m.rec.mating = true;
+      const wild = dodo(2, 4, null, true);
+      hh.host.survival.add(wild.rec, V_TORPOR, wild.rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
+      const baby = dodo(1.2, 2.2, ada, true);
+      baby.rec.span = 100000;
+      baby.rec.grown = hh.world.tick + 95000;
+      ents.setYoung(baby.e, baby.rec.span, baby.rec.grown);
+      hh.host.refreshBody(baby.rec);
+      const bolt = dodo(3.4, 6.5, bob, false, "Bolt");
+      run(14000);
+      wild.rec.tame!.affinity = 230;
+      // Her name prompts stay shut, or the panel covers the view.
+      app.session.tamed.length = 0;
+      const look = { tame: pip, pair: f, taming: wild, baby, enemy: bolt }[what] ?? pip;
+      const eye = ents.y[me]! + 1.62;
+      const [dx, dz] = [ents.x[look.e]! - x, ents.z[look.e]! - z];
+      app.controls.yaw = Math.atan2(dx, dz);
+      app.controls.pitch = Math.atan2(ents.y[look.e]! + (look === baby ? 0.08 : 0.3) - eye, Math.hypot(dx, dz));
+      run(1500);
+    });
+    const out = resolve(arg("out") ?? `artifacts/overhead-${what}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);

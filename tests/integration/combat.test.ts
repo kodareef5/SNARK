@@ -275,7 +275,7 @@ test("one survivor kills another: the victim is told what hurt it and from where
   expect(h.host.items.audit()).toEqual([]);
 });
 
-test("killing a creature gives the killer what it yields and the experience of it; hurt and not killed, it runs", () => {
+test("killing a creature gives the killer the experience of it and leaves its body, which the blows after harvest; hurt and not killed, it runs", () => {
   const { h, s, pilot, rec, at } = setup();
   const e = h.host.spawnCreature("core:grazer", at.x, at.z + APART, 7);
   expect(e).toBeGreaterThanOrEqual(0);
@@ -307,15 +307,19 @@ test("killing a creature gives the killer what it yields and the experience of i
   h.run(400);
   expect(h.host.combat.last.killed).toBe(true);
   expect(h.host.records.byPid.has(grec.pid)).toBe(false);
-  const hide = inv.total(id("hide"));
-  const meat = inv.total(id("meat"));
-  expect(hide).toBeGreaterThanOrEqual(4);
-  expect(hide).toBeLessThanOrEqual(9);
-  expect(meat).toBeGreaterThanOrEqual(3);
-  expect(meat).toBeLessThanOrEqual(6);
   expect(rec.xp - xp).toBeCloseTo(4 * (1 + 0.1 * (level - 1)), 1);
   const kill = s.events.find((ev) => ev.kind === EVENT_KILL)!;
   expect([kill.name, kill.level]).toEqual(["grazer", level]);
+  // The kill gives nothing to carry. Its body lies where it fell, and two seconds of fists take hide and meat from it.
+  expect([inv.total(id("hide")), inv.total(id("meat")), h.host.corpses.count]).toEqual([0, 0, 1]);
+  const body = [...h.host.corpses.bodies.values()][0]!;
+  pilot.buttons |= BTN_PRIMARY;
+  h.run(2000);
+  pilot.buttons &= ~BTN_PRIMARY;
+  h.run(400);
+  expect(h.host.corpses.blows).toBeGreaterThanOrEqual(3);
+  expect(body.left).toBe(body.max - 8 * h.host.corpses.blows);
+  expect(inv.total(id("hide")) + inv.total(id("meat"))).toBeGreaterThan(0);
   expect(h.host.items.audit()).toEqual([]);
 });
 

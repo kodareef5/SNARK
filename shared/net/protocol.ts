@@ -37,7 +37,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -143,7 +143,7 @@ export const CMD_PLACE = 18;
 export const CMD_STRUCT = 19;
 /**
  * Orders a tribe creature: entity index u32 or ORDER_ALL, then order u8. The order is an ORDER_ value, ORDER_STANCE plus a
- * stance (passive, neutral, aggressive), or ORDER_LEVEL plus a stat to spend one of its unspent levels on.
+ * stance (passive, neutral, aggressive), ORDER_YOURS, or ORDER_LEVEL plus a stat to spend one of its unspent levels on.
  */
 export const CMD_ORDER = 20;
 export const ORDER_STAY = 0;
@@ -158,8 +158,10 @@ export const ORDER_UNMATE = 7;
 export const ORDER_WANDER = 8;
 /** Protocol 11. Followed by the target's entity index u32: it goes for that body. A whistle may give it. */
 export const ORDER_ATTACK = 9;
+/** Protocol 11. Its stance becomes attacking your target (ARK's "Attack My Target" whistle): neutral, and it goes for what its tribe hurts. */
+export const ORDER_YOURS = 10;
 export const ORDER_LEVEL = 16;
-/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE or ORDER_LEVEL. */
+/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE, ORDER_WANDER or ORDER_LEVEL. */
 export const ORDER_ALL = 0xffffffff;
 /** Metres. */
 export const WHISTLE_RANGE = 40;
@@ -188,6 +190,13 @@ export const CARRY_DROP = 1;
 export const CARRY_THROW = 2;
 /** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
 export const CMD_TAKE = 28;
+/**
+ * Protocol 12, reserved for crafting at a station (planning/reference/items-plan.md, task D): item u16, count u8, made at the
+ * station the session has open, from that station's inventory. Refused until it is built.
+ */
+export const CMD_CRAFT_AT = 29;
+/** Protocol 12, reserved for crafting from a blueprint (items-plan.md, task E): own slot varint, count u8. Refused until it is built. */
+export const CMD_CRAFT_BLUEPRINT = 30;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
@@ -228,10 +237,12 @@ export const OWN_SESSION = 1;
 export const OWN_VITALS = 2;
 /**
  * box 1 bit, capacity varint, bag size varint, full 1 bit (forget every slot first), count u16, then per slot: index varint,
- * item u16, and if the item is not 0: count u16, quality u8, durability u16, spoil tick u32, and 1 bit for "it holds
- * something", then if so: ammunition item u16, rounds u8, attachment item u16.
+ * item u16, and if the item is not 0: count u16, quality u8, flags u8 (SLOT_ bits, protocol 12), durability u16, spoil tick u32, and 1
+ * bit for "it holds something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
 export const OWN_SLOTS = 3;
+/** A slot's flags. Protocol 12 sends them; nothing sets one until blueprints are built (items-plan.md, task E). */
+export const SLOT_BLUEPRINT = 1;
 
 /** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
 export const OWN_OPEN = 4;
@@ -278,6 +289,14 @@ export const OWN_VOICE = 13;
  * (thousandths, 10 bits each), and the seconds until a female may mate again (varint).
  */
 export const OWN_SUBJECT = 14;
+/**
+ * The creature the survivor looks at (server/overhead.ts): present 1 bit, then entity index u32, and each only where the viewer
+ * is told it: health, food and torpor as shares (1 bit, then thousandths in 10 bits each), taming 1 bit then its progress and
+ * effectiveness (10 bits each), its pair's mating progress (1 bit, 10 bits), its tribe's name (1 bit, string).
+ */
+export const OWN_OVERHEAD = 15;
+/** Protocol 12, reserved for the open station's queue (items-plan.md, task D): count u8, then per job: item u16, units left u8, done tick u32. */
+export const OWN_STATION = 16;
 
 export const MARKER_DEATH = 1;
 

@@ -48,10 +48,12 @@ import { benchAgent } from "./bench/agent.ts";
 import { benchCollide } from "./bench/collide.ts";
 import { benchDenseWood, benchNodes } from "./bench/nodes.ts";
 import { benchHunt } from "./bench/hunt.ts";
+import { benchFlock } from "./bench/flock.ts";
 import { benchSpawn } from "./bench/spawn.ts";
 import { benchLatency } from "./bench/latency.ts";
 import { benchPoses } from "./bench/poses.ts";
 import { benchRagdoll } from "./bench/ragdoll.ts";
+import { benchCorpses } from "./bench/corpses.ts";
 import { benchShadow } from "./bench/shadow.ts";
 import { benchTextured } from "./bench/textured.ts";
 import { benchDepth } from "./bench/depth.ts";
@@ -828,7 +830,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   const place = rng;
   const put = (i: number, row: number): number => {
     // At its place in the rows, or as near as the trees and rocks allow.
-    for (let k = 0; k < 60; k++) {
+    for (let k = 0; k < 240; k++) {
       const wide = 0.4 + k * 0.05;
       const e = host.spawnCreature("core:parasaur", ox + (i % 20) * 4 + place.range(-wide, wide), oz + row * 4 + Math.floor(i / 20) * 4 + place.range(-wide, wide), 1 + place.int(60));
       if (e >= 0) return e;
@@ -1221,16 +1223,19 @@ benchCollide(section, record);
 benchNodes(section, record);
 benchDenseWood(section, record);
 benchHunt(section, record);
+benchFlock(section, record);
 benchSpawn(section, record);
 benchLatency(section, record);
 benchPoses(section, record);
 benchRagdoll(section, record);
+benchCorpses(section, record);
 benchShadow(section, record);
 benchTextured(section, record);
 benchDepth(section, record);
 benchTerrain(section, record, hf);
 await benchTextures(section, record);
-await benchParts(section, record);
+// Brotli at 11 over every part is minutes of work on a set of 2 GB and holds no budget, so it runs only when asked for.
+if (process.argv.includes("--parts")) await benchParts(section, record);
 benchTransport(section, record);
 await benchGpu(section, record);
 

@@ -42,8 +42,8 @@ export interface SpeciesDef extends Named {
   readonly strafe?: boolean;
   /** Metres per second in water. Defaults to 60% of the walk speed. */
   readonly swimSpeed?: number;
-  /** Stamina points: per second of sprinting, per second of rest, per jump. Defaults to 5, 8 and 6. */
-  readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number };
+  /** Stamina points: per second of sprinting, per second of rest, per jump, and per second of walking. Defaults to 5, 8, 6 and none. */
+  readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number; readonly walk?: number };
   /** Food capacity and loss per in-game hour. Omitted for species that do not eat. */
   readonly food?: { readonly max: number; readonly perHour: number };
   /** Water lost per in-game hour. Omitted for species that do not drink. */
@@ -58,7 +58,13 @@ export interface SpeciesDef extends Named {
   readonly fists?: number;
   /** Torpor a bare-handed strike gives, as a multiple of the damage it does. Defaults to none. */
   readonly fistsTorpor?: number;
-  readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number }[];
+  /**
+   * What its body gives to the blows that harvest it (server/corpses.ts). Each roll gives `min` to `max` of one drop,
+   * picked by `weight` (1 where not given). A tool whose `tool.on` is a drop's `favoured` picks that drop half as often again.
+   */
+  readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number; readonly weight?: number; readonly favoured?: string }[];
+  /** The harvest damage its grown body takes before it is used up, and the harvest damage of each roll. */
+  readonly corpse?: { readonly health: number; readonly roll: number };
   /** Per stat: [base, gain per wild point, gain per tamed point]. */
   readonly stats?: { readonly [S in StatName]?: StatCurve };
   /** Multiplier on each type of damage it takes. 1 where not given. */
@@ -243,6 +249,21 @@ export interface ItemDef extends Named {
   readonly spoilsInto?: string;
   /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
   readonly blueprint?: boolean;
+  /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
+  readonly use?: UseFacet;
+}
+
+/**
+ * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives.
+ * A stub until task C of planning/reference/items-plan.md builds it.
+ */
+export interface UseFacet {
+  /** A stat changed by `amount`: at once, or spread over `seconds`. */
+  readonly adds?: readonly { readonly stat: StatName; readonly amount: number; readonly seconds?: number }[];
+  /** Buffs given on use. */
+  readonly buffs?: readonly string[];
+  /** A vessel that holds water: `water` points when full, `each` drunk a use, filled again standing in water. */
+  readonly holds?: { readonly water: number; readonly each: number };
 }
 
 /** How an item is made. ARK keeps this on the item too. */
@@ -432,6 +453,8 @@ export interface PropDef extends Named {
   readonly size?: number;
   /** An egg: the item it is when picked up. */
   readonly item?: string;
+  /** An egg: the item it is when picked up fertilised, which stacks to 1 and keeps the young it holds. */
+  readonly fertile?: string;
 }
 
 /**
@@ -452,6 +475,8 @@ export interface BuffDef extends Named {
   /** Health per second (negative harms) and torpor per second while it lasts. */
   readonly health?: number;
   readonly torpor?: number;
+  /** The kind of damage its harm to health is, scaled by what the body takes of that kind. Omitted, none scales it. */
+  readonly damage?: DamageType;
   /** Multipliers on the body's speed, the damage it deals and the damage it takes. */
   readonly speed?: number;
   readonly dealt?: number;

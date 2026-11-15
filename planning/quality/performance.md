@@ -22,6 +22,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | Q | three or four quiet runs, ranges | 2026-11-13 | `5bf4d63` |
 | S | three quiet runs, ranges | 2026-11-14 | `95a19af` |
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
+| P2 | `bun tools/bench/corpses.ts`, three runs on a busy machine, ranges | 2026-11-15 | branch `r9/p2-corpses` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
 
@@ -70,6 +71,7 @@ garbage collector, and noise at this sample size (Q).
 | 40-player fight; quiet base; upstream | 17.4; 12.6; 0.53 KB/s | 34; 16; 2 | M |
 | Added by working nodes and items | 0.06 KB/s | 0.3 | M |
 | Used-up nodes told within 6 chunks, everyone working; per node used up | 93.5 B/s; 500 B | | D356 |
+| A hundred dodos dying in view: added to that second | 7,373 B | | P2 |
 | Used-up nodes told on joining at the fight; at most | 328 B; 27.9 KB | | D356 |
 | Brawl: 100 survivors and 400 creatures in an 18 m square | 31.8 KB/s | 36 | M |
 | Crowd: every survivor and 2,000 creatures | 31.6 KB/s | 36 | M |
@@ -109,6 +111,8 @@ the far feed delays no near chunk at any of six links, 50 ms clean to 180 ms wit
 | Far feed's share of a tick, 100 sessions; map bake of a 20,000-piece chunk | 0.020; 0.065 ms busy | 0.05; 0.5 | M |
 | Spawning 300,000 in 10,000 regions: most made a tick; spawner once held | 66; 0.39 µs | 66; 50 µs | M |
 | 500 hunters round a wall: path cells in the busiest tick | 1,000 | 1,000 | M |
+| A hundred dodos killed at once: bodies made and laid; their falls, a tick, median, worst; ticks until all lie still | 3.3 to 5.2; 0.58 to 0.63, 2.9 to 3.2 ms; 31 | 15; 3, 10; 300 | P2 |
+| The hundred at rest, worst tick; a swing's search among them; a blow's yield | 0.012 to 0.025; 0.030 to 0.037; 0.003 to 0.004 ms | 0.5; 0.05; 0.05 | P2 |
 
 ### Saves and starts
 
@@ -133,6 +137,8 @@ Core's frame build on this Mac's CPU, before the shell draws.
 | 50 damaged pieces a frame of a 20,000-piece chunk: median; bytes uploaded again | 0.05 ms; 0 | 1; 0 | Q; M |
 | A 1,512-piece house falling: take in, worst; build median, 99th | 0.33; 0.05, 0.07 ms | 1; 1.5, 3 | R4 |
 | 300 survivors posed: median, 99th | 0.50, 1.04 ms | 4, 8 | R4 |
+| A hundred dodos falling in view: their bodies' share, median, worst | 0.03 to 0.12, 0.77 to 3.9 ms | 3, 16 | P2 |
+| Coming upon the hundred: frames to lay them to rest; worst frame | 3; 3.4 to 4.7 ms | 30; 16 | P2 |
 | 512 bodies of a breeding base: median, 99th; bones; triangles | 0.49, 1.63 ms; 12,768; 1.07 M | 4, 8; 16,384; 1.5 M | R4; M |
 | 2,048 bodies on ultra: bones; triangles; median, 99th | 57,344; 3.31 M; 3.5, 6.3 ms busy | 65,536; none; 6, 12 | M |
 | 2,048 on medium: posed, rigid; triangles; median, 99th | 530, 1,518; 2.39 M; 1.8, 15.0 ms busy, missed | none; none; 6, 12 | M |

@@ -362,10 +362,13 @@ export class GameServer {
   onStep: ((tick: number) => void) | null = null;
   /** Called for each connected session just before its snapshot. */
   onReplicate: ((c: Client) => void) | null = null;
+  /** The shared view around a session as that session may be sent it, or the same view. */
+  viewFor: ((c: Client, cur: SentView) => SentView) | null = null;
   /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
   allows: ((c: Client, op: number) => boolean) | null = null;
-  /** speed is in metres per second. */
+  /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
+  onMountLand: ((e: number, speed: number) => void) | null = null;
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -466,7 +469,8 @@ export class GameServer {
       const e = driving ? c.drive : c.ent;
       if (e >= 0) {
         ents.loadBody(e, b);
-        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[b.kind]!, TICK_DT);
+        // A survivor's tamed numbers are its own. A body that is driven is a tame's.
+        stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.tamedMove[b.kind]!, TICK_DT);
         if (!driving) {
           // Hits are resolved later, once every body has moved.
           stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
@@ -483,7 +487,10 @@ export class GameServer {
         ents.storeBody(e, b);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
-        if (!driving && stepOut.landSpeed > 0) this.onLand?.(c, stepOut.landSpeed);
+        if (stepOut.landSpeed > 0) {
+          if (driving) this.onMountLand?.(e, stepOut.landSpeed);
+          else this.onLand?.(c, stepOut.landSpeed);
+        }
       } else {
         b.kind = c.kind;
         stepBody(world, b, c.heldX, c.heldZ, c.heldYaw, c.heldPitch, c.heldButtons, world.reg.move[c.kind]!, TICK_DT);
@@ -1144,7 +1151,7 @@ export class GameServer {
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
     const at = this.viewAround(c.chunk, T);
-    const cur = this.around[at]!;
+    const cur = this.viewFor ? this.viewFor(c, this.around[at]!) : this.around[at]!;
     // What it asked for takes effect once a second at most, so that it cannot have its view sent over and over.
     if ((c.wantView !== c.viewCap || c.wantBytes !== c.snapshotBytes) && T >= c.viewReadyAt) {
       c.viewCap = c.wantView;
