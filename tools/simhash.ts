@@ -71,4 +71,8 @@ export function nodeHash(): string {
   return scenarios.nodeHash(core());
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash());
+export function waterHash(ticks = 3000): string {
+  return scenarios.waterHash(core(), ticks);
+}
+
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash());
