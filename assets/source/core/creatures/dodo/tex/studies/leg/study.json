@@ -1,0 +1,1282 @@
+{
+  "schema": 2,
+  "round": 3,
+  "title": "Dodo cobbled shank, toe and polished claw material study",
+  "seed": 183207,
+  "normal_convention": "OpenGL +Y: N = normalize(-dH/dx, +dH/dimage_y, 1)",
+  "packed_channels": {
+    "R": "height-derived isotropic ambient occlusion",
+    "G": "roughness",
+    "B": "metalness (zero)"
+  },
+  "dye_math": "linear(base) * linear(dye) / 0.5",
+  "tiles_order": [
+    "across / x",
+    "down / y"
+  ],
+  "direction_degrees": 0,
+  "scale": 1.0,
+  "sources": [
+    {
+      "path": "source/r2_claw_generated.png",
+      "sha256": "a355d3710d40ed0673ae8daadc841d10b85acaa8a32a0047af42d8cdc42e7bf5",
+      "prompt": "source/r2_claw_final_prompt.txt",
+      "size": [
+        1254,
+        1254
+      ],
+      "method": "Built-in image generation; immutable original"
+    },
+    {
+      "path": "source/r3_shank_generated.png",
+      "sha256": "72571dbd5f85d66afc0ac15b63361d1dd175a4737040d38ef00d3212f6e40ec3",
+      "prompt": "source/r3_shank_prompt.txt",
+      "size": [
+        1254,
+        1254
+      ],
+      "method": "Built-in image generation; immutable original"
+    },
+    {
+      "path": "source/r3_toe_generated.png",
+      "sha256": "e2ce65ff280e9f0a112f05df1e6ae0b5b504eaabcd9f8461bef4774faa6260cb",
+      "prompt": "source/r3_toe_prompt.txt",
+      "size": [
+        1254,
+        1254
+      ],
+      "method": "Built-in image generation; immutable original"
+    }
+  ],
+  "sets": {
+    "shank": {
+      "size": 2048,
+      "span_m": 0.125,
+      "height_mm": 0.8,
+      "tiles": [
+        true,
+        true
+      ],
+      "regions": [
+        3
+      ],
+      "layout": "unequal irregular polygon scutes, no lattice; whole front half plated, smaller side plates, rear scales",
+      "large_plate_circumference_fraction": 0.5,
+      "side_plate_diameter_mm": [
+        3,
+        5
+      ],
+      "source_prompt": "source/r3_shank_prompt.txt",
+      "central_plate_dimensions_mm": [
+        [
+          6.96,
+          7.14
+        ],
+        [
+          6.84,
+          7.87
+        ],
+        [
+          6.41,
+          7.51
+        ],
+        [
+          8.54,
+          7.45
+        ],
+        [
+          6.53,
+          7.02
+        ],
+        [
+          7.69,
+          8.18
+        ],
+        [
+          5.98,
+          7.14
+        ],
+        [
+          7.08,
+          7.57
+        ],
+        [
+          5.62,
+          6.29
+        ],
+        [
+          6.47,
+          6.23
+        ],
+        [
+          8.06,
+          7.57
+        ],
+        [
+          8.85,
+          6.71
+        ],
+        [
+          7.93,
+          5.86
+        ],
+        [
+          8.18,
+          7.57
+        ],
+        [
+          6.35,
+          6.84
+        ],
+        [
+          9.16,
+          8.18
+        ],
+        [
+          8.73,
+          6.65
+        ],
+        [
+          7.39,
+          7.39
+        ],
+        [
+          8.0,
+          5.31
+        ],
+        [
+          7.63,
+          7.69
+        ],
+        [
+          8.91,
+          5.49
+        ],
+        [
+          7.32,
+          7.81
+        ],
+        [
+          8.06,
+          7.08
+        ],
+        [
+          6.59,
+          6.41
+        ],
+        [
+          6.96,
+          6.41
+        ],
+        [
+          6.53,
+          8.48
+        ],
+        [
+          9.03,
+          6.9
+        ],
+        [
+          7.26,
+          7.08
+        ],
+        [
+          7.14,
+          8.12
+        ],
+        [
+          7.57,
+          7.39
+        ],
+        [
+          9.03,
+          7.08
+        ],
+        [
+          6.16,
+          6.53
+        ],
+        [
+          7.75,
+          7.39
+        ],
+        [
+          5.86,
+          7.87
+        ],
+        [
+          6.71,
+          8.0
+        ],
+        [
+          5.31,
+          5.74
+        ],
+        [
+          8.36,
+          7.51
+        ],
+        [
+          7.63,
+          6.65
+        ],
+        [
+          6.35,
+          7.87
+        ],
+        [
+          6.84,
+          7.45
+        ],
+        [
+          6.71,
+          7.08
+        ],
+        [
+          6.41,
+          5.92
+        ],
+        [
+          7.02,
+          9.22
+        ],
+        [
+          7.39,
+          6.65
+        ],
+        [
+          6.71,
+          7.2
+        ],
+        [
+          7.75,
+          8.06
+        ],
+        [
+          7.51,
+          6.71
+        ],
+        [
+          8.12,
+          7.08
+        ],
+        [
+          7.08,
+          8.3
+        ],
+        [
+          8.79,
+          7.02
+        ],
+        [
+          5.98,
+          7.81
+        ],
+        [
+          8.36,
+          6.23
+        ],
+        [
+          8.79,
+          9.4
+        ],
+        [
+          8.36,
+          8.06
+        ],
+        [
+          6.9,
+          7.51
+        ],
+        [
+          8.97,
+          8.48
+        ],
+        [
+          8.0,
+          6.84
+        ],
+        [
+          6.53,
+          6.71
+        ],
+        [
+          6.29,
+          6.47
+        ],
+        [
+          8.3,
+          6.96
+        ],
+        [
+          6.41,
+          9.09
+        ],
+        [
+          5.92,
+          8.3
+        ],
+        [
+          7.14,
+          8.36
+        ],
+        [
+          8.54,
+          5.8
+        ],
+        [
+          5.74,
+          8.06
+        ],
+        [
+          7.51,
+          7.26
+        ],
+        [
+          6.35,
+          8.85
+        ],
+        [
+          7.69,
+          7.75
+        ],
+        [
+          8.0,
+          7.87
+        ],
+        [
+          7.45,
+          6.41
+        ],
+        [
+          7.2,
+          8.42
+        ],
+        [
+          6.59,
+          5.68
+        ],
+        [
+          8.61,
+          6.1
+        ],
+        [
+          7.32,
+          7.57
+        ],
+        [
+          6.47,
+          7.93
+        ],
+        [
+          7.32,
+          7.63
+        ],
+        [
+          8.85,
+          7.32
+        ],
+        [
+          9.64,
+          8.73
+        ],
+        [
+          7.32,
+          6.23
+        ],
+        [
+          8.97,
+          7.14
+        ],
+        [
+          8.24,
+          8.06
+        ],
+        [
+          8.42,
+          9.34
+        ],
+        [
+          7.81,
+          5.98
+        ],
+        [
+          6.96,
+          6.96
+        ],
+        [
+          7.57,
+          7.2
+        ],
+        [
+          6.29,
+          9.22
+        ],
+        [
+          5.13,
+          7.02
+        ],
+        [
+          5.49,
+          7.87
+        ],
+        [
+          6.1,
+          6.65
+        ],
+        [
+          6.65,
+          7.2
+        ],
+        [
+          6.77,
+          8.91
+        ],
+        [
+          6.16,
+          6.53
+        ],
+        [
+          5.68,
+          6.65
+        ],
+        [
+          6.35,
+          7.93
+        ],
+        [
+          7.39,
+          7.87
+        ],
+        [
+          6.84,
+          6.77
+        ],
+        [
+          8.3,
+          6.84
+        ],
+        [
+          7.08,
+          7.63
+        ],
+        [
+          6.77,
+          6.41
+        ],
+        [
+          5.74,
+          6.04
+        ],
+        [
+          7.32,
+          6.96
+        ],
+        [
+          7.14,
+          6.23
+        ],
+        [
+          7.02,
+          7.75
+        ],
+        [
+          7.69,
+          6.84
+        ],
+        [
+          8.0,
+          5.86
+        ],
+        [
+          8.24,
+          7.81
+        ],
+        [
+          7.81,
+          6.23
+        ],
+        [
+          6.53,
+          7.63
+        ],
+        [
+          6.84,
+          6.1
+        ],
+        [
+          8.06,
+          7.39
+        ],
+        [
+          7.93,
+          6.53
+        ],
+        [
+          5.74,
+          7.08
+        ],
+        [
+          6.41,
+          5.55
+        ],
+        [
+          6.35,
+          5.55
+        ],
+        [
+          8.73,
+          6.47
+        ],
+        [
+          7.14,
+          8.42
+        ],
+        [
+          5.8,
+          6.47
+        ],
+        [
+          6.16,
+          5.07
+        ],
+        [
+          7.45,
+          7.2
+        ],
+        [
+          5.74,
+          5.0
+        ],
+        [
+          6.96,
+          6.59
+        ],
+        [
+          4.7,
+          6.41
+        ],
+        [
+          6.77,
+          5.37
+        ],
+        [
+          7.02,
+          6.47
+        ],
+        [
+          6.65,
+          5.62
+        ],
+        [
+          5.62,
+          6.96
+        ],
+        [
+          6.04,
+          6.71
+        ],
+        [
+          5.49,
+          4.33
+        ]
+      ],
+      "element_boxes": [
+        [
+          674,
+          128,
+          798,
+          255
+        ],
+        [
+          805,
+          402,
+          922,
+          551
+        ],
+        [
+          852,
+          707,
+          960,
+          845
+        ],
+        [
+          1256,
+          993,
+          1411,
+          1123
+        ],
+        [
+          472,
+          1260,
+          599,
+          1372
+        ],
+        [
+          1311,
+          1547,
+          1411,
+          1628
+        ]
+      ],
+      "pebble_diameter_mm": [
+        1.5,
+        3
+      ],
+      "relief_method": "distance from source crease network; soft rounded shoulders; 3 micron maximum grain",
+      "base_method": "generated intrinsic crease and grain drawing, directional XY and broad exposure removed",
+      "cutout": false,
+      "height_used_mm": [
+        0.08745250850915909,
+        0.4734935760498047
+      ],
+      "direction": "top=root, bottom=tip",
+      "source": "source/r3_shank_generated.png",
+      "files": {
+        "base": "shank_base.png",
+        "height": "shank_height.png",
+        "normal": "shank_normal.png",
+        "packed": "shank_packed.png",
+        "regions": "shank_regions.png"
+      },
+      "elements": [
+        {
+          "name": "shank_plate_01",
+          "box_px": [
+            674,
+            128,
+            798,
+            255
+          ],
+          "root_px": [
+            736,
+            128
+          ],
+          "tip_px": [
+            736,
+            254
+          ],
+          "source_set": "shank",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.007568359375,
+            0.00775146484375
+          ]
+        },
+        {
+          "name": "shank_plate_02",
+          "box_px": [
+            805,
+            402,
+            922,
+            551
+          ],
+          "root_px": [
+            863,
+            402
+          ],
+          "tip_px": [
+            863,
+            550
+          ],
+          "source_set": "shank",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.00714111328125,
+            0.00909423828125
+          ]
+        },
+        {
+          "name": "shank_plate_03",
+          "box_px": [
+            852,
+            707,
+            960,
+            845
+          ],
+          "root_px": [
+            906,
+            707
+          ],
+          "tip_px": [
+            906,
+            844
+          ],
+          "source_set": "shank",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.006591796875,
+            0.0084228515625
+          ]
+        },
+        {
+          "name": "shank_plate_04",
+          "box_px": [
+            1256,
+            993,
+            1411,
+            1123
+          ],
+          "root_px": [
+            1333,
+            993
+          ],
+          "tip_px": [
+            1333,
+            1122
+          ],
+          "source_set": "shank",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.00946044921875,
+            0.0079345703125
+          ]
+        },
+        {
+          "name": "shank_plate_05",
+          "box_px": [
+            472,
+            1260,
+            599,
+            1372
+          ],
+          "root_px": [
+            535,
+            1260
+          ],
+          "tip_px": [
+            535,
+            1371
+          ],
+          "source_set": "shank",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.00775146484375,
+            0.0068359375
+          ]
+        },
+        {
+          "name": "shank_plate_06",
+          "box_px": [
+            1311,
+            1547,
+            1411,
+            1628
+          ],
+          "root_px": [
+            1361,
+            1547
+          ],
+          "tip_px": [
+            1361,
+            1627
+          ],
+          "source_set": "shank",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.006103515625,
+            0.00494384765625
+          ]
+        }
+      ]
+    },
+    "toe": {
+      "size": 1024,
+      "span_m": 0.06,
+      "height_mm": 0.7,
+      "tiles": [
+        true,
+        true
+      ],
+      "regions": [
+        3
+      ],
+      "layout": "unequal irregular polygon scutes, no lattice; whole front half plated, smaller side plates, rear scales",
+      "large_plate_circumference_fraction": 0.7,
+      "side_plate_diameter_mm": [
+        3,
+        5
+      ],
+      "source_prompt": "source/r3_toe_prompt.txt",
+      "central_plate_dimensions_mm": [
+        [
+          5.21,
+          5.33
+        ],
+        [
+          5.74,
+          4.51
+        ],
+        [
+          4.45,
+          4.45
+        ],
+        [
+          5.45,
+          5.33
+        ],
+        [
+          4.34,
+          4.39
+        ],
+        [
+          3.93,
+          5.16
+        ],
+        [
+          5.04,
+          5.8
+        ],
+        [
+          5.21,
+          4.98
+        ],
+        [
+          6.04,
+          5.74
+        ],
+        [
+          5.98,
+          5.21
+        ],
+        [
+          5.27,
+          4.51
+        ],
+        [
+          5.74,
+          7.38
+        ],
+        [
+          4.63,
+          4.98
+        ],
+        [
+          6.27,
+          6.09
+        ],
+        [
+          4.51,
+          3.98
+        ],
+        [
+          5.16,
+          6.27
+        ],
+        [
+          6.09,
+          6.27
+        ],
+        [
+          4.8,
+          4.57
+        ],
+        [
+          4.63,
+          3.52
+        ],
+        [
+          5.8,
+          5.45
+        ],
+        [
+          6.97,
+          7.03
+        ],
+        [
+          5.92,
+          5.27
+        ],
+        [
+          3.98,
+          5.04
+        ],
+        [
+          5.27,
+          4.63
+        ],
+        [
+          4.63,
+          4.57
+        ],
+        [
+          5.27,
+          3.93
+        ],
+        [
+          5.57,
+          5.92
+        ],
+        [
+          6.45,
+          6.91
+        ],
+        [
+          4.92,
+          5.74
+        ],
+        [
+          4.63,
+          5.16
+        ],
+        [
+          5.04,
+          5.57
+        ],
+        [
+          4.86,
+          3.98
+        ],
+        [
+          5.57,
+          4.57
+        ],
+        [
+          4.92,
+          5.8
+        ],
+        [
+          5.39,
+          6.8
+        ],
+        [
+          4.86,
+          4.63
+        ],
+        [
+          5.74,
+          5.74
+        ],
+        [
+          4.86,
+          4.51
+        ],
+        [
+          4.75,
+          5.45
+        ],
+        [
+          4.98,
+          5.39
+        ],
+        [
+          4.98,
+          5.51
+        ],
+        [
+          3.98,
+          3.57
+        ],
+        [
+          4.8,
+          5.39
+        ],
+        [
+          5.57,
+          5.92
+        ],
+        [
+          4.34,
+          4.8
+        ],
+        [
+          5.62,
+          5.16
+        ],
+        [
+          5.86,
+          6.09
+        ],
+        [
+          3.81,
+          3.22
+        ],
+        [
+          4.39,
+          4.28
+        ],
+        [
+          5.1,
+          3.69
+        ],
+        [
+          4.34,
+          6.04
+        ],
+        [
+          4.69,
+          4.39
+        ],
+        [
+          4.04,
+          4.1
+        ],
+        [
+          4.75,
+          5.1
+        ],
+        [
+          4.51,
+          4.63
+        ],
+        [
+          4.98,
+          3.93
+        ],
+        [
+          5.51,
+          4.75
+        ]
+      ],
+      "element_boxes": [
+        [
+          511,
+          47,
+          610,
+          148
+        ],
+        [
+          450,
+          189,
+          558,
+          325
+        ],
+        [
+          296,
+          324,
+          374,
+          420
+        ],
+        [
+          511,
+          471,
+          605,
+          580
+        ],
+        [
+          304,
+          608,
+          388,
+          700
+        ],
+        [
+          694,
+          747,
+          798,
+          838
+        ]
+      ],
+      "pebble_diameter_mm": [
+        1,
+        2
+      ],
+      "relief_method": "distance from source crease network; soft rounded shoulders; 3 micron maximum grain",
+      "base_method": "generated intrinsic crease and grain drawing, directional XY and broad exposure removed",
+      "cutout": false,
+      "height_used_mm": [
+        0.08718089759349823,
+        0.45732051134109497
+      ],
+      "direction": "top=root, bottom=tip",
+      "source": "source/r3_toe_generated.png",
+      "files": {
+        "base": "toe_base.png",
+        "height": "toe_height.png",
+        "normal": "toe_normal.png",
+        "packed": "toe_packed.png",
+        "regions": "toe_regions.png"
+      },
+      "elements": [
+        {
+          "name": "toe_plate_01",
+          "box_px": [
+            511,
+            47,
+            610,
+            148
+          ],
+          "root_px": [
+            560,
+            47
+          ],
+          "tip_px": [
+            560,
+            147
+          ],
+          "source_set": "toe",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.0058007812499999995,
+            0.00591796875
+          ]
+        },
+        {
+          "name": "toe_plate_02",
+          "box_px": [
+            450,
+            189,
+            558,
+            325
+          ],
+          "root_px": [
+            504,
+            189
+          ],
+          "tip_px": [
+            504,
+            324
+          ],
+          "source_set": "toe",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.0063281249999999995,
+            0.00796875
+          ]
+        },
+        {
+          "name": "toe_plate_03",
+          "box_px": [
+            296,
+            324,
+            374,
+            420
+          ],
+          "root_px": [
+            335,
+            324
+          ],
+          "tip_px": [
+            335,
+            419
+          ],
+          "source_set": "toe",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.0045703125,
+            0.005625
+          ]
+        },
+        {
+          "name": "toe_plate_04",
+          "box_px": [
+            511,
+            471,
+            605,
+            580
+          ],
+          "root_px": [
+            558,
+            471
+          ],
+          "tip_px": [
+            558,
+            579
+          ],
+          "source_set": "toe",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.0055078125,
+            0.00638671875
+          ]
+        },
+        {
+          "name": "toe_plate_05",
+          "box_px": [
+            304,
+            608,
+            388,
+            700
+          ],
+          "root_px": [
+            346,
+            608
+          ],
+          "tip_px": [
+            346,
+            699
+          ],
+          "source_set": "toe",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.004921875,
+            0.005390625
+          ]
+        },
+        {
+          "name": "toe_plate_06",
+          "box_px": [
+            694,
+            747,
+            798,
+            838
+          ],
+          "root_px": [
+            746,
+            747
+          ],
+          "tip_px": [
+            746,
+            837
+          ],
+          "source_set": "toe",
+          "cutout": false,
+          "usage": "Aligned plate context patch; includes the soft rim and neighbouring crease.",
+          "span_m": [
+            0.00609375,
+            0.00533203125
+          ]
+        }
+      ]
+    },
+    "claw": {
+      "size": 1024,
+      "span_m": 0.03,
+      "height_mm": 0.08,
+      "tiles": [
+        true,
+        false
+      ],
+      "regions": [],
+      "root": "top",
+      "worn_tip": "bottom",
+      "growth_lines": "five faint wandering longitudinal traces; smooth analytic growth relief, no height noise",
+      "deliberate_pigment_gradient": "Full-length sRGB mean 70 at root to 130 at worn tip; undyed grey-brown horn.",
+      "root_srgb": [
+        77,
+        70,
+        63
+      ],
+      "tip_srgb": [
+        136,
+        131,
+        123
+      ],
+      "cutout": false,
+      "height_used_mm": [
+        0.024460822343826294,
+        0.06131929159164429
+      ],
+      "direction": "top=root, bottom=tip",
+      "source": "source/r2_claw_generated.png",
+      "files": {
+        "base": "claw_base.png",
+        "height": "claw_height.png",
+        "normal": "claw_normal.png",
+        "packed": "claw_packed.png",
+        "regions": "claw_regions.png"
+      },
+      "elements": []
+    }
+  }
+}

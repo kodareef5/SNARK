@@ -1,0 +1,121 @@
+{
+  "size_px": 1024,
+  "eye": {
+    "span_m": 0.026,
+    "height_mm": 0.01,
+    "tiles": {
+      "x": false,
+      "y": false
+    },
+    "iris_diameter_m": 0.022,
+    "pupil_diameter_fraction": 0.13636363636363635,
+    "straw_srgb": [
+      182,
+      163,
+      99
+    ],
+    "rim_srgb": [
+      107,
+      104,
+      61
+    ],
+    "cornea_roughness": 0.075,
+    "source_center_yx": [
+      621,
+      622
+    ],
+    "source_pupil_radius_px": 64,
+    "source_iris_radius_px": 614,
+    "source_rotation_degrees": 0,
+    "source_file": "iris_round2_refined_original.png",
+    "pigment_detail_strength": 0.72,
+    "fleck_seed": 22186,
+    "flecks_per_mm2": 3.5,
+    "fleck_radius_mm": 0.025
+  },
+  "lid": {
+    "span_m": 0.03,
+    "height_mm": 1.6,
+    "tiles": {
+      "x": false,
+      "y": false
+    },
+    "source_file": "lid_round3_original.png",
+    "cell_scale": 1.65,
+    "cell_relief_mm": 0.105,
+    "fold_relief_mm": 0.7,
+    "rim_width_m": 0.001,
+    "rim_lift_mm": 0.35,
+    "rim_center_v": 0.963,
+    "flat_border_px": 12,
+    "skin_roughness": 0.46,
+    "rim_roughness": 0.25,
+    "anatomical_pigment": true,
+    "reverse_along_lid": false,
+    "source_fold_paths": [
+      [
+        [
+          0.08,
+          0.55
+        ],
+        [
+          0.22,
+          0.59
+        ],
+        [
+          0.43,
+          0.51
+        ],
+        [
+          0.66,
+          0.45
+        ],
+        [
+          0.94,
+          0.42
+        ]
+      ],
+      [
+        [
+          0.13,
+          0.64
+        ],
+        [
+          0.28,
+          0.68
+        ],
+        [
+          0.44,
+          0.64
+        ],
+        [
+          0.64,
+          0.58
+        ],
+        [
+          0.8,
+          0.55
+        ]
+      ],
+      [
+        [
+          0.34,
+          0.8
+        ],
+        [
+          0.52,
+          0.79
+        ],
+        [
+          0.72,
+          0.78
+        ],
+        [
+          0.87,
+          0.79
+        ]
+      ]
+    ],
+    "cell_rounding_mm": 0.088
+  }
+}

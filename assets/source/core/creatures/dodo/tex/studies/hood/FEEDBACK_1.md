@@ -1,0 +1,10 @@
+# Hood study, round 1: sent back
+
+The numbers are right (mean grey 0.500, neutral, normal against height 1.00, seams under 1.0), and the layouts are well organised with their own placement files. But none of the four sets yet reads as the concept's hood, so please do them again. The attached sheets are my review, and `concept_hood.png` is the concept's cap, edge and mane enlarged.
+
+- **The base colours are flat, and the cap vanishes.** Dyed umber and relit, the cap reads as crumpled paper up close and as a flat brown sheet at the concept's scale. Read the new section "Where the drawing lives" in `tex/studies/COMMON.md`. The concept's cap is a dense plush of small, soft feathers that you can see at every size: each little feather has a fuzzy tip a touch paler than its darker base, the tips catch the light, and the dark between them gives the cap its velvety, fluffy texture. That value belongs in the base, with soft but real relief in the height.
+- **The relief is too weak and too smooth.** Each cap feather should be a soft little tuft with fine barbs, not a flat leaf pressed into the surface. Look at the concept's crown in `head_side.png`: a soft, deep, touchable plush.
+- **The mane reads as pressed leaves.** In the concept it is long, lank feathers with a fine shaft, soft strands that catch the light, and tips that separate. Fine light and dark strands in the base, real strand relief in the height.
+- **The cards are blobs and leaves.** The edge tufts are tiny round blobs and the mane cards have smooth leaf outlines. In the concept the hood's edge breaks into wispy tufts: clusters of small soft feathers whose ends split into fine strands lying over the skin. The cut-out edge must be strands and barb tips at the cards' size on the bird (a quarter of the sheet), not a smooth outline. Make the tufts larger and wispier and the mane feathers fringed.
+
+Same sets, names and scales; update the report for this round. Before you stop, set the cap and the mane dyed umber and relit beside the concept's crown and nape at the concept's size, and the cards at a quarter size over a rose patch: a stranger should see the same plush cap and ragged edge.

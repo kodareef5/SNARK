@@ -1,0 +1,1187 @@
+{
+  "schema_version": 2,
+  "round": 3,
+  "study": "hood",
+  "seed": 419071,
+  "region": 4,
+  "default_dye": "#413225",
+  "generated_with": "built-in image_gen; four accepted source atlases; all prepared layers rebuilt from originals",
+  "source_atlas_native_sizes_px": {
+    "cap_plush_r3_original.png": [
+      1448,
+      1086
+    ],
+    "mane_full_r2_original.png": [
+      1536,
+      1024
+    ],
+    "mane_r2_original.png": [
+      1254,
+      1254
+    ],
+    "cap_r2_original.png": [
+      1254,
+      1254
+    ]
+  },
+  "source_manifest": "source/feathers.json",
+  "units": "metres for span; millimetres for full black-to-white height; pixels for landmarks",
+  "coordinate_system": "origin upper left; +x right; +y down; boxes [left,top,right,bottom), root to tip",
+  "build_parameters": {
+    "scale": 1.0,
+    "direction_degrees": 0.0
+  },
+  "rebuilt_sets": [
+    "cap",
+    "cap_to_mane",
+    "hood_cards",
+    "mane"
+  ],
+  "accepted_hashes": "accepted_hashes.json",
+  "sets": {
+    "cap": {
+      "span_m": 0.284,
+      "tiles": true,
+      "tile_axes": {
+        "x": true,
+        "y": true
+      },
+      "cutout": false,
+      "height_mm": 3.2,
+      "regions": [
+        4
+      ],
+      "size_px": [
+        2048,
+        2048
+      ],
+      "mean_linear": 0.4999971424766417,
+      "roughness_mean": 0.9107686877250671,
+      "intrinsic_value_std": 0.18431049585342407,
+      "value_variance_retained": 0.8940698504447937,
+      "removed_directional_coefficients": [
+        -0.0015683908852382404,
+        -0.3138434870157853,
+        -0.9044572200214812
+      ],
+      "broad_exposure_coefficients": [
+        0.002747958394797868,
+        0.005874231880893411,
+        -0.006487343532147948
+      ],
+      "normal_convention": "OpenGL +Y; Ny = +dH/d(pixel-down)",
+      "alpha_cutoff": null,
+      "files": {
+        "base": "cap_base.png",
+        "height": "cap_height.png",
+        "normal": "cap_normal.png",
+        "packed": "cap_packed.png",
+        "regions": "cap_regions.png"
+      },
+      "feather_instances": 3600
+    },
+    "mane": {
+      "span_m": 0.284,
+      "tiles": true,
+      "tile_axes": {
+        "x": true,
+        "y": true
+      },
+      "cutout": false,
+      "height_mm": 4.2,
+      "regions": [
+        4
+      ],
+      "size_px": [
+        2048,
+        2048
+      ],
+      "mean_linear": 0.5000018267940773,
+      "roughness_mean": 0.9108629822731018,
+      "intrinsic_value_std": 0.12847723066806793,
+      "value_variance_retained": 0.9349913597106934,
+      "removed_directional_coefficients": [
+        -0.0014777977323678806,
+        -0.2141548913256371,
+        -0.3390376055149515
+      ],
+      "broad_exposure_coefficients": [
+        -0.0011133718483197423,
+        -0.00017561932737547117,
+        0.007319507390338425
+      ],
+      "normal_convention": "OpenGL +Y; Ny = +dH/d(pixel-down)",
+      "alpha_cutoff": null,
+      "files": {
+        "base": "mane_base.png",
+        "height": "mane_height.png",
+        "normal": "mane_normal.png",
+        "packed": "mane_packed.png",
+        "regions": "mane_regions.png"
+      },
+      "feather_instances": 350
+    },
+    "cap_to_mane": {
+      "span_m": 0.284,
+      "tiles": false,
+      "tile_axes": {
+        "x": true,
+        "y": false
+      },
+      "cutout": false,
+      "height_mm": 3.8,
+      "regions": [
+        4
+      ],
+      "size_px": [
+        2048,
+        2048
+      ],
+      "mean_linear": 0.5000004385307162,
+      "roughness_mean": 0.9107999801635742,
+      "intrinsic_value_std": 0.1635970026254654,
+      "value_variance_retained": 0.9172315001487732,
+      "removed_directional_coefficients": [
+        -0.0049444286346197195,
+        -0.238548375056607,
+        -0.5207341522925296
+      ],
+      "broad_exposure_coefficients": [
+        -0.000320384623902616,
+        0.020195774566944574,
+        -0.0014005007108334397
+      ],
+      "normal_convention": "OpenGL +Y; Ny = +dH/d(pixel-down)",
+      "alpha_cutoff": null,
+      "files": {
+        "base": "cap_to_mane_base.png",
+        "height": "cap_to_mane_height.png",
+        "normal": "cap_to_mane_normal.png",
+        "packed": "cap_to_mane_packed.png",
+        "regions": "cap_to_mane_regions.png"
+      },
+      "feather_instances": 2115
+    },
+    "hood_cards": {
+      "span_m": 0.341,
+      "tiles": false,
+      "tile_axes": {
+        "x": false,
+        "y": false
+      },
+      "cutout": true,
+      "height_mm": 4.2,
+      "regions": [
+        4
+      ],
+      "size_px": [
+        2048,
+        2048
+      ],
+      "mean_linear": 0.5000034762961786,
+      "roughness_mean": 0.9109837412834167,
+      "intrinsic_value_std": 0.12221593409776688,
+      "value_variance_retained": 0.7660815715789795,
+      "removed_directional_coefficients": [
+        -0.010570024073040106,
+        -0.11479808243672995,
+        -0.3310457103469445
+      ],
+      "broad_exposure_coefficients": [
+        -0.0028854430017023406,
+        -0.0040541398708028925,
+        0.003360779857702273
+      ],
+      "normal_convention": "OpenGL +Y; Ny = +dH/d(pixel-down)",
+      "alpha_cutoff": 0.5,
+      "files": {
+        "base": "hood_cards_base.png",
+        "height": "hood_cards_height.png",
+        "normal": "hood_cards_normal.png",
+        "packed": "hood_cards_packed.png",
+        "regions": "hood_cards_regions.png"
+      },
+      "elements": [
+        {
+          "id": "edge_tuft_01",
+          "kind": "edge_tuft",
+          "box_px": [
+            149,
+            131,
+            256,
+            241
+          ],
+          "root_px": [
+            203.29,
+            133.33
+          ],
+          "tip_px": [
+            190.54,
+            237.3
+          ],
+          "feather_count": 2,
+          "feathers": [
+            "cap_r2_01",
+            "cap_r2_02"
+          ],
+          "placements": [
+            {
+              "source": 28,
+              "x": 190.0,
+              "y": 185.5,
+              "length_mm": 17.877391507562834,
+              "width_mm": 13.320954329203051,
+              "angle_deg": 1.8963604385279869,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 29,
+              "x": 220.0,
+              "y": 185.5,
+              "length_mm": 16.048344508116514,
+              "width_mm": 11.65480157728755,
+              "angle_deg": -1.8554245970922771,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "edge_tuft_02",
+          "kind": "edge_tuft",
+          "box_px": [
+            540,
+            122,
+            686,
+            247
+          ],
+          "root_px": [
+            613.3,
+            146.74
+          ],
+          "tip_px": [
+            584.96,
+            241.86
+          ],
+          "feather_count": 3,
+          "feathers": [
+            "cap_r2_06",
+            "cap_r2_07",
+            "cap_r2_08"
+          ],
+          "placements": [
+            {
+              "source": 33,
+              "x": 585.0,
+              "y": 181.0,
+              "length_mm": 19.907069230970492,
+              "width_mm": 15.269570286426914,
+              "angle_deg": 18.735031035806855,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 34,
+              "x": 615.0,
+              "y": 190.0,
+              "length_mm": 14.663397593500033,
+              "width_mm": 8.787159196172288,
+              "angle_deg": 5.732093829086772,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 35,
+              "x": 645.0,
+              "y": 181.0,
+              "length_mm": 15.384767385433145,
+              "width_mm": 11.253301298191802,
+              "angle_deg": -15.055090588487134,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "edge_tuft_03",
+          "kind": "edge_tuft",
+          "box_px": [
+            947,
+            131,
+            1098,
+            239
+          ],
+          "root_px": [
+            1027.74,
+            135.05
+          ],
+          "tip_px": [
+            991.31,
+            235.17
+          ],
+          "feather_count": 4,
+          "feathers": [
+            "cap_r2_11",
+            "cap_r2_12",
+            "cap_r2_01",
+            "cap_r2_02"
+          ],
+          "placements": [
+            {
+              "source": 38,
+              "x": 980.0,
+              "y": 176.5,
+              "length_mm": 15.183662969128866,
+              "width_mm": 10.246613782195343,
+              "angle_deg": 16.47296785865624,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 39,
+              "x": 1010.0,
+              "y": 185.5,
+              "length_mm": 18.22491612929623,
+              "width_mm": 11.335517660880523,
+              "angle_deg": 11.930495527410873,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 28,
+              "x": 1040.0,
+              "y": 185.5,
+              "length_mm": 15.716449055110065,
+              "width_mm": 11.599973608996734,
+              "angle_deg": -6.0738552555981755,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 29,
+              "x": 1070.0,
+              "y": 176.5,
+              "length_mm": 14.739306299210266,
+              "width_mm": 9.570100366729204,
+              "angle_deg": -15.95767215490643,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "forehead_point_04",
+          "kind": "forehead_point",
+          "box_px": [
+            1335,
+            119,
+            1549,
+            250
+          ],
+          "root_px": [
+            1429.8,
+            131.2
+          ],
+          "tip_px": [
+            1454.82,
+            246.83
+          ],
+          "feather_count": 5,
+          "feathers": [
+            "cap_r2_04",
+            "cap_r2_05",
+            "cap_r2_06",
+            "cap_r2_07",
+            "cap_r2_08"
+          ],
+          "placements": [
+            {
+              "source": 31,
+              "x": 1375.0,
+              "y": 172.0,
+              "length_mm": 17.99606918467355,
+              "width_mm": 11.130940749314936,
+              "angle_deg": 22.701432103709866,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 32,
+              "x": 1405.0,
+              "y": 181.0,
+              "length_mm": 19.17387327550098,
+              "width_mm": 14.536894074729911,
+              "angle_deg": 15.447058915736132,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 33,
+              "x": 1435.0,
+              "y": 190.0,
+              "length_mm": 20.06445831964446,
+              "width_mm": 12.273572095507234,
+              "angle_deg": -4.128959102476149,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 34,
+              "x": 1465.0,
+              "y": 181.0,
+              "length_mm": 18.98486720538227,
+              "width_mm": 13.065276934416644,
+              "angle_deg": -13.627812420785196,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 35,
+              "x": 1495.0,
+              "y": 172.0,
+              "length_mm": 18.489273756633057,
+              "width_mm": 13.672957908095423,
+              "angle_deg": -25.829801211005403,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "edge_tuft_05",
+          "kind": "edge_tuft",
+          "box_px": [
+            1780,
+            121,
+            1918,
+            243
+          ],
+          "root_px": [
+            1860.1,
+            141.09
+          ],
+          "tip_px": [
+            1846.86,
+            238.77
+          ],
+          "feather_count": 3,
+          "feathers": [
+            "cap_r2_09",
+            "cap_r2_10",
+            "cap_r2_11"
+          ],
+          "placements": [
+            {
+              "source": 36,
+              "x": 1815.0,
+              "y": 181.0,
+              "length_mm": 15.034006343358278,
+              "width_mm": 10.631498087330137,
+              "angle_deg": 11.482841147103475,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 37,
+              "x": 1845.0,
+              "y": 190.0,
+              "length_mm": 17.035272114792193,
+              "width_mm": 9.950985391973745,
+              "angle_deg": 4.0047885806344095,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 38,
+              "x": 1875.0,
+              "y": 181.0,
+              "length_mm": 19.379847943980188,
+              "width_mm": 12.112404226358542,
+              "angle_deg": -13.617660542794974,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "edge_tuft_06",
+          "kind": "edge_tuft",
+          "box_px": [
+            130,
+            473,
+            287,
+            596
+          ],
+          "root_px": [
+            188.93,
+            480.65
+          ],
+          "tip_px": [
+            216.1,
+            591.93
+          ],
+          "feather_count": 4,
+          "feathers": [
+            "cap_r2_02",
+            "cap_r2_03",
+            "cap_r2_04",
+            "cap_r2_05"
+          ],
+          "placements": [
+            {
+              "source": 29,
+              "x": 160.0,
+              "y": 526.5,
+              "length_mm": 17.378396132981152,
+              "width_mm": 10.1459529727273,
+              "angle_deg": 15.485024364120308,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 30,
+              "x": 190.0,
+              "y": 535.5,
+              "length_mm": 18.66410178871032,
+              "width_mm": 12.61555715149196,
+              "angle_deg": 4.288746798656684,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 31,
+              "x": 220.0,
+              "y": 535.5,
+              "length_mm": 19.465861938320135,
+              "width_mm": 11.835576141421035,
+              "angle_deg": -3.6901505316595364,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 32,
+              "x": 250.0,
+              "y": 526.5,
+              "length_mm": 15.791036882670985,
+              "width_mm": 11.70740390782528,
+              "angle_deg": -22.426652571859986,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "edge_tuft_07",
+          "kind": "edge_tuft",
+          "box_px": [
+            568,
+            483,
+            667,
+            589
+          ],
+          "root_px": [
+            614.17,
+            494.47
+          ],
+          "tip_px": [
+            632.58,
+            583.29
+          ],
+          "feather_count": 2,
+          "feathers": [
+            "cap_r2_07",
+            "cap_r2_08"
+          ],
+          "placements": [
+            {
+              "source": 34,
+              "x": 600.0,
+              "y": 535.5,
+              "length_mm": 14.682100402369684,
+              "width_mm": 9.427263723846341,
+              "angle_deg": 10.499586418365645,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 35,
+              "x": 630.0,
+              "y": 535.5,
+              "length_mm": 16.797348727100076,
+              "width_mm": 12.00514530993315,
+              "angle_deg": -9.407587143208058,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "forehead_point_08",
+          "kind": "forehead_point",
+          "box_px": [
+            927,
+            466,
+            1120,
+            602
+          ],
+          "root_px": [
+            1016.31,
+            481.72
+          ],
+          "tip_px": [
+            1025.32,
+            598.21
+          ],
+          "feather_count": 5,
+          "feathers": [
+            "cap_r2_12",
+            "cap_r2_01",
+            "cap_r2_02",
+            "cap_r2_03",
+            "cap_r2_04"
+          ],
+          "placements": [
+            {
+              "source": 39,
+              "x": 965.0,
+              "y": 522.0,
+              "length_mm": 18.60948297220076,
+              "width_mm": 11.022812712610769,
+              "angle_deg": 21.41374647675321,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 28,
+              "x": 995.0,
+              "y": 531.0,
+              "length_mm": 19.368503113156912,
+              "width_mm": 13.696986658571108,
+              "angle_deg": 9.891230819346031,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 29,
+              "x": 1025.0,
+              "y": 540.0,
+              "length_mm": 20.065327811801907,
+              "width_mm": 12.266799199395368,
+              "angle_deg": -3.671644593514763,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 30,
+              "x": 1055.0,
+              "y": 531.0,
+              "length_mm": 19.36452533713479,
+              "width_mm": 13.89882105799543,
+              "angle_deg": -14.79055043167009,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 31,
+              "x": 1085.0,
+              "y": 522.0,
+              "length_mm": 18.29442008447779,
+              "width_mm": 10.947553621741482,
+              "angle_deg": -20.40015967784637,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "edge_tuft_09",
+          "kind": "edge_tuft",
+          "box_px": [
+            1367,
+            478,
+            1497,
+            589
+          ],
+          "root_px": [
+            1440.24,
+            492.26
+          ],
+          "tip_px": [
+            1416.08,
+            585.74
+          ],
+          "feather_count": 3,
+          "feathers": [
+            "cap_r2_05",
+            "cap_r2_06",
+            "cap_r2_07"
+          ],
+          "placements": [
+            {
+              "source": 32,
+              "x": 1405.0,
+              "y": 531.0,
+              "length_mm": 17.22837904862082,
+              "width_mm": 11.633312327991666,
+              "angle_deg": 12.281005646760917,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 33,
+              "x": 1435.0,
+              "y": 540.0,
+              "length_mm": 16.321257407540557,
+              "width_mm": 11.510339970987706,
+              "angle_deg": 5.1900231594211785,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 34,
+              "x": 1465.0,
+              "y": 531.0,
+              "length_mm": 17.14586193757073,
+              "width_mm": 10.263066556606487,
+              "angle_deg": -10.948336189390936,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "edge_tuft_10",
+          "kind": "edge_tuft",
+          "box_px": [
+            1751,
+            470,
+            1938,
+            588
+          ],
+          "root_px": [
+            1828.4,
+            485.24
+          ],
+          "tip_px": [
+            1830.86,
+            584.63
+          ],
+          "feather_count": 4,
+          "feathers": [
+            "cap_r2_10",
+            "cap_r2_11",
+            "cap_r2_12",
+            "cap_r2_01"
+          ],
+          "placements": [
+            {
+              "source": 37,
+              "x": 1800.0,
+              "y": 526.5,
+              "length_mm": 17.46015549866416,
+              "width_mm": 12.453543503773817,
+              "angle_deg": 23.992620918690882,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 38,
+              "x": 1830.0,
+              "y": 535.5,
+              "length_mm": 17.01050100915012,
+              "width_mm": 10.285142588813484,
+              "angle_deg": 6.316203642926203,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 39,
+              "x": 1860.0,
+              "y": 535.5,
+              "length_mm": 17.41240272514018,
+              "width_mm": 12.245404216467636,
+              "angle_deg": -9.166426488385419,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            },
+            {
+              "source": 28,
+              "x": 1890.0,
+              "y": 526.5,
+              "length_mm": 19.929030739068356,
+              "width_mm": 13.329168193758997,
+              "angle_deg": -18.090264309680748,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "mane_feather_11",
+          "kind": "mane_feather",
+          "box_px": [
+            217,
+            989,
+            294,
+            1231
+          ],
+          "root_px": [
+            273.31,
+            990.86
+          ],
+          "tip_px": [
+            255.61,
+            1225.76
+          ],
+          "feather_count": 1,
+          "feathers": [
+            "mane_r2_01"
+          ],
+          "placements": [
+            {
+              "source": 20,
+              "x": 256.0,
+              "y": 1110.0,
+              "length_mm": 40.0,
+              "width_mm": 12.715831721291583,
+              "angle_deg": -0.6887190702242219,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "mane_feather_12",
+          "kind": "mane_feather",
+          "box_px": [
+            724,
+            977,
+            814,
+            1243
+          ],
+          "root_px": [
+            752.5,
+            978.92
+          ],
+          "tip_px": [
+            782.86,
+            1238.92
+          ],
+          "feather_count": 1,
+          "feathers": [
+            "mane_r2_02"
+          ],
+          "placements": [
+            {
+              "source": 21,
+              "x": 768.0,
+              "y": 1110.0,
+              "length_mm": 44.285714285714285,
+              "width_mm": 15.218014353616118,
+              "angle_deg": -2.7225628924626166,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "mane_feather_13",
+          "kind": "mane_feather",
+          "box_px": [
+            1227,
+            963,
+            1333,
+            1257
+          ],
+          "root_px": [
+            1309.74,
+            966.12
+          ],
+          "tip_px": [
+            1305.35,
+            1252.06
+          ],
+          "feather_count": 1,
+          "feathers": [
+            "mane_r2_03"
+          ],
+          "placements": [
+            {
+              "source": 22,
+              "x": 1280.0,
+              "y": 1110.0,
+              "length_mm": 48.57142857142857,
+              "width_mm": 17.219373277827756,
+              "angle_deg": 0.11265822576263962,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "mane_feather_14",
+          "kind": "mane_feather",
+          "box_px": [
+            1743,
+            952,
+            1836,
+            1270
+          ],
+          "root_px": [
+            1819.56,
+            954.47
+          ],
+          "tip_px": [
+            1797.59,
+            1265.92
+          ],
+          "feather_count": 1,
+          "feathers": [
+            "mane_r2_04"
+          ],
+          "placements": [
+            {
+              "source": 23,
+              "x": 1792.0,
+              "y": 1110.0,
+              "length_mm": 52.85714285714286,
+              "width_mm": 16.08843303027759,
+              "angle_deg": 4.295100124709808,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "mane_feather_15",
+          "kind": "mane_feather",
+          "box_px": [
+            202,
+            1499,
+            316,
+            1843
+          ],
+          "root_px": [
+            293.71,
+            1502.13
+          ],
+          "tip_px": [
+            271.39,
+            1836.15
+          ],
+          "feather_count": 1,
+          "feathers": [
+            "mane_r2_05"
+          ],
+          "placements": [
+            {
+              "source": 24,
+              "x": 256.0,
+              "y": 1670.0,
+              "length_mm": 57.14285714285714,
+              "width_mm": 17.747066091751176,
+              "angle_deg": 2.4424134188959257,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "mane_feather_16",
+          "kind": "mane_feather",
+          "box_px": [
+            699,
+            1486,
+            841,
+            1855
+          ],
+          "root_px": [
+            737.5,
+            1489.24
+          ],
+          "tip_px": [
+            787.25,
+            1848.26
+          ],
+          "feather_count": 1,
+          "feathers": [
+            "mane_r2_06"
+          ],
+          "placements": [
+            {
+              "source": 25,
+              "x": 768.0,
+              "y": 1670.0,
+              "length_mm": 61.42857142857143,
+              "width_mm": 22.849219475213786,
+              "angle_deg": -2.796859089165562,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "mane_feather_17",
+          "kind": "mane_feather",
+          "box_px": [
+            1209,
+            1471,
+            1348,
+            1866
+          ],
+          "root_px": [
+            1262.34,
+            1473.33
+          ],
+          "tip_px": [
+            1235.84,
+            1859.97
+          ],
+          "feather_count": 1,
+          "feathers": [
+            "mane_r2_07"
+          ],
+          "placements": [
+            {
+              "source": 26,
+              "x": 1280.0,
+              "y": 1670.0,
+              "length_mm": 65.71428571428572,
+              "width_mm": 21.15991683808759,
+              "angle_deg": 3.1892437459110035,
+              "mirror": false,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        },
+        {
+          "id": "mane_feather_18",
+          "kind": "mane_feather",
+          "box_px": [
+            1716,
+            1460,
+            1866,
+            1880
+          ],
+          "root_px": [
+            1815.21,
+            1462.67
+          ],
+          "tip_px": [
+            1782.74,
+            1869.54
+          ],
+          "feather_count": 1,
+          "feathers": [
+            "mane_r2_08"
+          ],
+          "placements": [
+            {
+              "source": 27,
+              "x": 1792.0,
+              "y": 1670.0,
+              "length_mm": 70.0,
+              "width_mm": 25.99273232363657,
+              "angle_deg": 2.3558339007411333,
+              "mirror": true,
+              "tone": 0.0,
+              "lift": 0.0
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "integration": "All visible feathers are region 4. On the bird, add a natural dark undyed contact crease at least 4 px wide at 2048 between hood magenta and face green/brow cyan. Never bake a pale separator into these cards.",
+  "source_sha256": {
+    "cap_plush_r3_original.png": "b5475959fa310ec1c10929a7715ec2cca397bcb25eda11a831b56418127622b0",
+    "mane_full_r2_original.png": "7daa07a541a0a1f43f63dd1a5896fd9189a4ac23fbb83d54548fa978bf49bed3",
+    "mane_r2_original.png": "0f29e96435db8ffb2266b7587459f840c0a054b4ff402544a2fe4c75efee0341",
+    "cap_r2_original.png": "b8406f9d92cce8dbe31347ffcc93c134e480d521f2f2b0c5c7f43bbbd0ae4c6d"
+  },
+  "periodic_neighbourhood_max_difference": {
+    "cap": {
+      "height": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "pigment": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "roughness": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    "mane": {
+      "height": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "pigment": {
+        "x": 0.0,
+        "y": 0.0
+      },
+      "roughness": {
+        "x": 0.0,
+        "y": 0.0
+      }
+    },
+    "cap_to_mane": {
+      "height": {
+        "x": 0.0
+      },
+      "pigment": {
+        "x": 0.0
+      },
+      "roughness": {
+        "x": 0.0
+      }
+    }
+  },
+  "build_seconds": 31.25
+}

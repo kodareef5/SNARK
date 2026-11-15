@@ -1,0 +1,24 @@
+{
+  "id": "wing_finger_4",
+  "kind": "wing",
+  "index": 3,
+  "length_m": 0.049,
+  "width_m": 0.018,
+  "symmetric": false,
+  "master_size": [
+    1024,
+    1024
+  ],
+  "master_span_m": 0.05575111111111111,
+  "master_root_px": [
+    567.9183673469388,
+    62.0
+  ],
+  "master_tip_px": [
+    516.401848117577,
+    962.0
+  ],
+  "barb_curves": 648,
+  "band_intervals_from_root_mm": [],
+  "source": "source/wing_finger_4"
+}

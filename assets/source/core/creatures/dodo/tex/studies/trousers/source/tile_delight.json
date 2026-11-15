@@ -1,0 +1,10 @@
+{
+  "spatial_sigma_px": 18,
+  "correction_rms_linear": 0.022196964056163494,
+  "correction_range_linear": [
+    -0.10989381180394597,
+    0.044946716520433694
+  ],
+  "fine_barb_contrast_ratio": 0.9999577468532205,
+  "fine_barb_correlation": 0.9999785759254087
+}

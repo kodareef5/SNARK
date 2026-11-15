@@ -1,0 +1,33 @@
+{
+  "id": "tail_center",
+  "kind": "tail",
+  "index": 0,
+  "length_m": 0.11,
+  "width_m": 0.03,
+  "symmetric": true,
+  "master_size": [
+    1024,
+    1024
+  ],
+  "master_span_m": 0.12515555555555555,
+  "master_root_px": [
+    511.5,
+    62.0
+  ],
+  "master_tip_px": [
+    511.5,
+    962.0
+  ],
+  "barb_curves": 1367,
+  "band_intervals_from_root_mm": [
+    [
+      92.0,
+      96.5
+    ],
+    [
+      101.5,
+      106.0
+    ]
+  ],
+  "source": "source/tail_center"
+}
