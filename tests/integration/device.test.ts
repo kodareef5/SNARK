@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
+import { tierOf } from "../../client/core/assets/tiers.ts";
 import { JOIN_MS } from "../../client/core/governor.ts";
 import { DeviceProbe, MEMORY_MB, TREE_TIERS, WOODS, deviceScenarios, newReport, spread, type DeviceBrowser, type DeviceReport, type RendererLike, type RungReport, type Timing } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
@@ -265,12 +266,12 @@ test("the governed soak lets the governor act, says beside each minute what it d
   await run(probe, h, app, gpu, 60000, { each });
   const s = probe.report.soak!;
   expect([probe.report.done, probe.report.errors, held, app.governor.held, s.minutes.length]).toEqual([true, [], null, 0, 1]);
-  // Two missed windows took a step.
-  expect(s.governed!.map((x) => x.level)).toEqual([1]);
-  expect([s.minutes[0]!.level, s.minutes[0]!.most, s.minutes[0]!.steps!.length]).toEqual([1, 1, 1]);
+  // Two missed windows took a step: the far trees', the leaves' passed by with no crowns near to give.
+  expect(s.governed!.map((x) => x.level)).toEqual([2]);
+  expect([s.minutes[0]!.level, s.minutes[0]!.most, s.minutes[0]!.steps!.length]).toEqual([2, 2, 1]);
   const table = deviceTable(probe.report);
   expect(table.some((line) => line.includes("the governor on"))).toBe(true);
-  expect(table.some((line) => line.startsWith("          to 1: the farther cascade every other frame (30 ms a frame)"))).toBe(true);
+  expect(table.some((line) => line.startsWith("          to 2: far trees, rocks and bushes to 70% as far (30 ms a frame)"))).toBe(true);
   const lacks = lacking(probe.report, "governed");
   expect([lacks.includes("the soak did not run its minutes"), lacks.includes("the governed soak does not say what the governor did")]).toEqual([false, false]);
 });
@@ -391,6 +392,8 @@ test("the tree order is offered by the terrain server's link, stands in each woo
   for (const g of t.rungs) {
     expect([g.invalid, g.orders.map((o) => `${o.order}${o.small ? " small" : ""}`)]).toEqual(["", ["last", "made", "first", "none", "first small", "none small"]]);
     for (const o of g.orders) expect([o.frames > 5, o.means.length, o.reads.length]).toEqual([!o.small, o.small ? 0 : 2, o.small || o.order === "made" ? 2 : 3]);
+    // The wood as the frame's budget draws it, first and last, and its frames apart from those drawn whole.
+    expect([g.budget!.frames > 5, g.budget!.means.length, g.budget!.allowed, g.budget!.tris > 0]).toEqual([true, 2, tierOf(g.tier).budget.triangles, true]);
     // At half the tier's pixel ratio, as the page sizes its canvas: 1.5 and 2 of this phone's 3.
     const half = g.tier === "medium" ? 0.75 : 1;
     expect(g.orders.filter((o) => o.small).map((o) => o.canvas)).toEqual([[Math.floor(390 * half), Math.floor(844 * half)], [Math.floor(390 * half), Math.floor(844 * half)]]);
@@ -402,8 +405,9 @@ test("the tree order is offered by the terrain server's link, stands in each woo
   expect([t.surface?.name, t.surface?.slope !== null]).toEqual(["surface", true]);
   expect(t.verdict).toStartWith("not judged: young medium nothing was drawn with its materials");
   expect(lacking(r, "trees")).toEqual(["nothing was drawn with its materials on medium, which has them", "nothing was drawn with its materials on high, which has them"]);
-  // After it the game draws its cut-outs last again.
-  expect(app.scene!.cutouts).toBe("last");
+  // After it the game draws its cut-outs last again, and its frame within its budget.
+  expect([app.scene!.cutouts, app.scene!.budget.on]).toEqual(["last", true]);
+  expect(t.budget).toStartWith("the budget: the young wood on medium ");
   const table = deviceTable(r);
   expect(table.some((line) => line.startsWith("verdict   "))).toBe(true);
   expect(table.some((line) => /^elder +high +made +\d+ /.test(line))).toBe(true);

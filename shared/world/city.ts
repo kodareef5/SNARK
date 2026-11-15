@@ -16,11 +16,11 @@
 
 import type { ShapeLook } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
-import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
+import { CHUNK_SIZE, YAW_UNITS, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { MAX_CORNERS, hullPoint, hullTable, type HullDef, type HullTable } from "./convex.ts";
 import type { Heightfield } from "./heightfield.ts";
-import type { MapStatic } from "./mapfile.ts";
+import { MapStatics, type MapStatic } from "./mapfile.ts";
 import { TACTICAL_CELL, farTopByte } from "./tactical.ts";
 
 const QUARTER = YAW_UNITS / 4;
@@ -47,37 +47,47 @@ export class CityStatics {
   readonly walked: CityForm;
   readonly look: CityForm;
 
-  constructor(dims: MapDims, statics: readonly MapStatic[], reg: Registry) {
+  constructor(dims: MapDims, statics: MapStatics | readonly MapStatic[], reg: Registry) {
     this.dims = dims;
-    const chunks = chunkCount(dims);
-    const kinds = new Uint16Array(statics.length);
-    const of = new Uint32Array(statics.length);
-    const first = (this.first = new Uint32Array(chunks + 1));
+    const t = MapStatics.of(dims, statics);
+    // Each of the map's kinds as a content index, or 0 for one this content lacks or that is not a structure.
+    const of = t.kinds.map((id) => {
+      const k = reg.index.get(id);
+      return k !== undefined && reg.defs[k]?.type === "structure" ? k : 0;
+    });
+    const kind = new Uint16Array(t.length);
     let n = 0;
-    statics.forEach((s, i) => {
-      const k = reg.index.get(s.kind);
-      if (k === undefined || reg.defs[k]?.type !== "structure") return;
-      kinds[i] = k;
-      of[i] = chunkAt(dims, s.x, s.z);
-      first[of[i]! + 1]!++;
-      n++;
-    });
-    for (let c = 0; c < chunks; c++) first[c + 1]! += first[c]!;
-    const at = first.slice(0, chunks);
-    this.kind = new Uint16Array(n);
-    this.yaw = new Uint16Array(n);
-    this.x = new Float32Array(n);
-    this.y = new Float32Array(n);
-    this.z = new Float32Array(n);
-    statics.forEach((s, i) => {
-      if (kinds[i] === 0) return;
-      const r = at[of[i]!]!++;
-      this.kind[r] = kinds[i]!;
-      this.yaw[r] = s.yaw;
-      this.x[r] = s.x;
-      this.y[r] = s.y;
-      this.z[r] = s.z;
-    });
+    for (let r = 0; r < kind.length; r++) if ((kind[r] = of[t.kind[r]!]!) !== 0) n++;
+    if (n === t.length) {
+      // Every piece is drawn, so the map's own columns serve and the city is held once.
+      this.first = t.first;
+      this.kind = kind;
+      this.yaw = t.yaw;
+      this.x = t.x;
+      this.y = t.y;
+      this.z = t.z;
+    } else {
+      const chunks = chunkCount(dims);
+      const first = (this.first = new Uint32Array(chunks + 1));
+      this.kind = new Uint16Array(n);
+      this.yaw = new Uint16Array(n);
+      this.x = new Float32Array(n);
+      this.y = new Float32Array(n);
+      this.z = new Float32Array(n);
+      let i = 0;
+      for (let c = 0; c < chunks; c++) {
+        for (let r = t.first[c]!; r < t.first[c + 1]!; r++) {
+          if (kind[r] === 0) continue;
+          this.kind[i] = kind[r]!;
+          this.yaw[i] = t.yaw[r]!;
+          this.x[i] = t.x[r]!;
+          this.y[i] = t.y[r]!;
+          this.z[i] = t.z[r]!;
+          i++;
+        }
+        first[c + 1] = i;
+      }
+    }
     this.halfX = reg.halfX;
     this.halfY = reg.halfY;
     this.halfZ = reg.halfZ;

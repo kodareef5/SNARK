@@ -14,8 +14,13 @@ export const DMG_COUNT = 5;
 export const PIECE_SCALE = 5;
 /** Armor loses one use for every this many points of damage it stops. */
 export const WEAR_PER_USE = 16;
-/** An arrow from an undrawn bow does this share of its damage. A full draw does all of it. */
-export const DRAW_MIN = 0.25;
+/**
+ * An arrow from an undrawn bow does this share of its damage, rising evenly to all of it at a full draw. ARK's patch 190.0
+ * "Raised minimum wooden bow damage for shortest-pulled arrows to 50%, up from 25%" (Bow), the 25% being Base Damage's
+ * share at no draw. So the shortest pull that looses, a quarter of the draw (0.3 s of 1.2 s), does 62.5%. The slingshot
+ * shares it (DEV124).
+ */
+export const DRAW_MIN = 0.5;
 
 /** The input. Set every field. `resetHit` puts each at no effect. */
 export const hit = {

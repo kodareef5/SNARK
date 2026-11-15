@@ -11,15 +11,17 @@ import type { FramePacket } from "../../client/core/render/packet.ts";
 import type { ShapeBox, ShapeDef } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { slopeShape, staticOf } from "../../shared/content/slopes.ts";
-import { CHUNK_SIZE, YAW_UNITS, chunkCx, chunkCz } from "../../shared/coords.ts";
+import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { TAU, detCos, detSin } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
 import { CityStatics, cellPart, cityTops, goneByCells, goneByRows, mergedPart, type CityPart } from "../../shared/world/city.ts";
 import { hullOf, hullPoint, type HullDef } from "../../shared/world/convex.ts";
-import type { MapStatic } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, parseMap, placeStatics, writeMap, type MapStatic } from "../../shared/world/mapfile.ts";
+import { Found, StructureStore } from "../../shared/world/structures.ts";
 import { Summary, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
 import { BEAM, FLOOR, PIER, SLOPE_SLAB30, STEP, WALL, asWritten, building, cityWorld, slopes } from "../fixtures/cityworld.ts";
 import { farRegistry } from "../fixtures/farworld.ts";
+import { flatMap } from "../fixtures/map.ts";
 
 const sum = (a: Uint8Array): number => a.reduce((n, v) => n + v, 0);
 const cityDraws = (p: FramePacket): number[] => [...p.drawBuffer.subarray(0, p.drawCount).keys()].filter((d) => p.drawBuffer[d] === CITY_BUFFER);
@@ -201,6 +203,64 @@ test("tiles with nothing on the card are made first, a chunk at a time within th
   }
   expect(frames).toBeLessThan(400);
   expect(city.stats.unseen).toBe(0);
+});
+
+test("a map's statics written, read back and set down give the rows and far city faces their list did, held once", () => {
+  const reg = farRegistry();
+  const rng = new Rng(9);
+  // Buildings in several chunks, one across a border with piers on it, and a piece the far city does not draw.
+  const pieces = [...building(...mid(3, 2), 0, 3), ...building(128, 64, 0, 2, 2, 7000), ...building(...mid(0, 0), 0, 4, 1), ...building(...mid(1, 3), 0.3, 2)];
+  pieces.push({ kind: "core:rock", x: 70.1, y: 0.5, z: 3.3, yaw: 100 });
+  // Listed out of chunk order, so that the file's order and the chunks' differ.
+  for (let i = pieces.length - 1; i > 0; i--) {
+    const j = rng.int(i + 1);
+    [pieces[i], pieces[j]] = [pieces[j]!, pieces[i]!];
+  }
+  const listed = asWritten(pieces);
+  const dims = { chunksX: 4, chunksZ: 4 };
+  const head = (a: ArrayLike<number>, n: number): number[] => Array.from({ length: n }, (_, i) => a[i]!);
+  const rowsOf = (store: StructureStore): unknown[] => {
+    const found = new Found();
+    const n = store.query(0, 0, 256, 256, found);
+    return [...store.chunks.map((t) => t && [t.high, t.version, t.live, ...[t.kind, t.x, t.y, t.z, t.yaw, t.owner, t.hp, t.mod].map((a) => head(a, t.high))]), head(found.refs, n)];
+  };
+  for (const drawn of [listed.filter((s) => s.kind !== "core:rock"), listed]) {
+    const map = parseMap(writeMap(flatMap(4, { statics: drawn })));
+    // As placeStatics set down the pieces of a file read as a list: one by one in its order.
+    const before = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+    for (const s of drawn) {
+      const kind = reg.index.get(s.kind)!;
+      const def = reg.defs[kind]!;
+      before.add(kind, s.x, s.y, s.z, s.yaw, 0, def.type === "structure" ? def.hp : 0);
+    }
+    const after = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+    placeStatics(map, after, reg);
+    expect(rowsOf(after)).toEqual(rowsOf(before));
+
+    // As CityStatics made its columns from that list: the structures by chunk, in the list's order within one.
+    const of = drawn.map((s) => reg.index.get(s.kind)!).map((k) => (reg.defs[k]!.type === "structure" ? k : 0));
+    const chunkOf = drawn.map((s) => chunkAt(dims, s.x, s.z));
+    const order = [...drawn.keys()].filter((i) => of[i] !== 0).sort((a, b) => chunkOf[a]! - chunkOf[b]! || a - b);
+    const old = Object.assign(new CityStatics(dims, [], reg), {
+      first: Uint32Array.from({ length: 17 }, (_, c) => order.filter((i) => chunkOf[i]! < c).length),
+      kind: Uint16Array.from(order, (i) => of[i]!),
+      yaw: Uint16Array.from(order, (i) => drawn[i]!.yaw),
+      x: Float32Array.from(order, (i) => drawn[i]!.x),
+      y: Float32Array.from(order, (i) => drawn[i]!.y),
+      z: Float32Array.from(order, (i) => drawn[i]!.z),
+    });
+    const city = new CityStatics(dims, map.statics, reg);
+    expect([city.first, city.kind, city.yaw, city.x, city.y, city.z]).toEqual([old.first, old.kind, old.yaw, old.x, old.y, old.z]);
+    expect(head(old.first, 17).filter((n, c) => c > 0 && n > old.first[c - 1]!).length).toBeGreaterThanOrEqual(5);
+    // With every piece drawn the map's columns are the city's; a piece left out is left out of a copy.
+    expect([city.x === map.statics.x, city.first === map.statics.first]).toEqual(drawn === listed ? [false, false] : [true, true]);
+    const hf = mapHeightfield(map);
+    for (let c = 0; c < 16; c++) {
+      const forms = [(s: CityStatics) => mergedPart(s, c, hf, none, 0.01, 0), (s: CityStatics) => mergedPart(s, c, hf, none, 0.5, 2.1), (s: CityStatics) => cellPart(s, c, hf, null, 4, 4)];
+      for (const make of forms) expect(make(city)).toEqual(make(old));
+      expect(cityTops(city, c, hf, null)).toEqual(cityTops(old, c, hf, null));
+    }
+  }
 });
 
 test("a far form is a pure function of the chunk: the same statics give the same faces, cells included", () => {

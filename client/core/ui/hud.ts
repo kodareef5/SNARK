@@ -17,6 +17,8 @@ export const KEY_TALKER = 70;
 /** One mark per buff. */
 export const KEY_BUFF = 180;
 export const KEY_CROSS = 30;
+/** Four strokes about the crosshair at the held weapon's cone. */
+export const KEY_CONE = 24;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
 export const KEY_PROMPT = 33;
@@ -39,6 +41,9 @@ export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mat
 export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a };
 
 const HOTBAR_CELL = 34;
+/** The cone's strokes: their length, and how near the dot they come, in canvas units. */
+const CONE_STROKE = 6;
+const CONE_MIN = 5;
 
 /**
  * The band the HUD leaves free for the chat box: below what shows under the crosshair, and above the hotbar, the
@@ -138,6 +143,14 @@ export function buildHud(f: UiFrame, m: HudModel): void {
 
   if (m.crosshair) {
     f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
+    if (m.cone >= 0) {
+      // The strokes stand where the cone's edge is on the screen, and never on the dot.
+      const r = Math.min(H / 2 - CONE_STROKE, Math.max(CONE_MIN, (m.cone * H) / 2));
+      f.add(KEY_CONE, K_PANEL, W / 2 - 1, H / 2 - r - CONE_STROKE, 2, CONE_STROKE, S_CROSS);
+      f.add(KEY_CONE + 1, K_PANEL, W / 2 - 1, H / 2 + r, 2, CONE_STROKE, S_CROSS);
+      f.add(KEY_CONE + 2, K_PANEL, W / 2 - r - CONE_STROKE, H / 2 - 1, CONE_STROKE, 2, S_CROSS);
+      f.add(KEY_CONE + 3, K_PANEL, W / 2 + r, H / 2 - 1, CONE_STROKE, 2, S_CROSS);
+    }
     if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, m.prompt.slice(0, 38));
     if (m.actionKind !== ACTION_NONE) f.add(KEY_ACTION, K_BAR, W / 2 - 40, H / 2 + 38, 80, 5, m.actionKind === ACTION_DRAW ? S_STAMINA : S_OXYGEN).value = m.actionFraction;
   }
