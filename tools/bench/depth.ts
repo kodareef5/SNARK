@@ -28,7 +28,7 @@ const TURN = 36;
 const SPLIT = tierOf("medium").split;
 
 /** The bench map's hills. */
-function terrain(): Heightfield {
+export function terrain(): Heightfield {
   const hf = new Heightfield(DIMS, TERRAIN_CELL, -32, 1 / 64);
   for (let j = 0; j < hf.nz; j++) {
     for (let i = 0; i < hf.nx; i++) {
@@ -40,10 +40,10 @@ function terrain(): Heightfield {
 }
 
 /** A piece: its kind, place and turn. */
-type Piece = [number, number, number, number, number];
+export type Piece = [number, number, number, number, number];
 
 /** The bench map's 250 bases of 2,000 pieces, made in the order tools/bench.ts makes them, so they are the same, by chunk. */
-function bases(reg: Registry, hf: Heightfield, halfY: (kind: number) => number): { centers: [number, number][]; byChunk: Map<number, Piece[]> } {
+export function bases(reg: Registry, hf: Heightfield, halfY: (kind: number) => number): { centers: [number, number][]; byChunk: Map<number, Piece[]> } {
   const rng = new Rng(2026);
   const kinds = KINDS.map((id) => reg.index.get(id)!);
   const centers: [number, number][] = [];
@@ -66,7 +66,7 @@ function bases(reg: Registry, hf: Heightfield, halfY: (kind: number) => number):
 }
 
 /** A scene of the pieces in the chunks a camera at (x, z) holds, or with `reach` in as many chunks either way. */
-function held(reg: Registry, pack: Pack, hf: Heightfield, x: number, z: number, piecesOf: (chunk: number) => Piece[], reach = HELD): Scene {
+export function held(reg: Registry, pack: Pack, hf: Heightfield, x: number, z: number, piecesOf: (chunk: number) => Piece[], reach = HELD): Scene {
   const structs = new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const [cx, cz] = [Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE)];
   for (let dz = -reach; dz <= reach; dz++) {

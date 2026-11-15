@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { writeFileSync } from "node:fs";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { DRAW_CUTOUT, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_CUTOUT, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, MAX_CASTERS, SOURCE_MAP, SOURCE_WINDOW, TILE_CASTS, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { DEPTH_STEPS } from "../../client/core/render/shadow.ts";
 import { hourOfSun } from "../../client/core/render/sky.ts";
@@ -12,14 +12,17 @@ import { COARSE } from "../../client/core/render/terrain.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { chunkAt } from "../../shared/coords.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
+import { siegeScene } from "../../tools/bench/shadow.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 import { encodePng } from "../../tools/snap/png.ts";
 import { Rasterizer } from "../../tools/snap/raster.ts";
+import { corePack } from "../fixtures/pack.ts";
 import { PANEL, sceneRegistry, sceneWorld } from "../fixtures/sceneworld.ts";
 import { TUBE, TUBE_RIG, tubeClips, tubeMesh } from "../fixtures/textured.ts";
 
@@ -248,4 +251,18 @@ test("casters ask for nothing, name only what the card holds, and cut out a sect
   const last = on.flagged.at(-1)!;
   expect([first & (DRAW_TEXTURED | DRAW_TWO_SIDED), first & DRAW_CUTOUT]).toEqual([DRAW_TEXTURED | DRAW_TWO_SIDED, 0]);
   expect(last & DRAW_CUTOUT).toBe(DRAW_CUTOUT);
+});
+
+test("the siege scene fits the caster list on every lit tier, with none dropped", () => {
+  const s = siegeScene(compileContent(CORE_CONTENT).registry!, corePack(), tierOf("medium"));
+  const counts: number[] = [];
+  for (const name of ["medium", "high", "ultra"] as const) {
+    s.scene.assets.tier = tierOf(name);
+    s.scene.build(s.cam, s.remote);
+    const p = s.scene.build(s.cam, s.remote);
+    expect(p.casterDropped).toBe(0);
+    expect(p.casterCount).toBeLessThan(MAX_CASTERS);
+    counts.push(p.casterCount);
+  }
+  if (process.env.SHADOW_REPORT) console.log(`siege caster entries, medium, high, ultra: ${counts.join(", ")}`);
 });
