@@ -106,10 +106,10 @@ def main():
             break
         chosen.append(best)
     spawns = []
-    # The survivor's choosing list carries each name in at most 24 bytes (MAX_NAME_BYTES); a longer one loses the list.
-    long = [p['name'] for p in chosen if len(p['name'].encode()) > 24]
+    # The survivor's choosing list carries each name in at most 48 bytes (MAX_PLACE_NAME_BYTES); the server cuts a longer one.
+    long = [p['name'] for p in chosen if len(p['name'].encode()) > 48]
     if long:
-        raise ValueError(f'spawn point names over 24 bytes: {long}; name them shorter in spawn_places with "at"')
+        raise ValueError(f'spawn point names over 48 bytes: {long}; name them shorter in spawn_places with "at"')
     for p in chosen:
         d = math.hypot(p['e'], p['n']) or 1
         face = faces.get(p['name']) or (p['e'] - p['e'] / d * 300, p['n'] - p['n'] / d * 300)
