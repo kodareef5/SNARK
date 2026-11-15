@@ -11,7 +11,8 @@ const SIDE = 0.55;
 const RISE = 0.25;
 /** Gap kept between the camera and the obstacle, so the near plane does not cut into a wall. */
 const CLEAR = 0.3;
-export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number }
+/** The vehicle's own motion, and how far back (metres) the boom holds the camera at rest: its size's, not one number for all. */
+export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number; boom?: number }
 
 export class Viewpoint {
   thirdPerson = false;
@@ -45,7 +46,7 @@ export class Viewpoint {
       this.target[i] = wanted[i]! + (offset + change) * decay;
       this.targetVelocity[i] = (this.targetVelocity[i]! - omega * change) * decay;
     }
-    const back = 6 + Math.min(2, Math.abs(speed) * .06);
+    const rest = motion?.boom ?? 6, back = rest + Math.min(rest / 3, Math.abs(speed) * .06);
     this.boom = reset ? back : this.boom + (back - this.boom) * (1 - Math.exp(-seconds * 4));
     const viewPitch = Math.max(-1.35, Math.min(1.15, pitch - 0.12));
     cam.yaw = yaw;

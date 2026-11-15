@@ -180,6 +180,16 @@ test("driving instruments fit wide and portrait native HUDs without requiring a 
   }
 });
 
+test("a vehicle's chase camera stands back by its size: a bus's boom is longer than a car's", () => {
+  const back = (boom: number): number => {
+    const view = new Viewpoint(), cam = new Camera();
+    view.placeVehicle(cam, null, 64, 1, 64, 0, 0, 0, 0, 16, false, { vx: 0, vy: 0, vz: 0, id: 1, boom });
+    return Math.hypot(cam.x - 64, cam.z - 64);
+  };
+  expect(back(12)).toBeGreaterThan(back(6) * 1.8);
+  expect(back(6)).toBeGreaterThan(5);
+});
+
 test("vehicle chase camera keeps mouse look, eases idle heading, and collision pulls it out of a wall", () => {
   const view = new Viewpoint(), cam = new Camera();
   let yaw = .8;

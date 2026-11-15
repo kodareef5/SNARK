@@ -822,7 +822,8 @@ export class App {
       }
       lookPitch = lookPitch > PI / 2 ? PI / 2 : lookPitch;
     }
-    if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + 1, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving });
+    // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
+    if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + car.spec.height * 2 / 3, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: car.spec.halfLength * 3 });
     else if (passenger) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw;
       for (let i = 0; i < this.remote.count; i++) {
