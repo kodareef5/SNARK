@@ -10,7 +10,7 @@ import { chunkAt } from "../coords.ts";
 import { detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatRotate, quatUnrotate } from "../math/quat.ts";
 import type { CollisionWorld } from "../world/collide.ts";
-import { capsuleHull, hullPush, type HullTable } from "../world/convex.ts";
+import { capsuleHull, hullPush } from "../world/convex.ts";
 import { frame, frameOf } from "../world/frame.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { Found, type StructureStore } from "../world/structures.ts";
@@ -118,7 +118,7 @@ export class Ragdoll {
   private stillMove = 0;
   private readonly stillX: Float64Array;
   private readonly stillQ: Float64Array;
-  /** The structures and nodes near it, gathered once a call: the ref, and 1 for a node. */
+  /** The structures and nodes near it, gathered once a call: the ref, and 1 for a node, 2 for a structure with convex parts. */
   private readonly refs = new Uint32Array(MOST_REFS);
   private readonly refStore = new Uint8Array(MOST_REFS);
   private nRefs = 0;
@@ -415,9 +415,11 @@ export class Ragdoll {
       for (let k = 0; k < m && this.nRefs < MOST_REFS; k++) {
         const ref = found.refs[k]!;
         const t = structs.chunks[Math.floor(ref / 65536)]!;
-        if (structs.isSoft(t.kind[ref & 0xffff]!)) continue;
+        const kind = t.kind[ref & 0xffff]!;
+        if (structs.isSoft(kind)) continue;
+        const hulls = structs.parts.hulls;
         this.refs[this.nRefs] = ref;
-        this.refStore[this.nRefs++] = store;
+        this.refStore[this.nRefs++] = store === 0 && hulls !== undefined && hulls.start[kind + 1]! > hulls.start[kind]! ? 2 : store;
       }
     }
   }
@@ -444,7 +446,11 @@ export class Ragdoll {
     this.nc = 0;
     for (let i = 0; i < n; i++) {
       this.terrain(world.hf, i);
-      for (let k = 0; k < this.nRefs; k++) this.boxes(this.refStore[k] === 0 ? world.structs : world.nodes!, this.refs[k]!, i);
+      for (let k = 0; k < this.nRefs; k++) {
+        const store = this.refStore[k]!;
+        this.boxes(store === 1 ? world.nodes! : world.structs, this.refs[k]!, i);
+        if (store === 2) this.parts(world.structs, this.refs[k]!, i);
+      }
     }
     this.velocities(h);
     for (let c = 0; c < this.nc; c++) this.slide(c, h);
@@ -625,7 +631,7 @@ export class Ragdoll {
     }
   }
 
-  /** Pushes body `i` out of the boxes and parts of one structure: at each end of its capsule, and at the point of it nearest each. */
+  /** Pushes body `i` out of the boxes of one structure: at each end of its capsule, and at the point of it nearest a box. */
   private boxes(structs: StructureStore, ref: number, i: number): void {
     const t = structs.chunks[Math.floor(ref / 65536)];
     if (!t) return;
@@ -685,16 +691,26 @@ export class Ragdoll {
         this.contact(i, wx * tt - mx * r, wy * tt - ny * r, wz * tt - mz * r, mx, ny, mz, deep);
       }
     }
-    const hulls = structs.parts.hulls;
-    if (hulls && hulls.start[kind + 1]! > hulls.start[kind]!) this.parts(hulls, kind, t.yaw[slot]!, i, ex, ey, ez, wx, wy, wz, r, reach, len);
   }
 
   /**
-   * Pushes body `i` out of the convex parts of a structure of `kind` turned `yaw`, as out of its boxes: as spheres at the ends
-   * of its capsule and at the point of it nearest each part. A part is placed in the world's axes about the structure's
-   * middle, so the capsule's centre (ex, ey, ez) and half segment (wx, wy, wz) are measured from there unturned.
+   * Pushes body `i` out of the convex parts of one structure as out of its boxes: as spheres at the ends of its capsule and at
+   * the point of it nearest each part. A part is placed in the world's axes about the structure's middle, so the capsule is
+   * measured from there unturned.
    */
-  private parts(hulls: HullTable, kind: number, yaw: number, i: number, ex: number, ey: number, ez: number, wx: number, wy: number, wz: number, r: number, reach: number, len: number): void {
+  private parts(structs: StructureStore, ref: number, i: number): void {
+    const t = structs.chunks[Math.floor(ref / 65536)];
+    const hulls = structs.parts.hulls;
+    if (!t || !hulls) return;
+    const slot = ref & 0xffff;
+    const kind = t.kind[slot]!;
+    const yaw = t.yaw[slot]!;
+    const r = this.rad[i]!;
+    quatRotate(this.q, i * 4, this.seg[i * 3]!, this.seg[i * 3 + 1]!, this.seg[i * 3 + 2]!, u3, 0);
+    const wx = u3[0]!, wy = u3[1]!, wz = u3[2]!;
+    const ex = this.x[i * 3]! - t.x[slot]!, ey = this.x[i * 3 + 1]! - t.y[slot]!, ez = this.x[i * 3 + 2]! - t.z[slot]!;
+    const len = wx * wx + wy * wy + wz * wz;
+    const reach = Math.sqrt(len) + r;
     for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
       if (!capsuleHull(hulls, p, yaw, ex, ez, ey, ey, reach, reach)) continue;
       for (let k = 0; k < 3; k++) {
@@ -848,7 +864,11 @@ export class Ragdoll {
     this.gather(world, 0);
     for (let i = 0; i < this.n; i++) {
       this.terrain(world.hf, i);
-      for (let k = 0; k < this.nRefs; k++) this.boxes(this.refStore[k] === 0 ? world.structs : world.nodes!, this.refs[k]!, i);
+      for (let k = 0; k < this.nRefs; k++) {
+        const store = this.refStore[k]!;
+        this.boxes(store === 1 ? world.nodes! : world.structs, this.refs[k]!, i);
+        if (store === 2) this.parts(world.structs, this.refs[k]!, i);
+      }
     }
     this.probing = false;
     return this.worst;
