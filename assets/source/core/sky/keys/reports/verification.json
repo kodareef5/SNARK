@@ -1,0 +1,86 @@
+{
+  "result": "PASS",
+  "samples_verified_against_final_sheets": 80,
+  "card_samples": 32,
+  "max_card_error_srgb_levels": 0.3797,
+  "noon_30_away": [
+    150,
+    190,
+    230
+  ],
+  "noon_30_away_neutral_equivalent": 185.87,
+  "all_8_keys_horizons_brighter_than_zenith": true,
+  "all_8_keys_lit_cloud_brighter_than_shade_cloud": true,
+  "brightness": [
+    {
+      "key": "dawn",
+      "zenith": 78.22,
+      "horizon_toward": 164.47,
+      "horizon_away": 159.89
+    },
+    {
+      "key": "morning",
+      "zenith": 106.02,
+      "horizon_toward": 212.73,
+      "horizon_away": 213.79
+    },
+    {
+      "key": "noon",
+      "zenith": 86.82,
+      "horizon_toward": 229.74,
+      "horizon_away": 229.67
+    },
+    {
+      "key": "afternoon",
+      "zenith": 107.16,
+      "horizon_toward": 203.99,
+      "horizon_away": 208.47
+    },
+    {
+      "key": "golden-hour",
+      "zenith": 77.69,
+      "horizon_toward": 168.56,
+      "horizon_away": 157.6
+    },
+    {
+      "key": "sunset",
+      "zenith": 59.3,
+      "horizon_toward": 136.28,
+      "horizon_away": 111.67
+    },
+    {
+      "key": "dusk",
+      "zenith": 29.94,
+      "horizon_toward": 88.53,
+      "horizon_away": 57.24
+    },
+    {
+      "key": "night",
+      "zenith": 19.26,
+      "horizon_toward": 65.26,
+      "horizon_away": 55.65
+    }
+  ],
+  "hero_cards": [
+    {
+      "rgb": [
+        76,
+        61,
+        47
+      ],
+      "neutral_equivalent": 63.7,
+      "target": 64
+    },
+    {
+      "rgb": [
+        39,
+        56,
+        78
+      ],
+      "neutral_equivalent": 54.92,
+      "target": 55
+    }
+  ],
+  "icc": "embedded sRGB",
+  "checks_scope": "Sampled painted regions; not a radiometric fit, horizon-wide monotonicity proof, or rendered scene validation."
+}

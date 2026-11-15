@@ -1,0 +1,431 @@
+{
+  "archiveFilesVerified": 109,
+  "suppliedInputsUnchanged": true,
+  "verdict": "Supplied engine fitter, with light and exposure fitted.",
+  "keys": {
+    "dawn": {
+      "engineFitDistances": {
+        "zenith": 3.6,
+        "high": 1.9,
+        "toward": 1.0,
+        "away": 3.7,
+        "lit": 4.9,
+        "shaded": 3.4,
+        "up": 2.3
+      },
+      "worstSkyDistance": 3.7,
+      "fixedLightMeasure": 7.8,
+      "changedPixels": 0,
+      "changedSolidWaterPixels": 0,
+      "changedSolidTerrainPixels": 0,
+      "maxSkyRGBChange": 0.0,
+      "maxSkyOKLabChange": 0.0,
+      "maxSkySeam": 1.0,
+      "sampleAgreementMax": 0.05,
+      "cards": {
+        "lit": {
+          "RGB": [
+            138.0,
+            105.0,
+            83.0
+          ],
+          "pixels": 9556
+        },
+        "shaded": {
+          "RGB": [
+            31.0,
+            43.0,
+            63.0
+          ],
+          "pixels": 13307
+        },
+        "up": {
+          "RGB": [
+            52.0,
+            59.0,
+            73.0
+          ],
+          "pixels": 16357
+        }
+      },
+      "celestialPixelsPreserved": true,
+      "starPixelsPreserved": true
+    },
+    "morning": {
+      "engineFitDistances": {
+        "zenith": 5.8,
+        "high": 5.4,
+        "toward": 2.8,
+        "away": 1.3,
+        "lit": 4.3,
+        "shaded": 5.8,
+        "up": 1.7
+      },
+      "worstSkyDistance": 5.8,
+      "fixedLightMeasure": 5.6,
+      "changedPixels": 0,
+      "changedSolidWaterPixels": 0,
+      "changedSolidTerrainPixels": 0,
+      "maxSkyRGBChange": 0.0,
+      "maxSkyOKLabChange": 0.0,
+      "maxSkySeam": 1.0,
+      "sampleAgreementMax": 0.023,
+      "cards": {
+        "lit": {
+          "RGB": [
+            157.0,
+            142.0,
+            117.0
+          ],
+          "pixels": 9310
+        },
+        "shaded": {
+          "RGB": [
+            54.0,
+            71.0,
+            94.0
+          ],
+          "pixels": 12311
+        },
+        "up": {
+          "RGB": [
+            95.0,
+            91.0,
+            82.0
+          ],
+          "pixels": 13184
+        }
+      },
+      "celestialPixelsPreserved": true,
+      "starPixelsPreserved": true
+    },
+    "noon": {
+      "engineFitDistances": {
+        "zenith": 5.7,
+        "high": 0.8,
+        "toward": 2.9,
+        "away": 1.9,
+        "lit": 0.2,
+        "shaded": 0.7,
+        "up": 0.2
+      },
+      "worstSkyDistance": 5.7,
+      "fixedLightMeasure": 4.6,
+      "changedPixels": 1145213,
+      "changedSolidWaterPixels": 0,
+      "changedSolidTerrainPixels": 943871,
+      "maxSkyRGBChange": 11.0,
+      "maxSkyOKLabChange": 1.5233,
+      "maxSkySeam": 1.0,
+      "sampleAgreementMax": 0.047,
+      "cards": {
+        "lit": {
+          "RGB": [
+            95.0,
+            96.0,
+            98.0
+          ],
+          "pixels": 3685
+        },
+        "shaded": {
+          "RGB": [
+            63.0,
+            71.0,
+            82.0
+          ],
+          "pixels": 11383
+        },
+        "up": {
+          "RGB": [
+            125.0,
+            126.0,
+            127.0
+          ],
+          "pixels": 15184
+        }
+      },
+      "celestialPixelsPreserved": true,
+      "starPixelsPreserved": true,
+      "adjustedSkyPoint": {
+        "name": "zenith",
+        "before": [
+          78.0,
+          143.98224852071007,
+          222.0
+        ],
+        "after": [
+          89.0,
+          143.98224852071007,
+          214.0
+        ]
+      }
+    },
+    "afternoon": {
+      "engineFitDistances": {
+        "zenith": 2.9,
+        "high": 2.6,
+        "toward": 5.9,
+        "away": 1.5,
+        "lit": 0.6,
+        "shaded": 0.8,
+        "up": 0.5
+      },
+      "worstSkyDistance": 5.9,
+      "fixedLightMeasure": 2.4,
+      "changedPixels": 1046119,
+      "changedSolidWaterPixels": 0,
+      "changedSolidTerrainPixels": 938718,
+      "maxSkyRGBChange": 4.0,
+      "maxSkyOKLabChange": 0.5155,
+      "maxSkySeam": 1.0,
+      "sampleAgreementMax": 0.024,
+      "cards": {
+        "lit": {
+          "RGB": [
+            120.0,
+            115.0,
+            108.0
+          ],
+          "pixels": 3901
+        },
+        "shaded": {
+          "RGB": [
+            60.0,
+            68.0,
+            79.0
+          ],
+          "pixels": 27010
+        },
+        "up": {
+          "RGB": [
+            111.0,
+            113.0,
+            116.0
+          ],
+          "pixels": 17096
+        }
+      },
+      "celestialPixelsPreserved": true,
+      "starPixelsPreserved": true,
+      "adjustedSkyPoint": {
+        "name": "toward",
+        "before": [
+          239.98816568047337,
+          224.9940828402367,
+          199.0
+        ],
+        "after": [
+          238.98816568047337,
+          225.9940828402367,
+          203.0
+        ]
+      }
+    },
+    "golden": {
+      "engineFitDistances": {
+        "zenith": 1.7,
+        "high": 2.1,
+        "toward": 3.6,
+        "away": 3.4,
+        "lit": 1.5,
+        "shaded": 4.5,
+        "up": 5.8
+      },
+      "worstSkyDistance": 3.6,
+      "fixedLightMeasure": 2.9,
+      "changedPixels": 0,
+      "changedSolidWaterPixels": 0,
+      "changedSolidTerrainPixels": 0,
+      "maxSkyRGBChange": 0.0,
+      "maxSkyOKLabChange": 0.0,
+      "maxSkySeam": 1.0,
+      "sampleAgreementMax": 0.046,
+      "cards": {
+        "lit": {
+          "RGB": [
+            157.0,
+            112.0,
+            65.0
+          ],
+          "pixels": 4664
+        },
+        "shaded": {
+          "RGB": [
+            40.0,
+            55.0,
+            81.0
+          ],
+          "pixels": 29322
+        },
+        "up": {
+          "RGB": [
+            76.0,
+            62.0,
+            46.0
+          ],
+          "pixels": 17729
+        }
+      },
+      "celestialPixelsPreserved": true,
+      "starPixelsPreserved": true
+    },
+    "sunset": {
+      "engineFitDistances": {
+        "zenith": 0.7,
+        "high": 1.7,
+        "toward": 1.6,
+        "away": 3.4,
+        "lit": 9.6,
+        "shaded": 3.7,
+        "up": 2.2
+      },
+      "worstSkyDistance": 3.4,
+      "fixedLightMeasure": 2.5,
+      "changedPixels": 0,
+      "changedSolidWaterPixels": 0,
+      "changedSolidTerrainPixels": 0,
+      "maxSkyRGBChange": 0.0,
+      "maxSkyOKLabChange": 0.0,
+      "maxSkySeam": 1.0,
+      "sampleAgreementMax": 0.047,
+      "cards": {
+        "lit": {
+          "RGB": [
+            100.0,
+            60.0,
+            45.0
+          ],
+          "pixels": 4469
+        },
+        "shaded": {
+          "RGB": [
+            23.0,
+            32.0,
+            51.0
+          ],
+          "pixels": 31587
+        },
+        "up": {
+          "RGB": [
+            58.0,
+            45.0,
+            45.0
+          ],
+          "pixels": 24466
+        }
+      },
+      "celestialPixelsPreserved": true,
+      "starPixelsPreserved": true
+    },
+    "dusk": {
+      "engineFitDistances": {
+        "zenith": 1.5,
+        "high": 5.8,
+        "toward": 5.8,
+        "away": 1.7,
+        "lit": 10.4,
+        "shaded": 1.3,
+        "up": 1.8
+      },
+      "worstSkyDistance": 5.8,
+      "fixedLightMeasure": 5.2,
+      "changedPixels": 67216,
+      "changedSolidWaterPixels": 0,
+      "changedSolidTerrainPixels": 0,
+      "maxSkyRGBChange": 2.0,
+      "maxSkyOKLabChange": 0.4476,
+      "maxSkySeam": 0.0,
+      "sampleAgreementMax": 0.046,
+      "cards": {
+        "lit": {
+          "RGB": [
+            53.0,
+            50.0,
+            65.0
+          ],
+          "pixels": 4320
+        },
+        "shaded": {
+          "RGB": [
+            19.0,
+            26.0,
+            43.0
+          ],
+          "pixels": 31491
+        },
+        "up": {
+          "RGB": [
+            31.0,
+            35.0,
+            49.0
+          ],
+          "pixels": 18565
+        }
+      },
+      "celestialPixelsPreserved": true,
+      "starPixelsPreserved": true,
+      "adjustedSkyPoint": {
+        "name": "toward",
+        "before": [
+          227.46153846153845,
+          154.11834319526628,
+          109.69822485207101
+        ],
+        "after": [
+          229.46153846153845,
+          155.11834319526628,
+          110.69822485207101
+        ]
+      }
+    },
+    "night": {
+      "engineFitDistances": {
+        "zenith": 3.6,
+        "high": 5.0,
+        "toward": 0.6,
+        "away": 0.5,
+        "lit": 2.6,
+        "shaded": 1.4,
+        "up": 0.7
+      },
+      "worstSkyDistance": 5.0,
+      "fixedLightMeasure": 4.1,
+      "changedPixels": 0,
+      "changedSolidWaterPixels": 0,
+      "changedSolidTerrainPixels": 0,
+      "maxSkyRGBChange": 0.0,
+      "maxSkyOKLabChange": 0.0,
+      "maxSkySeam": 0.0,
+      "sampleAgreementMax": 0.048,
+      "cards": {
+        "lit": {
+          "RGB": [
+            26.0,
+            32.0,
+            42.0
+          ],
+          "pixels": 3715
+        },
+        "shaded": {
+          "RGB": [
+            13.0,
+            21.0,
+            35.0
+          ],
+          "pixels": 11425
+        },
+        "up": {
+          "RGB": [
+            30.0,
+            36.0,
+            47.0
+          ],
+          "pixels": 15223
+        }
+      },
+      "celestialPixelsPreserved": true,
+      "starPixelsPreserved": true
+    }
+  },
+  "pointsReadSHA256": "499cd1b60452d1684b0df91da8d561b47357ceb5ec1b6a4d38eb1f7e2149d221"
+}

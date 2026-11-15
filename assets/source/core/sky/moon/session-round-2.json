@@ -1,0 +1,14 @@
+{
+  "started_utc": "2026-11-14T23:47:44Z",
+  "workflow": "Built-in repaint, local rebuild, full-size and native-size review",
+  "baseline": "iterations/round-2-baseline",
+  "finished_utc": "2026-11-14T23:56:15+00:00",
+  "elapsed_seconds": 512,
+  "generation_calls": 2,
+  "edit_calls_included": 2,
+  "review_rounds": 3,
+  "total_generation_calls": 5,
+  "total_review_rounds": 7,
+  "selected_original": "originals/round-05.png",
+  "validation": "iterations/round-07-finish/validation.json"
+}

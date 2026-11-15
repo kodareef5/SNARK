@@ -1,0 +1,70 @@
+{
+  "originals/round-01.png": {
+    "sha256": "43d7f5d29573e4d45ac0b2e7c6b52cc25a4d5281399c0cc44ef6d27e52a7d53e",
+    "bytes": 2323171
+  },
+  "originals/round-02.png": {
+    "sha256": "ee317961ea3e93ebb261f25cfeed62d3a64b16bb174baea7731101e9b272900e",
+    "bytes": 2335222
+  },
+  "originals/round-03.png": {
+    "sha256": "1f983aba532e0308d4d629a0ddd8552c3b4a724a2feeb1c87df9c42b5c17268b",
+    "bytes": 2050698
+  },
+  "originals/round-04.png": {
+    "sha256": "a4a5f5a602e099d3931801bc245334b0eba3ba38d2115b8475c16be1b3c07536",
+    "bytes": 1970037
+  },
+  "originals/round-05.png": {
+    "sha256": "956f24b95242b06103ab77cb7601db922487f266085696e18480251d2f98dc1f",
+    "bytes": 1896320
+  },
+  "originals/round-06.png": {
+    "sha256": "d662df003fd43d30addb18064a923e4825f443e14ba316a9f680b4cb99765a44",
+    "bytes": 2029001
+  },
+  "originals/round-07.png": {
+    "sha256": "554e07812026cd9d5faf3e7172f5136d6e3c0bd291f37670276cb7d89ce6896a",
+    "bytes": 1848340
+  },
+  "originals/round-08.png": {
+    "sha256": "4327e676fec72a1b807ce068bd072956fd46ad57fed992476e86e28ac841fd0a",
+    "bytes": 1744991
+  },
+  "originals/round-09.png": {
+    "sha256": "8baa2c5b6b0203b372df1187ca3263ecfd9ea310ff623dc51afc5da227b5e55f",
+    "bytes": 1735424
+  },
+  "originals/round-10.png": {
+    "sha256": "67ba62b9e7e95bbe08234d2dd9503db5cf101244e51511761f3e044d52d2c1a9",
+    "bytes": 1690436
+  },
+  "originals/round-11.png": {
+    "sha256": "423be36a4c6f152501f707dca602dbcb8c78cbfc6f144dddf5830daa03470ce0",
+    "bytes": 1722012
+  },
+  "originals/round-12.png": {
+    "sha256": "f6a0a93d8f7d902de83c022d83bf832fd302f498f619fb0b41301f11e6367b2a",
+    "bytes": 1709755
+  },
+  "originals/round-13.png": {
+    "sha256": "c776f5cf4134651d038fea1526ecbca4af3dacd0df0f5d1dab67f57beda8b7e4",
+    "bytes": 1739443
+  },
+  "originals/round-14.png": {
+    "sha256": "1bad7908cab6d9ee732f7af1ff928b4e77bc1689a45a2ba9a0c1139da93c9ddd",
+    "bytes": 1722914
+  },
+  "originals/round-15.png": {
+    "sha256": "02fcd797873b5adf41ebf85b9b398ffd3f448886e395a71cfa7a50e518d22893",
+    "bytes": 1684499
+  },
+  "originals/round-16.png": {
+    "sha256": "db78285b9ba690d9c65908dbe594f5221a358428d829ed741caf17ab9f19ae82",
+    "bytes": 1677787
+  },
+  "originals/round-17.png": {
+    "sha256": "0fcdae3acaaa662c28a8c7ff24238417511cba09f84a00cf48c345b7e09af028",
+    "bytes": 1719305
+  }
+}

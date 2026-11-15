@@ -1,0 +1,26 @@
+[
+  {
+    "path": "originals/01-toward-generated.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "a78bd1b2b09fcf34c910885f4de883031011784904b7bc98ec64f74b62cfaa12"
+  },
+  {
+    "path": "originals/02-away-generated.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "dfcbf2e941489eaeb6f88de409b4454362cffcb1fd5a5a59f33e515eaf9f323b"
+  },
+  {
+    "path": "originals/03-golden-generated.png",
+    "size": [
+      1774,
+      887
+    ],
+    "sha256": "fa3be54eb05f6068174e653ad0c5166b40fc0ff93e99f096aa76905433cec26a"
+  }
+]
