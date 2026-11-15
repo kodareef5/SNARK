@@ -48,7 +48,7 @@ SPECS = {s["name"]: s for s in MANGROVES}
 # a head carries, a mangrove's shore being a band of them.
 SPACING = 1.15
 GATHERED = {2: 0.5, 3: 12, 4: 7}
-SPRAYS = 0.6
+SPRAYS = 0.7
 
 
 def stem(spec):
@@ -163,7 +163,7 @@ def mangrove(name, lod):
     rng = rng_for(name, "level", lod)
     hs, path, ribs, roots, limbs, broken, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
-    heads, _ = bl.heads_of(name, limbs, lobes, shade, SPACING)
+    heads, _ = bl.heads_of(name, limbs, lobes, shade, SPACING, roof=True, under=1.2, size=(0.95, 1.45))
     if lod in (2, 3):
         heads = bl.gathered(heads, GATHERED[lod], name)
     sides = {0: 16, 1: 10, 2: 7, 3: 5, 4: 4}[lod]
