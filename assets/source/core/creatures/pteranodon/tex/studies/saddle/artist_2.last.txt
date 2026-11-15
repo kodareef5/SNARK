@@ -1,0 +1,5 @@
+Revised the four returned sets and added `rope_twist`. Wood and wrap remain unchanged.
+
+All seven were inspected in the fixed renderer at 0.5 and 1.5 m. Checks pass; all 35 maps rebuild byte for byte.
+
+[Updated report, sources and prompts](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/studies/saddle/REPORT.md) · [Renderer review](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/studies/saddle/checks/game_all_sets.png)
