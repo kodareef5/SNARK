@@ -543,7 +543,7 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
       return { bare, kinds };
     });
     const zoneCell = r.u8();
-    return { seed, perChunk, zones, zoneCell, zone: r.take(r.bytes.length - r.at) };
+    return { seed, perChunk, zones, zoneCell, zone: r.take(r.bytes.length - r.at).slice() };
   }
   if (type > 2) throw new Error(`map: nodes of type ${type} are not ones this build reads`);
   if (type === 0) {
@@ -554,7 +554,7 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
       return [r.text(), weight];
     });
     const allowCell = r.u8();
-    return { seed, perChunk, kinds, allowCell, allow: allowCell === 0 ? null : r.take(r.bytes.length - r.at) };
+    return { seed, perChunk, kinds, allowCell, allow: allowCell === 0 ? null : r.take(r.bytes.length - r.at).slice() };
   }
   const kinds = Array.from({ length: r.u8() }, () => r.text());
   const chunks = chunkCount(dims);
@@ -602,8 +602,10 @@ function read(r: In): Omit<MapFile, "hash"> {
         const corner = k % nx > 0 && k >= nx ? h[k - nx - 1]! : 0;
         h[k] = s.view.getUint16(k * 2, true) + left + above - corner;
       }
-    } else if (tag === "TINT") tint = s.bytes;
-    else if (tag === "STAT") {
+    } else if (tag === "TINT") {
+      // Copied, as the nodes' bytes are: a view would keep the whole file, statics and all, for as long as the map is held.
+      tint = s.bytes.slice();
+    } else if (tag === "STAT") {
       if (statics) throw new Error("map: it has two STAT sections");
       const ids = Array.from({ length: s.u16() }, () => s.text());
       const n = s.u32();
