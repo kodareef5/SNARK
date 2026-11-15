@@ -90,6 +90,8 @@ export const FRAME = {
   moonColor: 12,
   /** fSkyAbove and fSkyBelow: the sky's light on a surface facing up and on one facing down. */
   skyAbove: 16,
+  /** fSkyScale, fSkyAbove's fourth: the light one unit of the sky table stands for (sky.ts). */
+  skyScale: 19,
   skyBelow: 20,
   /** fHaze: its density at sea level, per metre, the height over which that thins by e, and the camera's height over the sea. */
   haze: 24,
@@ -114,6 +116,7 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
 };
+#define fSkyScale fSkyAbove.w
 `;
 
 export interface BufferUpload {

@@ -1,20 +1,47 @@
 // The sky on lit tiers. The sun keeps one path through the day: it rises in the east (-X), passes north of overhead (+Z)
 // as high as low poly's sun at noon, and sets in the west (+X). The moon stands opposite it.
+//
+// The dome's colour, the haze's and the light on every surface come from one table made at build time (tools/sky):
+// the sky by the sun's height, the view's elevation and how far round the view is from the sun, in a 32-sided RGBA8 3D
+// texture sampled with linear filtering. Beside it, per sun height, the light of the sun, the moon and the sky above
+// and below. Low poly keeps its own light, `flatLight`, and its own sky colour.
+
+import { FRAME } from "./packet.ts";
+import { AMBIENT, DIFFUSE, NIGHT_LIGHT } from "./shading.ts";
+import { SKY_LIGHTS, SKY_TABLE } from "./skytable.ts";
+import { SKY, SUN, linearToSrgb, lit, srgbToLinear } from "./surface.ts";
 
 /** How far the sun's path leans toward +Z: its noon height is atan(1 / 0.43), low poly's, 66.7 degrees. */
 const TILT = Math.atan(0.43);
 /** Degrees of the sun's travel the light's direction moves by at a time, so shadows step rarely and evenly. */
 export const SUN_STEP = 0.05;
+/** The highest the sun climbs, in degrees: the table's slices run from this far below the horizon to this far above. */
+export const SUN_TOP = (Math.asin(Math.cos(TILT)) * 180) / Math.PI;
+/** Texels along each side of the table. */
+export const SKY_SIZE = 32;
+/** Where the tone curve begins to bend. */
+export const KNEE = 0.8;
+/**
+ * Numbers per sun height beside the table: the light of the sun, of the moon, of the sky above and below, three each,
+ * in the table's units, so that between heights land and dome blend alike; then the light one unit stands for.
+ */
+export const LIGHT_FLOATS = 13;
+/** The grey card the exposure is set by: 128 of 255, as light. */
+export const CARD = srgbToLinear(128 / 255);
+/** Degrees across the sun's disc, half of it: the sun's light fades over this either side of the horizon, as the disc sets. */
+export const SUN_RADIUS = 0.6;
+
+const DEG = Math.PI / 180;
 
 /** Degrees the sun has travelled since it rose, at an hour of 0 to 24, in whole steps: 0 at six, 180 at eighteen. */
 export function sunTravel(hour: number): number {
-  const deg = (((hour - 6) * 15) % 360 + 360) % 360;
+  const deg = ((((hour - 6) * 15) % 360) + 360) % 360;
   return (Math.round(deg / SUN_STEP) * SUN_STEP) % 360;
 }
 
 /** A unit vector toward the sun at an hour. */
 export function sunDirection(hour: number, out: Float32Array | Float64Array | number[]): void {
-  const t = (sunTravel(hour) * Math.PI) / 180;
+  const t = sunTravel(hour) * DEG;
   out[0] = -Math.cos(t);
   out[1] = Math.sin(t) * Math.cos(TILT);
   out[2] = Math.sin(t) * Math.sin(TILT);
@@ -22,12 +49,332 @@ export function sunDirection(hour: number, out: Float32Array | Float64Array | nu
 
 /** The sun's height above the horizon in degrees at an hour. */
 export function sunHeight(hour: number): number {
-  return (Math.asin(Math.sin((sunTravel(hour) * Math.PI) / 180) * Math.cos(TILT)) * 180) / Math.PI;
+  return Math.asin(Math.sin(sunTravel(hour) * DEG) * Math.cos(TILT)) / DEG;
 }
 
 /** The hour at which the sun stands `height` degrees up, before noon or after it, on the nearest step. */
 export function hourOfSun(height: number, evening: boolean): number {
-  const t = (Math.asin(Math.sin((height * Math.PI) / 180) / Math.cos(TILT)) * 180) / Math.PI;
+  const t = Math.asin(Math.max(-1, Math.min(1, Math.sin(height * DEG) / Math.cos(TILT)))) / DEG;
   const travel = Math.round((evening ? 180 - t : t) / SUN_STEP) * SUN_STEP;
-  return 6 + travel / 15;
+  return (6 + ((travel + 360) % 360) / 15) % 24;
 }
+
+/**
+ * Low poly's light at an hour: a unit vector toward its sun into `sun`, and the day's light, which it returns. Its sun
+ * rises toward +X and at night it is lit by a fixed moon, dimmer.
+ */
+export function flatLight(hour: number, sun: Float32Array): number {
+  const up = Math.sin(((hour - 6) / 12) * Math.PI);
+  const around = Math.cos(((hour - 6) / 12) * Math.PI);
+  const dusk = Math.max(0, Math.min(1, (up + 0.1) / 0.4));
+  const sx = up > 0.15 ? around * 0.6 : 0.3;
+  const sy = up > 0.15 ? up : 0.8;
+  const sl = Math.hypot(sx, sy, 0.43);
+  sun[0] = sx / sl;
+  sun[1] = sy / sl;
+  sun[2] = 0.43 / sl;
+  return NIGHT_LIGHT + (1 - NIGHT_LIGHT) * dusk * dusk * (3 - 2 * dusk);
+}
+
+const flatSun = new Float32Array(3);
+
+/** What low poly shows of a grey 128 card facing up in the open at an hour, 0 to 255. */
+export function flatCard(hour: number): number {
+  const light = flatLight(hour, flatSun);
+  return 128 * (AMBIENT + DIFFUSE * Math.max(0, flatSun[1]!)) * light;
+}
+
+/** How far either side of where low poly's light leaps from its moon to its sun the card the lit tiers follow blends the two, in the sine `flatLight` calls up. */
+const LEAP = 0.017;
+
+/**
+ * The card lit tiers are exposed to show at a sun height: low poly's, but where its light leaps from its fixed moon to
+ * its sun (the sun 7.9 degrees up) blended over about a degree of the sun's height either side, so they do not leap too.
+ */
+export function cardTarget(height: number): number {
+  const a = ((hourOfSun(height, false) - 6) / 12) * Math.PI;
+  const up = Math.sin(a);
+  const dusk = Math.max(0, Math.min(1, (up + 0.1) / 0.4));
+  const light = NIGHT_LIGHT + (1 - NIGHT_LIGHT) * dusk * dusk * (3 - 2 * dusk);
+  const moon = 0.8 / Math.hypot(0.3, 0.8, 0.43);
+  const sun = up / Math.hypot(Math.cos(a) * 0.6, up, 0.43);
+  const t = Math.max(0, Math.min(1, (up - 0.15 + LEAP) / (2 * LEAP)));
+  return 128 * (AMBIENT + DIFFUSE * Math.max(0, moon + (sun - moon) * t * t * (3 - 2 * t))) * light;
+}
+
+// The table's three axes, each 0 to 1 across its texel centres: how far round from the sun's azimuth (x), the view's
+// elevation (y), the sun's height (z). Each is sampled more finely where the sky changes fastest: near the sun's
+// azimuth, near the horizon, and with the sun near the horizon.
+
+export function aroundCoord(degrees: number): number {
+  return Math.sqrt(Math.max(0, Math.min(1, degrees / 180)));
+}
+
+export function aroundOf(t: number): number {
+  return t * t * 180;
+}
+
+export function upCoord(elevation: number): number {
+  return Math.sqrt(Math.max(0, Math.min(1, elevation / 90)));
+}
+
+export function elevationOf(t: number): number {
+  return t * t * 90;
+}
+
+export function sunCoord(height: number): number {
+  const s = Math.max(-1, Math.min(1, height / SUN_TOP));
+  return 0.5 + 0.5 * Math.sign(s) * Math.sqrt(Math.abs(s));
+}
+
+export function heightOf(t: number): number {
+  const s = 2 * t - 1;
+  return Math.sign(s) * s * s * SUN_TOP;
+}
+
+/**
+ * A slice holds the sky over the light a unit stands for at that sun height, about what exposure makes of it. A
+ * texel's colour bytes hold it on the sRGB curve from 0 to SKY_LOW, as fine as the screen. A brighter one, round the
+ * sun, keeps its hue there and holds in alpha how many times brighter it is, in even steps of up to SKY_STOPS doublings.
+ */
+export const SKY_LOW = 0.8;
+export const SKY_STOPS = 7;
+
+/** Writes a texel's four bytes at `at`. */
+export function encodeTexel(c: Vec, out: Uint8Array, at: number): void {
+  const peak = Math.max(c[0]!, c[1]!, c[2]!);
+  const a = peak > SKY_LOW ? Math.min(255, Math.ceil((Math.log2(peak / SKY_LOW) / SKY_STOPS) * 255)) : 0;
+  const scale = SKY_LOW * 2 ** ((a / 255) * SKY_STOPS);
+  for (let k = 0; k < 3; k++) out[at + k] = Math.round(255 * linearToSrgb(Math.max(0, Math.min(1, c[k]! / scale))));
+  out[at + 3] = a;
+}
+
+/** A texel, or a blend of texels, as numbers of 0 to 255, back to the sky. */
+export function decodeTexel(r: number, g: number, b: number, a: number, out: Float32Array | Float64Array | number[]): void {
+  const scale = SKY_LOW * 2 ** ((a / 255) * SKY_STOPS);
+  out[0] = srgbToLinear(r / 255) * scale;
+  out[1] = srgbToLinear(g / 255) * scale;
+  out[2] = srgbToLinear(b / 255) * scale;
+}
+
+/** The byte of a texel's channel in a table laid out x fastest, then y, then z, four bytes a texel. */
+export function texelAt(x: number, y: number, z: number): number {
+  return ((z * SKY_SIZE + y) * SKY_SIZE + x) * 4;
+}
+
+const corner = new Float64Array(3);
+const mixed = new Float64Array(4);
+
+/**
+ * Samples the table at (x, y, z), each 0 to 1 across texel centres, as a graphics card samples an RGBA8 3D texture with
+ * linear filtering and edges clamped: the bytes are blended by weights held to 1/256, and the blend decoded after.
+ */
+export function sampleSky(table: Uint8Array, x: number, y: number, z: number, out: Float32Array | Float64Array | number[]): void {
+  const n = SKY_SIZE - 1;
+  const at = [x * n, y * n, z * n];
+  let i0 = 0, j0 = 0, k0 = 0;
+  for (let a = 0; a < 3; a++) {
+    const v = Math.max(0, Math.min(n, at[a]!));
+    const base = Math.min(n - 1, Math.floor(v));
+    corner[a] = Math.round((v - base) * 256) / 256;
+    if (a === 0) i0 = base;
+    else if (a === 1) j0 = base;
+    else k0 = base;
+  }
+  const fx = corner[0]!, fy = corner[1]!, fz = corner[2]!;
+  for (let c = 0; c < 4; c++) {
+    let sum = 0;
+    for (let dz = 0; dz < 2; dz++) {
+      for (let dy = 0; dy < 2; dy++) {
+        const w = (dz ? fz : 1 - fz) * (dy ? fy : 1 - fy);
+        sum += w * ((1 - fx) * table[texelAt(i0, j0 + dy, k0 + dz) + c]! + fx * table[texelAt(i0 + 1, j0 + dy, k0 + dz) + c]!);
+      }
+    }
+    mixed[c] = sum;
+  }
+  decodeTexel(mixed[0]!, mixed[1]!, mixed[2]!, mixed[3]!, out);
+}
+
+type Vec = ArrayLike<number>;
+
+/** The table's coordinates for a view direction under a sun direction, both of length 1, into out[0..2]. */
+export function skyCoords(sun: Vec, view: Vec, out: Float64Array | number[]): void {
+  const lx = Math.hypot(view[0]!, view[2]!) * Math.hypot(sun[0]!, sun[2]!);
+  const cos = lx > 1e-9 ? (view[0]! * sun[0]! + view[2]! * sun[2]!) / lx : 1;
+  out[0] = aroundCoord(Math.acos(Math.max(-1, Math.min(1, cos))) / DEG);
+  out[1] = upCoord(Math.asin(Math.max(-1, Math.min(1, view[1]!))) / DEG);
+  out[2] = sunCoord(Math.asin(Math.max(-1, Math.min(1, sun[1]!))) / DEG);
+}
+
+const coords = [0, 0, 0];
+
+/**
+ * The dome in a direction, in the table's units: times the frame's `skyScale` it is light, and times the exposure as
+ * well, what the dome shows before the tone curve. Under the horizon it is the horizon's.
+ */
+export function domeLight(table: Uint8Array, sun: Vec, view: Vec, out: Float32Array | Float64Array | number[]): void {
+  skyCoords(sun, view, coords);
+  sampleSky(table, coords[0]!, coords[1]!, coords[2]!, out);
+}
+
+/** What haze is coloured: the dome 3 degrees up in the ray's direction, as light before exposure. */
+export function hazeColor(table: Uint8Array, sun: Vec, ray: Vec, skyScale: number, out: Float32Array | Float64Array | number[]): void {
+  const flat = Math.hypot(ray[0]!, ray[2]!) || 1;
+  const c = Math.cos(3 * DEG) / flat;
+  domeLight(table, sun, [ray[0]! * c, Math.sin(3 * DEG), ray[2]! * c], out);
+  for (let k = 0; k < 3; k++) out[k]! *= skyScale;
+}
+
+export interface Sky {
+  /** The table, SKY_SIZE cubed RGBA8 texels laid out as `texelAt` says. */
+  table: Uint8Array;
+  /** LIGHT_FLOATS per slice of the table, by sun height. */
+  lights: Float32Array;
+}
+
+let made: Sky | null = null;
+
+const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+function fromBase64(text: string): Uint8Array {
+  const value = new Uint8Array(128);
+  for (let i = 0; i < 64; i++) value[BASE64.charCodeAt(i)] = i;
+  const out = new Uint8Array(Math.floor((text.replace(/=+$/, "").length * 3) / 4));
+  for (let i = 0, o = 0; i < text.length; i += 4) {
+    const n = (value[text.charCodeAt(i)]! << 18) | (value[text.charCodeAt(i + 1)]! << 12) | (value[text.charCodeAt(i + 2)]! << 6) | value[text.charCodeAt(i + 3)]!;
+    if (o < out.length) out[o++] = n >> 16;
+    if (o < out.length) out[o++] = (n >> 8) & 255;
+    if (o < out.length) out[o++] = n & 255;
+  }
+  return out;
+}
+
+/** The table and its light, as tools/sky/build.ts made them. */
+export function theSky(): Sky {
+  return (made ??= { table: fromBase64(SKY_TABLE), lights: Float32Array.from(SKY_LIGHTS) });
+}
+
+/**
+ * The tone curve: Khronos PBR Neutral's shoulder with its knee at KNEE and no toe. Light under the knee is left as it
+ * is; a colour whose brightest channel is above it is brought under 1, keeping its hue, and toward white as it climbs.
+ */
+export function tone(c: Vec, out: Float32Array | Float64Array | number[]): void {
+  const peak = Math.max(c[0]!, c[1]!, c[2]!);
+  if (peak <= KNEE) {
+    for (let k = 0; k < 3; k++) out[k] = c[k]!;
+    return;
+  }
+  const d = 1 - KNEE;
+  const top = 1 - (d * d) / (peak + d - KNEE);
+  const white = 1 - 1 / (0.15 * (peak - top) + 1);
+  for (let k = 0; k < 3; k++) out[k] = (c[k]! * top) / peak + (top - (c[k]! * top) / peak) * white;
+}
+
+/** Light after exposure as the screen shows it, 0 to 255: the tone curve, then sRGB. */
+export function shownSky(c: Vec, out: Float32Array | Float64Array | number[]): void {
+  tone(c, out);
+  for (let k = 0; k < 3; k++) out[k] = 255 * linearToSrgb(Math.max(0, Math.min(1, out[k]!)));
+}
+
+/** Luminance of linear light. */
+export function luminance(c: Vec): number {
+  return 0.2126 * c[0]! + 0.7152 * c[1]! + 0.0722 * c[2]!;
+}
+
+/** How much of the sun's disc stands above the horizon at a height, 0 to 1. */
+export function discUp(height: number): number {
+  const t = Math.max(0, Math.min(1, (height + SUN_RADIUS) / (2 * SUN_RADIUS)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * The light at a sun height, blended between the slices either side as the table blends them: the light of the sun,
+ * the moon, and the sky above and below in the table's units, then the light a unit stands for, by its logarithm.
+ */
+function lightsAt(lights: Float32Array, height: number, out: Float64Array): void {
+  const v = sunCoord(height) * (SKY_SIZE - 1);
+  const k = Math.min(SKY_SIZE - 2, Math.floor(v));
+  const f = v - k;
+  const a = k * LIGHT_FLOATS, b = a + LIGHT_FLOATS;
+  for (let i = 0; i < LIGHT_FLOATS - 1; i++) out[i] = lights[a + i]! * (1 - f) + lights[b + i]! * f;
+  out[LIGHT_FLOATS - 1] = Math.exp(Math.log(lights[a + LIGHT_FLOATS - 1]!) * (1 - f) + Math.log(lights[b + LIGHT_FLOATS - 1]!) * f);
+}
+
+const blend = new Float64Array(LIGHT_FLOATS);
+const sunAt = new Float64Array(3);
+const light = new Float64Array(12);
+
+const UP = [0, 1, 0];
+const takes = new Float64Array(3);
+const GREY = [CARD, CARD, CARD];
+
+/**
+ * What a grey 128 card, fully rough and not metal, sends to the eye as surface.ts's `lit` lights it: per unit of a
+ * light's strength from `l`, and per unit of the sky's light on it. `n` is its normal and `v` the way to the eye.
+ */
+export function cardTakes(n: Vec, v: Vec, l: Vec): { light: number; sky: number } {
+  lit(takes, GREY, [0, 1, 0], n, v, l, UP);
+  const light = takes[0]! / SUN;
+  lit(takes, GREY, [1, 1, 0], n, v, l, UP);
+  return { light, sky: (takes[0]! - light * SUN) / SKY };
+}
+
+/**
+ * The exposure that makes a grey 128 card facing up in the open, seen from above, show `cardTarget`, given the
+ * luminance of the light of the sun, the moon and the sky above. Under the tone curve's knee, where the card always is,
+ * exposure is all that lies between them. Every exposure is this over noon's, so that it is 1 at noon and a card a step
+ * or two brighter than low poly's.
+ */
+export function cardExposure(height: number, sun: number, moon: number, above: number): number {
+  const s = Math.sin(height * DEG), c = Math.cos(height * DEG);
+  const bySun = cardTakes(UP, UP, [c, s, 0]);
+  const byMoon = cardTakes(UP, UP, [-c, -s, 0]);
+  return srgbToLinear(cardTarget(height) / 255) / (sun * bySun.light + moon * byMoon.light + above * bySun.sky);
+}
+
+/** The light at a sun height into `light`, and the exposure there before noon's divides it. */
+function lightAt(lights: Float32Array, height: number): number {
+  lightsAt(lights, height, blend);
+  for (let i = 0; i < 12; i++) light[i] = blend[i]! * blend[LIGHT_FLOATS - 1]!;
+  return cardExposure(height, luminance([light[0]!, light[1]!, light[2]!]), luminance([light[3]!, light[4]!, light[5]!]), luminance([light[6]!, light[7]!, light[8]!]));
+}
+
+/** The exposure at an hour. */
+export function exposureFor(hour: number, lights: Float32Array): number {
+  return lightAt(lights, sunHeight(hour)) / lightAt(lights, SUN_TOP);
+}
+
+/** Fills the sky's part of a frame block for an hour: the sun, the moon, their light and the sky's, exposure, and the table's scale. */
+export function skyFrame(hour: number, sky: Sky, frame: Float32Array): void {
+  const f = FRAME;
+  sunDirection(hour, sunAt);
+  const h = sunHeight(hour);
+  const noon = lightAt(sky.lights, SUN_TOP);
+  frame[f.exposure] = lightAt(sky.lights, h) / noon;
+  for (let k = 0; k < 3; k++) {
+    frame[f.sun + k] = sunAt[k]!;
+    frame[f.moon + k] = -sunAt[k]!;
+    frame[f.sunColor + k] = light[k]!;
+    frame[f.moonColor + k] = light[3 + k]!;
+    frame[f.skyAbove + k] = light[6 + k]!;
+    frame[f.skyBelow + k] = light[9 + k]!;
+  }
+  frame[f.casting] = discUp(h);
+  frame[f.skyScale] = blend[LIGHT_FLOATS - 1]!;
+}
+
+const g = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
+
+/** The table's lookup as GLSL, the twin of `domeLight`: `skyLook` gives the dome in the table's units for a view and a sun. */
+export const SKY_GLSL = `vec3 skyDecode(vec4 v) {
+  return mix(v.rgb / 12.92, pow((v.rgb + 0.055) / 1.055, vec3(2.4)), step(0.04045, v.rgb)) * ${g(SKY_LOW)} * exp2(v.a * ${g(SKY_STOPS)});
+}
+vec3 skyLook(highp sampler3D table, vec3 view, vec3 sun) {
+  float lx = length(view.xz) * length(sun.xz);
+  float around = lx > 1e-9 ? sqrt(acos(clamp(dot(view.xz, sun.xz) / lx, -1.0, 1.0)) / 3.14159265) : 0.0;
+  float up = sqrt(clamp(asin(clamp(view.y, -1.0, 1.0)) / 1.57079633, 0.0, 1.0));
+  float s = clamp(degrees(asin(clamp(sun.y, -1.0, 1.0))) / ${g(SUN_TOP)}, -1.0, 1.0);
+  float height = 0.5 + 0.5 * sign(s) * sqrt(abs(s));
+  vec3 t = (vec3(around, up, height) * ${g(SKY_SIZE - 1)} + 0.5) / ${g(SKY_SIZE)};
+  return skyDecode(texture(table, t));
+}`;

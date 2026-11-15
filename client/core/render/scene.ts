@@ -24,7 +24,8 @@ import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials } from "./characters.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
-import { NIGHT_LIGHT, UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
+import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
+import { flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
 
 export interface RenderWorld {
@@ -268,16 +269,9 @@ export class Scene {
     p.camY = cam.y;
     p.camZ = cam.z;
     // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
-    const up = Math.sin(((this.hour - 6) / 12) * Math.PI);
-    const around = Math.cos(((this.hour - 6) / 12) * Math.PI);
-    const dusk = Math.max(0, Math.min(1, (up + 0.1) / 0.4));
-    p.light = NIGHT_LIGHT + (1 - NIGHT_LIGHT) * dusk * dusk * (3 - 2 * dusk);
-    const sx = up > 0.15 ? around * 0.6 : 0.3;
-    const sy = up > 0.15 ? up : 0.8;
-    const sl = Math.hypot(sx, sy, 0.43);
-    p.sun[0] = sx / sl;
-    p.sun[1] = sy / sl;
-    p.sun[2] = 0.43 / sl;
+    p.light = flatLight(this.hour, p.sun);
+    // Lit tiers take their light from the sky table.
+    if (p.tier.lit) skyFrame(this.hour, theSky(), p.frame);
 
     // Under water the view is short and the fog is the water's colour, dimmed.
     const sea = this.world.hf.seaLevel;
