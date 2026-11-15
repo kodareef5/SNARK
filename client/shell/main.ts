@@ -153,6 +153,11 @@ async function boot(): Promise<void> {
     app.drawn(packet, ours, gpu);
     device?.frame(now, packet, t0, built);
     if (frames === 30) loser?.loseContext();
+    // The self-check asks for a call and listens for it leaving the volume.
+    if (selfcheck && sound && frames >= 0) {
+      if (frames === 30) app.ui.local?.("sound call");
+      sound.listen();
+    }
     if (frames === 45) loser?.restoreContext();
     times.push(performance.now() - t0);
     const r = app.scene!.assets.residency;
@@ -181,12 +186,12 @@ async function boot(): Promise<void> {
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level) && (!app.sounds?.library.index.has("core:dodo/sound/call") || sound!.peak > 0.001),
         rocks: rocks.map((m) => [m.level, m.drawn]),
         restored,
         assets: { ...app.scene?.assets.residency.stats, kept: port.cache },
         ...(voiced ? { voice: voice.report } : {}),
-        ...(app.sounds ? { sound: app.sounds.line() } : {}),
+        ...(app.sounds ? { sound: { line: app.sounds.line(), peak: sound!.peak } } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,
         textures: { format: renderer.format, takes: renderer.formats, errors: renderer.errors },

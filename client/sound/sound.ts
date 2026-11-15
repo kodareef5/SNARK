@@ -20,6 +20,9 @@ interface Voice {
 export class SoundIo implements SoundSink {
   private ctx: AudioContext | null = null;
   private bus: GainNode | null = null;
+  private meter: AnalyserNode | null = null;
+  /** The loudest sample `listen` has found leaving the volume, for the self-check: proof that a sound played. */
+  peak = 0;
   private readonly buffers = new Map<number, AudioBuffer>();
   private readonly voices = new Map<number, Voice>();
   /** HRTF places a sound above, below and behind as well; a phone gets the cheaper equal-power panning. */
@@ -47,6 +50,15 @@ export class SoundIo implements SoundSink {
     this.bus = ctx.createGain();
     this.bus.connect(squeeze);
     return ctx;
+  }
+
+  /** Looks at what leaves the volume now, and keeps the loudest sample in `peak`. Only the self-check calls it. */
+  listen(): void {
+    if (!this.ctx || !this.bus) return;
+    if (!this.meter) this.bus.connect((this.meter = this.ctx.createAnalyser()));
+    const block = new Float32Array(this.meter.fftSize);
+    this.meter.getFloatTimeDomainData(block);
+    for (const v of block) this.peak = Math.max(this.peak, Math.abs(v));
   }
 
   /** Call when the viewer touches the page. A browser plays nothing before that. */
