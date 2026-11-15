@@ -9,7 +9,7 @@ import { Solved, solve } from '../shared/anim/skeleton.ts';
 import { TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { TAU } from '../shared/math/scalar.ts';
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OBSTRUCTED, RESULT_OK, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
+import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
 import { BTN_JUMP, Body, STANCE_CROUCH, STANCE_STAND } from '../shared/sim/character.ts';
 import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
 import { stepVehicleBody, packVehicleDoors, unpackVehicleDoorLeft, unpackVehicleDoorRight } from '../shared/sim/vehicle-body.ts';
@@ -33,12 +33,17 @@ interface UrbanContext {
   creatures: Creatures;
   rigs: readonly PackRig[];
   refresh(rec: EntityRecord): void;
+  /** Tribe/PvE access: may `actor` take or keep a seat in `vehicle`, displacing `victim` (null for none)? */
+  may?(actor: EntityRecord, vehicle: EntityRecord, victim: EntityRecord | null): boolean;
 }
 interface HostSeat { entity: number; handle: number; definition: VehicleDefinition }
 interface Scope { epoch: number; request: number; connection: Connection | null }
 interface Point { x: number; y: number; z: number }
 export interface UrbanIncident { action: number; tick: number; offender: number; victim: number; vehicle: number }
 const ACTION_TICKS = 18;
+/** Seat tables are pruned as hosts disappear and actors go idle; these only bound a pathological world. */
+const MAX_HOSTS = 1 << 16;
+const MAX_ACTORS = 1 << 16;
 /** Namespaced extension, preserved by the normal record codec even in builds without vehicles. */
 const VEHICLE_COMPONENT = 0x757262;
 const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
@@ -52,6 +57,7 @@ export class Urban {
   private readonly ctx: UrbanContext;
   private readonly hosts = new Map<number, HostSeat>();
   private readonly scopes = new Map<number, Scope>();
+  private epochs = 0;
   private readonly body = new Body();
   private readonly pose = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
@@ -74,8 +80,15 @@ export class Urban {
           speed: Math.hypot(ctx.world.ents.vx[e]!, ctx.world.ents.vz[e]!) } : null;
       },
       check: action => this.check(action),
-      canControl: (actor, host) => this.entity(actor) >= 0 && this.hosts.has(host),
-    }, { runtimeEpoch: 1 });
+      canControl: (actor, host) => this.entity(actor) >= 0 && this.hosts.has(host) && this.allowed(actor, host, 0),
+    }, { runtimeEpoch: 1, maxHosts: MAX_HOSTS, maxActors: MAX_ACTORS });
+  }
+
+  /** One access rule for taking a seat and for keeping control of one. */
+  private allowed(actor: number, host: number, victim: number): boolean {
+    const { records } = this.ctx, me = records.byPid.get(actor), car = records.byPid.get(host);
+    if (!me || !car) return false;
+    return this.ctx.may ? this.ctx.may(me, car, victim ? records.byPid.get(victim) ?? null : null) : true;
   }
 
   register(e: number): boolean {
@@ -83,8 +96,12 @@ export class Urban {
     const definition = world.reg.vehicle[ents.kind[e]!];
     if (!definition || (ents.flags[e]! & F_ALIVE) === 0) return false;
     const pid = ents.pid[e]!;
-    if (this.hosts.has(pid)) return true;
     const handle = makeHandle(e, ents.gen[e]!);
+    const known = this.hosts.get(pid);
+    if (known?.handle === handle) return true;
+    // The same record rematerialized in another slot: the old body's seats are released first.
+    if (known) this.evict(pid);
+    if (this.hosts.size >= MAX_HOSTS) return false;
     this.occupancy.addHost(pid, handle, definition.seats);
     this.hosts.set(pid, { entity: e, handle, definition });
     ents.loadBody(e, this.body);
@@ -95,31 +112,70 @@ export class Urban {
       this.body.fuel = definition.spec.fuelCapacity;
       this.body.vehicleRpm = definition.spec.drivetrain?.idleRpm ?? 0;
       const saved = this.ctx.records.byPid.get(pid)?.extra.get(VEHICLE_COMPONENT);
-      if (saved) {
-        const count = saved[0] === 1 ? 6 : saved[0] === 2 ? 13 : saved[0] === 3 ? 16 : saved[0] === 4 ? VEHICLE_FIELDS.length : 0;
-        if (!count || saved.length !== 1 + count * 4 + (saved[0]! >= 3 ? 1 : 0)) throw new Error('Unsupported saved vehicle component');
-        const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
-        const values = Array.from({ length: count }, (_, i) => view.getFloat32(1 + i * 4, true));
-        if (!values.every(Number.isFinite) || values[5]! < 0 || values[5]! > definition.spec.fuelCapacity) throw new Error('Invalid saved vehicle state');
-        for (let i = 0; i < count; i++) this.body[VEHICLE_FIELDS[i]!] = values[i]!;
-        if (saved[0] === 1) { this.body.vehicleGroundPitch = this.body.vehiclePitch; this.body.vehicleGroundRoll = this.body.vehicleRoll; }
-        if (saved[0]! >= 3) {
-          const grounded = saved[saved.length - 1]!;
-          if (grounded > 1) throw new Error('Invalid saved vehicle contact state');
-          this.body.grounded = grounded === 1;
-        } else {
-          // Earlier components stored a parked pose without translational velocity.
-          this.body.vehicleYawRate = this.body.vehiclePitchRate = this.body.vehicleRollRate = this.body.vehicleRideVelocity = 0;
-        }
-        if (saved[0] === 4 && (!Number.isInteger(this.body.vehicleGear) || this.body.vehicleGear < -1 || this.body.vehicleGear > (definition.spec.drivetrain?.forwardRatios.length ?? 12) || this.body.vehicleRpm < 0 || this.body.vehicleRpm > 32767 || this.body.vehicleShiftTime < 0 || this.body.vehicleShiftTime > 60 || this.body.vehiclePayloadMass < 0 || this.body.vehiclePayloadMass > 1e6)) throw new Error('Invalid saved drivetrain state');
-        this.body.yaw = Math.round(this.body.vehicleYaw * 65536 / TAU) & 65535;
-      }
+      if (saved) this.restoreSaved(pid, saved, definition);
       ents.storeBody(e, this.body);
     }
     ents.vehiclePayloadMass[e] = Math.fround(this.payloadMass(e));
     world.history.track(e);
     this.save(e);
     return true;
+  }
+
+  /** Reads a saved component into `this.body`. A save from another build or a retuned
+   * definition must never stop the world loading: unreadable components keep the parked
+   * defaults, and readable ones are clamped to the current definition.
+   */
+  private restoreSaved(pid: number, saved: Uint8Array, definition: VehicleDefinition): void {
+    const b = this.body, version = saved[0]!;
+    const count = version === 1 ? 6 : version === 2 ? 13 : version === 3 ? 16 : version === 4 ? VEHICLE_FIELDS.length : 0;
+    if (!count || saved.length !== 1 + count * 4 + (version >= 3 ? 1 : 0)) {
+      console.warn(`vehicle ${pid}: ignoring saved component version ${version} (${saved.length} bytes)`);
+      return;
+    }
+    const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
+    const values = Array.from({ length: count }, (_, i) => view.getFloat32(1 + i * 4, true));
+    if (!values.every(Number.isFinite)) {
+      console.warn(`vehicle ${pid}: ignoring saved component with non-finite values`);
+      return;
+    }
+    for (let i = 0; i < count; i++) b[VEHICLE_FIELDS[i]!] = values[i]!;
+    if (version === 1) { b.vehicleGroundPitch = b.vehiclePitch; b.vehicleGroundRoll = b.vehicleRoll; }
+    if (version >= 3) b.grounded = saved[saved.length - 1]! !== 0;
+    // Earlier components stored a parked pose without translational velocity.
+    else b.vehicleYawRate = b.vehiclePitchRate = b.vehicleRollRate = b.vehicleRideVelocity = 0;
+    const clampTo = (v: number, lo: number, hi: number): number => Math.fround(Math.min(hi, Math.max(lo, v)));
+    const train = definition.spec.drivetrain;
+    b.fuel = clampTo(b.fuel, 0, definition.spec.fuelCapacity);
+    if (version === 4) {
+      b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, train?.forwardRatios.length ?? 12));
+      b.vehicleRpm = clampTo(b.vehicleRpm, 0, train?.redlineRpm ?? 32767);
+      b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, 60);
+      // Payload is recomputed from records right after loading.
+      b.vehiclePayloadMass = 0;
+    }
+    b.yaw = Math.round(b.vehicleYaw * 65536 / TAU) & 65535;
+  }
+
+  /** Releases everything seated in or headed for a vehicle whose entity is gone. Living
+   * occupants stand where their seat was; nothing is left attached to a dead slot.
+   */
+  private evict(pid: number): void {
+    const { world, records } = this.ctx, ents = world.ents;
+    for (const effect of this.occupancy.evictHost(pid, world.tick)) {
+      this.apply(effect);
+      if (effect.type !== 'detach') continue;
+      const e = this.entity(effect.actor);
+      if (e < 0 || makeHandle(e, ents.gen[e]!) !== effect.actorHandle) continue;
+      const move = world.reg.move[ents.kind[e]!];
+      ents.stance[e] = STANCE_STAND;
+      ents.setPosition(e, ents.x[e]!, Math.max(ents.y[e]!, groundUnder(world.hf, ents.x[e]!, ents.z[e]!, move?.radius ?? 0.3)), ents.z[e]!);
+      ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
+      ents.pose(e, world.tick);
+      records.dirty.add(effect.actor);
+      const c = this.client(effect.actor);
+      if (c) c.ownDirty = true;
+    }
+    this.hosts.delete(pid);
   }
 
   /** Curb mass is content; cargo and the mass/possessions of every committed occupant are authority data. */
@@ -175,6 +231,8 @@ export class Urban {
     if (best > 2) return RESULT_FAR;
     const occupant = this.occupancy.occupant(pid, nearest.id);
     if (occupant && !nearest.driver) return RESULT_BUSY;
+    // Refused before the door/landing sweeps, so a press on someone else's car costs nothing.
+    if (!this.allowed(c.pid, pid, occupant)) return RESULT_NOT_YOURS;
     return this.begin(c.pid, pid, nearest.id, occupant ? 'carjack' : 'enter');
   }
 
@@ -198,8 +256,10 @@ export class Urban {
   /** Commits seat transitions before the real player-input loop can drive any body. */
   beforeStep(): void {
     const { world, game } = this.ctx, ents = world.ents;
-    for (const host of this.hosts.values()) {
-      if (makeHandle(host.entity, ents.gen[host.entity]!) === host.handle && ents.driven[host.entity] === 2) ents.driven[host.entity] = 0;
+    for (const [pid, host] of this.hosts) {
+      // Destroyed, removed or recycled: nobody may stay seated in a slot that is no longer this car.
+      if (this.entity(pid) !== host.entity || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) { this.evict(pid); continue; }
+      if (ents.driven[host.entity] === 2) ents.driven[host.entity] = 0;
     }
     for (const [pid] of this.scopes) {
       const rec = this.ctx.records.byPid.get(pid), e = this.entity(pid);
@@ -213,6 +273,15 @@ export class Urban {
       if (c?.closed && this.occupancy.seatOf(pid) && !this.occupancy.pending(pid)) this.dismount(c);
     }
     for (const effect of this.occupancy.step(world.tick)) this.apply(effect);
+    // Scopes exist only while an actor is seated or has a pending action, so the table and the
+    // per-tick work over it stay proportional to vehicle use, not to everyone who ever used one.
+    for (const pid of [...this.scopes.keys()]) {
+      if (!this.occupancy.idle(pid)) continue;
+      const e = this.entity(pid);
+      if (e >= 0 && (ents.flags[e]! & F_PLAYER) === 0 && ents.driven[e] === 3) ents.driven[e] = 0;
+      this.occupancy.retireActor(pid, world.tick);
+      this.scopes.delete(pid);
+    }
     for (const host of this.hosts.values()) if (makeHandle(host.entity, ents.gen[host.entity]!) === host.handle) this.contacts?.capture(host.entity);
     // A driver released by death/disconnect stops owning movement even if a seat is retained for a blocked exit.
     for (const c of game.clients) {
@@ -278,12 +347,13 @@ export class Urban {
   private scope(pid: number): Scope {
     const connection = this.client(pid)?.conn ?? null;
     let scope = this.scopes.get(pid);
+    // Epochs come from one process-wide counter, so a retired and re-created scope never reuses one.
     if (!scope) {
-      scope = { epoch: 1, request: 1, connection };
+      scope = { epoch: ++this.epochs, request: 1, connection };
       this.scopes.set(pid, scope);
       for (const effect of this.occupancy.bindActor(pid, scope.epoch, this.ctx.world.tick)) this.apply(effect);
     } else if (scope.connection !== connection) {
-      scope.connection = connection; scope.epoch++; scope.request = 1;
+      scope.connection = connection; scope.epoch = ++this.epochs; scope.request = 1;
       for (const effect of this.occupancy.bindActor(pid, scope.epoch, this.ctx.world.tick)) this.apply(effect);
     }
     return scope;
@@ -293,6 +363,7 @@ export class Urban {
     const result = this.occupancy.begin({ actor, actorEpoch: scope.epoch, requestId: scope.request++, host, seat, kind }, this.ctx.world.tick, ACTION_TICKS);
     if (result.ok) return RESULT_OK;
     if (result.reason === 'too-far') return RESULT_FAR;
+    if (result.reason === 'not-yours') return RESULT_NOT_YOURS;
     if (result.reason === 'claimed' || result.reason === 'occupied' || result.reason === 'victim-claimed') return RESULT_BUSY;
     if (result.reason.includes('blocked') || result.reason === 'landing-required') return RESULT_OBSTRUCTED;
     return RESULT_DENIED;
@@ -336,6 +407,8 @@ export class Urban {
     if (!seat) return { ok: false, reason: 'missing-seat' };
     const actorClient = this.client(action.actor);
     if (action.kind !== 'exit' && actorClient && (actorClient.drive >= 0 || actorClient.state !== SESSION_ALIVE || actorClient.closed)) return { ok: false, reason: 'actor-busy' };
+    // Re-checked at commit: a tribe change during the door action still refuses it.
+    if (action.kind !== 'exit' && !this.allowed(action.actor, action.host, action.victim)) return { ok: false, reason: 'not-yours' };
     if (seat.driver && action.kind !== 'exit') {
       const driver = game.clients.find(c => c?.drive === host.entity);
       if (driver && driver.pid !== action.victim) return { ok: false, reason: 'driver-changed' };
@@ -400,7 +473,9 @@ export class Urban {
       const e = this.entity(action.actor), c = this.client(action.actor);
       const slot = host.definition.seats.findIndex(s => s.id === action.seat);
       const seat = host.definition.seats[slot]!;
-      if (c && seat.driver && !game.take(c, host.entity)) throw new Error('Validated vehicle takeover failed');
+      // Never throw inside the tick: a refused takeover leaves the actor seated without control,
+      // and the ordinary use button still exits.
+      if (c && seat.driver && !game.take(c, host.entity)) console.error(`vehicle ${action.host}: validated takeover by ${action.actor} was refused`);
       ents.setSeat(e, host.entity, slot + 1); ents.stance[e] = STANCE_CROUCH;
       ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
       if (!c) ents.driven[e] = 3;

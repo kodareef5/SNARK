@@ -264,6 +264,31 @@ export class Occupancy {
     return this.hosts.delete(pid);
   }
 
+  /** The host's entity is gone (destroyed, despawned, slot recycled). Pending work on it is
+   * cancelled, every occupant is detached whether alive or not, and the definition is
+   * removed so the PID can register again. The caller stands living occupants up.
+   */
+  evictHost(pid: number, now = this.tick): OccupancyEffect[] {
+    this.advance(now);
+    const host = this.hosts.get(pid);
+    if (!host) return [];
+    const effects: OccupancyEffect[] = [];
+    for (const action of [...this.claims.values()]) if (action.host === pid) effects.push(this.drop(action, now, 'host-removed'));
+    for (const [id, seat] of host.seats) {
+      if (!seat.actor) continue;
+      const actor = seat.actor, actorHandle = seat.actorHandle;
+      seat.actor = 0; seat.actorHandle = 0; seat.revision++;
+      this.places.delete(actor);
+      if (seat.driver) host.controlRevision++;
+      effects.push({ type: 'detach', actor, actorHandle, host: pid, hostHandle: host.handle, seat: id, tick: now,
+        control: { host: pid, hostHandle: host.handle, actor: 0, revision: host.controlRevision, runtimeEpoch: this.limits.runtimeEpoch } });
+    }
+    this.hosts.delete(pid);
+    return effects;
+  }
+  /** Idle actors (no seat, no pending claim) may be retired so the scope table stays bounded. */
+  idle(actor: number): boolean { return !this.places.has(actor) && !this.actorClaims.has(actor); }
+
   seatOf(actor: number): Readonly<Place> | null {
     const place = this.places.get(actor);
     return place ? { ...place } : null;

@@ -261,11 +261,12 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.vehicle) {
         try {
           validateVehicleSpec(d.vehicle.spec);
-          if (d.vehicle.id !== d.id || d.vehicle.seats.length < 1 || d.vehicle.seats.length > 255) throw new Error("invalid vehicle identity or seats");
+          if (d.vehicle.id !== d.id || d.vehicle.seats.length < 1 || d.vehicle.seats.length > 16) throw new Error("invalid vehicle identity or seats");
           const names = new Set<string>();
           let drivers = 0;
           for (const seat of d.vehicle.seats) {
-            if (!seat.id || names.has(seat.id) || seat.anchor.length !== 3 || seat.entry.length !== 3 || ![...seat.anchor, ...seat.entry].every(Number.isFinite)) throw new Error("invalid vehicle seat");
+            // The same names and count server/occupancy.ts accepts, so content that compiles always spawns.
+            if (!/^[a-z][a-z0-9_]{0,47}$/.test(seat.id) || names.has(seat.id) || seat.anchor.length !== 3 || seat.entry.length !== 3 || ![...seat.anchor, ...seat.entry].every(Number.isFinite)) throw new Error("invalid vehicle seat");
             names.add(seat.id); if (seat.driver) drivers++;
           }
           if (drivers !== 1) throw new Error("a vehicle must have one driver seat");

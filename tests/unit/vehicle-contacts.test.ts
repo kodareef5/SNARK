@@ -153,3 +153,20 @@ test('relative sweeps stop a body crossing a parked car even when both endpoint 
     const stopped = ents.x[target]!; tick(); expect(ents.x[target]).toBe(stopped);
   } finally { h.host.shutdown(); }
 });
+
+test('a driverless car blocks but cannot harm, so an unowned car never carries damage past PvE', () => {
+  const s = setup(), { h, ents, x, z, tick, health } = s;
+  try {
+    const empty = h.host.spawnVehicle('urban:compact', x - 8, z, 0, 0);
+    expect(empty).toBeGreaterThanOrEqual(0);
+    const target = s.victim('core:dummy', x - 8, z + 2.6), before = health(target), hits = h.host.combat.hits;
+    ents.setPosition(empty, x - 8, s.ground.y, z);
+    ents.vehicleYaw[empty] = ents.vehicleYawRate[empty] = ents.yaw[empty] = 0;
+    ents.vx[empty] = ents.vy[empty] = 0; ents.vz[empty] = 10;
+    ents.flags[empty] = ents.flags[empty]! | F_GROUNDED;
+    tick();
+    expect(health(target)).toBe(before);
+    expect(h.host.combat.hits).toBe(hits);
+    expect(ents.z[empty]).toBeLessThan(z + 0.3);
+  } finally { h.host.shutdown(); }
+});

@@ -218,8 +218,11 @@ export class VehicleContacts {
     const impulse = c.speed / (1 / mass + 1 / c.mass);
     const carNormal = ((ents.x[car]! - frame.body.x) * c.nx + (ents.z[car]! - frame.body.z) * c.nz) / TICK_DT;
     let taken = 0;
-    if (fresh && c.speed > MIN_HARM_SPEED && carNormal > MIN_HARM_SPEED) {
-      const driver = records.byPid.get(frame.by), by = driver && ents.resolve(frame.byHandle) === records.entOf.get(frame.by) ? driver : records.byPid.get(frame.pid) ?? null;
+    // Harm needs a live driver to answer to the rules. Crediting the car's own record would let an
+    // unowned (team 0) car coast through PvE protection, so a driverless car only blocks.
+    const driver = records.byPid.get(frame.by);
+    const by = driver && frame.byHandle !== 0 && ents.resolve(frame.byHandle) === records.entOf.get(frame.by) ? driver : null;
+    if (by && fresh && c.speed > MIN_HARM_SPEED && carNormal > MIN_HARM_SPEED) {
       const harmful = c.speed - MIN_HARM_SPEED;
       const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0,
         base: Math.min(300, 0.5 * harmful * harmful * mass / (mass + c.mass)), type: DMG_MELEE,

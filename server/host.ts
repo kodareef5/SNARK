@@ -429,7 +429,15 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   death.canOpen = (c, rec) => rec.team !== 0 && tribes.may(records.byPid.get(c.pid), rec.team);
   death.onShut = (rec) => taming.meal(rec);
   const riding = new Riding({ world, game, records, tribes, refresh: (rec) => refreshBody(rec) });
-  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec) });
+  // An unowned car is anyone's to take, and a tribe's own cars are its members'. On PvP another tribe's car
+  // can be stolen; on PvE it cannot, and nobody there drags another tribe's survivor out of a driver's seat.
+  const urbanMay = (me: EntityRecord, car: EntityRecord, victim: EntityRecord | null): boolean => {
+    if (!rules.on("serverPVE")) return true;
+    if (car.team !== 0 && !tribes.may(me, car.team)) return false;
+    const kind = reg.defs[victim?.kind ?? -1];
+    return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
+  };
+  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay });
   urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e) });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;

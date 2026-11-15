@@ -414,7 +414,8 @@ export class App {
     const oy = s.own.y + eye;
     const oz = s.own.z;
     if (s.driving >= 0 && this.reg.vehicle[s.bodyKind]) return "E  exit vehicle";
-    if (s.own.seatSlot === 2) return "E  exit passenger seat";
+    // Only vehicle seats use a slot; riders and carried bodies keep slot 0. A vehicle driver is handled above.
+    if (s.own.seatSlot !== 0 && s.own.seat > 0) return "E  exit passenger seat";
     if (this.holding >= 0) return "E  set down   click  throw";
     lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
     const struck = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, REACH);
@@ -605,7 +606,9 @@ export class App {
       hud.vehicle = this.vehicleTelemetry;
     } else this.vehicleTelemetry.stop();
     const carYaw = session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
-    const passenger = alive && session.own.seatSlot === 2 && session.own.seat > 0;
+    const passenger = alive && session.driving < 0 && session.own.seatSlot !== 0 && session.own.seat > 0;
+    // A passenger's chase camera is third person, so it obeys the same server rule.
+    const chase = passenger && session.thirdPerson;
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.
@@ -613,7 +616,7 @@ export class App {
     if (!alive) this.view.thirdPerson = false;
     else if (session.driving >= 0) this.view.thirdPerson = true;
     if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + 1, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving });
-    else if (passenger) {
+    else if (chase) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw;
       for (let i = 0; i < this.remote.count; i++) {
         const r = this.remote;
@@ -646,7 +649,7 @@ export class App {
     body.z = bz;
     body.yaw = c.yaw;
     body.tick = session.tickClock;
-    body.firstPerson = !third && !passenger;
+    body.firstPerson = !third && !chase;
     body.id = handleIndex(session.ownHandle);
     body.generation = handleGen(session.ownHandle);
     body.vehicle = undefined;

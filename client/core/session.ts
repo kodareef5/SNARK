@@ -80,7 +80,7 @@ import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
-import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_JUMP, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, unpackVehicleDoorLeft, unpackVehicleDoorRight, unpackVehicleGear, unpackVehicleRpm, vehicleShifting } from "../../shared/sim/vehicle-body.ts";
 import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
@@ -727,7 +727,8 @@ export class ClientSession {
     // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
     const vehicle = this.registry.vehicle[this.own.kind];
     if (vehicle) stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT);
-    else if (this.own.seatSlot !== 2) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
+    // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
+    else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
     else this.own.yaw = inp.yaw[i]!;
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
@@ -1248,6 +1249,21 @@ export class ClientSession {
 
   /** On a mismatch with the body predicted for `tick`, rewinds and replays. */
   private reconcile(tick: number, sb: Body): void {
+    // A passenger's body is pinned to its seat by the server and only its look is predicted, so the
+    // snapshot is adopted as it is: its position is the car's, not a misprediction to replay.
+    if (this.driving < 0 && sb.seatSlot !== 0 && sb.seat > 0 && tick < this.simTick) {
+      const yaw = this.own.yaw;
+      this.own.copy(sb);
+      this.own.yaw = yaw;
+      this.ownPrev.copy(this.own);
+      this.smoothX = this.smoothY = this.smoothZ = 0;
+      for (let t = tick; t <= this.simTick; t++) {
+        const slot = t & (HISTORY - 1);
+        this.bodies[slot]!.copy(this.own);
+        this.bodyTick[slot] = t;
+      }
+      return;
+    }
     if (tick >= this.simTick) {
       // The server is at or past the prediction (join, stall), so adopt its state.
       this.prediction.adopt(tick, this.simTick);
@@ -1295,7 +1311,9 @@ export class ClientSession {
       } else if (last !== 0) {
         const i = last & this.inputs.mask;
         const held = ++gap <= INPUT_HOLD_TICKS;
-        this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, this.inputs.buttons[i]! & (held ? BUTTON_MASK : INPUT_KEPT));
+        // Past the hold the server stops a quiet car on its handbrake (server/game.ts); replay the same.
+        const quiet = this.registry.vehicle[this.own.kind] ? BTN_JUMP : this.inputs.buttons[i]! & INPUT_KEPT;
+        this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, held ? this.inputs.buttons[i]! & BUTTON_MASK : quiet);
         last = t;
       } else this.inputs.set(t, 0, 0, Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff, 0, 0);
       if (t === this.simTick) this.ownPrev.copy(this.own);
