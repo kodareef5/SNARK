@@ -13,7 +13,8 @@ accepted pictures:
    build reads.
 3. Write a `.gitignore` in your folder listing, one path a line from the folder (`/name.png`), every file the build
    writes again: the delivered sets, and the derived working files under `source/` (fields, per-element layers,
-   arrays). Those stay on disk; the repository keeps what makes them.
+   arrays). Those stay on disk; the repository keeps what makes them. Never list `study.json`: it stays in the
+   repository.
 4. Run `build.py` from a clean state (the files your `.gitignore` lists deleted first) and confirm that it writes
    every delivered picture byte for byte as accepted (compare hashes before and after), with nothing it needs left in
    `superseded/` or ignored without being rebuilt.
