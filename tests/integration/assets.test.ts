@@ -6,6 +6,7 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
 import { frozenPack } from "../fixtures/pack.ts";
+import { SADDLE, WORN, saddledFrozenPack } from "../fixtures/saddles.ts";
 
 /** Everything of a frame packet that names a mesh, a level, an instance or a bone. */
 function fold(hash: number, p: FramePacket): number {
@@ -31,10 +32,11 @@ function fold(hash: number, p: FramePacket): number {
 
 /**
  * A survivor watching, ten metres off: a dressed and armed survivor, a bare dummy, creatures of every kind, and things
- * built. The pack's art is frozen, so the frames change when code or content does and not when art does.
+ * built. The pack's art is frozen, so the frames change when code or content does and not when art does. With
+ * `saddled`, the pack holds the raptor's box saddle (tests/fixtures/saddles.ts) and the raptor wears it.
  */
-function scene() {
-  const pack = frozenPack();
+function scene(saddled = false) {
+  const pack = saddled ? saddledFrozenPack("worn") : frozenPack();
   const h = new Harness({}, 1, 60, { dev: true, clips: pack.clips, rigs: pack.header.rigs });
   const app = new App(h.join("ada", {}, { manual: true }), h.reg, pack);
   const bob = h.join("bob");
@@ -52,17 +54,22 @@ function scene() {
   bob.command(CMD_MOVE, (w: BitWriter) => (w.bits(BOX_SELF, 1), w.varint(inv.item.indexOf(rifle)), w.bits(BOX_SELF, 1), w.varint(inv.hotbar), w.u16(0), w.u16(rifle)));
   h.run(200, frame);
   bob.command(CMD_SELECT, (w: BitWriter) => w.u8(0));
+  if (saddled) {
+    const raptor = [...h.host.records.byPid.values()].find((r) => r.kind === h.reg.index.get("core:raptor"))!;
+    raptor.saddle = h.reg.index.get(SADDLE)!;
+    h.host.refreshBody(raptor);
+  }
   h.run(400, frame);
   return { h, app, bob, pack };
 }
 
-test("three hundred frames of a busy scene draw what they drew before", () => {
-  const { h, app, pack } = scene();
+/** Three hundred frames of the scene, hashed, and the meshes they drew by id. */
+function frames(saddled = false) {
+  const { h, app, pack } = scene(saddled);
   let hash = 2166136261;
-  let frames = 0;
   let most = 0;
   const meshes = new Set<number>();
-  for (; frames < 300; frames++) {
+  for (let f = 0; f < 300; f++) {
     h.run(1000 / 60, (now) => {
       const p = app.frame(now, 1280, 720)!;
       hash = fold(hash, p);
@@ -70,8 +77,12 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
       for (let i = 0; i < p.drawCount; i++) meshes.add(p.drawMesh[i]!);
     });
   }
+  return { hash: hash.toString(16), most, drawn: new Set([...meshes].map((m) => pack.header.meshes[m]!.id)) };
+}
+
+test("three hundred frames of a busy scene draw what they drew before", () => {
+  const { hash, most, drawn } = frames();
   // Bodies in parts, armor, a held weapon, creatures, a dummy, structures and nodes: a scene that uses the pack widely.
-  const drawn = new Set([...meshes].map((m) => pack.header.meshes[m]!.id));
   const missing = ["core:human_m/head", "core:human_m/armor/hide/torso", "core:rifle", "core:mannequin/torso", "core:raptor", "core:parasaur", "core:grazer", "core:wall_metal", "core:storage_box", "core:campfire", "core:tree"].filter((id) => !drawn.has(id));
   expect(missing).toEqual([]);
   expect(most).toBeGreaterThan(30);
@@ -112,5 +123,12 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was e8a95911 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
   // It was 949f9aed until the pteranodon's grey box (content/creatures/pteranodon.ts) numbered the meshes after it on;
   // without the pteranodon and its beach entry it is that again.
-  expect(hash.toString(16)).toBe("98e00881");
+  expect(hash).toBe("98e00881");
+
+  // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
+  // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
+  // without it, and the saddle, the scene gives the hash above.
+  const saddled = frames(true);
+  expect([...saddled.drawn].filter((id) => !drawn.has(id))).toEqual([WORN]);
+  expect(saddled.hash).toBe("bf22a69");
 });
