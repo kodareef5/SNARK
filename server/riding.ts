@@ -32,6 +32,20 @@ const SEAT_TICKS = 4;
 /** On foot, a rider is set down no further than this below its mount's feet: never off a ledge. */
 const DROP = 1.2;
 
+/** A claim's end in a rider's words. */
+const WHY: Readonly<Record<string, string>> = {
+  "too-far": "it is out of reach",
+  "landing-blocked": "there is no room to get off",
+  "not-ready": "it cannot be ridden now",
+  "not-yours": "it is not your tribe's",
+  "driven": "someone else steers it",
+  "seat-changed": "the seat was taken",
+  "occupant-changed": "the seat was taken",
+  "host-invalid": "it cannot be ridden now",
+  "actor-invalid": "you cannot ride now",
+  "unconscious": "you were knocked out",
+};
+
 const RIDE_MOUNT = event("ride.mount");
 const RIDE_DISMOUNT = event("ride.dismount");
 
@@ -373,7 +387,7 @@ export class Riding {
     const { world, game, records } = this.ctx, ents = world.ents;
     if (effect.type === "cancel") {
       const c = this.client(effect.action.actor);
-      if (c && !c.closed && effect.reason !== "actor-removed" && effect.reason !== "host-removed") game.sendText(c, TEXT_NOTICE, `${effect.action.kind === "exit" ? "Getting off" : "Getting on"} stopped: ${effect.reason}`);
+      if (c && !c.closed && effect.reason !== "actor-removed" && effect.reason !== "host-removed") game.sendText(c, TEXT_NOTICE, `${effect.action.kind === "exit" ? "Getting off" : "Getting on"} stopped: ${WHY[effect.reason] ?? effect.reason}`);
       // Who was getting on weighs on the mount no more.
       const rec = records.byPid.get(effect.action.host);
       if (rec && effect.action.kind === "enter") this.ctx.refresh(rec);
