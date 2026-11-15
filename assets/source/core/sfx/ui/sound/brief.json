@@ -1,0 +1,555 @@
+{
+  "asset": "core/sfx/ui",
+  "review": "../ref/sound",
+  "about": "The interface, not placed in the world: clicks, panels, crafting, notices, levelling, whistles.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "click": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a button pressed",
+      "prompts": [
+        {
+          "id": "p1740",
+          "models": [
+            "moss"
+          ],
+          "seed": 1740,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Clicks of a smooth wooden button pressed: short soft dry clicks, six separate clicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "hover": {
+      "kind": "impact",
+      "range": 1,
+      "level": -32,
+      "vary": 0.0,
+      "want": "the pointer over a button",
+      "prompts": [
+        {
+          "id": "p1750",
+          "models": [
+            "moss"
+          ],
+          "seed": 1750,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Very soft short ticks of a fingernail on smooth wood, six separate ticks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "back": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "going back a screen",
+      "prompts": [
+        {
+          "id": "p1760",
+          "models": [
+            "moss"
+          ],
+          "seed": 1760,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A soft low wooden knock, a short muted thunk, six separate knocks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "tab": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "switching a tab",
+      "prompts": [
+        {
+          "id": "p1770",
+          "models": [
+            "moss"
+          ],
+          "seed": 1770,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Pages of thick paper turned quickly: short crisp flips, six separate flips with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "toggle": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a switch flipped",
+      "prompts": [
+        {
+          "id": "p1780",
+          "models": [
+            "moss"
+          ],
+          "seed": 1780,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small brass toggle switch flipped: crisp metallic snaps, six separate snaps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "slider": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "a slider moved a step",
+      "prompts": [
+        {
+          "id": "p1790",
+          "models": [
+            "moss"
+          ],
+          "seed": 1790,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small wooden ratchet turned one notch at a time: tiny clicks, eight separate clicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "open": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a panel or bag opened",
+      "prompts": [
+        {
+          "id": "p1800",
+          "models": [
+            "moss"
+          ],
+          "seed": 1800,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A leather satchel is opened: flap lifted, buckle jingle and leather creak, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "close": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a panel or bag closed",
+      "prompts": [
+        {
+          "id": "p1810",
+          "models": [
+            "moss"
+          ],
+          "seed": 1810,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A leather satchel is closed: flap dropped and buckled shut, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "slot/pick": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "an item picked up in the inventory",
+      "prompts": [
+        {
+          "id": "p1820",
+          "models": [
+            "moss"
+          ],
+          "seed": 1820,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Small objects picked up from a wooden table: soft grabbing clicks and a light rattle, six separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "slot/drop": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "an item put down in the inventory",
+      "prompts": [
+        {
+          "id": "p1830",
+          "models": [
+            "moss"
+          ],
+          "seed": 1830,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Small objects set down on a wooden table: soft placing taps, six separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "craft/queue": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "crafting started",
+      "prompts": [
+        {
+          "id": "p1840",
+          "models": [
+            "moss"
+          ],
+          "seed": 1840,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Rope and wood bound together: quick tying and a knot pulled tight, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "craft/done": {
+      "kind": "impact",
+      "range": 1,
+      "level": -22,
+      "vary": 0.0,
+      "want": "crafting finished",
+      "prompts": [
+        {
+          "id": "p1850",
+          "models": [
+            "moss"
+          ],
+          "seed": 1850,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A finished wooden tool is set down with a satisfying solid knock and a short bright chime, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "error": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "something refused",
+      "prompts": [
+        {
+          "id": "p1860",
+          "models": [
+            "moss"
+          ],
+          "seed": 1860,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A short low dull buzzing thud, an unpleasant muted error tone, five separate tones with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "notice": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a notice arrives",
+      "prompts": [
+        {
+          "id": "p1870",
+          "models": [
+            "moss"
+          ],
+          "seed": 1870,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A short soft wooden xylophone two-note chime, five separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "chat": {
+      "kind": "impact",
+      "range": 1,
+      "level": -28,
+      "vary": 0.0,
+      "want": "a chat message arrives",
+      "prompts": [
+        {
+          "id": "p1880",
+          "models": [
+            "moss"
+          ],
+          "seed": 1880,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A soft short pop like a cork, five separate pops with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "level_up": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the survivor levels up",
+      "prompts": [
+        {
+          "id": "p1890",
+          "models": [
+            "moss"
+          ],
+          "seed": 1890,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A bright rising marimba flourish of four notes ending in a warm chord, three separate flourishes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "engram": {
+      "kind": "impact",
+      "range": 1,
+      "level": -20,
+      "vary": 0.0,
+      "want": "something learned",
+      "prompts": [
+        {
+          "id": "p1900",
+          "models": [
+            "moss"
+          ],
+          "seed": 1900,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A short warm rising two-note kalimba chime with sparkle, four separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "respawn": {
+      "kind": "impact",
+      "range": 1,
+      "level": -20,
+      "vary": 0.0,
+      "want": "coming back to life",
+      "prompts": [
+        {
+          "id": "p1910",
+          "models": [
+            "moss"
+          ],
+          "seed": 1910,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A deep soft whoosh rising into a gentle airy shimmer, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "tame/done": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.0,
+      "want": "a creature tamed",
+      "prompts": [
+        {
+          "id": "p1920",
+          "models": [
+            "moss"
+          ],
+          "seed": 1920,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A warm triumphant three-note wooden flute phrase, three separate phrases with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "tribe": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a tribe invite or join",
+      "prompts": [
+        {
+          "id": "p1930",
+          "models": [
+            "moss"
+          ],
+          "seed": 1930,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Two soft hand drum taps and a shaker, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "ghost/snap": {
+      "kind": "impact",
+      "range": 1,
+      "level": -26,
+      "vary": 0.0,
+      "want": "a building piece snaps into place",
+      "prompts": [
+        {
+          "id": "p1940",
+          "models": [
+            "moss"
+          ],
+          "seed": 1940,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A wooden peg snapped into a hole: a short tight woody click, six separate clicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "death": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the survivor dies",
+      "prompts": [
+        {
+          "id": "p1950",
+          "models": [
+            "moss"
+          ],
+          "seed": 1950,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A low dark drone swells and fades with a deep muffled heartbeat, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear",
+      "whole": true
+    },
+    "whistle/follow": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.0,
+      "want": "whistle: follow me",
+      "prompts": [
+        {
+          "id": "p1960",
+          "models": [
+            "moss"
+          ],
+          "seed": 1960,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person whistles a short rising two-note call with their fingers, four separate whistles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "whistle/stay": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.0,
+      "want": "whistle: stay",
+      "prompts": [
+        {
+          "id": "p1970",
+          "models": [
+            "moss"
+          ],
+          "seed": 1970,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person whistles one long falling note, four separate whistles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "whistle/attack": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.0,
+      "want": "whistle: attack",
+      "prompts": [
+        {
+          "id": "p1980",
+          "models": [
+            "moss"
+          ],
+          "seed": 1980,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person whistles a sharp fast three-note trill, four separate whistles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "whistle/all": {
+      "kind": "impact",
+      "range": 1,
+      "level": -16,
+      "vary": 0.0,
+      "want": "whistle: everyone",
+      "prompts": [
+        {
+          "id": "p1990",
+          "models": [
+            "moss"
+          ],
+          "seed": 1990,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person whistles a loud long piercing two-tone call, three separate whistles with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    }
+  }
+}
