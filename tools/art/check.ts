@@ -12,6 +12,8 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { MAP_ROLES } from "../../shared/pack/texture.ts";
+import { dirname } from "node:path";
+import { detailInputs } from "../pack/details.ts";
 import { SLOW_MOST, slowSurfaceError, surfaceError } from "../pack/error.ts";
 import { boundsOf } from "../pack/lying.ts";
 import { spanOf } from "../pack/surface.ts";
@@ -575,6 +577,13 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
   const report: Report = { id: asset.id, kind: asset.spec.kind, meshes: [], clips: [], gaits: [], textures: [], megabytes: { textures: 0, budget: null }, pictures, notes: [], faults: [] };
   const meshes = unpackMeshes(pack);
   const spec = asset.spec;
+  if (spec.kind === "details") {
+    const d = pack.header.details;
+    if (!d) report.faults.push("the pack holds no details");
+    else if (d.inputs !== detailInputs(dirname(dirname(asset.dir)))) report.faults.push("the pack is older than the sheets and pictures it is made from: build it again");
+    else report.notes.push(`${d.pictures.length} pictures in a ${d.atlas.side} atlas, ${d.effects.length} effects, ${d.sheets.length} cue sheets`);
+    return report;
+  }
   if (spec.kind === "creature") checkCreature(asset, spec, pack, meshes, report);
   else if (spec.kind === "pieces") {
     for (const piece of spec.pieces) {

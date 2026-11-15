@@ -2,7 +2,7 @@
 // the manifest that says where every level is.
 
 import { MANIFEST_VERSION, type Manifest, type ManifestFile, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
-import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, lodVertices, parsePack, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, parsePack, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
 import { partsAt } from "./manifest.ts";
 import { PackBlob } from "./write.ts";
 
@@ -39,6 +39,8 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
   // The sections in the mesh file name materials, so it lists them.
   if (pack.header.materials) headers[1]!.materials = pack.header.materials;
   if (pack.header.textures) headers[1]!.textures = pack.header.textures;
+  const details = pack.header.details;
+  if (details) headers[0]!.details = { ...details, atlas: { ...details.atlas, offset: blobs[0]!.append(detailsAtlas(pack)) } };
   const placed: Placed[][] = [];
   for (const m of pack.header.meshes) {
     const levels: Placed[] = [];

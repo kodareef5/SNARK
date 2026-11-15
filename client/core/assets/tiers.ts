@@ -60,6 +60,11 @@ export interface Tier {
   readonly clouds: number;
   /** The sea: "flat", one see-through colour as low poly draws it, or "simple": the sky reflected, a glint, lighter over shallows. */
   readonly water: "flat" | "simple";
+  /**
+   * Small details (client/core/details/): the most particles alive, the share of a burst's count made, how far each
+   * effect's reach is taken, and the most of the screen the blended ones may cover, in screens.
+   */
+  readonly details: { readonly pool: number; readonly share: number; readonly reach: number; readonly fill: number };
 }
 
 const MB = 1024 * 1024;
@@ -75,18 +80,22 @@ export const TIERS: readonly Tier[] = [
   {
     name: "lowpoly", texture: 0, textureShare: 0, view: 256, bones: 8192, threshold: 0.44, finest: 1, instanced: 160, pixelRatio: 1, gpuBytes: 96 * MB, uploadBytes: 0.5 * MB, diskBytes: 256 * MB,
     lit: false, split: 0, reach: { bases: 1024, trees: 500, rocks: 0, bushes: 0 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, clouds: 0, water: "flat",
+    details: { pool: 384, share: 0.5, reach: 0.6, fill: 0.5 },
   },
   {
     name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
     lit: true, split: 384, reach: { bases: 2048, trees: 1200, rocks: 600, bushes: 300 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false } }, clouds: 2, water: "simple",
+    details: { pool: 1536, share: 1, reach: 1, fill: 1 },
   },
   {
     name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
     lit: true, split: 384, reach: { bases: 2048, trees: 2000, rocks: 900, bushes: 500 }, fade: 0.1, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false } }, clouds: 2, water: "simple",
+    details: { pool: 3072, share: 1, reach: 1, fill: 1.5 },
   },
   {
     name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
     lit: true, split: 384, reach: { bases: 2048, trees: 3000, rocks: 1200, bushes: 600 }, fade: 0.1, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false }, clouds: 2, water: "simple",
+    details: { pool: 6144, share: 1, reach: 1.25, fill: 2 },
   },
 ];
 
