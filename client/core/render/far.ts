@@ -1,0 +1,528 @@
+// Bases past the near rows, drawn as blocks from the far feed's cells (farcells.ts): a column per filled 4 m cell from
+// under the ground to its top, in its colour. A chunk is drawn far while it has far cells and the near store does not
+// hold it whole, so its real pieces and its blocks are never both drawn and never neither. The blocks of 4 by 4 chunks
+// are one mesh, a level in a slot range of its own, quantized by the pack mesh FAR_MESH, and made again when a chunk of
+// it changes its cells or turns near or far. Each is drawn to the tier's reach and dropped over the last share of it
+// by a 4 by 4 ordered pattern on the pixel (FAR_FADE in glsl.ts, `fadeKeeps` here), the same in the rasterizer.
+
+import type { Registry } from "../../../shared/content/registry.ts";
+import { CHUNK_SIZE, chunkCount, type MapDims } from "../../../shared/coords.ts";
+import { INSTANCE_BYTES, VERTEX_BYTES, lodVertices, readIndices, type Pack } from "../../../shared/pack/pack.ts";
+import { REGION_BASE, nearestColour } from "../../../shared/pack/palette.ts";
+import type { Heightfield } from "../../../shared/world/heightfield.ts";
+import { TACTICAL_CELL, farTopMetres, pieceShapes, type FarCells } from "../../../shared/world/tactical.ts";
+import type { FarStore } from "../farcells.ts";
+import type { Camera } from "./camera.ts";
+import type { FramePacket } from "./packet.ts";
+import { linearToSrgb, srgbToLinear } from "./surface.ts";
+
+/** The pack mesh whose bounds every tile's vertices are stored within: FAR_TILE_METRES square and FAR_HEIGHT tall. */
+export const FAR_MESH = "core:far";
+/** Chunks along a tile's side, and its side in metres. */
+export const FAR_TILE = 4;
+export const FAR_TILE_METRES = FAR_TILE * CHUNK_SIZE;
+/** Metres from a tile's lowest foot that its blocks may reach. A tower's top is at most 318 m over its ground. */
+export const FAR_HEIGHT = 1024;
+/** Slots of tiles on the card start here, clear of every level, surface and texture of the manifest. */
+export const FAR_SLOTS = 1 << 30;
+/** The instance buffer every tile is drawn with: one instance at the origin. Clear of chunk indices and the node store's. */
+export const FAR_BUFFER = 2 << 20;
+/** What the far blocks hold on the card, as residency.ts reserves it. */
+const RESERVE = "far blocks";
+/**
+ * Tiles nearer than this hold every chunk the near store may hold (4 chunks round the body's, under 450 m off), so they
+ * are made in the frame a chunk of theirs changes. Of the rest, this many a frame, nearest first.
+ */
+const FAR_NOW = 512;
+const FAR_MAKES = 4;
+/**
+ * Quads of the drawn ground are 2 m to 32 m across (terrain.ts, at most 16 m within 2.56 km). A column's foot goes 1 m
+ * under the lowest sample of every quad of those sizes that holds its cell, so it stands in whatever level is drawn.
+ */
+const FOOT_LEVELS = 5;
+const FOOT = 1;
+
+const SIDE = CHUNK_SIZE / TACTICAL_CELL;
+const CELLS = SIDE * SIDE;
+/** The four ways a side can face, as steps to the neighbouring cell. */
+const WAYS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+
+/** The 4 by 4 ordered pattern the fade drops fragments by, row after row from the bottom left of the screen. */
+export const FADE_ORDER: readonly number[] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+
+/**
+ * Whether the far fade keeps a fragment `dist` metres off at window pixel (x, y), counted from the bottom left, of a
+ * draw gone at `gone` metres that fades over the last `share` of it. FAR_FADE's twin.
+ */
+export function fadeKeeps(dist: number, gone: number, share: number, x: number, y: number): boolean {
+  return (gone - dist) * 16 > (FADE_ORDER[(y & 3) * 4 + (x & 3)]! + 0.5) * gone * share;
+}
+
+/** What the scene draws far bases from: the far feed's cells, and which chunks the near store holds whole. */
+export interface FarSource {
+  readonly cells: FarStore;
+  /** Whether the near store holds `chunk` whole: its last row has come since it was last dropped. */
+  complete(chunk: number): boolean;
+}
+
+/** One chunk's blocks: four corners a face, x and z from its tile's corner, y in the world, and a palette colour a corner. */
+export interface FarPart {
+  readonly pos: Float32Array;
+  readonly color: Uint8Array;
+  readonly faces: number;
+  /** The box that holds it, x and z from the tile's corner. */
+  readonly box: readonly number[];
+}
+
+// Scratch for a chunk: each cell's top and foot in metres, which tops are in a face or a roof already, and a queue of cells.
+const tops = new Float64Array(CELLS);
+const feet = new Float64Array(CELLS);
+const used = new Uint8Array(CELLS);
+const queue = new Int16Array(CELLS);
+
+/** The colour each palette colour is drawn in, the same unless `farColours` says. */
+const SAME_COLOURS = Uint8Array.from({ length: 256 }, (_, i) => i);
+
+/**
+ * The colour far blocks draw each palette colour of the far feed in: the palette colour nearest the mean, in light and
+ * by area, of the coarsest level of every piece of that colour the feed shows, as `meshOf` binds them. A piece's art
+ * is not the colour its kind is listed in (the wood pieces are listed orange and drawn brown), and the feed sends the
+ * listed one. `meshOf` gives -1 for a kind with no mesh of its own.
+ */
+export function farColours(reg: Registry, pack: Pack, meshOf: (kind: number) => number): Uint8Array {
+  const shapes = pieceShapes(reg);
+  const sums = new Float64Array(256 * 4);
+  const pal = pack.palette;
+  for (let k = 1; k < reg.defs.length; k++) {
+    const mesh = shapes.far[k] === 1 ? meshOf(k) : -1;
+    const m = mesh >= 0 ? pack.header.meshes[mesh] : undefined;
+    if (!m) continue;
+    const lod = m.lods.at(-1)!;
+    const verts = lodVertices(pack, lod);
+    const view = new DataView(verts.buffer, verts.byteOffset, verts.byteLength);
+    const at = (v: number, a: number): number => (view.getInt16(v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]!;
+    const index = readIndices(pack, lod);
+    const own = shapes.tint[k]!;
+    for (let t = 0; t < index.length; t += 3) {
+      const [a, b, c] = [index[t]!, index[t + 1]!, index[t + 2]!];
+      const u = [0, 1, 2].map((i) => at(b, i) - at(a, i));
+      const v = [0, 1, 2].map((i) => at(c, i) - at(a, i));
+      const area = Math.hypot(u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!);
+      const col = verts[c * VERTEX_BYTES + 6]!;
+      const shown = col === REGION_BASE ? own : col > REGION_BASE ? 0 : col;
+      for (let i = 0; i < 3; i++) sums[own * 4 + i]! += srgbToLinear(pal[shown * 4 + i]! / 255) * area;
+      sums[own * 4 + 3]! += area;
+    }
+  }
+  const out = SAME_COLOURS.slice();
+  for (let c = 0; c < 256; c++) {
+    const area = sums[c * 4 + 3]!;
+    if (area === 0) continue;
+    const [r, g, b] = [0, 1, 2].map((i) => Math.round(linearToSrgb(sums[c * 4 + i]! / area) * 255));
+    if (r !== pal[c * 4] || g !== pal[c * 4 + 1] || b !== pal[c * 4 + 2]) out[c] = nearestColour(pal, r!, g!, b!);
+  }
+  return out;
+}
+
+/** The lowest ground any level of the drawn terrain puts under the cell of samples (i0, j0) to (i0 + n, j0 + n). */
+function lowestUnder(hf: Heightfield, i0: number, j0: number, n: number): number {
+  let low = Infinity;
+  for (let level = 0; level < FOOT_LEVELS; level++) {
+    const s = 1 << level;
+    const ib = Math.ceil((i0 + n) / s) * s;
+    const jb = Math.ceil((j0 + n) / s) * s;
+    for (let j = Math.floor(j0 / s) * s; j <= jb; j += s) {
+      for (let i = Math.floor(i0 / s) * s; i <= ib; i += s) {
+        const y = hf.sample(i < hf.nx ? i : hf.nx - 1, j < hf.nz ? j : hf.nz - 1);
+        if (y < low) low = y;
+      }
+    }
+  }
+  return low;
+}
+
+/** How far apart two tops the far feed sends may be and still be one height: a step of farTopByte's, at the coarser of the two. */
+const step = (byte: number): number => (byte > 128 ? 2 : 0.5);
+
+/**
+ * The blocks of a chunk whose corner is (x0, z0), in a tile whose corner is (ox, oz), each cell in the colour `colours`
+ * gives its own. Tops of one height and colour are merged into rectangles, and a side is drawn where the neighbour in
+ * the chunk is lower or empty, merged along its row. A side on the chunk's edge is always drawn, so a chunk's blocks do
+ * not depend on its neighbours.
+ */
+export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz: number, hf: Heightfield, colours: Uint8Array = SAME_COLOURS): FarPart {
+  const { top } = cells;
+  const tint = cells.tint.map((t) => colours[t]!);
+  const n = Math.round(TACTICAL_CELL / hf.cell);
+  for (let c = 0; c < CELLS; c++) {
+    if (top[c] === 0) continue;
+    const x = x0 + (c % SIDE) * TACTICAL_CELL;
+    const z = z0 + Math.floor(c / SIDE) * TACTICAL_CELL;
+    const ground = hf.heightAt(x + TACTICAL_CELL / 2, z + TACTICAL_CELL / 2);
+    tops[c] = ground + farTopMetres(top[c]!);
+    feet[c] = Math.min(ground, lowestUnder(hf, Math.round(x / hf.cell), Math.round(z / hf.cell), n)) - FOOT;
+  }
+  // A top is kept over the ground at its cell's middle, to a step, so a level roof over rough ground comes in steps.
+  // Touching tops of one colour within a step of the first of them are taken as one roof, at their mean.
+  used.fill(0);
+  for (let c = 0; c < CELLS; c++) {
+    if (top[c] === 0 || used[c]) continue;
+    let count = 1;
+    let head = 0;
+    let sum = 0;
+    queue[0] = c;
+    used[c] = 1;
+    while (head < count) {
+      const q = queue[head++]!;
+      sum += tops[q]!;
+      for (let way = 0; way < 4; way++) {
+        const i = (q % SIDE) + WAYS[way]![0];
+        const j = Math.floor(q / SIDE) + WAYS[way]![1];
+        const r = j * SIDE + i;
+        if (i < 0 || j < 0 || i >= SIDE || j >= SIDE || top[r] === 0 || used[r] || tint[r] !== tint[c]) continue;
+        if (Math.abs(tops[r]! - tops[c]!) > Math.max(step(top[r]!), step(top[c]!))) continue;
+        used[r] = 1;
+        queue[count++] = r;
+      }
+    }
+    for (let k = 0; k < count; k++) tops[queue[k]!] = sum / count;
+  }
+  const pos: number[] = [];
+  const color: number[] = [];
+  const box = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
+  // A face is a corner and two edges whose cross product points out, as tools/pack/write.ts boxMesh has them.
+  const face = (x: number, y: number, z: number, ux: number, uy: number, uz: number, vx: number, vy: number, vz: number, col: number): void => {
+    x -= ox;
+    z -= oz;
+    pos.push(x, y, z, x + ux, y + uy, z + uz, x + ux + vx, y + uy + vy, z + uz + vz, x + vx, y + vy, z + vz);
+    color.push(col, col, col, col);
+    // The far corner is the corner and both edges; the box takes both ends of each axis.
+    const far = [x + ux + vx, y + uy + vy, z + uz + vz];
+    [x, y, z].forEach((v, a) => {
+      box[a] = Math.min(box[a]!, v, far[a]!);
+      box[a + 3] = Math.max(box[a + 3]!, v, far[a]!);
+    });
+  };
+  const C = TACTICAL_CELL;
+  used.fill(0);
+  for (let j = 0; j < SIDE; j++) {
+    for (let i = 0; i < SIDE; i++) {
+      const c = j * SIDE + i;
+      if (top[c] === 0 || used[c]) continue;
+      const same = (q: number): boolean => used[q] === 0 && top[q] !== 0 && tops[q] === tops[c] && tint[q] === tint[c];
+      let w = 1;
+      while (i + w < SIDE && same(c + w)) w++;
+      let d = 1;
+      grow: while (j + d < SIDE) {
+        for (let k = 0; k < w; k++) if (!same((j + d) * SIDE + i + k)) break grow;
+        d++;
+      }
+      for (let k = 0; k < d; k++) used.fill(1, (j + k) * SIDE + i, (j + k) * SIDE + i + w);
+      face(x0 + i * C, tops[c]!, z0 + j * C, 0, 0, d * C, w * C, 0, 0, tint[c]!);
+    }
+  }
+  for (const [di, dj] of WAYS) {
+    for (let line = 0; line < SIDE; line++) {
+      // The run of sides being merged: where it began, the top, the neighbour's top and the colour each of it has, and
+      // its bottom. A side down to the ground goes to the lowest foot of its run, which is under the ground everywhere.
+      let from = -1;
+      let t = 0;
+      let n = 0;
+      let b = 0;
+      let col = 0;
+      for (let step = 0; step <= SIDE; step++) {
+        let has = false;
+        let st = 0;
+        let sn = 0;
+        let sc = 0;
+        let c = 0;
+        if (step < SIDE) {
+          const i = di !== 0 ? line : step;
+          const j = di !== 0 ? step : line;
+          c = j * SIDE + i;
+          const ni = i + di;
+          const nj = j + dj;
+          const q = nj * SIDE + ni;
+          sn = ni >= 0 && nj >= 0 && ni < SIDE && nj < SIDE && top[q] !== 0 ? tops[q]! : -Infinity;
+          if (top[c] !== 0 && sn < tops[c]!) {
+            has = true;
+            st = tops[c]!;
+            sc = tint[c]!;
+          }
+        }
+        if (from >= 0 && has && st === t && sn === n && sc === col) {
+          b = Math.min(b, Math.max(sn, feet[c]!));
+          continue;
+        }
+        if (from >= 0) {
+          const a = from * C;
+          const e = step * C;
+          const h = t - b;
+          if (di === 1) face(x0 + (line + 1) * C, b, z0 + a, 0, h, 0, 0, 0, e - a, col);
+          else if (di === -1) face(x0 + line * C, b, z0 + e, 0, h, 0, 0, 0, a - e, col);
+          else if (dj === 1) face(x0 + e, b, z0 + (line + 1) * C, 0, h, 0, a - e, 0, 0, col);
+          else face(x0 + a, b, z0 + line * C, 0, h, 0, e - a, 0, 0, col);
+          from = -1;
+        }
+        if (has) {
+          from = step;
+          t = st;
+          n = sn;
+          b = Math.max(sn, feet[c]!);
+          col = sc;
+        }
+      }
+    }
+  }
+  return { pos: Float32Array.from(pos), color: Uint8Array.from(color), faces: color.length / 4, box };
+}
+
+interface Tile {
+  /** Its chunks turned near or far, or changed their cells, since it was made. */
+  dirty: boolean;
+  /** What goes on the card, kept to send again after a lost context: indices, then vertices from the next multiple of 4. */
+  data: Uint8Array | null;
+  indexCount: number;
+  indexBytes: 2 | 4;
+  /** Its slot on the card, or -1. */
+  slot: number;
+  /** Where its vertices' heights start, and the box that holds it, in the world. */
+  base: number;
+  readonly box: Float64Array;
+}
+
+export class FarBlocks {
+  /** The pack mesh of the tiles' bounds, as a draw names it. */
+  readonly mesh: number;
+  /** Bytes of tiles on the card, and tiles made this frame. */
+  bytes = 0;
+  made = 0;
+  private readonly source: FarSource;
+  private readonly dims: MapDims;
+  private readonly hf: Heightfield;
+  private readonly center: readonly number[];
+  private readonly half: readonly number[];
+  private readonly tilesX: number;
+  /** Per chunk: 1 while it is drawn far, and its cells' change count (FarStore.changed) when last looked at. */
+  private readonly far: Uint8Array;
+  private readonly stamp: Uint32Array;
+  /** Chunks with cells as last looked at, and the parts made of them. */
+  private readonly known = new Set<number>();
+  private readonly parts = new Map<number, FarPart>();
+  private readonly tiles = new Map<number, Tile>();
+  private seen = -1;
+  private next = 0;
+  /** The instance buffer is on the card, and blocks are drawn at all (the tier reaches past 0). */
+  private sent = false;
+  private on = false;
+  private readonly list: FarPart[] = [];
+  private readonly waiting: number[] = [];
+  private readonly colours: Uint8Array;
+
+  /** `bounds` is FAR_MESH's centre and half extent, as the pack has them, and `colours` what farColours gives. */
+  constructor(source: FarSource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, colours: Uint8Array = SAME_COLOURS) {
+    this.source = source;
+    this.dims = dims;
+    this.hf = hf;
+    this.mesh = mesh;
+    this.center = bounds.center;
+    this.half = bounds.half;
+    this.colours = colours;
+    this.tilesX = Math.ceil(dims.chunksX / FAR_TILE);
+    this.far = new Uint8Array(chunkCount(dims));
+    this.stamp = new Uint32Array(chunkCount(dims));
+  }
+
+  /** Whether `chunk` is drawn far this frame, so its real pieces are not. */
+  isFar(chunk: number): boolean {
+    return this.on && this.far[chunk] === 1;
+  }
+
+  /** After a lost context: every tile and the instance buffer go on the card again. */
+  reset(): void {
+    for (const tile of this.tiles.values()) tile.slot = -1;
+    this.sent = false;
+  }
+
+  /**
+   * Brings the tiles within `reach` of the camera at (x, z) up to date and on the card, and lets go of those a tile
+   * farther. Uploads and drops go into the packet, and what they weigh is spent and reserved in `budget`.
+   */
+  update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, x: number, z: number, reach: number): void {
+    this.made = 0;
+    this.on = reach > 0;
+    const cells = this.source.cells;
+    for (const chunk of cells.chunks.keys()) {
+      const far = this.source.complete(chunk) ? 0 : 1;
+      const stamp = cells.changed[chunk]!;
+      if (far === this.far[chunk] && stamp === this.stamp[chunk]) continue;
+      if (stamp !== this.stamp[chunk]) {
+        this.parts.delete(chunk);
+        this.stamp[chunk] = stamp;
+        this.known.add(chunk);
+      }
+      this.far[chunk] = far;
+      this.touch(chunk);
+    }
+    if (cells.version !== this.seen) {
+      this.seen = cells.version;
+      for (const chunk of this.known) {
+        if (cells.chunks.has(chunk)) continue;
+        this.known.delete(chunk);
+        this.parts.delete(chunk);
+        this.far[chunk] = this.stamp[chunk] = 0;
+        this.touch(chunk);
+      }
+    }
+    // A tile that may hold a chunk the near store holds or let go of is made in this frame, so the chunk is never drawn
+    // both ways or neither. Any other waits its turn, nearest first, a few a frame.
+    const waiting = this.waiting;
+    waiting.length = 0;
+    for (const [t, tile] of this.tiles) {
+      const off = this.off(t, x, z);
+      if (!this.on || off > reach + FAR_TILE_METRES) {
+        // Out of reach by a tile: let go of it, and make it again if it comes back.
+        if (tile.slot >= 0) p.assetDrops.push(tile.slot);
+        [tile.slot, tile.data, tile.dirty] = [-1, null, true];
+        this.forget(t);
+      } else if (off <= reach && tile.dirty) {
+        if (off < FAR_NOW) this.remake(p, t, tile);
+        else waiting.push(t);
+      }
+    }
+    waiting.sort((a, b) => this.off(a, x, z) - this.off(b, x, z));
+    for (let k = 0; k < Math.min(FAR_MAKES, waiting.length); k++) this.remake(p, waiting[k]!, this.tiles.get(waiting[k]!)!);
+    let bytes = 0;
+    for (const [t, tile] of this.tiles) {
+      if (!tile.data) continue;
+      if (tile.slot < 0 && this.off(t, x, z) <= reach) {
+        tile.slot = FAR_SLOTS + this.next;
+        this.next = (this.next + 1) % FAR_SLOTS;
+        p.assetUploads.push({ slot: tile.slot, mesh: this.mesh, level: 0, data: tile.data, indexCount: tile.indexCount, indexBytes: tile.indexBytes });
+        budget.spend(tile.data.length);
+      }
+      if (tile.slot >= 0) bytes += tile.data.length;
+    }
+    if (bytes > 0 && !this.sent) {
+      p.uploads.push({ buffer: FAR_BUFFER, data: new Uint8Array(INSTANCE_BYTES), slots: new Uint16Array(1) });
+      this.sent = true;
+    }
+    if (bytes !== this.bytes) budget.reserve(RESERVE, bytes);
+    this.bytes = bytes;
+  }
+
+  /**
+   * Calls `put` for each tile on the card whose nearest point is within `reach` of the camera and in its view: the
+   * tile's slot and triangles, where its corner is from the camera, and the depth ranges its box is in.
+   */
+  draw(cam: Camera, reach: number, put: (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number) => void): void {
+    for (const [t, tile] of this.tiles) {
+      if (tile.slot < 0) continue;
+      const b = tile.box;
+      const [ax, ay, az, bx, by, bz] = [b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z];
+      const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
+      if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
+      const [ox, oz] = this.corner(t);
+      put(tile.slot, tile.indexCount / 3, ox - cam.x, tile.base - cam.y, oz - cam.z, cam.passes(ax, ay, az, bx, by, bz));
+    }
+  }
+
+  /** Metres from (x, z) to tile `t`'s square. */
+  private off(t: number, x: number, z: number): number {
+    const [ox, oz] = this.corner(t);
+    return Math.hypot(Math.max(ox - x, x - ox - FAR_TILE_METRES, 0), Math.max(oz - z, z - oz - FAR_TILE_METRES, 0));
+  }
+
+  /** Makes tile `t` again, letting go of what the card held of it. A tile with no chunk drawn far is forgotten. */
+  private remake(p: FramePacket, t: number, tile: Tile): void {
+    if (tile.slot >= 0) p.assetDrops.push(tile.slot);
+    tile.slot = -1;
+    tile.dirty = false;
+    this.make(t, tile);
+    this.made++;
+    if (!tile.data) this.tiles.delete(t);
+  }
+
+  private tileOf(chunk: number): number {
+    const cx = chunk % this.dims.chunksX;
+    const cz = Math.floor(chunk / this.dims.chunksX);
+    return Math.floor(cz / FAR_TILE) * this.tilesX + Math.floor(cx / FAR_TILE);
+  }
+
+  private corner(t: number): [number, number] {
+    return [(t % this.tilesX) * FAR_TILE_METRES, Math.floor(t / this.tilesX) * FAR_TILE_METRES];
+  }
+
+  private touch(chunk: number): void {
+    const t = this.tileOf(chunk);
+    const tile = this.tiles.get(t);
+    if (tile) tile.dirty = true;
+    else this.tiles.set(t, { dirty: true, data: null, indexCount: 0, indexBytes: 2, slot: -1, base: 0, box: new Float64Array(6) });
+  }
+
+  /** The chunks of tile `t`, by calling `each` with each that is on the map. */
+  private chunks(t: number, each: (chunk: number, x0: number, z0: number) => void): void {
+    const [ox, oz] = this.corner(t);
+    const [cx0, cz0] = [ox / CHUNK_SIZE, oz / CHUNK_SIZE];
+    for (let cz = cz0; cz < Math.min(cz0 + FAR_TILE, this.dims.chunksZ); cz++) for (let cx = cx0; cx < Math.min(cx0 + FAR_TILE, this.dims.chunksX); cx++) each(cz * this.dims.chunksX + cx, cx * CHUNK_SIZE, cz * CHUNK_SIZE);
+  }
+
+  private forget(t: number): void {
+    this.chunks(t, (chunk) => this.parts.delete(chunk));
+  }
+
+  /** Makes tile `t`'s mesh of the parts of its chunks drawn far, or none if it has none. */
+  private make(t: number, tile: Tile): void {
+    const [ox, oz] = this.corner(t);
+    const list = this.list;
+    list.length = 0;
+    let faces = 0;
+    const box = tile.box.fill(Infinity, 0, 3).fill(-Infinity, 3, 6);
+    this.chunks(t, (chunk, x0, z0) => {
+      if (this.far[chunk] !== 1) return;
+      let part = this.parts.get(chunk);
+      const cells = this.source.cells.chunks.get(chunk);
+      if (!part && cells) this.parts.set(chunk, (part = farPart(cells, x0, z0, ox, oz, this.hf, this.colours)));
+      if (!part || part.faces === 0) return;
+      list.push(part);
+      faces += part.faces;
+      for (let a = 0; a < 3; a++) {
+        box[a] = Math.min(box[a]!, part.box[a]!);
+        box[a + 3] = Math.max(box[a + 3]!, part.box[a + 3]!);
+      }
+    });
+    if (faces === 0) {
+      tile.data = null;
+      return;
+    }
+    const base = (tile.base = Math.floor(box[1]!));
+    [box[0], box[2], box[3], box[5]] = [box[0]! + ox, box[2]! + oz, box[3]! + ox, box[5]! + oz];
+    const verts = faces * 4;
+    const indexBytes = verts > 65535 ? 4 : 2;
+    const at = (faces * 6 * indexBytes + 3) & ~3;
+    const data = new Uint8Array(at + verts * VERTEX_BYTES);
+    const view = new DataView(data.buffer);
+    const [c, h] = [this.center, this.half];
+    const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - c[a]!) / h[a]!) * 32767)));
+    let v = 0;
+    let k = 0;
+    for (const part of list) {
+      const { pos, color } = part;
+      for (let f = 0; f < part.faces; f++, v += 4) {
+        for (const i of [0, 1, 2, 0, 2, 3]) {
+          if (indexBytes === 4) view.setUint32(k * 4, v + i, true);
+          else view.setUint16(k * 2, v + i, true);
+          k++;
+        }
+      }
+      for (let i = 0; i < color.length; i++) {
+        const o = at + (v - part.faces * 4 + i) * VERTEX_BYTES;
+        view.setInt16(o, q(pos[i * 3]!, 0), true);
+        view.setInt16(o + 2, q(pos[i * 3 + 1]! - base, 1), true);
+        view.setInt16(o + 4, q(pos[i * 3 + 2]!, 2), true);
+        data[o + 6] = color[i]!;
+      }
+    }
+    [tile.data, tile.indexCount, tile.indexBytes] = [data, faces * 6, indexBytes];
+  }
+}

@@ -23,6 +23,7 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials } from "./characters.ts";
+import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_SIZE, flatLight, skyFrame, theSky } from "./sky.ts";
@@ -34,6 +35,8 @@ export interface RenderWorld {
   readonly structs: StructureStore;
   /** Resource nodes, drawn as structures are. */
   readonly nodes?: StructureStore;
+  /** Other bases past the near rows, drawn as blocks (far.ts). */
+  readonly far?: FarSource;
 }
 
 /** The viewer's own body, which is not among the remote entities. */
@@ -219,6 +222,8 @@ export class Scene {
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). */
   private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, NEAR);
+  /** Bases drawn as blocks where the near store does not hold their chunks whole, given a far source and the far mesh. */
+  private readonly far: FarBlocks | null;
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
@@ -277,6 +282,9 @@ export class Scene {
     for (let k = 1; k < reg.defs.length; k++) if (this.characters.has(k)) reach = Math.max(reach, this.characters.reach(k));
     this.bodySlack = reach * 2;
 
+    const far = table.find(FAR_MESH);
+    const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : this.meshOfKind[k]!);
+    this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
     for (let k = 0; k < 3; k++) {
@@ -290,6 +298,7 @@ export class Scene {
     for (const b of this.batches.values()) b.uploaded = false;
     this.assets.residency.reset();
     this.terrain.reset();
+    this.far?.reset();
   }
 
   build(cam: Camera, remote: RemoteSample | null): FramePacket {
@@ -328,6 +337,7 @@ export class Scene {
     this.terrain.select(cam, p, this.viewDistance, this.assets.residency);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
+    if (this.far) this.farBlocks(cam);
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
     if (remote) this.entities(cam, remote);
@@ -397,6 +407,33 @@ export class Scene {
     p.drawPass.set(pass.subarray(0, total));
     p.drawCount = total;
   }
+
+  /** Bases as blocks to the tier's reach, faded over the last of it, in place of chunks the near store does not hold whole. */
+  private farBlocks(cam: Camera): void {
+    const p = this.packet;
+    const tier = this.assets.tier;
+    p.frame[FRAME.fade] = tier.fade;
+    this.far!.update(p, this.assets.residency, cam.x, cam.z, tier.reach.bases);
+    this.far!.draw(cam, tier.reach.bases, this.drawFar);
+  }
+
+  /** A tile of far blocks: one instance of its own level, gone at the tier's reach. */
+  private readonly drawFar = (slot: number, triangles: number, ox: number, oy: number, oz: number, passes: number): void => {
+    const p = this.packet;
+    const d = p.drawCount;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
+    [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [this.far!.mesh, 0, slot, FAR_BUFFER, 0, 1, 0];
+    p.drawOffset.set([ox, oy, oz], d * 3);
+    p.drawFade[d] = this.assets.tier.reach.bases;
+    this.passOf[d] = passes;
+    p.drawCount = d + 1;
+    this.doubled += copies - 1;
+    p.triangles += triangles * copies;
+  };
 
   private bodies(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
@@ -638,6 +675,8 @@ export class Scene {
         }
         continue;
       }
+      // Until the near store holds it whole, a chunk the far feed has cells of is drawn as blocks.
+      if (base === 0 && this.far?.isFar(chunk)) continue;
       let batch = this.batches.get(id);
       if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;

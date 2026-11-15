@@ -465,9 +465,11 @@ export class GlRenderer {
       if (!lod || !buffer || (textured && !lod.surface)) continue;
       // A see-through draw blends, shows both faces and leaves depth alone. Others may come after it, so every draw says.
       const blend = (flags & DRAW_BLEND) !== 0;
-      const prog = this.use(textured ? "surface" : blend && p.split > 0 ? "seeThrough" : "flat", p);
+      const fade = p.drawFade[d]!;
+      const prog = this.use(textured ? "surface" : fade > 0 ? "far" : blend && p.split > 0 ? "seeThrough" : "flat", p);
       this.set(blend, !blend && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
       gl.uniform1f(prog.uniform("uSkin"), skinMode(flags, textured && lod.skin));
+      if (fade > 0) gl.uniform1f(prog.uniform("uFade"), fade);
       if (textured) this.material(prog, p, d);
       else {
         gl.uniform1f(prog.uniform("uSolid"), (flags & DRAW_PLAIN) !== 0 ? 2 : 1);

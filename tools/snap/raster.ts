@@ -2,6 +2,7 @@
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
+import { FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
@@ -19,6 +20,8 @@ export const PICK_SKY = 0;
 export const PICK_TERRAIN = 1;
 export const PICK_STRUCTURE = 2;
 export const PICK_ENTITY = 3;
+/** A draw that fades out with distance (far.ts). Its pick id is its slot. */
+export const PICK_FAR = 4;
 
 interface DecodedLod {
   positions: Float32Array;
@@ -212,6 +215,9 @@ export class Rasterizer {
   private plain = false;
   /** What `pickBone` gets for the triangle being drawn. */
   private bone = 0;
+  /** For a draw that fades out (`drawFade`): where it is gone, and the share of that it fades over. 0 for any other. */
+  private fade = 0;
+  private fadeShare = 0;
   private scratch = new Float32Array(3 * 1024);
   // Clip scratch: a triangle, then up to 5 vertices of (camera-relative x, y, z, screen x, y, 1/w, NDC depth), and room between clips.
   private readonly tri = new Float64Array(3 * 7);
@@ -259,15 +265,16 @@ export class Rasterizer {
     trueSun(packet.frame, this.sun);
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
-    if (this.manifest) {
-      for (const u of packet.assetUploads) {
-        if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
-        else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest.meshes[u.mesh]!.uv) });
-      }
-      for (const slot of packet.assetDrops) {
-        this.lods.delete(slot);
-        for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
-      }
+    // Far blocks come as levels of their own (far.ts), with a manifest or without.
+    for (const u of packet.assetUploads) {
+      if (!this.manifest && u.slot < FAR_SLOTS) continue;
+      if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
+      else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest!.meshes[u.mesh]!.uv) });
+    }
+    for (const slot of packet.assetDrops) {
+      if (!this.manifest && slot < FAR_SLOTS) continue;
+      this.lods.delete(slot);
+      for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
     }
     // A texture that is let go goes first, with any copy of it being made. Then rows begin a copy, add to it or complete it.
     for (const slot of packet.texDrops) {
@@ -432,6 +439,7 @@ export class Rasterizer {
   /** The terrain tiles in depth range `range`. */
   private terrain(p: FramePacket, range: number): void {
     const hf = this.hf;
+    this.fade = 0;
     const row = TILE_QUADS + 1;
     const pos = new Float32Array(row * row * 3);
     const tint = new Uint8Array(row * row);
@@ -484,6 +492,8 @@ export class Rasterizer {
     const one = (p.drawFlags[d]! & DRAW_ONE_BONE) !== 0;
     const sized = (p.drawFlags[d]! & DRAW_SIZED) !== 0;
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0;
+    this.fade = p.drawFade[d]!;
+    this.fadeShare = p.frame[FRAME.fade]!;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
@@ -515,8 +525,8 @@ export class Rasterizer {
           out[v * 3 + 2] = -s * lx + c * lz + iz;
         }
       }
-      const kind = transient ? PICK_ENTITY : PICK_STRUCTURE;
-      const id = transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
+      const kind = this.fade > 0 ? PICK_FAR : transient ? PICK_ENTITY : PICK_STRUCTURE;
+      const id = this.fade > 0 ? p.drawSlot[d]! : transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
       for (let t = 0; t < lod.indices.length; t += 3) {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
@@ -528,9 +538,9 @@ export class Rasterizer {
   }
 
   private decode(mesh: number, level: number, slot: number): DecodedLod {
-    if (this.manifest) {
+    if (this.manifest || slot >= FAR_SLOTS) {
       const lod = this.lods.get(slot);
-      if (!lod) throw new Error(`a draw of ${this.manifest.meshes[mesh]!.id} at level ${level}, which is not on the graphics card`);
+      if (!lod) throw new Error(`a draw of ${(this.manifest ?? this.pack.header).meshes[mesh]!.id} at level ${level}, which is not on the graphics card`);
       return lod;
     }
     const key = mesh * 8 + level;
@@ -551,7 +561,7 @@ export class Rasterizer {
     const indices = new Uint32Array(u.indexCount);
     for (let i = 0; i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
     const verts = u.data.subarray((u.indexCount * u.indexBytes + 3) & ~3);
-    return { ...vertices(verts, verts.length / VERTEX_BYTES, this.manifest!.meshes[u.mesh]!), indices };
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
   }
 
   /**
@@ -745,17 +755,19 @@ export class Rasterizer {
           const qs = 1 / (q0 + q1 + q2);
           // In the far range a see-through pixel the near range drew is dropped, as SEE_THROUGH_SPLIT drops it.
           if (blend && qs < this.from) continue;
+          const rx = (q0 * poly[v0]! + q1 * poly[v1]! + q2 * poly[v2]!) * qs;
+          const ry = (q0 * poly[v0 + 1]! + q1 * poly[v1 + 1]! + q2 * poly[v2 + 1]!) * qs;
+          const rz = (q0 * poly[v0 + 2]! + q1 * poly[v1 + 2]! + q2 * poly[v2 + 2]!) * qs;
+          const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
+          // A far draw drops its fragment as FAR_FADE does, before anything is kept of it. The pattern counts rows from the bottom.
+          if (this.fade > 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
           if (!blend) {
             this.depth[at] = z;
             this.pickKind[at] = pickKind;
             this.pickId[at] = pickId;
             this.pickBone[at] = this.bone;
           }
-          const rx = (q0 * poly[v0]! + q1 * poly[v1]! + q2 * poly[v2]!) * qs;
-          const ry = (q0 * poly[v0 + 1]! + q1 * poly[v1 + 1]! + q2 * poly[v2 + 1]!) * qs;
-          const rz = (q0 * poly[v0 + 2]! + q1 * poly[v1 + 2]! + q2 * poly[v2 + 2]!) * qs;
           const wx = rx + sx, wy = solid ? ry + sy : 0, wz = rz + sz;
-          const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
           let shade = 1;
           const cs = CHECK_COARSE_SIZE;
           if (this.plain) shade = 1;
