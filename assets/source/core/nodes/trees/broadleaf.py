@@ -833,8 +833,8 @@ LEAVES_UP = 0.5
 # A head is lit as leaves are, from above more than from the side: its own normals are pressed toward its axis by this.
 LEAFY = 0.55
 HEAD_LEVELS = {
-    0: {"own": 0.62, "rings": 0, "inner": 1, "core": 0.55, "dim": 0.55, "jag": 1.8, "puff": 1.0, "sprays": 18, "loose": 0.7, "largest": 1.5, "more": 1.8, "low": -0.9, "spray": 1.18, "cut": 0.58, "coarse": False},
-    1: {"own": 0.62, "rings": 1, "inner": 2, "core": 0.55, "dim": 0.5, "jag": 1.8, "puff": 1.0, "sprays": 12, "loose": 0.5, "largest": 1.5, "more": 1.8, "low": -0.9, "spray": 1.2, "cut": 0.58, "coarse": True},
+    0: {"own": 0.62, "rings": 0, "inner": 1, "core": 0.55, "dim": 0.55, "jag": 1.4, "puff": 1.0, "sprays": 18, "loose": 0.7, "largest": 1.5, "more": 1.8, "low": -0.9, "spray": 1.18, "cut": 0.58, "coarse": False},
+    1: {"own": 0.62, "rings": 1, "inner": 2, "core": 0.55, "dim": 0.5, "jag": 1.4, "puff": 1.0, "sprays": 12, "loose": 0.5, "largest": 1.5, "more": 1.8, "low": -0.9, "spray": 1.2, "cut": 0.58, "coarse": True},
     2: {"own": 0.62, "rings": 2, "inner": 4, "core": 0.7, "dim": 0.15, "jag": 1.0, "puff": 1.15, "sprays": 6, "loose": 0.0, "largest": 2.2, "more": 1.0, "low": -0.5, "spray": 1.1, "cut": 0.5, "coarse": True},
     3: {"own": 0.62, "rings": 4, "inner": 4, "core": 0.8, "dim": 0.0, "jag": 1.0, "puff": 1.25, "sprays": 4, "loose": 0.0, "largest": 2.8, "more": 1.0, "low": -0.3, "spray": 1.05, "cut": 0.45, "coarse": True},
 }

@@ -52,11 +52,11 @@ ORDERS = {"orders": [
 SPECS = {y["name"]: y for y in YOUNG}
 # How far apart the heads of leaves stand over the crown (heads.py), each 1.3 to 1.9 m across; on the coarser levels
 # they are gathered into so many against the finest's count, or so many in all.
-SPACING = 1.8
+SPACING = 1.5
 GATHERED = {2: 0.5, 3: 14, 4: 9}
 # The share of each level's sprays a young tree's heads carry: it is the common tree, the wood a player walks in, so it
 # pays for fewer, and its smaller heads need fewer to break their outlines.
-SPRAYS = {0: 0.4, 1: 0.42, 2: 0.35, 3: 0.35}
+SPRAYS = {0: 0.55, 1: 0.55, 2: 0.35, 3: 0.35}
 
 
 def lean(spec):
