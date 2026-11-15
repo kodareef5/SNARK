@@ -10,13 +10,15 @@
 import type { Tier } from "../assets/tiers.ts";
 
 /**
- * The order, most protected first. Above crowns near nothing gives to the budget: a body is what a player aims at, what a
- * fight shows says who is hit, walls, trunks, stones and bushes are cover, and the ground is what everything stands on.
- * Far trees and the far city are below crowns near, but give by the governor's first step, which takes their reach in:
- * a reach that grows makes every far tile again, which no frame can do at no cost. Ambient details come last, and take
- * what the frame leaves.
+ * The order, most protected first: the viewer's own body and what it holds; other players and creatures; what a fight
+ * shows (shots, hurt layers, and the small details made from cues, client/core/details, which keep their own pool and
+ * drop order); what is built; the ground; trunks, stones and bushes; crowns near; far trees and the far city; ambient
+ * details. Above crowns near nothing gives to the budget: a body is what a player aims at, what a fight shows says who is
+ * hit, walls, trunks, stones and bushes are cover, and the ground is what everything stands on. Far trees and the far
+ * city are below crowns near, but give by the governor's first steps, which take their reach in: a reach that grows makes
+ * every far tile again, which no frame can do at no cost. Ambient details come last, and take what the frame leaves.
  */
-export const ORDER = ["own", "bodies", "fight", "built", "ground", "cover", "crowns", "far", "details"] as const;
+export const ORDER = ["own", "bodies", "fight", "built", "ground", "cover", "crowns", "far", "ambient"] as const;
 export type Share = (typeof ORDER)[number];
 
 /** The share of a crown's leaves left at the squeeze's first whole step. */
@@ -67,11 +69,11 @@ export class FrameBudget {
   /** What the tier allows a frame, as the governor leaves it. */
   triangles = 0;
   draws = 0;
-  /** What the frame being built has drawn of crowns near and of ambient details. */
+  /** What the frame being built has drawn of crowns near and of ambient details (none yet). */
   crowns = 0;
-  details = 0;
-  /** The last frame's: everything, crowns near, details, draws, and what crowns near might have taken. */
-  readonly last = { triangles: 0, crowns: 0, details: 0, draws: 0, room: 0 };
+  ambient = 0;
+  /** The last frame's: everything, crowns near, ambient details, draws, and what crowns near might have taken. */
+  readonly last = { triangles: 0, crowns: 0, ambient: 0, draws: 0, room: 0 };
   private under = 0;
   /** The squeeze not gone back under, until when, for how long the next time, and when it last fell. */
   private floor = 0;
@@ -82,20 +84,20 @@ export class FrameBudget {
   begin(tier: Tier): void {
     this.triangles = tier.budget.triangles;
     this.draws = tier.budget.draws;
-    this.crowns = this.details = 0;
+    this.crowns = this.ambient = 0;
     if (!this.on) this.squeeze = 0;
   }
 
   /** What ambient details may spend this frame: what the last frame left under the tier's number once all above them was drawn. */
-  get forDetails(): number {
-    return Math.max(0, this.triangles - (this.last.triangles - this.last.details));
+  get forAmbient(): number {
+    return Math.max(0, this.triangles - (this.last.triangles - this.last.ambient));
   }
 
   /** Ends a frame of `triangles` and `draws` at `now` ms, and moves the squeeze for the next. */
   end(now: number, triangles: number, draws: number): void {
-    const above = triangles - this.crowns - this.details;
+    const above = triangles - this.crowns - this.ambient;
     const room = Math.max(0, this.triangles - above);
-    Object.assign(this.last, { triangles, crowns: this.crowns, details: this.details, draws, room });
+    Object.assign(this.last, { triangles, crowns: this.crowns, ambient: this.ambient, draws, room });
     if (!this.on) return;
     if (now >= this.floorUntil) this.floor = 0;
     if (this.crowns > room) {

@@ -1,8 +1,9 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_PULLED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
+import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
@@ -14,7 +15,8 @@ import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } fro
 import type { AssetUpload } from "../core/assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
-import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
+import { CELL, mipOffset } from "../../shared/pack/details.ts";
+import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, detailsAtlas, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
 import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 
@@ -95,6 +97,10 @@ export class GlRenderer {
   private readonly buffers = new Map<number, WebGLBuffer>();
   private transient!: WebGLBuffer;
   private tileVao!: WebGLVertexArrayObject;
+  /** Small details: their atlas, bound to its unit for their draws alone, and their particles' buffer and vertex array. */
+  private detailAtlas: WebGLTexture | null = null;
+  private detailVao!: WebGLVertexArrayObject;
+  private detailBuffer!: WebGLBuffer;
   private tileBuffer!: WebGLBuffer;
   /** The tile mesh's indices, and those of its ground, which come before its skirts'. */
   private tileIndexCount = 0;
@@ -202,8 +208,47 @@ export class GlRenderer {
     gl.enableVertexAttribArray(2);
     gl.vertexAttribPointer(2, 2, gl.FLOAT, false, 24, 16);
     gl.vertexAttribDivisor(2, 1);
+    // A particle is a card of four corners drawn from the vertex's index, its numbers as packet.ts DETAIL lays them out.
+    this.detailVao = gl.createVertexArray()!;
+    gl.bindVertexArray(this.detailVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, (this.detailBuffer = gl.createBuffer()!));
+    for (let a = 0; a < 7; a++) {
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribDivisor(a, 1);
+    }
     gl.bindVertexArray(null);
+    const d = this.pack.header.details;
+    if (d) {
+      gl.activeTexture(gl.TEXTURE0 + UNIT.details);
+      gl.bindTexture(gl.TEXTURE_2D, (this.detailAtlas = gl.createTexture()));
+      const atlas = detailsAtlas(this.pack);
+      for (let level = 0, side = d.atlas.side; side >= 1; level++, side >>= 1) gl.texImage2D(gl.TEXTURE_2D, level, gl.RGBA8, side, side, 0, gl.RGBA, gl.UNSIGNED_BYTE, atlas.subarray(mipOffset(d.atlas.side, level), mipOffset(d.atlas.side, level + 1)));
+      for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_MAX_LOD, MOST_LOD]] as const) gl.texParameterf(gl.TEXTURE_2D, name, value);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
     gl.enable(gl.DEPTH_TEST);
+  }
+
+  /** A draw of small details: its run of the frame's particles, cut out with the opaque or blended, with the atlas on its unit. */
+  private details(p: FramePacket, d: number): void {
+    const gl = this.gl;
+    const blend = (p.drawFlags[d]! & DRAW_BLEND) !== 0;
+    const prog = this.use("details", p);
+    this.set(blend, false, !blend);
+    gl.uniform1f(prog.uniform("uBlend"), blend ? 1 : 0);
+    gl.uniform1f(prog.uniform("uCells"), (this.pack.header.details?.atlas.side ?? CELL) / CELL);
+    gl.activeTexture(gl.TEXTURE0 + UNIT.details);
+    gl.bindTexture(gl.TEXTURE_2D, this.detailAtlas);
+    gl.bindVertexArray(this.detailVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.detailBuffer);
+    const [stride, at] = [DETAIL_FLOATS * 4, p.drawFirst[d]! * DETAIL_FLOATS * 4];
+    for (let a = 0; a < 4; a++) gl.vertexAttribPointer(a, a === 3 ? 1 : 3, gl.FLOAT, false, stride, at + a * 12);
+    gl.vertexAttribPointer(4, 4, gl.UNSIGNED_BYTE, true, stride, at + 40);
+    gl.vertexAttribPointer(5, 4, gl.UNSIGNED_BYTE, true, stride, at + 44);
+    gl.vertexAttribIPointer(6, 4, gl.UNSIGNED_BYTE, stride, at + 48);
+    gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, p.drawInstances[d]!);
+    this.held.length = 0;
+    this.drawCalls++;
   }
 
   /** One vertex array for a level of detail. Instance attributes are pointed per draw. */
@@ -458,6 +503,10 @@ export class GlRenderer {
       gl.bufferData(gl.ARRAY_BUFFER, p.transient.subarray(0, p.transientCount * INSTANCE_BYTES), gl.DYNAMIC_DRAW);
     }
 
+    if (p.detailCount > 0) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.detailBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, p.details.subarray(0, p.detailCount * DETAIL_FLOATS), gl.DYNAMIC_DRAW);
+    }
     if (p.atlasRows > 0) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.atlas);
       gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS_WIDTH, p.atlasRows, gl.RGBA, gl.FLOAT, p.atlas);
@@ -478,6 +527,10 @@ export class GlRenderer {
       const s = stepOf(p, d);
       while (step < s) this.step(p, ++step);
       const flags = p.drawFlags[d]!;
+      if ((flags & DRAW_DETAILS) !== 0) {
+        this.details(p, d);
+        continue;
+      }
       const textured = (flags & DRAW_TEXTURED) !== 0;
       const lod = this.levels.get(p.drawSlot[d]!);
       const buffer = this.instances(p.drawBuffer[d]!);

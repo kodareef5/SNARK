@@ -70,13 +70,14 @@ interface Knobs {
   farReach?: number;
   fewerCascades?: number;
   noShadows?: boolean;
+  details?: number;
   bodies?: number;
 }
 
 /**
  * The steps, in the frame's order (render/budget.ts) from its foot: leaves and far trees first, then shadows, then
- * pixels, and bodies' own levels last of all. A leaves step lowers the frame's triangles, which crowns near give up; it
- * is passed by where crowns near could give little (CROWNS).
+ * pixels, then what a fight shows, and bodies' own levels last of all. A leaves step lowers the frame's triangles, which
+ * crowns near give up; it is passed by where crowns near could give little (CROWNS).
  */
 export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] = [
   { name: "leaves: the frame's triangles to 75%", knobs: { leaves: 0.75 } },
@@ -88,6 +89,7 @@ export const STEPS: readonly { readonly name: string; readonly knobs: Knobs }[] 
   { name: "no sun shadows", knobs: { noShadows: true } },
   { name: "85% of the pixels a side", knobs: { ratio: 0.85 } },
   { name: "70% of the pixels a side", knobs: { ratio: 0.7 } },
+  { name: "small details: half the pool, of each burst and of the fill", knobs: { details: 0.5 } },
   { name: "bodies a level coarser", knobs: { bodies: 2 } },
 ];
 
@@ -102,6 +104,7 @@ function governed(base: Tier, knobs: Knobs, dpr: number): Tier {
     reach: { ...base.reach, trees: base.reach.trees * far, rocks: base.reach.rocks * far, bushes: base.reach.bushes * far },
     shadows: s.cascades === 0 || !base.lit ? s : { ...s, everyOther: s.everyOther || (knobs.everyOther === true && s.cascades > 1), distance: s.distance * (knobs.shadowReach ?? 1), cascades: knobs.noShadows ? 0 : Math.max(1, s.cascades - (knobs.fewerCascades ?? 0)) },
     budget: { ...base.budget, triangles: base.budget.triangles * (knobs.leaves ?? 1) },
+    details: knobs.details ? { ...base.details, pool: Math.round(base.details.pool * knobs.details), share: base.details.share * knobs.details, fill: base.details.fill * knobs.details } : base.details,
     bodyError: base.bodyError * (knobs.bodies ?? 1),
   };
 }

@@ -23,11 +23,12 @@ const MAC_SHARES: Readonly<Record<string, number>> = {
 
 test("a tier's levels are its steps that change something, in the frame's order from its foot, and none touches the near nodes or the far bases", () => {
   const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
-  expect(names("high", 3)).toEqual(["the tier", "leaves: the frame's triangles to 75%", "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", "the farther cascade every other frame", "shadows to 60% as far", "one cascade fewer", "no sun shadows", "85% of the pixels a side", "70% of the pixels a side", "bodies a level coarser"]);
+  const details = "small details: half the pool, of each burst and of the fill";
+  expect(names("high", 3)).toEqual(["the tier", "leaves: the frame's triangles to 75%", "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", "the farther cascade every other frame", "shadows to 60% as far", "one cascade fewer", "no sun shadows", "85% of the pixels a side", "70% of the pixels a side", details, "bodies a level coarser"]);
   // A screen of one device pixel a CSS pixel has no pixels to spare; low poly casts nothing.
   expect(names("medium", 1)).not.toContain("85% of the pixels a side");
-  expect(names("lowpoly", 1)).toEqual(["the tier", "leaves: the frame's triangles to 75%", "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", "bodies a level coarser"]);
-  expect(ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, l.tier.bodyError])).toEqual([[2e6, 1], [1.5e6, 1], [1.5e6, 1], ...Array(7).fill([1e6, 1]), [1e6, 2]]);
+  expect(names("lowpoly", 1)).toEqual(["the tier", "leaves: the frame's triangles to 75%", "far trees, rocks and bushes to 70% as far", "leaves: the frame's triangles to 50%", details, "bodies a level coarser"]);
+  expect(ladder(tierOf("medium"), 3).map((l) => [l.tier.budget.triangles, l.tier.details.pool, l.tier.bodyError])).toEqual([[2e6, 1536, 1], [1.5e6, 1536, 1], [1.5e6, 1536, 1], ...Array(7).fill([1e6, 1536, 1]), [1e6, 768, 1], [1e6, 768, 2]]);
   for (const t of TIERS) {
     for (const { tier } of ladder(t, 3)) {
       expect([tier.nodes, tier.reach.bases, tier.split, tier.view, tier.texture, tier.name]).toEqual([t.nodes, t.reach.bases, t.split, t.view, t.texture, t.name]);
@@ -100,7 +101,7 @@ test("main-thread load is not the GPU's, and steps that buy nothing are undone",
   const rests = governor.steps.filter((s) => s.why.includes("not what is slow")).length;
   expect(rests).toBeLessThanOrEqual(5);
   expect(governor.steps.length).toBeLessThanOrEqual(rests * 3);
-  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([2, 5, 7, 9]);
+  expect(governor.steps.filter((s) => s.why.endsWith("ms a frame")).map((s) => s.level)).toEqual([2, 5, 7, 9, 11]);
   // A step this card does not need is passed for the next, which it does.
   const passed = run(2, (_, level) => ({ gpu: 20 * [1, 0.95, 0.95, 0.8][Math.min(level, 3)]!, crowns: 1e6 })).governor;
   expect(passed.steps.map((s) => s.level)).toEqual([1, 2, 3]);
@@ -120,7 +121,7 @@ test("leaves go first where crowns near can give, and are passed by where they c
 });
 
 test("a scene too heavy for good goes to the last step and stays there, trying the level above rarely", () => {
-  const { minutes, governor } = run(40, (_, level) => ({ gpu: 60 * leave(level) }));
+  const { minutes, governor } = run(40, (_, level) => ({ gpu: 75 * leave(level) }));
   expect(minutes.at(-1)!.level).toBe(ladder(tierOf("high"), 3).length - 1);
   const tries = governor.steps.filter((s) => s.why.includes("with no missed frame")).length;
   expect(tries).toBeLessThanOrEqual(5);
