@@ -42,8 +42,8 @@ export interface SpeciesDef extends Named {
   readonly strafe?: boolean;
   /** Metres per second in water. Defaults to 60% of the walk speed. */
   readonly swimSpeed?: number;
-  /** Stamina points: per second of sprinting, per second of rest, per jump. Defaults to 5, 8 and 6. */
-  readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number };
+  /** Stamina points: per second of sprinting, per second of rest, per jump, and per second of walking. Defaults to 5, 8, 6 and none. */
+  readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number; readonly walk?: number };
   /** Food capacity and loss per in-game hour. Omitted for species that do not eat. */
   readonly food?: { readonly max: number; readonly perHour: number };
   /** Water lost per in-game hour. Omitted for species that do not drink. */
@@ -438,6 +438,8 @@ export interface PropDef extends Named {
   readonly size?: number;
   /** An egg: the item it is when picked up. */
   readonly item?: string;
+  /** An egg: the item it is when picked up fertilised, which stacks to 1 and keeps the young it holds. */
+  readonly fertile?: string;
 }
 
 /**
@@ -458,6 +460,8 @@ export interface BuffDef extends Named {
   /** Health per second (negative harms) and torpor per second while it lasts. */
   readonly health?: number;
   readonly torpor?: number;
+  /** The kind of damage its harm to health is, scaled by what the body takes of that kind. Omitted, none scales it. */
+  readonly damage?: DamageType;
   /** Multipliers on the body's speed, the damage it deals and the damage it takes. */
   readonly speed?: number;
   readonly dealt?: number;

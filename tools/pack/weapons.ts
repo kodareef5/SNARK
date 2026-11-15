@@ -11,6 +11,8 @@ const DARK = 11;
 const SLATE = 4;
 const STRING = 10;
 const STONE = 15;
+const HIDE = 226;
+const FIBER = 224;
 
 type Box = readonly [cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, color: number];
 
@@ -52,6 +54,34 @@ function bow(): Box[] {
   return boxes;
 }
 
+/** A knotted branch, thickest at the head, with fibre bound round the grip. */
+function club(): Box[] {
+  return [
+    [0, 0, 0.11, 0.017, 0.017, 0.2, WOOD],
+    [0, 0, 0.01, 0.021, 0.021, 0.07, FIBER],
+    [0, 0, 0.35, 0.026, 0.026, 0.06, WOOD_LIGHT],
+    [0, 0, 0.5, 0.042, 0.04, 0.11, WOOD_LIGHT],
+    [0, 0, 0.62, 0.032, 0.03, 0.02, WOOD_LIGHT],
+    [0.032, 0.02, 0.47, 0.02, 0.018, 0.026, WOOD],
+    [-0.028, -0.026, 0.55, 0.018, 0.016, 0.022, WOOD],
+    [0.01, 0.036, 0.4, 0.014, 0.014, 0.018, WOOD],
+  ];
+}
+
+/** A forked stick held upright, its prongs spreading across the shot, the band back from their tips toward -X to a hide pouch. */
+function slingshot(): Box[] {
+  const boxes: Box[] = [
+    [0, -0.035, 0, 0.016, 0.075, 0.016, WOOD],
+    [0, 0.05, 0, 0.015, 0.015, 0.03, WOOD],
+    [-0.035, 0.155, 0, 0.01, 0.014, 0.022, HIDE],
+  ];
+  for (const side of [1, -1]) {
+    boxes.push([0, 0.085, side * 0.034, 0.012, 0.028, 0.012, WOOD], [0, 0.135, side * 0.048, 0.011, 0.028, 0.011, WOOD_LIGHT]);
+    boxes.push([-0.012, 0.157, side * 0.036, 0.014, 0.004, 0.004, HIDE]);
+  }
+  return boxes;
+}
+
 /** Ids are the mesh ids that content names. */
 export function weaponMeshes(): SourceMesh[] {
   return [
@@ -77,5 +107,8 @@ export function weaponMeshes(): SourceMesh[] {
     { id: "core:blast", lods: [build([[0, 0, 0, 0.5, 0.5, 0.5, 6]], null)] },
     // The tracer is a metre long along +Z from the origin, scaled to the length of the shot when drawn.
     { id: "core:tracer", lods: [build([[0, 0, 0.5, 0.006, 0.006, 0.5, 6]], null)] },
+    held("core:club", B_PROP_R, club()),
+    held("core:slingshot", B_PROP_L, slingshot()),
+    { id: "core:stone_shot", lods: [build([[0, 0, 0, 0.02, 0.017, 0.022, STONE], [0.006, 0.008, -0.004, 0.015, 0.014, 0.016, SLATE]], null)] },
   ];
 }

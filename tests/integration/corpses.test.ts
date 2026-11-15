@@ -12,11 +12,16 @@ import { CORPSE_TICKS, type Body } from "../../server/corpses.ts";
 import { createHost, type HostOptions } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
-import { CUE_DEAD, CUE_DECAY_SHIFT, STAGE_WORST } from "../../shared/anim/pose.ts";
+import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_HELD, CUE_OUT, STAGE_WORST } from "../../shared/anim/pose.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
-import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_OPEN, RESULT_INVALID } from "../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
 import { BTN_USE } from "../../shared/sim/character.ts";
+import { F_GROUNDED } from "../../shared/sim/entities.ts";
+import { rollWild } from "../../shared/sim/genome.ts";
+import { Rng } from "../../shared/rng.ts";
+import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
+import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { SWING_TICKS } from "../../shared/sim/weapon.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { DROPS, OP_BLOW, OP_LAY } from "../fixtures/corpse-child.ts";
@@ -259,6 +264,165 @@ test("a body holds what a creature carried; one used up leaves that in a cache, 
   expect(items.audit()).toEqual([]);
 });
 
+/** Sends a command and returns the server's answer. */
+function ask(h: Harness, s: ClientSession, op: number, write: (w: BitWriter) => void): number {
+  let code = -1;
+  s.onResult = (seq, c) => void (seq !== 0 && (code = c));
+  s.command(op, write);
+  h.run(150);
+  return code;
+}
+
+/** `rec`, its entity `e`, made a creature of `owner`'s tribe and told to stay. */
+function tamed(h: Harness, owner: EntityRecord, e: number, female = true): EntityRecord {
+  const rec = h.host.records.byPid.get(h.world.ents.pid[e]!)!;
+  rec.genome!.female = female;
+  h.host.taming.give(rec, owner, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  return rec;
+}
+
+/** The bodies laid since `before`, a set of record ids. */
+const since = (h: Harness, before: Set<number>): Body[] => [...h.host.corpses.bodies.values()].filter((b) => !before.has(b.rec.pid));
+
+test("a body is nothing to the marks over creatures, to orders and whistles, to the alarm, to carrying or to feeding", () => {
+  const { h, ada, at, me, id } = camp();
+  const ents = h.world.ents;
+  const e = h.host.spawnCreature("core:dodo", at.x, at.z + 2, 5);
+  const rec = tamed(h, me, e);
+  const was = new Set(h.host.corpses.bodies.keys());
+  h.host.survival.hurt(rec, 1e6, 0);
+  h.run(3000);
+  const [body] = since(h, was);
+  face(h, ada, body!, 1.4);
+  // No mark over it for the one who looks at it, and no heart.
+  expect([h.host.overhead.lookedAt(h.client(ada)!), h.host.overhead.details(body!.e, me)]).toEqual([-1, null]);
+  expect((ents.cue[body!.e]! >>> 28) & 7).toBe(0);
+  // Not an order's, a whistle's or an attack's, and not picked up.
+  const alive = h.host.spawnCreature("core:dodo", at.x + 3, at.z + 2, 5);
+  tamed(h, me, alive);
+  expect(ask(h, ada, CMD_ORDER, (w) => (w.u32(body!.e), w.u8(ORDER_FOLLOW)))).toBe(RESULT_INVALID);
+  expect(ask(h, ada, CMD_ORDER, (w) => (w.u32(alive), w.u8(ORDER_ATTACK), w.u32(body!.e)))).toBe(RESULT_INVALID);
+  expect(ask(h, ada, CMD_ORDER, (w) => (w.u32(ORDER_ALL), w.u8(ORDER_FOLLOW)))).toBe(RESULT_OK);
+  expect(h.host.creatures.mind.owned.has(body!.e)).toBe(false);
+  expect(ask(h, ada, CMD_CARRY, (w) => (w.u8(CARRY_PICK_UP), w.u32(body!.e)))).toBe(RESULT_INVALID);
+  // Opened, it is a container, not a creature to feed.
+  h.pilots[0]!.buttons = BTN_USE;
+  h.run(100);
+  h.pilots[0]!.buttons = 0;
+  h.run(300);
+  expect(ada.open?.name).toBe("dodo");
+  expect(ask(h, ada, CMD_FEED, (w) => (w.varint(0), w.u16(id("core:berry"))))).toBe(RESULT_DENIED);
+  // A wild dodo struck beside a body and a living one: only the living one takes fright with it.
+  const [w1, w2, w3] = [0, 1, 2].map((k) => h.host.spawnCreature("core:dodo", at.x - 6 + k * 2, at.z + 8, 3));
+  h.run(500);
+  h.host.survival.hurt(h.host.records.byPid.get(ents.pid[w1!]!)!, 1e6, 0);
+  h.run(500);
+  const alarmed = h.host.creatures.mind.alarmed;
+  h.host.creatures.provoke(w2!, ents.x[w2!]! - 2, ents.z[w2!]!, h.ent(ada));
+  expect(h.host.creatures.mind.alarmed - alarmed).toBe(1);
+  void w3;
+});
+
+test("a creature that dies held, mating, knocked out under water, or of a fall after it was thrown leaves one body where it came to lie, and dies once", () => {
+  const { h, ada, at, me, id } = camp();
+  const ents = h.world.ents;
+  const sv = h.host.survival;
+  // Each death that is carried out, and each creature credited for it.
+  const deaths = new Map<number, number>();
+  const die = h.host.death.die.bind(h.host.death);
+  h.host.death.die = (rec, cause) => {
+    deaths.set(rec.pid, (deaths.get(rec.pid) ?? 0) + 1);
+    die(rec, cause);
+  };
+  const killed = h.host.combat.killed.bind(h.host.combat);
+  const credited = new Map<number, number>();
+  h.host.combat.killed = (rec, by) => {
+    credited.set(rec.pid, (credited.get(rec.pid) ?? 0) + 1);
+    killed(rec, by);
+  };
+  const ground = (x: number, z: number): number => h.world.hf.heightAt(x, z);
+  const lay = (kill: () => void): Body => {
+    const before = new Set(h.host.corpses.bodies.keys());
+    kill();
+    const made = since(h, before);
+    expect(made.length).toBe(1);
+    return made[0]!;
+  };
+
+  // Held in her arms: set down beside her, then laid there.
+  const held = h.host.spawnCreature("core:dodo", at.x, at.z + 1.2, 5);
+  const heldRec = tamed(h, me, held);
+  h.run(300);
+  const pilot = h.pilots[0]!;
+  const her = h.ent(ada);
+  pilot.yaw = Math.atan2(ents.x[held]! - ents.x[her]!, ents.z[held]! - ents.z[her]!);
+  pilot.pitch = Math.atan2(ents.y[held]! + 0.3 - (ents.y[her]! + 1.62), Math.hypot(ents.x[held]! - ents.x[her]!, ents.z[held]! - ents.z[her]!));
+  h.run(200);
+  expect(ask(h, ada, CMD_CARRY, (w) => (w.u8(CARRY_PICK_UP), w.u32(held)))).toBe(RESULT_OK);
+  h.run(300);
+  const inArms = lay(() => {
+    sv.gods.delete(heldRec.pid);
+    sv.add(heldRec, V_HEALTH, -1e9);
+  });
+  h.run(3000);
+  // Set down as it died, it is refreshed, which finds it dead again: that second death is not carried out.
+  expect([deaths.get(heldRec.pid), credited.get(heldRec.pid), h.host.carry.holding(h.client(ada)!), (ents.cue[inArms.e]! & CUE_HELD) !== 0]).toEqual([1, 1, -1, false]);
+  expect(Math.hypot(inArms.x - ents.x[her]!, inArms.z - ents.z[her]!)).toBeLessThan(1.6);
+  expect(Math.abs(inArms.y - ground(inArms.x, inArms.z))).toBeLessThan(0.3);
+
+  // Mating: the pair parts, and the body carries no heart.
+  const f = h.host.spawnCreature("core:dodo", at.x - 4, at.z + 4, 5);
+  const m = h.host.spawnCreature("core:dodo", at.x - 3, at.z + 4, 5);
+  const fr = tamed(h, me, f, true);
+  const mr = tamed(h, me, m, false);
+  expect([h.host.breeding.order(fr, ORDER_MATE), h.host.breeding.order(mr, ORDER_MATE)]).toEqual([RESULT_OK, RESULT_OK]);
+  h.run(1500);
+  expect(h.host.breeding.pairCount).toBe(1);
+  const mated = lay(() => sv.hurt(fr, 1e6, 0));
+  h.run(1500);
+  expect([deaths.get(fr.pid), h.host.breeding.pairCount, (ents.cue[mated.e]! >>> 28) & 7, (ents.cue[m]! >>> 28) & 7]).toEqual([1, 0, 0, 0]);
+
+  // Knocked out under water: it drowns once, and its body lies there knocked out, under the water.
+  const sea = h.world.hf.seaLevel;
+  const [px, pz] = [PROVING_POOL.x, PROVING_POOL.z];
+  const cold = h.host.spawnCreature("core:dodo", at.x + 6, at.z + 4, 1);
+  h.host.creatures.mind.stay(cold, 0xffffffff);
+  const coldRec = h.host.records.byPid.get(ents.pid[cold]!)!;
+  sv.add(coldRec, V_TORPOR, coldRec.vitals!.max[V_TORPOR]! / 1e6 + 1);
+  h.run(500);
+  h.say(ada, `tp ${(px + 12).toFixed(3)} ${(pz + 0.5).toFixed(3)}`);
+  ents.flags[cold] = ents.flags[cold]! & ~F_GROUNDED;
+  ents.setPosition(cold, px - 3, sea - 3, pz);
+  ents.vy[cold] = 0;
+  const before = new Set(h.host.corpses.bodies.keys());
+  for (let k = 0; k < 90 && h.host.records.byPid.has(coldRec.pid); k++) h.run(1000);
+  const [drowned] = since(h, before);
+  expect([deaths.get(coldRec.pid), drowned!.out, (ents.cue[drowned!.e]! & CUE_OUT) !== 0, drowned!.y < sea, sv.isSubmerged(coldRec)]).toEqual([1, true, true, true, false]);
+
+  // Thrown, and dead of the fall from twenty metres: laid where it came down.
+  h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
+  const flung = h.host.spawnCreature("core:dodo", at.x, at.z + 1.2, 5);
+  const flungRec = tamed(h, me, flung);
+  h.run(300);
+  pilot.yaw = Math.atan2(ents.x[flung]! - ents.x[h.ent(ada)]!, ents.z[flung]! - ents.z[h.ent(ada)]!);
+  pilot.pitch = -0.5;
+  h.run(200);
+  expect(ask(h, ada, CMD_CARRY, (w) => (w.u8(CARRY_PICK_UP), w.u32(flung)))).toBe(RESULT_OK);
+  pilot.pitch = 0;
+  h.run(200);
+  expect(ask(h, ada, CMD_CARRY, (w) => w.u8(CARRY_THROW))).toBe(RESULT_OK);
+  ents.setPosition(flung, ents.x[flung]!, ents.y[flung]! + 20, ents.z[flung]!);
+  const fell = new Set(h.host.corpses.bodies.keys());
+  for (let k = 0; k < 40 && h.host.records.byPid.has(flungRec.pid); k++) h.run(100);
+  const [landed] = since(h, fell);
+  expect(deaths.get(flungRec.pid)).toBe(1);
+  expect(Math.abs(landed!.y - ground(landed!.x, landed!.z))).toBeLessThan(0.5);
+  h.run(2000);
+  expect(h.host.items.audit()).toEqual([]);
+  void id;
+});
+
 test("a body is the same for two clients that saw it fall, one that joined after, and the server, to the bit", () => {
   const { h, at, me } = camp();
   const bob = h.join("bob");
@@ -320,6 +484,55 @@ test("a body survives a restart where it lay, with the harvest health and the ti
   expect((h2.world.ents.cue[b2.e]! & CUE_DEAD) !== 0).toBe(true);
   h2.run(4000);
   expect(Array.from(b2.pose!.pos)).toEqual(pose);
+  expect(h2.host.items.audit()).toEqual([]);
+  h2.host.shutdown();
+});
+
+test("a save holding bodies beside fertilised eggs in hands and in a body loads as it was, the eggs still standing for their young", () => {
+  const db = join(dir, "eggs-and-bodies.db");
+  const { h, ada, at, me, id } = camp({ dbPath: db });
+  const items = h.host.items;
+  /** A fertilised dodo egg lying 1.5 m north of her, as breeding lays one, taken up into her bag. Returns its record. */
+  const takeEgg = (): EntityRecord => {
+    const e = h.ent(ada);
+    const egg = h.host.records.create(id("core:egg_dodo"), "dodo egg");
+    egg.genome = rollWild(new Rng(7), 5, h.reg.colorSet[id("core:dodo")]!);
+    egg.team = me.team;
+    [egg.x, egg.z] = [h.world.ents.x[e]!, h.world.ents.z[e]! + 1.2];
+    egg.y = h.world.hf.heightAt(egg.x, egg.z);
+    egg.egg = { species: id("core:dodo"), span: 9000, hatchAt: h.world.tick + 9000, carrier: 0 };
+    h.host.death.place(egg);
+    h.world.ents.setYoung(h.host.records.entOf.get(egg.pid)!, 9000, egg.egg.hatchAt);
+    expect(ask(h, ada, CMD_TAKE, (w) => w.u32(h.host.records.entOf.get(egg.pid)!))).toBe(RESULT_OK);
+    return egg;
+  };
+  const kept = takeEgg();
+  const given = takeEgg();
+  // The second goes into a dodo, which then dies: its body holds the egg.
+  const dodo = h.host.spawnCreature("core:dodo", at.x + 3, at.z + 3, 5);
+  const rec = h.host.records.byPid.get(h.world.ents.pid[dodo]!)!;
+  const mine = items.inv(me);
+  expect(items.move(me, mine.ref!.indexOf(given.pid), rec, 0, 0)).toBe(1);
+  const was = new Set(h.host.corpses.bodies.keys());
+  h.host.survival.hurt(rec, 1e6, me.pid);
+  h.run(500);
+  const [body] = since(h, was);
+  const holds = items.inv(body!.rec);
+  expect(holds.refOf(holds.item.indexOf(id("core:dodo_egg_fertile")))).toBe(given.pid);
+  // A second body, harvested part way.
+  const other = killed(h, "core:raptor", at.x - 4, at.z + 4, me, 500);
+  h.host.corpses.take(me, other, 20, id("core:hatchet"));
+  const left = other.left;
+  h.run(500);
+  h.host.shutdown();
+
+  const h2 = new Harness({}, 1, 60, { dbPath: db });
+  const b1 = h2.host.corpses.bodies.get(body!.rec.pid)!;
+  const b2 = h2.host.corpses.bodies.get(other.rec.pid)!;
+  const inv1 = h2.host.items.inv(b1.rec);
+  const inv2 = h2.host.items.inv(h2.host.records.byPid.get(me.pid)!);
+  expect([h2.reg.ids[b1.kind], b1.e >= 0, inv1.refOf(inv1.item.indexOf(id("core:dodo_egg_fertile"))), h2.host.records.byPid.has(given.pid)]).toEqual(["core:dodo", true, given.pid, true]);
+  expect([h2.reg.ids[b2.kind], b2.left, inv2.refOf(inv2.item.indexOf(id("core:dodo_egg_fertile"))), h2.host.records.byPid.has(kept.pid)]).toEqual(["core:raptor", left, kept.pid, true]);
   expect(h2.host.items.audit()).toEqual([]);
   h2.host.shutdown();
 });

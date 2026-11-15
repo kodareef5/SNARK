@@ -8,7 +8,7 @@ import { TICK_RATE } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
 import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { BTN_PRIMARY, BTN_SPRINT, MF_OUT, stanceEye } from "../shared/sim/character.ts";
-import { F_ALIVE, F_AWAKE, wider } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_AWAKE, F_HELD, F_PLAYER, wider } from "../shared/sim/entities.ts";
 import { ACT_NONE } from "../shared/sim/weapon.ts";
 import { GROUND_FREE, PATH_FOUND, PATH_LEG, PATH_NONE, PATH_REACH, PATH_SHORT, PathFinder, groundAt, shapeStamp } from "../shared/world/path.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../shared/world/ray.ts";
@@ -21,11 +21,15 @@ export const TEMPER_DEFENDS = 1;
 export const TEMPER_HUNTS = 2;
 export const TEMPERS: readonly string[] = ["flees", "defends", "hunts"];
 
-/** Neutral fights back when it or a nearby tribe mate is hurt. Aggressive also goes for wild creatures and strangers it sees. */
+/**
+ * Neutral fights back when it or a nearby tribe mate is hurt. Aggressive also goes for wild creatures and strangers it sees.
+ * Attacking your target is neutral, and also goes for whatever a tribe mate near it hurts (ARK's "Attack Your Target").
+ */
 export const STANCE_PASSIVE = 0;
 export const STANCE_NEUTRAL = 1;
 export const STANCE_AGGRESSIVE = 2;
-export const STANCES: readonly string[] = ["passive", "neutral", "aggressive"];
+export const STANCE_YOURS = 3;
+export const STANCES: readonly string[] = ["passive", "neutral", "aggressive", "attacks your target"];
 
 export const MIND_WANDER = 0;
 export const MIND_FLEE = 1;
@@ -126,9 +130,13 @@ export class Behavior {
   pitch = new Int16Array(0);
   buttons = new Uint8Array(0);
   pressed = new Uint8Array(0);
-  /** For an owned creature: a STANCE_ value, and the entity it follows, or -1 to stay. */
+  /**
+   * For an owned creature: a STANCE_ value, and the entity it follows, or -1 to stay. An unclaimed young one follows the
+   * survivor nearest it. `wanders` is 1 for an owned creature told to wander, which follows nobody.
+   */
   stance = new Uint8Array(0);
   leader = new Int32Array(0);
+  wanders = new Uint8Array(0);
   /** Ticks in a row it has been stuck, as `moved` counts them. */
   stuck = new Uint8Array(0);
   private leaderGen = new Uint16Array(0);
@@ -136,7 +144,10 @@ export class Behavior {
   readonly owned = new Set<number>();
   /** Every awake creature, set by Creatures. The grid of wild creatures is filled from it. */
   herd: { readonly awake: Int32Array; awakeCount: number } | null = null;
-  /** `bites` counts bite presses, not hits. */
+  /** Called when a creature takes fright and stands through its startle before it runs. */
+  onStartle: ((e: number) => void) | null = null;
+  /** `bites` counts bite presses, not hits. `alarmed` counts creatures that took fright or turned because one of their kind was hurt. */
+  alarmed = 0;
   hunts = 0;
   gaveUp = 0;
   bites = 0;
@@ -158,6 +169,9 @@ export class Behavior {
   private homeZ = new Float32Array(0);
   private until = new Uint32Array(0);
   private rested = new Uint32Array(0);
+  /** The tick a startled creature stops standing and runs, 0 when it is not startled; and 1 for a hunt it was ordered on. */
+  private calm = new Uint32Array(0);
+  private ordered = new Uint8Array(0);
   /** A WAY_ value, and one more than the index in `routes` of the creature's way, or 0 before it has had one. */
   private way = new Uint8Array(0);
   private routeOf = new Int32Array(0);
@@ -204,6 +218,7 @@ export class Behavior {
     this.pressed = wider(this.pressed, cap);
     this.stance = wider(this.stance, cap, STANCE_NEUTRAL);
     this.leader = wider(this.leader, cap, -1);
+    this.wanders = wider(this.wanders, cap);
     this.stuck = wider(this.stuck, cap);
     this.leaderGen = wider(this.leaderGen, cap);
     this.target = wider(this.target, cap, -1);
@@ -212,6 +227,8 @@ export class Behavior {
     this.homeZ = wider(this.homeZ, cap);
     this.until = wider(this.until, cap);
     this.rested = wider(this.rested, cap);
+    this.calm = wider(this.calm, cap);
+    this.ordered = wider(this.ordered, cap);
     this.way = wider(this.way, cap);
     this.routeOf = wider(this.routeOf, cap);
     this.asked = wider(this.asked, cap);
@@ -229,22 +246,50 @@ export class Behavior {
     this.rested[e] = 0;
     this.stance[e] = STANCE_NEUTRAL;
     this.leader[e] = -1;
+    this.wanders[e] = 0;
+    this.calm[e] = 0;
+    this.ordered[e] = 0;
     this.owned.delete(e);
     this.lose(e);
   }
 
-  /** `whom` is an entity index, or -1 to stay. */
+  /** `whom` is an entity index, or -1 to stay. Either way it no longer wanders. */
   follow(e: number, whom: number): void {
     if (whom !== this.leader[e] && this.mind[e] !== MIND_HUNT) this.lose(e);
     this.leader[e] = whom;
+    this.wanders[e] = 0;
     if (whom >= 0) this.leaderGen[e] = this.world.ents.gen[whom]!;
     else if (this.mind[e] !== MIND_HUNT) this.stay(e, 0);
   }
 
-  /** Sets an owned creature's stance. One made passive drops its hunt. */
+  /** An owned creature wanders about as a wild one does, following nobody, with no tether (ARK's has none). */
+  wander(e: number): void {
+    this.follow(e, -1);
+    this.wanders[e] = 1;
+  }
+
+  /**
+   * Sets an owned creature's stance. As ARK's whistles have it, every stance but aggressive ends the hunt it is on: passive
+   * defends nothing, and neutral and attacking your target defend again when hurt again.
+   */
   order(e: number, stance: number): void {
     this.stance[e] = stance;
-    if (stance === STANCE_PASSIVE && this.mind[e] === MIND_HUNT) this.wander(e, this.world.tick, 0);
+    if (stance !== STANCE_AGGRESSIVE && this.mind[e] === MIND_HUNT) this.rest(e, this.world.tick, 0);
+  }
+
+  /** An order: `e` goes for `prey` however far it runs, until the hunt's time is up or it cannot reach it. */
+  attack(e: number, prey: number): void {
+    this.hunt(e, prey, this.world.tick);
+    this.ordered[e] = 1;
+  }
+
+  /** `e` became somebody's. Young, it may have been following whoever was nearest. Now it follows when it is told to. */
+  claim(e: number): void {
+    if (this.leader[e]! < 0) return;
+    this.leader[e] = -1;
+    this.lose(e);
+    this.move[e] = 0;
+    this.buttons[e] = 0;
   }
 
   /**
@@ -265,6 +310,60 @@ export class Behavior {
       const dz = ents.z[e]! - ents.z[victim]!;
       if (dx * dx + dz * dz <= HELP_RANGE * HELP_RANGE) this.hunt(e, by, tick);
     }
+  }
+
+  /**
+   * `by` hurt `victim`. Each creature of `by`'s team set to attack its tribe's target, within HELP_RANGE of `by`, goes for
+   * `victim`, leaving any other hunt for it.
+   */
+  assist(by: number, victim: number): void {
+    if (by < 0 || this.owned.size === 0) return;
+    const ents = this.world.ents;
+    const team = ents.team[by]!;
+    if (team === 0 || ents.team[victim] === team || (ents.flags[victim]! & F_ALIVE) === 0) return;
+    const tick = this.world.tick;
+    const grid = this.claimedNow();
+    const n = grid.near(ents.x[by]!, ents.z[by]!, HELP_RANGE + 1);
+    for (let k = 0; k < n; k++) {
+      const e = grid.found[k]!;
+      if (e === by || e === victim || !this.owned.has(e) || ents.team[e] !== team || this.stance[e] !== STANCE_YOURS || this.targetOf(e) === victim || ents.driven[e] !== 0 || (ents.mflags[e]! & MF_OUT) !== 0) continue;
+      const dx = ents.x[e]! - ents.x[by]!;
+      const dz = ents.z[e]! - ents.z[by]!;
+      if (dx * dx + dz * dz <= HELP_RANGE * HELP_RANGE) this.hunt(e, victim, tick);
+    }
+  }
+
+  /**
+   * `victim`, wild, was hurt from (x, z) by `by`, an entity index or -1. Others of its kind within its species' alarm range
+   * take fright with it, as ARK's dodos do: a kind that flees runs from (x, z), startled if it was not running already, and
+   * any other turns on `by`. One that hunts, is young, cold, held or ridden does nothing. Returns how many took fright.
+   */
+  alarm(victim: number, x: number, z: number, by: number): number {
+    const ents = this.world.ents;
+    const kind = ents.kind[victim]!;
+    const range = this.reg.alarm[kind]!;
+    if (!(range > 0) || ents.team[victim] !== 0) return 0;
+    const flees = this.reg.temper[kind] === TEMPER_FLEES;
+    // A kind that fights needs somebody to turn on, and never turns on one of its own.
+    if (!flees && (by < 0 || (ents.team[by] === 0 && ents.kind[by] === kind))) return 0;
+    const tick = this.world.tick;
+    const vx = ents.x[victim]!;
+    const vz = ents.z[victim]!;
+    const grid = this.wildNow();
+    const n = grid.near(vx, vz, range + 1);
+    let count = 0;
+    for (let k = 0; k < n; k++) {
+      const e = grid.found[k]!;
+      if (e === victim || e === by || ents.kind[e] !== kind || ents.grown[e] !== 0 || this.mind[e] === MIND_HUNT || ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0 || (ents.mflags[e]! & MF_OUT) !== 0) continue;
+      const dx = ents.x[e]! - vx;
+      const dz = ents.z[e]! - vz;
+      if (dx * dx + dz * dz > range * range) continue;
+      if (flees) this.flee(e, x, z, tick, true);
+      else this.hunt(e, by, tick);
+      count++;
+    }
+    this.alarmed += count;
+    return count;
   }
 
   /** Stands still until tick `until`, unless something hurts it first. */
@@ -307,7 +406,7 @@ export class Behavior {
       this.hunt(e, by, tick);
       return;
     }
-    this.flee(e, x, z, tick);
+    this.flee(e, x, z, tick, true);
   }
 
   /**
@@ -370,12 +469,14 @@ export class Behavior {
     this.mind[e] = MIND_HUNT;
     this.target[e] = prey;
     this.targetGen[e] = ents.gen[prey]!;
+    this.ordered[e] = 0;
     this.until[e] = tick + HUNT_TICKS;
     this.aim(e, prey);
     if (this.blocked(e, prey, tick)) this.ask(e, tick, ASK_NOW);
   }
 
-  private wander(e: number, tick: number, rest: number): void {
+  /** It drops what it was doing and stands, and looks for no prey for `rest` ticks. */
+  private rest(e: number, tick: number, rest: number): void {
     if (this.mind[e] === MIND_HUNT) this.gaveUp++;
     this.mind[e] = MIND_WANDER;
     this.target[e] = -1;
@@ -387,22 +488,33 @@ export class Behavior {
     this.lose(e);
   }
 
-  /** Runs from (x, z) for FLEE_TICKS, toward a point as far off as it runs in that time. */
-  private flee(e: number, x: number, z: number, tick: number): void {
+  /**
+   * Runs from (x, z) for FLEE_TICKS, toward a point as far off as it runs in that time, or the way it faces when (x, z) is
+   * where it stands. One that takes fright with `startle` stands through its kind's startled clip first, so its feet do not
+   * slide under it, and then turns away.
+   */
+  private flee(e: number, x: number, z: number, tick: number, startle = false): void {
     const ents = this.world.ents;
-    const a = Math.atan2(ents.x[e]! - x, ents.z[e]! - z);
+    const dx = ents.x[e]! - x;
+    const dz = ents.z[e]! - z;
+    const a = dx * dx + dz * dz > 1e-4 ? Math.atan2(dx, dz) : (ents.yaw[e]! / 65536) * Math.PI * 2;
+    const clip = startle && this.mind[e] !== MIND_FLEE && (ents.mflags[e]! & MF_OUT) === 0 ? this.world.anims[ents.kind[e]!]?.startled : null;
+    // One hit again while still startled keeps standing.
+    const hold = clip ? tick + clip.frames - 1 : this.mind[e] === MIND_FLEE && tick < this.calm[e]! ? this.calm[e]! : 0;
     this.lose(e);
     this.mind[e] = MIND_FLEE;
-    this.look[e] = Math.round((a / (Math.PI * 2)) * 65536) & 0xffff;
+    this.calm[e] = hold;
+    this.look[e] = hold !== 0 ? ents.yaw[e]! : Math.round((a / (Math.PI * 2)) * 65536) & 0xffff;
     this.pitch[e] = 0;
-    this.move[e] = 127;
-    this.buttons[e] = BTN_SPRINT;
-    this.until[e] = tick + FLEE_TICKS;
+    this.move[e] = hold !== 0 ? 0 : 127;
+    this.buttons[e] = hold !== 0 ? 0 : BTN_SPRINT;
+    this.until[e] = Math.max(tick, hold) + FLEE_TICKS;
     const p = this.reg.move[ents.kind[e]!]!;
     const run = (p.walkSpeed * p.sprintMul * FLEE_TICKS) / TICK_RATE;
     this.homeX[e] = ents.x[e]! + Math.sin(a) * run;
     this.homeZ[e] = ents.z[e]! + Math.cos(a) * run;
     if (this.blocked(e, -1, tick)) this.ask(e, tick, ASK_NOW);
+    if (clip) this.onStartle?.(e);
   }
 
   /**
@@ -411,7 +523,7 @@ export class Behavior {
    */
   private giveUp(e: number, tick: number): void {
     const prey = this.target[e]!;
-    if (this.world.ents.team[e] !== 0) return this.wander(e, tick, REST_TICKS);
+    if (this.world.ents.team[e] !== 0) return this.rest(e, tick, REST_TICKS);
     this.gaveUp++;
     this.flee(e, this.world.ents.x[prey]!, this.world.ents.z[prey]!, tick);
     this.rested[e] = this.until[e]! + REST_TICKS;
@@ -534,7 +646,7 @@ export class Behavior {
     this.pressed[e] = 0;
     // An unconscious creature drops what it was doing.
     if ((this.world.ents.mflags[e]! & MF_OUT) !== 0) {
-      if (this.mind[e] !== MIND_WANDER || this.move[e] !== 0) this.wander(e, tick, REST_TICKS);
+      if (this.mind[e] !== MIND_WANDER || this.move[e] !== 0) this.rest(e, tick, REST_TICKS);
       return;
     }
     const mind = this.mind[e]!;
@@ -547,13 +659,14 @@ export class Behavior {
       const kind = ents.kind[e]!;
       const prey = this.target[e]!;
       // The prey is gone, dead, replaced, or now on its own team.
-      if (prey < 0 || (ents.flags[prey]! & F_ALIVE) === 0 || ents.gen[prey] !== this.targetGen[e] || (ents.team[e] !== 0 && ents.team[prey] === ents.team[e])) return this.wander(e, tick, 0);
+      if (prey < 0 || (ents.flags[prey]! & F_ALIVE) === 0 || ents.gen[prey] !== this.targetGen[e] || (ents.team[e] !== 0 && ents.team[prey] === ents.team[e])) return this.rest(e, tick, 0);
       const flat = this.aim(e, prey);
       const hx = ents.x[e]! - this.homeX[e]!;
       const hz = ents.z[e]! - this.homeZ[e]!;
       const leash = reg.leash[kind]!;
       // It gives up when led past its leash, when the prey is too far, or when the hunt has run too long. Then it rests.
-      if (hx * hx + hz * hz > leash * leash || flat > reg.sight[kind]! * KEEP || tick >= this.until[e]!) return this.wander(e, tick, REST_TICKS);
+      // One ordered to the hunt keeps on wherever it leads until its time is up.
+      if ((this.ordered[e] === 0 && (hx * hx + hz * hz > leash * leash || flat > reg.sight[kind]! * KEEP)) || tick >= this.until[e]!) return this.rest(e, tick, REST_TICKS);
       // Within reach it stops and bites, else it runs at the prey. Reach counts from its eye to half a radius inside the prey.
       const reach = reg.reach[kind]! + reg.bodyRadius[ents.kind[prey]!]! * 0.5;
       if (flat <= reach) {
@@ -574,64 +687,105 @@ export class Behavior {
       return;
     }
     if (ents.team[e] !== 0) {
-      // An owned creature follows its leader or stands. An aggressive one first looks for prey on its turn.
+      // An owned creature follows its leader, wanders, or stands. An aggressive one first looks for prey on its turn.
       if (turn && this.stance[e] === STANCE_AGGRESSIVE && tick >= this.rested[e]!) {
         const prey = this.prey(e);
         if (prey >= 0) return this.hunt(e, prey, tick);
       }
-      if (!heading) return;
-      const whom = this.leader[e]!;
-      if (whom < 0 || (ents.flags[whom]! & F_ALIVE) === 0 || ents.gen[whom] !== this.leaderGen[e]) {
-        if (whom >= 0) {
-          this.leader[e] = -1;
-          this.lose(e);
-        }
-        this.move[e] = 0;
-        this.buttons[e] = 0;
-        return;
-      }
-      const flat = this.aim(e, whom);
-      this.pitch[e] = 0;
-      const near = FOLLOW_NEAR + this.reg.bodyRadius[ents.kind[e]!]! + this.reg.bodyRadius[ents.kind[whom]!]!;
-      if (flat <= near) this.way[e] = WAY_STRAIGHT;
-      this.move[e] = flat <= near ? 0 : flat > FOLLOW_RUN ? 127 : 90;
-      this.buttons[e] = flat > FOLLOW_RUN ? BTN_SPRINT : 0;
-      // With no way to its leader it waits.
-      if (flat > near && !this.head(e, tick, ents.x[whom]!, ents.z[whom]!, turn && this.blocked(e, whom, tick))) {
-        this.move[e] = 0;
-        this.buttons[e] = 0;
-      }
+      if (this.wanders[e] !== 0) return this.amble(e, tick);
+      if (heading) this.go(e, tick, turn);
       return;
     }
-    // An unclaimed young creature waits where it hatched.
+    // An unclaimed young creature follows the survivor nearest it, as ARK's newly hatched young do, or waits.
     if (ents.grown[e] !== 0) {
-      this.move[e] = 0;
-      this.buttons[e] = 0;
+      if (turn) this.guide(e);
+      if (heading) this.go(e, tick, turn);
       return;
     }
     if (mind === MIND_FLEE) {
       if (tick < this.until[e]!) {
+        // A startled one stands until its startle is over, then turns away and runs.
+        if (tick < this.calm[e]!) return;
+        const started = this.calm[e] !== 0;
+        if (started) {
+          this.calm[e] = 0;
+          this.look[e] = Math.round((Math.atan2(this.homeX[e]! - ents.x[e]!, this.homeZ[e]! - ents.z[e]!) / (Math.PI * 2)) * 65536) & 0xffff;
+        }
         // With no way away it stands, rather than run at a wall.
-        if (heading) {
+        if (heading || started) {
           const away = this.head(e, tick, this.homeX[e]!, this.homeZ[e]!, turn && this.blocked(e, -1, tick));
           this.move[e] = away ? 127 : 0;
           this.buttons[e] = away ? BTN_SPRINT : 0;
         }
         return;
       }
-      this.wander(e, tick, Math.max(0, this.rested[e]! - tick));
+      this.rest(e, tick, Math.max(0, this.rested[e]! - tick));
     }
     if (!turn && tick < this.until[e]!) return;
     if (turn && this.reg.temper[ents.kind[e]!] === TEMPER_HUNTS && tick >= this.rested[e]!) {
       const prey = this.prey(e);
       if (prey >= 0) return this.hunt(e, prey, tick);
     }
+    this.amble(e, tick);
+  }
+
+  /** Now and then it walks a new way, or stands a while. It walks at its walking speed, as ARK's wild creatures wander. */
+  private amble(e: number, tick: number): void {
     if (tick < this.until[e]!) return;
     const rng = this.rng;
-    this.move[e] = rng.int(3) === 0 ? 0 : 90;
+    this.move[e] = rng.int(3) === 0 ? 0 : 127;
     this.look[e] = rng.int(65536);
     this.buttons[e] = 0;
     this.until[e] = tick + 30 + rng.int(150);
+  }
+
+  /** Goes after its leader and stops a few steps short, running when far behind. With no leader, or no way to it, it stands. */
+  private go(e: number, tick: number, turn: boolean): void {
+    const ents = this.world.ents;
+    const whom = this.leader[e]!;
+    if (whom < 0 || (ents.flags[whom]! & F_ALIVE) === 0 || ents.gen[whom] !== this.leaderGen[e]) {
+      if (whom >= 0) {
+        this.leader[e] = -1;
+        this.lose(e);
+      }
+      this.move[e] = 0;
+      this.buttons[e] = 0;
+      return;
+    }
+    const flat = this.aim(e, whom);
+    this.pitch[e] = 0;
+    const near = FOLLOW_NEAR + this.reg.bodyRadius[ents.kind[e]!]! + this.reg.bodyRadius[ents.kind[whom]!]!;
+    if (flat <= near) this.way[e] = WAY_STRAIGHT;
+    this.move[e] = flat <= near ? 0 : flat > FOLLOW_RUN ? 127 : 90;
+    this.buttons[e] = flat > FOLLOW_RUN ? BTN_SPRINT : 0;
+    if (flat > near && !this.head(e, tick, ents.x[whom]!, ents.z[whom]!, turn && this.blocked(e, whom, tick))) {
+      this.move[e] = 0;
+      this.buttons[e] = 0;
+    }
+  }
+
+  /** An unclaimed young creature's leader becomes the survivor nearest it within its sight, or nobody. Chosen: ARK gives no distance. */
+  private guide(e: number): void {
+    const ents = this.world.ents;
+    const sight = this.reg.sight[ents.kind[e]!]!;
+    const grid = this.claimedNow();
+    const n = grid.near(ents.x[e]!, ents.z[e]!, sight + 1);
+    let best = -1;
+    let near = sight * sight;
+    for (let k = 0; k < n; k++) {
+      const o = grid.found[k]!;
+      if ((ents.flags[o]! & (F_PLAYER | F_ALIVE)) !== (F_PLAYER | F_ALIVE)) continue;
+      const dx = ents.x[o]! - ents.x[e]!;
+      const dz = ents.z[o]! - ents.z[e]!;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= near) continue;
+      near = d2;
+      best = o;
+    }
+    if (best === this.leader[e] && (best < 0 || ents.gen[best] === this.leaderGen[e])) return;
+    this.lose(e);
+    this.leader[e] = best;
+    if (best >= 0) this.leaderGen[e] = ents.gen[best]!;
   }
 
   /**
@@ -731,7 +885,7 @@ export class Behavior {
     if ((ents.flags[e]! & F_AWAKE) === 0 || !p) return -1;
     let gx: number;
     let gz: number;
-    if (this.mind[e] === MIND_HUNT || (ents.team[e] !== 0 && this.leader[e]! >= 0)) {
+    if (this.mind[e] === MIND_HUNT || (this.leader[e]! >= 0 && (ents.team[e] !== 0 || ents.grown[e] !== 0))) {
       const o = this.mind[e] === MIND_HUNT ? this.target[e]! : this.leader[e]!;
       if (o < 0 || (ents.flags[o]! & F_ALIVE) === 0) return -1;
       gx = ents.x[o]!;

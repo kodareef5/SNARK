@@ -260,9 +260,11 @@ test("rubble, stumps and broken stones no higher than a step are walked over fro
           const nodes = new StructureStore(w.dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
           nodes.put(0, 0, f, 32, 0, 32, 0, 0, 1, 1);
           const reach = Math.hypot(forms.halfX[f]!, forms.halfZ[f]!);
+          // Long enough to walk across the widest, a banyan's stump and those of the trunks it let down.
+          const ticks = Math.max(90, Math.ceil(((2 * reach + 2) / survivor.walkSpeed) * (1 / TICK_DT)));
           for (let side = 0; side < 8; side++) {
             const a = (side * Math.PI) / 4;
-            const { b } = walk({ ...w, nodes }, survivor, 32, 32, side * 45, { from: reach + 0.5, ticks: 90 });
+            const { b } = walk({ ...w, nodes }, survivor, 32, 32, side * 45, { from: reach + 0.5, ticks });
             if ((b.x - 32) * Math.sin(a) + (b.z - 32) * Math.cos(a) < reach + survivor.radius) wrong.push(`${forms.mesh[f] || reg.defs[k]!.id} from side ${side}`);
           }
         }

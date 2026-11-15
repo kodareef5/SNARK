@@ -1,8 +1,9 @@
 import { parseNumber } from "../../shared/console.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
-import { MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
+import { MODE_FLY, MODE_GHOST, MODE_WALK } from "../../shared/sim/character.ts";
 import { Genome, POINT_CAP, STAT_NAMES } from "../../shared/sim/genome.ts";
-import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
+import { groundUnder } from "../../shared/world/collide.ts";
+import { placeFree } from "../place.ts";
 import { named, type Console, type ConsoleCommand } from "../console.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { CAUSE_KILLED, statOf } from "../survival.ts";
@@ -24,9 +25,9 @@ export function addAdminCommands(con: Console): void {
       },
     },
     {
-      name: "walk",
+      name: "fly",
       usage: "",
-      help: "Leave ghost mode. Refused while you are inside something.",
+      help: "Fly over anything, as fast as a ghost, but not through the ground or anything in the world. walk ends it.",
       admin: true,
       run(ctx) {
         const c = ctx.client;
@@ -34,12 +35,32 @@ export function addAdminCommands(con: Console): void {
         const world = ctx.host.world;
         const ents = world.ents;
         const e = c.ent;
-        if (ents.mode[e] !== MODE_GHOST) return "you are not a ghost";
+        if (ents.mode[e] === MODE_FLY) return "you are flying already";
         const p = world.reg.move[ents.kind[e]!]!;
-        if (!capsuleFree(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)) return "you are inside something; move to open space first";
+        if (!placeFree(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)) return "you are inside something, or have no room to stand; move to open space first";
+        ents.mode[e] = MODE_FLY;
+        ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
+        return "flying";
+      },
+    },
+    {
+      name: "walk",
+      usage: "",
+      help: "Leave ghost mode or flight, and fall as anyone does. Refused while you are inside something.",
+      admin: true,
+      run(ctx) {
+        const c = ctx.client;
+        if (!c || c.ent < 0) return needsBody;
+        const world = ctx.host.world;
+        const ents = world.ents;
+        const e = c.ent;
+        const was = ents.mode[e];
+        if (was !== MODE_GHOST && was !== MODE_FLY) return "you are neither a ghost nor flying";
+        const p = world.reg.move[ents.kind[e]!]!;
+        if (!placeFree(world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)) return "you are inside something; move to open space first";
         ents.mode[e] = MODE_WALK;
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
-        return "ghost off";
+        return was === MODE_GHOST ? "ghost off" : "flying off";
       },
     },
     {
@@ -69,7 +90,7 @@ export function addAdminCommands(con: Console): void {
         const p = world.reg.move[ents.kind[e]!]!;
         // Without a height given, it stands on the ground there, which on a slope is above the ground under its middle.
         const at = args.length === 3 ? y : groundUnder(world.hf, x, z, p.radius);
-        if (ents.mode[e] !== MODE_GHOST && !capsuleFree(world, x, at, z, p.radius, p.height)) return "that spot is inside something";
+        if (ents.mode[e] !== MODE_GHOST && !placeFree(world, x, at, z, p.radius, p.height)) return "that spot is inside something";
         ents.setPosition(e, x, at, z);
         ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
         return `at ${x} ${at.toFixed(2)} ${z}`;

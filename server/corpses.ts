@@ -10,9 +10,9 @@ import { Solved, rayZones, zoneHit } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { detCos, detSin } from "../shared/math/scalar.ts";
-import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
+import { MF_OUT } from "../shared/sim/character.ts";
 import { F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
@@ -28,8 +28,6 @@ import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 
 export const DEADLINE_CORPSE = 10;
-/** The record part that holds a body's own state. The store keeps a part it does not read as it found it. */
-export const COMP_CORPSE = 64;
 /** Ticks a body lies at 1x. ARK publishes none: fifteen minutes, as a cache lies (D244). */
 export const CORPSE_TICKS = 15 * 60 * TICK_RATE;
 /** A drop a tool favours is picked this many times as often: 60 rolls in 100 of two drops alike, as ARK's hatchet and pick. */
@@ -41,7 +39,6 @@ const ROLL = 10;
 const XP = 1;
 /** Ticks between looks at whether something was built or taken where a body sleeps. Chosen. */
 const SHAKE_TICKS = TICK_RATE;
-const FORMAT = 1;
 /** Metres a ray is searched for bodies beyond its length, for one that rolled from where it fell. */
 const PAD = 4;
 
@@ -116,7 +113,6 @@ export class Corpses {
   t = 0;
   private readonly rng: Rng;
   private readonly corpse: number;
-  private readonly w = new BitWriter(64);
 
   constructor(ctx: CorpsesContext, seed: number) {
     this.ctx = ctx;
@@ -175,7 +171,9 @@ export class Corpses {
     body.expiresAt = tick + life;
     const of = def as SpeciesDef;
     const max = (of.corpse?.health ?? HEALTH) * size * rules.num("HarvestHealthMultiplier");
-    const b = this.make(body, rec.kind, max, max, young, size, rec.out, life);
+    // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
+    const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
+    const b = this.make(body, rec.kind, max, max, young, size, out, life);
     this.save(b);
     this.laid.set(rec.pid, b);
   }
@@ -190,20 +188,9 @@ export class Corpses {
 
   /** A body's record, loaded from a save. */
   restore(rec: EntityRecord): void {
-    const { world } = this.ctx;
-    const blob = rec.extra.get(COMP_CORPSE);
-    const r = blob ? new BitReader(blob) : null;
-    const format = r ? r.u8() : 0;
-    const id = r && format === FORMAT ? r.string(256) : "";
-    const kind = world.reg.index.get(id);
-    const max = r ? r.f64() : 0;
-    const left = r ? r.f64() : 0;
-    const span = r ? r.varint() : 0;
-    const young = r ? r.bool() : false;
-    const out = r ? r.bool() : false;
-    const life = r ? r.uint53() : 0;
-    if (!r || r.overflow || kind === undefined || world.reg.defs[kind]?.type !== "species" || !(life > 0)) {
-      // A body of a kind this build lacks, or one it cannot read, goes with what it held.
+    const s = rec.corpse;
+    if (!s || this.ctx.world.reg.defs[s.species]?.type !== "species" || !(s.life > 0)) {
+      // A body of a kind this build lacks goes with what it held.
       this.drop(rec);
       return;
     }
@@ -211,7 +198,7 @@ export class Corpses {
     rec.y = wireY(rec.y);
     rec.z = wireX(rec.z);
     rec.yaw &= 0xffc0;
-    const b = this.make(rec, kind, max, left, young, corpseSize(span), out, life);
+    const b = this.make(rec, s.species, s.max, s.left, s.young, corpseSize(s.span), s.out, s.life);
     this.place(b);
   }
 
@@ -481,19 +468,9 @@ export class Corpses {
     return last;
   }
 
-  /** Writes a body's own state into its record's part for the store. */
+  /** Writes a body's own state into its record, for the store. */
   private save(b: Body): void {
-    const w = this.w;
-    w.reset();
-    w.u8(FORMAT);
-    w.string(this.ctx.world.reg.ids[b.kind]!);
-    w.f64(b.max);
-    w.f64(b.left);
-    w.varint(sizeSpan(b.size));
-    w.bool(b.young);
-    w.bool(b.out);
-    w.uint53(b.life);
-    b.rec.extra.set(COMP_CORPSE, w.bytes().slice());
+    b.rec.corpse = { species: b.kind, max: b.max, left: b.left, span: sizeSpan(b.size), young: b.young, out: b.out, life: b.life };
     this.ctx.records.dirty.add(b.rec.pid);
   }
 

@@ -35,8 +35,27 @@ def grounded(box):
     return {"at": [x, round((top + bottom) / 2, 2), z], "half": [hx, round((top - bottom) / 2, 2), hz]}
 
 
-def ts(boxes):
+# A body steps onto nothing higher than 0.5 m, so a stump's boxes rise no more than this at its kind's largest size, and a
+# felled wood is walked through, though the drawn stump stands taller. A mangrove leaves its whole cage of prop roots
+# standing, which bars the way as the living tree's does, so its stump keeps its boxes.
+STUMP_TOP = 0.45
+CAGED = {"core:mangrove"}
+
+
+def under_step(box, largest):
+    """A stump's box cut down to STUMP_TOP at the size `largest`, its foot where it was."""
+    (x, y, z), (hx, hy, hz) = box["at"], box["half"]
+    most = math.floor(STUMP_TOP / largest * 100) / 100
+    bottom = y - hy
+    if y + hy <= most:
+        return box
+    return {"at": [x, round((most + bottom) / 2, 3), z], "half": [hx, round((most - bottom) / 2, 3), hz]}
+
+
+def ts(boxes, largest=None):
     boxes = [grounded(b) for b in boxes]
+    if largest is not None:
+        boxes = [under_step(b, largest) for b in boxes]
     return "[" + ", ".join(f"{{ at: [{', '.join(f'{v:g}' for v in b['at'])}], half: [{', '.join(f'{v:g}' for v in b['half'])}] }}" for b in boxes) + "]"
 
 
@@ -47,5 +66,5 @@ if __name__ == "__main__":
         print("variants: [")
         for (piece, name), weight in zip([p for p in module.PIECES if not p[0].endswith("_depleted")], weights):
             print(f"  {{ mesh: \"core:{piece}\", weight: {weight}, boxes: {ts(module.boxes(name))},")
-            print(f"    depleted: {{ mesh: \"core:{piece}_depleted\", boxes: {ts(module.stump_boxes(name))} }} }},")
+            print(f"    depleted: {{ mesh: \"core:{piece}_depleted\", boxes: {ts(module.stump_boxes(name), None if kind in CAGED else size[1])} }} }},")
         print("],")

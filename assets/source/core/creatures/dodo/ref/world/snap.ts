@@ -10,6 +10,13 @@
 //   knocked_out   standing, going down, lying, and swallowing a berry as it lies
 //   lying         two birds knocked out, close: one seen from its belly, one from its back
 //   dead          two corpses six seconds after death, one killed standing and one killed knocked out, by a live bird
+//   held          a survivor holding one in both arms, from her front right, and one crouched holding another behind her
+//   held_side     the same survivor from her right through a long lens, to see the bird held clear of her chest
+//   held_left     and from her left
+//   held_top      from above her right shoulder, where the bird's back meets her chest
+//   held_back     from behind her, to see her hands under it
+//   held_crouch   the crouched one from her left: the bird held out in front of her knees
+//   held_eye      what she sees of it from her own eyes, looking ahead
 //
 //   bun assets/source/core/creatures/dodo/ref/world/snap.ts [shot ...] [--tier medium|ultra]
 
@@ -20,7 +27,8 @@ import { AnimState, CUE_TORPOR, LAYER_EAT, bodySeed } from "../../../../../../..
 import { Rng } from "../../../../../../../shared/rng.ts";
 import { rollWild } from "../../../../../../../shared/sim/genome.ts";
 import { GEAR_COUNT } from "../../../../../../../shared/sim/entities.ts";
-import { ACT_NONE, ACT_SWING, HOLD_HANDS } from "../../../../../../../shared/sim/weapon.ts";
+import { ACT_NONE, ACT_SWING, HOLD_CARRY, HOLD_HANDS } from "../../../../../../../shared/sim/weapon.ts";
+import { STANCE_CROUCH } from "../../../../../../../shared/sim/character.ts";
 import { SOURCE } from "../../../../../../../tools/art/source.ts";
 import { provingView, settle, type ProvingView } from "../../../../../../../tools/snap.ts";
 import { gameFiles } from "../../../../../../../tools/snap/files.ts";
@@ -29,7 +37,7 @@ import { encodePng } from "../../../../../../../tools/snap/png.ts";
 const [W, H] = [1280, 720];
 /** A grassy patch beyond the plaza with no tree or rock between it and a camera 26 m to its south. */
 const [CX, CZ] = [160, 360];
-const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead"] as const;
+const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead", "held", "held_side", "held_left", "held_top", "held_back", "held_crouch", "held_eye"] as const;
 type Shot = (typeof SHOTS)[number];
 
 const args = process.argv.slice(2);
@@ -127,8 +135,46 @@ function flock(view: ProvingView, tick: number): void {
   ], tick);
 }
 
+/**
+ * Survivors holding birds: body `k` of each pair holds body `k + 1`, which is placed at her palms, as a client places a
+ * bird with CUE_HELD whose seat is her. With `own`, the first survivor is the viewer's own body, seen from her eyes.
+ */
+function holding(view: ProvingView, tick: number, pairs: readonly [x: number, z: number, yaw: number, crouched: boolean][], own: boolean): void {
+  const bodies: Body[] = [];
+  for (const [x, z, yaw, crouched] of pairs) {
+    bodies.push({ x, z, yaw, kind: "core:survivor", set: (s) => (s.setAction(ACT_NONE, HOLD_CARRY, 0), void (crouched && (s.stance = STANCE_CROUCH))) });
+    bodies.push({ x, z, yaw, set: (s) => void (s.held = true), seed: 9 });
+  }
+  place(view, bodies, tick);
+  const r = view.remote;
+  for (let k = 0; k < r.count; k += 2) r.seat[k + 1] = r.id[k]! + 1;
+  if (!own) return;
+  // The first survivor is drawn as the viewer's own body, from its prediction, and not again among the others.
+  const st = new AnimState();
+  st.unpack(r.anim[0]!, 0);
+  st.seed = bodySeed(r.id[0]!);
+  view.scene.own = { kind: r.kind[0]!, x: r.x[0]!, y: r.y[0]!, z: r.z[0]!, yaw: r.yaw[0]!, state: st, tick, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: r.id[0]! };
+  view.scene.skip = r.id[0]!;
+}
+
 function scene(view: ProvingView, shot: Shot): void {
   const tick = 400;
+  if (shot.startsWith("held")) {
+    const eye = shot === "held_eye";
+    // She faces -Z, so her right is +X.
+    holding(view, tick, eye ? [[0, 0, 0, false]] : [[0, 0, Math.PI, false], [-1.5, 1.3, Math.PI - 0.6, true]], eye);
+    if (shot === "held") aim(view, 1.1, 1.35, -1.9, -0.25, 0.95, 0.2, 0.8);
+    else if (shot === "held_crouch") aim(view, 0.9, 0.8, 0.4, -1.5, 0.7, 1.3, 0.5);
+    else if (shot === "held_left") aim(view, -3.6, 1.2, -0.25, 0, 1.2, -0.25, 0.3);
+    else if (shot === "held_top") aim(view, 0.45, 2.6, 0.25, 0, 1.2, -0.2, 0.6);
+    else if (shot === "held_side") aim(view, 3.6, 1.1, -0.25, 0, 1.1, -0.25, 0.4);
+    else if (shot === "held_back") aim(view, 0.75, 1.95, 0.9, 0, 1.0, -0.35, 0.8);
+    else {
+      aim(view, 0, 1.62, 0, 0, 1.2, 3, 1.2217);
+      view.cam.pitch = 0;
+    }
+    return;
+  }
   if (shot === "2m" || shot === "6m" || shot === "20m") {
     flock(view, tick);
     const d = { "2m": 2, "6m": 6, "20m": 20 }[shot];
