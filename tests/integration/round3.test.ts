@@ -14,7 +14,7 @@ import { LOOK_BYTES, randomLook } from "../../shared/anim/look.ts";
 import { ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
 import { CMD_CREATE, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, SESSION_ALIVE, SESSION_CREATING, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BTN_PRIMARY } from "../../shared/sim/character.ts";
+import { BTN_PRIMARY, BTN_SECONDARY } from "../../shared/sim/character.ts";
 import { launchSpeed } from "../../shared/sim/projectiles.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -79,8 +79,11 @@ test("round 3: two survivors made in the creator, one in flak and one bare, figh
 
   const health = (rec: typeof arec): number => survival.value(rec, V_HEALTH);
   const drop = (far: number): number => 0.5 * 9.81 * (far / launchSpeed(70, 1)) ** 2;
-  /** Aims `height` above the feet of a target `far` metres ahead, plus `over`. */
-  const aim = (pilot: Pilot, height: number, far = APART, over = 0): void => void (pilot.pitch = Math.atan2(height + over - EYE, far));
+  /** Aims `height` above the feet of a target `far` metres ahead, plus `over`, with the aim button held (shared/sim/aim.ts). */
+  const aim = (pilot: Pilot, height: number, far = APART, over = 0): void => {
+    pilot.pitch = Math.atan2(height + over - EYE, far);
+    pilot.buttons |= BTN_SECONDARY;
+  };
   const bow = (pilot: Pilot): void => {
     pilot.buttons |= BTN_PRIMARY;
     h.run(TICK_MS * 46);

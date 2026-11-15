@@ -147,9 +147,9 @@ export class Body {
   rounds = 0;
   reloadTo = 0;
   /**
-   * Aim state, protocol 13 (planning/reference/weapons-plan.md, M1 and M2). `bloom` is how far the weapon's cone has
-   * opened, in 255ths of its widest; `kick` is the recoil added to the pitch a shot leaves at, in 16 pitch units. Both
-   * stay 0 until W1 steps them, and neither is saved.
+   * Aim state, protocol 13 (planning/reference/weapons-plan.md, M1 and M2), stepped by stepAim (shared/sim/aim.ts). `bloom`
+   * is how far shots have opened the weapon's cone, in 64ths of one shot's (BLOOM_SHOT); `kick` is the recoil added to the
+   * pitch a shot leaves at, in 16 pitch units (KICK_UNIT). Neither is saved: both fall to nothing within seconds.
    */
   bloom = 0;
   kick = 0;

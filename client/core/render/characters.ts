@@ -519,8 +519,9 @@ export class Characters {
     if (this.bySeed.size > 4096) this.bySeed.clear();
   }
 
+  /** The level a body `distance` off is drawn at: as the tier asks, but at the governor's last step coarser (Tier.bodyError). */
   private levelOf(id: number, errors: readonly number[], distance: number): number {
-    const level = this.assets.choose(errors, distance, this.last.get(id) ?? -1);
+    const level = this.assets.choose(errors, distance * this.assets.tier.bodyError, this.last.get(id) ?? -1);
     this.last.set(id, level);
     return level;
   }

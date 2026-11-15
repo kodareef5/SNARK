@@ -1,0 +1,12 @@
+host on core:tampa in 1042 ms, 282 spawn regions; 1335 MB resident, 915 MB of heap
+ok   Curtis Hixon Park arrived 0.0 m from its point at y 4.5; walked 27 m to y 4.1, 27 m to y -0.8, 6 m to y -0.5, 0 m to y -0.5
+ok   Bayshore       arrived 0.0 m from its point at y 1.0; walked 26 m to y -0.8, 27 m to y -0.5, 27 m to y 0.6, 15 m to y 0.8
+ok   Davis Islands  arrived 0.0 m from its point at y 1.4; walked 27 m to y 1.7, 27 m to y 1.3, 25 m to y 1.6, 27 m to y 1.3
+ok   Harbour Island arrived 0.0 m from its point at y 2.5; walked 23 m to y 2.9, 26 m to y 1.9, 27 m to y 2.9, 25 m to y 2.5
+ok   University of Tampa arrived 0.0 m from its point at y 4.5; walked 16 m to y 4.4, 26 m to y 4.1, 26 m to y 4.3, 27 m to y 4.4
+ok   Channelside    arrived 0.0 m from its point at y 2.5; walked 27 m to y 2.7, 27 m to y 2.8, 27 m to y 2.9, 27 m to y 2.5
+ok   Ybor City      arrived 0.0 m from its point at y 6.7; walked 27 m to y 6.5, 27 m to y 6.6, 27 m to y 6.9, 27 m to y 6.7
+ok   Raymond James Stadium arrived 0.0 m from its point at y 10.5; walked 27 m to y 10.3, 27 m to y 10.4, 22 m to y 10.6, 26 m to y 10.4
+ok   Hookers Point  arrived 0.0 m from its point at y 2.7; walked 27 m to y 2.7, 16 m to y 2.8, 27 m to y 2.7, 27 m to y 2.7
+ok   Water Works Park arrived 0.0 m from its point at y 2.8; walked 27 m to y 2.6, 27 m to y 2.8, 27 m to y 2.8, 27 m to y 2.8
+1405 wild creatures after 391 s of virtual time; 1352 MB resident, 915 MB of heap, server and client in one process
