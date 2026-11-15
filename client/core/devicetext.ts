@@ -34,7 +34,7 @@ export function limitsLine(g: GpuInfo): string {
   const has = (e: string): boolean => g.extensions.includes(e);
   const float32 = `32-bit float targets ${yes(has("EXT_color_buffer_float"))}, filtered ${yes(has("OES_texture_float_linear"))}, blended ${yes(has("EXT_float_blend"))}`;
   const float16 = `16-bit float targets ${yes(has("EXT_color_buffer_half_float") || has("EXT_color_buffer_float"))}, filtered yes`;
-  return `${float16}; ${float32}; antialiasing up to ${g.maxSamples}x; ${g.drawBuffers} targets at once; ${g.textureUnits} textures a draw, ${g.vertexTextures} in vertex shaders; textures to ${g.maxTexture} px; anisotropy ${g.anisotropy || "none"}; reversed depth ${yes(has("EXT_clip_control"))}; GPU timers ${yes(has("EXT_disjoint_timer_query_webgl2"))}; multi-draw ${yes(has("WEBGL_multi_draw"))}; compressed ${formatsOf(g.extensions).join(" ") || "none"}`;
+  return `${float16}; ${float32}; antialiasing up to ${g.maxSamples}x; ${g.drawBuffers} targets at once; ${g.textureUnits} textures a draw, ${g.vertexTextures} in vertex shaders; textures to ${g.maxTexture} px; anisotropy ${g.anisotropy || "none"}; depth buffer ${g.depthBits} bits; reversed depth ${yes(has("EXT_clip_control"))}; GPU timers ${yes(has("EXT_disjoint_timer_query_webgl2"))}; multi-draw ${yes(has("WEBGL_multi_draw"))}; compressed ${formatsOf(g.extensions).join(" ") || "none"}`;
 }
 
 /** The device as its page sees it: what it is, and its screen. */

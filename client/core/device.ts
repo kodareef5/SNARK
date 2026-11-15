@@ -183,6 +183,8 @@ export interface GpuInfo {
   anisotropy: number;
   highp: boolean;
   antialias: boolean;
+  /** Bits of the canvas's depth buffer. Two depth ranges (D252) are worked out for 24. */
+  depthBits: number;
   extensions: string[];
   /** The texture variant the renderer took for this device: "bc", "astc" or "rgba". */
   variant: string;
@@ -309,7 +311,7 @@ export interface GlLike {
   getShaderPrecisionFormat(shader: number, type: number): { precision: number } | null;
   getContextAttributes(): { antialias?: boolean } | null;
 }
-const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245 };
+const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245, DEPTH_BITS: 0x0d56 };
 
 export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
   const n = (name: number): number => Number(gl.getParameter(name));
@@ -327,6 +329,7 @@ export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
     anisotropy: gl.getExtension("EXT_texture_filter_anisotropic") ? n(GL.MAX_ANISOTROPY) : 0,
     highp: (gl.getShaderPrecisionFormat(GL.FRAGMENT_SHADER, GL.HIGH_FLOAT)?.precision ?? 0) > 0,
     antialias: gl.getContextAttributes()?.antialias === true,
+    depthBits: n(GL.DEPTH_BITS),
     extensions: gl.getSupportedExtensions() ?? [],
     variant,
   };
