@@ -4,11 +4,11 @@
   "position_box": {
    "min": [
     0.0,
-    0.4078,
-    -1.3068
+    0.409,
+    -1.3027
    ],
    "max": [
-    1.5669,
+    1.5713,
     1.9503,
     1.5119
    ]
@@ -68,5 +68,52 @@
   "pteranodon_wing_curvature.png": "grey 0.5 is flat; lighter bulges, darker hollows",
   "pteranodon_wing_occlusion.png": "ambient occlusion from the whole animal at rest, the glide",
   "note": "The membrane's two faces are views of the left wing: its upper face (top band) as the concept's top view shows it, its under face (middle band) as the underside view shows it, at 600 texels a metre. Below them the arm (shoulder to knuckle) and the wing finger (knuckle to tip), each a strip along its length, cut along the back where the membrane goes in."
+ },
+ "material pteranodon_saddle": {
+  "size": 1024,
+  "position_box": {
+   "min": [
+    0.0,
+    0.414,
+    -0.4563
+   ],
+   "max": [
+    0.32,
+    1.4745,
+    0.807
+   ]
+  },
+  "pteranodon_saddle_layout.png": "the texture's pieces in soft region colours, named",
+  "pteranodon_saddle_pieces.png": "each texel's piece in the piece's colour (below), black where there is none: a mask for each piece",
+  "pieces": {
+   "boss": "#4EF884",
+   "cantle": "#8DFC87",
+   "cantle_plate_in": "#5BF25D",
+   "cantle_plate_out": "#5FA574",
+   "collar_edge": "#C4E35B",
+   "collar_edge2": "#CCB5C9",
+   "collar_in": "#60B670",
+   "collar_out": "#545EB2",
+   "girth_edge": "#C7F798",
+   "girth_edge2": "#D2F148",
+   "girth_in": "#655E7F",
+   "girth_out": "#48B759",
+   "grip": "#5290D7",
+   "halter": "#604955",
+   "peg": "#EC8054",
+   "rein": "#C4EA53",
+   "rope": "#77DEC6",
+   "seat_edge": "#5B7950",
+   "seat_top": "#D04142",
+   "seat_under": "#8FC769",
+   "strap_in": "#49E776",
+   "strap_out": "#DE9BA9"
+  },
+  "pteranodon_saddle_regions.png": "the colour regions where the model places them, in the build's colours: red patterning, green wing base, blue face crest and hands (the horn), cyan inner crest (the band), magenta wing membrane, yellow body; black is never dyed (eyes, claws, the inside of the mouth). A guide, face by face: paint the real edges",
+  "pteranodon_saddle_position.png": "each texel's place on the animal at rest, (x left, y up, z forward) scaled from position_box to 0..1",
+  "pteranodon_saddle_normal_object.png": "the surface normal in the animal's frame (x left, y up, z forward), 0.5 + 0.5 n; on the membrane each face's own side",
+  "pteranodon_saddle_flow.png": "which way the fuzz lies (and on the membrane, which way the veins run), as a direction in the picture: red = 0.5 + 0.5 u, green = 0.5 + 0.5 v (v up the picture); blue 1 where it is defined",
+  "pteranodon_saddle_curvature.png": "grey 0.5 is flat; lighter bulges, darker hollows",
+  "pteranodon_saddle_occlusion.png": "ambient occlusion from the whole animal at rest, the glide"
  }
 }

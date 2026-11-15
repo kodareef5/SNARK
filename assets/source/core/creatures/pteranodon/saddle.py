@@ -35,12 +35,14 @@ OBJECT = "saddle"
 # each z on the midline (the dish), and how far its edge rolls.
 SEAT = {
     "z": [0.070, 0.040, -0.020, -0.100, -0.200, -0.300, -0.380, -0.430],
-    "half_width": [0.110, 0.160, 0.195, 0.212, 0.212, 0.200, 0.175, 0.130],
-    "top": [0.948, 0.968, 0.982, 0.992, 1.000, 1.006, 1.020, 1.034],
+    # narrow over the shoulders, so the skirt stays above the wing roots through the strokes
+    "half_width": [0.095, 0.125, 0.148, 0.168, 0.192, 0.200, 0.180, 0.130],
+    "top": [0.948, 0.962, 0.975, 0.990, 1.000, 1.000, 0.990, 0.962],
     "dish": 0.012,  # how much the seat's sides stand up round the rider
     "skirt": 0.010,  # how thick it is at its edges
     "edge": 0.007,  # how far the rolled edge stands out
     "gap": 0.004,   # off the fuzz
+    "radius": 0.20,  # the back's radius, to turn the outline's half width into an angle round it
 }
 # The cantle: a bow of bent wood across the back of the seat (centre line, radius), and the chitin plate on its face.
 CANTLE = {"path": [(0.165, 1.000, -0.388), (0.150, 1.070, -0.405), (0.100, 1.118, -0.414), (0.0, 1.135, -0.418)],
@@ -109,18 +111,21 @@ def seat_part():
     rolled edge round it."""
     part = Part("seat")
     S = SEAT
-    rows, cols = 10, 7  # along z, across half the width
+    rows, cols = 9, 6  # along z, across half the width
     zs = np.linspace(S["z"][0], S["z"][-1], rows)
-    starts, looks = [], []
+    origins, dirs = [], []
     for z in zs:
         hw = float(np.interp(-z, [-a for a in S["z"]], S["half_width"]))
+        axis = np.array([0.0, float(np.interp(z, [b for _, b in model.TORSO["path"]], [a for a, _ in model.TORSO["path"]])), z])
+        # out from the body's axis: the seat's half width as an angle round the back, over the body's radius there
+        reach = hw / S["radius"]
         for c in range(-cols + 1, cols):
-            x = hw * math.sin(0.5 * math.pi * c / (cols - 1))
-            starts.append((x, 1.3, z))
-            # looking in at the body's middle, so the sides of the seat find the flanks
-            looks.append(np.array([x, 1.3, z]) - np.array([0.0, 0.75, z]))
-    hits, normals = onto_shell(starts, looks, S["gap"])
-    under = hits.reshape(rows, 2 * cols - 1, 3)
+            a = reach * c / (cols - 1)
+            origins.append(axis)
+            dirs.append((math.sin(a), math.cos(a), 0.0))
+    hits = model.cast(model.shell_field, np.array(origins), np.array(dirs), far=0.5, step=0.002)
+    normals = model.outward(model.shell_field, hits)
+    under = (hits + normals * S["gap"]).reshape(rows, 2 * cols - 1, 3)
     normals = normals.reshape(rows, 2 * cols - 1, 3)
     top = np.zeros_like(under)
     for i, z in enumerate(zs):
@@ -203,7 +208,7 @@ def cantle_part():
     part = tube_part("cantle", pts, C["radius"], around=8, island="cantle", up=(0, 0, 1))
     # the plate: a thin shield on the bow's front, wider at its foot, as the concept draws it
     plate = Part("cantle_plate")
-    line = np.array(rig._catmull([tuple(p) for p in pts], 3))
+    line = np.array(rig._catmull([tuple(p) for p in pts], 2))
     rows = []
     for k, p in enumerate(line):
         t = k / (len(line) - 1)
@@ -226,13 +231,13 @@ def girth_part():
     part = Part("girth")
     z = GIRTH["z"]
     y = float(np.interp(z, [b for _, b in model.TORSO["path"]], [a for a, _ in model.TORSO["path"]]))
-    return band(part, (0.0, y, z), (0.0, 0.0, 1.0), None, 24, GIRTH["half_width"], GIRTH["thick"], "girth")
+    return band(part, (0.0, y, z), (0.0, 0.0, 1.0), None, 20, GIRTH["half_width"], GIRTH["thick"], "girth")
 
 
 def collar_part():
     part = Part("collar")
     p, d = model._neck_frame(COLLAR["s"])
-    return band(part, (0.0, p[0], p[1]), (0.0, d[0], d[1]), None, 20, COLLAR["half_width"], COLLAR["thick"], "collar")
+    return band(part, (0.0, p[0], p[1]), (0.0, d[0], d[1]), None, 16, COLLAR["half_width"], COLLAR["thick"], "collar")
 
 
 BREAST = {"collar": (0.105, 0.875, 0.235), "girth": (0.150, 0.640, 0.140), "boss": 0.030}
@@ -288,7 +293,7 @@ def boss_part():
         r = BREAST["boss"] * (1.0 if lift == 0 else 0.85)
         rings.append([q + n * lift + (e1 * math.cos(2 * math.pi * j / around) + e2 * math.sin(2 * math.pi * j / around)) * r
                       for j in range(around)])
-    model.tube(part, rings, q - n * 0.001, q + n * 0.012, island="boss")
+    model.tube(part, rings, q - n * 0.001, q + n * 0.012, seam=0, island="boss")
     return part
 
 
@@ -303,7 +308,7 @@ def rest_part(side):
     for k, (top, end) in enumerate(zip(REST["from"], ends)):
         top = np.array(top) * np.array([s, 1, 1])
         mid = (top + end) / 2 + np.array([0, 0, 0.012])
-        pts = np.array(rig._catmull([tuple(top), tuple(mid), tuple(end + np.array([0, REST["radius"], 0]))], 4))
+        pts = np.array(rig._catmull([tuple(top), tuple(mid), tuple(end + np.array([0, REST["radius"], 0]))], 3))
         rings = model.rings_along(pts, [(REST["rope"], REST["rope"])] * len(pts), 5, (0, 0, 1))
         model.tube(rope, rings, seam=0, island="rope")
     parts.append(rope)
@@ -328,7 +333,7 @@ def head_ring(name, z, gap, rope, beak_only=True):
     left = hits + n * (gap + rope)
     left[[0, -1], 0] = 0.0
     loop = np.concatenate([left, left[-2:0:-1] * np.array([-1, 1, 1])])
-    loop_tube(part, loop, rope, 5, "halter")
+    loop_tube(part, loop, rope, 4, "halter")
     return part
 
 
@@ -353,6 +358,8 @@ def loop_tube(part, loop, radius, around, island):
             part.face((a[j], a[jj], b[jj], b[j]), island=island)
     for j in range(around):
         part.cut(idx[0][j], idx[0][(j + 1) % around])
+    for i in range(k):
+        part.cut(idx[i][0], idx[(i + 1) % k][0])
     return idx
 
 
@@ -463,7 +470,8 @@ def build():
 
 LAYOUT = model.Layout(os.path.join(os.path.dirname(os.path.realpath(__file__)), "saddle_layout.json"), MATERIAL,
                       "PTERANODON_SADDLE_LAYOUT", "saddle",
-                      [("seat_top", 1.3), ("cantle", 1.2), ("grip", 1.2), ("halter", 0.8), ("rein", 0.8)])
+                      [("seat_top", 1.3), ("seat_under", 0.35), ("cantle", 1.2), ("grip", 1.2), ("halter", 0.8),
+                       ("rein", 0.8), ("girth_in", 0.35), ("collar_in", 0.35), ("strap_in", 0.35)])
 
 
 if __name__ == "__main__":
