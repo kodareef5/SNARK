@@ -257,8 +257,23 @@ export class Scene {
     },
     mesh: (mesh) => this.cascades.fits(this.radiusOfMesh[mesh]!),
   };
-  /** The characters' casters, at the held level nearest the one the view draws. */
-  private readonly castBody: CastFn = (mesh, lod, first, count, flags, cascades) => this.cast(mesh, this.assets.heldLevel(mesh, lod), TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, cascades);
+  /**
+   * The characters' casters: in each cascade the coarsest held level within its texel, but none finer than the held
+   * level nearest the one the view draws.
+   */
+  private readonly castBody: CastFn = (mesh, lod, first, count, flags, cascades) => {
+    const view = this.assets.heldLevel(mesh, lod);
+    if (view < 0) return;
+    const out = this.pairs;
+    const n = this.cascades.entries(cascades, this.assets.table.error[mesh]!, this.assets.held(mesh), out);
+    let left = cascades;
+    for (let e = 0; e < n; e++) {
+      if (out[e * 2]! <= view) continue;
+      this.cast(mesh, out[e * 2]!, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, out[e * 2 + 1]!);
+      left &= ~out[e * 2 + 1]!;
+    }
+    if (left !== 0) this.cast(mesh, view, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, left);
+  };
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
