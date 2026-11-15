@@ -118,7 +118,7 @@ def agree(rig):
         got = sockets.get(name)
         if got is None or got[0] != bone or max(abs(a - b) for a, b in zip(got[1], want)) > 5e-4:
             out.append(f'socket {name}: asset.ts {got}, rig.py ("{bone}", {want})')
-    clips = {n: l == "true" for n, s, l in re.findall(r'\{ name: "(\w+)", source: "(\w+)", loop: (true|false) \}', text)}
+    clips = {s: l == "true" for n, s, l in re.findall(r'\{ name: "(\w+)", source: "(\w+)", loop: (true|false) \}', text)}
     for name, spec in rig.CLIPS.items():
         if name not in clips and not spec.get("optional"):
             out.append(f"clip {name}: missing from asset.ts")
