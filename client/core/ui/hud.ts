@@ -260,7 +260,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     }
   }
   if (m.crosshair) {
-    if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, m.prompt.slice(0, 38));
+    if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, fitText(m.prompt, 300, S_PROMPT));
     if (m.actionKind !== ACTION_NONE) f.add(KEY_ACTION, K_BAR, W / 2 - 40, H / 2 + 38, 80, 5, m.actionKind === ACTION_DRAW ? S_STAMINA : S_OXYGEN).value = m.actionFraction;
   }
   if (m.status !== "") f.text(KEY_STATUS, MARGIN, H / 2 - 100, W - MARGIN * 2, S_TEXT, m.status.slice(0, Math.floor((W - MARGIN * 2) / 7.8)));
