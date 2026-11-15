@@ -143,11 +143,11 @@ export class Scene {
   private readonly passOf = new Uint8Array(MAX_DRAWS);
   private doubled = 0;
   /**
-   * For putting the draws in order: the packet's columns of draws, room for one of them, each draw's step in each
-   * range, where each step begins, and the draw and range each place in the order takes.
+   * For putting the draws in order: the packet's columns of draws, room for one of them as made and as ordered, each
+   * draw's step in each range, where each step begins, and the draw and range each place in the order takes.
    */
   private readonly columns: (Uint8Array | Uint16Array | Uint32Array | Float32Array)[];
-  private readonly scratch = new Float64Array(MAX_DRAWS * 3);
+  private readonly scratch = [new Float64Array(MAX_DRAWS * 3), new Float64Array(MAX_DRAWS * 3)] as const;
   private readonly steps = new Int8Array(MAX_DRAWS * 2);
   private readonly starts = new Int32Array(STEP_BODY + 2);
   private readonly source = new Uint16Array(MAX_DRAWS);
@@ -333,11 +333,13 @@ export class Scene {
       }
     }
     if (moved) {
-      const s = this.scratch;
+      // By way of float64 copies, since JavaScriptCore is many times slower at one loop that writes typed arrays of several kinds.
+      const [from, to] = this.scratch;
       for (const a of this.columns) {
         const w = a.length / MAX_DRAWS;
-        s.set(a.subarray(0, n * w));
-        for (let k = 0; k < total; k++) for (let j = 0; j < w; j++) a[k * w + j] = s[source[k]! * w + j]!;
+        from.set(a.subarray(0, n * w));
+        for (let k = 0; k < total; k++) for (let j = 0; j < w; j++) to[k * w + j] = from[source[k]! * w + j]!;
+        a.set(to.subarray(0, total * w));
       }
     }
     p.drawPass.set(pass.subarray(0, total));
