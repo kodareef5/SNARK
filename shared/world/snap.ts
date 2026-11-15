@@ -174,16 +174,9 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
   }
   const hulls = parts.hulls;
   if (!hulls) return false;
-  // Every part of the new piece as a solid, its convex parts after its boxes.
   const boxes = parts.start[kind + 1]! - parts.start[kind]!;
   const count = boxes + hulls.start[kind + 1]! - hulls.start[kind]!;
-  while (mine.length < count) mine.push(new Solid());
-  for (let i = 0; i < count; i++) {
-    if (i < boxes) {
-      const p = (parts.start[kind]! + i) * 6;
-      boxSolid(x + c * box[p]! + s * box[p + 2]!, y + box[p + 1]!, z - s * box[p]! + c * box[p + 2]!, c, s, box[p + 3]!, box[p + 4]!, box[p + 5]!, mine[i]!);
-    } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, x, y, z, mine[i]!);
-  }
+  let made = false;
   for (let k = 0; k < n; k++) {
     const ref = refs[k]!;
     const t = structs.chunks[Math.floor(ref / 65536)]!;
@@ -191,6 +184,17 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
     const other = t.kind[slot]!;
     const otherHulls = hulls.start[other + 1]! - hulls.start[other]!;
     if (count === boxes && otherHulls === 0) continue;
+    // Every part of the new piece as a solid, its convex parts after its boxes, once some part is to be asked.
+    if (!made) {
+      made = true;
+      while (mine.length < count) mine.push(new Solid());
+      for (let i = 0; i < count; i++) {
+        if (i < boxes) {
+          const p = (parts.start[kind]! + i) * 6;
+          boxSolid(x + c * box[p]! + s * box[p + 2]!, y + box[p + 1]!, z - s * box[p]! + c * box[p + 2]!, c, s, box[p + 3]!, box[p + 4]!, box[p + 5]!, mine[i]!);
+        } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, x, y, z, mine[i]!);
+      }
+    }
     const oa = t.yaw[slot]! * YAW_TO_RAD;
     const os = detSin(oa);
     const oc = detCos(oa);
