@@ -231,7 +231,7 @@ function scene(view: ProvingView, shot: Shot): void {
     // Side on in a row, the worst on the right. A corpse is drawn lying as one knocked out lies, its belly to the camera.
     const dead = shot.startsWith("decay");
     const d = shot.endsWith("10m") ? 10 : 2;
-    place(view, [0, 1, 2, 3].map((k) => ({ x: (1.5 - k) * 0.85, z: 0, yaw: dead ? Math.PI / 2 + 0.3 : -Math.PI / 2 - 0.25, seed: k * 5, set: (s: AnimState) => (dead ? Object.assign(s, { out: true, dead: true, decay: k }) : Object.assign(s, { hurt: k })) })), tick);
+    place(view, [0, 1, 2, 3].map((k) => ({ x: (1.5 - k) * 0.85, z: 0, yaw: dead ? -Math.PI / 2 - 0.3 : -Math.PI / 2 - 0.25, seed: k * 5, set: (s: AnimState) => (dead ? Object.assign(s, { out: true, dead: true, decay: k }) : Object.assign(s, { hurt: k })) })), tick);
     aim(view, 0, 1.62, -d, 0, dead ? 0.1 : 0.32, 0);
     return;
   }
