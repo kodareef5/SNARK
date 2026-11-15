@@ -306,9 +306,17 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
   let at = SOUND_HEADER_BYTES;
   const sounds: ManifestSound[] = [];
   const wavs = new Map<string, { bytes: Uint8Array; hash: string }>();
+  // A client refuses a manifest whose sounds it cannot name (shared/pack/sound.ts soundFault), and then has no game.
+  const folders = new Map<string, string>();
+  for (const { owner, dir } of sheets) {
+    const other = folders.get(owner);
+    if (other) throw new Error(`sound: ${relative(root, other)} and ${relative(root, dir)} are both owner ${owner}; rename one folder`);
+    folders.set(owner, dir);
+  }
   for (const { owner, dir, sheet } of sheets) {
     for (const [name, cue] of Object.entries(sheet.sounds).sort(([a], [b]) => (a < b ? -1 : 1))) {
       const id = `${owner}/sound/${name}`;
+      if (!/^[a-z0-9_]+:[a-z0-9_]+\/sound\/[a-z0-9_/]+$/.test(id)) throw new Error(`sound: ${id} is not named <owner>/sound/<name> in lower case, digits, _ and /`);
       if (!(cue.range > 0) || !Number.isFinite(cue.level) || !Array.isArray(cue.takes) || cue.takes.length === 0) throw new Error(`sound: ${id} needs a range, a level and a take`);
       const rate = cue.rate ?? SOUND_RATE;
       const entry: ManifestSound = { id, file, at, rate, range: cue.range, vary: cue.vary ?? 0, takes: [] };

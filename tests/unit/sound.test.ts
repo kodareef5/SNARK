@@ -19,7 +19,10 @@ import { distanceGain, earAxes, lowpassAt } from "../../client/core/sound/place.
 import { Sounds } from "../../client/core/sound/sounds.ts";
 import { SOUND_SLOT, SplitPort } from "../../client/core/sound/split.ts";
 import { bodyDown, groundPecks, mouthOpens, strikeAt } from "../../client/core/sound/timing.ts";
-import { loudness, prepareTake, readWav, toPcm16, writeWav } from "../../tools/pack/sound.ts";
+import { buildSounds, loudness, prepareTake, readWav, toPcm16, writeWav } from "../../tools/pack/sound.ts";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { builtSounds, chirp } from "../fixtures/sounds.ts";
@@ -130,6 +133,28 @@ test("the build names each sound by its owner and occasion, and a manifest that 
   expect(() => parseManifest(wrong((s) => (s.takes[0]!.bytes = 4)))).toThrow("size");
   expect(() => parseManifest(wrong((s) => (s.at = built.file.length)))).toThrow("outside");
   expect(() => parseManifest(wrong((s) => (s.id = "dodo call")))).toThrow("named");
+});
+
+test("the build refuses a sound every client would refuse: one named as no id may be, or two folders that are one owner", () => {
+  const root = mkdtempSync(join(tmpdir(), "snark-owners-"));
+  try {
+    const sheet = (folder: string, sounds: Record<string, unknown>): void => {
+      const dir = join(root, "core", folder, "sound");
+      mkdirSync(join(dir, "takes"), { recursive: true });
+      writeFileSync(join(dir, "takes", "a.wav"), writeWav(chirp(0.2, 32000), 32000));
+      writeFileSync(join(dir, "sounds.json"), JSON.stringify({ sounds }));
+    };
+    const one = { range: 20, level: -20, takes: [{ file: "takes/a.wav" }] };
+    sheet("structures/wood", { place: one });
+    expect(() => buildSounds(1, root, null)).not.toThrow();
+    sheet("nodes/wood", { felled: one });
+    expect(() => buildSounds(1, root, null)).toThrow("core:wood");
+    rmSync(join(root, "core", "nodes"), { recursive: true });
+    sheet("structures/stone", { "Hit-Hard": one });
+    expect(() => buildSounds(1, root, null)).toThrow("Hit-Hard");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("the library asks for what is wanted two at a time, nearest first, decodes it, and lets go of the least lately used to stay in budget", () => {
