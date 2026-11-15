@@ -218,7 +218,10 @@ const NODES: NodeDef[] = [
   { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: REGROW, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.8, 1.25], variants: ROCKS, footing: { reach: 4, fall: 1.9 } },
   { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.85, 1.15], variants: RUBBLE, footing: { reach: 4, fall: 1.85 } },
   // A metal rock, darker and veined, which a player learns to spot. It is harder than limestone, and a pick gets its ore.
-  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
+  // It gives obsidian too, at a reduced rate: "Mountain-rocks which yield Metal now also yield Obsidian at a reduced rate"
+  // (Obsidian, patch 171.8). Ours is the only metal rock, so every one does. The rate is unverified and chosen: none to one
+  // a hit, times the pick's 3, a quarter of the ore it gives.
+  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }, { item: "core:obsidian", min: 0, max: 1, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
   // Berry bushes, their berries red. How many narcoberries each picking gives is chosen, as the wiki gives no figure.
   plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }, { item: "core:narcoberry", min: 0, max: 2 }], [0.8, 1.2], BUSHES),
   // Saw palmetto bears a few berries. A fern bears none.

@@ -123,12 +123,16 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was e8a95911 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
   // It was 949f9aed until the pteranodon's grey box (content/creatures/pteranodon.ts) numbered the meshes after it on;
   // without the pteranodon and its beach entry it is that again.
-  expect(hash).toBe("98e00881");
+  // It was 98e00881 until the oil rock's, crystal's, obsidian rock's and clam's grey boxes (content/items/nodes.ts) numbered
+  // the meshes after them on (43a2ef65 with that alone) and the proving ground listed eleven of them off the plaza's west
+  // and east edges; without those four kinds it is that again.
+  expect(hash).toBe("f63e1c05");
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
   // without it, and the saddle, the scene gives the hash above.
   const saddled = frames(true);
   expect([...saddled.drawn].filter((id) => !drawn.has(id))).toEqual([WORN]);
-  expect(saddled.hash).toBe("bf22a69");
+  // It was bf22a69 until the four resource nodes and their grey boxes, as above; without those four kinds it is that again.
+  expect(saddled.hash).toBe("e968ac75");
 });

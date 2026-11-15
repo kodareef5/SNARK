@@ -86,6 +86,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   put("tint.u8", tint);
   put("plants.png", writeGrey(nodes.side, nodes.side, nodes.plants));
   put("stones.png", writeGrey(nodes.side, nodes.side, nodes.stones));
+  put("sea.png", writeGrey(nodes.side, nodes.side, nodes.sea));
   put("nodes.json", `${JSON.stringify(nodes.layers, null, 2)}\n`);
   const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
   put("spawns.json", lines(spawns));
