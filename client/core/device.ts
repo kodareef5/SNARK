@@ -107,9 +107,9 @@ export const WOODS = ["young", "elder"] as const;
 export type Wood = (typeof WOODS)[number];
 const FRAME_WINDOWS: readonly Cutouts[] = ["last", "made", "first", "none", "none", "first", "made", "last"];
 const READ_WINDOWS: readonly { order: Cutouts; small: boolean }[] = [
-  ...(["last", "made", "first", "none"] as const).map((order) => ({ order, small: false })),
+  ...(["last", "first", "none", "made"] as const).map((order) => ({ order, small: false })),
   ...(["first", "none", "none", "first"] as const).map((order) => ({ order, small: true })),
-  ...(["none", "first", "made", "last"] as const).map((order) => ({ order, small: false })),
+  ...(["made", "none", "first", "last", "last", "first", "none"] as const).map((order) => ({ order, small: false })),
 ];
 /** Frames left out after the order changes, and after the canvas does; how long the page waits for the server's counts after its last rung, asking this often. */
 const SWITCH_FRAMES = 3;
@@ -365,7 +365,7 @@ export interface OrderTime {
   /** The mean between frames, which a GPU-bound device's frames come at: of both its windows, and of each. */
   meanMs: number;
   means: number[];
-  /** From handing a frame to WebGL to a pixel of it read back, median: of both its windows, and of each. */
+  /** From handing a frame to WebGL to a pixel of it read back: the mean of its windows' medians, and each window's. */
   readMs: number;
   reads: number[];
   /** The GPU's ms a frame by timer query, median, or null without. */
@@ -724,8 +724,17 @@ export class LadderPlan {
 /** Shares of what the counts predict at or over which the GPU skipped the hidden pixels, and at or under which it did not. */
 const SKIPPED = 0.5;
 const NOT_SKIPPED = 0.2;
-/** A predicted difference under this, in ms, or under twice the spread between an order's two windows, is too small to judge. */
+/** A predicted difference under this, in ms, or under three standard errors of what it is set against, is too small to judge. */
 const SMALLEST_MS = 0.5;
+const ERRORS = 3;
+
+/** The standard error of an order's read time, from how its windows' medians spread, no less than their rounding. */
+function readError(o: OrderTime): number {
+  const n = o.reads.length;
+  if (n < 2) return Infinity;
+  const m = o.reads.reduce((a, b) => a + b, 0) / n;
+  return Math.max(0.03, Math.sqrt(o.reads.reduce((a, x) => a + (x - m) ** 2, 0) / (n - 1) / n));
+}
 
 /** What a rung of the tree order says: the line, and whether the GPU skipped the hidden pixels (null where it is not judged). */
 export interface OrderJudged {
@@ -769,14 +778,18 @@ export function orderVerdict(rung: OrderRung, count: LayerCount | undefined): Or
   const layer = Math.max(0, fragments) / count.first;
   const [measured, predicted] = [first.readMs - last.readMs, (count.first - count.front) * layer];
   const [saved, saving] = [made.readMs - last.readMs, (count.old - count.front) * layer];
-  const noise = Math.max(...rung.orders.map((o) => (o.reads.length === 2 ? Math.abs(o.reads[0]! - o.reads[1]!) : 0)));
-  const share = predicted > 0 ? measured / predicted : 0;
-  const too = predicted < Math.max(SMALLEST_MS, 2 * noise);
+  // How far each may be off: the measured difference by its two orders' windows, the prediction by the four it is priced from.
+  const e = (o: OrderTime): number => readError(o) ** 2;
+  const measuredError = Math.sqrt(e(first) + e(last));
+  const predictedError = (Math.sqrt(e(first) + e(bare) + e(firstQ) + e(bareQ)) / (1 - q)) * ((count.first - count.front) / count.first);
+  const error = Math.sqrt(measuredError ** 2 + predictedError ** 2);
+  const share = predicted >= 0.01 ? measured / predicted : 0;
+  const too = !(predicted >= Math.max(SMALLEST_MS, ERRORS * error));
   const skipped = too ? null : share >= SKIPPED ? true : share <= NOT_SKIPPED ? false : null;
-  const word = too ? `too small to tell, against ${tenth(noise)} ms between an order's two windows` : skipped === true ? "skipped" : skipped === false ? "not skipped" : "partly skipped";
+  const word = too ? `too small to tell beside ${ERRORS} standard errors, ${(ERRORS * error).toFixed(2)} ms` : skipped === true ? "skipped" : skipped === false ? "not skipped" : "partly skipped";
   const ms = (x: number): string => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
   const mp = pixels(first.canvas) / 1e6;
-  const line = `drawn first the cut-outs cost ${ms(cost)} ms over none and ${ms(costQ)} at ${Math.round(q * 100)}% of the pixels, so ${ms(fragments)} shading them, ${(layer / mp).toFixed(3)} ms a counted layer a megapixel; first against last ${ms(measured)} ms read back, ${ms(predicted)} predicted if hidden pixels are skipped (${Math.round(share * 100)}%); made against last ${ms(saved)}, ${ms(saving)} predicted: ${word}`;
+  const line = `drawn first the cut-outs cost ${ms(cost)} ms over none and ${ms(costQ)} at ${Math.round(q * 100)}% of the pixels, so ${ms(fragments)} shading them, ${(layer / mp).toFixed(3)} ms a counted layer a megapixel; first against last ${ms(measured)} +-${measuredError.toFixed(2)} ms read back, ${ms(predicted)} +-${predictedError.toFixed(2)} predicted if hidden pixels are skipped${predicted >= 0.01 ? ` (${Math.round(share * 100)}%)` : ""}; made against last ${ms(saved)}, ${ms(saving)} predicted: ${word}`;
   return { line, skipped, judged: !too, cost, fragments, measured, predicted, saved, saving };
 }
 
@@ -1609,7 +1622,7 @@ export class DeviceRun {
       const gaps = at.flatMap((i) => t.gaps[i] ?? []);
       const reads = read.map((i) => t.reads[i] ?? []);
       const gpu = at.flatMap((i) => t.gpu[i] ?? []);
-      return { order, small, canvas: small ? (t.canvases[read[0]!] ?? []) : phase.canvas, frames: gaps.length, frameMs: spread(gaps), meanMs: mean(gaps), means: at.map((i) => mean(t.gaps[i] ?? [])), readMs: spread(reads.flat()).median, reads: reads.map((r) => spread(r).median), gpuMs: gpu.length > 0 ? spread(gpu).median : null };
+      return { order, small, canvas: small ? (t.canvases[read[0]!] ?? []) : phase.canvas, frames: gaps.length, frameMs: spread(gaps), meanMs: mean(gaps), means: at.map((i) => mean(t.gaps[i] ?? [])), readMs: mean(reads.map((r) => spread(r).median)), reads: reads.map((r) => spread(r).median), gpuMs: gpu.length > 0 ? spread(gpu).median : null };
     };
     const orders = [...CUTOUTS.map((order) => time(order, false)), time("first", true), time("none", true)];
     this.report.trees!.rungs.push({ wood: WOODS[step.wood], tier: step.tier.name, at: t.at ?? [], canvas: phase.canvas, settleMs: phase.settleMs, settled: phase.settled, invalid: limit === "lost" ? "the graphics context was lost" : invalid, calls: phase.drawCalls, tris: phase.triangles, mat: phase.textured, orders, verdict: "" });

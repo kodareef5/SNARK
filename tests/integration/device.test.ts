@@ -390,14 +390,14 @@ test("the tree order is offered by the terrain server's link, stands in each woo
   expect([views[0], views.length, t.counted, t.counts.length, t.view]).toEqual(["layers/390/844/70", 3, "", 4, [390, 844, 70]]);
   for (const g of t.rungs) {
     expect([g.invalid, g.orders.map((o) => `${o.order}${o.small ? " small" : ""}`)]).toEqual(["", ["last", "made", "first", "none", "first small", "none small"]]);
-    for (const o of g.orders) expect([o.frames > 5, o.means.length, o.reads.length]).toEqual([!o.small, o.small ? 0 : 2, 2]);
+    for (const o of g.orders) expect([o.frames > 5, o.means.length, o.reads.length]).toEqual([!o.small, o.small ? 0 : 2, o.small || o.order === "made" ? 2 : 3]);
     // At half the tier's pixel ratio, as the page sizes its canvas: 1.5 and 2 of this phone's 3.
     const half = g.tier === "medium" ? 0.75 : 1;
     expect(g.orders.filter((o) => o.small).map((o) => o.canvas)).toEqual([[Math.floor(390 * half), Math.floor(844 * half)], [Math.floor(390 * half), Math.floor(844 * half)]]);
     expect(g.verdict).not.toBe("");
   }
   expect([...drawn].sort()).toEqual(["first false", "first true", "last false", "last true", "made false", "made true", "none false", "none true"]);
-  expect(reads).toBeGreaterThan(4 * 12 * 3);
+  expect(reads).toBeGreaterThan(4 * 15 * 3);
   // The SURFACE pass alone was timed. This pack has no pictures, so nothing was cut out, and nothing is judged.
   expect([t.surface?.name, t.surface?.slope !== null]).toEqual(["surface", true]);
   expect(t.verdict).toStartWith("not judged: young medium nothing was drawn with its materials");

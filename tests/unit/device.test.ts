@@ -238,13 +238,13 @@ test("the tree order prices a counted cut-out layer by its shading alone, and ju
   const times = { last: 18, made: 19, first: 29, none: 17, firstQ: 21.5, noneQ: 17 };
   const skipped = orderVerdict(rung(times), elders);
   expect([skipped.skipped, skipped.judged, skipped.cost, skipped.fragments, Math.round(skipped.predicted * 10) / 10, Math.round(skipped.saving * 100) / 100]).toEqual([true, true, 12, 10, 9.9, 0.79]);
-  expect(skipped.line).toBe("drawn first the cut-outs cost +12.00 ms over none and +4.50 at 25% of the pixels, so +10.00 shading them, 0.740 ms a counted layer a megapixel; first against last +11.00 ms read back, +9.91 predicted if hidden pixels are skipped (111%); made against last +1.00, +0.79 predicted: skipped");
+  expect(skipped.line).toBe("drawn first the cut-outs cost +12.00 ms over none and +4.50 at 25% of the pixels, so +10.00 shading them, 0.740 ms a counted layer a megapixel; first against last +11.00 +-0.04 ms read back, +9.91 +-0.08 predicted if hidden pixels are skipped (111%); made against last +1.00, +0.79 predicted: skipped");
   expect(orderVerdict(rung({ ...times, last: 28.5, made: 28.8 }), elders).skipped).toBe(false);
   expect(orderVerdict(rung({ ...times, last: 25, made: 26 }), elders).line).toEndWith("partly skipped");
   // The cut-outs' vertices and tiles alone cost nothing to skip: the same 12 ms, all of it at a quarter of the pixels too.
   expect(orderVerdict(rung({ ...times, last: 28.8, firstQ: 29, noneQ: 17 }), elders).line).toContain("so +0.00 shading them");
   // Too small beside what the counts predict, or beside how far an order's two windows lie apart.
-  expect(orderVerdict(rung({ ...times, last: 18, first: 18.2, none: 18, firstQ: 18.05, noneQ: 18 }), { ...elders, first: 1, front: 0.3 }).line).toEndWith("too small to tell, against 0 ms between an order's two windows");
+  expect(orderVerdict(rung({ ...times, last: 18, first: 18.2, none: 18, firstQ: 18.05, noneQ: 18 }), { ...elders, first: 1, front: 0.3 }).line).toEndWith("too small to tell beside 3 standard errors, 0.21 ms");
   expect(orderVerdict(rung(times, 7), elders).judged).toBe(false);
   expect(orderVerdict(rung(times, 0, "never settled"), elders).line).toBe("not judged: invalid, never settled");
   expect(orderVerdict(rung(times, 0, "", 0), elders).line).toBe("not judged: nothing was drawn with its materials, so nothing was cut out");
@@ -255,7 +255,7 @@ test("the tree order prices a counted cut-out layer by its shading alone, and ju
   const t: TreesReport = { view: [390, 844, 70], surface: { name: "surface", per: "megapixel", timer: null, slope: 0.85, error: 0.02, k: 64, note: "" }, counts: [elders, { wood: "young", tier: "medium", cut: 1.5, front: 0.34, old: 0.5, first: 1.5 }], counted: "", rungs: [young, rung(times)], verdict: "" };
   t.verdict = treesVerdict(t);
   expect(t.verdict).toBe("skipped: the elder oaks' cut-outs on medium cost 12.0 ms drawn first, 10.0 of it shading them; drawn last they took 11.0 ms less, where the counts predict 9.9 ms less if the GPU skips what an opaque surface drawn before hides; drawn last saves 1.0 ms of 0.8 predicted against the order they were made in");
-  expect(treesVerdict({ ...t, rungs: [young] })).toBe("not judged: young medium too small to tell, against 0 ms between an order's two windows");
+  expect(treesVerdict({ ...t, rungs: [young] })).toBe("not judged: young medium too small to tell beside 3 standard errors, 0.23 ms");
   expect(treesVerdict({ ...t, counts: [], counted: "the server did not answer" })).toBe("not judged: the server did not answer");
   const r = newReport("0123456789abcdef", "trees");
   r.trees = t;

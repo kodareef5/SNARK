@@ -285,7 +285,7 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
         const g = t?.rungs.find((x) => x.tier === tier && x.wood === wood);
         if (t && !g) out.push(`the tree order has no rung for the ${wood} wood on ${tier}`);
         if (g?.invalid) out.push(`trees ${wood} ${tier}: invalid, ${g.invalid}`);
-        if (g && g.orders.some((o) => (!o.small && o.frames === 0) || o.reads.length !== 2)) out.push(`trees ${wood} ${tier}: an order lacks its frames`);
+        if (g && g.orders.some((o) => (!o.small && o.frames === 0) || o.reads.length < 2)) out.push(`trees ${wood} ${tier}: an order lacks its frames`);
       }
     }
     if (t?.counted) out.push(`trees: ${t.counted}`);
