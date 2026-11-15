@@ -12,7 +12,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_FOLLOW, ORDER_STAY, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -137,6 +137,8 @@ export class App {
   private nowMs = 0;
   /** Entity index of the tribe's creature under the crosshair, or -1. */
   lookedAt = -1;
+  /** Entity index of any body under the crosshair within NAME_RANGE, or -1: what the attack whistle names. */
+  target = -1;
   /** Entity index of the creature in the arms of the viewer's own body, as the last frame's remote sample says, or -1. */
   holding = -1;
   /** useDownAt is when the use key went down, or -1. aimed is the ref of the player-built structure under the crosshair, or -1. */
@@ -248,6 +250,16 @@ export class App {
       }
       return true;
     }
+    // Period, as in ARK, sends every tribe creature that hears at the body looked at. ARK's equals, the attack-my-target
+    // whistle, zooms the minimap here, so it is the right bracket beside it.
+    if (code === "Period" || code === "BracketRight") {
+      if (down && !repeat) {
+        const at = this.target;
+        if (code === "BracketRight") this.session.command(CMD_ORDER, (w) => (w.u32(ORDER_ALL), w.u8(ORDER_YOURS)));
+        else if (at >= 0) this.session.command(CMD_ORDER, (w) => (w.u32(ORDER_ALL), w.u8(ORDER_ATTACK), w.u32(at >>> 0)));
+      }
+      return true;
+    }
     if (code === "KeyB") {
       if (repeat) return true;
       if (!this.ui.settings.toggleTalk) this.talk(down);
@@ -352,6 +364,7 @@ export class App {
       }
     }
     const mine = hit >= 0 && s.tribe.team !== 0 && r.team[hit] === s.tribe.team;
+    this.target = hit >= 0 && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 ? r.id[hit]! : -1;
     this.lookedAt = hit >= 0 && mine && (r.flags[hit]! & VIEW_FLAG_PROP) === 0 && !this.scene!.characters.human(r.kind[hit]!) ? r.id[hit]! : -1;
     // A creature's name is in the mark over it (fillOverhead).
     if (hit < 0 || r.name[hit] === "" || (r.flags[hit]! & VIEW_FLAG_PROP) !== 0 || !this.scene!.characters.human(r.kind[hit]!)) return "";
@@ -669,7 +682,7 @@ export class App {
       this.useKept = false;
       c.release();
     }
-    const whom = alive ? this.who(world, eyeNow) : ((this.lookedAt = -1), "");
+    const whom = alive ? this.who(world, eyeNow) : ((this.lookedAt = this.target = -1), "");
     hud.prompt = !alive ? "" : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);

@@ -73,6 +73,8 @@ export interface Subject {
   points: number;
   stance: number;
   following: boolean;
+  /** Ordered to wander (ORDER_WANDER), until told to stay or follow. */
+  wandering: boolean;
   /**
    * `breeds` is whether its kind breeds. `stage` is a stage of shared/sim/breeding.ts and `maturity` how far grown, 0 to 1.
    * `mate` is how far its pair has got, 0 to 1. `wait` is the seconds until a female may mate again.
@@ -628,6 +630,7 @@ export class Taming {
       points: rec.team !== 0 ? Math.min(255, this.ctx.progression.statPoints(rec)) : 0,
       stance: rec.stance,
       following: rec.follow !== 0,
+      wandering: rec.wander,
       taming: rec.tame !== null,
       owned: rec.team !== 0,
       level,

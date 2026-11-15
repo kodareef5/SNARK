@@ -329,7 +329,7 @@ export class ClientSession {
   /** Creatures just tamed, waiting for the naming prompt. te is in percent. */
   readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
   /** The creature whose inventory is open, or null when the open container is not a creature. Shares are 0 to 1. */
-  subject: { taming: boolean; owned: boolean; level: number; progress: number; te: number; torpor: number; food: number; id: number; points: number; stance: number; following: boolean; saddled: boolean; breeds: boolean; mating: boolean; female: boolean; stage: number; maturity: number; mate: number; wait: number } | null = null;
+  subject: { taming: boolean; owned: boolean; level: number; progress: number; te: number; torpor: number; food: number; id: number; points: number; stance: number; following: boolean; wandering: boolean; saddled: boolean; breeds: boolean; mating: boolean; female: boolean; stage: number; maturity: number; mate: number; wait: number } | null = null;
   /** What the server tells of the creature the survivor looks at (OWN_OVERHEAD), or null. Shares are 0 to 1, or -1 where it tells nothing. */
   looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
@@ -848,7 +848,7 @@ export class ClientSession {
     } else if (component === OWN_SUBJECT) {
       if (!r.bool()) this.subject = null;
       else {
-        const next = { taming: r.bool(), owned: r.bool(), level: r.u16(), progress: r.bits(10) / 1000, te: r.bits(10) / 1000, torpor: r.bits(10) / 1000, food: r.bits(10) / 1000, id: r.u32(), points: r.u8(), stance: r.bits(2), following: r.bool(), saddled: r.bool(), breeds: r.bool(), mating: r.bool(), female: r.bool(), stage: r.bits(2), maturity: r.bits(10) / 1000, mate: r.bits(10) / 1000, wait: r.varint() };
+        const next = { taming: r.bool(), owned: r.bool(), level: r.u16(), progress: r.bits(10) / 1000, te: r.bits(10) / 1000, torpor: r.bits(10) / 1000, food: r.bits(10) / 1000, id: r.u32(), points: r.u8(), stance: r.bits(2), following: r.bool(), wandering: r.bool(), saddled: r.bool(), breeds: r.bool(), mating: r.bool(), female: r.bool(), stage: r.bits(2), maturity: r.bits(10) / 1000, mate: r.bits(10) / 1000, wait: r.varint() };
         if (!r.overflow) this.subject = next;
       }
     } else if (component === OWN_OVERHEAD) {
