@@ -21,7 +21,8 @@ test("task E built quality and blueprints: the flag is the wire's bit, slots sav
 });
 
 test("the numbers the item program reserved are its own and still free of anything else", () => {
-  expect([P.PROTOCOL_VERSION, P.CMD_CRAFT_AT, P.CMD_CRAFT_BLUEPRINT, P.OWN_STATION, P.SLOT_BLUEPRINT]).toEqual([12, 29, 30, 16, 1]);
+  // The weapons program moved the protocol to 13 (tests/unit/weapons-contracts.test.ts); the item program's codes stand.
+  expect([P.CMD_CRAFT_AT, P.CMD_CRAFT_BLUEPRINT, P.OWN_STATION, P.SLOT_BLUEPRINT]).toEqual([29, 30, 16, 1]);
   const own = Object.entries(P).filter(([k]) => k.startsWith("OWN_")).map(([, v]) => v);
   expect(new Set(own).size).toBe(own.length);
   // Task B moved the manifest to 4 for icon sheets.

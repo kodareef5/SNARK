@@ -994,6 +994,10 @@ export class ClientSession {
       ev.vy = r.f32();
       ev.vz = r.f32();
       if (ev.flies) ev.back = r.u8();
+      // Protocol 13: rays, seed and silenced, read past until shots of many rays and the silencer are built.
+      r.u8();
+      r.u32();
+      r.bool();
     } else if (kind === EVENT_BLAST) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -1011,6 +1015,8 @@ export class ClientSession {
       ev.damage = r.u16();
       ev.bearing = r.u8();
       ev.zone = r.bits(4);
+      // Protocol 13: whether the side is shown, read past until a silenced shot can hide it.
+      r.bool();
       if (kind === EVENT_DEATH) {
         ev.kill = true;
         ev.name = r.string(EVENT_NAME_BYTES);

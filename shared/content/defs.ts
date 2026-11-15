@@ -235,8 +235,11 @@ export interface ItemDef extends Named {
   readonly weapon?: WeaponFacet;
   readonly ammo?: AmmoFacet;
   readonly wear?: WearFacet;
-  /** A weapon lists the attachment items it takes in `fits`. */
-  readonly attachment?: "scope" | "silencer" | "light" | "laser";
+  /**
+   * A weapon lists the attachment items it takes in `fits`. "holo" is the holo-scope, a stub: no item is one until W7 of
+   * planning/reference/weapons-plan.md builds its view.
+   */
+  readonly attachment?: "scope" | "silencer" | "light" | "laser" | "holo";
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
   readonly places?: readonly string[];
   /** How it is made. An item without this cannot be crafted. */
@@ -333,6 +336,31 @@ export interface WeaponFacet {
   /** Mesh held in the hand, and how the body holds it. */
   readonly mesh?: string;
   readonly hold: "tool" | "bow" | "rifle" | "pistol" | "spear";
+  // Stubs of planning/reference/weapons-plan.md: declared, checked and compiled, and read by nothing until the project
+  // named builds them (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
+  /** W2: holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
+  readonly auto?: boolean;
+  /** W2: a reload loads one round each `reload` seconds until full, and the primary button ends it after the round under way. */
+  readonly reloadEach?: boolean;
+  /**
+   * W2: a bow's or gun's blow with the melee button: damage at primitive quality, torpor as a multiple of it, reach in metres
+   * (2.6 where not given), and the seconds a blow takes (a swing's where not given). ARK's is 10 and 14 torpor (Base Damage).
+   */
+  readonly melee?: { readonly damage: number; readonly torpor?: number; readonly reach?: number; readonly interval?: number };
+  /**
+   * W1: the cone a shot leaves within, as half angles in degrees: from the hip and aimed at rest, what full speed adds, what
+   * each shot adds, and the degrees a second it narrows back. Our own numbers (ARK publishes none).
+   */
+  readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number };
+  /** W1: the degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick. */
+  readonly recoil?: { readonly kick: number; readonly recover: number };
+  /** W6: what its damage is multiplied by against a structure. 1 where not given. ARK's grenade is 4.5 (Table of explosives). */
+  readonly structures?: number;
+  /**
+   * W5: thrown, it bursts into a cloud: the prop/cloud it makes, the seconds the cloud lasts, and the buff it gives the bodies
+   * inside it (none for smoke). The cloud reaches as far as its prop's radius.
+   */
+  readonly cloud?: { readonly prop: string; readonly seconds: number; readonly buff?: string };
 }
 
 export interface AmmoFacet {
@@ -348,6 +376,17 @@ export interface AmmoFacet {
   /** Chance, 0 to 1, that a spent one can be picked up again. */
   readonly recover?: number;
   readonly mesh?: string;
+  // Stubs of planning/reference/weapons-plan.md, as the weapon facet's are. Omitted, a round does what all do today.
+  /** W3: rays one round sends, each tested and landed alone, as a shotgun's pellets. 1 where not given. */
+  readonly pellets?: number;
+  /** W3: its damage falls from all of it at `full` metres to none at `none`. Omitted, it does not fall off. */
+  readonly falloff?: { readonly full: number; readonly none: number };
+  /** W6: where it ends it goes off as a grenade does, reaching this many metres. The blast is the whole of its damage. */
+  readonly blast?: number;
+  /** W6: the share of armor, 0 to 1, it goes through (the metal arrow's "-90% armor bypass" is 0.9). */
+  readonly pierce?: number;
+  /** A light it carries while it flies: reach in metres and a palette colour. Rendering's to build (M9); a flare's until then is a bright mesh. */
+  readonly light?: { readonly reach: number; readonly color: number };
 }
 
 export interface WearFacet {
@@ -452,7 +491,7 @@ export interface LevelsDef extends Named {
 /** An entity that stands in the world but does not move or live, such as an item cache. Its record can hold an inventory. */
 export interface PropDef extends Named {
   readonly type: "prop";
-  readonly class: "container" | "projectile" | "egg" | "crate";
+  readonly class: "container" | "projectile" | "egg" | "crate" | "cloud";
   readonly id: string;
   readonly mesh: string;
   readonly color: number;
@@ -500,6 +539,13 @@ export interface BuffDef extends Named {
   readonly immune?: boolean;
   /** A beneficial buff, shown apart from harmful ones. */
   readonly good?: boolean;
+  // Stubs of planning/reference/weapons-plan.md (W4, the bola), read by nothing yet.
+  /** The creatures it takes, by species; omitted, any. A survivor is always taken. ARK's bola names its list (Bola). */
+  readonly only?: readonly string[];
+  /** Seconds it lasts on a survivor, in place of `seconds` (the bola's 25 against a creature's 30). */
+  readonly survivorSeconds?: number;
+  /** A buff given as it ends, such as a time it cannot be given again (the bola's 10 s, patch 240.5). */
+  readonly after?: string;
 }
 
 /** A type of harm. A stub: the five the engine knows are named in code (`DamageType`). */
