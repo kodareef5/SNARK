@@ -169,7 +169,7 @@ test("a body whose weight lies outside where it touches tips over at once, and o
 });
 
 test("a hit capsule, and so a ragdoll's body, fits the body and not its loose cards, unless cards are all its zone has", () => {
-  // The tube's upper bone holds its middle quarter in one material and its top quarter in the other.
+  // The tube's upper bone holds the quarter above its middle in one material and its top quarter in the other.
   const dir = mkdtempSync(join(tmpdir(), "snark-ragdoll-"));
   try {
     const glb = join(dir, "tube.glb");
