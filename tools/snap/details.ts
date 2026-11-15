@@ -54,7 +54,7 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
   const count = which === "flock" ? 40 : which === "fight" ? 100 : 1;
   for (let k = 0; k < count; k++) {
     const a = k * 2.399;
-    const rr = flock ? 1.2 + Math.sqrt(k) * (which === "fight" ? 2.2 : 1.6) : 0;
+    const rr = flock ? 1.2 + Math.sqrt(k) * (which === "fight" ? 1.3 : 1.1) : 0;
     const [x, z] = [x0 + Math.cos(a) * rr, z0 + 6 + Math.sin(a) * rr];
     birds.push({ id: 2000 + k * 7, x, y: hf.heightAt(x, z), z, yaw: a * 1.7, st: new AnimState() });
   }
@@ -126,8 +126,8 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
   const b0 = birds[0]!;
   // From a survivor's eye, looking at the ground the bird stands on.
   const views = [
-    { metres: flock ? 9 : 3, height: 1.6 },
-    { metres: 20, height: 1.7 },
+    { metres: flock ? 16 : 3, height: flock ? 4 : 1.6 },
+    { metres: flock ? 34 : 20, height: flock ? 6 : 1.7 },
   ];
   const frames: Uint8ClampedArray[][] = views.map(() => []);
   const counts: string[] = [];
@@ -137,8 +137,9 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
     cam.fovY = 2 * Math.atan((h / (PHONE_ROWS * zoom)) * Math.tan(PHONE_FOV / 2));
     cam.aspect = w / h;
     const look = which === "struck" ? -0.9 : 0.5;
-    cam.x = b0.x - Math.sin(look) * v.metres;
-    cam.z = b0.z + (flock ? 6 : 0) - Math.cos(look) * v.metres;
+    const [ax, az] = flock ? [x0, z0 + 6] : [b0.x, b0.z];
+    cam.x = ax - Math.sin(look) * v.metres;
+    cam.z = az - Math.cos(look) * v.metres;
     cam.y = hf.heightAt(b0.x, b0.z) + v.height;
     cam.yaw = look;
     cam.pitch = -Math.atan2(v.height - 0.2, v.metres);
