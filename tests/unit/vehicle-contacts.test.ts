@@ -126,15 +126,19 @@ test('sustained contact cannot farm damage and an old vehicle capture is invalid
   } finally { h.host.shutdown(); }
 });
 
-test('a saturated native broadphase fails closed instead of driving through unexamined bodies', () => {
+test('a crowd beside the road is met body by body, and never stops a car that touches none of it', () => {
   const s = setup(), { h, x, z, car, ents, tick } = s;
   try {
-    // Deliberately stacked server-spawned practice bodies simulate a crowded chunk.
-    for (let i = 0; i < 257; i++) s.victim('core:dummy', x + 5, z + 5);
-    const contacts = h.host.urban.contacts!, before = contacts.overflowStops, hits = h.host.combat.hits;
+    // Three hundred practice bodies stacked a few metres to the side, inside the contact search, none in the car's way.
+    for (let i = 0; i < 300; i++) s.victim('core:dummy', x + 5, z + 5);
+    const hits = h.host.combat.hits;
     s.placeCar(); tick();
-    expect(contacts.overflowStops).toBe(before + 1); expect(ents.z[car]).toBe(z); expect(ents.vz[car]).toBe(0);
+    expect(ents.z[car]).toBeGreaterThan(z + 0.2); expect(ents.vz[car]).toBeGreaterThan(5);
     expect(h.host.combat.hits).toBe(hits);
+    // And one in its way among them is still met.
+    const target = s.victim('core:civilian', x, z + 2.5), before = s.health(target);
+    s.placeCar(); tick();
+    expect(s.health(target)).toBeLessThan(before);
   } finally { h.host.shutdown(); }
 });
 

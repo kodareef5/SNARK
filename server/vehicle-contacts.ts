@@ -26,9 +26,6 @@ interface Touch { seen: number }
 interface Contact { entity: number; handle: number; pid: number; t: number; nx: number; nz: number; speed: number; mass: number }
 const MIN_HARM_SPEED = 2.5;
 const REARM_TICKS = 15;
-const MAX_CANDIDATES = 256;
-const MAX_VISITED = 4096;
-const MAX_PAIRS = 4096;
 const SKIN = 0.025;
 
 /** Segment against an axis-aligned box in X/Z. Infinity means no contact. */
@@ -76,7 +73,6 @@ export class VehicleContacts {
   private readonly padding: number;
   /** Diagnostics, not replicated gameplay state. */
   contacts = 0;
-  overflowStops = 0;
 
   constructor(ctx: VehicleContactsContext) {
     this.ctx = ctx;
@@ -117,7 +113,7 @@ export class VehicleContacts {
       const distance = length(ents.x[e]! - from.x, ents.z[e]! - from.z);
       // Administrative teleports are discontinuities, not a road sweep through the map.
       if (distance > Math.max(4, spec.maxForward * TICK_DT * 2)) continue;
-      if (!this.gather(e, from, spec)) { this.clip(e, frame, 0, true); this.overflowStops++; this.changed.push(e); continue; }
+      this.gather(e, from, spec);
       let first: Contact | null = null;
       for (const target of this.candidates) {
         const contact = this.contact(e, frame, target, spec);
@@ -134,26 +130,23 @@ export class VehicleContacts {
     return this.changed;
   }
 
-  private gather(e: number, from: Body, spec: VehicleSpec): boolean {
+  /** Every body near the car's path, however many: a herd beside a road is met, never a reason to stop the car. */
+  private gather(e: number, from: Body, spec: VehicleSpec): void {
     const { world } = this.ctx, ents = world.ents, pad = this.padding + length(spec.halfWidth, spec.halfLength);
     const x0 = Math.max(0, Math.floor((Math.min(from.x, ents.x[e]!) - pad) / CHUNK_SIZE));
     const x1 = Math.min(world.dims.chunksX - 1, Math.floor((Math.max(from.x, ents.x[e]!) + pad) / CHUNK_SIZE));
     const z0 = Math.max(0, Math.floor((Math.min(from.z, ents.z[e]!) - pad) / CHUNK_SIZE));
     const z1 = Math.min(world.dims.chunksZ - 1, Math.floor((Math.max(from.z, ents.z[e]!) + pad) / CHUNK_SIZE));
-    let visited = 0;
     this.candidates.length = 0;
     for (let z = z0; z <= z1; z++) for (let x = x0; x <= x1; x++) {
       for (let target = ents.chunkHead[z * world.dims.chunksX + x]!; target >= 0; target = ents.next[target]!) {
-        if (++visited > MAX_VISITED) return false;
         if (!this.target(e, target)) continue;
         if (Math.abs(ents.x[target]! - from.x) > pad + Math.abs(ents.x[e]! - from.x) ||
           Math.abs(ents.z[target]! - from.z) > pad + Math.abs(ents.z[e]! - from.z)) continue;
         this.candidates.push(target);
-        if (this.candidates.length > MAX_CANDIDATES) return false;
       }
     }
     this.candidates.sort((a, b) => a - b);
-    return true;
   }
 
   private target(car: number, e: number): boolean {
@@ -208,8 +201,6 @@ export class VehicleContacts {
     this.contacts++;
     let pairs = this.touches.get(frame.handle);
     const previous = pairs?.get(c.handle), fresh = !previous || world.tick - previous.seen > REARM_TICKS;
-    // Exhaustion is a conservative stop, never untracked damage every tick.
-    if (!previous && this.pairCount >= MAX_PAIRS) { this.clip(car, frame, c.t, true); this.overflowStops++; return true; }
     if (!pairs) { pairs = new Map(); this.touches.set(frame.handle, pairs); }
     if (!previous) this.pairCount++;
     if (previous) previous.seen = world.tick; else pairs.set(c.handle, { seen: world.tick });
