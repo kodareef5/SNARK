@@ -86,6 +86,8 @@ interface Tile {
   /** The level its nearest point asks for, kept a little past where it ends; -1 before it is first asked. */
   primary: number;
   readonly held: (Held | null)[];
+  /** Frames in a row it has been in view and reach with nothing made to draw. */
+  unseen: number;
 }
 
 /** One chunk's faces at a level, as the card takes them within its tile: VERTEX_BYTES a vertex, four a face. */
@@ -100,7 +102,7 @@ export class FarCity {
   /** Bytes of tiles on the card. */
   bytes = 0;
   /** Last frame: milliseconds spent making tiles and tiles made, tiles in reach with nothing on the card, and levels wanted and not yet made. */
-  readonly stats = { makeMs: 0, made: 0, missing: 0, behind: 0, unseen: 0, unseenAt: Infinity, coarse: 0 };
+  readonly stats = { makeMs: 0, made: 0, missing: 0, behind: 0, unseen: 0, unseenAt: Infinity, unseenFrames: 0, coarse: 0 };
   /** Triangles drawn this frame at each level. */
   readonly drawn = new Float64Array(LEVELS);
   /** Milliseconds of a frame tiles may be made in, after the first; Infinity makes every tile wanted in the frame it is. */
@@ -182,7 +184,7 @@ export class FarCity {
       const base = Math.floor(box[1]!);
       if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
       for (const c of list) this.tileOfChunk[c] = this.tiles.length;
-      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [] });
+      this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0 });
     }
   }
 
@@ -257,10 +259,12 @@ export class FarCity {
       }
     }
     if (work.length > 0) {
-      // Tiles with nothing on the card first, then by distance.
+      // Tiles with nothing on the card first, those in view before those not, then by distance.
       const key = (w: number): number => {
         const tile = this.tiles[Math.floor(w / LEVELS)]!;
-        return (tile.held.some((h) => h !== null) ? 1e6 : 0) + this.off(tile, cam);
+        const b = tile.box;
+        const seen = cam.boxVisible(b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z);
+        return (tile.held.some((h) => h !== null) ? 1e6 : 0) + (seen ? 0 : 5e5) + this.off(tile, cam);
       };
       work.sort((a, b) => key(a) - key(b));
       // A chunk or a tile's putting together at a time, so no frame takes more than the budget and one of those.
@@ -313,18 +317,23 @@ export class FarCity {
     const levels = this.levels;
     const stats = this.stats;
     this.drawn.fill(0);
-    [stats.unseen, stats.unseenAt, stats.coarse] = [0, Infinity, 0];
+    [stats.unseen, stats.unseenAt, stats.unseenFrames, stats.coarse] = [0, Infinity, 0, 0];
     for (const tile of this.tiles) {
       const b = tile.box;
       const [ax, ay, az, bx, by, bz] = [b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z];
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
-      if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
+      if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) {
+        tile.unseen = 0;
+        continue;
+      }
       // A tile in view whose levels are none of them made yet, empty ones aside, is not drawn at all.
       if (!tile.held.some((h) => h !== null)) {
         stats.unseen++;
         stats.unseenAt = Math.min(stats.unseenAt, near);
+        stats.unseenFrames = Math.max(stats.unseenFrames, ++tile.unseen);
         continue;
       }
+      tile.unseen = 0;
       // The levels wanted that are on the card; or, if none is yet, the one on the card nearest the first wanted.
       const needed = this.needed(tile, cam, near, this.share);
       let drawn = 0;

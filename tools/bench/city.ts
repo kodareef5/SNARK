@@ -193,6 +193,7 @@ export function benchCity(section: (title: string) => void, record: Record, path
       let unseenNearest = Infinity;
       let run = 0;
       let longest = 0;
+      let waited = 0;
       let coarse = 0;
       const frames = 6 * 60;
       for (let f = 0; f < frames; f++) {
@@ -211,6 +212,7 @@ export function benchCity(section: (title: string) => void, record: Record, path
           unseenNearest = Math.min(unseenNearest, s.unseenAt);
           longest = Math.max(longest, ++run);
         } else run = 0;
+        waited = Math.max(waited, s.unseenFrames);
         coarse = Math.max(coarse, s.coarse);
       }
       record("frame build, median", median(builds), "ms");
@@ -221,6 +223,7 @@ export function benchCity(section: (title: string) => void, record: Record, path
       record("the most such tiles in a frame", unseenMost, "tiles");
       record("the nearest such tile", Number.isFinite(unseenNearest) ? unseenNearest : 0, "m");
       record("the longest run of such frames", (longest * 1000) / 60, "ms");
+      record("the longest one tile waited in view to be drawn", (waited * 1000) / 60, "ms");
       record("the most tiles in view drawn coarser than wanted, a frame", coarse, "tiles");
     }
   }
