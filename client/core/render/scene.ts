@@ -15,7 +15,7 @@ import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
-import { AnimState, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortU32 } from "../../../shared/sort.ts";
 import type { Falling } from "../rubble.ts";
@@ -686,7 +686,8 @@ export class Scene {
       let wanted = 0;
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
-        if (!ch.has(kind) || remote.id[i] === this.skip) continue;
+        // A dead creature's body is drawn where it lies, by ch.corpses.
+        if (!ch.has(kind) || remote.id[i] === this.skip || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
         let x = remote.x[i]! - cam.x;
         let y = remote.y[i]! - cam.y;
         let z = remote.z[i]! - cam.z;

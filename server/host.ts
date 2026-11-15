@@ -405,7 +405,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   death.offMount = (c) => riding.dismount(c);
   const breeding = new Breeding({ world, game, records, rules, lists, deadlines, creatures, persistence, full: (team) => taming.full(team), notice: (pid, text) => notice(pid, text), place: (rec) => death.place(rec), refresh: (rec) => refreshBody(rec), meal: (rec) => taming.meal(rec) }, (opts.seed ?? 1) + 89);
   taming.onMate = (rec, what) => breeding.order(rec, what);
-  const corpses = new Corpses({ world, game, records, items, deadlines, rules }, (opts.seed ?? 1) + 103);
+  const corpses = new Corpses({ world, game, records, items, deadlines, rules, lists, progression, death }, (opts.seed ?? 1) + 103);
+  death.corpses = combat.corpses = corpses;
   const carry = new Carry({ world, game, records, items, survival, creatures });
   const feces = new Feces({ world, records, items, deadlines, rules }, (opts.seed ?? 1) + 107);
   const eggs = new Eggs({ world, game, records, items });

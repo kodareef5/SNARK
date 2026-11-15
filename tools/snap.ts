@@ -16,7 +16,9 @@ import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
-import { AnimState, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
+import { sizeSpan } from "../shared/anim/corpse.ts";
+import { youngScale } from "../shared/sim/breeding.ts";
 import type { Rig } from "../shared/anim/rigs.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
@@ -220,10 +222,21 @@ function ragdollScene(view: ProvingView, seconds: number): void {
   view.render();
   r.tick += 0.5;
   view.render();
-  // They die: gone from the view, as the server takes a dead creature out of the world.
-  const keep = [4, 5, 6];
-  for (const k of ["id", "kind", "x", "y", "z", "yaw", "flags", "anim", "span", "grown", "seat", "hasLook"] as const) for (let j = 0; j < 3; j++) r[k][j] = r[k][keep[j]!]!;
-  r.count = 3;
+  // They die: each one's entity goes and its body's comes where it stood (ids 8 to 11), as the server sends them.
+  const order = [4, 5, 6, 0, 1, 2, 3];
+  const keys = ["id", "kind", "x", "y", "z", "yaw", "flags", "anim", "cue", "span", "grown", "seat", "hasLook"] as const;
+  const was = keys.map((k) => Array.from(r[k]));
+  const died = new Map<number, number>();
+  order.forEach((from, j) => {
+    keys.forEach((k, q) => (r[k][j] = was[q]![from]!));
+    if (j < 3) return;
+    died.set(r.id[j]!, Math.floor(r.tick));
+    // A young one's body keeps the size it died at, sent as its span.
+    if (r.grown[j] !== 0) r.span[j] = sizeSpan(youngScale(reg.birthScale[r.kind[j]!]!, r.span[j]!, r.grown[j]!, r.tick));
+    [r.id[j], r.cue[j], r.grown[j]] = [5 + j, CUE_DEAD, 0];
+  });
+  r.died = died;
+  r.count = 7;
   for (let f = 0; f < seconds * 60; f++) {
     r.tick += 0.5;
     view.scene.build(cam, r);

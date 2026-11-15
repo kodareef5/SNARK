@@ -83,9 +83,11 @@ export const DODO: readonly Def[] = [
     // 0.000868 a second, in hours of 140 seconds. Its young start at 510 times that.
     food: { max: 450, perHour: 0.12152 },
     breeds: { egg: "core:egg_dodo", incubate: 2999.76, mature: 55555.56 },
-    // Chosen: the wiki names hide and raw meat and no amounts. It calls the meat a paltry sum and the dodo a good early
-    // source of hide.
-    drops: [{ item: "core:hide", min: 3, max: 6 }, { item: "core:meat", min: 1, max: 3 }],
+    // Its body takes 50 of harvest damage, ASA's harvest health for it (wikily.gg's Dodo page, 2026-11-15), and each 12
+    // of it is a roll that gives one hide or one raw meat. The 12 is chosen: with it a stone hatchet gets the 3 hide and 2
+    // meat that page gives. A hatchet favours hide and a pick meat (ark.wiki.gg, Weapons), 60 rolls in 100.
+    corpse: { health: 50, roll: 12 },
+    drops: [{ item: "core:hide", min: 1, max: 1, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, favoured: "stone" }],
     // ARK's herbivores take three eighths of fire and three fifths of explosions. Its head and the top of its neck take three times.
     takes: { fire: 0.375, explosive: 0.6 },
     zones: { head: 3 },

@@ -30,7 +30,9 @@ export const RAPTOR: readonly Def[] = [
     // The reference game's rate, 0.001543 a second.
     food: { max: 1200, perHour: 0.216 },
     breeds: { egg: "core:egg_raptor", incubate: 7199, mature: 133333 },
-    drops: [{ item: "core:hide", min: 5, max: 10 }, { item: "core:meat", min: 4, max: 8 }],
+    // Chosen, near what it gave before bodies were harvested: 7.5 hide and 6 meat in all on average.
+    corpse: { health: 135, roll: 10 },
+    drops: [{ item: "core:hide", min: 1, max: 1, weight: 7.5, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 6, favoured: "stone" }],
     zones: { head: 3 },
     killXp: 8,
     torporDrain: 0.3,

@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 40 classes: 25 built, 4 partly built, and 11 stubs that
-wait for a feature. The core pack holds 262 definitions, and 77 renames of ids
+wait for a feature. The core pack holds 265 definitions, and 77 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -30,7 +30,7 @@ share a `tag`.
 | --- | --- | --- | --- | --- | --- |
 | `item` | PrimalItem | a group |  |  |  |
 | `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor` | 11 |
-| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `youngFor` | 5 |
+| `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `youngFor` | 7 |
 | `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `tool` | 8 |
 | `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 7 |
 | `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 4 |
@@ -120,7 +120,7 @@ ARK's names: `xp` is LevelExperienceRampOverrides; `engramPoints` is OverridePla
 | --- | --- | --- | --- | --- | --- |
 | `species` | a character | a group |  |  |  |
 | `species/survivor` | the player's character | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `stats`, `equips` | `crouch`, `prone`, `swimSpeed`, `stamina`, `food`, `waterPerHour`, `slots`, `fists`, `fistsTorpor`, `drops`, `takes`, `zones`, `killXp`, `torporDrain` | 1 |
-| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `keeps`, `fists`, `bite`, `drops`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `alarm`, `tamedSprintMul`, `drag`, `mass`, `carriable`, `feces`, `eggChance`, `fistsTorpor`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 4 |
+| `species/creature` | a creature's character, its status component and its entry | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `stats` | `skeleton`, `turn`, `strafe`, `swimSpeed`, `stamina`, `food`, `slots`, `keeps`, `fists`, `bite`, `drops`, `corpse`, `takes`, `zones`, `killXp`, `temper`, `sight`, `leash`, `taming`, `eats`, `torporDrain`, `breeds`, `still`, `tag`, `regions`, `mutations`, `alarm`, `tamedSprintMul`, `drag`, `mass`, `carriable`, `feces`, `eggChance`, `fistsTorpor`, `variant`, `attacks`, `loot`, `saddle`, `buffs`, `boss` | 4 |
 | `species/target` | none, ours | built | `mesh`, `color`, `radius`, `height`, `eyeHeight`, `walkSpeed`, `sprintMul`, `jumpSpeed`, `skeleton`, `still` | `stats`, `equips`, `slots`, `zones`, `takes`, `torporDrain`, `crouch`, `prone`, `stamina`, `fists`, `food`, `drops`, `killXp` | 1 |
 
 - **`species`** on shelf `species`. A kind of body that lives.
@@ -134,7 +134,7 @@ Asset slots:
 - `species/creature`: `#body` mesh, must, from `{mesh}`, else `box`; `#rig` rig, must with `skeleton`, from `{mesh}`, else `rigid`; `#clip/{idle, walk, run, attack, death}` clip, must with `skeleton`, from `{mesh}/{key}`, else `{mesh}/idle` then `rest`; `#move/{swim, swim_idle, fall, land, turn, startled, flinch, call, torpor_eat, held, carried, jump}` clip, may with `skeleton`, from `{mesh}/{key}`, else `none`; `#torpor/{torpor_in, torpor_idle, torpor_out}` clip, may with `skeleton`, from `{mesh}/{key}`, else `{mesh}/death` then `rest`; `#icon` icon, may, from `{id}/icon`, else `swatch`; `#sound/<any>` sound, may, from `{id}/sound/{key}`, else `none`.
 - `species/target`: `#body/{head, torso, hands, legs, feet}` mesh, must with `skeleton`, from `{mesh}_{sex}/{key}`, else `{mesh}/{key}` then `core:mannequin/{key}`; `#hair/<hair>` mesh, may with `skeleton`, from `{mesh}_{sex}/hair/{key}`, else `none`; `#beard/<beard>` mesh, may with `skeleton`, from `{mesh}_{sex}/beard/{key}`, else `none`; `#icon` icon, may, from `{id}/icon`, else `swatch`.
 
-ARK's names: `keeps` is GetSpoilingTimeMultiplier of its inventory; `fistsTorpor` is the torpor of a bare-handed strike; `drops` is DeathHarvestingComponent; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `regions` is the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions; `alarm` is the herd that flees with a creature when it is hurt; `tamedSprintMul` is the tamed running speed; `drag` is drag weight; `mass` is mass; `carriable` is picked up and thrown by a player; `feces` is the creature's feces item; `eggChance` is the chance of an egg in place of feces; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
+ARK's names: `keeps` is GetSpoilingTimeMultiplier of its inventory; `fistsTorpor` is the torpor of a bare-handed strike; `drops` is DeathHarvestingComponent; `corpse` is DeathHarvestingComponent's health and damage per roll; `stats` is MaxStatusValues and the per-level gains; `takes` is DamageTypeAdjusters; `bite` is AttackInfos; `taming` is RequiredTameAffinity; `eats` is DinoSettings food effectiveness; `breeds` is EggItemsToSpawn, BabyAgeSpeed; `tag` is DinoNameTag; `regions` is the ColorSetDefinitions of RandomColorSetsMale, PreventColorizationRegions; `alarm` is the herd that flees with a creature when it is hurt; `tamedSprintMul` is the tamed running speed; `drag` is drag weight; `mass` is mass; `carriable` is picked up and thrown by a player; `feces` is the creature's feces item; `eggChance` is the chance of an egg in place of feces; `variant` is a child blueprint's kind; `attacks` is AttackInfos; `loot` is DeathInventoryTemplates; `saddle` is SaddleItemClass; `buffs` is DefaultBuffs; `boss` is bIsBossDino.
 
 What names what: `drops[].item` names a `item`; `eats[].item` names a `item`; `breeds.egg` names a `prop/egg`; `feces` names a `item/feces`; `loot` names a `loot`; `saddle` names a `item/saddle`; `buffs[]` names a `buff`.
 
@@ -216,7 +216,7 @@ Packs may add to: `yields`.
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
 | `prop` | an actor that is not alive | a group |  |  |  |
-| `prop/container` | a death cache, a dropped bag | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 2 |
+| `prop/container` | a death cache, a dropped bag | built | `mesh`, `color`, `radius`, `height`, `slots` |  | 3 |
 | `prop/projectile` | a projectile actor | partial | `mesh`, `color`, `radius`, `height` | `pitched` | 2 |
 | `prop/egg` | a dropped fertilised egg | built | `mesh`, `color`, `radius`, `height` | `size`, `item` | 3 |
 | `prop/crate` | SupplyCrate_ | stub: loot | `mesh`, `color`, `radius`, `height` | `slots` | 0 |
@@ -345,7 +345,7 @@ built.
 
 **`item/resource`** (11): paste, fiber, stone, wood, thatch, flint, hide, chitin, ore, ingot, gunpowder.
 
-**`item/consumable`** (5): berry, meat, meat_cooked, waterskin, narcotic.
+**`item/consumable`** (7): meat_prime, meat_prime_cooked, berry, meat, meat_cooked, waterskin, narcotic.
 
 **`item/weapon`** (8): pick, hatchet, spear, bow, crossbow, rifle, pistol, grenade.
 
@@ -385,7 +385,7 @@ built.
 
 **`node`** (14): tree, palm, fig, oak, banyan, mangrove, rock, rubble, metal_rock, bush, palmetto, fern, seagrape, creeper.
 
-**`prop/container`** (2): cache, bag.
+**`prop/container`** (3): corpse, cache, bag.
 
 **`prop/projectile`** (2): grenade_live, arrow_stuck.
 

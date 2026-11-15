@@ -1,190 +1,234 @@
-// Bodies that die. The server takes a dead creature out of the world at once, and a client's view says it died rather than
-// left (shared/net/view.ts). The body then plays its death clip where it was last drawn, goes limp as a ragdoll
-// (shared/anim/ragdoll.ts) at the frame its asset gives, and lies where it settles. One that dies knocked out goes limp as
-// it lies. The server has no corpse: this is a drawing, nothing of it is sent anywhere, and two clients may see it lie
-// differently.
+// Bodies that died. A dead creature's body is an entity of its own, sent with CUE_DEAD (shared/anim/pose.ts), and lies
+// where it fell until it is used up or decays (server/corpses.ts). A client that saw the creature die plays its death clip
+// where the body lies, and the body goes limp as a ragdoll (shared/anim/ragdoll.ts) at the frame its asset gives; one that
+// died knocked out goes limp as it lay. A client that comes upon a body later lays it to rest at once. Either way its
+// ragdoll starts from the same pose and is stepped a whole tick at a time (shared/anim/corpse.ts), so every client, and
+// the server that judges the blows on it, have it lie the same.
 
 import { Pose, blendPose, sampleClip } from "../../shared/anim/clip.ts";
+import { Fall, corpseSize, layCorpse, limpPose, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
 import { creaturePose, type CreatureAnim } from "../../shared/anim/creature.ts";
 import type { Gait } from "../../shared/anim/gait.ts";
-import { AnimState, bodySeed } from "../../shared/anim/pose.ts";
-import { Ragdoll } from "../../shared/anim/ragdoll.ts";
+import { AnimState, CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, bodySeed } from "../../shared/anim/pose.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
-import { TICK_RATE } from "../../shared/coords.ts";
-import { youngScale } from "../../shared/sim/breeding.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { RemoteSample } from "./session.ts";
 
 /** Ticks over which the last pose alive blends into the death clip. */
 const BLEND = 4;
-/** A corpse lies as long as the cache a dead creature leaves (D201): fifteen minutes. */
-const LIES = 15 * 60 * TICK_RATE;
-/** The most corpses kept. The oldest goes first. */
-const MOST = 128;
-/** A corpse farther than this from the viewer is forgotten. */
-const FORGET = 320;
-/** Ticks between the snapshot that said a body died and the moment drawn when it leaves, either way. */
+/** Ticks between the snapshot that said a creature died and the frame its body is first drawn, either way, for the two to be one. */
 const TOLD = 8;
+/** Metres between where a creature was last drawn and where a body lies, for the two to be one. */
+const NEAR = 2;
+/** Ticks of falling stepped in one frame for the bodies a client comes upon, nearest first. The rest wait for the next frame. */
+const BUDGET = 600;
+/** Ticks one watched body is stepped in one frame when frames come slowly. Those left are stepped in the frames after. */
+const CATCH_UP = 6;
 
 export interface Corpse {
   readonly kind: number;
   readonly id: number;
-  /** Where it stood when it died, its yaw in radians and its size, and the six colours of its regions. */
+  /** Where it went limp, as the wire has it, its yaw in radians and its size, and the six colours of its regions. */
   readonly x: number;
   readonly y: number;
   readonly z: number;
   readonly yaw: number;
   readonly size: number;
   readonly colors: Uint8Array;
-  /** The tick the death clip starts at. */
+  /** The whole tick its death clip starts at. */
   readonly born: number;
+  /** This client saw it die, and plays its death clip. */
+  readonly watched: boolean;
   /** It died knocked out, and goes limp as it lay. */
   readonly lying: boolean;
-  /** Its last pose alive, its ragdoll once limp, and the pose to draw, solved, about (x, y, z). */
-  readonly alive: Pose;
-  ragdoll: Ragdoll | null;
+  /** Its decay stage as sent, 0 fresh to STAGE_WORST. */
+  decay: number;
+  /** Its last pose alive, for a death this client saw. */
+  readonly alive: Pose | null;
+  /** It has gone limp. Its fall, null for a rig without a ragdoll, and the whole tick the fall has been stepped to. */
+  limp: boolean;
+  fall: Fall | null;
+  clock: number;
+  /** Come upon and still being laid to rest. */
+  settling: boolean;
+  /** The pose to draw, solved, about (x, y, z). */
   readonly solved: Solved;
+  /** The update that last saw its entity. */
+  seen: number;
 }
 
 /** A copy twice as long. */
-function wider<T extends Uint32Array | Uint16Array | Float64Array | Float32Array | Uint8Array>(a: T): T {
+function wider<T extends Uint32Array | Uint16Array | Float64Array>(a: T): T {
   const b = new (a.constructor as new (n: number) => T)(a.length * 2);
   b.set(a);
   return b;
 }
 
-/** The creatures of one frame, sorted by id as the remote entities are. */
+/** The living creatures of one frame, sorted by id as the remote entities are. */
 class Seen {
   count = 0;
   id = new Uint32Array(64);
   kind = new Uint16Array(64);
-  at = new Float64Array(64 * 4);
+  at = new Float64Array(64 * 3);
   anim = new Uint32Array(64);
   cue = new Uint32Array(64);
-  size = new Float32Array(64);
-  colors = new Uint8Array(64 * 6);
 
-  push(r: RemoteSample, i: number, size: number): void {
+  push(r: RemoteSample, i: number): void {
     if (this.count === this.id.length) {
       this.id = wider(this.id);
       this.kind = wider(this.kind);
       this.at = wider(this.at);
       this.anim = wider(this.anim);
       this.cue = wider(this.cue);
-      this.size = wider(this.size);
-      this.colors = wider(this.colors);
     }
     const n = this.count++;
     this.id[n] = r.id[i]!;
     this.kind[n] = r.kind[i]!;
-    this.at[n * 4] = r.x[i]!;
-    this.at[n * 4 + 1] = r.y[i]!;
-    this.at[n * 4 + 2] = r.z[i]!;
-    this.at[n * 4 + 3] = r.yaw[i]!;
+    this.at[n * 3] = r.x[i]!;
+    this.at[n * 3 + 1] = r.y[i]!;
+    this.at[n * 3 + 2] = r.z[i]!;
     this.anim[n] = r.anim[i]!;
     this.cue[n] = r.cue[i]!;
-    this.size[n] = size;
-    this.colors.set(r.colors.subarray(i * 6, i * 6 + 6), n * 6);
+  }
+
+  has(id: number): boolean {
+    let lo = 0;
+    let hi = this.count;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (this.id[mid]! < id) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo < this.count && this.id[lo] === id;
   }
 }
 
 export class Corpses {
   readonly list: Corpse[] = [];
+  private readonly byId = new Map<number, Corpse>();
   private readonly mortal: readonly (CreatureAnim | null)[];
-  private readonly birthScale: Float32Array;
   private was = new Seen();
   private now = new Seen();
-  private tick = Number.NaN;
+  private updates = 0;
   private readonly st = new AnimState();
   private readonly a: Pose[] = [];
-  private readonly before = new Map<number, Solved>();
+  private readonly waiting: Corpse[] = [];
 
   /**
-   * `mortal` is what each kind plays, indexed by content kind, null for a kind that is simply gone. `birthScale` is the
-   * registry's, for the size of a young one.
+   * `mortal` is what each kind plays, indexed by content kind, null for a kind whose body is not drawn here. A body carries
+   * its own size, so the registry's `birthScale` is not needed.
    */
-  constructor(mortal: readonly (CreatureAnim | null)[], birthScale: Float32Array) {
+  constructor(mortal: readonly (CreatureAnim | null)[], birthScale?: Float32Array) {
     this.mortal = mortal;
-    this.birthScale = birthScale;
+    void birthScale;
   }
 
   /**
-   * Finds the creatures that died since the last call, among the remote entities as sampled now, and moves every corpse
-   * on to `remote.tick`. (cx, cz) is where the viewer is. `gaits` holds the gait of each body drawn, by id.
+   * Takes up the bodies among the remote entities as sampled now, forgets those no longer sent, and moves every body on to
+   * `remote.tick`. (cx, cz) is where the viewer is: bodies come upon nearer it are laid to rest first. `gaits` holds the
+   * gait of each body drawn, by id.
    */
   update(remote: RemoteSample, world: CollisionWorld, cx: number, cz: number, gaits: ReadonlyMap<number, Gait>): void {
     const tick = remote.tick;
-    const step = tick - this.tick;
+    const seen = ++this.updates;
     const now = this.now;
     now.count = 0;
+    for (let i = 0; i < remote.count; i++) if (this.mortal[remote.kind[i]!] && (remote.cue[i]! & CUE_DEAD) === 0) now.push(remote, i);
     for (let i = 0; i < remote.count; i++) {
-      if (!this.mortal[remote.kind[i]!]) continue;
       const kind = remote.kind[i]!;
-      now.push(remote, i, remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, tick) : 1);
+      if (!this.mortal[kind] || (remote.cue[i]! & CUE_DEAD) === 0) continue;
+      let c = this.byId.get(remote.id[i]!);
+      // A body whose entity's place another has taken is a new one.
+      if (c && c.kind !== kind) {
+        this.forget(c);
+        c = undefined;
+      }
+      c ??= this.meet(remote, i, tick, gaits);
+      c.seen = seen;
+      c.decay = (remote.cue[i]! >>> CUE_DECAY_SHIFT) & 3;
     }
-    if (step > 0) this.deaths(now, remote.died, gaits);
-    // The view this frame is the one the next frame is held against.
+    for (let k = this.list.length - 1; k >= 0; k--) if (this.list[k]!.seen !== seen) this.forget(this.list[k]!);
+    // The living this frame are the ones the next frame's bodies are matched against.
     this.now = this.was;
     this.was = now;
-    if (!(step > 0)) {
-      if (Number.isNaN(this.tick)) this.tick = tick;
-      return;
+    const waiting = this.waiting;
+    waiting.length = 0;
+    for (const c of this.list) {
+      if (c.settling) waiting.push(c);
+      else this.move(c, world, tick);
     }
-    this.tick = tick;
-    const seconds = Math.min(step / TICK_RATE, 0.1);
-    for (let k = this.list.length - 1; k >= 0; k--) {
-      const c = this.list[k]!;
-      const dx = c.x - cx;
-      const dz = c.z - cz;
-      if (tick - c.born > LIES || dx * dx + dz * dz > FORGET * FORGET) {
-        this.list.splice(k, 1);
-        continue;
-      }
-      this.move(c, world, tick, seconds);
-    }
+    // Bodies come upon are laid to rest nearest first, a budget of ticks a frame.
+    const far = (c: Corpse): number => (c.x - cx) * (c.x - cx) + (c.z - cz) * (c.z - cz);
+    waiting.sort((p, q) => far(p) - far(q));
+    let budget = BUDGET;
+    for (const c of waiting) budget = this.settle(c, world, tick, budget);
   }
 
-  /** The creatures in `was` and not in `now` that the server said died. Any other left the view, or was simply gone. */
-  private deaths(now: Seen, died: ReadonlyMap<number, number>, gaits: ReadonlyMap<number, Gait>): void {
-    if (died.size === 0) return;
-    const was = this.was;
-    for (let i = 0, j = 0; i < was.count; i++) {
-      while (j < now.count && now.id[j]! < was.id[i]!) j++;
-      if (j < now.count && now.id[j] === was.id[i] && now.kind[j] === was.kind[i]) continue;
-      const told = died.get(was.id[i]!);
-      if (told !== undefined && told - this.tick <= TOLD && this.tick - told <= TOLD) this.die(was, i, gaits);
-    }
+  private forget(c: Corpse): void {
+    this.byId.delete(c.id);
+    const k = this.list.indexOf(c);
+    if (k >= 0) this.list.splice(k, 1);
   }
 
-  private die(was: Seen, i: number, gaits: ReadonlyMap<number, Gait>): void {
-    const kind = was.kind[i]!;
+  /** A body first seen. It is a creature this client saw die if one like it, near it, was said to have died just now. */
+  private meet(r: RemoteSample, i: number, tick: number, gaits: ReadonlyMap<number, Gait>): Corpse {
+    const kind = r.kind[i]!;
     const m = this.mortal[kind]!;
     const rig = m.rig;
-    if (!m.death && !rig.ragdoll) return;
-    if (this.list.length >= MOST) this.list.shift();
-    const st = this.st;
-    st.unpack(was.anim[i]!, was.cue[i]!);
-    st.seed = bodySeed(was.id[i]!);
-    const alive = new Pose(rig.bones);
-    creaturePose(m, st, this.tick, alive, gaits.get(was.id[i]!) ?? null);
+    const x = wireX(r.x[i]!);
+    const y = wireY(r.y[i]!);
+    const z = wireX(r.z[i]!);
+    const was = this.was;
+    let from = -1;
+    let near = NEAR * NEAR;
+    for (let k = 0; k < was.count; k++) {
+      if (was.kind[k] !== kind || this.now.has(was.id[k]!)) continue;
+      const told = r.died.get(was.id[k]!);
+      if (told === undefined || Math.abs(told - tick) > TOLD) continue;
+      const dx = was.at[k * 3]! - x;
+      const dz = was.at[k * 3 + 2]! - z;
+      if (dx * dx + dz * dz >= near) continue;
+      near = dx * dx + dz * dz;
+      from = k;
+    }
+    let alive: Pose | null = null;
+    if (from >= 0) {
+      const st = this.st;
+      st.unpack(was.anim[from]!, was.cue[from]!);
+      st.seed = bodySeed(was.id[from]!);
+      alive = new Pose(rig.bones);
+      creaturePose(m, st, tick, alive, gaits.get(was.id[from]!) ?? null);
+    }
     const c: Corpse = {
       kind,
-      id: was.id[i]!,
-      x: was.at[i * 4]!,
-      y: was.at[i * 4 + 1]!,
-      z: was.at[i * 4 + 2]!,
-      yaw: was.at[i * 4 + 3]!,
-      size: was.size[i]!,
-      colors: was.colors.slice(i * 6, i * 6 + 6),
-      born: this.tick,
-      lying: st.out,
+      id: r.id[i]!,
+      x,
+      y,
+      z,
+      yaw: wireYaw(r.yaw[i]!),
+      size: corpseSize(r.span[i]!),
+      colors: r.colors.slice(i * 6, i * 6 + 6),
+      born: Math.floor(tick),
+      watched: alive !== null,
+      lying: (r.cue[i]! & CUE_OUT) !== 0,
+      decay: 0,
       alive,
-      ragdoll: null,
+      limp: false,
+      fall: null,
+      clock: 0,
+      settling: false,
       solved: new Solved(rig.bones),
+      seen: 0,
     };
+    this.byId.set(c.id, c);
     this.list.push(c);
-    this.dying(c, 0, this.posed(rig.bones));
-    solve(rig, this.posed(rig.bones), c.solved);
+    if (!c.watched) this.goLimp(c, c.born);
+    else {
+      const pose = this.posed(rig.bones);
+      this.dying(c, 0, pose);
+      solve(rig, pose, c.solved);
+    }
+    return c;
   }
 
   /** A scratch pose for a rig of `bones`. */
@@ -192,42 +236,82 @@ export class Corpses {
     return (this.a[bones] ??= new Pose(bones));
   }
 
-  /** The pose `frame` ticks into dying: the death clip, blended in from the last pose alive. Without a clip, or lying, that pose. */
+  /** The pose `frame` ticks into dying: the death clip, blended in from the last pose alive. Lying, or without a clip, that pose. */
   private dying(c: Corpse, frame: number, out: Pose): void {
     const clip = this.mortal[c.kind]!.death;
     if (!clip || c.lying) {
-      blendPose(out, c.alive, c.alive, 0);
+      blendPose(out, c.alive!, c.alive!, 0);
       return;
     }
     sampleClip(clip, frame, out);
-    blendPose(out, c.alive, out, frame / BLEND);
+    blendPose(out, c.alive!, out, frame / BLEND);
   }
 
-  private move(c: Corpse, world: CollisionWorld, tick: number, seconds: number): void {
-    const rig = this.mortal[c.kind]!.rig;
-    const def = rig.ragdoll;
-    const frame = tick - c.born;
-    const limp = c.lying ? 0 : (def?.limp ?? 0);
-    if (c.ragdoll) {
-      if (c.ragdoll.step(world, seconds)) c.ragdoll.pose(c.solved);
+  /** It goes limp at whole tick `at`. One this client did not see fall is laid to rest before it is drawn moving. */
+  private goLimp(c: Corpse, at: number): void {
+    const m = this.mortal[c.kind]!;
+    c.limp = true;
+    c.clock = at;
+    const r = layCorpse(m, c.lying, c.x, c.y, c.z, c.yaw, c.size, c.solved);
+    if (r) {
+      c.fall = new Fall(r);
+      c.settling = !c.watched;
       return;
     }
-    const pose = this.posed(rig.bones);
-    if (!def || frame < limp) {
-      this.dying(c, frame, pose);
+    // A rig without a ragdoll lies as its clip ends, or as it lay.
+    const rig = m.rig;
+    if (m.death && !c.lying) {
+      const pose = this.posed(rig.bones);
+      sampleClip(m.death, m.death.frames - 1, pose);
       solve(rig, pose, c.solved);
-      return;
+    } else limpPose(m, c.lying, c.solved, new Solved(rig.bones));
+  }
+
+  /** Lays a body come upon to rest, as far as `budget` ticks allow. Returns the budget left. */
+  private settle(c: Corpse, world: CollisionWorld, tick: number, budget: number): number {
+    const fall = c.fall!;
+    let n = 0;
+    for (; !fall.still && n < budget; n++) fall.tick(world);
+    if (n > 0) fall.ragdoll.pose(c.solved);
+    if (fall.still) {
+      c.settling = false;
+      c.clock = Math.floor(tick);
     }
-    // Limp from the pose at the frame the asset gives, moving as the clip moved over the tick before it, so the first
-    // frame of the ragdoll is that pose.
-    const before = (this.before.get(rig.bones) ?? this.before.set(rig.bones, new Solved(rig.bones)).get(rig.bones))!;
-    this.dying(c, limp > 0 ? limp - 1 : 0, pose);
-    solve(rig, pose, before);
-    this.dying(c, limp, pose);
-    solve(rig, pose, c.solved);
-    c.ragdoll = new Ragdoll(rig, def);
-    c.ragdoll.start(c.solved, before, c.x, c.y, c.z, c.yaw, c.size);
-    const late = (frame - limp) / TICK_RATE;
-    if (late > 0 && c.ragdoll.step(world, late)) c.ragdoll.pose(c.solved);
+    return budget - n;
+  }
+
+  private move(c: Corpse, world: CollisionWorld, tick: number): void {
+    const m = this.mortal[c.kind]!;
+    const rig = m.rig;
+    if (!c.limp) {
+      // Watched, it plays its clip until it goes limp, or to the clip's end for a rig with no ragdoll.
+      const clip = m.death;
+      const end = c.lying || !clip ? 0 : rig.ragdoll ? rig.ragdoll.limp : clip.frames - 1;
+      const frame = tick - c.born;
+      if (frame < end) {
+        const pose = this.posed(rig.bones);
+        this.dying(c, frame, pose);
+        solve(rig, pose, c.solved);
+        return;
+      }
+      this.goLimp(c, c.born + end);
+    }
+    const fall = c.fall;
+    if (!fall) return;
+    const to = Math.floor(tick);
+    let moved = false;
+    for (let n = 0; c.clock < to && n < CATCH_UP; n++) {
+      if (fall.still) {
+        // Nothing moves it now but the world changing under it, which a tick finds out.
+        const woke = fall.tick(world);
+        moved ||= woke;
+        c.clock = woke ? c.clock + 1 : to;
+        continue;
+      }
+      c.clock++;
+      fall.tick(world);
+      moved = true;
+    }
+    if (moved) fall.ragdoll.pose(c.solved);
   }
 }
