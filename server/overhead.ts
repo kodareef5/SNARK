@@ -5,6 +5,7 @@
 
 import { CUE_DEAD, CUE_MATING_SHIFT, MATING_STEPS } from "../shared/anim/pose.ts";
 import { chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
+import type { BitWriter } from "../shared/net/codec.ts";
 import { MAX_NAME_BYTES, OWN_OVERHEAD, SESSION_ALIVE, SESSION_SPECTATING } from "../shared/net/protocol.ts";
 import { SentView } from "../shared/net/view.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
@@ -30,12 +31,12 @@ const MATING_MASK = 7 << CUE_MATING_SHIFT;
 const BEGUN = 1 << CUE_MATING_SHIFT;
 
 /** The step a pair at `share` (0 to 1) of its mating shows: 1 as it begins, MATING_STEPS in its last seventh. */
-export function matingStep(share: number): number {
+function matingStep(share: number): number {
   return Math.min(MATING_STEPS, 1 + Math.floor(share * MATING_STEPS));
 }
 
 /** Fields of an OWN_OVERHEAD, in the order they are written. Shares are 0 to 1, or -1 where the viewer is not told. */
-export interface Looked {
+interface Looked {
   id: number;
   health: number;
   food: number;
@@ -235,7 +236,7 @@ function hash(o: Looked): number {
 }
 
 /** Writes the fields OWN_OVERHEAD names after its first bit. */
-export function writeLooked(w: { u32(v: number): void; bool(v: boolean): void; bits(v: number, n: number): void; string(s: string): void }, o: Looked): void {
+function writeLooked(w: BitWriter, o: Looked): void {
   w.u32(o.id >>> 0);
   for (const v of [o.health, o.food, o.torpor]) {
     w.bool(v >= 0);

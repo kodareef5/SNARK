@@ -152,6 +152,7 @@ export function buildOverhead(f: UiFrame, m: OverheadModel): void {
   }
   if (m.note !== "") centred(f, KEY_OVER_NOTE, cx, y, markW, S_OVER_TEXT, m.note);
 }
+
 /** The `te` the server sends for a creature claimed as young and not tamed. Matches CLAIMED in server/breeding.ts. */
 const CLAIMED = 255;
 

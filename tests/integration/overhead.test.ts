@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import { BAR_FOOD, BAR_HEALTH, BAR_TAMING, BAR_TORPOR, OWNER_OTHER, OWNER_TRIBE, OWNER_WILD, OverheadModel, fillOverhead, type Heads } from "../../client/core/hud.ts";
+import { BAR_FOOD, BAR_HEALTH, BAR_TAMING, BAR_TORPOR, OVER_RANGE, OWNER_OTHER, OWNER_TRIBE, OWNER_WILD, OverheadModel, fillOverhead, type Heads } from "../../client/core/hud.ts";
+import { LOOK_RANGE } from "../../server/overhead.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { IMAGE_HEART, KEY_HEART, KEY_OVER_BAR, KEY_OVER_TITLE } from "../../client/core/ui/tame.ts";
@@ -216,6 +217,8 @@ const bars = (m: OverheadModel): number[] => m.bars.slice(0, m.barCount).map((b)
 
 test("each mark shows to the viewer ARK shows it to: a tame's health and food to its tribe, its name and tribe to another, an unconscious wild one's torpor and taming to anyone, a heart's progress to the pair's tribe alone, and nothing looked at to a spectator", () => {
   const { h, ada, cara, bob, sam, pip, bolt, wild, baby, f, m } = gathering();
+  // The client draws a look as far as the server tells of one.
+  expect(OVER_RANGE).toBe(LOOK_RANGE);
   const look = (s: ClientSession, e: number): OverheadModel => {
     aim(h, s, e);
     h.run(600);
