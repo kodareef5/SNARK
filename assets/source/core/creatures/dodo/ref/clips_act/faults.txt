@@ -1,0 +1,7 @@
+faults peck: jaw 114 into the shell on 1 frames, up to 3 mm; skull card 38 into the shell on 4 frames, up to 7 mm
+faults peck_over_held: jaw 114 into the shell on 1 frames, up to 3 mm; skull card 38 into the shell on 4 frames, up to 7 mm
+faults flinch_over_walk: jaw 114 into the shell on 9 frames, up to 10 mm; hood card 18 into the shell on 2 frames, up to 5 mm; tail_2 card 22 into the shell on 4 frames, up to 5 mm; tail_1 card 22 into the shell on 4 frames, up to 5 mm; skull card 38 into the shell on 8 frames, up to 18 mm
+faults flinch_over_idle: none
+faults held: skull card 38 into the shell on 64 frames, up to 29 mm; hood card 18 into the shell on 4 frames, up to 4 mm
+faults carried: skull card 38 into the shell on 7 frames, up to 6 mm; jaw 114 into the shell on 4 frames, up to 4 mm
+faults torpor_eat_over_torpor_idle: wing surface l into the shell on 30 frames, up to 13 mm; wing_hand_l card 14 into the shell on 3 frames, up to 3 mm; hood card 26 into the shell on 8 frames, up to 15 mm; hood card 18 into the shell on 21 frames, up to 18 mm; chest card 34 into the shell on 30 frames, up to 7 mm; skull card 38 into the shell on 30 frames, up to 24 mm

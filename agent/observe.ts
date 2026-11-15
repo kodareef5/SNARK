@@ -75,12 +75,14 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
   const bare = { hf: world.hf, structs: world.structs };
   const ownCx = chunkCx(world.dims, chunkAt(world.dims, b.x, b.z));
   const ownCz = chunkCz(world.dims, chunkAt(world.dims, b.x, b.z));
+  const forms = session.nodeField?.forms;
 
   /** The letter of the node a body at (x, y, z) would stand in. */
   const nodeAt = (nodes: StructureStore, x: number, y: number, z: number): number => {
     const n = nodes.query(x - move.radius, z - move.radius, x + move.radius, z + move.radius, found, y, y + move.height);
     for (let i = 0; i < n; i++) {
-      if (capsuleBox(nodes, found.refs[i]!, x, y, z, move.radius, move.height, SKIN)) return letterOf(reg.defs[nodes.chunks[Math.floor(found.refs[i]! / 65536)]!.kind[found.refs[i]! & 0xffff]!] as NodeDef);
+      // What is left of a used-up node is marked as the node was.
+      if (capsuleBox(nodes, found.refs[i]!, x, y, z, move.radius, move.height, SKIN)) return letterOf(reg.defs[forms!.kind[nodes.chunks[Math.floor(found.refs[i]! / 65536)]!.kind[found.refs[i]! & 0xffff]!]!] as NodeDef);
     }
     return ROCK;
   };
@@ -132,7 +134,7 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
       const chunk = cz * dims.chunksX + cx;
       const grown = world.nodes?.chunks[chunk];
       for (let slot = 0; grown && slot < grown.high; slot++) {
-        const def = reg.defs[grown.kind[slot]!];
+        const def = reg.defs[session.nodeField!.standing(chunk, slot)];
         if (def?.type !== "node" || !mark(grown.x[slot]!, grown.z[slot]!, letterOf(def))) continue;
         const name = shortName(def.id);
         if (!nodes.has(name)) nodes.set(name, []);

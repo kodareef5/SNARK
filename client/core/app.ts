@@ -20,6 +20,7 @@ import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
 import { HudModel, fillAction, fillBuffs, fillHotbar, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
+import { baseReach } from "./farcells.ts";
 import { Camera } from "./render/camera.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
@@ -374,10 +375,9 @@ export class App {
       }
       return "";
     }
-    if (node < 0 || !world.nodes) return "";
-    // A node without a material is a bush, picked with the use key. Trees and rocks are struck.
-    const kind = world.nodes.chunks[Math.floor(node / 65536)]?.kind[node & 0xffff] ?? 0;
-    const def = this.reg.defs[kind];
+    if (node < 0 || !s.nodeField) return "";
+    // A node without a material is a bush, picked with the use key. Trees and rocks are struck. What is left of a used-up one is neither.
+    const def = this.reg.defs[s.nodeField.standing(Math.floor(node / 65536), node & 0xffff)];
     if (def?.type !== "node") return "";
     const what = def.id.slice(def.id.indexOf(":") + 1);
     return def.material === undefined ? `E  pick ${what}` : `hold click  gather from ${what}`;
@@ -565,6 +565,7 @@ export class App {
     this.ui.settings.kept = keptLine(kept);
     this.scene.assets.tier = tierOf(this.ui.settings.tier);
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
+    session.askFar(baseReach(this.scene.assets.tier));
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);
     this.feedback.absorb(session, this.reg, nowMs);

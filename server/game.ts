@@ -226,6 +226,8 @@ export class Client {
   /** Bytes of chunk messages sent on each of the last 32 ticks, and the tick each slot is for. */
   readonly chunkSent = new Uint32Array(32);
   readonly chunkSentAt = new Uint32Array(32);
+  /** The last chunk sync used all the room it was given, so rows may still wait. */
+  rowsWaiting = false;
   syncCursor = 0;
   syncFrom = 0;
   syncTarget = 0;
@@ -298,6 +300,7 @@ export class Client {
     this.subscribed.length = 0;
     this.syncChunk = -1;
     this.chunkSent.fill(0);
+    this.rowsWaiting = false;
     this.rotate = 0;
     this.viewCap = this.snapshotBytes = this.wantView = this.wantBytes = this.viewReadyAt = 0;
     this.strikes = 0;
@@ -1172,6 +1175,29 @@ export class GameServer {
     c.conn.send(CH_UNRELIABLE, w.bytes());
   }
 
+  /** What is left of a client's chunk window (D230) on tick T. */
+  private windowLeft(c: Client, T: number): number {
+    const slot = T & 31;
+    if (c.chunkSentAt[slot] !== T) {
+      c.chunkSent[slot] = 0;
+      c.chunkSentAt[slot] = T;
+    }
+    let owed = 0;
+    for (let i = 0; i < 32; i++) if (c.chunkSentAt[i]! >= c.ackTick && c.chunkSentAt[i]! + 32 > T) owed += c.chunkSent[i]!;
+    return Math.max(CHUNK_WINDOW, (this.opts.chunkSlotsPerTick * ROW_BITS) / 4) - owed;
+  }
+
+  /**
+   * Counts `bytes` of another reliable feed in the client's chunk window, if the chunk rows of the tick before left room for
+   * them, and says whether they did. Such a feed sends only what fits, so it never holds rows back.
+   */
+  spendChunkWindow(c: Client, bytes: number): boolean {
+    const T = this.world.tick;
+    if (c.rowsWaiting || bytes > this.windowLeft(c, T)) return false;
+    c.chunkSent[T & 31] = c.chunkSent[T & 31]! + bytes;
+    return true;
+  }
+
   /** Nearest chunk first, within the per-tick slot budget. */
   private syncChunks(c: Client, T: number): void {
     const world = this.world;
@@ -1179,13 +1205,7 @@ export class GameServer {
     const ccx = chunkCx(dims, c.chunk);
     const ccz = chunkCz(dims, c.chunk);
     const offsets = this.structOffsets;
-    const slot = T & 31;
-    c.chunkSent[slot] = 0;
-    c.chunkSentAt[slot] = T;
-    let owed = 0;
-    for (let i = 0; i < 32; i++) if (c.chunkSentAt[i]! >= c.ackTick && c.chunkSentAt[i]! + 32 > T) owed += c.chunkSent[i]!;
-    const allowed = Math.max(CHUNK_WINDOW, (this.opts.chunkSlotsPerTick * ROW_BITS) / 4);
-    let budget = Math.min(this.opts.chunkSlotsPerTick, Math.floor((allowed - owed) / (ROW_BITS / 8)));
+    let budget = Math.min(this.opts.chunkSlotsPerTick, Math.floor(this.windowLeft(c, T) / (ROW_BITS / 8)));
     for (let o = 0; o < offsets.length && budget > 0; o += 2) {
       const cx = ccx + offsets[o]!;
       const cz = ccz + offsets[o + 1]!;
@@ -1194,6 +1214,7 @@ export class GameServer {
       const t = world.structs.chunks[chunk];
       if (t && t.version > c.known[chunk]!) budget = this.sendChunk(c, chunk, t, budget);
     }
+    c.rowsWaiting = budget <= 0;
 
     // Forget chunks the player has left behind.
     if ((T + c.id) % 16 === 0) {

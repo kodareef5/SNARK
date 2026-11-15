@@ -155,12 +155,15 @@ export function assetWorld(set: { files: SplitFile[]; manifest: Manifest }, thin
   let now = 0;
   let mostUploaded = 0;
   let mostRows = 0;
+  /** Bytes something that is not an asset sends to the card each frame, before the assets. */
+  let spending = 0;
   /** One frame with the camera at (x, z). */
   const frame = (z: number, x = 0): void => {
     now += FRAME_MS;
     port.advance(now);
     packet.beginFrame();
     assets.begin(now, 720, 1.2217);
+    assets.residency.spend(spending);
     for (let i = 0; i < things.length; i++) {
       const t = things[i]!;
       const d = Math.hypot((t.x ?? 0) - x, t.z - z);
@@ -214,5 +217,6 @@ export function assetWorld(set: { files: SplitFile[]; manifest: Manifest }, thin
   const coarse = (): boolean => drawn.every((l, i) => l === Math.max(wanted[i]!, inBoot(things[i]!.mesh)));
   /** No thing that wants finer than the boot pack has is still drawn from the boot pack. */
   const usable = (): boolean => drawn.every((l, i) => l === wanted[i] || l < inBoot(things[i]!.mesh));
-  return { port, assets, card, packet, frame, run, settled, coarse, usable, inBoot, drawn, wanted, shown, lapsed, dropped, switches, r: assets.residency, mostUploaded: () => mostUploaded, mostRows: () => mostRows, now: () => now };
+  const spend = (bytes: number): void => void (spending = bytes);
+  return { port, assets, card, packet, frame, run, settled, coarse, usable, inBoot, drawn, wanted, shown, lapsed, dropped, switches, r: assets.residency, mostUploaded: () => mostUploaded, mostRows: () => mostRows, now: () => now, spend };
 }

@@ -86,7 +86,8 @@ import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
-import { S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { CMD_FAR, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { FarStore } from "./farcells.ts";
 import { MapStore } from "./tactical.ts";
 
 export interface SessionOptions {
@@ -330,6 +331,8 @@ export class ClientSession {
   readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
   /** The map beyond the view: structure cells and marks, as the server sends them. */
   readonly tactical = new MapStore();
+  /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
+  readonly far = new FarStore();
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
@@ -395,9 +398,10 @@ export class ClientSession {
   private readonly marginAt = new Uint32Array(128);
   private needFull = true;
   private commandSeq = 0;
-  /** What `view` last asked the server for. */
+  /** What `view` and `askFar` last asked the server for. */
   private viewCap = 0;
   private viewBytes = 0;
+  private farAsked = -1;
 
   constructor(conn: Connection, opts: SessionOptions) {
     this.registry = opts.registry;
@@ -441,6 +445,13 @@ export class ClientSession {
     if ((cap === this.viewCap && bytes === this.viewBytes) || this.command(CMD_VIEW, (w) => (w.u16(cap), w.u16(bytes))) === 0) return;
     this.viewCap = cap;
     this.viewBytes = bytes;
+  }
+
+  /** Asks for far cells within `metres`. Sent when it changes. The server holds it to its FarRadius. */
+  askFar(metres: number): void {
+    const m = Math.max(0, Math.min(0xffff, Math.round(metres)));
+    if (m === this.farAsked || this.command(CMD_FAR, (w) => w.u16(m)) === 0) return;
+    this.farAsked = m;
   }
 
   create(look: Uint8Array): number {
@@ -674,6 +685,7 @@ export class ClientSession {
     else if (type === S_EVENT) this.event(r);
     else if (type === S_TACTICAL && this.world) this.tactical.readCells(r, this.world.hf);
     else if (type === S_MARKS && this.world) this.tactical.readMarks(r, this.world.hf);
+    else if (type === S_FAR && this.world) this.far.read(r, this.world.dims);
     else if (type === S_WELCOME) this.welcome(r);
     else if (type === S_RESULT) {
       const seq = r.u16();
@@ -979,7 +991,7 @@ export class ClientSession {
     this.clock.night = night;
     this.motdSeconds = motdSeconds;
     const source = this.opts.nodes?.(hf, reg) ?? null;
-    this.nodeField = source ? new NodeField(dims, reg.halfX, reg.halfY, reg.halfZ, reg.soft, reg.nodeHits, source) : null;
+    this.nodeField = source ? new NodeField(dims, reg, source) : null;
     this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), ...(this.nodeField ? { nodes: this.nodeField.store } : {}) };
     this.recenterNodes();
     this.move = move;

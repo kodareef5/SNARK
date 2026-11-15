@@ -20,6 +20,7 @@ import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
+import { nodeForms } from "../../shared/world/nodes.ts";
 import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { mannequinMeshes } from "../../tools/pack/mannequin.ts";
 import { splitPack, type SplitFile } from "../../tools/pack/split.ts";
@@ -166,7 +167,10 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
   const dims = { chunksX: 2, chunksZ: 2 };
   const hf = new Heightfield(dims, TERRAIN_CELL, -32, 1 / 256);
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) hf.setSample(i, j, 0);
-  const [structs, nodes] = [0, 1].map(() => new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts)) as [StructureStore, StructureStore];
+  const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  // The node store holds forms (shared/world/nodes.ts).
+  const forms = nodeForms(reg);
+  const nodes = new StructureStore(dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
   const port = new FakeNet(files.map((f) => f.bytes), net);
   const pack = parsePack(files[0]!.bytes);
   const scene = new Scene({ dims, hf, structs, nodes }, reg, pack, { manifest, port });
@@ -179,9 +183,11 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
   const card = new Card(manifest, files.map((f) => f.bytes));
   const kind = (id: string): number => reg.index.get(id)!;
   const mesh = (id: string): number => manifest.meshes.findIndex((m) => m.id === id);
+  /** The form of a node of kind `id` that grows as its first variant at its size step `step`. */
+  const form = (id: string, step = 0): number => forms.first[kind(id)]! + step;
   let now = 0;
   return {
-    reg, manifest, hf, structs, nodes, port, pack, scene, cam, remote, raster, card, kind, mesh,
+    reg, manifest, hf, structs, nodes, port, pack, scene, cam, remote, raster, card, kind, mesh, form,
     now: () => now,
     /** A body or a thing among the remote entities. Returns its index there. */
     place(id: string, x: number, z: number, more: Body = {}): number {

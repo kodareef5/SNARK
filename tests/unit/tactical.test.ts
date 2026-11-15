@@ -2,16 +2,12 @@ import { expect, test } from "bun:test";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { Rng } from "../../shared/rng.ts";
 import { latLonText, latOf, lonOf, xOfLon, zOfLat } from "../../shared/world/coords.ts";
-import { CELL_FILLED, Cells, LEVEL_AT, MARK_MATE, MARK_TAME, Marks, OWNER_OTHER, PLAYERS_VIEW, Summary, bakeChunk, levelSide, onlyTeam, readCells, readMarks, writeCells, writeMark, writeMarksHead, type PieceShapes } from "../../shared/world/tactical.ts";
+import { CELL_FILLED, Cells, FarCells, LEVEL_AT, MARK_MATE, MARK_TAME, Marks, OWNER_OTHER, PLAYERS_VIEW, Summary, bakeChunk, farTopByte, farTopMetres, levelSide, onlyTeam, pieceShapes, readCells, readFar, readMarks, writeCells, writeFar, writeMark, writeMarksHead } from "../../shared/world/tactical.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
-
-function shapesOf(w: TestWorld): PieceShapes {
-  return { halfX: w.reg.halfX, halfY: w.reg.halfY, halfZ: w.reg.halfZ, tint: Uint8Array.from(w.reg.defs, (d) => (d?.type === "structure" ? d.color : 0)) };
-}
 
 function bake(w: TestWorld, chunk = 0): Summary {
   const s = new Summary();
-  bakeChunk(w.structs.chunks[chunk] ?? null, (chunk % w.dims.chunksX) * 64, Math.floor(chunk / w.dims.chunksX) * 64, shapesOf(w), w.hf, s);
+  bakeChunk(w.structs.chunks[chunk] ?? null, (chunk % w.dims.chunksX) * 64, Math.floor(chunk / w.dims.chunksX) * 64, pieceShapes(w.reg), w.hf, s);
   return s;
 }
 
@@ -115,7 +111,7 @@ test("a wide piece fills the cells it covers and a small one the cell of its cen
   }
   const b = bake(many, 1);
   expect(b.filled).toBe(best.size);
-  const tints = shapesOf(many).tint;
+  const tints = pieceShapes(many.reg).tint;
   for (const [c, want] of best) {
     expect(b.tint[c]).toBe(tints[want.kind]!);
     expect(b.teams[(b.info[c]! >> 3) & 7]).toBe(want.owner);
@@ -182,6 +178,98 @@ test("a summary travels at any of its four cell sizes, a base in tens of bytes, 
   wr.bits(2 | (3 << 3), 6);
   r.reset(wr.bytes().slice());
   expect(readCells(r, got)).toBe(-1);
+});
+
+test("far cells keep each cell's tallest piece, defence or static to a quarter metre, and no box, bed, station or owner", () => {
+  const w = flatWorld(2);
+  const k = (id: string) => w.kind(`core:${id}`);
+  const colour = (id: string) => (w.reg.defs[k(id)] as { color: number }).color;
+  const far = (s: Summary, cx: number, cz: number) => ({ tint: s.far.tint[cz * 16 + cx]!, top: farTopMetres(s.far.top[cz * 16 + cx]!) });
+  // A box in an open yard, a bed and a campfire, each alone in its cell; and a box on a foundation.
+  for (const [id, x] of [["storage_box", 2], ["bed", 6], ["campfire", 10]] as const) w.structs.add(k(id), x, w.reg.halfY[k(id)]!, 2, 0, 7, 100);
+  w.structs.add(k("foundation_wood"), 18, 0.19, 2, 0, 7, 100);
+  w.structs.add(k("storage_box"), 18, 0.38 + 0.3125, 2, 0, 7, 100);
+  // A tower of pillars 12 m high and a wall.
+  for (let i = 0; i < 2; i++) w.structs.add(k("pillar"), 26, 3 + i * 6, 26, 0, 9, 100);
+  w.structs.add(k("wall_stone"), 34, 1.88, 34, 0, 7, 100);
+  const s = bake(w);
+  expect(s.filled).toBe(6);
+  expect(s.far.filled).toBe(3);
+  for (const cx of [0, 1, 2]) expect([cell(s, cx, 0).filled, far(s, cx, 0).tint, s.far.top[cx]]).toEqual([true, 0, 0]);
+  expect(far(s, 4, 0)).toEqual({ tint: colour("foundation_wood"), top: 0.5 });
+  expect(far(s, 6, 6)).toEqual({ tint: colour("pillar"), top: 12 });
+  expect(Math.abs(far(s, 8, 8).top - (1.88 + w.reg.halfY[k("wall_stone")]!))).toBeLessThanOrEqual(0.25);
+
+  // The far cells have their own version: a box in an empty cell changes the map and not them, and blows change neither.
+  const box = w.structs.add(k("storage_box"), 50, 0.3125, 50, 0, 7, 100);
+  const boxed = bake(w);
+  expect([boxed.same(s), boxed.far.same(s.far)]).toEqual([false, true]);
+  w.structs.damage(box, 10);
+  expect(bake(w).far.same(s.far)).toBe(true);
+  // A new owner changes the map's cells and not the far ones.
+  w.structs.reown(9, 11);
+  expect([bake(w).same(boxed), bake(w).far.same(s.far)]).toEqual([false, true]);
+
+  // The top's byte: half metres to 64 m, then 2 m steps to 318 m, and never 0 for a filled cell.
+  for (let m = -1; m <= 330; m += 0.37) {
+    const b = farTopByte(m);
+    expect(b).toBeGreaterThanOrEqual(1);
+    expect(Math.abs(farTopMetres(b) - Math.max(0.5, Math.min(318, m)))).toBeLessThanOrEqual(m <= 64 ? 0.25 : 1);
+  }
+  expect([farTopByte(64), farTopByte(64.9), farTopByte(65.1), farTopByte(318), farTopByte(1000)]).toEqual([128, 128, 129, 255, 255]);
+});
+
+test("a chunk's far cells travel whole in at most 802 bytes with no owner, an empty one in 4, and bad bytes are refused", () => {
+  const w = flatWorld(2);
+  const k = (id: string) => w.kind(`core:${id}`);
+  // The same house built by two tribes in two chunks.
+  for (const [x0, team] of [[0, 21], [64, 1000003]] as const) {
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) w.structs.add(k("foundation_wood"), x0 + 13.5 + i * 3, 0.19, 13.5 + j * 3, 0, team, 100);
+      w.structs.add(k("wall_stone"), x0 + 13.5 + i * 3, 1.88, 12, 0, team, 100);
+    }
+  }
+  const wr = new BitWriter(1024);
+  const r = new BitReader();
+  const got = new FarCells();
+  const sent: Uint8Array[] = [];
+  for (const chunk of [0, 1]) {
+    const s = bake(w, chunk);
+    wr.reset();
+    writeFar(wr, chunk, s.far);
+    sent.push(wr.bytes().slice());
+    r.reset(sent[chunk]!);
+    expect(readFar(r, got)).toBe(chunk);
+    expect(got.same(s.far)).toBe(true);
+  }
+  // Past the chunk's number the two are the same bytes: nothing says whose they are.
+  expect(sent[0]!.subarray(2)).toEqual(sent[1]!.subarray(2));
+  expect(sent[0]!.length).toBeLessThanOrEqual(40);
+
+  // No cell like the one before it, row by row, is the most a chunk can take.
+  const worst = flatWorld(2);
+  const pieces = ["foundation_wood", "foundation_stone"].map((id) => worst.kind(`core:${id}`));
+  for (let c = 0; c < 256; c++) worst.structs.add(pieces[c % 2]!, (c % 16) * 4 + 2, 0.19, (c >> 4) * 4 + 2, 0, 1, 100);
+  wr.reset();
+  writeFar(wr, 0, bake(worst).far);
+  expect(wr.byteLength).toBe(802);
+  const bytes = wr.bytes().slice();
+  r.reset(bytes.subarray(0, 300));
+  expect(readFar(r, got)).toBe(-1);
+  wr.reset();
+  writeFar(wr, 9, new FarCells());
+  expect(wr.byteLength).toBe(4);
+  r.reset(wr.bytes().slice());
+  expect([readFar(r, got), got.filled]).toEqual([9, 0]);
+  // A filled cell whose top is 0.
+  wr.reset();
+  wr.u16(0);
+  wr.bits(255, 8);
+  wr.bool(true);
+  wr.u8(5);
+  wr.u8(0);
+  r.reset(wr.bytes().slice());
+  expect(readFar(r, got)).toBe(-1);
 });
 
 test("marks travel in four and a half bytes each, to within a step of the map", () => {

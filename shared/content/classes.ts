@@ -166,6 +166,9 @@ const NODE = {
   material: f("text"),
   yields: f("list", "the harvest component's item entries", { refs: { "[].item": "item" }, open: true }),
   xp: f("number"),
+  variants: f("list", "the foliage type's meshes"),
+  size: f("list", "the foliage type's scale range"),
+  depleted: f("facet", "what a depleted foliage instance leaves"),
 } satisfies Fields<NodeDef>;
 
 const PROP = {
@@ -381,7 +384,7 @@ row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "tu
 row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
 row("material", "material", MATERIAL, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited." });
 
-row("node", "node", NODE, { ark: "a foliage type and its harvest component", shelf: "nodes", must: ["mesh", "color", "half", "hits", "respawnHours", "yields", "xp"], may: ["top", "soft", "material"], slots: { mesh: mesh("must", "{mesh}", "box"), depleted: mesh("may", "{id}/depleted", "hidden") }, doc: "A tree, a rock, a bush: harvested, used up, and grown back." });
+row("node", "node", NODE, { ark: "a foliage type and its harvest component", shelf: "nodes", must: ["mesh", "color", "half", "hits", "respawnHours", "yields", "xp"], may: ["top", "soft", "material", "variants", "size", "depleted"], slots: { mesh: mesh("must", "{mesh}", "box"), depleted: { ...mesh("may", "{depleted.mesh}", "hidden"), when: "depleted" } }, doc: "A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place." });
 
 const PROP_BODY = ["mesh", "color", "radius", "height"] as const;
 const PROP_SLOTS = { mesh: mesh("must", "{mesh}", "box") };

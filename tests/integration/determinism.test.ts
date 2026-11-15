@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { creatureHash, hullHash, poseHash, simHash, snapHash, tunedHash } from "../../tools/simhash.ts";
+import { creatureHash, hullHash, nodeHash, poseHash, simHash, snapHash, tunedHash } from "../../tools/simhash.ts";
 
 // Node is a development tool here, used only as a second JavaScript engine.
 const node = Bun.which("node");
@@ -9,10 +9,10 @@ test("the simulation is repeatable within one engine", () => {
   expect(simHash(600)).toBe(simHash(600));
 });
 
-test.skipIf(nodeMajor < 24)("JavaScriptCore and V8 produce identical simulation state, identical poses, identical places for what is built, identical creatures, identical content of the same tuning, and identical sloped pieces met by bodies and rays", () => {
+test.skipIf(nodeMajor < 24)("JavaScriptCore and V8 produce identical simulation state, identical poses, identical places for what is built, identical creatures, identical content of the same tuning, identical sloped pieces met by bodies and rays, and identical forests", () => {
   const run = Bun.spawnSync([node!, "--no-warnings", "tools/simhash.ts"], { cwd: import.meta.dir + "/../.." });
   const v8 = run.stdout.toString().trim();
   expect(run.exitCode).toBe(0);
-  expect(v8).toMatch(/^[0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{24} [0-9a-f]{16}$/);
-  expect(v8).toBe(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash());
+  expect(v8).toMatch(/^[0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{16} [0-9a-f]{24} [0-9a-f]{16} [0-9a-f]{16}$/);
+  expect(v8).toBe(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash());
 });

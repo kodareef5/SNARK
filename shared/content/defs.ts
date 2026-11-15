@@ -307,13 +307,30 @@ export interface WearFacet {
   readonly colors: readonly [number, number, number];
 }
 
+/**
+ * A mesh a node is drawn as, and the boxes bodies and rays meet, in metres from its origin at its modelled size. Its origin
+ * is where it meets the ground.
+ */
+export interface NodeShape {
+  readonly mesh: string;
+  readonly boxes?: readonly ShapeBox[];
+}
+
+/** One individual a node kind grows as. */
+export interface NodeVariant extends NodeShape {
+  /** How often it is chosen against the kind's other variants. 1 where not given. */
+  readonly weight?: number;
+  /** What is left of it once used up, in place of the kind's. */
+  readonly depleted?: NodeShape;
+}
+
 /** A resource node: a tree, a rock, a bush. Node positions come from the map and are the same on every client. Only touched nodes are saved. */
 export interface NodeDef extends Named {
   readonly type: "node";
   readonly id: string;
   readonly mesh: string;
   readonly color: number;
-  /** Collider and graybox half extents. The node stands on its base. */
+  /** Graybox half extents, and the collider of a variant without boxes. The node stands on its base. */
   readonly half: readonly [number, number, number];
   /** A second box on top of the first, for a crown. Drawn, not collided with. */
   readonly top?: { readonly half: readonly [number, number, number]; readonly color: number };
@@ -329,6 +346,12 @@ export interface NodeDef extends Named {
   readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean }[];
   /** Experience per hit. */
   readonly xp: number;
+  /** The individuals it grows as. Each node is one of them, chosen by its place. Without them it is its own mesh and `half`. */
+  readonly variants?: readonly NodeVariant[];
+  /** The least and most it is drawn at, as multiples of its modelled size. Each node's is chosen by its place. 1 where not given. */
+  readonly size?: readonly [number, number];
+  /** What stands where a node was from when it is used up until it grows back. Without it, nothing does. */
+  readonly depleted?: NodeShape;
 }
 
 export interface EngramDef extends Named {

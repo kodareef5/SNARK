@@ -211,6 +211,49 @@ test("a card that refuses a level or loses everything is asked less of: a quarte
   expect(w.r.budget).toBeCloseTo(tierOf("lowpoly").gpuBytes * 0.75 ** 6, 0);
 });
 
+test("what the card holds besides assets comes off the budget levels and textures share, and a squeeze takes the whole card down", () => {
+  // A card of a megabyte, which the rocks fill to about two thirds.
+  const MB = 1024 * 1024;
+  const w = world({ bytesPerSecond: 50e6 }, { gpuBytes: MB });
+  w.run(4, 100);
+  const held = w.card.bytes;
+  expect([w.settled(), held > 0.6 * MB]).toEqual([true, true]);
+  // Terrain pictures, and shadow maps asked for again at another size.
+  w.r.reserve("terrain", 200_000);
+  w.r.reserve("shadows", 300_000);
+  w.r.reserve("shadows", 400_000);
+  w.frame(100);
+  expect([w.r.reserved, w.r.budget, w.r.texBudget]).toEqual([600_000, MB - 600_000, (MB - 600_000) * 0.6]);
+  // Levels make way: the rocks are drawn coarser until what the card holds is within what is left.
+  w.run(3, 100);
+  expect([w.card.bytes < held, w.card.bytes <= w.r.budget * OVERFLOW, w.r.stats.skipped]).toEqual([true, true, 0]);
+  // A squeeze takes a quarter off the whole card, and the reserve stays inside it.
+  w.assets.pressure();
+  w.frame(100);
+  expect(w.r.budget).toBeCloseTo(MB * 0.75 - 600_000, 6);
+  w.r.reserve("shadows", 0);
+  w.frame(100);
+  expect([w.r.reserved, w.r.budget]).toEqual([200_000, MB * 0.75 - 200_000]);
+});
+
+test("what goes onto the card besides assets is spent from the frame's allowance first, and an asset still goes in every frame", () => {
+  const streamed = (w: ReturnType<typeof world>): number[] => w.packet.assetUploads.filter((u) => SET.manifest.meshes[u.mesh]!.levels[u.level]!.file !== 0).map((u) => u.data.length);
+  const allowance = tierOf("medium").uploadBytes;
+  // A quarter of the allowance left, and then none: the rocks still come, one a frame.
+  for (const spent of [allowance * 0.75, allowance * 2]) {
+    const w = world({ bytesPerSecond: 50e6 });
+    w.spend(spent);
+    let most = 0;
+    for (let f = 0; f < 240; f++) {
+      w.frame(100);
+      const sent = streamed(w);
+      if (sent.length > 1) most = Math.max(most, sent.reduce((a, b) => a + b, 0));
+      if (spent > allowance) expect(sent.length).toBeLessThanOrEqual(1);
+    }
+    expect([most <= Math.max(0, allowance - spent), w.settled()]).toEqual([true, true]);
+  }
+});
+
 test("asked to keep everything, the library asks the port for every level outside the boot pack and hands none to the card", () => {
   const w = world();
   w.frame(40);

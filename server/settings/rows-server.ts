@@ -1,6 +1,7 @@
 // The catalogue rows for GameUserSettings.ini and the command line. Names, defaults and meanings are ARK's, from its server
 // configuration reference (planning/reference/round5-settings.md). Where the reference gives no default, the row's note says so.
 
+import { FAR_RADIUS } from "../../shared/world/tactical.ts";
 import { Sheet, live, none, plan, type Row } from "./row.ts";
 
 export const SERVER_ROWS: Row[] = [];
@@ -58,7 +59,7 @@ s.under("Vitals")
 s.under("Harvesting")
   .b("ClampResourceHarvestDamage", false, "A creature's harvesting blow counts for no more than the health the node has left.", plan("dinoHarvest"))
   .b("UseOptimizedHarvestingHealth", false, "A cheaper way of harvesting at high amounts, with fewer rare things.", none("unreal"))
-  .f("StructurePreventResourceRadiusMultiplier", 1, "How far from something built nodes will not grow back. Higher is further.", plan("regrowth"));
+  .f("StructurePreventResourceRadiusMultiplier", 1, "How far from a foundation or pillar nodes will not grow back. Higher is further.", live({ live: true }));
 
 s.under("Creatures")
   .i("MaxTamedDinos", 5000, "Tamed creatures the whole server may hold.", live({ live: true }))
@@ -260,7 +261,8 @@ new Sheet(SERVER_ROWS, "snark", "Damage")
 
 new Sheet(SERVER_ROWS, "snark", "PvP and PvE")
   .i("TacticalRadius", 512, "Metres. Another tribe's structures are put on a survivor's map once it has been this near them, and stay there. Its own tribe's show wherever they are. 0 shows only its own tribe's.", live({ live: true, max: 16384, note: "Ours. ARK's map shows no structures." }))
-  .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }));
+  .t("MapPlayers", "off", "Which survivors of other tribes are marked on the map: off for none, view for those in view, all for every one. Tribe mates and tames are always marked.", live({ live: true, note: "Ours. ARK marks nobody. Any other word is off." }))
+  .i("FarRadius", FAR_RADIUS, "Metres. Every tribe's structures within this distance of a survivor are sent to it as 4 m blocks of colour and height, with no owner, so its client can draw bases on the horizon; a client on a lower graphics setting asks for less. Containers, crafting stations and beds are left out. A base behind a hill is sent too, so a changed client could show it. Nothing of this reaches the map. 0 sends none.", live({ live: true, max: 16384, note: "Ours. ARK sends structures by distance alone, with no test of sight, at ranges it never published." }));
 
 const c = new Sheet(SERVER_ROWS, "cli", "Command line");
 c.flag("UseDynamicConfig", "The live file is read, and read again while the server runs.", live())
