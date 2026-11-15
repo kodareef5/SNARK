@@ -449,7 +449,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
       positive(d, "half[2]", d.half[2], MAX_STRUCTURE_HALF);
       positive(d, "hp", d.hp, 1e9);
-      if ((d.mesh === "shape") !== (d.shape !== undefined)) errors.push(`${d.id}: a mesh of "shape" and a shape go together`);
+      // A mesh of the pack may come with a shape, which it is walked and seen far off as, its origin the mesh's.
+      if (d.mesh === "shape" && d.shape === undefined) errors.push(`${d.id}: a mesh of "shape" needs a shape`);
+      if (d.mesh === "box" && d.shape !== undefined) errors.push(`${d.id}: a mesh of "box" is its half extents, and takes no shape`);
     } else if (d.type === "shape") {
       if (!PIECE_ROLES.includes(d.role)) errors.push(`${d.id}: role must be one of ${PIECE_ROLES.join(", ")}`);
       const parts = d.boxes.length + (d.hulls?.length ?? 0);
