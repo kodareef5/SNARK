@@ -2,7 +2,7 @@
 // the same judgement before asking. Nodes are cached until forget(), so the questions of one collapse share them.
 
 import { STRUCT_UNITS } from "../coords.ts";
-import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, ROLE_WALL, frameAxes, makeSockets, overPiece, socketsFor, units, type PieceTables } from "./snap.ts";
+import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, ROLE_WALL, floorTop, frameAxes, makeSockets, socketsFor, units, type PieceTables } from "./snap.ts";
 import { Found, type StructureStore } from "./structures.ts";
 
 /** Horizontal metres a ceiling may be from a piece that stands straight up. LOAD_REACH is the same for any other piece held sideways. */
@@ -142,7 +142,7 @@ export class Support {
       // A thing joins nothing. It stands on the floor under its foot, if its middle is over that floor.
       if (orole === ROLE_THING) continue;
       if (role === ROLE_THING) {
-        if ((orole === ROLE_FOUNDATION || orole === ROLE_CEILING) && oy + ohalf === y - half && overPiece(ox, oz, t.yaw[slot]!, x, z)) {
+        if ((orole === ROLE_FOUNDATION || orole === ROLE_CEILING) && floorTop(structs, tables, ref, x, z) === y - half) {
           links.push(ref);
           under.push(ref);
         }

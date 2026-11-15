@@ -2,14 +2,15 @@
 // with Extended Position Based Dynamics", 2020), stepped in short substeps with one pass of the constraints each. A body
 // is a bone carrying a hit capsule. Every bone the asset does not list stays rigid with the nearest body above it, as it
 // was when the body went limp. A joint keeps a body within the swing and twist its asset allows from the rest pose, then
-// holds its joint to its parent body. Bodies meet the terrain and the boxes of structures and nodes, with friction and
-// rolling resistance.
+// holds its joint to its parent body. Bodies meet the terrain and the boxes and convex parts of structures and nodes, with
+// friction and rolling resistance.
 // Only a client runs it, so it need not agree across engines; the same steps give the same result.
 
 import { chunkAt } from "../coords.ts";
 import { detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatRotate, quatUnrotate } from "../math/quat.ts";
 import type { CollisionWorld } from "../world/collide.ts";
+import { capsuleHull, hullPush } from "../world/convex.ts";
 import { frame, frameOf } from "../world/frame.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { Found, type StructureStore } from "../world/structures.ts";
@@ -624,7 +625,7 @@ export class Ragdoll {
     }
   }
 
-  /** Pushes body `i` out of the boxes of one structure: at each end of its capsule, and at the point of it nearest a box. */
+  /** Pushes body `i` out of the boxes and parts of one structure: at each end of its capsule, and at the point of it nearest each. */
   private boxes(structs: StructureStore, ref: number, i: number): void {
     const t = structs.chunks[Math.floor(ref / 65536)];
     if (!t) return;
@@ -682,6 +683,34 @@ export class Ragdoll {
         // The normal back in the world: x = c x' + s z', z = c z' - s x'.
         const mx = c * nx + s * nz, mz = c * nz - s * nx;
         this.contact(i, wx * tt - mx * r, wy * tt - ny * r, wz * tt - mz * r, mx, ny, mz, deep);
+      }
+    }
+    // Its convex parts the same way, as spheres at the ends and at the point nearest the part. The part is placed in the world's
+    // axes about the structure's middle, so the capsule is measured from there unturned.
+    const hulls = structs.parts.hulls;
+    if (!hulls) return;
+    const yaw = t.yaw[slot]!;
+    for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
+      if (!capsuleHull(hulls, p, yaw, ex, ez, ey, ey, reach, reach)) continue;
+      for (let k = 0; k < 3; k++) {
+        let tt = k === 0 ? -1 : 1;
+        if (k === 2) {
+          tt = 0;
+          for (let it = 0; it < 3 && len > 1e-12; it++) {
+            const ay = ey + wy * tt;
+            // With no radius the push reaches from the point to the part's nearest point. A point inside stays where it is.
+            capsuleHull(hulls, p, yaw, ex + wx * tt, ez + wz * tt, ay, ay, 0, Infinity);
+            if (hullPush.depth > 0) break;
+            tt += (hullPush.x * wx + hullPush.y * wy + hullPush.z * wz) / len;
+            tt = tt < -1 ? -1 : tt > 1 ? 1 : tt;
+          }
+          if (tt <= -0.95 || tt >= 0.95) continue;
+        }
+        const ay = ey + wy * tt;
+        if (!capsuleHull(hulls, p, yaw, ex + wx * tt, ez + wz * tt, ay, ay, r, r)) continue;
+        const deep = hullPush.depth;
+        const nx = hullPush.x / deep, ny = hullPush.y / deep, nz = hullPush.z / deep;
+        this.contact(i, wx * tt - nx * r, wy * tt - ny * r, wz * tt - nz * r, nx, ny, nz, deep);
       }
     }
   }
@@ -807,7 +836,7 @@ export class Ragdoll {
     v[o + 2]! -= tz * slow;
   }
 
-  /** The deepest any of its capsules is under the ground or inside a box of the world, in metres. 0 when clear. */
+  /** The deepest any of its capsules is under the ground or inside a box or part of the world, in metres. 0 when clear. */
   deepest(world: CollisionWorld): number {
     this.probing = true;
     this.worst = 0;
