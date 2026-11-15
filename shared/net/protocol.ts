@@ -278,6 +278,12 @@ export const OWN_VOICE = 13;
  * (thousandths, 10 bits each), and the seconds until a female may mate again (varint).
  */
 export const OWN_SUBJECT = 14;
+/**
+ * The creature the survivor looks at (server/overhead.ts): present 1 bit, then entity index u32, and each only where the viewer
+ * is told it: health, food and torpor as shares (1 bit, then thousandths in 10 bits each), taming 1 bit then its progress and
+ * effectiveness (10 bits each), its pair's mating progress (1 bit, 10 bits), its tribe's name (1 bit, string).
+ */
+export const OWN_OVERHEAD = 15;
 
 export const MARKER_DEATH = 1;
 
