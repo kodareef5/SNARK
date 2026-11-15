@@ -68,7 +68,9 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
   const ids = (defs: readonly Def[]): string[] => defs.filter((d) => d.type === "item").map((d) => d.id.slice(5));
   expect(ids(WEAPONS)).toEqual(["bow", "crossbow", "rifle", "pistol"]);
   expect(ids(AMMO)).toEqual(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "dart_tranq", "dart_shock", "scope", "silencer", "flashlight", "laser"]);
-  expect(ids(EXPLOSIVES)).toEqual(["grenade"]);
+  // W4 added the bola, with its two buffs and its engram (tests/integration/bola.test.ts).
+  expect(ids(EXPLOSIVES)).toEqual(["grenade", "bola"]);
+  expect(EXPLOSIVES.filter((d) => d.type === "buff").map((d) => d.id)).toEqual(["core:entangled", "core:entangle_spent"]);
   const all = new Set(CORE_CONTENT.map((d) => `${d.type} ${d.id}`));
   for (const d of [...WEAPONS, ...AMMO, ...EXPLOSIVES]) {
     expect(ITEMS.includes(d)).toBe(true);
@@ -76,15 +78,18 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
     expect(CORE_CONTENT.filter((o) => o.type === d.type && o.id === d.id).length).toBe(1);
   }
   // Each moved item brought its engram and the rename of its old recipe id, and is made as before.
-  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(16);
+  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(17);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
   expect(pistol).toMatchObject({ weight: 3, weapon: { clip: 6, reload: 2.2, interval: 0.35, uses: 60 }, craft: { seconds: 12, xp: 11, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
 });
 
-test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud class wait, as the plan has them", () => {
-  expect(FIELDS.item.weapon!.stubs).toEqual({ auto: "polish", reloadEach: "polish", melee: "polish", spread: "polish", recoil: "polish", structures: "polish", cloud: "polish" });
+test("the weapon and ammo facets' stubs and the cloud class wait, as the plan has them", () => {
+  // W2 built auto, reloadEach and melee (M4), and W1 spread and recoil (M1, M2): their pins are in the test below,
+  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts.
+  expect(FIELDS.item.weapon!.stubs).toEqual({ structures: "polish", cloud: "polish" });
   expect(FIELDS.item.ammo!.stubs).toEqual({ pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" });
-  expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual(["polish", "polish", "polish"]);
+  // W4 built the bola's buff fields (M6): their pins are in tests/integration/bola.test.ts.
+  expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual([undefined, undefined, undefined]);
   expect(classRow("prop/cloud")).toMatchObject({ status: "stub", waits: "polish", parent: "prop" });
   expect(CLASSES.filter((r) => r.id === "prop/cloud").length).toBe(1);
   // The holo-scope is an attachment kind no item is yet.
@@ -93,11 +98,15 @@ test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud cl
 });
 
 test("every weapon and round today compiles as it did: no stub in its timings, and each stub column at what it means now", () => {
-  const stubKeys = ["auto", "reloadEach", "meleeTicks", "meleeStrikeTick", "coneHip", "coneAim", "coneMove", "coneBloom", "coneRecover", "recoilKick", "recoilRecover"];
+  // W2's: the four ranged weapons strike with ARK's blow (Base Damage); none fires automatically or loads a round at a time.
+  const blows = new Set(["core:bow", "core:crossbow", "core:rifle", "core:pistol"]);
   for (let i = 1; i < reg.defs.length; i++) {
     const w = reg.weapon[i];
-    if (w) expect([reg.ids[i], stubKeys.filter((k) => k in w)]).toEqual([reg.ids[i], []]);
-    expect([reg.ids[i], reg.blowDamage[i], reg.blowTorpor[i], reg.blowReach[i], reg.structureMul[i], reg.cloudProp[i], reg.cloudTicks[i], reg.cloudBuff[i]]).toEqual([reg.ids[i], 0, 0, 0, 1, 0, 0, 0]);
+    if (w) expect([reg.ids[i], "auto" in w || "reloadEach" in w]).toEqual([reg.ids[i], false]);
+    const blow = blows.has(reg.ids[i]!);
+    if (w) expect([reg.ids[i], w.meleeTicks, w.meleeStrikeTick]).toEqual(blow ? [reg.ids[i], 15, 5] : [reg.ids[i], undefined, undefined]);
+    expect([reg.ids[i], reg.blowDamage[i], Math.round(reg.blowTorpor[i]! * 100) / 100, Math.round(reg.blowReach[i]! * 100) / 100]).toEqual(blow ? [reg.ids[i], 10, 1.4, 2.6] : [reg.ids[i], 0, 0, 0]);
+    expect([reg.ids[i], reg.structureMul[i], reg.cloudProp[i], reg.cloudTicks[i], reg.cloudBuff[i]]).toEqual([reg.ids[i], 1, 0, 0, 0]);
     expect([reg.ids[i], reg.ammoPellets[i], reg.ammoFalloffFull[i], reg.ammoFalloffNone[i], reg.ammoBlast[i], reg.ammoPierce[i], reg.ammoLight[i], reg.ammoLightColor[i]]).toEqual([reg.ids[i], 1, 0, 0, 0, 0, 0, 0]);
   }
 });

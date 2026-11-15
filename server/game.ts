@@ -61,6 +61,7 @@ import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../s
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
 import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
+import { stepAim } from "../shared/sim/aim.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
@@ -491,6 +492,7 @@ export class GameServer {
           stepAction(b, c.heldButtons, c.pressed, world.reg.weapon[b.held] ?? FISTS);
           c.did = (actionOut.strike ? DID_STRIKE : 0) | (actionOut.fire ? DID_FIRE : 0) | (actionOut.reloaded ? DID_RELOAD : 0);
           c.drawn = actionOut.draw;
+          stepAim(b, world.reg.weapon[b.held] ?? FISTS, T);
         } else {
           // A mount's bite goes through the same action step as any blow.
           const jaws = world.reg.weapon[b.kind];

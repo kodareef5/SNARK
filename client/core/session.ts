@@ -85,6 +85,7 @@ import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/tr
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
+import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
@@ -265,8 +266,11 @@ export interface LocalShot {
   x: number;
   y: number;
   z: number;
+  /** Where the shot was pointed, with its kick and sway, in wire units, and its cone in degrees and seed (shared/sim/aim.ts). */
   yaw: number;
   pitch: number;
+  cone: number;
+  seed: number;
   draw: number;
   ammo: number;
 }
@@ -692,14 +696,18 @@ export class ClientSession {
     }
     // The action step takes the same buttons as the server's, and those that went down since the tick before.
     const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
-    stepAction(this.own, buttons, buttons & ~before, this.registry.weapon[this.own.held] ?? FISTS);
+    const w = this.registry.weapon[this.own.held] ?? FISTS;
+    stepAction(this.own, buttons, buttons & ~before, w);
+    stepAim(this.own, w, t);
     // A replay after a correction steps old ticks again, so a shot is noted only on a tick's first step.
     if (actionOut.fire && t > this.firedTick) {
       this.firedTick = t;
       const inv = this.inventory;
       const slot = inv && inv.hotbar >= 0 && this.held >= 0 ? inv.hotbar + this.held : -1;
       const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
-      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: inp.yaw[i]!, pitch: inp.pitch[i]!, draw: actionOut.draw, ammo });
+      // It leaves where the server will send it: the look with its kick, sway and cone, from the same body and seed.
+      aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]!, inp.pitch[i]!, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
+      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: shotAim.yaw, pitch: shotAim.pitch, cone: shotAim.cone, seed: aimSeed(this.ownHandle, t), draw: actionOut.draw, ammo });
     }
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
