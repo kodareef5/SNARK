@@ -152,15 +152,23 @@ TAIL = [(4.0, 0.0, 0.118, 0.0240), (18.0, 6.0, 0.128, 0.0250), (32.0, -6.0, 0.13
         (88.0, -30.0, 0.116, 0.0240)]
 TAIL_TURN = 30.0  # degrees each leaning feather turns its face from the side towards the back
 
-# The hood's ragged edge (left): a line on the head as (y, z) in the side view, from behind the brow down the back of
-# the face, then down and back along the side of the neck where the hood meets the neck feathers.
-HOOD_EDGE = [(0.601, 0.135), (0.589, 0.133), (0.576, 0.137), (0.564, 0.146), (0.553, 0.143), (0.540, 0.132),
-             (0.526, 0.120), (0.512, 0.108), (0.498, 0.097), (0.484, 0.087)]
+# The hood's ragged edge (left): small tufts rooted just under the cap along its own edge on the shell, behind the
+# face from the face's lower corner up to the back of the brow, hanging forward over the skin: how far back of the
+# edge they root, how far over the skin they reach, how far their tips stand off, and where the edge goes under the
+# brow (z).
+HOOD_EDGE = {"behind": 0.003, "over": 0.010, "lift": 0.0018, "brow": 0.157, "columns": 9}
+# The hood comes down the nape as a wedge, as the concept's back view has it: its half width (x) at each height (y),
+# to its point. Higher up the hood's whole piece of the shell is hood. The region map draws it (ref/bakes/draw.py):
+# the rest of the hood's piece down the nape is neck feathers.
+NAPE_WEDGE = [(0.478, 0.0), (0.490, 0.028), (0.500, 0.039), (0.510, 0.043), (0.520, 0.045), (0.530, 0.049),
+              (0.540, 0.051)]
 # The nape mane: layers down the back of the neck, each (root y, tip y, how far round the neck from the back midline
-# in degrees, columns). They hang over the hood's piece of the shell down the nape by a centimetre or more on its sides
-# and below it, so their lank tips break its outline; the first is rooted under the crown. Its tips stand MANE_LIFT
-# off, its roots sink MANE_SINK under the cap, every other one deeper, so they do not come out of it on one line.
-MANE = [(0.618, 0.545, 62.0, 7), (0.580, 0.505, 62.0, 7), (0.540, 0.465, 60.0, 7), (0.500, 0.420, 58.0, 7)]
+# in degrees at the root and at the tips, columns). They hang over the hood's wedge down the nape by a centimetre or
+# more and end below its point, so their lank tips break its outline; the first is rooted under the crown. Its tips
+# stand MANE_LIFT off, its roots sink MANE_SINK under the cap, every other one deeper, so they do not come out of it
+# on one line.
+MANE = [(0.618, 0.545, 62.0, 62.0, 7), (0.580, 0.505, 62.0, 56.0, 7), (0.540, 0.468, 56.0, 22.0, 7),
+        (0.505, 0.452, 32.0, 6.0, 5)]
 MANE_LIFT = 0.0085
 MANE_SINK = (0.003, 0.006)
 # The trousers: long loose feathers hanging over the top of each leg (left), in two rings round the leg. Each ring:
@@ -1108,17 +1116,32 @@ def along_surface(normals, d):
     return d / np.linalg.norm(d, axis=1, keepdims=True)
 
 
-def hood_fringe():
-    """The ragged edge of the hood round the face (left side): small tufts lying over the face from the hood's edge,
-    from behind the brow down to the neck."""
+def hood_fringe(shell):
+    """The ragged edge of the hood round the face (left side): tufts rooted just under the cap along the edge between
+    the shell's hood and face pieces, from the face's lower corner up to where the edge goes under the brow, lying
+    forward over the bare skin."""
     part = Part("hood_edge_l", material="dodo_cards", region=HOOD_R)
-    yz = np.array(HOOD_EDGE)
-    base, n = on_shell([[0.015, y, z] for y, z in yz], [[1.0, 0.0, 0.0]] * len(yz))
-    t = np.gradient(base, axis=0)
-    t /= np.linalg.norm(t, axis=1, keepdims=True)
-    hang = np.cross(n, t)
-    hang *= np.sign(np.einsum("ij,j->i", hang, (0.0, -0.3, 1.0)))[:, None]
-    fringe(part, base - hang * 0.004, n, along_surface(n, hang), 0.011, 0.0018, "hood")
+    grid = shell.grid
+    k = grid.shape[1]
+    pts = np.array(shell.points)
+    line, across = [], []
+    for i in range(grid.shape[0] - 1):
+        for j in range(1, k // 2):
+            if shell.islands[i * k + j - 1] == "shell_hood" and shell.islands[i * k + j] == "shell_face":
+                if pts[grid[i, j]][2] <= HOOD_EDGE["brow"]:
+                    line.append(pts[grid[i, j]])
+                    across.append(pts[grid[i, j + 1]] - pts[grid[i, j - 1]])
+    line, across = np.array(line), np.array(across)
+    cols = HOOD_EDGE["columns"]
+    s_ = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(line, axis=0), axis=1))])
+    want = np.linspace(0, s_[-1], cols)
+    base = np.stack([np.interp(want, s_, line[:, c]) for c in range(3)], axis=1)
+    hang = np.stack([np.interp(want, s_, across[:, c]) for c in range(3)], axis=1)
+    base = project(shell_field, base)
+    n = outward(shell_field, base)
+    hang = along_surface(n, hang)
+    fringe(part, base - hang * HOOD_EDGE["behind"], n, hang, HOOD_EDGE["behind"] + HOOD_EDGE["over"],
+           HOOD_EDGE["lift"], "hood")
     return part
 
 
@@ -1136,16 +1159,17 @@ def mane():
     """The lank mane down the back of the neck: layers of longer feathers, each a strip of columns round the back of
     the neck, longest down the middle."""
     part = Part("mane", material="dodo_cards", region=HOOD_R)
-    for top, bottom, around, cols in MANE:
-        a = np.radians(np.linspace(-around, around, cols))
-        rays = np.stack([np.sin(a), np.zeros(cols), -np.cos(a)], axis=1)
+    for top, bottom, around, narrow, cols in MANE:
+        spread = np.linspace(-1, 1, cols)
         rows = 3
         outer = np.zeros((rows, cols, 3))
         inner = np.zeros((rows, cols, 3))
         for i in range(rows):
             t = i / (rows - 1)
+            a = np.radians(spread * (around + (narrow - around) * t))
+            rays = np.stack([np.sin(a), np.zeros(cols), -np.cos(a)], axis=1)
             # longest down the middle
-            y = top + (bottom - top) * t - (1 - (a / np.radians(around)) ** 2) * 0.008 * t
+            y = top + (bottom - top) * t - (1 - spread ** 2) * 0.008 * t
             hits, n = on_shell(np.stack([np.zeros(cols), y, np.full(cols, 0.14)], axis=1), rays)
             sink = np.where(np.arange(cols) % 2, MANE_SINK[1], MANE_SINK[0]) * (1 - t)
             outer[i] = hits + n * (MANE_LIFT * t ** 1.2 - sink)[:, None]
@@ -1939,7 +1963,7 @@ def build():
         attach(card, shell)
         card.soft = True
     parts += [feathers_tail, head, feathers]
-    edge = hood_fringe()
+    edge = hood_fringe(shell)
     transfer_weights(edge, shell)
     legs = trousers(shell)
     loose = tufts(shell)

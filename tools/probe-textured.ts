@@ -222,7 +222,7 @@ interface Frame {
   texDrops: number[];
 }
 
-const DRAW_ARRAYS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawInstances", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount"] as const;
+const DRAW_ARRAYS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawInstances", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount", "drawPass"] as const;
 
 function packFrame(p: FramePacket, out: Bytes): Frame {
   const ref = (data: Uint8Array): [number, number] => [out.add(data), data.length];
@@ -230,17 +230,20 @@ function packFrame(p: FramePacket, out: Bytes): Frame {
   const put = (name: string, count: number): void => void arrays.push([name, out.add((p[name as keyof FramePacket] as Uint8Array).subarray(0, count)), count]);
   put("viewProj", 16);
   put("nearViewProj", 16);
+  put("farViewProj", 16);
+  put("frame", p.frame.length);
   put("sky", 3);
   put("sun", 3);
   for (const name of DRAW_ARRAYS) put(name, p.drawCount);
   put("drawOffset", p.drawCount * 3);
   put("tiles", p.tileCount * 4);
   put("tileOrigin", p.tileCount * 2);
+  put("tilePass", p.tileCount);
   put("transient", p.transientCount * INSTANCE_BYTES);
   put("bones", p.boneCount * BONE_FLOATS);
-  const { camX, camY, camZ, light, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount } = p;
+  const { camX, camY, camZ, light, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt } = p;
   return {
-    scalars: { camX, camY, camZ, light, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount },
+    scalars: { camX, camY, camZ, light, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt },
     arrays,
     uploads: p.uploads.map((u) => [u.buffer, ...ref(u.data)]),
     drops: [...p.drops],

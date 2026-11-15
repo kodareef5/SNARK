@@ -258,8 +258,6 @@ export function filterKind(got: readonly number[], want: readonly number[]): str
 
 /** The answers. Each starts as "did not finish" and is set once its question is answered. */
 export interface GpuReport {
-  /** The screen's depth buffer, in bits. */
-  depthBits: number;
   /** "honoured", "ignored", or why it was not found out. */
   depthRange: string;
   /** The least of a list of gaps two quads must have to be drawn in order: in the near range at 380 m, the far at 2 km. Null if none. */
@@ -293,7 +291,7 @@ export interface PassTime {
 
 export function newGpuReport(): GpuReport {
   const dnf = "did not finish";
-  return { depthBits: 0, depthRange: dnf, nearGap: null, farGap: null, depthArray: dnf, compareArray: dnf, compare2d: dnf, texture3d: dnf, timers: false, passes: [], lostDuring: null, screen: [0, 0] };
+  return { depthRange: dnf, nearGap: null, farGap: null, depthArray: dnf, compareArray: dnf, compare2d: dnf, texture3d: dnf, timers: false, passes: [], lostDuring: null, screen: [0, 0] };
 }
 
 /** Gaps tried, in metres, nearest first, and where. The near range ends at the split, the far begins at 98% of it. */
@@ -445,7 +443,6 @@ export class GpuQuestions {
   private begin(): void {
     const gl = this.gl;
     this.index = 0;
-    this.report.depthBits = Number(gl.getParameter(GL.DEPTH_BITS)) || 0;
     this.timer = (gl.getExtension("EXT_disjoint_timer_query_webgl2") as { TIME_ELAPSED_EXT?: number } | null) ?? null;
     this.report.timers = this.timer !== null;
     this.empty = this.keep("vao", gl.createVertexArray());
@@ -508,13 +505,14 @@ export class GpuQuestions {
   }
 
   /**
-   * The screen's depth, then quads drawn into a target of that depth, a cell of it each. First whether depthRange is
+   * Quads drawn into a target of the screen's depth, a cell of it each. First whether depthRange is
    * honoured: a quad far off in the range 0 to 0.5 must hide one near in 0.5 to 1. Then the round 8 split's ranges:
    * pairs of quads a gap apart at 380 m in the near range and at 2 km in the far, each pair drawn both ways round.
    */
   private *depth(): Generator<void, void, void> {
     const gl = this.gl;
-    const bits = this.report.depthBits;
+    // The screen's depth, which the game's frame left bound.
+    const bits = Number(gl.getParameter(GL.DEPTH_BITS)) || 0;
     const internal = bits >= 32 ? GL.DEPTH_COMPONENT32F : bits >= 24 ? GL.DEPTH_COMPONENT24 : GL.DEPTH_COMPONENT16;
     const cells = 1 + 2 * (NEAR_GAPS.length + FAR_GAPS.length);
     const colour = this.texture(GL.RGBA8, cells, 1);

@@ -1,9 +1,22 @@
 // Rendering is camera-relative. The view matrix carries rotation only. The camera position is subtracted from every position in
 // double precision before it reaches the GPU, so float32 never has to resolve millimetres eight kilometres from the origin.
 
+import { PASS_FAR, PASS_NEAR } from "./packet.ts";
+
 /** Near and far planes of the pass that draws the viewer's own body. */
 export const NEAR_BODY = 0.03;
 export const NEAR_BODY_FAR = 12;
+/** The far depth range begins this share of `split` from the camera, so the two ranges overlap and no pixel falls between them. */
+export const FAR_FROM = 0.98;
+
+/** Sets the depth rows of a view-projection whose other rows are set, for planes `near` and `far` and the view's forward (fx, fy, fz). */
+function depthRows(m: Float32Array, near: number, far: number, fx: number, fy: number, fz: number): void {
+  const a = (far + near) / (near - far);
+  m[2] = -a * fx;
+  m[6] = -a * fy;
+  m[10] = -a * fz;
+  m[14] = (2 * far * near) / (near - far);
+}
 
 export class Camera {
   x = 0;
@@ -16,11 +29,15 @@ export class Camera {
   aspect = 16 / 9;
   near = 0.25;
   far = 6000;
+  /** Metres from the camera at which the far depth range begins, 0 for one range. */
+  split = 0;
 
-  /** Column-major view-projection for camera-relative positions. */
+  /** Column-major view-projection for camera-relative positions, from `near` to `far`. What is culled is culled by it. */
   readonly viewProj = new Float32Array(16);
   /** The same with the NEAR_BODY planes, for the viewer's own body. */
   readonly nearViewProj = new Float32Array(16);
+  /** With a split, each depth range's view-projection by its PASS_: `near` to `split`, and FAR_FROM of `split` to `far`. */
+  readonly ranges = [new Float32Array(16), new Float32Array(16)] as const;
   /** Six frustum planes (a, b, c, d), inside when a*x + b*y + c*z + d >= 0, camera-relative. */
   readonly planes = new Float32Array(24);
 
@@ -34,19 +51,19 @@ export class Camera {
     const rx = -cy, rz = sy;
     const ux = -sy * sp, uy = cp, uz = -cy * sp;
     const fl = 1 / Math.tan(this.fovY / 2);
-    const a = (this.far + this.near) / (this.near - this.far);
-    const b = (2 * this.far * this.near) / (this.near - this.far);
     const m = this.viewProj;
     const sx = fl / this.aspect;
     m[0] = sx * rx; m[4] = 0; m[8] = sx * rz; m[12] = 0;
     m[1] = fl * ux; m[5] = fl * uy; m[9] = fl * uz; m[13] = 0;
-    m[2] = -a * fx; m[6] = -a * fy; m[10] = -a * fz; m[14] = b;
     m[3] = fx; m[7] = fy; m[11] = fz; m[15] = 0;
-    const nm = this.nearViewProj;
-    nm.set(m);
-    const na = (NEAR_BODY_FAR + NEAR_BODY) / (NEAR_BODY - NEAR_BODY_FAR);
-    nm[2] = -na * fx; nm[6] = -na * fy; nm[10] = -na * fz;
-    nm[14] = (2 * NEAR_BODY_FAR * NEAR_BODY) / (NEAR_BODY - NEAR_BODY_FAR);
+    depthRows(m, this.near, this.far, fx, fy, fz);
+    this.nearViewProj.set(m);
+    depthRows(this.nearViewProj, NEAR_BODY, NEAR_BODY_FAR, fx, fy, fz);
+    if (this.split > 0) {
+      for (const r of this.ranges) r.set(m);
+      depthRows(this.ranges[PASS_NEAR], this.near, this.split, fx, fy, fz);
+      depthRows(this.ranges[PASS_FAR], this.split * FAR_FROM, this.far, fx, fy, fz);
+    }
 
     const p = this.planes;
     for (let i = 0; i < 6; i++) {
@@ -70,6 +87,27 @@ export class Camera {
       if (a * (a >= 0 ? maxX : minX) + b * (b >= 0 ? maxY : minY) + c * (c >= 0 ? maxZ : minZ) + p[i + 3]! < 0) return false;
     }
     return true;
+  }
+
+  /** The depth ranges, a bit each by PASS_, that something from view depth `from` to `to` is drawn in. With no split, the near one. */
+  passesOf(from: number, to: number): number {
+    if (this.split <= 0) return 1 << PASS_NEAR;
+    return (from < this.split ? 1 << PASS_NEAR : 0) | (to > this.split ? 1 << PASS_FAR : 0) || 1 << PASS_NEAR;
+  }
+
+  /** The depth ranges a camera-relative box is drawn in, by how far along the view its nearest and farthest corners are. */
+  passes(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): number {
+    const m = this.viewProj;
+    const fx = m[3]!, fy = m[7]!, fz = m[11]!;
+    const from = fx * (fx >= 0 ? minX : maxX) + fy * (fy >= 0 ? minY : maxY) + fz * (fz >= 0 ? minZ : maxZ);
+    const to = fx * (fx >= 0 ? maxX : minX) + fy * (fy >= 0 ? maxY : minY) + fz * (fz >= 0 ? maxZ : minZ);
+    return this.passesOf(from, to);
+  }
+
+  /** How far along the view a camera-relative point is. */
+  depth(x: number, y: number, z: number): number {
+    const m = this.viewProj;
+    return m[3]! * x + m[7]! * y + m[11]! * z;
   }
 
   /** (sx, sy) is a screen position in 0..1 with y down. Writes a unit vector to out[0..2]. Does not need update(). */

@@ -81,6 +81,8 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // before the dodo's grey box joined the pack, which numbers the meshes after it one on. It was 1e566e48 before nodes
   // were drawn at their sizes: their draws carry DRAW_SIZED, seven more kinds' grey boxes number the meshes after the
   // tree's on, and nodes stand on their bases. The drawing changes alone left it 1e566e48. It was eac4fa58 until three more
-  // kinds' grey boxes numbered the meshes after them on.
-  expect(hash.toString(16)).toBe("dfac0bb4");
+  // kinds' grey boxes numbered the meshes after them on, and dfac0bb4 until the dodo was drawn as its model: its grey box
+  // left the pack, and its model is not among the frozen art. It was 17efe7fc before medium split the view into two depth
+  // ranges (D252), which orders the draws by step and lists one across the split twice; with the split at 0 it is that again.
+  expect(hash.toString(16)).toBe("f589aaf4");
 });

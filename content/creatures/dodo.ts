@@ -38,8 +38,8 @@ export const DODO: readonly Def[] = [
     type: "species", class: "creature",
     id: "core:dodo",
     tag: "dodo",
-    // A box until the pack holds the model.
-    mesh: "box",
+    mesh: "core:dodo",
+    skeleton: "dodo",
     color: DODO_DYES[0]!,
     // The design's bird: 0.65 m to the top of the head, the eye at 0.58 m, and a capsule as wide as the body is long. ARK's
     // capsule is not published.
@@ -57,11 +57,11 @@ export const DODO: readonly Def[] = [
     strafe: false,
     // Running costs 4 a second. Recovery and jumping are the engine's defaults.
     stamina: { sprint: 4, regen: 8, jump: 6 },
-    // The peck: 5, once every half second, landing by the sixth tick as its clip does. Its reach is the beak's, chosen:
-    // at rest the tip is 0.33 m ahead of the middle of the body, and a peck lunges. ARK's attack range is 1.1 m, measured
-    // from a point the wiki does not give.
+    // The peck: 5, once every half second, landing at tick 6 of its 15 as its clip does. Its reach is the beak's: at that
+    // frame the beak's tip is 0.40 m ahead of the middle of the body and 0.31 m below the eye, 0.50 m from it. ARK's
+    // attack range is 1.1 m, measured from a point the wiki does not give.
     fists: 5,
-    bite: { reach: 0.45, ticks: 15, lands: 6 },
+    bite: { reach: 0.5, ticks: 15, lands: 6 },
     temper: "flees",
     // ARK has no slot limit for a creature but its weight, and holds 300 stacks at most in any inventory (patches 176.0
     // and 184.0).

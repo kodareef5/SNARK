@@ -5,14 +5,18 @@ import { afterAll, expect, test } from "bun:test";
 import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CORE_PACK } from "../../content/core.ts";
+import { CORE_CONTENT, CORE_PACK } from "../../content/core.ts";
 import type { ModuleDef } from "../../server/api/module.ts";
 import { createHost, type Host, type HostOptions } from "../../server/host.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { CHECK_SECONDS, CORE_MOST, CORE_RANGE, PLAYER_RANGE, TAME_RANGE, TICK_MADE, isWild } from "../../server/spawner.ts";
+import type { Def } from "../../shared/content/defs.ts";
 import { compilePacks } from "../../shared/content/packs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { BitWriter } from "../../shared/net/codec.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { capsuleFree } from "../../shared/world/collide.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
 import { PROVING_POOL, PROVING_SEA_LEVEL } from "../../shared/world/proving.ts";
 import { flatMap } from "../fixtures/map.ts";
@@ -136,6 +140,43 @@ test("nothing is put down within 40 m of a tribe's creature, nor within 60 m of 
   const beach = wild(host).filter((r) => near(r, PROVING_POOL.x, PROVING_POOL.z) < 60);
   expect(beach.length).toBeGreaterThan(0);
   for (const r of beach) expect(near(r, rec.x, rec.z)).toBeGreaterThanOrEqual(TAME_RANGE - 6.8);
+});
+
+test("nothing is put down inside a node nobody has loaded, nor in what is left of one used up, but where one used up left nothing", () => {
+  // Rocks, trees and banyans thick on the ground, and nobody near, so no chunk's nodes are loaded.
+  const thick = writeMap(flatMap(4, { nodes: [{ seed: 5, perChunk: 256, kinds: [["core:rock", 1], ["core:tree", 1], ["core:banyan", 1]], allowCell: 0, allow: null }], regions: [{ kind: "spawn", spawns: "core:spawns_proving_herd", count: 30, at: [128, 128], radius: 100 }] }));
+  const host = createHost(reg, { wild: true, map: thick });
+  ticks(host, 120);
+  const field = host.world.nodeField!;
+  expect(field.isLoaded(0)).toBe(false);
+  expect(wild(host).length).toBeGreaterThan(10);
+  // Loaded, every one of them stands clear.
+  host.harvest!.retain(10, 2, 1);
+  const stuck = wild(host).filter((r) => {
+    const p = host.world.reg.move[r.kind]!;
+    return !capsuleFree(host.world, r.x, r.y, r.z, p.radius, p.height);
+  });
+  expect(stuck.length).toBe(0);
+
+  // One rock at (100, 100), in chunk 5, and a region half a metre round it.
+  const one = writeMap(flatMap(4, { nodes: [{ kinds: ["core:rock"], first: Uint32Array.from({ length: 17 }, (_, c) => (c > 5 ? 1 : 0)), kind: Uint8Array.of(0), x: Uint16Array.of(36 * 1024), z: Uint16Array.of(36 * 1024), yaw: Uint16Array.of(0) }], regions: [{ kind: "spawn", spawns: "core:spawns_proving_herd", count: 3, at: [100, 100], radius: 0.5 }] }));
+  const usedUp = (h: Host): void => {
+    const w = new BitWriter(16);
+    w.varint(1);
+    w.u8(0);
+    w.varint(0);
+    w.uint53(h.world.tick + 1e6);
+    h.harvest!.decode(5, w.bytes().slice());
+  };
+  const made = (r: typeof reg, gone: boolean): number => {
+    const h = createHost(r, { wild: true, map: one });
+    if (gone) usedUp(h);
+    ticks(h, 60);
+    return h.spawner!.regions[0]!.count;
+  };
+  // A stump in place of a used-up rock, as a kind may have one.
+  const stumps = compileContent(CORE_CONTENT.map((d): Def => (d.id === "core:rock" && d.type === "node" ? { ...d, depleted: { mesh: "test:rock_depleted", boxes: [{ at: [0, 0.3, 0], half: [0.8, 0.3, 0.8] }] } } : d))).registry!;
+  expect([made(reg, false), made(reg, true) >= 3, made(stumps, true)]).toEqual([0, true, 0]);
 });
 
 test("a saved world comes back with its creatures where they were, counted, and is not filled on top of them", () => {

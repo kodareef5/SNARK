@@ -171,6 +171,10 @@ test("pieces take their materials by name: one of the asset's own, one that seve
     const of = (regions: MaterialSpec["regions"]) => describe({ name: "m", id: "t:m", dir, spec: { base: "tex/base.png", regions } }, 64, palette);
     expect(of({ mask: "tex/full.png" }).faults).toEqual(["t:m: the weights of 100.00% of its masks' pixels sum past 1, to as much as 3.00"]);
     expect([of("tex/red.png").flat, of("tex/red.png").textures.map((t) => t.role), of({ mask: "tex/red.png" }).material.grey < 1]).toEqual([REGION_BASE, ["base", "mask"], true]);
+    // Before its pictures are painted a material may have its region map alone. It has no base colour, which reads as
+    // white, so it is drawn in its dyes; adding the pictures later changes nothing else.
+    const bare = describe({ name: "m", id: "t:m", dir, spec: { regions: "tex/red.png", twoSided: true, cutout: true } }, 64, palette);
+    expect([bare.faults, bare.textures.map((t) => t.role), bare.material.base, bare.material.normal, bare.material.grey, bare.flat]).toEqual([[], ["mask"], -1, -1, 1, REGION_BASE]);
   });
 });
 

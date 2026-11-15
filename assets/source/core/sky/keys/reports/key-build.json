@@ -1,0 +1,1412 @@
+{
+  "dawn": {
+    "source": "originals/04-dawn-panorama.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "sha256": "99bee329bb24b9be509f36a71425096fb8803c036f68dea1179894aa90f8b9b1",
+    "bodies": [
+      {
+        "body": "sun",
+        "heading": 89.13,
+        "elevation": 2.02,
+        "diameterDegrees": 2.0,
+        "angularHeightPixels": 11.377777777777778,
+        "centreFromAngles": [
+          1615.884,
+          500.0084444444445
+        ],
+        "alphaPixels": 99,
+        "rasterBounds": [
+          1611,
+          495,
+          1621,
+          505
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        }
+      }
+    ],
+    "stars": [],
+    "surfaces": {
+      "pureSkyPixels": 1060179,
+      "pureWaterPixels": 73725,
+      "horizonMixtures": 33877,
+      "recompositedForegroundEdgePixels": 5926,
+      "preservedLandPixels": 944657,
+      "waterTreatment": "grazing Fresnel sky reflection and angular solar glitter",
+      "sourceCoverageMaxResidual": 1.3032457925403302
+    },
+    "geometry": "Original base coverage with unchanged round-three solid terrain and complete grey faces.",
+    "faces": {
+      "lit": {
+        "sourceRGB": [
+          63.0,
+          63.0,
+          63.0
+        ],
+        "targetRGB": [
+          137.85,
+          105.38,
+          83.42
+        ],
+        "wholeFacePixels": 9556
+      },
+      "shaded": {
+        "sourceRGB": [
+          35.0,
+          35.0,
+          35.0
+        ],
+        "targetRGB": [
+          31.11,
+          43.5,
+          62.96
+        ],
+        "wholeFacePixels": 13307
+      },
+      "up": {
+        "sourceRGB": [
+          36.0,
+          36.0,
+          36.0
+        ],
+        "targetRGB": [
+          51.76,
+          58.74,
+          72.69
+        ],
+        "wholeFacePixels": 16357
+      },
+      "waterEdgePixels": 6177
+    },
+    "round4": {
+      "approvedAirPreserved": true,
+      "celestialSkyPixels": 3647,
+      "waterTreatment": "lilac blue reflection with shoreward darkening"
+    },
+    "round5": {
+      "unchangedFromRound4": true
+    }
+  },
+  "morning": {
+    "source": "originals/05-morning-panorama.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "sha256": "edc5328968221830c0f021521a096833bc9e961f42f4c2b13d2d14a037dae0d9",
+    "bodies": [
+      {
+        "body": "sun",
+        "heading": 83.39,
+        "elevation": 14.99,
+        "diameterDegrees": 2.0,
+        "angularHeightPixels": 11.377777777777778,
+        "centreFromAngles": [
+          1583.2297777777776,
+          426.2235555555556
+        ],
+        "alphaPixels": 105,
+        "rasterBounds": [
+          1578,
+          421,
+          1589,
+          431
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        }
+      }
+    ],
+    "stars": [],
+    "targets": [
+      [
+        90,
+        155,
+        230
+      ],
+      [
+        75,
+        145,
+        225
+      ],
+      [
+        235,
+        229,
+        211
+      ],
+      [
+        181,
+        216,
+        229
+      ]
+    ],
+    "surfaces": {
+      "pureSkyPixels": 1060175,
+      "pureWaterPixels": 75094,
+      "horizonMixtures": 33769,
+      "recompositedForegroundEdgePixels": 4973,
+      "preservedLandPixels": 945369,
+      "waterTreatment": "round-two deep water retained",
+      "sourceCoverageMaxResidual": 1.335430103134171
+    },
+    "geometry": "Original base coverage with unchanged round-three solid terrain and complete grey faces.",
+    "faces": {
+      "lit": {
+        "sourceRGB": [
+          125.0,
+          125.0,
+          125.0
+        ],
+        "targetRGB": [
+          157.4,
+          142.18,
+          116.83
+        ],
+        "wholeFacePixels": 9310
+      },
+      "shaded": {
+        "sourceRGB": [
+          70.0,
+          70.0,
+          70.0
+        ],
+        "targetRGB": [
+          53.92,
+          71.15,
+          94.47
+        ],
+        "wholeFacePixels": 12311
+      },
+      "up": {
+        "sourceRGB": [
+          85.0,
+          85.0,
+          85.0
+        ],
+        "targetRGB": [
+          95.49,
+          90.52,
+          81.56
+        ],
+        "wholeFacePixels": 13184
+      },
+      "waterEdgePixels": 5516
+    },
+    "round4": {
+      "approvedAirPreserved": false,
+      "celestialSkyPixels": 0,
+      "waterTreatment": "round-three water retained"
+    },
+    "round5": {
+      "unchangedFromRound4": true
+    }
+  },
+  "noon": {
+    "source": "originals/13-noon-round-4.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "sha256": "49b8656446ce89e3338a369fa89157538733ba6d4d6a2360ef374397f4d25359",
+    "bodies": [
+      {
+        "body": "sun",
+        "heading": 0,
+        "elevation": 66.73,
+        "diameterDegrees": 2.0,
+        "angularHeightPixels": 11.377777777777778,
+        "centreFromAngles": [
+          1108.8333333333333,
+          131.88044444444444
+        ],
+        "alphaPixels": 257,
+        "rasterBounds": [
+          1095,
+          127,
+          1123,
+          137
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        }
+      }
+    ],
+    "stars": [],
+    "targets": [
+      [
+        78,
+        144,
+        222
+      ],
+      [
+        60,
+        130,
+        215
+      ],
+      [
+        211,
+        230,
+        237
+      ],
+      [
+        184,
+        216,
+        236
+      ]
+    ],
+    "surfaces": {
+      "pureSkyPixels": 1060176,
+      "pureWaterPixels": 77591,
+      "horizonMixtures": 33739,
+      "recompositedForegroundEdgePixels": 4383,
+      "preservedLandPixels": 943871,
+      "waterTreatment": "round-two deep water retained",
+      "sourceCoverageMaxResidual": 1.392506317228227
+    },
+    "geometry": "Round-four pixels plus colour deltas through unchanged original material coverage.",
+    "faces": {
+      "lit": {
+        "targetRGB": [
+          95,
+          96,
+          98
+        ],
+        "wholeFacePixels": 3685
+      },
+      "shaded": {
+        "targetRGB": [
+          63,
+          71,
+          82
+        ],
+        "wholeFacePixels": 11383
+      },
+      "up": {
+        "targetRGB": [
+          125,
+          126,
+          127
+        ],
+        "wholeFacePixels": 15184
+      },
+      "waterEdgePixels": 4826
+    },
+    "round4": {
+      "approvedAirPreserved": false,
+      "celestialSkyPixels": 0,
+      "waterTreatment": "round-three water retained"
+    },
+    "round5": {
+      "unchangedFromRound4": false,
+      "skyPoint": "zenith",
+      "skyBeforeRGB": [
+        78.0,
+        143.98224852071007,
+        222.0
+      ],
+      "skyAfterRGB": [
+        89.0,
+        143.98224852071007,
+        214.0
+      ],
+      "skyTargetRGB": [
+        89,
+        144,
+        214
+      ],
+      "cards": {
+        "lit": {
+          "targetRGB": [
+            95,
+            96,
+            98
+          ],
+          "wholeFacePixels": 3685
+        },
+        "shaded": {
+          "targetRGB": [
+            63,
+            71,
+            82
+          ],
+          "wholeFacePixels": 11383
+        },
+        "up": {
+          "targetRGB": [
+            125,
+            126,
+            127
+          ],
+          "wholeFacePixels": 15184
+        }
+      },
+      "changedPixels": 1145213
+    }
+  },
+  "afternoon": {
+    "source": "originals/12-afternoon-round-3.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "sha256": "01d79ed81268ad5e7a03fd5a5a368bcc0b026c1ac02581d28a9bf7a091a03500",
+    "bodies": [
+      {
+        "body": "sun",
+        "heading": 287.53,
+        "elevation": 35.01,
+        "diameterDegrees": 2.0,
+        "angularHeightPixels": 11.377777777777778,
+        "centreFromAngles": [
+          696.5595555555554,
+          312.332
+        ],
+        "alphaPixels": 125,
+        "rasterBounds": [
+          690,
+          307,
+          703,
+          318
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        }
+      }
+    ],
+    "stars": [],
+    "targets": [
+      [
+        100,
+        155,
+        218
+      ],
+      [
+        85,
+        145,
+        210
+      ],
+      [
+        240,
+        225,
+        199
+      ],
+      [
+        183,
+        213,
+        229
+      ]
+    ],
+    "surfaces": {
+      "pureSkyPixels": 1060174,
+      "pureWaterPixels": 80558,
+      "horizonMixtures": 33757,
+      "recompositedForegroundEdgePixels": 4758,
+      "preservedLandPixels": 938718,
+      "waterTreatment": "round-two deep water retained",
+      "sourceCoverageMaxResidual": 1.3637372776677612
+    },
+    "geometry": "Round-four pixels plus colour deltas through unchanged original material coverage.",
+    "faces": {
+      "lit": {
+        "targetRGB": [
+          120,
+          115,
+          108
+        ],
+        "wholeFacePixels": 3901
+      },
+      "shaded": {
+        "targetRGB": [
+          60,
+          68,
+          79
+        ],
+        "wholeFacePixels": 27010
+      },
+      "up": {
+        "targetRGB": [
+          111,
+          113,
+          116
+        ],
+        "wholeFacePixels": 17096
+      },
+      "waterEdgePixels": 5314
+    },
+    "round4": {
+      "approvedAirPreserved": false,
+      "celestialSkyPixels": 0,
+      "waterTreatment": "round-three water retained"
+    },
+    "round5": {
+      "unchangedFromRound4": false,
+      "skyPoint": "toward",
+      "skyBeforeRGB": [
+        239.98816568047337,
+        224.9940828402367,
+        199.0
+      ],
+      "skyAfterRGB": [
+        238.98816568047337,
+        225.9940828402367,
+        203.0
+      ],
+      "skyTargetRGB": [
+        239,
+        226,
+        203
+      ],
+      "cards": {
+        "lit": {
+          "targetRGB": [
+            120,
+            115,
+            108
+          ],
+          "wholeFacePixels": 3901
+        },
+        "shaded": {
+          "targetRGB": [
+            60,
+            68,
+            79
+          ],
+          "wholeFacePixels": 27010
+        },
+        "up": {
+          "targetRGB": [
+            111,
+            113,
+            116
+          ],
+          "wholeFacePixels": 17096
+        }
+      },
+      "changedPixels": 1046119
+    }
+  },
+  "golden": {
+    "source": "originals/08-golden-panorama.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "sha256": "3bb1d5a50cf0d3b402904bb2c130b674847851a71549b7fc035903f54423ffde",
+    "bodies": [
+      {
+        "body": "sun",
+        "heading": 273.46,
+        "elevation": 7.99,
+        "diameterDegrees": 2.0,
+        "angularHeightPixels": 11.377777777777778,
+        "centreFromAngles": [
+          616.5168888888887,
+          466.0457777777778
+        ],
+        "alphaPixels": 104,
+        "rasterBounds": [
+          611,
+          461,
+          622,
+          471
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        }
+      }
+    ],
+    "stars": [],
+    "surfaces": {
+      "pureSkyPixels": 1060177,
+      "pureWaterPixels": 74785,
+      "horizonMixtures": 33795,
+      "recompositedForegroundEdgePixels": 5210,
+      "preservedLandPixels": 944387,
+      "waterTreatment": "grazing Fresnel sky reflection and angular solar glitter",
+      "sourceCoverageMaxResidual": 1.3465710855903772
+    },
+    "geometry": "Original base coverage with unchanged round-three solid terrain and complete grey faces.",
+    "faces": {
+      "lit": {
+        "sourceRGB": [
+          100.0,
+          100.0,
+          100.0
+        ],
+        "targetRGB": [
+          157.12,
+          111.88,
+          64.68
+        ],
+        "wholeFacePixels": 4664
+      },
+      "shaded": {
+        "sourceRGB": [
+          55.0,
+          55.0,
+          55.0
+        ],
+        "targetRGB": [
+          40.25,
+          55.33,
+          81.45
+        ],
+        "wholeFacePixels": 29322
+      },
+      "up": {
+        "sourceRGB": [
+          61.0,
+          61.0,
+          61.0
+        ],
+        "targetRGB": [
+          75.74,
+          61.78,
+          45.82
+        ],
+        "wholeFacePixels": 17729
+      },
+      "waterEdgePixels": 5626
+    },
+    "round4": {
+      "approvedAirPreserved": true,
+      "celestialSkyPixels": 8930,
+      "waterTreatment": "round-three water retained"
+    },
+    "round5": {
+      "unchangedFromRound4": true
+    }
+  },
+  "sunset": {
+    "source": "originals/09-sunset-panorama.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "sha256": "9d3be3b7cedb5e521b3a8b9c38f086e0f81ac1e5cdb0cb5d32cd8eb23f17f200",
+    "bodies": [
+      {
+        "body": "sun",
+        "heading": 270,
+        "elevation": 0,
+        "diameterDegrees": 2.0,
+        "angularHeightPixels": 11.377777777777778,
+        "centreFromAngles": [
+          596.8333333333334,
+          511.5
+        ],
+        "alphaPixels": 102,
+        "rasterBounds": [
+          592,
+          506,
+          602,
+          517
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        }
+      },
+      {
+        "body": "moon",
+        "heading": 90,
+        "elevation": 0,
+        "diameterDegrees": 4.0,
+        "angularHeightPixels": 22.755555555555556,
+        "centreFromAngles": [
+          1620.8333333333333,
+          511.5
+        ],
+        "alphaPixels": 394,
+        "rasterBounds": [
+          1610,
+          501,
+          1631,
+          522
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        },
+        "texture": "../moon/moon.png",
+        "textureSHA256": "5d55bf2b6fc3779fab556e8d7d8d36775876e891500ef303b30ccac5c4559af5",
+        "northUp": true,
+        "lightLinearRGB": [
+          1.0,
+          0.94,
+          0.84
+        ]
+      }
+    ],
+    "stars": [],
+    "surfaces": {
+      "pureSkyPixels": 1060184,
+      "pureWaterPixels": 74993,
+      "horizonMixtures": 33889,
+      "recompositedForegroundEdgePixels": 6043,
+      "preservedLandPixels": 944156,
+      "waterTreatment": "grazing Fresnel sky reflection and angular solar glitter",
+      "sourceCoverageMaxResidual": 1.368789024193423
+    },
+    "geometry": "Original base coverage with unchanged round-three solid terrain and complete grey faces.",
+    "faces": {
+      "lit": {
+        "sourceRGB": [
+          52.0,
+          52.0,
+          52.0
+        ],
+        "targetRGB": [
+          100.29,
+          59.77,
+          45.22
+        ],
+        "wholeFacePixels": 4469
+      },
+      "shaded": {
+        "sourceRGB": [
+          29.0,
+          29.0,
+          29.0
+        ],
+        "targetRGB": [
+          23.21,
+          31.79,
+          50.87
+        ],
+        "wholeFacePixels": 31587
+      },
+      "up": {
+        "sourceRGB": [
+          29.0,
+          29.0,
+          29.0
+        ],
+        "targetRGB": [
+          58.33,
+          45.45,
+          45.45
+        ],
+        "wholeFacePixels": 24466
+      },
+      "waterEdgePixels": 6290
+    },
+    "round4": {
+      "approvedAirPreserved": true,
+      "celestialSkyPixels": 10093,
+      "waterTreatment": "silver moon path"
+    },
+    "round5": {
+      "unchangedFromRound4": true
+    }
+  },
+  "dusk": {
+    "source": "originals/10-dusk-panorama.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "sha256": "d86b66a9ff43c646ba1823b572b509db148618cf4d07e2c61ce7c3487182980e",
+    "bodies": [
+      {
+        "body": "moon",
+        "heading": 86.54,
+        "elevation": 7.99,
+        "diameterDegrees": 4.0,
+        "angularHeightPixels": 22.755555555555556,
+        "centreFromAngles": [
+          1601.149777777778,
+          466.0457777777778
+        ],
+        "alphaPixels": 394,
+        "rasterBounds": [
+          1591,
+          456,
+          1612,
+          477
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        },
+        "texture": "../moon/moon.png",
+        "textureSHA256": "5d55bf2b6fc3779fab556e8d7d8d36775876e891500ef303b30ccac5c4559af5",
+        "northUp": true,
+        "lightLinearRGB": [
+          1.0,
+          0.94,
+          0.84
+        ]
+      }
+    ],
+    "stars": [
+      {
+        "heading": 291.1212275692852,
+        "elevation": 30.659205507895425
+      },
+      {
+        "heading": 54.636496337944685,
+        "elevation": 30.73388453347553
+      },
+      {
+        "heading": 109.69015785228338,
+        "elevation": 24.620564303405757
+      },
+      {
+        "heading": 137.6407825919691,
+        "elevation": 26.318533207400243
+      },
+      {
+        "heading": 78.95793145575489,
+        "elevation": 32.13355118389065
+      },
+      {
+        "heading": 359.29026624747956,
+        "elevation": 28.29156674392887
+      },
+      {
+        "heading": 353.188990836356,
+        "elevation": 66.98213217268999
+      },
+      {
+        "heading": 250.01622557343947,
+        "elevation": 39.113018760053386
+      },
+      {
+        "heading": 185.5806611215739,
+        "elevation": 56.48097428287553
+      },
+      {
+        "heading": 117.6097777206324,
+        "elevation": 24.55103965472815
+      },
+      {
+        "heading": 321.5166753483432,
+        "elevation": 24.942222853114767
+      },
+      {
+        "heading": 80.79593527927747,
+        "elevation": 60.24068889707891
+      },
+      {
+        "heading": 172.9735233802993,
+        "elevation": 20.578027063036185
+      },
+      {
+        "heading": 137.69022087902152,
+        "elevation": 34.17867385738719
+      },
+      {
+        "heading": 41.11150319011092,
+        "elevation": 14.307189494738207
+      },
+      {
+        "heading": 131.06192642656532,
+        "elevation": 23.898571567199042
+      },
+      {
+        "heading": 132.8508708585931,
+        "elevation": 57.72817578172792
+      },
+      {
+        "heading": 85.99310771245493,
+        "elevation": 38.975189070294995
+      },
+      {
+        "heading": 269.9316515712367,
+        "elevation": 74.05339890977413
+      },
+      {
+        "heading": 215.18448573336474,
+        "elevation": 20.921511267269622
+      }
+    ],
+    "surfaces": {
+      "pureSkyPixels": 1060188,
+      "pureWaterPixels": 75654,
+      "horizonMixtures": 33923,
+      "recompositedForegroundEdgePixels": 5996,
+      "preservedLandPixels": 944032,
+      "waterTreatment": "grazing Fresnel sky reflection and angular solar glitter",
+      "sourceCoverageMaxResidual": 1.33150129838188
+    },
+    "geometry": "Round-four pixels plus colour deltas through unchanged original material coverage.",
+    "faces": {
+      "lit": {
+        "sourceRGB": [
+          38.0,
+          38.0,
+          38.0
+        ],
+        "targetRGB": [
+          52.94,
+          50.23,
+          64.7
+        ],
+        "wholeFacePixels": 4320
+      },
+      "shaded": {
+        "sourceRGB": [
+          21.0,
+          21.0,
+          21.0
+        ],
+        "targetRGB": [
+          18.94,
+          25.52,
+          43.4
+        ],
+        "wholeFacePixels": 31491
+      },
+      "up": {
+        "sourceRGB": [
+          21.0,
+          21.0,
+          21.0
+        ],
+        "targetRGB": [
+          31.17,
+          35.18,
+          49.24
+        ],
+        "wholeFacePixels": 18565
+      },
+      "waterEdgePixels": 6332
+    },
+    "round4": {
+      "approvedAirPreserved": true,
+      "celestialSkyPixels": 3570,
+      "waterTreatment": "silver moon path"
+    },
+    "round5": {
+      "unchangedFromRound4": false,
+      "skyPoint": "toward",
+      "skyBeforeRGB": [
+        227.46153846153845,
+        154.11834319526628,
+        109.69822485207101
+      ],
+      "skyAfterRGB": [
+        229.46153846153845,
+        155.11834319526628,
+        110.69822485207101
+      ],
+      "skyTargetRGB": [
+        229,
+        155,
+        111
+      ],
+      "cards": null,
+      "changedPixels": 67216
+    }
+  },
+  "night": {
+    "source": "originals/11-night-panorama.png",
+    "nativeSize": [
+      1774,
+      887
+    ],
+    "sha256": "8acf827b81e392bcb4cb49f030b36208b6ecd8597c03e4c08867022c304693bd",
+    "bodies": [
+      {
+        "body": "moon",
+        "heading": 0,
+        "elevation": 66.73,
+        "diameterDegrees": 4.0,
+        "angularHeightPixels": 22.755555555555556,
+        "centreFromAngles": [
+          1108.8333333333333,
+          131.88044444444444
+        ],
+        "alphaPixels": 993,
+        "rasterBounds": [
+          1081,
+          121,
+          1137,
+          142
+        ],
+        "haloMaxAtSamples": {
+          "zenith": 0.0,
+          "high": 0.0,
+          "toward": 0.0,
+          "away": 0.0
+        },
+        "texture": "../moon/moon.png",
+        "textureSHA256": "5d55bf2b6fc3779fab556e8d7d8d36775876e891500ef303b30ccac5c4559af5",
+        "northUp": true,
+        "lightLinearRGB": [
+          1.0,
+          0.94,
+          0.84
+        ]
+      }
+    ],
+    "stars": [
+      {
+        "heading": 291.1212275692852,
+        "elevation": 30.659205507895425
+      },
+      {
+        "heading": 54.636496337944685,
+        "elevation": 30.73388453347553
+      },
+      {
+        "heading": 109.69015785228338,
+        "elevation": 24.620564303405757
+      },
+      {
+        "heading": 137.6407825919691,
+        "elevation": 26.318533207400243
+      },
+      {
+        "heading": 78.95793145575489,
+        "elevation": 32.13355118389065
+      },
+      {
+        "heading": 359.29026624747956,
+        "elevation": 28.29156674392887
+      },
+      {
+        "heading": 353.188990836356,
+        "elevation": 66.98213217268999
+      },
+      {
+        "heading": 250.01622557343947,
+        "elevation": 39.113018760053386
+      },
+      {
+        "heading": 185.5806611215739,
+        "elevation": 56.48097428287553
+      },
+      {
+        "heading": 117.6097777206324,
+        "elevation": 24.55103965472815
+      },
+      {
+        "heading": 321.5166753483432,
+        "elevation": 24.942222853114767
+      },
+      {
+        "heading": 80.79593527927747,
+        "elevation": 60.24068889707891
+      },
+      {
+        "heading": 172.9735233802993,
+        "elevation": 20.578027063036185
+      },
+      {
+        "heading": 137.69022087902152,
+        "elevation": 34.17867385738719
+      },
+      {
+        "heading": 41.11150319011092,
+        "elevation": 14.307189494738207
+      },
+      {
+        "heading": 131.06192642656532,
+        "elevation": 23.898571567199042
+      },
+      {
+        "heading": 132.8508708585931,
+        "elevation": 57.72817578172792
+      },
+      {
+        "heading": 85.99310771245493,
+        "elevation": 38.975189070294995
+      },
+      {
+        "heading": 269.9316515712367,
+        "elevation": 74.05339890977413
+      },
+      {
+        "heading": 215.18448573336474,
+        "elevation": 20.921511267269622
+      },
+      {
+        "heading": 232.6159786397521,
+        "elevation": 69.19645576482169
+      },
+      {
+        "heading": 210.42142696718187,
+        "elevation": 26.768255964632317
+      },
+      {
+        "heading": 72.8369112859327,
+        "elevation": 22.666957104941204
+      },
+      {
+        "heading": 57.500131921869944,
+        "elevation": 49.610603839583355
+      },
+      {
+        "heading": 132.44100549666555,
+        "elevation": 75.42146303619676
+      },
+      {
+        "heading": 108.99888928390311,
+        "elevation": 15.070865244735346
+      },
+      {
+        "heading": 30.481498736013574,
+        "elevation": 32.695859857153025
+      },
+      {
+        "heading": 124.48088389819922,
+        "elevation": 36.60518698232075
+      },
+      {
+        "heading": 196.44597059478795,
+        "elevation": 58.051202151932145
+      },
+      {
+        "heading": 332.45620997046206,
+        "elevation": 24.147260073439035
+      },
+      {
+        "heading": 44.1989463649814,
+        "elevation": 52.564704976392385
+      },
+      {
+        "heading": 219.94136120433498,
+        "elevation": 40.98129137393183
+      },
+      {
+        "heading": 216.51108237958275,
+        "elevation": 53.641050146095786
+      },
+      {
+        "heading": 90.18003184761281,
+        "elevation": 20.655936889804543
+      },
+      {
+        "heading": 114.45454110655965,
+        "elevation": 50.7754636905151
+      },
+      {
+        "heading": 166.96436814744976,
+        "elevation": 28.186748345848937
+      },
+      {
+        "heading": 266.65033507619364,
+        "elevation": 23.46343177367536
+      },
+      {
+        "heading": 320.2474773273659,
+        "elevation": 67.89328714681041
+      },
+      {
+        "heading": 106.214677558166,
+        "elevation": 61.114999724503804
+      },
+      {
+        "heading": 151.30075011175137,
+        "elevation": 22.12248035133195
+      },
+      {
+        "heading": 248.68826580122797,
+        "elevation": 52.62174021309733
+      },
+      {
+        "heading": 325.1384332293754,
+        "elevation": 53.879544119652714
+      },
+      {
+        "heading": 72.96605632034502,
+        "elevation": 64.3597877523596
+      },
+      {
+        "heading": 199.31865111442116,
+        "elevation": 16.154933837607107
+      },
+      {
+        "heading": 317.5513590575781,
+        "elevation": 24.77746683295424
+      },
+      {
+        "heading": 55.49781110920027,
+        "elevation": 32.985068080898316
+      },
+      {
+        "heading": 59.66309920726934,
+        "elevation": 38.857738311400375
+      },
+      {
+        "heading": 84.44428049532058,
+        "elevation": 44.479336017786295
+      },
+      {
+        "heading": 343.7233938234948,
+        "elevation": 39.28472450151059
+      },
+      {
+        "heading": 274.0077776849819,
+        "elevation": 38.231631581966454
+      },
+      {
+        "heading": 94.91959193486505,
+        "elevation": 17.04373582826673
+      },
+      {
+        "heading": 162.77978725787563,
+        "elevation": 29.352769088638365
+      },
+      {
+        "heading": 89.34730139690632,
+        "elevation": 30.015328555184283
+      },
+      {
+        "heading": 48.34028842726257,
+        "elevation": 34.946570138479615
+      },
+      {
+        "heading": 6.2937506842372315,
+        "elevation": 39.72935324940836
+      },
+      {
+        "heading": 186.42961239040287,
+        "elevation": 72.28518365350652
+      },
+      {
+        "heading": 183.26311636617987,
+        "elevation": 38.94113448800765
+      },
+      {
+        "heading": 8.99820434573189,
+        "elevation": 25.44365061327056
+      },
+      {
+        "heading": 124.12879345989694,
+        "elevation": 41.31587052178609
+      },
+      {
+        "heading": 242.61578228270326,
+        "elevation": 29.693384933930215
+      },
+      {
+        "heading": 351.1570272885734,
+        "elevation": 13.539802397545278
+      },
+      {
+        "heading": 2.6528633755893294,
+        "elevation": 15.991370515281288
+      },
+      {
+        "heading": 348.34528979138923,
+        "elevation": 44.264730517004104
+      },
+      {
+        "heading": 244.2423346419167,
+        "elevation": 46.910380043231854
+      },
+      {
+        "heading": 201.43679616330374,
+        "elevation": 24.161460729035785
+      },
+      {
+        "heading": 37.02280697096618,
+        "elevation": 35.0437474819684
+      },
+      {
+        "heading": 357.16382468453077,
+        "elevation": 39.81049972863471
+      },
+      {
+        "heading": 171.11991556371035,
+        "elevation": 63.364931801077425
+      },
+      {
+        "heading": 15.749986011024726,
+        "elevation": 55.50444262570161
+      },
+      {
+        "heading": 197.42762289651014,
+        "elevation": 45.46574650380049
+      },
+      {
+        "heading": 125.70206925167408,
+        "elevation": 12.080666396300105
+      },
+      {
+        "heading": 37.825137036835876,
+        "elevation": 63.24684052007987
+      },
+      {
+        "heading": 308.3437126403992,
+        "elevation": 62.31894487947308
+      },
+      {
+        "heading": 344.26019009344844,
+        "elevation": 23.25010284212561
+      },
+      {
+        "heading": 74.45156372390521,
+        "elevation": 22.50183391598181
+      },
+      {
+        "heading": 295.16856353480716,
+        "elevation": 32.45217627899733
+      },
+      {
+        "heading": 274.94695982354784,
+        "elevation": 41.93445474294864
+      },
+      {
+        "heading": 20.904626475633066,
+        "elevation": 67.57678459677963
+      },
+      {
+        "heading": 326.4707357296525,
+        "elevation": 47.68177194303569
+      },
+      {
+        "heading": 335.9868453283899,
+        "elevation": 44.16292703434654
+      },
+      {
+        "heading": 67.91911573752915,
+        "elevation": 38.64211580696323
+      },
+      {
+        "heading": 123.20208245172246,
+        "elevation": 27.47106917182187
+      },
+      {
+        "heading": 191.87972740600884,
+        "elevation": 40.20583015477392
+      },
+      {
+        "heading": 181.147868157719,
+        "elevation": 13.099604096033202
+      },
+      {
+        "heading": 304.3109875695398,
+        "elevation": 28.767183059413846
+      },
+      {
+        "heading": 193.9401126507123,
+        "elevation": 20.77308780971899
+      },
+      {
+        "heading": 96.77879957256444,
+        "elevation": 27.14466653586479
+      },
+      {
+        "heading": 290.68292543398536,
+        "elevation": 44.63440976051931
+      },
+      {
+        "heading": 353.44678939152254,
+        "elevation": 31.30905295679296
+      },
+      {
+        "heading": 191.1692755995703,
+        "elevation": 17.52231740355488
+      },
+      {
+        "heading": 236.21968071321862,
+        "elevation": 55.96115842690145
+      },
+      {
+        "heading": 18.24309838674216,
+        "elevation": 42.94698227312515
+      },
+      {
+        "heading": 329.9002683254053,
+        "elevation": 39.959365521377556
+      },
+      {
+        "heading": 326.4228452521952,
+        "elevation": 22.374533858914624
+      },
+      {
+        "heading": 91.85050369862046,
+        "elevation": 14.651726448870388
+      }
+    ],
+    "surfaces": {
+      "pureSkyPixels": 1060188,
+      "pureWaterPixels": 77688,
+      "horizonMixtures": 33841,
+      "recompositedForegroundEdgePixels": 5602,
+      "preservedLandPixels": 942396,
+      "waterTreatment": "round-two deep water retained",
+      "sourceCoverageMaxResidual": 1.3978192146047115
+    },
+    "geometry": "Original base coverage with unchanged round-three solid terrain and complete grey faces.",
+    "faces": {
+      "lit": {
+        "sourceRGB": [
+          28.0,
+          28.0,
+          28.0
+        ],
+        "targetRGB": [
+          26.26,
+          32.39,
+          42.02
+        ],
+        "wholeFacePixels": 3715
+      },
+      "shaded": {
+        "sourceRGB": [
+          21.0,
+          21.0,
+          21.0
+        ],
+        "targetRGB": [
+          13.47,
+          21.04,
+          35.25
+        ],
+        "wholeFacePixels": 11425
+      },
+      "up": {
+        "sourceRGB": [
+          37.0,
+          37.0,
+          37.0
+        ],
+        "targetRGB": [
+          29.87,
+          35.85,
+          46.82
+        ],
+        "wholeFacePixels": 15223
+      },
+      "waterEdgePixels": 5717
+    },
+    "round4": {
+      "approvedAirPreserved": true,
+      "celestialSkyPixels": 266817,
+      "waterTreatment": "broad silver moon sheen"
+    },
+    "round5": {
+      "unchangedFromRound4": true
+    }
+  }
+}

@@ -1,0 +1,2 @@
+low: cover 1.00 across 1.01 down; thickness 1.00 across 1.00 down; mean cover 0.246, mean thickness 0.107, cover over 0.5 on 25.8%
+high: cover 1.00 across 1.01 down; thickness 0.99 across 0.99 down; mean cover 0.039, mean thickness 0.015, cover over 0.5 on 3.8%

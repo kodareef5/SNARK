@@ -101,7 +101,7 @@ test("every question is answered, a pass's cost is the slope of time against pas
   const frames = ask(q, () => expect(card.gl.state).toEqual(before));
   expect(frames).toBeLessThan(400);
   const r = q.report;
-  expect([r.depthBits, r.timers, r.lostDuring]).toEqual([24, true, null]);
+  expect([r.timers, r.lostDuring]).toEqual([true, null]);
   // The fake reads every pixel back as grey: no answer is a yes, and none is left unasked.
   expect(r.depthRange).toBe("neither (read 128,128,128)");
   expect([r.depthArray, r.compareArray, r.texture3d]).toEqual(["did not render (read 128 and 128 at texel centres, not 0 and 255)", "not known", "wrong (128,128,128, not 64,128,191)"]);

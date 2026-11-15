@@ -3,7 +3,7 @@
 
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_TERRAIN_VERTEX } from "./glsl.ts";
+import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX } from "./glsl.ts";
 import { SURFACE_VERTEX, surfaceFragment } from "./surface.ts";
 
 /**
@@ -24,9 +24,15 @@ export interface ProgramText {
 
 const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
 
-/** The programs by name. The surface program is made the first time a frame draws with materials, which low poly never does. */
+/**
+ * The programs by name. The surface program is made the first time a frame draws with materials, and the see-through
+ * one the first time a frame with a split draws something see-through. Low poly does neither.
+ */
 export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat) => ProgramText>> = {
   flat: () => ({ vertex: FLAT_MESH_VERTEX, fragment: FLAT_FRAGMENT, defines: "", samplers: MESH }),
   terrain: () => ({ vertex: FLAT_TERRAIN_VERTEX, fragment: FLAT_FRAGMENT, defines: "", samplers: { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint } }),
+  // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
+  // the opaque draws, which some GPUs would then test for depth only after shading.
+  seeThrough: () => ({ vertex: FLAT_MESH_VERTEX, fragment: FLAT_SPLIT_FRAGMENT, defines: "", samplers: MESH }),
   surface: (_, format) => ({ vertex: SURFACE_VERTEX, fragment: surfaceFragment(format), defines: "", samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4 } }),
 };

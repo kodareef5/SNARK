@@ -205,6 +205,8 @@ export interface GpuInfo {
   uniformAlign: number;
   highp: boolean;
   antialias: boolean;
+  /** Bits of the canvas's depth buffer. Two depth ranges (D252) are worked out for 24. */
+  depthBits: number;
   extensions: string[];
   /** The texture variant the renderer took for this device: "bc", "astc" or "rgba". */
   variant: string;
@@ -333,7 +335,7 @@ export interface GlLike {
   getShaderPrecisionFormat(shader: number, type: number): { precision: number } | null;
   getContextAttributes(): { antialias?: boolean } | null;
 }
-const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_COMBINED_TEXTURE_IMAGE_UNITS: 0x8b4d, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245, MAX_UNIFORM_BLOCK_SIZE: 0x8a30, MAX_VERTEX_UNIFORM_BLOCKS: 0x8a2b, MAX_FRAGMENT_UNIFORM_BLOCKS: 0x8a2d, MAX_UNIFORM_BUFFER_BINDINGS: 0x8a2f, UNIFORM_BUFFER_OFFSET_ALIGNMENT: 0x8a34 };
+const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_COMBINED_TEXTURE_IMAGE_UNITS: 0x8b4d, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245, MAX_UNIFORM_BLOCK_SIZE: 0x8a30, MAX_VERTEX_UNIFORM_BLOCKS: 0x8a2b, MAX_FRAGMENT_UNIFORM_BLOCKS: 0x8a2d, MAX_UNIFORM_BUFFER_BINDINGS: 0x8a2f, UNIFORM_BUFFER_OFFSET_ALIGNMENT: 0x8a34, DEPTH_BITS: 0x0d56 };
 
 export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
   const n = (name: number): number => Number(gl.getParameter(name));
@@ -356,6 +358,7 @@ export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
     uniformBlocks: [n(GL.MAX_VERTEX_UNIFORM_BLOCKS), n(GL.MAX_FRAGMENT_UNIFORM_BLOCKS)],
     uniformBindings: n(GL.MAX_UNIFORM_BUFFER_BINDINGS),
     uniformAlign: n(GL.UNIFORM_BUFFER_OFFSET_ALIGNMENT),
+    depthBits: n(GL.DEPTH_BITS),
     extensions: gl.getSupportedExtensions() ?? [],
     variant,
   };

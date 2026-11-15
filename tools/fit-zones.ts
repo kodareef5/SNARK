@@ -1,14 +1,20 @@
 // Fits the skeleton's hit capsules to the modelled bodies and prints rows for shared/anim/human.ts, then tabulates
-// the zone drawn against the zone hit. With --check it only measures the capsules human.ts has now.
+// the zone drawn against the zone hit. With --check it only measures the capsules human.ts has now. Given a creature's
+// asset id (`bun tools/fit-zones.ts core:dodo`) it measures that creature's capsules, which its build fits.
 
 import { readFileSync } from "node:fs";
 import { bodySeed } from "../client/core/render/scene.ts";
+import { rayCreature } from "../shared/anim/creature.ts";
 import { B_FOOT_L, B_HAND_L, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_LEG_L, B_NECK, B_SHOULDER_L, B_TOE_L, B_UPPER_ARM_L, B_UPPER_LEG_L, HUMAN, ZONE_COUNT, ZONE_NAMES } from "../shared/anim/human.ts";
 import { LOOK_BYTES, LOOK_SEX, SEX_LABELS, defaultLook } from "../shared/anim/look.ts";
 import { AnimState } from "../shared/anim/pose.ts";
+import { buildRigs } from "../shared/anim/rigs.ts";
 import { rayBody, zoneOfBone } from "../shared/anim/zones.ts";
 import { VERTEX_BYTES, lodVertices, parsePack } from "../shared/pack/pack.ts";
 import { STANCE_CROUCH, STANCE_PRONE } from "../shared/sim/character.ts";
+import { ACT_NONE, ACT_SWING, HOLD_HANDS } from "../shared/sim/weapon.ts";
+import { findAssets } from "./art/assets.ts";
+import { ZONES } from "./art/spec.ts";
 import { provingView } from "./snap.ts";
 import { PICK_ENTITY, PICK_STRUCTURE } from "./snap/raster.ts";
 
@@ -166,7 +172,94 @@ function measure(sex: number): void {
   console.log(`same zone ${((same / body) * 100).toFixed(1)}% of ${body} body pixels; hits where no body is drawn: ${phantom} (${((phantom / body) * 100).toFixed(1)}% of that)`);
 }
 
+/**
+ * A modelled creature (`core:dodo`): its capsules are fitted when its asset is built (asset.ts `zones`), so this only
+ * measures them. It draws the creature standing, at several moments of its idle and its attack, from eight sides and
+ * from above and below, casts a ray through every pixel, and tabulates the zone drawn (the zone whose `covers` hold the
+ * bone drawn, or its nearest parent's) against the zone hit.
+ */
+async function measureCreature(id: string): Promise<void> {
+  const SIZE = 160;
+  const asset = (await findAssets()).find((a) => a.id === id);
+  if (!asset || asset.spec.kind !== "creature") throw new Error(`${id} is not a creature asset`);
+  const view = provingView(SIZE, SIZE);
+  const { raster, remote, cam, reg, pack } = view;
+  const kind = reg.index.get(id);
+  if (kind === undefined) throw new Error(`no species is drawn as ${id}`);
+  const rig = buildRigs(pack.header.rigs, pack.clips).get(id);
+  if (!rig) throw new Error(`the pack has no rig ${id}`);
+  const zoneOf = new Uint8Array(rig.bones);
+  for (let b = 0; b < rig.bones; b++) {
+    for (let up = b; up >= 0 && zoneOf[b] === 0; up = rig.parent[up]!) {
+      const z = asset.spec.zones.find((zone) => "covers" in zone && zone.covers.includes(rig.names[up]!));
+      if (z) zoneOf[b] = ZONES[z.zone];
+    }
+  }
+  remote.count = 1;
+  remote.kind[0] = kind;
+  remote.colors.fill(0, 0, 6);
+  const rid = remote.id[0]!;
+  const bx = remote.x[0]!, by = remote.y[0]!, bz = remote.z[0]!;
+  const table = Array.from({ length: ZONE_COUNT }, () => new Uint32Array(ZONE_COUNT));
+  let phantom = 0;
+  let body = 0;
+  const st = new AnimState();
+  const dir = [0, 0, 0];
+  const far = rig.reach * 2.4;
+  let shot = 0;
+  for (const [attack, tick] of [[false, 0], [false, 37], [false, 101], [true, 4], [true, 7]] as const) {
+    st.setAction(attack ? ACT_SWING : ACT_NONE, HOLD_HANDS, attack ? 0 : 0);
+    remote.anim[0] = st.pack();
+    st.seed = bodySeed(rid);
+    remote.tick = tick;
+    for (let k = 0; k < 10; k++) {
+      const around = k < 8 ? (k * Math.PI) / 4 + 0.2 : 0.6;
+      const up = k < 8 ? 0.15 : k === 8 ? 1.2 : -0.35;
+      const yawUnits = (shot++ * 9973) & 0xffc0;
+      remote.yaw[0] = (yawUnits / 65536) * Math.PI * 2;
+      cam.x = bx + Math.sin(around) * Math.cos(up) * far;
+      cam.z = bz + Math.cos(around) * Math.cos(up) * far;
+      cam.y = by + rig.mid + Math.sin(up) * far;
+      cam.yaw = around + Math.PI;
+      cam.pitch = -up;
+      cam.fovY = 0.7;
+      cam.aspect = 1;
+      view.render();
+      for (let py = 0; py < SIZE; py++) {
+        for (let px = 0; px < SIZE; px++) {
+          const at = py * SIZE + px;
+          const isBody = raster.pickKind[at] === PICK_ENTITY && raster.pickId[at] === rid && raster.pickBone[at]! > 0;
+          cam.ray((px + 0.5) / SIZE, (py + 0.5) / SIZE, dir);
+          const hit = rayCreature(rig, st, tick, reg.runAt[kind]!, bx, by, bz, yawUnits, cam.x, cam.y, cam.z, dir[0]!, dir[1]!, dir[2]!, far * 2);
+          if (!isBody) {
+            if (hit !== 0 && raster.pickKind[at] !== PICK_STRUCTURE) phantom++;
+            continue;
+          }
+          body++;
+          table[zoneOf[raster.pickBone[at]! - 1]!]![hit]!++;
+        }
+      }
+    }
+  }
+  console.log(`\n${id}: zone drawn (rows) against zone hit (columns), standing and attacking, from ten sides`);
+  console.log("".padEnd(12), ZONE_NAMES.map((name) => name.replace("left ", "L ").replace("right ", "R ").padStart(7)).join(""), "   same");
+  let same = 0;
+  for (let z = 1; z < ZONE_COUNT; z++) {
+    const row = table[z]!;
+    const total = row.reduce((a, b) => a + b, 0);
+    if (total === 0) continue;
+    same += row[z]!;
+    console.log(ZONE_NAMES[z]!.padEnd(12), [...row].map((v) => String(v).padStart(7)).join(""), "  ", ((row[z]! / total) * 100).toFixed(1) + "%");
+  }
+  console.log(`same zone ${((same / body) * 100).toFixed(1)}% of ${body} pixels of it; hits where none of it is drawn: ${phantom} (${((phantom / body) * 100).toFixed(1)}% of that)`);
+}
+
 if (import.meta.main) {
+  const creature = process.argv.slice(2).find((a) => !a.startsWith("--"));
+  if (creature) {
+    await measureCreature(creature);
+    process.exit(0);
+  }
   if (!process.argv.includes("--check")) {
     console.log("Fitted capsules (left side and middle; paste into shared/anim/human.ts):");
     for (const row of fit()) console.log("  " + row);

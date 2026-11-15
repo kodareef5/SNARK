@@ -1,0 +1,16 @@
+{
+  "startedUTC": "2026-11-15T00:15:10.621890+00:00",
+  "archive": "rounds/round-2",
+  "archiveFiles": 70,
+  "reportWrittenUTC": "2026-11-15T00:28:26.892378+00:00",
+  "elapsedSeconds": 796,
+  "clockScope": "From the round-two archive, after initial brief/report reading.",
+  "imageToolCalls": 1,
+  "completedAssemblyReviewPasses": 2,
+  "source": "originals/12-afternoon-round-3.png",
+  "sourceSHA256": "01d79ed81268ad5e7a03fd5a5a368bcc0b026c1ac02581d28a9bf7a091a03500",
+  "nativeSourceSize": [
+    1774,
+    887
+  ]
+}

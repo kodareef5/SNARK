@@ -118,6 +118,8 @@ export class TerrainLod {
       packet.tiles[n * 4 + 3] = stride;
       packet.tileOrigin[n * 2] = Math.round((tx * size) / hf.cell);
       packet.tileOrigin[n * 2 + 1] = Math.round((tz * size) / hf.cell);
+      // Its skirt hangs two quads under its lowest sample.
+      packet.tilePass[n] = cam.passes(x0, y0 - 2 * stride * hf.cell, z0, x0 + size, y1, z0 + size);
       packet.tileCount = n + 1;
       packet.triangles += TILE_QUADS * TILE_QUADS * 2;
     }

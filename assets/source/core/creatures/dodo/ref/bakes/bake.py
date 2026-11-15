@@ -170,7 +170,8 @@ def main():
     flow = feather_direction(model, obj)
     faces = surface(model, obj, flow)
     with open(SCRATCH, "w") as fh:
-        json.dump({"faces": faces, "materials": list(model.rig.MATERIALS), "atlas": model.ATLAS}, fh)
+        json.dump({"faces": faces, "materials": list(model.rig.MATERIALS), "atlas": model.ATLAS,
+                   "nape_wedge": model.NAPE_WEDGE}, fh)
     occlusion(obj, a["size"], a["samples"])
     print(f"bake: {len(faces)} faces, occlusion at {a['size']}; now run python3 {os.path.join(HERE, 'draw.py')}")
 

@@ -1,0 +1,1682 @@
+[
+  {
+    "key": "dawn",
+    "sample": "zenith",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dawn.png",
+    "panel_xy": [
+      338,
+      23
+    ],
+    "sheet_xy": [
+      370,
+      151
+    ],
+    "radius_px": 3,
+    "rgb": [
+      54,
+      78,
+      123
+    ],
+    "neutral_equivalent": 78.22
+  },
+  {
+    "key": "dawn",
+    "sample": "sky30_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dawn.png",
+    "panel_xy": [
+      502,
+      254
+    ],
+    "sheet_xy": [
+      534,
+      382
+    ],
+    "radius_px": 3,
+    "rgb": [
+      105,
+      128,
+      175
+    ],
+    "neutral_equivalent": 127.86
+  },
+  {
+    "key": "dawn",
+    "sample": "horizon_toward",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dawn.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      513,
+      504
+    ],
+    "radius_px": 3,
+    "rgb": [
+      197,
+      155,
+      145
+    ],
+    "neutral_equivalent": 164.47
+  },
+  {
+    "key": "dawn",
+    "sample": "horizon_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dawn.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      513,
+      504
+    ],
+    "radius_px": 3,
+    "rgb": [
+      160,
+      158,
+      177
+    ],
+    "neutral_equivalent": 159.89
+  },
+  {
+    "key": "dawn",
+    "sample": "card_open",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dawn.png",
+    "panel_xy": [
+      507,
+      480
+    ],
+    "sheet_xy": [
+      539,
+      608
+    ],
+    "radius_px": 3,
+    "rgb": [
+      53,
+      59,
+      74
+    ],
+    "neutral_equivalent": 59.04
+  },
+  {
+    "key": "dawn",
+    "sample": "card_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dawn.png",
+    "panel_xy": [
+      655,
+      480
+    ],
+    "sheet_xy": [
+      687,
+      608
+    ],
+    "radius_px": 3,
+    "rgb": [
+      25,
+      35,
+      52
+    ],
+    "neutral_equivalent": 34.71
+  },
+  {
+    "key": "dawn",
+    "sample": "cloud_lit",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dawn.png",
+    "panel_xy": [
+      276,
+      228
+    ],
+    "sheet_xy": [
+      308,
+      356
+    ],
+    "radius_px": 1,
+    "rgb": [
+      134,
+      140,
+      160
+    ],
+    "neutral_equivalent": 140.34
+  },
+  {
+    "key": "dawn",
+    "sample": "cloud_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dawn.png",
+    "panel_xy": [
+      276,
+      233
+    ],
+    "sheet_xy": [
+      308,
+      361
+    ],
+    "radius_px": 1,
+    "rgb": [
+      105,
+      123,
+      157
+    ],
+    "neutral_equivalent": 122.41
+  },
+  {
+    "key": "dawn",
+    "sample": "away_card_open",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dawn.png",
+    "panel_xy": [
+      420,
+      480
+    ],
+    "sheet_xy": [
+      452,
+      608
+    ],
+    "radius_px": 3,
+    "rgb": [
+      53,
+      59,
+      74
+    ],
+    "neutral_equivalent": 59.04
+  },
+  {
+    "key": "dawn",
+    "sample": "away_card_shade",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dawn.png",
+    "panel_xy": [
+      599,
+      480
+    ],
+    "sheet_xy": [
+      631,
+      608
+    ],
+    "radius_px": 3,
+    "rgb": [
+      25,
+      35,
+      52
+    ],
+    "neutral_equivalent": 34.71
+  },
+  {
+    "key": "morning",
+    "sample": "zenith",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/morning.png",
+    "panel_xy": [
+      338,
+      23
+    ],
+    "sheet_xy": [
+      1418,
+      151
+    ],
+    "radius_px": 3,
+    "rgb": [
+      45,
+      108,
+      176
+    ],
+    "neutral_equivalent": 106.02
+  },
+  {
+    "key": "morning",
+    "sample": "sky30_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/morning.png",
+    "panel_xy": [
+      502,
+      254
+    ],
+    "sheet_xy": [
+      1582,
+      382
+    ],
+    "radius_px": 3,
+    "rgb": [
+      128,
+      174,
+      217
+    ],
+    "neutral_equivalent": 169.38
+  },
+  {
+    "key": "morning",
+    "sample": "horizon_toward",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/morning.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      1561,
+      504
+    ],
+    "radius_px": 3,
+    "rgb": [
+      211,
+      214,
+      205
+    ],
+    "neutral_equivalent": 212.73
+  },
+  {
+    "key": "morning",
+    "sample": "horizon_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/morning.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      1561,
+      504
+    ],
+    "radius_px": 3,
+    "rgb": [
+      199,
+      217,
+      223
+    ],
+    "neutral_equivalent": 213.79
+  },
+  {
+    "key": "morning",
+    "sample": "card_open",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/morning.png",
+    "panel_xy": [
+      507,
+      480
+    ],
+    "sheet_xy": [
+      1587,
+      608
+    ],
+    "radius_px": 3,
+    "rgb": [
+      99,
+      90,
+      76
+    ],
+    "neutral_equivalent": 91.11
+  },
+  {
+    "key": "morning",
+    "sample": "card_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/morning.png",
+    "panel_xy": [
+      655,
+      480
+    ],
+    "sheet_xy": [
+      1735,
+      608
+    ],
+    "radius_px": 3,
+    "rgb": [
+      56,
+      71,
+      89
+    ],
+    "neutral_equivalent": 69.68
+  },
+  {
+    "key": "morning",
+    "sample": "cloud_lit",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/morning.png",
+    "panel_xy": [
+      307,
+      223
+    ],
+    "sheet_xy": [
+      1387,
+      351
+    ],
+    "radius_px": 1,
+    "rgb": [
+      180,
+      192,
+      197
+    ],
+    "neutral_equivalent": 189.9
+  },
+  {
+    "key": "morning",
+    "sample": "cloud_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/morning.png",
+    "panel_xy": [
+      307,
+      233
+    ],
+    "sheet_xy": [
+      1387,
+      361
+    ],
+    "radius_px": 1,
+    "rgb": [
+      149,
+      179,
+      201
+    ],
+    "neutral_equivalent": 174.96
+  },
+  {
+    "key": "morning",
+    "sample": "away_card_open",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/morning.png",
+    "panel_xy": [
+      420,
+      480
+    ],
+    "sheet_xy": [
+      1500,
+      608
+    ],
+    "radius_px": 3,
+    "rgb": [
+      99,
+      90,
+      77
+    ],
+    "neutral_equivalent": 91.16
+  },
+  {
+    "key": "morning",
+    "sample": "away_card_shade",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/morning.png",
+    "panel_xy": [
+      599,
+      480
+    ],
+    "sheet_xy": [
+      1679,
+      608
+    ],
+    "radius_px": 3,
+    "rgb": [
+      56,
+      71,
+      90
+    ],
+    "neutral_equivalent": 69.78
+  },
+  {
+    "key": "noon",
+    "sample": "zenith",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/noon.png",
+    "panel_xy": [
+      338,
+      23
+    ],
+    "sheet_xy": [
+      370,
+      741
+    ],
+    "radius_px": 3,
+    "rgb": [
+      29,
+      86,
+      161
+    ],
+    "neutral_equivalent": 86.82
+  },
+  {
+    "key": "noon",
+    "sample": "sky30_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/noon.png",
+    "panel_xy": [
+      502,
+      254
+    ],
+    "sheet_xy": [
+      534,
+      972
+    ],
+    "radius_px": 3,
+    "rgb": [
+      150,
+      190,
+      230
+    ],
+    "neutral_equivalent": 185.87
+  },
+  {
+    "key": "noon",
+    "sample": "horizon_toward",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/noon.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      513,
+      1094
+    ],
+    "radius_px": 3,
+    "rgb": [
+      220,
+      233,
+      225
+    ],
+    "neutral_equivalent": 229.74
+  },
+  {
+    "key": "noon",
+    "sample": "horizon_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/noon.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      513,
+      1094
+    ],
+    "radius_px": 3,
+    "rgb": [
+      213,
+      234,
+      233
+    ],
+    "neutral_equivalent": 229.67
+  },
+  {
+    "key": "noon",
+    "sample": "card_open",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/noon.png",
+    "panel_xy": [
+      507,
+      480
+    ],
+    "sheet_xy": [
+      539,
+      1198
+    ],
+    "radius_px": 3,
+    "rgb": [
+      127,
+      123,
+      116
+    ],
+    "neutral_equivalent": 123.38
+  },
+  {
+    "key": "noon",
+    "sample": "card_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/noon.png",
+    "panel_xy": [
+      655,
+      480
+    ],
+    "sheet_xy": [
+      687,
+      1198
+    ],
+    "radius_px": 3,
+    "rgb": [
+      55,
+      71,
+      94
+    ],
+    "neutral_equivalent": 70.01
+  },
+  {
+    "key": "noon",
+    "sample": "cloud_lit",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/noon.png",
+    "panel_xy": [
+      276,
+      218
+    ],
+    "sheet_xy": [
+      308,
+      936
+    ],
+    "radius_px": 1,
+    "rgb": [
+      251,
+      242,
+      231
+    ],
+    "neutral_equivalent": 243.19
+  },
+  {
+    "key": "noon",
+    "sample": "cloud_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/noon.png",
+    "panel_xy": [
+      276,
+      228
+    ],
+    "sheet_xy": [
+      308,
+      946
+    ],
+    "radius_px": 1,
+    "rgb": [
+      202,
+      206,
+      224
+    ],
+    "neutral_equivalent": 206.53
+  },
+  {
+    "key": "noon",
+    "sample": "away_card_open",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/noon.png",
+    "panel_xy": [
+      420,
+      480
+    ],
+    "sheet_xy": [
+      452,
+      1198
+    ],
+    "radius_px": 3,
+    "rgb": [
+      127,
+      123,
+      116
+    ],
+    "neutral_equivalent": 123.38
+  },
+  {
+    "key": "noon",
+    "sample": "away_card_shade",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/noon.png",
+    "panel_xy": [
+      599,
+      480
+    ],
+    "sheet_xy": [
+      631,
+      1198
+    ],
+    "radius_px": 3,
+    "rgb": [
+      55,
+      71,
+      94
+    ],
+    "neutral_equivalent": 70.01
+  },
+  {
+    "key": "afternoon",
+    "sample": "zenith",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/afternoon.png",
+    "panel_xy": [
+      338,
+      23
+    ],
+    "sheet_xy": [
+      1418,
+      741
+    ],
+    "radius_px": 3,
+    "rgb": [
+      53,
+      109,
+      174
+    ],
+    "neutral_equivalent": 107.16
+  },
+  {
+    "key": "afternoon",
+    "sample": "sky30_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/afternoon.png",
+    "panel_xy": [
+      502,
+      254
+    ],
+    "sheet_xy": [
+      1582,
+      972
+    ],
+    "radius_px": 3,
+    "rgb": [
+      136,
+      170,
+      210
+    ],
+    "neutral_equivalent": 166.99
+  },
+  {
+    "key": "afternoon",
+    "sample": "horizon_toward",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/afternoon.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      1561,
+      1094
+    ],
+    "radius_px": 3,
+    "rgb": [
+      224,
+      201,
+      166
+    ],
+    "neutral_equivalent": 203.99
+  },
+  {
+    "key": "afternoon",
+    "sample": "horizon_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/afternoon.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      1561,
+      1094
+    ],
+    "radius_px": 3,
+    "rgb": [
+      214,
+      208,
+      196
+    ],
+    "neutral_equivalent": 208.47
+  },
+  {
+    "key": "afternoon",
+    "sample": "card_open",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/afternoon.png",
+    "panel_xy": [
+      507,
+      480
+    ],
+    "sheet_xy": [
+      1587,
+      1198
+    ],
+    "radius_px": 3,
+    "rgb": [
+      119,
+      110,
+      97
+    ],
+    "neutral_equivalent": 111.13
+  },
+  {
+    "key": "afternoon",
+    "sample": "card_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/afternoon.png",
+    "panel_xy": [
+      655,
+      480
+    ],
+    "sheet_xy": [
+      1735,
+      1198
+    ],
+    "radius_px": 3,
+    "rgb": [
+      53,
+      71,
+      94
+    ],
+    "neutral_equivalent": 69.7
+  },
+  {
+    "key": "afternoon",
+    "sample": "cloud_lit",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/afternoon.png",
+    "panel_xy": [
+      328,
+      228
+    ],
+    "sheet_xy": [
+      1408,
+      946
+    ],
+    "radius_px": 1,
+    "rgb": [
+      179,
+      181,
+      187
+    ],
+    "neutral_equivalent": 181.02
+  },
+  {
+    "key": "afternoon",
+    "sample": "cloud_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/afternoon.png",
+    "panel_xy": [
+      328,
+      233
+    ],
+    "sheet_xy": [
+      1408,
+      951
+    ],
+    "radius_px": 1,
+    "rgb": [
+      153,
+      170,
+      192
+    ],
+    "neutral_equivalent": 168.33
+  },
+  {
+    "key": "afternoon",
+    "sample": "away_card_open",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/afternoon.png",
+    "panel_xy": [
+      420,
+      480
+    ],
+    "sheet_xy": [
+      1500,
+      1198
+    ],
+    "radius_px": 3,
+    "rgb": [
+      119,
+      110,
+      97
+    ],
+    "neutral_equivalent": 111.13
+  },
+  {
+    "key": "afternoon",
+    "sample": "away_card_shade",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/afternoon.png",
+    "panel_xy": [
+      599,
+      480
+    ],
+    "sheet_xy": [
+      1679,
+      1198
+    ],
+    "radius_px": 3,
+    "rgb": [
+      53,
+      71,
+      94
+    ],
+    "neutral_equivalent": 69.7
+  },
+  {
+    "key": "golden-hour",
+    "sample": "zenith",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/golden-hour.png",
+    "panel_xy": [
+      338,
+      23
+    ],
+    "sheet_xy": [
+      370,
+      1331
+    ],
+    "radius_px": 3,
+    "rgb": [
+      48,
+      78,
+      125
+    ],
+    "neutral_equivalent": 77.69
+  },
+  {
+    "key": "golden-hour",
+    "sample": "sky30_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/golden-hour.png",
+    "panel_xy": [
+      502,
+      254
+    ],
+    "sheet_xy": [
+      534,
+      1562
+    ],
+    "radius_px": 3,
+    "rgb": [
+      126,
+      141,
+      176
+    ],
+    "neutral_equivalent": 140.96
+  },
+  {
+    "key": "golden-hour",
+    "sample": "horizon_toward",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/golden-hour.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      513,
+      1684
+    ],
+    "radius_px": 3,
+    "rgb": [
+      222,
+      154,
+      94
+    ],
+    "neutral_equivalent": 168.56
+  },
+  {
+    "key": "golden-hour",
+    "sample": "horizon_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/golden-hour.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      513,
+      1684
+    ],
+    "radius_px": 3,
+    "rgb": [
+      155,
+      156,
+      179
+    ],
+    "neutral_equivalent": 157.6
+  },
+  {
+    "key": "golden-hour",
+    "sample": "card_open",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/golden-hour.png",
+    "panel_xy": [
+      507,
+      480
+    ],
+    "sheet_xy": [
+      539,
+      1788
+    ],
+    "radius_px": 3,
+    "rgb": [
+      76,
+      61,
+      47
+    ],
+    "neutral_equivalent": 63.7
+  },
+  {
+    "key": "golden-hour",
+    "sample": "card_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/golden-hour.png",
+    "panel_xy": [
+      655,
+      480
+    ],
+    "sheet_xy": [
+      687,
+      1788
+    ],
+    "radius_px": 3,
+    "rgb": [
+      39,
+      56,
+      78
+    ],
+    "neutral_equivalent": 54.92
+  },
+  {
+    "key": "golden-hour",
+    "sample": "cloud_lit",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/golden-hour.png",
+    "panel_xy": [
+      358,
+      228
+    ],
+    "sheet_xy": [
+      390,
+      1536
+    ],
+    "radius_px": 1,
+    "rgb": [
+      170,
+      142,
+      116
+    ],
+    "neutral_equivalent": 146.94
+  },
+  {
+    "key": "golden-hour",
+    "sample": "cloud_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/golden-hour.png",
+    "panel_xy": [
+      358,
+      233
+    ],
+    "sheet_xy": [
+      390,
+      1541
+    ],
+    "radius_px": 1,
+    "rgb": [
+      139,
+      131,
+      131
+    ],
+    "neutral_equivalent": 132.75
+  },
+  {
+    "key": "golden-hour",
+    "sample": "away_card_open",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/golden-hour.png",
+    "panel_xy": [
+      420,
+      480
+    ],
+    "sheet_xy": [
+      452,
+      1788
+    ],
+    "radius_px": 3,
+    "rgb": [
+      76,
+      62,
+      47
+    ],
+    "neutral_equivalent": 64.38
+  },
+  {
+    "key": "golden-hour",
+    "sample": "away_card_shade",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/golden-hour.png",
+    "panel_xy": [
+      599,
+      480
+    ],
+    "sheet_xy": [
+      631,
+      1788
+    ],
+    "radius_px": 3,
+    "rgb": [
+      39,
+      56,
+      77
+    ],
+    "neutral_equivalent": 54.81
+  },
+  {
+    "key": "sunset",
+    "sample": "zenith",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/sunset.png",
+    "panel_xy": [
+      338,
+      23
+    ],
+    "sheet_xy": [
+      1418,
+      1331
+    ],
+    "radius_px": 3,
+    "rgb": [
+      48,
+      56,
+      102
+    ],
+    "neutral_equivalent": 59.3
+  },
+  {
+    "key": "sunset",
+    "sample": "sky30_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/sunset.png",
+    "panel_xy": [
+      502,
+      254
+    ],
+    "sheet_xy": [
+      1582,
+      1562
+    ],
+    "radius_px": 3,
+    "rgb": [
+      107,
+      97,
+      145
+    ],
+    "neutral_equivalent": 103.56
+  },
+  {
+    "key": "sunset",
+    "sample": "horizon_toward",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/sunset.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      1561,
+      1684
+    ],
+    "radius_px": 3,
+    "rgb": [
+      215,
+      104,
+      65
+    ],
+    "neutral_equivalent": 136.28
+  },
+  {
+    "key": "sunset",
+    "sample": "horizon_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/sunset.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      1561,
+      1684
+    ],
+    "radius_px": 3,
+    "rgb": [
+      95,
+      111,
+      153
+    ],
+    "neutral_equivalent": 111.67
+  },
+  {
+    "key": "sunset",
+    "sample": "card_open",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/sunset.png",
+    "panel_xy": [
+      507,
+      480
+    ],
+    "sheet_xy": [
+      1587,
+      1788
+    ],
+    "radius_px": 3,
+    "rgb": [
+      61,
+      46,
+      41
+    ],
+    "neutral_equivalent": 49.3
+  },
+  {
+    "key": "sunset",
+    "sample": "card_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/sunset.png",
+    "panel_xy": [
+      655,
+      480
+    ],
+    "sheet_xy": [
+      1735,
+      1788
+    ],
+    "radius_px": 3,
+    "rgb": [
+      20,
+      29,
+      44
+    ],
+    "neutral_equivalent": 28.72
+  },
+  {
+    "key": "sunset",
+    "sample": "cloud_lit",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/sunset.png",
+    "panel_xy": [
+      328,
+      228
+    ],
+    "sheet_xy": [
+      1408,
+      1536
+    ],
+    "radius_px": 1,
+    "rgb": [
+      153,
+      98,
+      98
+    ],
+    "neutral_equivalent": 112.6
+  },
+  {
+    "key": "sunset",
+    "sample": "cloud_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/sunset.png",
+    "panel_xy": [
+      328,
+      233
+    ],
+    "sheet_xy": [
+      1408,
+      1541
+    ],
+    "radius_px": 1,
+    "rgb": [
+      124,
+      94,
+      120
+    ],
+    "neutral_equivalent": 103.3
+  },
+  {
+    "key": "sunset",
+    "sample": "away_card_open",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/sunset.png",
+    "panel_xy": [
+      420,
+      480
+    ],
+    "sheet_xy": [
+      1500,
+      1788
+    ],
+    "radius_px": 3,
+    "rgb": [
+      61,
+      46,
+      41
+    ],
+    "neutral_equivalent": 49.3
+  },
+  {
+    "key": "sunset",
+    "sample": "away_card_shade",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/sunset.png",
+    "panel_xy": [
+      599,
+      480
+    ],
+    "sheet_xy": [
+      1679,
+      1788
+    ],
+    "radius_px": 3,
+    "rgb": [
+      20,
+      29,
+      44
+    ],
+    "neutral_equivalent": 28.72
+  },
+  {
+    "key": "dusk",
+    "sample": "zenith",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dusk.png",
+    "panel_xy": [
+      338,
+      23
+    ],
+    "sheet_xy": [
+      370,
+      1921
+    ],
+    "radius_px": 3,
+    "rgb": [
+      16,
+      29,
+      58
+    ],
+    "neutral_equivalent": 29.94
+  },
+  {
+    "key": "dusk",
+    "sample": "sky30_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dusk.png",
+    "panel_xy": [
+      502,
+      254
+    ],
+    "sheet_xy": [
+      534,
+      2152
+    ],
+    "radius_px": 3,
+    "rgb": [
+      47,
+      51,
+      91
+    ],
+    "neutral_equivalent": 54.29
+  },
+  {
+    "key": "dusk",
+    "sample": "horizon_toward",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dusk.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      513,
+      2274
+    ],
+    "radius_px": 3,
+    "rgb": [
+      139,
+      68,
+      53
+    ],
+    "neutral_equivalent": 88.53
+  },
+  {
+    "key": "dusk",
+    "sample": "horizon_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dusk.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      513,
+      2274
+    ],
+    "radius_px": 3,
+    "rgb": [
+      45,
+      56,
+      90
+    ],
+    "neutral_equivalent": 57.24
+  },
+  {
+    "key": "dusk",
+    "sample": "card_open",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dusk.png",
+    "panel_xy": [
+      507,
+      480
+    ],
+    "sheet_xy": [
+      539,
+      2378
+    ],
+    "radius_px": 3,
+    "rgb": [
+      36,
+      35,
+      45
+    ],
+    "neutral_equivalent": 36.03
+  },
+  {
+    "key": "dusk",
+    "sample": "card_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dusk.png",
+    "panel_xy": [
+      655,
+      480
+    ],
+    "sheet_xy": [
+      687,
+      2378
+    ],
+    "radius_px": 3,
+    "rgb": [
+      15,
+      21,
+      32
+    ],
+    "neutral_equivalent": 20.85
+  },
+  {
+    "key": "dusk",
+    "sample": "cloud_lit",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dusk.png",
+    "panel_xy": [
+      276,
+      228
+    ],
+    "sheet_xy": [
+      308,
+      2126
+    ],
+    "radius_px": 1,
+    "rgb": [
+      81,
+      66,
+      86
+    ],
+    "neutral_equivalent": 71.09
+  },
+  {
+    "key": "dusk",
+    "sample": "cloud_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/dusk.png",
+    "panel_xy": [
+      276,
+      233
+    ],
+    "sheet_xy": [
+      308,
+      2131
+    ],
+    "radius_px": 1,
+    "rgb": [
+      74,
+      62,
+      86
+    ],
+    "neutral_equivalent": 66.76
+  },
+  {
+    "key": "dusk",
+    "sample": "away_card_open",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dusk.png",
+    "panel_xy": [
+      420,
+      480
+    ],
+    "sheet_xy": [
+      452,
+      2378
+    ],
+    "radius_px": 3,
+    "rgb": [
+      36,
+      35,
+      45
+    ],
+    "neutral_equivalent": 36.03
+  },
+  {
+    "key": "dusk",
+    "sample": "away_card_shade",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/dusk.png",
+    "panel_xy": [
+      599,
+      480
+    ],
+    "sheet_xy": [
+      631,
+      2378
+    ],
+    "radius_px": 3,
+    "rgb": [
+      15,
+      21,
+      32
+    ],
+    "neutral_equivalent": 20.85
+  },
+  {
+    "key": "night",
+    "sample": "zenith",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/night.png",
+    "panel_xy": [
+      338,
+      23
+    ],
+    "sheet_xy": [
+      1418,
+      1921
+    ],
+    "radius_px": 3,
+    "rgb": [
+      9,
+      19,
+      38
+    ],
+    "neutral_equivalent": 19.26
+  },
+  {
+    "key": "night",
+    "sample": "sky30_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/night.png",
+    "panel_xy": [
+      502,
+      254
+    ],
+    "sheet_xy": [
+      1582,
+      2152
+    ],
+    "radius_px": 3,
+    "rgb": [
+      18,
+      36,
+      67
+    ],
+    "neutral_equivalent": 36.37
+  },
+  {
+    "key": "night",
+    "sample": "horizon_toward",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/night.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      1561,
+      2274
+    ],
+    "radius_px": 3,
+    "rgb": [
+      42,
+      66,
+      101
+    ],
+    "neutral_equivalent": 65.26
+  },
+  {
+    "key": "night",
+    "sample": "horizon_away",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/night.png",
+    "panel_xy": [
+      481,
+      376
+    ],
+    "sheet_xy": [
+      1561,
+      2274
+    ],
+    "radius_px": 3,
+    "rgb": [
+      36,
+      56,
+      88
+    ],
+    "neutral_equivalent": 55.65
+  },
+  {
+    "key": "night",
+    "sample": "card_open",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/night.png",
+    "panel_xy": [
+      507,
+      480
+    ],
+    "sheet_xy": [
+      1587,
+      2378
+    ],
+    "radius_px": 3,
+    "rgb": [
+      31,
+      36,
+      45
+    ],
+    "neutral_equivalent": 35.74
+  },
+  {
+    "key": "night",
+    "sample": "card_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/night.png",
+    "panel_xy": [
+      655,
+      480
+    ],
+    "sheet_xy": [
+      1735,
+      2378
+    ],
+    "radius_px": 3,
+    "rgb": [
+      14,
+      21,
+      32
+    ],
+    "neutral_equivalent": 20.69
+  },
+  {
+    "key": "night",
+    "sample": "cloud_lit",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/night.png",
+    "panel_xy": [
+      276,
+      164
+    ],
+    "sheet_xy": [
+      1356,
+      2062
+    ],
+    "radius_px": 1,
+    "rgb": [
+      39,
+      51,
+      74
+    ],
+    "neutral_equivalent": 50.86
+  },
+  {
+    "key": "night",
+    "sample": "cloud_shade",
+    "sheet": "style/sheet.png",
+    "panel_file": "style/panels/toward/night.png",
+    "panel_xy": [
+      276,
+      169
+    ],
+    "sheet_xy": [
+      1356,
+      2067
+    ],
+    "radius_px": 1,
+    "rgb": [
+      29,
+      43,
+      68
+    ],
+    "neutral_equivalent": 42.91
+  },
+  {
+    "key": "night",
+    "sample": "away_card_open",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/night.png",
+    "panel_xy": [
+      420,
+      480
+    ],
+    "sheet_xy": [
+      1500,
+      2378
+    ],
+    "radius_px": 3,
+    "rgb": [
+      31,
+      36,
+      45
+    ],
+    "neutral_equivalent": 35.74
+  },
+  {
+    "key": "night",
+    "sample": "away_card_shade",
+    "sheet": "style/away.png",
+    "panel_file": "style/panels/away/night.png",
+    "panel_xy": [
+      599,
+      480
+    ],
+    "sheet_xy": [
+      1679,
+      2378
+    ],
+    "radius_px": 3,
+    "rgb": [
+      14,
+      21,
+      32
+    ],
+    "neutral_equivalent": 20.69
+  }
+]

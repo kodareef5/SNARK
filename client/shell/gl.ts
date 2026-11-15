@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../core/render/packet.ts";
+import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { NEUTRAL, skinMode, skyLight } from "../core/render/surface.ts";
@@ -15,7 +15,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 interface Program {
   program: WebGLProgram;
   uniform(name: string): WebGLUniformLocation | null;
-  /** The pass its shared uniforms were last set for, and the alpha a flat draw last gave it. */
+  /** The step its shared uniforms were last set for, and the alpha a flat draw last gave it. */
   pass: number;
   alpha: number;
 }
@@ -58,7 +58,10 @@ export class GlRenderer {
   /** A pixel for each map a material lacks or has not been sent, made the first time a frame draws with materials. */
   private neutral: WebGLTexture[] = [];
   private current: Program | null = null;
+  /** Counts the steps drawn (packet.ts), and holds the view-projection of this one and the view depth its see-through draws start at. */
   private pass = 0;
+  private matrix = new Float32Array(16);
+  private from = 0;
   /** The levels the card holds, by slot. A frame packet says which to take on and which to let go. */
   private readonly levels = new Map<number, MeshLod>();
   /** The level of each surface the card holds, by the surface's slot. */
@@ -316,15 +319,16 @@ export class GlRenderer {
     }
   }
 
-  /** Makes a program current, and the first time a pass of the frame uses it sets what all its draws share: the frame's uniforms are set here and nowhere else. */
-  private use(name: string, p: FramePacket, near: boolean): Program {
+  /** Makes a program current, and the first time a step of the frame uses it sets what all its draws share: the frame's uniforms are set here and nowhere else. */
+  private use(name: string, p: FramePacket): Program {
     const gl = this.gl;
     const prog = this.program(name, p.tier);
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
     if (prog.pass === this.pass) return prog;
     prog.pass = this.pass;
     prog.alpha = 1;
-    gl.uniformMatrix4fv(prog.uniform("uViewProj"), false, near ? p.nearViewProj : p.viewProj);
+    gl.uniformMatrix4fv(prog.uniform("uViewProj"), false, this.matrix);
+    gl.uniform1f(prog.uniform("uFrom"), this.from);
     gl.uniform3fv(prog.uniform("uSun"), p.sun);
     gl.uniform3fv(prog.uniform("uSky"), p.sky);
     gl.uniform3fv(prog.uniform("uSkyLight"), this.sky);
@@ -366,7 +370,6 @@ export class GlRenderer {
 
   draw(p: FramePacket): void {
     const gl = this.gl;
-    const hf = this.hf;
     this.drawCalls = 0;
     this.failed.length = this.failedTextures.length = 0;
     for (const slot of p.assetDrops) this.drop(slot);
@@ -393,27 +396,7 @@ export class GlRenderer {
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    this.pass++;
     skyLight(this.sky, p);
-
-    if (p.tileCount > 0) {
-      const prog = this.use("terrain", p, false);
-      gl.uniform1f(prog.uniform("uSolid"), 0);
-      gl.uniform4f(prog.uniform("uField"), hf.minY, hf.stepY, hf.cell, p.camY);
-      gl.uniform2f(prog.uniform("uLast"), hf.nx - 1, hf.nz - 1);
-      const data = this.tileData;
-      for (let t = 0; t < p.tileCount; t++) {
-        data.set(p.tiles.subarray(t * 4, t * 4 + 4), t * 6);
-        data[t * 6 + 4] = p.tileOrigin[t * 2]!;
-        data[t * 6 + 5] = p.tileOrigin[t * 2 + 1]!;
-      }
-      this.set(false, false, false);
-      gl.bindVertexArray(this.tileVao);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
-      gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, p.tileCount * 6), gl.DYNAMIC_DRAW);
-      gl.drawElementsInstanced(gl.TRIANGLES, this.tileIndexCount, gl.UNSIGNED_SHORT, 0, p.tileCount);
-      this.drawCalls++;
-    }
 
     // Resource changes first, in order.
     for (const u of p.uploads) {
@@ -438,25 +421,22 @@ export class GlRenderer {
     }
 
     this.bound.length = 0;
-    let near = false;
-    // The draw whose level and instances are bound. The sections of a level follow one another and share them.
+    // The step being drawn, and the draw whose level and instances are bound. The sections of a level follow one another and share them.
+    let step = -1;
     let held = -1;
     for (let d = 0; d < p.drawCount; d++) {
+      // A step's terrain binds its own vertex array.
+      const s = stepOf(p, d);
+      if (step < s) held = -1;
+      while (step < s) this.step(p, ++step);
       const flags = p.drawFlags[d]!;
-      // The viewer's own body comes last, over everything, with its own near plane.
-      if (!near && (flags & DRAW_NEAR) !== 0) {
-        near = true;
-        this.pass++;
-        this.set(false, true, false);
-        gl.clear(gl.DEPTH_BUFFER_BIT);
-      }
       const textured = (flags & DRAW_TEXTURED) !== 0;
       const lod = this.levels.get(p.drawSlot[d]!);
       const buffer = p.drawBuffer[d] === TRANSIENT_BUFFER ? this.transient : this.buffers.get(p.drawBuffer[d]!);
       if (!lod || !buffer || (textured && !lod.surface)) continue;
-      const prog = this.use(textured ? "surface" : "flat", p, near);
       // A see-through draw blends, shows both faces and leaves depth alone. Others may come after it, so every draw says.
       const blend = (flags & DRAW_BLEND) !== 0;
+      const prog = this.use(textured ? "surface" : blend && p.split > 0 ? "seeThrough" : "flat", p);
       this.set(blend, !blend && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
       gl.uniform1f(prog.uniform("uSkin"), skinMode(flags, textured && lod.skin));
       if (textured) this.material(prog, p, d);
@@ -484,9 +464,52 @@ export class GlRenderer {
       else gl.drawElementsInstanced(gl.TRIANGLES, lod.indexCount, lod.type, 0, p.drawInstances[d]!);
       this.drawCalls++;
     }
+    // The terrain and the dome are drawn when there is no draw after them.
+    while (step < STEP_FAR_SEE) this.step(p, ++step);
     // The next frame's clear writes depth and every channel.
     this.set(false, this.culling, false);
+    gl.depthRange(0, 1);
     gl.bindVertexArray(null);
+  }
+
+  /**
+   * Begins a step of the frame (packet.ts): its view-projection and part of the depth buffer, and in an opaque step the
+   * terrain tiles in its range. The viewer's body goes over a depth clear, with its own near plane.
+   */
+  private step(p: FramePacket, s: number): void {
+    const gl = this.gl;
+    const far = s === STEP_FAR || s === STEP_FAR_SEE;
+    const half = p.split > 0 && s !== STEP_BODY;
+    this.pass++;
+    this.matrix = s === STEP_BODY ? p.nearViewProj : far ? p.farViewProj : p.viewProj;
+    this.from = s === STEP_FAR_SEE ? p.split : 0;
+    gl.depthRange(half && far ? 0.5 : 0, half && !far ? 0.5 : 1);
+    if (s === STEP_BODY) {
+      this.set(false, true, false);
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+    }
+    if (s > STEP_FAR) return;
+    const data = this.tileData;
+    let n = 0;
+    for (let t = 0; t < p.tileCount; t++) {
+      if ((p.tilePass[t]! & (1 << s)) === 0) continue;
+      data.set(p.tiles.subarray(t * 4, t * 4 + 4), n * 6);
+      data[n * 6 + 4] = p.tileOrigin[t * 2]!;
+      data[n * 6 + 5] = p.tileOrigin[t * 2 + 1]!;
+      n++;
+    }
+    if (n === 0) return;
+    const hf = this.hf;
+    const prog = this.use("terrain", p);
+    gl.uniform1f(prog.uniform("uSolid"), 0);
+    gl.uniform4f(prog.uniform("uField"), hf.minY, hf.stepY, hf.cell, p.camY);
+    gl.uniform2f(prog.uniform("uLast"), hf.nx - 1, hf.nz - 1);
+    this.set(false, false, false);
+    gl.bindVertexArray(this.tileVao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, n * 6), gl.DYNAMIC_DRAW);
+    gl.drawElementsInstanced(gl.TRIANGLES, this.tileIndexCount, gl.UNSIGNED_SHORT, 0, n);
+    this.drawCalls++;
   }
 
   /** `sx` and `sy` are 0..1, origin top-left. */
