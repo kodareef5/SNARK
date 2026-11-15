@@ -24,12 +24,16 @@ const id = (name: string): string => `core:${name}`;
 /** Real minutes, as the hours of 140 seconds that spoiling is written in. */
 const minutes = (n: number): number => (n * 60) / 140;
 
-// Every piece of an armor tier has the same rating and durability, so a full set rates five times one piece.
-const ARMOR_TIERS: readonly { tier: string; set: string; armor: number; uses: number; weight: number; colors: readonly [number, number, number] }[] = [
+// Every piece of an armor tier has the same rating and durability, so a full set rates five times one piece. `weight` is
+// every piece's, or each piece's by its name.
+type PerPiece = Readonly<Record<string, number>>;
+const ARMOR_TIERS: readonly { tier: string; set: string; armor: number; uses: number; weight: number | PerPiece; colors: readonly [number, number, number] }[] = [
   { tier: "cloth", set: "cloth", armor: 10, uses: 25, weight: 0.4, colors: [1, 15, 225] },
   { tier: "hide", set: "hide", armor: 20, uses: 45, weight: 1.5, colors: [227, 228, 225] },
-  { tier: "chitin", set: "hide", armor: 50, uses: 50, weight: 3, colors: [9, 4, 1] },
-  { tier: "flak", set: "hide", armor: 100, uses: 120, weight: 4, colors: [2, 11, 6] },
+  // ark.wiki.gg, Chitin Helmet, Chitin Chestpiece, Chitin Gauntlets, Chitin Leggings and Chitin Boots, and the same of Flak,
+  // infoboxes, 2026-11-15 (stations S6): each piece's weight.
+  { tier: "chitin", set: "hide", armor: 50, uses: 50, weight: { hat: 4, shirt: 6, gloves: 3, pants: 6, boots: 3 }, colors: [9, 4, 1] },
+  { tier: "flak", set: "hide", armor: 100, uses: 120, weight: { hat: 4, shirt: 10, gloves: 2, pants: 10, boots: 4 }, colors: [2, 11, 6] },
 ];
 const ARMOR_PIECES: readonly { slot: "head" | "torso" | "hands" | "legs" | "feet"; name: string; label: string }[] = [
   { slot: "head", name: "hat", label: "hat" },
@@ -39,7 +43,7 @@ const ARMOR_PIECES: readonly { slot: "head" | "torso" | "hands" | "legs" | "feet
   { slot: "feet", name: "boots", label: "boots" },
 ];
 const ARMOR: Def[] = ARMOR_TIERS.flatMap((t) =>
-  ARMOR_PIECES.map((p): Def => ({ type: "item", class: "armor", id: id(`${t.tier}_${p.name}`), stack: 1, weight: t.weight, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors } })),
+  ARMOR_PIECES.map((p): Def => ({ type: "item", class: "armor", id: id(`${t.tier}_${p.name}`), stack: 1, weight: typeof t.weight === "number" ? t.weight : t.weight[p.name]!, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors } })),
 );
 
 const GEAR: Def[] = [
@@ -61,12 +65,18 @@ const GEAR: Def[] = [
 
 type Needs = readonly (readonly [item: string, count: number])[];
 
-/** level and cost are the tier engram's level and points. */
-const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number; needs: Readonly<Record<string, Needs>> }>> = {
+/**
+ * level and cost are the tier engram's level and points, `cost` every piece's or each piece's by its name; `xp` each
+ * piece's Crafting XP where the pages give it (else a third of the level); `at` the station it is made at, else the hand.
+ */
+const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number | PerPiece; xp?: PerPiece; at?: string; needs: Readonly<Record<string, Needs>> }>> = {
   cloth: { level: 3, cost: 3, needs: { hat: [["fiber", 10]], shirt: [["fiber", 40]], gloves: [["fiber", 20]], pants: [["fiber", 50]], boots: [["fiber", 25], ["hide", 6]] } },
   hide: { level: 15, cost: 9, needs: { hat: [["hide", 15], ["fiber", 6]], shirt: [["hide", 20], ["fiber", 8]], gloves: [["hide", 10], ["fiber", 4]], pants: [["hide", 25], ["fiber", 10]], boots: [["hide", 12], ["fiber", 5]] } },
-  chitin: { level: 37, cost: 18, needs: { hat: [["chitin", 15], ["hide", 7], ["fiber", 3]], shirt: [["chitin", 20], ["hide", 10], ["fiber", 4]], gloves: [["chitin", 10], ["hide", 5], ["fiber", 2]], pants: [["chitin", 25], ["hide", 12], ["fiber", 5]], boots: [["chitin", 12], ["hide", 6], ["fiber", 4]] } },
-  flak: { level: 56, cost: 16, needs: { hat: [["ingot", 10], ["hide", 7], ["fiber", 3]], shirt: [["ingot", 13], ["hide", 10], ["fiber", 4]], gloves: [["ingot", 6], ["hide", 5], ["fiber", 2]], pants: [["ingot", 16], ["hide", 12], ["fiber", 5]], boots: [["ingot", 8], ["hide", 6], ["fiber", 4]] } },
+  // Chitin and flak are made at the smithy, as ARK makes them (stations S6), at each piece's page (the infoboxes named above
+  // ARMOR_TIERS, 2026-11-15): level, engram points, ingredients and craftingxp, shown times the global 4 of patches 253.0
+  // and 313.5 (D465). No page gives a crafting time: 5 s is ours (DEV135).
+  chitin: { level: 37, cost: { hat: 18, shirt: 18, gloves: 15, pants: 15, boots: 15 }, xp: { hat: 7.6, shirt: 10.4, gloves: 5.2, pants: 12.8, boots: 6.4 }, at: "smithy", needs: { hat: [["chitin", 15], ["hide", 7], ["fiber", 3]], shirt: [["chitin", 20], ["hide", 10], ["fiber", 4]], gloves: [["chitin", 10], ["hide", 5], ["fiber", 2]], pants: [["chitin", 25], ["hide", 12], ["fiber", 5]], boots: [["chitin", 12], ["hide", 6], ["fiber", 4]] } },
+  flak: { level: 56, cost: { hat: 20, shirt: 18, gloves: 16, pants: 15, boots: 16 }, xp: { hat: 17.64, shirt: 23.12, gloves: 10.76, pants: 28.4, boots: 14.32 }, at: "smithy", needs: { hat: [["ingot", 10], ["hide", 7], ["fiber", 3]], shirt: [["ingot", 13], ["hide", 10], ["fiber", 4]], gloves: [["ingot", 6], ["hide", 5], ["fiber", 2]], pants: [["ingot", 16], ["hide", 12], ["fiber", 5]], boots: [["ingot", 8], ["hide", 6], ["fiber", 4]] } },
 };
 
 // Trees, rocks and bushes. As in the reference game, every tree gives thatch and wood, the hatchet more wood; every rock gives
@@ -242,21 +252,27 @@ const NODES: NodeDef[] = [
 /** Levels are the reference game's. */
 const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
-  ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["narcoberry", 5], ["meat", 1]]),
+  // ark.wiki.gg, Narcotic, infobox, 2026-11-15: at the mortar and pestle, 5 narcoberries and 1 spoiled meat, in 5 s,
+  // craftingxp 2 (our 8, D465's four times); level 6, 6 engram points (moved from the hand and raw meat by S6). The
+  // chemistry bench's 20 and 4 for 6 waits for the bench.
+  ...making("narcotic", "Narcotic", 6, 6, 1, 5, [["narcoberry", 5], ["spoiled_meat", 1]], 8, "mortar"),
   // The metal ingot has no engram and is not made in the hand, as in ARK, where the refining forge makes it (by the user,
   // 2026-11-15, on planning/reference/stations-plan.md's question 2: no rename, no refund); the forge refines it (S1, in
   // GEAR above). A save that knew the engram "Smelting" loads without it, and a job of ingots it was making is dropped
   // (server/progression.ts). Its recipe's old id still reads as the ingot.
   { type: "rename", id: id("make-ingot"), to: [id("ingot")] },
-  ...making("gunpowder", "Gunpowder", 21, 2, 1, 2, [["flint", 1], ["stone", 1], ["wood", 1]]),
-  // Each piece of an armor tier has its own engram, at the tier's level and cost. They were one engram for all five once,
-  // and a save that knew the set knows every piece.
+  // ark.wiki.gg, Gunpowder, infobox, 2026-11-15: at the mortar and pestle, 1 sparkpowder and 1 charcoal, in 1 s, craftingxp
+  // 0.05 (our 0.2, D465's four times); level 15, 2 engram points (moved from the hand and its flint, stone and wood by S6,
+  // once the forge's wood left charcoal, S1). The chemistry bench's recipe waits for the bench.
+  ...making("gunpowder", "Gunpowder", 15, 2, 1, 1, [["sparkpowder", 1], ["charcoal", 1]], 0.2, "mortar"),
+  // Each piece of an armor tier has its own engram, at the tier's level and the piece's cost. They were one engram for all
+  // five once, and a save that knew the set knows every piece.
   ...ARMOR_TIERS.flatMap((t): Def[] => {
     const m = ARMOR_MAKING[t.tier]!;
     return [
       ...ARMOR_PIECES.flatMap((p): Def[] => [
-        crafting(id(`${t.tier}_${p.name}`), { needs: m.needs[p.name]!.map(([item, n]) => ({ item: id(item), count: n })), seconds: 5, xp: Math.round(m.level / 3) }),
-        { type: "engram", id: id(`engram-${t.tier}_${p.name}`), label: `${t.tier[0]!.toUpperCase()}${t.tier.slice(1)} ${p.label}`, level: m.level, cost: m.cost, item: id(`${t.tier}_${p.name}`) },
+        crafting(id(`${t.tier}_${p.name}`), { needs: m.needs[p.name]!.map(([item, n]) => ({ item: id(item), count: n })), seconds: 5, xp: m.xp?.[p.name] ?? Math.round(m.level / 3), ...(m.at ? { at: id(m.at) } : {}) }),
+        { type: "engram", id: id(`engram-${t.tier}_${p.name}`), label: `${t.tier[0]!.toUpperCase()}${t.tier.slice(1)} ${p.label}`, level: m.level, cost: typeof m.cost === "number" ? m.cost : m.cost[p.name]!, item: id(`${t.tier}_${p.name}`) },
       ]),
       { type: "rename", id: id(`engram-${t.tier}`), to: ARMOR_PIECES.map((p) => id(`engram-${t.tier}_${p.name}`)) },
     ];
