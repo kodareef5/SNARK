@@ -23,6 +23,12 @@ export class Items {
   bus: Bus = NO_BUS;
   readonly minted: Float64Array;
   readonly burned: Float64Array;
+  /**
+   * Of what was minted, what came from another server of the cluster, and of what was burned, what left for one (`cameIn`,
+   * `sentAway`). Every server's counts and the transfers in its cluster's folder balance between them (server/cluster/audit.ts).
+   */
+  readonly received: Float64Array;
+  readonly sent: Float64Array;
   dirty = false;
   private readonly reg: Registry;
   private readonly records: Records;
@@ -56,6 +62,54 @@ export class Items {
     this.table = world.reg;
     this.minted = new Float64Array(world.reg.defs.length);
     this.burned = new Float64Array(world.reg.defs.length);
+    this.received = new Float64Array(world.reg.defs.length);
+    this.sent = new Float64Array(world.reg.defs.length);
+  }
+
+  /** What a record holds, by item: stacks and blueprints, rounds loaded in weapons, and attachments fitted to them. */
+  held(rec: EntityRecord, into: Map<number, number> = new Map()): Map<number, number> {
+    const inv = rec.inv;
+    for (let s = 0; inv && s < inv.cap; s++) {
+      if (inv.item[s] === 0) continue;
+      into.set(inv.item[s]!, (into.get(inv.item[s]!) ?? 0) + inv.count[s]!);
+      if (inv.loaded[s]! > 0) into.set(inv.ammo[s]!, (into.get(inv.ammo[s]!) ?? 0) + inv.loaded[s]!);
+      if (inv.attach[s] !== 0) into.set(inv.attach[s]!, (into.get(inv.attach[s]!) ?? 0) + 1);
+    }
+    return into;
+  }
+
+  /** The record came from another server with what it holds, which the caller has put in the world: that is minted, as received. */
+  receive(rec: EntityRecord): void {
+    this.cameIn(this.held(rec));
+    this.records.dirty.add(rec.pid);
+  }
+
+  /** Counts what left for another server, by item, as burned and sent. */
+  sentAway(what: ReadonlyMap<number, number>): void {
+    for (const [item, n] of what) {
+      this.burned[item] = this.burned[item]! + n;
+      this.sent[item] = this.sent[item]! + n;
+    }
+    this.dirty = true;
+  }
+
+  /** Counts what came from another server, by item, as minted and received. */
+  cameIn(what: ReadonlyMap<number, number>): void {
+    for (const [item, n] of what) {
+      this.minted[item] = this.minted[item]! + n;
+      this.received[item] = this.received[item]! + n;
+    }
+    this.dirty = true;
+  }
+
+  /**
+   * Counts `n` of an item as minted, or a negative `n` as burned, with no inventory touched: what an older save restored over
+   * a transfer had and the transfer carried differ by it (server/cluster/cluster.ts).
+   */
+  adjust(item: number, n: number): void {
+    if (n > 0) this.minted[item] = this.minted[item]! + n;
+    else if (n < 0) this.burned[item] = this.burned[item]! - n;
+    this.dirty = true;
   }
 
   /** The record's inventory, settled for spoilage up to this tick. Created on first use. */
@@ -456,10 +510,13 @@ export class Items {
     return out;
   }
 
-  /** Keyed by content id, so it survives a change of content indices. Each value is [minted, burned]. */
+  /** Keyed by content id, so it survives a change of content indices. Each value is [minted, burned], then [received, sent] if either is not 0. */
   serialize(): string {
-    const out: Record<string, [number, number]> = {};
-    for (let k = 1; k < this.minted.length; k++) if (this.minted[k] !== 0 || this.burned[k] !== 0) out[this.reg.ids[k]!] = [this.minted[k]!, this.burned[k]!];
+    const out: Record<string, number[]> = {};
+    for (let k = 1; k < this.minted.length; k++) {
+      if (this.minted[k] === 0 && this.burned[k] === 0) continue;
+      out[this.reg.ids[k]!] = this.received[k] === 0 && this.sent[k] === 0 ? [this.minted[k]!, this.burned[k]!] : [this.minted[k]!, this.burned[k]!, this.received[k]!, this.sent[k]!];
+    }
     return JSON.stringify(out);
   }
 
@@ -467,6 +524,8 @@ export class Items {
   restore(saved: string | null): void {
     this.minted.fill(0);
     this.burned.fill(0);
+    this.received.fill(0);
+    this.sent.fill(0);
     if (saved === null) {
       for (const rec of this.records.byPid.values()) {
         const inv = rec.inv;
@@ -481,13 +540,15 @@ export class Items {
       this.dirty = true;
       return;
     }
-    for (const [id, pair] of Object.entries(JSON.parse(saved) as Record<string, [number, number]>)) {
+    for (const [id, pair] of Object.entries(JSON.parse(saved) as Record<string, number[]>)) {
       // What was counted under an id that has since been renamed is counted under what it is now. Two ids may have become one.
       const k = this.reg.index.get(id) ?? this.reg.redirects.get(id)?.[0];
       // Stacks of removed content were dropped when the records loaded.
       if (k === undefined) continue;
-      this.minted[k] = this.minted[k]! + pair[0];
-      this.burned[k] = this.burned[k]! + pair[1];
+      this.minted[k] = this.minted[k]! + pair[0]!;
+      this.burned[k] = this.burned[k]! + pair[1]!;
+      this.received[k] = this.received[k]! + (pair[2] ?? 0);
+      this.sent[k] = this.sent[k]! + (pair[3] ?? 0);
     }
   }
 }

@@ -138,9 +138,9 @@ test("cells come at the size that suits the zoom a client shows, nearest first, 
   const far = chunkAt(DIMS, 30 * 64 + 10, 202);
   const near = chunkAt(DIMS, 74, 10);
   expect(a.tactical.chunks.get(far)!.level).toBe(3);
-  // The whole map's bases at the far zoom: a few hundred bytes.
+  // The whole map's bases at the far zoom: a few hundred bytes. A team's number carries its world, so it is three bytes a chunk.
   const whole = stats.cellBytes;
-  expect(whole).toBeLessThanOrEqual(600);
+  expect(whole).toBeLessThanOrEqual(720);
   expect(a.tactical.chunks.size).toBe(stats.cells);
 
   // Zoomed all the way in, the same chunks come again as 4 m cells, the nearest first, a kilobyte a second at most.

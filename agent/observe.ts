@@ -8,6 +8,7 @@ import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz } from "../shared/coords.ts";
 import { SKIN, capsuleBox, capsuleFree } from "../shared/world/collide.ts";
 import { GROUND_FREE, GROUND_OFF, GROUND_STEEP, GROUND_WATER, groundAt } from "../shared/world/path.ts";
 import { Found, type StructureStore } from "../shared/world/structures.ts";
+import { TRAVEL_TERMINAL } from "../shared/world/obelisks.ts";
 
 /** What stands at (x, z) where this client has been sent nothing: 0 for nothing known. Task T's `cellAt` is one. */
 export type FarLayer = (x: number, z: number) => number;
@@ -126,6 +127,9 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
   const nodes = new Map<string, Thing[]>();
   const boxes: Thing[] = [];
   const doors: Thing[] = [];
+  /** Obelisks' terminals, where a survivor travels to another server (the travel tool). */
+  const terminals: Thing[] = [];
+  const terminal = reg.index.get(TRAVEL_TERMINAL) ?? 0;
   const creatures: Thing[] = [];
   const bodies: Thing[] = [];
   const eggs: Thing[] = [];
@@ -146,6 +150,10 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
       const built = world.structs.chunks[chunk];
       for (let slot = 0; built && slot < built.high; slot++) {
         const kind = built.kind[slot]!;
+        if (kind !== 0 && kind === terminal) {
+          if (mark(built.x[slot]!, built.z[slot]!, UNKNOWN)) terminals.push(thing(`s${chunk * 65536 + slot}`, "obelisk terminal", built.x[slot]!, built.z[slot]!));
+          continue;
+        }
         const holds = reg.structSlots[kind]! > 0;
         if (kind === 0 || (!holds && reg.opens[kind] === 0)) continue;
         if (!mark(built.x[slot]!, built.z[slot]!, holds ? BOX : UNKNOWN)) continue;
@@ -201,7 +209,7 @@ export function observe(session: ClientSession, remote: RemoteSample, radius = 3
     lists: "Nearest first, at most 40 of a kind: id, its name if it has one, x, z, metres away, direction.",
   };
   for (const [name, things] of [...nodes].sort((p, q) => (p[0] < q[0] ? -1 : 1))) out[name] = list(things);
-  for (const [name, things] of [["box", boxes], ["door", doors], ["creature", creatures], ["body", bodies], ["egg", eggs], ["player", players]] as const) if (things.length > 0) out[name] = list(things);
+  for (const [name, things] of [["terminal", terminals], ["box", boxes], ["door", doors], ["creature", creatures], ["body", bodies], ["egg", eggs], ["player", players]] as const) if (things.length > 0) out[name] = list(things);
   return out;
 }
 

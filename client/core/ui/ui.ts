@@ -16,6 +16,7 @@ import { Settings } from "../settings.ts";
 import { buildSettings, settingsClick } from "./settings.ts";
 import { StructMenu } from "./structure.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
+import { TravelScreen } from "./travel.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 
 /** The channel each key opens the chat box on. */
@@ -33,6 +34,8 @@ export class Ui {
   readonly respawn = new RespawnScreen();
   readonly structure = new StructMenu();
   readonly naming = new NamePrompt();
+  /** The other servers of the cluster, opened at an obelisk's terminal. */
+  readonly travel = new TravelScreen();
   /** The session is in the creator, which is then the whole interface. */
   creating = false;
   /** Which screen is up. `options` is the settings screen. */
@@ -55,7 +58,7 @@ export class Ui {
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
   get wantsPointerLock(): boolean {
-    return !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.dead && !this.creating && !this.structure.open;
+    return !this.console.open && !this.chat.open && !this.naming.open && !this.inventory.open && !this.map && !this.character && !this.options && !this.travel.open && !this.dead && !this.creating && !this.structure.open;
   }
 
   /** Returns true if the interface used the key. The shell must then suppress the browser's own handling. */
@@ -87,7 +90,7 @@ export class Ui {
         return true;
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
-      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options))) {
+      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options || this.travel.open))) {
         if (down && !repeat) {
           this.structure.close();
           // Opening one screen closes the others.
@@ -101,6 +104,7 @@ export class Ui {
           this.map = map;
           this.character = character;
           this.options = options;
+          this.travel.open = false;
           if (inventory) this.inventory.open = true;
           else this.inventory.close(session);
         }
@@ -155,6 +159,7 @@ export class Ui {
     if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
+    if (kind === 0 && this.travel.open && this.travel.click(key, session)) return;
     if (this.inventory.open) this.inventory.pointer(kind, key, button, session);
   }
 
@@ -190,6 +195,7 @@ export class Ui {
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);
+      else if (this.travel.open && session) this.travel.build(f, session);
       else {
         this.inventory.build(f, session, this.registry, this.palette);
         if (session && this.registry && !this.inventory.open) this.structure.build(f, session, this.registry);
