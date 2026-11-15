@@ -28,3 +28,14 @@ reports/ruins2/bridges.json
 reports/ruins2/bridge-walk.json
 !reports/ruins2/references/
 !reports/ruins2/references/**
+
+# Regenerated round three inventories.
+reports/ruins3/buildings.json
+reports/ruins3/labels.json
+reports/ruins3/circulation.json
+reports/ruins3/places.json
+reports/ruins3/bridges.json
+reports/ruins3/bridge-walk.json
+reports/ruins3/room-walk.json
+!reports/ruins3/references/
+!reports/ruins3/references/**

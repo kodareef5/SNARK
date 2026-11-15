@@ -1,4 +1,4 @@
-import { RUIN_SHAPES, type RuinShape } from "../../content/miami-ruins.ts";
+import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";

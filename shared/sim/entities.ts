@@ -114,6 +114,11 @@ export class EntityStore {
   readonly look: (Uint8Array | null)[];
   /** Content indices: GEAR_HELD, then one per armor slot. Replaced, never changed in place. */
   readonly gear: (Uint16Array | null)[];
+  /**
+   * 1 while the laser on the item in hand is switched on: the create's gear "on" bit (protocol 13; weapons-plan.md, M10).
+   * A flashlight's is kept on its owner's books and not sent, as nothing draws it until there are local lights (D436).
+   */
+  on: Uint8Array;
   rev: Uint8Array;
 
   /** Chunk the entity is linked into, or -1. */
@@ -174,6 +179,7 @@ export class EntityStore {
     this.name = new Array<string>(cap).fill("");
     this.look = new Array<Uint8Array | null>(cap).fill(null);
     this.gear = new Array<Uint16Array | null>(cap).fill(null);
+    this.on = new Uint8Array(cap);
     this.rev = new Uint8Array(cap);
     this.chunk = new Int32Array(cap).fill(-1);
     this.chunkHead = new Int32Array(chunkCount(dims)).fill(-1);
@@ -237,6 +243,7 @@ export class EntityStore {
     this.name[i] = "";
     this.look[i] = null;
     this.gear[i] = null;
+    this.on[i] = 0;
     this.rev[i] = (this.rev[i]! + 1) & 15;
     this.link(i, chunkAt(this.dims, x, z));
     return i;
@@ -288,6 +295,7 @@ export class EntityStore {
       this.look.push(null);
       this.gear.push(null);
     }
+    this.on = wider(this.on, cap);
     this.rev = wider(this.rev, cap);
     this.chunk = wider(this.chunk, cap, -1);
     this.next = wider(this.next, cap, -1);
@@ -351,6 +359,13 @@ export class EntityStore {
     for (let k = 0; k < GEAR_COUNT && same; k++) same = old![k] === gear[k];
     if (same) return;
     this.gear[i] = Uint16Array.from({ length: GEAR_COUNT }, (_, k) => gear[k] ?? 0);
+    this.rev[i] = (this.rev[i]! + 1) & 15;
+  }
+
+  /** Whether the laser in hand is on. A change is sent as a new create, as the gear is. */
+  setOn(i: number, on: boolean): void {
+    if ((this.on[i] !== 0) === on) return;
+    this.on[i] = on ? 1 : 0;
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 

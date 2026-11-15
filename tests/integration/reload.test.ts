@@ -92,7 +92,8 @@ test("a press of the primary button ends a reload of a round at a time once the 
   const { h, s, pilot, inv, slot, corrections } = setup(AUTO, "pistol", "pistol");
   const before = corrections();
   const shots = h.host.projectiles;
-  for (let n = 0; n < 4; n++) press(h, pilot, BTN_PRIMARY, 2);
+  // Each tap waits out the pistol's 14 ticks between shots (2.1 a second, Simple Pistol).
+  for (let n = 0; n < 4; n++) press(h, pilot, BTN_PRIMARY, 2, 500);
   expect([shots.fired, inv.loaded[slot]]).toEqual([4, 2]);
   // Reload, and tap the trigger halfway through the second round: that round goes in and no more, and nothing fires.
   press(h, pilot, BTN_RELOAD, 2, 0);

@@ -46,6 +46,9 @@ export interface District {
 }
 
 export interface World {
+  readonly bridgeGapLayer?: string;
+  readonly containerDistrict?: string;
+  readonly ruins?: { report: string; yardDistricts: string[] };
   readonly id: string;
   readonly label: string;
   readonly seaNavd88: number;
@@ -87,7 +90,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const biome = base.bytes("biome");
   const canopy = base.bytes("painted_canopy");
   const flooded = base.bytes("flooded_streets");
-  const gaps = base.bytes("bridge_gaps");
+  const gaps = world.bridgeGapLayer ? base.bytes(world.bridgeGapLayer) : new Uint8Array(base.n * base.n);
   const wrecks = base.bytes("wrecks");
   const dem = base.elevation();
   const bathy = blur(base.bathymetry(), n, n, 2, 3);
@@ -350,7 +353,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   }
   // The port's yards are rows of containers along the island, one or two high, some gone, with lanes between.
   const container = new Uint8Array(N);
-  const port = world.districts.findIndex((d) => d.name === "The Port") + 1;
+  const port = world.districts.findIndex((d) => d.name === world.containerDistrict) + 1;
   let stacks = 0;
   if (port > 0 && world.containerHeaps !== false) {
     const ring = world.districts[port - 1]!.ring.map(([lon, lat]) => base.tm.forward(lon, lat));
