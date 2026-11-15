@@ -440,9 +440,10 @@ export class ClientSession {
 
   /**
    * `corrections` counts snapshots that moved the predicted body. `stateCorrections` counts those that changed only other
-   * predicted state. `unsent` counts commands too long for a message.
+   * predicted state. `transitions` counts those that changed which body it is or where it sits (a mount, a seat), which
+   * nothing predicts and are not counted as either. `unsent` counts commands too long for a message.
    */
-  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, unsent: 0 };
+  readonly stats = { snapshots: 0, undecodable: 0, corrections: 0, stateCorrections: 0, transitions: 0, clockJumps: 0, margin: 0, rttTicks: 0, bytesIn: 0, unsent: 0 };
   readonly prediction = new PredictionTrace();
   /** What is left to hide of the last correction. Add it to the body's position when drawing. */
   smoothX = 0;
@@ -1357,8 +1358,13 @@ export class ClientSession {
         [this.inputs.moveX[i]!, this.inputs.moveZ[i]!, this.inputs.buttons[i]!, this.inputs.yaw[i]!, this.inputs.pitch[i]!]);
     }
     const moved = !predicted || !compared.samePosition(sb);
+    // The server changed which body this is or where it sits (a mount, a seat, getting out, being pulled out), or what the
+    // vehicle it drives carries (someone getting in or out of it, its hold changed). Nothing
+    // predicts when the server commits one, so it is no misprediction; it is taken as told and shown at once.
+    const changed = predicted && (compared.kind !== sb.kind || compared.vehicle !== sb.vehicle || compared.seat !== sb.seat || compared.seatSlot !== sb.seatSlot || compared.seatGen !== sb.seatGen || compared.vehiclePayloadMass !== sb.vehiclePayloadMass);
     if (predicted && !matches) {
-      if (moved) this.stats.corrections++;
+      if (changed) this.stats.transitions++;
+      else if (moved) this.stats.corrections++;
       else this.stats.stateCorrections++;
     }
     if (this.simTick - tick >= HISTORY) {
@@ -1392,7 +1398,7 @@ export class ClientSession {
     }
     // Replaying a seated body only steps look/action/aim. Its spatial state is the latest authoritative pin;
     // rendering attaches it to the interpolated host, so it needs no independent correction fade.
-    if (passenger) { this.smoothX = this.smoothY = this.smoothZ = 0; return; }
+    if (passenger || changed) { this.smoothX = this.smoothY = this.smoothZ = 0; return; }
     // Keep drawing from where the body appeared to be, and let that fade. A large jump (a teleport) is shown at once.
     const dx = wasX - this.own.x + this.smoothX;
     const dy = wasY - this.own.y + this.smoothY;
