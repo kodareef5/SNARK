@@ -176,6 +176,8 @@ export interface Registry {
   /** Per prop: the multiple of its mesh's modelled size it is drawn at, 1 for everything else; for an egg, the item it is once picked up (0 for none). */
   readonly drawSize: Float32Array;
   readonly propItem: Uint16Array;
+  /** Per prop: for an egg, the item it is once picked up fertilised (0 for none). */
+  readonly propFertile: Uint16Array;
   /**
    * Per item: the ticks one lies on the ground before it is gone, or 0 for as long as any dropped stack; and what a young
    * body gives in its place (0 for itself).
@@ -436,6 +438,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (other !== undefined) errors.push(`${d.id}: ${other} is already given in place of "${d.youngFor}"`);
       young.set(d.youngFor, d.id);
     }
+    if (d.type === "prop" && d.fertile !== undefined && input.some((o) => o.id === d.fertile && o.type === "item" && o.stack !== 1)) errors.push(`${d.id}: its fertile item must stack to 1`);
   }
   if (input.length >= 65535) errors.push("too many definitions for a 16-bit index");
   if (errors.length > 0) return { registry: null, errors };
@@ -524,6 +527,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const eggChance = new Float32Array(n);
   const drawSize = new Float32Array(n).fill(1);
   const propItem = new Uint16Array(n);
+  const propFertile = new Uint16Array(n);
   const decomposeTicks = new Uint32Array(n);
   const youngItem = new Uint16Array(n);
   const materials = new Map(sorted.flatMap((o) => (o.type === "material" ? [[o.id, o] as const] : [])));
@@ -658,6 +662,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       }
     }
     if (d.type === "prop" && d.item !== undefined) propItem[i] = index.get(d.item)!;
+    if (d.type === "prop" && d.fertile !== undefined) propFertile[i] = index.get(d.fertile)!;
     if (d.type === "item" && d.youngFor !== undefined) youngItem[index.get(d.youngFor)!] = i;
     if (d.type === "item" && d.saddle) {
       saddleFits[i] = index.get(d.saddle.fits)!;
@@ -691,7 +696,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, decomposeTicks, youngItem }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;

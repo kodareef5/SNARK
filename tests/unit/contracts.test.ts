@@ -1,8 +1,8 @@
-// The contracts the creature packages build on: in place, and doing nothing yet.
+// The contracts the creature packages build on: in place, and doing nothing yet unless their package has been built.
 
 import { expect, test } from "bun:test";
 import { CORE_CONTENT, TAME_XP } from "../../content/core.ts";
-import { DODO_EGG } from "../../content/creatures/dodo.ts";
+import { DODO_EGG, DODO_EGG_FERTILE } from "../../content/creatures/dodo.ts";
 import { AnimState, CUE_BITS, CUE_DEAD, CUE_HELD, CUE_OUT, CUE_TORPOR, LAYER_FLINCH, MATING_STEPS, STAGE_WORST, hurtStage } from "../../shared/anim/pose.ts";
 import { defFaults } from "../../shared/content/classes.ts";
 import type { Def } from "../../shared/content/defs.ts";
@@ -65,9 +65,32 @@ test("the new columns change nothing for content that does not use them", () => 
     const d = reg.defs[i]!;
     if (d.type === "species" && d.tamedSprintMul === undefined) expect(reg.tamedMove[i]).toBe(reg.move[i]);
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual([0, 0, 0, 0, 0]);
-    if (d.id !== "core:egg_dodo") expect(reg.drawSize[i]).toBe(1);
-    expect([reg.meleeTorpor[i], reg.feces[i], reg.propItem[i], reg.decomposeTicks[i], reg.youngItem[i]]).toEqual([0, 0, 0, 0, 0]);
+    expect(reg.drawSize[i]).toBe(1);
+    expect([reg.meleeTorpor[i], reg.youngItem[i]]).toEqual([0, 0]);
+    // Eggs and feces lie on the ground for a time; nothing else declares one yet.
+    if (!(d.type === "item" && (d.class === "egg" || d.class === "feces"))) expect(reg.decomposeTicks[i]).toBe(0);
   }
+});
+
+test("every species that lays an egg leaves feces, and its egg is an item, fertilised or not", () => {
+  const layers = reg.defs.filter((d) => d?.type === "species" && d.breeds?.egg !== undefined).map((d) => d!.id);
+  expect(layers.sort()).toEqual(["core:dodo", "core:parasaur", "core:raptor"]);
+  const ids = (col: Uint16Array, i: number): string => (col[i] === 0 ? "" : reg.ids[col[i]!]!);
+  expect(layers.map((id) => ids(reg.feces, at(id)))).toEqual(["core:feces_small", "core:feces_medium", "core:feces_small"]);
+  expect(layers.map((id) => [ids(reg.propItem, reg.breedEgg[at(id)]!), ids(reg.propFertile, reg.breedEgg[at(id)]!)])).toEqual([
+    ["core:dodo_egg", "core:dodo_egg_fertile"],
+    ["core:parasaur_egg", "core:parasaur_egg_fertile"],
+    ["core:raptor_egg", "core:raptor_egg_fertile"],
+  ]);
+  // Only an egg prop names items, and only a species leaves feces.
+  for (let i = 1; i < reg.defs.length; i++) {
+    const d = reg.defs[i]!;
+    if (!(d.type === "prop" && d.class === "egg")) expect([reg.propItem[i], reg.propFertile[i]]).toEqual([0, 0]);
+    if (!layers.includes(d.id)) expect(reg.feces[i]).toBe(0);
+  }
+  // A fertilised egg is one of a kind.
+  const egg = CORE_CONTENT.find((d) => d.id === "core:egg_dodo")!;
+  expect(compileContent(CORE_CONTENT.map((d): Def => (d === egg ? { ...egg, fertile: "core:dodo_egg" } as Def : d))).errors).toEqual(["core:egg_dodo: its fertile item must stack to 1"]);
 });
 
 test("prime meat from the young: an item given in place of another, and only one for each", () => {
@@ -78,27 +101,28 @@ test("prime meat from the young: an item given in place of another, and only one
   expect(compileContent([...CORE_CONTENT, prime, { ...prime, id: "test:prime2" } as Def]).errors).toEqual(['test:prime2: test:prime is already given in place of "core:meat"']);
 });
 
-test("the dodo's numbers: runs at 95.55 units a second tamed, weighs 25 to a carrier, may be carried, lays in place of 13% of its feces, and its egg is drawn small", () => {
+test("the dodo's numbers: runs at 95.55 units a second tamed, weighs 25 to a carrier, may be carried, lays in place of 13% of its feces, and its egg is the extra small one, 11 cm tall", () => {
   const dodo = at("core:dodo");
   expect(reg.move[dodo]!.walkSpeed * reg.tamedMove[dodo]!.sprintMul).toBeCloseTo(0.9555, 6);
   expect(reg.move[dodo]!.walkSpeed * reg.move[dodo]!.sprintMul).toBeCloseTo(1.365, 6);
   expect({ ...reg.tamedMove[dodo]!, sprintMul: 0 }).toEqual({ ...reg.move[dodo]!, sprintMul: 0 });
   expect([reg.alarm[dodo], reg.drag[dodo], reg.mass[dodo], reg.carriable[dodo], reg.eggChance[dodo]]).toEqual([15, 25, 50, 1, Math.fround(0.13)]);
-  expect(reg.drawSize[at("core:egg_dodo")]).toBeCloseTo(0.2, 6);
+  const egg = at("core:egg_dodo");
+  expect([(reg.defs[egg] as Extract<Def, { type: "prop" }>).mesh, reg.drawSize[egg]]).toEqual(["core:egg_xs", 1]);
+  expect([reg.bodyRadius[egg], reg.bodyHeight[egg]].map((v) => Math.round(v! * 100) / 100)).toEqual([0.04, 0.11]);
 });
 
-test("the dodo's egg item and the tames' 88 levels are ready to be joined", () => {
-  expect(defFaults(DODO_EGG)).toEqual([]);
-  const egg = CORE_CONTENT.find((d) => d.id === "core:egg_dodo")!;
-  const joined = CORE_CONTENT.map((d): Def => (d === egg ? { ...egg, item: DODO_EGG.id } as Def : d));
-  const made = compileContent([...joined, DODO_EGG]);
-  expect(made.errors).toEqual([]);
-  const r = made.registry!;
+test("the dodo's egg items are joined, and the tames' 88 levels are ready to be", () => {
+  expect([defFaults(DODO_EGG), defFaults(DODO_EGG_FERTILE)]).toEqual([[], []]);
+  const r = reg;
   const item = r.index.get(DODO_EGG.id)!;
-  expect(r.propItem[r.index.get("core:egg_dodo")!]).toBe(item);
+  const fertile = r.index.get(DODO_EGG_FERTILE.id)!;
+  expect([r.propItem[r.index.get("core:egg_dodo")!], r.propFertile[r.index.get("core:egg_dodo")!]]).toEqual([item, fertile]);
   // Eight days and thirty minutes, real time.
   expect([r.spoilTicks[item]! / GAME_HOUR_TICKS * 140, r.decomposeTicks[item]! / GAME_HOUR_TICKS * 140].map(Math.round)).toEqual([8 * 86400, 1800]);
   expect([r.stack[item], r.weight[item]]).toEqual([100, 3]);
+  // Fertilised, one of a kind that spoils as slowly, and lies until it hatches.
+  expect([r.stack[fertile], r.weight[fertile], r.spoilTicks[fertile], r.decomposeTicks[fertile]]).toEqual([1, 3, r.spoilTicks[item], 0]);
 
   expect(TAME_XP.length).toBe(89);
   expect(TAME_XP[88]).toBe(22213960);

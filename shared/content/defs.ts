@@ -432,6 +432,8 @@ export interface PropDef extends Named {
   readonly size?: number;
   /** An egg: the item it is when picked up. */
   readonly item?: string;
+  /** An egg: the item it is when picked up fertilised, which stacks to 1 and keeps the young it holds. */
+  readonly fertile?: string;
 }
 
 /**
