@@ -11,6 +11,7 @@ import { sunDirection, sunHeight, hourOfSun } from "../../client/core/render/sky
 import { Found } from "../../shared/world/structures.ts";
 import { provingView, type ProvingView } from "../snap.ts";
 import { encodePng } from "../snap/png.ts";
+import { PICK_SKY } from "../snap/raster.ts";
 
 /** The keys of the plan's A2: a name, the hour, and whether the moon lights it rather than the sun. */
 export const KEYS = [
@@ -78,7 +79,11 @@ const FACES = [
   { yaw: 0, pitch: -Math.PI / 2 },
 ];
 
-function render(key: (typeof KEYS)[number]): { pixels: Uint8ClampedArray; points: Record<string, Point>; sun: Point; moon: Point } {
+/**
+ * One key's panorama and its points. With `sky`, which gives a direction's colour (0 to 255), the sky is drawn by it
+ * and the land without fog, to look at a sky over the land.
+ */
+export function render(key: (typeof KEYS)[number], sky?: (dir: readonly number[], out: number[]) => void): { pixels: Uint8ClampedArray; points: Record<string, Point>; sun: Point; moon: Point } {
   const view: ProvingView = provingView(FACE, FACE);
   const { scene, cam, hf, structs, reg, raster } = view;
   scene.assets.tier = tierOf("lowpoly");
@@ -127,6 +132,7 @@ function render(key: (typeof KEYS)[number]): { pixels: Uint8ClampedArray; points
   cam.fovY = Math.PI / 2;
   cam.aspect = 1;
   const faces: Uint8ClampedArray[] = [];
+  const picks: Uint8Array[] = [];
   const matrices: Float32Array[] = [];
   for (const f of FACES) {
     cam.yaw = f.yaw;
@@ -137,13 +143,16 @@ function render(key: (typeof KEYS)[number]): { pixels: Uint8ClampedArray; points
     p.sun[2] = light[2]!;
     // The cards and the sea are drawn without the checker.
     for (let d = 0; d < p.drawCount; d++) if (p.drawMesh[d] === blockMesh || p.drawMesh[d] === water) p.drawFlags[d]! |= DRAW_PLAIN;
+    if (sky) p.fogStart = p.fogEnd = 1e9;
     raster.render(p);
     faces.push(raster.color.slice());
+    picks.push(raster.pickKind.slice());
     matrices.push(p.viewProj.slice());
   }
 
   const pixels = new Uint8ClampedArray(WIDTH * HEIGHT * 4);
   const acc = [0, 0, 0];
+  const above = [0, 0, 0];
   for (let j = 0; j < HEIGHT; j++) {
     for (let i = 0; i < WIDTH; i++) {
       acc.fill(0);
@@ -164,7 +173,11 @@ function render(key: (typeof KEYS)[number]): { pixels: Uint8ClampedArray; points
         const m = matrices[best]!;
         const fx = ((m[0]! * dx + m[4]! * dy + m[8]! * dz) / most) * 0.5 + 0.5;
         const fy = 0.5 - ((m[1]! * dx + m[5]! * dy + m[9]! * dz) / most) * 0.5;
-        bilinear(faces[best]!, fx * FACE - 0.5, fy * FACE - 0.5, acc);
+        const at = Math.min(FACE - 1, Math.floor(fy * FACE)) * FACE + Math.min(FACE - 1, Math.floor(fx * FACE));
+        if (sky && picks[best]![at] === PICK_SKY) {
+          sky([dx, dy, dz], above);
+          for (let c = 0; c < 3; c++) acc[c]! += above[c]!;
+        } else bilinear(faces[best]!, fx * FACE - 0.5, fy * FACE - 0.5, acc);
       }
       const o = (j * WIDTH + i) * 4;
       pixels[o] = acc[0]! / 4;
@@ -236,8 +249,8 @@ if (import.meta.main) {
         high: "the sky 30 degrees up, opposite the light's heading",
         toward: "the sky 3 degrees up, 15 degrees round from the light's heading, clear of the disc",
         away: "the sky 3 degrees up, opposite the light's heading",
-        lit: "the face of a grey 128 cube turned square to the light, lit by it",
-        shaded: "the face of a second grey 128 cube turned away from the light, in its own shade",
+        lit: "the upright face of a grey 128 cube turned to the light's heading, lit by it at the light's height",
+        shaded: "the upright face of a second grey 128 cube turned away from the light's heading, in its own shade",
         up: "a third grey 128 cube sunk to its top, a card lying flat and facing straight up",
       },
       lightIs: "the sun, except in the night key, where it is the moon opposite the sun",

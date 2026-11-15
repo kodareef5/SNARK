@@ -19,6 +19,7 @@ from here.
 | `fit-zones.ts` | `bun tools/fit-zones.ts` | Fits the hit capsules to the modelled bodies and measures the match |
 | `map.ts`, `map/` | `bun tools/map.ts build <folder> <out.snmap>`, and `unpack`, `proving`, `info` | Builds a map file from a folder of plain layers, turns one back into its folder, writes the proving ground as a file, and says what a file holds. The folder's layout is in the tool's header and in [maps as files](../planning/reference/maps.md) |
 | `settings.ts` | `bun run settings` | Writes `planning/reference/settings.md` from the catalogue of server settings; a test fails if the page is stale |
+| `sky/` | `bun tools/sky/build.ts`, `bun tools/sky/base.ts`, `bun tools/sky/preview.ts --sheet file` | The sky on lit tiers: the physical sky (after Hillaire 2020) graded to the mood keys and written as the table `client/core/render/skytable.ts` and `assets/source/core/sky/table.png`; the panoramas the keys are painted over; and those panoramas under the table's sky |
 
 `check.ts` holds the allow-list of development packages, the zone import table,
 the shell line budget, and the check time budget. Changing any of them is a

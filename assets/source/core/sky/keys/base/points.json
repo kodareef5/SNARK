@@ -12,8 +12,8 @@
     "high": "the sky 30 degrees up, opposite the light's heading",
     "toward": "the sky 3 degrees up, 15 degrees round from the light's heading, clear of the disc",
     "away": "the sky 3 degrees up, opposite the light's heading",
-    "lit": "the face of a grey 128 cube turned square to the light, lit by it",
-    "shaded": "the face of a second grey 128 cube turned away from the light, in its own shade",
+    "lit": "the upright face of a grey 128 cube turned to the light's heading, lit by it at the light's height",
+    "shaded": "the upright face of a second grey 128 cube turned away from the light's heading, in its own shade",
     "up": "a third grey 128 cube sunk to its top, a card lying flat and facing straight up"
   },
   "lightIs": "the sun, except in the night key, where it is the moon opposite the sun",
