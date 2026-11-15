@@ -58,10 +58,10 @@ function saddleBoxes(inSeat: readonly number[]): { lod: SourceLod; part: number[
 
 /**
  * The raptor's model as Blender would write it, read back from `pack`: its joints, its finest level as a primitive for each
- * colour region, with "Saddle" (the box saddle) and "Velociraptor_saddled" (the raptor again with a red box saddle) beside
- * it. Every vertex weighs wholly on one joint, and each box on the Torso bone, which carries the seat.
+ * colour region, and with `saddles` "Saddle" (the box saddle) and "Velociraptor_saddled" (the raptor again with a red box
+ * saddle) beside it. Every vertex weighs wholly on one joint, and each box on the Torso bone, which carries the seat.
  */
-export function saddleGlb(pack: Pack): Uint8Array {
+export function saddleGlb(pack: Pack, saddles = true): Uint8Array {
   const rig = pack.header.rigs.find((r) => r.id === RAPTOR)!;
   const names = rig.names!;
   const body = unpackMeshes(pack).find((m) => m.id === RAPTOR)!.lods[0]!;
@@ -97,15 +97,15 @@ export function saddleGlb(pack: Pack): Uint8Array {
   const bodyPrimitives = () => regions.map((_, r) => primitive(body, all(body).filter((t) => body.colors[body.indices[t * 3]!] === REGION_BASE + r), r));
   const boxes = saddleBoxes(inSeat);
   const saddle = (first: number) => boxes.map((b) => primitive(b.lod, all(b.lod), first + b.part[0]!, torso));
-  const joints = names.map((_, b) => 3 + b);
+  const objects = saddles ? ["Velociraptor", SADDLE_OBJECT, SADDLED_OBJECT] : ["Velociraptor"];
+  const joints = names.map((_, b) => objects.length + b);
+  const meshes = [{ primitives: bodyPrimitives() }, { primitives: saddle(regions.length) }, { primitives: [...bodyPrimitives(), ...saddle(regions.length + 2)] }];
   return writeGlb(
     {
       scene: 0,
-      scenes: [{ nodes: [0, 1, 2, joints[0]] }],
+      scenes: [{ nodes: [...objects.keys(), joints[0]] }],
       nodes: [
-        { name: "Velociraptor", mesh: 0, skin: 0 },
-        { name: SADDLE_OBJECT, mesh: 1, skin: 0 },
-        { name: SADDLED_OBJECT, mesh: 2, skin: 0 },
+        ...objects.map((name, mesh) => ({ name, mesh, skin: 0 })),
         ...names.map((name, b) => {
           const p = rig.parent![b]!;
           const translation = [0, 1, 2].map((k) => rig.rest[b * 3 + k]! - (p < 0 ? 0 : rig.rest[p * 3 + k]!));
@@ -113,7 +113,7 @@ export function saddleGlb(pack: Pack): Uint8Array {
           return { name, translation, ...(children.length > 0 ? { children } : {}) };
         }),
       ],
-      meshes: [{ primitives: bodyPrimitives() }, { primitives: saddle(regions.length) }, { primitives: [...bodyPrimitives(), ...saddle(regions.length + 2)] }],
+      meshes: meshes.slice(0, objects.length),
       skins: [{ joints }],
       materials: [
         ...regions.map((name) => ({ name })),
@@ -145,11 +145,12 @@ export function saddleAsset(ways: Ways): CreatureAsset {
   };
 }
 
-const made = new Map<Ways, Built>();
+const made = new WeakMap<Pack, Map<Ways, Built>>();
 
-/** The meshes `saddleAsset(ways)` converts `saddleGlb(pack)` to, besides the bare body: built once a process for each way. */
+/** The meshes `saddleAsset(ways)` converts `saddleGlb(pack)` to, besides the bare body: built once a process for each pack and way. */
 export function saddleMeshes(pack: Pack, ways: Ways): SourceMesh[] {
-  let out = made.get(ways);
+  const of = made.get(pack) ?? made.set(pack, new Map()).get(pack)!;
+  let out = of.get(ways);
   if (!out) {
     out = { meshes: [], rigs: [], clips: [], lines: [], warnings: [], faults: [] };
     const dir = mkdtempSync(join(tmpdir(), "snark-saddles-"));
@@ -161,7 +162,7 @@ export function saddleMeshes(pack: Pack, ways: Ways): SourceMesh[] {
       rmSync(dir, { recursive: true, force: true });
     }
     if (out.faults.length > 0) throw new Error(out.faults.join("; "));
-    made.set(ways, out);
+    of.set(ways, out);
   }
   return out.meshes.filter((m) => m.id !== RAPTOR);
 }

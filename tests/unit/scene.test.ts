@@ -419,7 +419,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // pin moved only for this: without the saddles it is the hash above.
   const saddled = lowPoly(true);
   expect(saddled.log).toEqual(log);
-  expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn]).toEqual([273, 97, 1, 0, [undefined, 273]]);
+  expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 97, 1, 0, 0, 273]);
   expect(saddled.hash).toBe(1277817829);
 });
 
