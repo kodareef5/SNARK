@@ -409,7 +409,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const carry = new Carry({ world, game, records, items, survival, creatures });
   const feces = new Feces({ world, records, items, deadlines, rules }, (opts.seed ?? 1) + 107);
   const eggs = new Eggs({ world, game, records, items });
-  const overhead = new Overhead({ world, records, breeding });
+  const overhead = new Overhead({ world, records, breeding, game, survival, tribes });
   const hurt = new Hurt({ world, records, survival });
   taming.bred = (rec) => breeding.subject(rec);
   death.onRide = (c, e) => {

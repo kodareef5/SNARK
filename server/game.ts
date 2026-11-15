@@ -360,6 +360,8 @@ export class GameServer {
   onStep: ((tick: number) => void) | null = null;
   /** Called for each connected session just before its snapshot. */
   onReplicate: ((c: Client) => void) | null = null;
+  /** The shared view around a session as that session may be sent it, or the same view. */
+  viewFor: ((c: Client, cur: SentView) => SentView) | null = null;
   /** Whether the session may run command `op` now. A refused command answers RESULT_DENIED and its handler is not called. */
   allows: ((c: Client, op: number) => boolean) | null = null;
   /** speed is in metres per second. */
@@ -1134,7 +1136,7 @@ export class GameServer {
     // The client predicts its own body, so the view leaves it out. While it drives a mount, both bodies are in the view.
     const self = c.drive >= 0 ? -1 : c.ent;
     const at = this.viewAround(c.chunk, T);
-    const cur = this.around[at]!;
+    const cur = this.viewFor ? this.viewFor(c, this.around[at]!) : this.around[at]!;
     // What it asked for takes effect once a second at most, so that it cannot have its view sent over and over.
     if ((c.wantView !== c.viewCap || c.wantBytes !== c.snapshotBytes) && T >= c.viewReadyAt) {
       c.viewCap = c.wantView;

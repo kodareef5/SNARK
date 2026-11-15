@@ -43,9 +43,10 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
           if (dx < 0 || dy < 0 || dx >= width || dy >= height) continue;
           const s = (Math.floor((py * image.height) / h) * image.width + Math.floor((px * image.width) / w)) * 4;
           const o = (dy * width + dx) * 4;
-          color[o] = image.data[s]!;
-          color[o + 1] = image.data[s + 1]!;
-          color[o + 2] = image.data[s + 2]!;
+          const a = image.data[s + 3]! / 255;
+          color[o] = color[o]! + (image.data[s]! - color[o]!) * a;
+          color[o + 1] = color[o + 1]! + (image.data[s + 1]! - color[o + 1]!) * a;
+          color[o + 2] = color[o + 2]! + (image.data[s + 2]! - color[o + 2]!) * a;
           color[o + 3] = 255;
         }
       }
