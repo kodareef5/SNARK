@@ -559,11 +559,16 @@ export function goneByRows(city: CityStatics, chunk: number, rows: { readonly hi
   return marked;
 }
 
-// Scratch for cells: each cell's colour and the volume of the box that gave it, and which empty cells the air outside
+// Scratch for cells: whether each is filled, and for each of its six faces (+x, -x, +y, -y, +z, -z) how far out a box
+// reaches that way, the area the box it is coloured by shows that way, and its colour; which empty cells the air outside
 // reaches, with a stack for flooding it and a mask for a slice of faces.
 let cellColour = new Uint8Array(1 << 16);
-let cellShare = new Float32Array(1 << 16);
+let faceReach = new Float32Array(6 << 16);
+let faceArea = new Float32Array(6 << 16);
+let faceColour = new Uint8Array(6 << 16);
 let outside = new Uint8Array(1 << 16);
+/** A face takes the colour of the box showing it most area among those reaching within this many metres of the outermost. */
+const FACE_DEPTH = 1;
 let stack = new Int32Array(1 << 16);
 let mask = new Int16Array(4096);
 /** A box takes a cell it covers at least this share of, along each axis; or, along an axis it takes none of, the one it covers most. */
@@ -599,13 +604,17 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
     const N = nx * ny * nz;
     if (cellColour.length < N) {
       cellColour = new Uint8Array(N * 2);
-      cellShare = new Float32Array(N * 2);
+      faceReach = new Float32Array(N * 12);
+      faceArea = new Float32Array(N * 12);
+      faceColour = new Uint8Array(N * 12);
       outside = new Uint8Array(N * 2);
       stack = new Int32Array(N * 2);
     }
     cellColour.fill(0, 0, N);
-    cellShare.fill(0, 0, N);
-    const span = [0, 0, 0, 0, 0, 0];
+    faceReach.fill(-Infinity, 0, N * 6);
+    faceArea.fill(-1, 0, N * 6);
+    // The cells each box takes: those it covers TAKES of along each axis, or along an axis it takes none of, the one it covers most.
+    const spans = new Int32Array(nb * 6);
     for (let b = 0; b < nb; b++) {
       for (let ax = 0; ax < 3; ax++) {
         const l = (framed[b * 7 + ax]! - o[ax]!) / step[ax]!;
@@ -616,18 +625,41 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
         while (i0 < i1 && cover(i0) < TAKES) i0++;
         while (i1 > i0 && cover(i1) < TAKES) i1--;
         if (i0 === i1 && cover(i0) < TAKES && cover(i0 + 1) > cover(i0)) i0 = i1 = i0 + 1;
-        span[ax] = i0;
-        span[ax + 3] = i1;
+        spans[b * 6 + ax] = i0;
+        spans[b * 6 + ax + 3] = i1;
       }
-      const col = framed[b * 7 + 6]! + 1;
-      const volume = (framed[b * 7 + 3]! - framed[b * 7]!) * (framed[b * 7 + 4]! - framed[b * 7 + 1]!) * (framed[b * 7 + 5]! - framed[b * 7 + 2]!);
-      for (let k = span[2]!; k <= span[5]!; k++) {
-        for (let j = span[1]!; j <= span[4]!; j++) {
-          for (let i = span[0]!; i <= span[3]!; i++) {
-            const cell = (k * ny + j) * nx + i;
-            if (volume > cellShare[cell]!) {
-              cellShare[cell] = volume;
-              cellColour[cell] = col;
+    }
+    // A face of a cell is coloured as that side of the pieces in it shows: first how far out the outermost reaches, then
+    // the colour of the box showing most area that way among those within FACE_DEPTH of it, so a wall gives a front its
+    // colour over the slab edge before it.
+    for (let pass = 0; pass < 2; pass++) {
+      for (let b = 0; b < nb; b++) {
+        const B = b * 7;
+        for (let k = spans[b * 6 + 2]!; k <= spans[b * 6 + 5]!; k++) {
+          for (let j = spans[b * 6 + 1]!; j <= spans[b * 6 + 4]!; j++) {
+            for (let i = spans[b * 6]!; i <= spans[b * 6 + 3]!; i++) {
+              const cell = (k * ny + j) * nx + i;
+              cellColour[cell] = 1;
+              const at = [i, j, k];
+              for (let d = 0; d < 6; d++) {
+                const ax = d >> 1;
+                const reach = d & 1 ? -framed[B + ax]! : framed[B + 3 + ax]!;
+                const e = cell * 6 + d;
+                if (pass === 0) {
+                  if (reach > faceReach[e]!) faceReach[e] = reach;
+                  continue;
+                }
+                if (reach < faceReach[e]! - FACE_DEPTH) continue;
+                let area = 1;
+                for (const w of [(ax + 1) % 3, (ax + 2) % 3]) {
+                  const c0 = o[w]! + at[w]! * step[w]!;
+                  area *= Math.max(0, Math.min(framed[B + 3 + w]!, c0 + step[w]!) - Math.max(framed[B + w]!, c0));
+                }
+                if (area > faceArea[e]!) {
+                  faceArea[e] = area;
+                  faceColour[e] = framed[B + 6]!;
+                }
+              }
             }
           }
         }
@@ -677,6 +709,7 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
         const na = n[ax]!;
         const [sa, su, sv] = [stride[ax]!, stride[u]!, stride[v]!];
         const across = sign * sa;
+        const way = ax * 2 + (sign > 0 ? 0 : 1);
         if (mask.length < nu * nv) mask = new Int16Array(nu * nv * 2);
         for (let d = 0; d < na; d++) {
           const e = d + sign;
@@ -686,9 +719,8 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
             let cell = d * sa + jv * sv;
             const row = jv * nu;
             for (let iu = 0; iu < nu; iu++, cell += su) {
-              const col = cellColour[cell]!;
-              if (col !== 0 && outside[cell + across] === 1) {
-                mask[row + iu] = col;
+              if (cellColour[cell] !== 0 && outside[cell + across] === 1) {
+                mask[row + iu] = faceColour[cell * 6 + way]! + 1;
                 any = true;
               } else mask[row + iu] = 0;
             }
