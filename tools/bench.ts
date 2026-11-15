@@ -15,6 +15,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { contentFor, createHost, type Host } from "../server/host.ts";
 import type { Client } from "../server/game.ts";
 import { NODES_TOLD } from "../server/harvest.ts";
+import { settle } from "../server/place.ts";
 import { loadConfig, loadConfigFolder } from "../server/settings/config.ts";
 import { Rules } from "../server/settings/rules.ts";
 import { WorldStore } from "../server/persist/store.ts";
@@ -24,7 +25,7 @@ import { STRUCT_UNITS, TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
-import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, nextCommandSeq, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
@@ -154,7 +155,7 @@ class Bot {
   move(from: number, to: number, item: number): void {
     const w = this.w;
     w.reset();
-    writeCommand(w, (this.seq = (this.seq + 1) & 0xffff), CMD_MOVE);
+    writeCommand(w, (this.seq = nextCommandSeq(this.seq)), CMD_MOVE);
     w.bits(BOX_SELF, 1);
     w.varint(from);
     w.bits(BOX_SELF, 1);
@@ -350,6 +351,10 @@ section("Resource nodes: map data plus a sparse overlay");
   t0 = performance.now();
   for (const chunk of far) field.retain(chunk, 0, 1, () => false);
   record("fill one chunk of nodes", (performance.now() - t0) / far.length, "ms", 0.2);
+  // As the chunk wakes, its bodies and those beside it are tested for being inside a node or a piece.
+  t0 = performance.now();
+  for (const chunk of far) settle(world, [chunk]);
+  record("look for bodies inside something round a chunk that wakes", (performance.now() - t0) / far.length, "ms");
   for (const chunk of far) field.retain(chunk, 0, -1, () => false);
   record("work out every node on the map once (not done in play)", scan, "ms");
 }

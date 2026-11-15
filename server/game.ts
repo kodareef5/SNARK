@@ -49,6 +49,7 @@ import {
   S_TEXT,
   REMOVAL_NEWS_TICKS,
   S_WELCOME,
+  nextCommandSeq,
   readInputs,
   writeBody,
 } from "../shared/net/protocol.ts";
@@ -60,9 +61,10 @@ import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
+import { groundUnder } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import { Guesses } from "./guesses.ts";
+import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
@@ -367,7 +369,7 @@ export class GameServer {
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
-  savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number; dead?: boolean } | null) | null = null;
+  savedPosition: ((name: string) => { x: number; y: number; z: number; yaw: number; dead?: boolean; team?: number } | null) | null = null;
 
   private readonly handlers: (CommandHandler | null)[] = new Array(256).fill(null);
   /** Connections that have not said hello, oldest first. They hold no slot, so a returning survivor can reclaim its lingering session on a full server. */
@@ -649,15 +651,18 @@ export class GameServer {
   }
 
   /**
-   * Spawns at `at`, else where the survivor was last seen, else the spawn point. If that spot is taken, the first free one on the
-   * ground around it, or one beside another body if every one is taken. An `exact` place, a bed, is stood on whoever else is
-   * there, as in ARK, and nowhere else. False if there is no room: a body is never put inside anything.
+   * Spawns at `at`, else where the survivor was last seen, else the spawn point. Where it was last seen, if that is inside
+   * something, it is set at the nearest free place it reaches without passing through another team's piece (freePlace), else
+   * at the spawn point. Around `at` or the spawn point, if that spot is taken, the first free one on the ground around it, or one
+   * beside another body if every one is taken. An `exact` place, a bed, is stood on whoever else is there, as in ARK, and
+   * nowhere else. False if there is no room: a body is never put inside anything, loaded or not.
    */
   private spawnBody(c: Client, at?: { x: number; y: number; z: number; yaw: number }, exact = false): boolean {
     const world = this.world;
     const kind = this.survivor;
     const p = world.reg.move[kind]!;
-    const want = at ?? this.savedPosition?.(c.name) ?? null;
+    const saved = at ? null : (this.savedPosition?.(c.name) ?? null);
+    const want = at ?? saved;
     const cx = at ? at.x : world.spawn.x;
     const cz = at ? at.z : world.spawn.z;
     let x = cx;
@@ -667,11 +672,16 @@ export class GameServer {
     // A place on the ground, or one saved before bodies stood on their lower sphere, is lifted to where the body rests there.
     // A bed is stood on as it is.
     const wantY = want ? (exact ? want.y : Math.max(want.y, groundUnder(world.hf, want.x, want.z, p.radius))) : 0;
-    if (want && capsuleFree(world, want.x, wantY, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, wantY, want.z)))) {
+    if (want && placeFree(world, want.x, wantY, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, wantY, want.z)))) {
       x = want.x;
       y = wantY;
       z = want.z;
       yaw = want.yaw;
+    } else if (saved && freePlace(world, saved.x, wantY, saved.z, p.radius, p.height, saved.team ?? 0, p.stepUp)) {
+      x = freeAt.x;
+      y = freeAt.y;
+      z = freeAt.z;
+      yaw = saved.yaw;
     } else {
       if (exact) return false;
       // First free spot on rings around the place, else the first that only another body is in.
@@ -685,7 +695,7 @@ export class GameServer {
         x = cx + detSin(a) * ring * 1.5;
         z = cz + detCos(a) * ring * 1.5;
         y = groundUnder(world.hf, x, z, p.radius);
-        if (!capsuleFree(world, x, y, z, p.radius, p.height)) continue;
+        if (!placeFree(world, x, y, z, p.radius, p.height)) continue;
         free = !this.occupied(x, y, z);
         if (!free && !beside) {
           beside = true;
@@ -845,7 +855,7 @@ export class GameServer {
   private command(c: Client, r: BitReader, data: Uint8Array, over: boolean): boolean {
     const seq = r.u16();
     r.u8();
-    if (r.overflow || seq !== ((c.cmdSeq + 1) & 0xffff)) return false;
+    if (r.overflow || seq !== nextCommandSeq(c.cmdSeq)) return false;
     c.cmdSeq = seq;
     c.activeAt = this.world.tick;
     if (over || c.queue.length >= COMMAND_QUEUE) this.result(c, seq, RESULT_BUSY);

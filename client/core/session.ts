@@ -68,6 +68,7 @@ import {
   S_SNAPSHOT,
   S_TEXT,
   S_WELCOME,
+  nextCommandSeq,
   readBody,
   writeCommand,
   writeHello,
@@ -438,7 +439,7 @@ export class ClientSession {
   command(op: number, args?: (w: BitWriter) => void): number {
     // The server expects sequence numbers without gaps, so an unsent command uses none.
     if (this.state !== "active") return 0;
-    const seq = (this.commandSeq + 1) & 0xffff;
+    const seq = nextCommandSeq(this.commandSeq);
     const w = this.w;
     w.reset();
     writeCommand(w, seq, op);

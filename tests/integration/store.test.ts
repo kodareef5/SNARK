@@ -5,20 +5,28 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { Past } from "../../server/history.ts";
+import { placeFree } from "../../server/place.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { ENTITY_START } from "../../server/world.ts";
 import { CMD_RESPAWN, REJECT_FULL, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 import { ENTITY_LIMIT, EntityStore, F_ALIVE } from "../../shared/sim/entities.ts";
+import { groundUnder } from "../../shared/world/collide.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-store-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-/** Puts `n` creatures that stand still in a corner four chunks from the spawn point. Returns how many got a body. */
+/** Puts `n` creatures that stand still in a corner four chunks from the spawn point, where no tree or rock stands. Returns how many got a body. */
 function herd(h: Harness, n: number): number {
+  const p = h.reg.move[h.reg.index.get("core:dummy")!]!;
   let made = 0;
-  for (let k = 0; k < n; k++) if (h.host.spawnCreature("core:dummy", 8 + (k % 50), 8 + (Math.floor(k / 50) % 50), 1) >= 0) made++;
+  for (let k = 0, tried = 0; tried < n; k++) {
+    const [x, z] = [8 + (k % 50), 8 + (Math.floor(k / 50) % 50)];
+    if (!placeFree(h.world, x, groundUnder(h.world.hf, x, z, p.radius), z, p.radius, p.height)) continue;
+    tried++;
+    if (h.host.spawnCreature("core:dummy", x, z, 1) >= 0) made++;
+  }
   return made;
 }
 

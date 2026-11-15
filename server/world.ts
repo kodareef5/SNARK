@@ -14,6 +14,7 @@ import { PROVING_DIMS, PROVING_ID, PROVING_POOL, PROVING_SEA_LEVEL, PROVING_SPAW
 import { NodeField, type NodeSource } from "../shared/world/nodes.ts";
 import { StructureStore } from "../shared/world/structures.ts";
 import { History } from "./history.ts";
+import { UnloadedNodes } from "./place.ts";
 
 export interface ServerWorld extends CollisionWorld {
   /** Content after this server's settings are applied (shared/content/tuning.ts). */
@@ -33,6 +34,8 @@ export interface ServerWorld extends CollisionWorld {
   readonly zones: readonly MapZone[];
   /** `nodes` (from CollisionWorld) is this field's store. */
   readonly nodeField: NodeField | null;
+  /** The field's nodes in chunks nobody has loaded, which placements test too (server/place.ts). */
+  readonly unloaded: UnloadedNodes | null;
   /** These clips place hit zones, so they must be the ones clients draw with. With none, bodies rest in a T-pose. */
   anim: HumanAnim;
   /** Creature skeletons by rig id, from the same pack as the clips. Empty without one. */
@@ -69,6 +72,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     dims,
     hf,
     nodeField,
+    unloaded: nodeField ? new UnloadedNodes(dims, nodeField) : null,
     ...(nodeField ? { nodes: nodeField.store } : {}),
     structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts),
     ents,

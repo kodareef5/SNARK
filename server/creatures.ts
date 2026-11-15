@@ -10,7 +10,8 @@ import type { GameServer } from "./game.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Rng } from "../shared/rng.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
+import { groundUnder } from "../shared/world/collide.ts";
+import { placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
@@ -153,7 +154,7 @@ export class Creatures {
     const p = world.reg.move[kind];
     if (!p) return -1;
     const y = groundUnder(world.hf, x, z, p.radius);
-    if (!capsuleFree(world, x, y, z, p.radius, p.height)) return -1;
+    if (!placeFree(world, x, y, z, p.radius, p.height)) return -1;
     let colours = "";
     if (this.bus.n[CREATURE_SPAWN] !== 0) {
       const asked = { kind: world.reg.ids[kind]!, why, x, z, level, colours };
@@ -209,11 +210,18 @@ export class Creatures {
     return this.chunkRefs[chunk]! > 0;
   }
 
-  /** `from` is -1 on entry and `to` is -1 on exit. */
-  playerMoved(from: number, to: number): void {
+  /** `from` is -1 on entry and `to` is -1 on exit. Each chunk that wakes is added to `woke`. */
+  playerMoved(from: number, to: number, woke?: number[]): void {
     // Add the new neighbourhood before removing the old, so shared chunks never dip to zero.
-    if (to >= 0) this.adjust(to, 1);
+    if (to >= 0) this.adjust(to, 1, woke);
     if (from >= 0) this.adjust(from, -1);
+  }
+
+  /** `e` was set somewhere else. It wakes or sleeps as the chunk it is now in does. */
+  relocated(e: number): void {
+    const awake = this.chunkRefs[this.world.ents.chunk[e]!]! > 0;
+    if (awake && this.awakeSlot[e]! < 0) this.wake(e);
+    else if (!awake && this.awakeSlot[e]! >= 0) this.sleep(e);
   }
 
   step(tick: number): void {
@@ -267,7 +275,7 @@ export class Creatures {
     this.stepped = stepped;
   }
 
-  private adjust(center: number, delta: number): void {
+  private adjust(center: number, delta: number, woke?: number[]): void {
     const dims = this.world.dims;
     const ents = this.world.ents;
     const cx = chunkCx(dims, center);
@@ -279,6 +287,7 @@ export class Creatures {
         const before = this.chunkRefs[chunk]!;
         this.chunkRefs[chunk] = before + delta;
         if (before === 0 && delta > 0) {
+          woke?.push(chunk);
           for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.wake(e);
         } else if (before === 1 && delta < 0) {
           for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.sleep(e);

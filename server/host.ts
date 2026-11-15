@@ -63,6 +63,7 @@ import { hourOfDay, offsetForHour } from "../shared/sim/clock.ts";
 import { GAME_HOUR_TICKS } from "../shared/sim/lazy.ts";
 import { CAUSE_WORDS, DEADLINE_VITALS, Survival, refreshMods } from "./survival.ts";
 import { createMapWorld, provingFile, type ServerWorld } from "./world.ts";
+import { settle, settleNear } from "./place.ts";
 import { DEADLINE_SPAWN, Spawner, wildStep } from "./spawner.ts";
 import { spawnTables } from "./settings/spawns.ts";
 import { parseMap } from "../shared/world/mapfile.ts";
@@ -176,6 +177,8 @@ export interface Host {
   readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
   readonly spawner: Spawner | null;
+  /** Bodies found inside a node or a piece as their chunk or a node near them loaded, and set free (server/place.ts). */
+  readonly settled: { readonly bodies: number };
   /** The list settings that name classes, as tables, and the names this build lacks. */
   readonly lists: Lists;
   /** The content-changing settings the server skipped at startup, one line each. */
@@ -373,7 +376,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const spawns = spawnTables(reg, rules, lists);
   // No spawn region here is forced, streamed, put by hand or in water, so each -NoDinosExcept flag is -NoDinos.
   const quiet = ["NoDinos", "NoDinosExceptForcedSpawn", "NoDinosExceptStreamingSpawn", "NoDinosExceptManualSpawn", "NoDinosExceptWaterSpawn"].some((f) => rules.flag(f) === true);
-  const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, harvest, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
+  const stocked = opts.wild && !quiet ? new Spawner({ world, game, records, creatures, items, survival, buffs, persistence, rules, deadlines, tables: spawns.tables }, (opts.seed ?? 1) + 101) : null;
   const spawner = stocked && stocked.regions.length > 0 ? stocked : null;
   // The save keeps the setting values its timers were computed under, so they can be re-timed under other rules.
   const loadedUnder = persistence && !loaded!.fresh ? timersOf(persistence.store.meta("settings_at"), persistence.store.meta("rules")) : null;
@@ -499,14 +502,21 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     }
   }
   const wakeRadius = opts.wakeRadius ?? 3;
+  const woke: number[] = [];
+  const settled = { bodies: 0 };
+  const relocated = (e: number): void => creatures.relocated(e);
   /** A session's focus left `from` and entered `to`. Either may be -1 for none. */
   const moved = (from: number, to: number): void => {
-    creatures.playerMoved(from, to);
+    creatures.playerMoved(from, to, woke);
     if (harvest && wakeRadius >= 0) {
       if (to >= 0) harvest.retain(to, wakeRadius, 1);
       if (from >= 0) harvest.retain(from, wakeRadius, -1);
     }
+    // Nodes load over the chunks that wake. A body a save or a changed map left inside a node or a piece there is set free.
+    if (woke.length > 0) settled.bodies += settle(world, woke, relocated);
+    woke.length = 0;
   };
+  if (harvest) harvest.onGrown = (x, z, reach) => void (settled.bodies += settleNear(world, x, z, reach, relocated));
   /**
    * The setting values the world's timers and rates were computed under. A save's own until retime brings it to this server's.
    * A setting the save omits was at its default.
@@ -1004,6 +1014,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     overhead,
     hurt,
     spawner,
+    settled,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
       const row = rowOf(name);
