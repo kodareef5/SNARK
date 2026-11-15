@@ -1,7 +1,7 @@
 # Building a fourth city: what Los Angeles needed
 
 Los Angeles was chosen to break mountains: 500 m from the flats to Cahuenga Peak, canyons with houses in them, a
-reservoir 216 m over the sea and no sea in the frame. It took one agent about two hours (14:10 to 16:15 local,
+reservoir 216 m over the sea and no sea in the frame. It took one agent about an hour and a half (14:10 to 15:40 local,
 2026-11-15), 10 minutes of it downloading 1.3 GB. It was built on round three, then moved onto round four's shared
 rule library (`r9/ruins4-land`, merged before it reached main) and onto steep ground that slides (D499 to D501). The
 ruins were not tuned.
