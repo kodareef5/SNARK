@@ -348,11 +348,12 @@ export interface WeaponFacet {
    */
   readonly melee?: { readonly damage: number; readonly torpor?: number; readonly reach?: number; readonly interval?: number };
   /**
-   * W1: the cone a shot leaves within, as half angles in degrees: from the hip and aimed at rest, what full speed adds, what
-   * each shot adds, and the degrees a second it narrows back. Our own numbers (ARK publishes none).
+   * The cone a shot leaves within (shared/sim/aim.ts), as half angles in degrees: from the hip and aimed at rest, what a
+   * sprint adds, what each shot adds, and the degrees a second it narrows back; and the degrees the aim sways through a
+   * scope, standing. Our own numbers, as ARK publishes none (DEV124, DEV126).
    */
-  readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number };
-  /** W1: the degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick. */
+  readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number; readonly sway?: number };
+  /** The degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick (DEV125). */
   readonly recoil?: { readonly kick: number; readonly recover: number };
   /** W6: what its damage is multiplied by against a structure. 1 where not given. ARK's grenade is 4.5 (Table of explosives). */
   readonly structures?: number;

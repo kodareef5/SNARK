@@ -81,7 +81,8 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
 });
 
 test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud class wait, as the plan has them", () => {
-  expect(FIELDS.item.weapon!.stubs).toEqual({ auto: "polish", reloadEach: "polish", melee: "polish", spread: "polish", recoil: "polish", structures: "polish", cloud: "polish" });
+  // W1 built `spread` and `recoil` (tests/unit/aim.test.ts).
+  expect(FIELDS.item.weapon!.stubs).toEqual({ auto: "polish", reloadEach: "polish", melee: "polish", structures: "polish", cloud: "polish" });
   expect(FIELDS.item.ammo!.stubs).toEqual({ pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" });
   expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual(["polish", "polish", "polish"]);
   expect(classRow("prop/cloud")).toMatchObject({ status: "stub", waits: "polish", parent: "prop" });
@@ -92,7 +93,8 @@ test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud cl
 });
 
 test("every weapon and round today compiles as it did: no stub in its timings, and each stub column at what it means now", () => {
-  const stubKeys = ["auto", "reloadEach", "meleeTicks", "meleeStrikeTick", "coneHip", "coneAim", "coneMove", "coneBloom", "coneRecover", "recoilKick", "recoilRecover"];
+  // The cone and recoil are W1's, built, and pinned in tests/unit/aim.test.ts.
+  const stubKeys = ["auto", "reloadEach", "meleeTicks", "meleeStrikeTick"];
   for (let i = 1; i < reg.defs.length; i++) {
     const w = reg.weapon[i];
     if (w) expect([reg.ids[i], stubKeys.filter((k) => k in w)]).toEqual([reg.ids[i], []]);

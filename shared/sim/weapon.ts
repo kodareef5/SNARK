@@ -57,15 +57,17 @@ export interface WeaponParams {
   readonly meleeTicks?: number;
   readonly meleeStrikeTick?: number;
   /**
-   * W1: the cone a shot leaves within, half angles in degrees (M1): from the hip and aimed at rest, what full speed adds,
-   * what each shot adds (bloom), and how much it narrows back a tick.
+   * W1, built (shared/sim/aim.ts): the cone a shot leaves within, half angles in degrees (M1): from the hip and aimed at
+   * rest, what full speed adds, what each shot adds (bloom), how much it narrows back a tick, and how far the aim sways
+   * through a scope, standing.
    */
   readonly coneHip?: number;
   readonly coneAim?: number;
   readonly coneMove?: number;
   readonly coneBloom?: number;
   readonly coneRecover?: number;
-  /** W1: degrees of pitch a shot kicks the aim up, and how much of it comes back a tick (M2). */
+  readonly coneSway?: number;
+  /** W1, built: degrees of pitch a shot kicks the aim up, and how much of it comes back a tick (M2). */
   readonly recoilKick?: number;
   readonly recoilRecover?: number;
 }

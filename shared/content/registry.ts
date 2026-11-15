@@ -442,8 +442,10 @@ export function compileContent(all: readonly Def[]): CompileResult {
           if (w.melee.interval !== undefined && !(w.melee.interval > 0 && w.melee.interval * TICK_RATE <= MAX_ACT_TICKS)) errors.push(`${d.id}: weapon.melee.interval must be above 0 and at most ${MAX_ACT_TICKS / TICK_RATE} seconds`);
         }
         const sp = w.spread;
-        if (sp && ![sp.hip, sp.aim, sp.move ?? 0, sp.bloom ?? 0, sp.recover ?? 0].every((v) => v >= 0 && v <= 90)) errors.push(`${d.id}: weapon.spread is in degrees from 0 to 90`);
+        if (sp && ![sp.hip, sp.aim, sp.move ?? 0, sp.bloom ?? 0, sp.recover ?? 0, sp.sway ?? 0].every((v) => v >= 0 && v <= 90)) errors.push(`${d.id}: weapon.spread is in degrees from 0 to 90`);
+        if (sp && (sp.bloom ?? 0) > 0 && !((sp.recover ?? 0) > 0)) errors.push(`${d.id}: weapon.spread that blooms must recover`);
         if (w.recoil && !(w.recoil.kick >= 0 && w.recoil.kick <= 90 && w.recoil.recover >= 0)) errors.push(`${d.id}: weapon.recoil.kick is in degrees from 0 to 90, and its recovery not negative`);
+        if (w.recoil && w.recoil.kick > 0 && !(w.recoil.recover > 0)) errors.push(`${d.id}: weapon.recoil that kicks must recover`);
         if (w.structures !== undefined && !(w.structures >= 0)) errors.push(`${d.id}: weapon.structures must not be negative`);
         if (w.cloud) {
           if (w.kind !== "thrown") errors.push(`${d.id}: only a thrown weapon bursts into a cloud`);
@@ -866,7 +868,7 @@ function weaponParams(w: WeaponFacet): WeaponParams {
     ...(w.auto ? { auto: true } : {}),
     ...(w.reloadEach ? { reloadEach: true } : {}),
     ...(w.melee ? blowParams(ticks(w.melee.interval, SWING_TICKS)) : {}),
-    ...(w.spread ? { coneHip: w.spread.hip, coneAim: w.spread.aim, coneMove: w.spread.move ?? 0, coneBloom: w.spread.bloom ?? 0, coneRecover: (w.spread.recover ?? 0) / TICK_RATE } : {}),
+    ...(w.spread ? { coneHip: w.spread.hip, coneAim: w.spread.aim, coneMove: w.spread.move ?? 0, coneBloom: w.spread.bloom ?? 0, coneRecover: (w.spread.recover ?? 0) / TICK_RATE, coneSway: w.spread.sway ?? 0 } : {}),
     ...(w.recoil ? { recoilKick: w.recoil.kick, recoilRecover: w.recoil.recover / TICK_RATE } : {}),
   };
 }

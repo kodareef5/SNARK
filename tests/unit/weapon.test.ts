@@ -33,8 +33,9 @@ function hold(b: Body, w: WeaponParams, buttons: number, ticks: number, first = 
 test("content compiles into weapon timings: a swing, a draw, a reload and a clip per weapon", () => {
   expect(params("hatchet")).toEqual({ kind: W_MELEE, hold: HOLD_TOOL, swingTicks: SWING_TICKS, strikeTick: 5, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true });
   expect(params("spear").hold).toBe(HOLD_SPEAR);
-  // A bow draws for 1.2 s, can be loosed from a quarter of that, and nocks in two thirds of a second.
-  expect(params("bow")).toEqual({ kind: W_BOW, hold: HOLD_BOW, swingTicks: 6, strikeTick: 2, drawTicks: 36, minDrawTicks: 9, reloadTicks: 20, clip: 1, wet: false });
+  // A bow draws for 1.2 s, can be loosed from a quarter of that, and nocks in two thirds of a second. Its cone is W1's
+  // (shared/sim/aim.ts, tests/unit/aim.test.ts).
+  expect(params("bow")).toEqual({ kind: W_BOW, hold: HOLD_BOW, swingTicks: 6, strikeTick: 2, drawTicks: 36, minDrawTicks: 9, reloadTicks: 20, clip: 1, wet: false, coneHip: 1.2, coneAim: 0.2, coneMove: 2.5, coneBloom: 0, coneRecover: 0, coneSway: 0 });
   expect(params("rifle")).toMatchObject({ kind: W_GUN, hold: HOLD_RIFLE, reloadTicks: 135, clip: 1, wet: false });
   expect(params("crossbow")).toMatchObject({ kind: W_GUN, wet: true, reloadTicks: 78 });
   expect(params("pistol")).toMatchObject({ kind: W_GUN, hold: HOLD_PISTOL, clip: 6, swingTicks: 11 });
