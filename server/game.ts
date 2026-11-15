@@ -500,8 +500,8 @@ export class GameServer {
         ents.loadBody(e, b);
         const vehicle = world.reg.vehicle[b.kind];
         const parent = ents.seat[e]! - 1;
-        const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 &&
-          ents.gen[parent] === ents.seatGen[e] && !!world.reg.vehicle[ents.kind[parent]!];
+        // Who sits in a seat of a car or a saddle and does not steer it is held there; a carried body has no seat slot.
+        const passenger = !driving && parent >= 0 && ents.seatSlot[e] !== 0 && ents.gen[parent] === ents.seatGen[e];
         if (vehicle) {
           const quiet = c.closed || T - c.inputAt > INPUT_HOLD_TICKS;
           stepVehicleBody(world, b, quiet ? 0 : c.heldX, quiet ? 0 : c.heldZ, quiet ? BTN_JUMP : c.heldButtons, vehicle, TICK_DT);

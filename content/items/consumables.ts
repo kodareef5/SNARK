@@ -28,7 +28,7 @@ export const CONSUMABLES: readonly Def[] = [
   // once in their own lanes; no engram and no experience (DEV171). Eaten, 20 food and 8 health, or 35 and 25; each weighs
   // 0.1, stacks to 50 or 30, keeps 2 days (spoilsin 172800) and spoils into spoiled meat, and lies 2 minutes dropped
   // (decomposesin 120). The lit bin keeps them ten times as long (20 days, D533). An ingredient that spoils while a unit is
-  // under way is noticed at the lane's next event (D535). Wild carnivores eat them as meat in ARK; which creature eats what
+  // under way stops its lane at the tick it spoils (D535). Wild carnivores eat them as meat in ARK; which creature eats what
   // is the creature team's. The colours are chosen.
   { type: "item", class: "consumable", id: "core:jerky", stack: 50, weight: 0.1, spoilHours: minutes(2880), decomposeHours: minutes(2), eat: { food: 20, health: 8 }, spoilsInto: "core:spoiled_meat", label: "cooked meat jerky", color: 4 },
   crafting("core:jerky", { needs: [{ item: "core:meat_cooked", count: 1 }, { item: "core:oil", count: 1 }, { item: "core:sparkpowder", count: 3 }], seconds: 2160, xp: 0, at: "core:preserving_bin", fired: true }),

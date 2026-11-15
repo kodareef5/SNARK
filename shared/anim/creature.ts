@@ -762,14 +762,22 @@ function talons(a: CreatureAnim, st: AnimState, tick: number, out: Pose): void {
   const s = equip ? since(tick, st.actionStart) : Infinity;
   if (st.action >>> 3 === HOLD_CARRY) {
     const taking = a.grab !== null && s < a.grab.frames - 1;
-    if (a.carry) layer(out, a.carry, tick + st.seed, a.carryBones, taking ? s / (a.grab!.frames - 1) : 1);
+    if (a.carry) holding(a, tick + st.seed, out, taking ? s / (a.grab!.frames - 1) : 1);
     if (taking) layer(out, a.grab!, s, a.grabBones);
   } else if (equip) {
     const end = a.release ? a.release.frames - 1 : FADE;
     if (s >= end) return;
-    if (a.carry) layer(out, a.carry, tick + st.seed, a.carryBones, 1 - s / end);
+    if (a.carry) holding(a, tick + st.seed, out, 1 - s / end);
     if (a.release) layer(out, a.release, s, a.releaseBones);
   }
+}
+
+/** The carry laid in place of the legs' own turns by the share `w`, so the stroke's leg swing does not carry the grip off the load. */
+function holding(a: CreatureAnim, t: number, out: Pose, w: number): void {
+  const f = a.rig.f;
+  sampleClip(a.carry!, t, f);
+  const bones = a.carryBones;
+  for (let i = 0; i < bones.length; i++) quatNlerp(out.rot, bones[i]! * 4, out.rot, bones[i]! * 4, f.rot, bones[i]! * 4, w);
 }
 
 /** Getting up, from lying into what it does now. Without its own clip it rises over GET_UP ticks. */

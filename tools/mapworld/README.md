@@ -128,7 +128,14 @@ Do not copy the shared sections into a new city:
   rings and domes and explicit parts. `ruins/places.json` attaches a composition
   to a footprint. A `ring` sets pieces round a centre at listed heights, turned
   along it; a `dome` is a drum to its springing and stepped courses under a
-  hemisphere, closed from above, over an optional `arc`. A named place with the
+  hemisphere, closed from above, over an optional `arc`; `radii` makes either an
+  ellipse, `rise` flattens a dome and `below` carries its sphere down into the
+  ground (a sphere standing on it). A `pyramid` steps in courses to its top
+  round a hollow inside; a `lattice` is a tapering square tower of beam rings,
+  corner legs and decks; a `wheel` stands in a vertical plane with its cabins
+  and legs; a `vault` roofs the chosen tiles with plates under a shallow dome.
+  A piece asked for in a finish its shape lacks is concrete, and the build
+  refuses a kind the content does not have. A named place with the
   layout `ground` is neither built on nor levelled: a hillside's seats.
 
 Lettered signs (`signs.ts`): a line OpenStreetMap maps with an inscription of
@@ -136,6 +143,15 @@ capitals and a height (`blocks/signs.json`) stands up the content's letters
 (`content/lettering.ts`, 13.7 m tall) along it, each on the lowest ground under
 its foot and facing down the slope; on the level it reads from the line's first
 point. A sign mapped more than 30% taller or shorter is left out and reported.
+A board mapped as a point with its words (`information=board` and an
+inscription, such as a welcome sign) stands on two posts facing its mapped
+direction, in a median if that is where it is.
+
+A desert's ground: biome 10 is `S.DESERT` (tan gravel, the open ground's plants,
+natural stone, the jungle's creature regions until a dry table exists), and a
+world with `dryGround` tints its open ground and courts as gravel and paving
+and its weeds dry. An airfield (roads.png 6) is `S.PAVED`: no street's wrecks
+or approaches. Water mapped intermittent stays ground in the lakes step.
 
 To add a rule, append one readable choice. To add a named place, add a
 composition and one footprint entry. No generator branch is needed. A new

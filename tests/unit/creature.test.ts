@@ -226,7 +226,7 @@ function overClips(a: CreatureAnim, from: number, states: readonly AnimState[], 
 test("a flyer hovers at no speed, flaps at its flying speed and fast at its sprint, on one beat, and glides looking down and dives looking further down", () => {
   expect([flyer.flies, flyer.beat, flyer.flyAt, flyer.fastAt]).toEqual([true, 30, 6, 16]);
   const u = (T + SEED) / flyer.beat - Math.floor((T + SEED) / flyer.beat);
-  const hover = frameOf("hover", u * 27);
+  const hover = frameOf("hover", u * flyer.rig.clips.get("hover")!.frames);
   const fly = frameOf("fly", u * 30);
   expect(posed(flyer, state((s) => (s.speed = 0)), T).rot).toEqual(hover);
   expect(posed(flyer, state((s) => (s.speed = 3)), T).rot).toEqual(fly);
@@ -261,18 +261,30 @@ test("in flight its body pitches with its look and rolls into its turns about it
   expect(posed(flyer, state((s) => ((s.speed = 0), (s.pitch = 10), (s.bank = 4))), T).rot).toEqual(hovering);
 });
 
-test("a barrel roll turns it over once about its own length and back", () => {
-  const level = posed(flyer, state((s) => (s.speed = 3)), T);
-  const rolled = (k: number) => posed(flyer, state((s) => ((s.speed = 3), (s.cue = CUE_ROLL), (s.cueStart = (T - k) & 255))), T);
-  const chestUp = (turn: Float32Array): number => {
-    const o = [0, 0, 0];
-    quatRotate(turn, named("chest") * 4, 0, 1, 0, o, 0);
-    return o[1]!;
-  };
+/** How far up its chest's up points, in model space. */
+function chestUp(turn: Float32Array): number {
+  const o = [0, 0, 0];
+  quatRotate(turn, named("chest") * 4, 0, 1, 0, o, 0);
+  return o[1]!;
+}
+
+test("a barrel roll without a clip of its own turns it over once about its own length and back", () => {
+  const a = new CreatureAnim({ ...frig, clips: new Map([...frig.clips].filter(([name]) => name !== "barrel_roll")) }, flyer.runAt, 3);
+  const level = posed(a, state((s) => (s.speed = 3)), T);
+  const rolled = (k: number) => posed(a, state((s) => ((s.speed = 3), (s.cue = CUE_ROLL), (s.cueStart = (T - k) & 255))), T);
   expect([chestUp(level.turn) > 0.9, chestUp(rolled(15).turn) < -0.9]).toEqual([true, true]);
   expect(rolled(0).pos).toEqual(level.pos);
   expect(rolled(30).pos).toEqual(level.pos);
   fromPivot(rolled(8).pos).forEach((d, b) => expect(d).toBeCloseTo(fromPivot(level.pos)[b]!, 4));
+});
+
+test("its own barrel roll turns it over about its own length, coming in from its flight and going back into it", () => {
+  const roll = frig.clips.get("barrel_roll")!;
+  const level = posed(flyer, state((s) => (s.speed = 3)), T);
+  const rolled = (k: number) => posed(flyer, state((s) => ((s.speed = 3), (s.cue = CUE_ROLL), (s.cueStart = (T - k) & 255))), T);
+  rolled(0).pos.forEach((p, i) => expect(p).toBeCloseTo(level.pos[i]!, 5));
+  expect(chestUp(rolled(13).turn)).toBeLessThan(-0.9);
+  expect(rolled(roll.frames - 1 + FADE).pos).toEqual(level.pos);
 });
 
 test("a take-off starts on the crouch it stood in and ends at the top of its hover's stroke, its beat coming to its clock with no bone turning faster than the clips turn it", () => {

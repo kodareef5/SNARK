@@ -3,6 +3,7 @@
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
+// --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
 // --flight draws the block-out pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -63,6 +64,7 @@ import { drawUi } from "./snap/ui.ts";
 import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
 import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
+import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from "./snap/ride.ts";
 import { saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
 import { flyerPackBytes, flyerRegistry } from "../tests/fixtures/flyer/flyer.ts";
 import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
@@ -702,10 +704,13 @@ export function looksScene(view: ProvingView, facing: number): void {
   cam.fovY = 0.27;
 }
 
-/** A whole client against a whole server in this process, drawn with its interface. `setup` steers it before the picture is taken. */
-export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void, h: Harness) => void): Uint8ClampedArray {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const pack = parsePack(corePackBytes());
+/**
+ * A whole client against a whole server in this process, drawn with its interface. `setup` steers it before the picture is
+ * taken. `game` is content, a pack and the server's clips and rigs of its own in place of the core's.
+ */
+export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void, h: Harness) => void, game?: Game): Uint8ClampedArray {
+  const h = new Harness({}, 1, 60, { dev: true, ...(game?.host ?? {}) }, game?.reg);
+  const pack = parsePack(game?.pack ?? corePackBytes());
   const app = new App(h.join("ada", {}, { manual: true, look }), h.reg, pack);
   let packet = app.frame(0, width, height);
   const run = (ms: number): void => h.run(ms, (now) => (packet = app.frame(now, width, height)));
@@ -1019,6 +1024,18 @@ if (import.meta.main) {
       }
     });
     const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--ride")) {
+    const species = arg("ride") ?? "pteranodon";
+    const moment = (arg("moment") ?? "air") as RideMoment;
+    if (!RIDE_MOMENTS.includes(moment)) throw new Error(`--moment takes ${RIDE_MOMENTS.join(", ")}, not "${moment}"`);
+    const [watch, passenger] = [args.includes("--watch"), args.includes("--passenger")];
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => rideScene(app, run, hh, species, moment, watch, passenger), rideGame(species, passenger));
+    const out = resolve(arg("out") ?? `artifacts/ride-${species}-${moment}${watch ? "-watched" : passenger ? "-passenger" : ""}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);

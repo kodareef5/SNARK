@@ -12,12 +12,14 @@
 // at once, while it burns and the ingredients lie in it: no job, no engram, no experience. A unit's ingredients are spent
 // and its product made when it is done. The fire's deadline is then the earlier of its fuel running out and the next
 // lane's unit ending. What a piece of fuel leaves when it burns out (wood's charcoal) is put in it, or lost with no room.
-// A fire that does not cook (`cooks: false`) leaves raw meat raw. One that must stay dry is not lit below the sea.
+// A fire that does not cook (`cooks: false`) leaves raw meat raw. One that must stay dry is not lit with its foot under water.
 
 import { OWN_STATION, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../shared/net/protocol.ts";
 import type { ItemDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
+import { frame, frameOf } from "../shared/world/frame.ts";
+import type { ChunkTable } from "../shared/world/structures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { burn, type Hearth, type Lane } from "../shared/sim/station.ts";
@@ -66,6 +68,15 @@ function refining(reg: Registry): { byBase: Map<number, Refined[]>; byItem: Map<
 }
 
 const NONE: readonly number[] = [];
+
+/** A box's middle and its four corners, in halves of its sides along the frame's axes. */
+const CORNERS: readonly (readonly [number, number])[] = [
+  [0, 0],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
 
 /** The ticks a unit of `r` takes in `rec`, or 0 if its ingredients are not all there. */
 function needOf(rec: EntityRecord, r: Refined): number {
@@ -117,9 +128,10 @@ export class Stations {
     const reg = world.reg;
     this.fuelTicks = reg.fuelTicks;
     this.stationFuel = reg.stationFuel;
+    // A blueprint is never burnt or cooked (D417): the first slot is the first of the items themselves.
     const first = (of: Uint16Array | Uint32Array): number => {
       const inv = this.rec!.inv!;
-      for (let s = 0; s < inv.bag; s++) if (inv.count[s]! > 0 && of[inv.item[s]!] !== 0) return s;
+      for (let s = 0; s < inv.bag; s++) if (inv.count[s]! > 0 && of[inv.item[s]!] !== 0 && (inv.flags[s]! & FLAG_BLUEPRINT) === 0) return s;
       return -1;
     };
     let fed = 0;
@@ -127,6 +139,16 @@ export class Stations {
     const lanes = (): Refined[] => refining(this.world.reg).byBase.get(this.world.reg.stationBase[this.rec!.kind]!) ?? [];
     this.hearth = {
       settle: (t) => items.spoilTo(this.rec!, t),
+      spoils: () => {
+        // Settled to the fire's tick, every clock still set is after it.
+        const inv = this.rec!.inv!;
+        let next = 0;
+        for (let s = 0; s < inv.cap; s++) {
+          const at = inv.spoilAt[s]!;
+          if (at !== 0 && inv.item[s] !== 0 && (next === 0 || at < next)) next = at;
+        }
+        return next;
+      },
       feed: () => {
         const fuel = this.fuelOf(this.rec!);
         const s = first(fuel);
@@ -220,12 +242,12 @@ export class Stations {
     return this.stationFuel[rec.kind] ?? this.fuelTicks;
   }
 
-  /** Ticks of fuel in the fire's inventory, not counting the piece now burning. */
+  /** Ticks of fuel in the fire's inventory, not counting the piece now burning nor a blueprint, which is never burnt. */
   private pile(rec: EntityRecord): number {
     const inv = rec.inv;
     const fuel = this.fuelOf(rec);
     let ticks = 0;
-    for (let s = 0; inv && s < inv.bag; s++) ticks += inv.count[s]! * fuel[inv.item[s]!]!;
+    for (let s = 0; inv && s < inv.bag; s++) if ((inv.flags[s]! & FLAG_BLUEPRINT) === 0) ticks += inv.count[s]! * fuel[inv.item[s]!]!;
     return ticks;
   }
 
@@ -281,7 +303,7 @@ export class Stations {
     for (const fn of this.swapped) fn(rec, t, from, to);
   }
 
-  /** Lighting needs fuel on the fire, and one that must stay dry above the sea. Returns a RESULT code. */
+  /** Lighting needs fuel on the fire, and one that must stay dry needs its foot out of the water. Returns a RESULT code. */
   toggle(ref: number): number {
     const reg = this.world.reg;
     const t = this.world.structs.chunks[Math.floor(ref / 65536)];
@@ -296,8 +318,8 @@ export class Stations {
       return RESULT_OK;
     }
     // The forge "cannot be sitting on a foundation submerged in water" (ark.wiki.gg Refining Forge): one whose foot is below
-    // the map's sea level is not lit.
-    if (reg.dry[kind] === 1 && t!.y[ref & 0xffff]! - reg.halfY[kind]! < this.world.hf.seaLevel) return RESULT_DENIED;
+    // the water's surface, the sea's or a lake's, is not lit.
+    if (reg.dry[kind] === 1 && this.footWet(t!, ref & 0xffff, kind)) return RESULT_DENIED;
     if (this.pile(rec) === 0) return RESULT_SHORT;
     // A fire under water cannot be lit (ARK's Campfire and Swimming), in the sea or a lake.
     const slot = ref & 0xffff;
@@ -310,6 +332,23 @@ export class Stations {
     this.swap(rec, this.world.tick, kind, other);
     this.tend(rec);
     return RESULT_OK;
+  }
+
+  /**
+   * Whether the foot of the structure in `slot` of `t` is below the surface of the water at its middle or at a corner of
+   * its box: the sea's, or a lake's where the box reaches over the lake's squares (hf.waterAt).
+   */
+  private footWet(t: ChunkTable, slot: number, kind: number): boolean {
+    const reg = this.world.reg;
+    const hf = this.world.hf;
+    const foot = t.y[slot]! - reg.halfY[kind]!;
+    frameOf(t.yaw[slot]!);
+    // The frame's +X is (cos, -sin) in the world and its +Z is (sin, cos).
+    const hx = reg.halfX[kind]! * frame.stretch;
+    const hz = reg.halfZ[kind]! * frame.stretch;
+    const [x, z, c, s] = [t.x[slot]!, t.z[slot]!, frame.cos, frame.sin];
+    for (const [a, b] of CORNERS) if (foot < hf.waterAt(x + a * hx * c + b * hz * s, z - a * hx * s + b * hz * c)) return true;
+    return false;
   }
 
   /** A DEADLINE_FIRE entry came due. */

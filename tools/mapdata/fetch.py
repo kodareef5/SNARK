@@ -148,7 +148,8 @@ def osm(m, man):
     o = m.city['osm']
     w, s, e, n = m.lonlat_bounds()
     bbox = f'{math.floor(s * 1e4) / 1e4},{math.floor(w * 1e4) / 1e4},{math.ceil(n * 1e4) / 1e4},{math.ceil(e * 1e4) / 1e4}'
-    names = ['osm', 'ways'] + (['buildings'] if m.city['footprints'].get('split_by_osm') else [])
+    # features: building parts, water standing above any sea, pools, fountains, runways and wheels, with their shapes.
+    names = ['osm', 'ways'] + (['buildings'] if m.city['footprints'].get('split_by_osm') else []) + ['features']
     for name in names:
         query = (HERE / f'{name}.overpassql').read_text().replace('{bbox}', bbox)
         (m.root / 'blocks').mkdir(exist_ok=True)
