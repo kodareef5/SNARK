@@ -16,6 +16,7 @@ import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
 import type { Subject } from "./taming.ts";
+import type { Use } from "./use.ts";
 import type { Voice } from "./voice.ts";
 import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
@@ -76,6 +77,8 @@ export interface OwnContext {
   rearm(rec: EntityRecord): void;
   /** See `Death.drop`. */
   drop(rec: EntityRecord, slot: number, n: number): boolean;
+  /** What using an item does beyond eating it (server/use.ts). */
+  readonly use: Use;
 }
 
 /** Sends the slots of `inv` changed after version `since`, or every occupied slot if `full`. */
@@ -524,13 +527,18 @@ export function addOwnCommands(ctx: OwnContext): void {
       if (to < 0) return RESULT_FULL;
       return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
     }
-    const eat = (ctx.world.reg.defs[item] as ItemDef).eat;
-    if (!eat) return RESULT_INVALID;
+    const def = ctx.world.reg.defs[item] as ItemDef;
+    const eat = def.eat;
+    const use = def.use;
+    if (!eat && !use) return RESULT_INVALID;
     if (!asked(ctx, c, ITEM_USE, { byPid: c.pid, item: reg.ids[item]! })) return RESULT_DENIED;
+    // A vessel is drunk from or filled, and kept.
+    if (use?.holds) return ctx.use.vessel(c, rec, slot, def);
     if (!ctx.items.burn(rec, slot, 1)) return RESULT_STALE;
-    if (eat.food) ctx.survival.add(rec, V_FOOD, eat.food);
-    if (eat.water) ctx.survival.add(rec, V_WATER, eat.water);
-    if (eat.health) ctx.mend(rec, eat.health);
+    if (eat?.food) ctx.survival.add(rec, V_FOOD, eat.food);
+    if (eat?.water) ctx.survival.add(rec, V_WATER, eat.water);
+    if (eat?.health) ctx.mend(rec, eat.health);
+    if (use) ctx.use.apply(rec, use);
     ctx.dose(rec, item, c.pid);
     return RESULT_OK;
   });

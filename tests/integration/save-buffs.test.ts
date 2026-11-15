@@ -38,8 +38,8 @@ test("a creature set alight before a restart burns for what was left of its fire
 
   host = open(db);
   const [burnt, dosed] = [host.records.byPid.get(a.pid)!, host.records.byPid.get(b.pid)!];
-  expect(burnt.buffs).toEqual([{ buff: id("burning"), until: until[0]!, by: 0, torpor: 0 }]);
-  expect(dosed.buffs).toEqual([{ buff: id("drugged"), until: until[1]!, by: 0, torpor: 5 }]);
+  expect(burnt.buffs).toEqual([{ buff: id("burning"), until: until[0]!, by: 0, torpor: 0, health: 0 }]);
+  expect(dosed.buffs).toEqual([{ buff: id("drugged"), until: until[1]!, by: 0, torpor: 5, health: 0 }]);
   expect(host.survival.value(burnt, V_HEALTH)).toBeCloseTo(full - 2 * 7.8, 1);
   run(host, 7);
   // Six more seconds of fire and one of mending.

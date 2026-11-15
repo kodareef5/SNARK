@@ -20,7 +20,8 @@ test("the item program's content is in the core pack, and a consumable may be on
   const ids = new Set(CORE_CONTENT.map((d) => `${d.type} ${d.id}`));
   expect(ITEMS.every((d) => ids.has(`${d.type} ${d.id}`))).toBe(true);
   const skin = CORE_CONTENT.find((d) => d.id === "core:waterskin")!;
-  expect(skin).toMatchObject({ class: "consumable", stack: 1, weight: 1, eat: { water: 60 } });
+  // Task C built it: a vessel of ARK's 100 water, kept when empty (server/use.ts).
+  expect(skin).toMatchObject({ class: "consumable", stack: 1, weight: 0.3, use: { holds: { water: 100, each: 100 } } });
   const used = { type: "item", class: "consumable", id: "core:test_tonic", stack: 10, use: { buffs: ["core:fed"] } } as Def;
   expect(defFaults(used)).toEqual([]);
 });

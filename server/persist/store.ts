@@ -63,7 +63,7 @@ const COMP_BREED2 = 18;
 const COMP_FIXTURE = 14;
 /** Experience, learned engrams, crafting jobs. */
 const COMP_PROGRESSION = 4;
-/** The buffs on it (server/buffs.ts): each one's content, the tick it ends, who gave it and the torpor a second it adds. */
+/** The buffs on it (server/buffs.ts): each one's content, the tick it ends, who gave it and the torpor a second it adds, then, if any adds health, the health a second each adds. */
 const COMP_BUFFS = 19;
 /** The slots of its inventory that stand for a record (Inventory.ref): each slot and that record's pid. */
 const COMP_REFS = 20;
@@ -389,6 +389,8 @@ export class WorldStore {
         c.uint53(b.by);
         c.f64(b.torpor);
       }
+      // The health a second each adds follows them all, and only when one adds some, so a save without any reads as before.
+      if (rec.buffs.some((b) => b.health !== 0)) for (const b of rec.buffs) c.f64(b.health);
       this.part(COMP_BUFFS);
     }
     if (hasBreed) {
@@ -743,8 +745,11 @@ export class WorldStore {
             if (c.bool()) rec.fire = { at: c.uint53(), fuel: c.varint(), cook: c.varint(), due: 0 };
           }
         } else if (component === COMP_BUFFS) {
-          for (let k = c.varint(); k > 0 && !c.overflow; k--) {
-            const on = { buff: this.toRuntime[c.varint()] ?? 0, until: c.uint53(), by: c.uint53(), torpor: c.f64() };
+          const read: { buff: number; until: number; by: number; torpor: number; health: number }[] = [];
+          for (let k = c.varint(); k > 0 && !c.overflow; k--) read.push({ buff: this.toRuntime[c.varint()] ?? 0, until: c.uint53(), by: c.uint53(), torpor: c.f64(), health: 0 });
+          // A save from before an instance could carry health has none after the list.
+          if (c.pos + 64 * read.length <= blob.length * 8) for (const on of read) on.health = c.f64();
+          for (const on of read) {
             // A buff whose content is gone is dropped, and what it gave the vitals with it.
             if (on.buff !== 0) rec.buffs.push(on);
             else stale = true;

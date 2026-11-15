@@ -173,8 +173,8 @@ test("engrams and levels are the server's: its level table and the tames', the m
   expect(shown()).toEqual([1, 0, 5]);
   h.say(ada, "addxp 5");
   expect([shown(), ada.progress.engrams, me.engrams, learn("waterskin")]).toEqual([[2, 5, 10], [id("engram-waterskin")], [], RESULT_INVALID]);
-  h.say(ada, "give fiber 20");
-  h.say(ada, "give thatch 5");
+  h.say(ada, "give hide 4");
+  h.say(ada, "give fiber 12");
   expect(craft("waterskin")).toBe(RESULT_OK);
   // Level 3 is at thirty. A level gives at most 65,535 points, even though the file says 70000. With her five that
   // is more than sixteen bits hold, and the client still gets the whole number.
