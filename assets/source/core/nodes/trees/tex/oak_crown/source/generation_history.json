@@ -1,0 +1,66 @@
+{
+  "tool": "built-in imagegen",
+  "generations": [
+    {
+      "deliverable_source": "top_heads_generated.png",
+      "generation_id": "exec-09748d73-8cf0-4d14-9d19-4c4289c1d009.png",
+      "sha256": "9197d8cefcb69beabe3e8cf92c5ed3eb83ee07786c550140cfe20f515618b545",
+      "size": [
+        1448,
+        1086
+      ],
+      "decision": "superseded; leaf blades too large"
+    },
+    {
+      "deliverable_source": "top_heads_generated.png",
+      "generation_id": "exec-c09bb3aa-3cd6-42f5-982c-5da8c64bb210.png",
+      "sha256": "f839efb79e47a13f3aff0a7fc981a70d84d86ac86828682bfedf00dd7d5ce492",
+      "size": [
+        1448,
+        1086
+      ],
+      "decision": "retained; finer blades"
+    },
+    {
+      "deliverable_source": "undersides_generated.png",
+      "generation_id": "exec-b6cce80e-f295-44ca-a566-c854b414d2bf.png",
+      "sha256": "ea84698a9d56204d7ab98409873621941a2fccf99109502cb944044f91f3fb1e",
+      "size": [
+        1774,
+        887
+      ],
+      "decision": "superseded; leaf blades too large"
+    },
+    {
+      "deliverable_source": "undersides_generated.png",
+      "generation_id": "exec-b9c142a7-331e-4fc0-9206-f8549ae7b837.png",
+      "sha256": "4fd523e207e9ff19f40d68c1055a10e9ca9536c27842d19285b19d9ffad5271f",
+      "size": [
+        1774,
+        887
+      ],
+      "decision": "retained; finer blades and branchlets"
+    },
+    {
+      "deliverable_source": "interior_generated.png",
+      "generation_id": "exec-6672d92c-56fd-4777-b016-43bc66455826.png",
+      "sha256": "83b0082ef376b8c3de7a020efbdc3f32ee2072388fac5465cdd9d12f5419ce45",
+      "size": [
+        1774,
+        887
+      ],
+      "decision": "superseded; some interior leaves exceeded intended scale"
+    },
+    {
+      "deliverable_source": "interior_generated.png",
+      "generation_id": "exec-00edb1a9-afd1-4aae-9008-3ea6c3777bec.png",
+      "sha256": "f04b879fb7d0c8d2e6aabb50657fc1252449f091570efb0f1531d63f90a9cecb",
+      "size": [
+        1774,
+        887
+      ],
+      "decision": "retained; smaller blades and dim foliage filling the gaps"
+    }
+  ],
+  "retention": "Only selected unmodified originals are retained in source/. Superseded workspace originals were replaced. The image tool retains its automatically managed outputs separately."
+}

@@ -6,8 +6,8 @@
 import math
 
 import broadleaf as bl
-import clusters
 import far
+import heads as hd
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, length, lerp, mix, mul, rng_for, rotate, sheet, sub, tube, unit
 from layout import CUTS, FERN_SIZE, MOSS_SIZE, OAK_FERN, OAK_MOSS, SPANS, crown_mass
 
@@ -57,10 +57,10 @@ ORDERS = {"orders": [
      "collar": 0.2},
 ]}
 SPECS = {o["name"]: o for o in OAKS}
-# How far apart the heads of leaves stand over the crown (clusters.py): each about 2.6 m across. On the flat levels
-# they are gathered into so many.
-SPACING = 2.0
-FLAT_HEADS = {3: 33, 4: 12}
+# How far apart the heads of leaves stand over the crown (heads.py), each 1.6 to 2.4 m across; on the coarser levels
+# they are gathered into so many against the finest's count, or so many in all.
+SPACING = 2.3
+GATHERED = {2: 0.62, 3: 34, 4: 12}
 
 
 def skeleton(spec):
@@ -79,7 +79,7 @@ def skeleton(spec):
         bl.clear_ground(limb, 2.4, 1.5)
         limbs.append(limb)
     centre, radii, rim, notches = spec["dome"]
-    lobes = bl.foliage(limbs, spec["lobe"], rng, dome=bl.Dome(centre, radii, rim, notches, seed=spec["name"], spacing=1.4, under=0.55))
+    lobes = bl.foliage(limbs, spec["lobe"], rng, dome=bl.Dome(centre, radii, rim, notches, seed=spec["name"], spacing=1.8, under=0.3))
     return limbs, lobes
 
 
@@ -125,9 +125,9 @@ def oak(name, lod):
     rng = rng_for(name, "level", lod)
     limbs, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
-    heads, balls = bl.clusters_of(name, limbs, lobes, shade, SPACING)
-    if lod == 3:
-        heads = clusters.merged(heads, FLAT_HEADS[3], name)
+    heads, balls = bl.heads_of(name, limbs, lobes, shade, SPACING)
+    if lod in (2, 3):
+        heads = bl.gathered(heads, GATHERED[lod], name)
     trunk_sides, trunk_rings = {0: (32, 14), 1: (16, 6), 2: (8, 3), 3: (6, 3), 4: (5, 2)}[lod]
     trunk_mesh(m, spec, trunk_sides, trunk_rings)
     # Sides of each order of wood at each level, how many points each keeps, and the thinnest drawn.
@@ -137,11 +137,11 @@ def oak(name, lod):
     if spec.get("collar") is not None:
         collar(m, spec, lod)
     if lod <= 3:
-        bl.clustered(m, heads, balls, lod, rng, ATLAS, 0.9, MASS[0], shade, grain=1.3)
+        bl.head_crown(m, heads, lod, rng, ATLAS, MASS[0], shade)
         if lod <= 1:
             epiphytes(m, spec, limbs, shade, lobes, lod)
     else:
-        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), FLAT_HEADS[lod], name)
+        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
     return m
 
 

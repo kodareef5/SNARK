@@ -1,0 +1,26 @@
+{
+  "replaced_maps": {
+    "oak_crown_base.png": "c015186f8202ef772c267bd289eb63d4585422ed7c8caa5b1b9efab50d34c15a",
+    "oak_crown_height.png": "73d59916e07a4a9c578edd95d7e8c88114758ff27f624cf72eada00843a2d3e6",
+    "oak_crown_normal.png": "0c67de7c9b4326a7f338fb556bf16d92d6c460af72ac16a92a15f3e12f7a0a49",
+    "oak_crown_orm.png": "3d3168961f5c52de4d9910478fb90bbdce721afb36fbf5f522f1f29c53782bb8"
+  },
+  "removed_working_previews": [
+    {
+      "path": "checks/source_leaf_scale.png",
+      "sha256": "7c9d94f1e298b5c256c796c524a172d85a1608e13bae8a355db439af5c2bd460"
+    },
+    {
+      "path": "checks/sun_head.png",
+      "sha256": "dbd97414dbce841348c6b550cd6927e4b3cf7ac0f9d48def3db23e47ec78fad1"
+    },
+    {
+      "path": "checks/underside.png",
+      "sha256": "e41ffd4f155834a96d825435961e80afd9814d370c52b622eb68d63c8652d2f5"
+    },
+    {
+      "path": "checks/working_compare.png",
+      "sha256": "69681a68d1e1769e8b96c8cfbb945bd43a23e21956318920ab5735121506a923"
+    }
+  ]
+}

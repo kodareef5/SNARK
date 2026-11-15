@@ -1,0 +1,34 @@
+{
+  "method": "built-in imagegen",
+  "sources": {
+    "interior_generated.png": {
+      "size": [
+        1774,
+        887
+      ],
+      "sha256": "f04b879fb7d0c8d2e6aabb50657fc1252449f091570efb0f1531d63f90a9cecb"
+    },
+    "undersides_generated.png": {
+      "size": [
+        1774,
+        887
+      ],
+      "sha256": "4fd523e207e9ff19f40d68c1055a10e9ca9536c27842d19285b19d9ffad5271f"
+    },
+    "top_heads_generated.png": {
+      "size": [
+        1448,
+        1086
+      ],
+      "sha256": "f839efb79e47a13f3aff0a7fc981a70d84d86ac86828682bfedf00dd7d5ce492"
+    }
+  },
+  "references": [
+    "../../ref/concept/broadleaf/oak_lineup.png",
+    "../../ref/concept/broadleaf/hammock_near.png",
+    "../../ref/concept/broadleaf/leaves.png",
+    "../../ref/concept/broadleaf/DESIGN.md",
+    "../oak_leaves/oak_leaves_base.png"
+  ],
+  "source_policy": "Generated from words informed by the named project art; no external images."
+}

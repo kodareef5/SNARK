@@ -18,9 +18,9 @@ import math
 import os
 
 import canopy
-import clusters
+import heads as hd
 from kit import UP, Mesh, add, cross, dot, horizontal, interp, length, lerp, mix, mul, rng_for, rotate, smooth, sub, tube, unit
-from layout import CROWN_CELLS, SCALLOPS, SPANS, crown_cell, leaf_cell, picture_dir
+from layout import HEAD_CELLS, SPANS, head_cell, leaf_cell, picture_dir, under_cell
 
 LEVELS = 5
 
@@ -633,9 +633,8 @@ TOP = (0, 2)
 RIM = (1, 3)
 
 
-# How far down a cluster's picture a fringe card begins: its leaves' outer part. A head's sprays (`clustered`) show more.
+# How far down a cluster's picture a fringe card begins: its leaves' outer part.
 FRINGE_CUT = 0.55
-FIN_CUT = 0.72
 
 
 # How each textured level draws a crown as one surface (canopy.py): the grid it is found on, in metres; how many clumps
@@ -777,119 +776,133 @@ def crown(m, lobes, lod, rng, atlas, size, mass, shade=None, grain=1.0):
         card(m, atlas, cell, root, up, normal, s, lit, coarse=at["coarse"], cut=FRINGE_CUT)
 
 
-def clusters_of(name, trunks, lobes, shade, spacing, **kw):
-    """The heads of leaves a crown is built of (clusters.py), laid over its billows, each on a twig from the nearest
-    branch into the middle of its bowl, so a limb runs into its leaves and none floats. Returns the heads and the
-    billows' balls."""
+# Behind the heads, deeper in the crown, a layer of smaller shade heads over the billows drawn in to this share of their
+# size, sparser by INNER_GAP: what is seen in the folds between heads is leaves deeper in, in shade.
+INNER = 0.68
+INNER_GAP = 1.5
+
+
+def heads_of(name, trunks, lobes, shade, spacing, **kw):
+    """The heads of leaves a crown is built of (heads.py): laid over its billows, each on a twig from the nearest branch
+    up into its underside, so a limb runs into its leaves and none floats; and a layer of shade heads deeper in. Returns
+    the heads and the billows."""
     balls = balls_of(lobes, None, 0)
-    heads = clusters.place(balls, shade, name, spacing, **kw)
-    rng = rng_for(name, "cluster twigs")
-    for c in heads:
-        target = c.point(0.0, 0.0, False)
+    got = hd.place(balls, shade, name, spacing, **kw)
+    rng = rng_for(name, "head twigs")
+    for c in got:
+        target = c.point(math.pi, 0.0)
         parent, t = nearest_wood(trunks, target, least=1)
         if length(sub(parent.at(t)[0], target)) > 0.3:
-            twig_to(parent, t, add(target, mul(c.axis, c.d * 0.5)), rng, thick=max(0.02, min(0.05, c.r * 0.03)))
-    return heads, balls
+            twig_to(parent, t, add(target, mul(c.axis, c.under * 0.6)), rng, thick=max(0.02, min(0.05, c.r * 0.03)))
+    small = [canopy.Ball(b.centre, b.r * INNER, b.squash, b.floor, b.lobe) for b in balls]
+    deeper = hd.place(small, shade, f"{name} inner", spacing * INNER_GAP, tiers=(99.0, 99.0), **kw)
+    for c in deeper:
+        c.inner = True
+    return got + deeper, balls
 
 
-# How each textured level draws a crown of heads: how much of a head's light is its own dome's, the rest the crown's
-# (Shade); the core behind the heads, found on a grid of `core` metres over the billows drawn in to `shrink` of their
-# size, its normals bent down by `sink`; and the cut-out sprays standing out of the outer heads' rims, `fins` a head
-# (a share is a chance), each `fin` times a cluster card's size, never more than `most` in all.
-LEAVES_UP = 0.35
-# A crown of heads is lit by its boughs' masses more than by each head: the billow's, the lobe's and the crown's shares.
-BOUGHS = (0.25, 0.5, 0.25)
-CLUSTER_LEVELS = {
-    0: {"own": 0.35, "core": 1.0, "shrink": 0.74, "sink": 0.6, "sprays": 4, "crowned": True, "cut": 0.62, "spray": 1.15, "rims": 0.0, "outer": 0.0, "fin": 1.1, "coarse": False},
-    1: {"own": 0.35, "core": 1.6, "shrink": 0.74, "sink": 0.6, "sprays": 3, "crowned": False, "cut": 0.58, "spray": 1.2, "rims": 0.0, "outer": 0.0, "fin": 1.25, "coarse": True},
-    2: {"own": 0.33, "core": 2.6, "shrink": 0.72, "sink": 0.6, "sprays": 0, "crowned": False, "cut": 0.55, "spray": 1.3, "rims": 0.0, "outer": 0.12, "fin": 1.6, "coarse": True},
-    3: {"own": 0.33, "core": 0, "shrink": 0.72, "sink": 0.6, "sprays": 0, "crowned": False, "cut": 0.55, "spray": 1.3, "rims": 0.0, "outer": 0.0, "fin": 1.6, "coarse": True},
+def gathered(heads, want, seed):
+    """The heads of a coarser level: the outer and the inner gathered apart (heads.merged), to `want` of them, or so
+    many outer heads and inner ones in proportion, half as many."""
+    outer = [c for c in heads if not c.inner]
+    inner = [c for c in heads if c.inner]
+    if want < 1:
+        return hd.merged(outer, round(len(outer) * want), seed) + hd.merged(inner, round(len(inner) * want), f"{seed} inner")
+    return hd.merged(outer, want, seed) + hd.merged(inner, max(1, round(want * len(inner) / max(1, len(outer)) * 0.5)), f"{seed} inner")
+
+
+# How each textured level draws a crown of heads. `own`: how much of a head's light is its own shape's, the rest its
+# bough's (Shade, with BOUGHS). `inner`: the level whose rings the inner heads are made with. `core`: how large an outer
+# head's opaque core is drawn against the head, the rest of its reach being its sprays. `sprays`: how many cut-out
+# sprays from the leaf atlas radiate from an outer head's core, each `spray` of the head's radius long, only its
+# leaves' outer `cut` drawn.
+BOUGHS = (0.2, 0.5, 0.3)
+LEAVES_UP = 0.4
+# A head is lit as leaves are, from above more than from the side: its own normals are pressed toward its axis by this.
+LEAFY = 0.55
+HEAD_LEVELS = {
+    0: {"own": 0.6, "inner": 1, "core": 0.74, "sprays": 18, "spray": 1.05, "cut": 0.66, "coarse": False},
+    1: {"own": 0.6, "inner": 2, "core": 0.74, "sprays": 12, "spray": 1.1, "cut": 0.66, "coarse": True},
+    2: {"own": 0.6, "inner": 4, "core": 1.0, "sprays": 0, "spray": 1.1, "cut": 0.66, "coarse": True},
+    3: {"own": 0.6, "inner": 4, "core": 1.0, "sprays": 0, "spray": 1.1, "cut": 0.66, "coarse": True},
 }
 
 
-def clustered(m, heads, balls, lod, rng, atlas, size, material, shade, grain=1.0):
-    """A crown on the levels with pictures, as heads of leaves (clusters.py) over a darker core, with sprays of cut-out
-    leaves standing out of the outer heads' rims to break the outline into leaves."""
-    at = CLUSTER_LEVELS[lod]
-    own = at["own"]
+def head_light(shade, own):
+    """The normals a head is lit by: its own shape's, pressed toward its axis, `own` of it, and the rest its bough's and
+    the crown's, which turn down into shade deep in the crown and under it; and leaves turn their faces a little up to
+    the sky."""
     bough = copy.copy(shade)
     bough.weights = BOUGHS
 
     def lit_for(c):
-        # Leaves turn their faces up to the sky, so a head's side is lit more than a solid's would be.
-        return lambda p, n: unit(add(add(mul(n, own), mul(bough.normal(c.lobe, p), 1 - own)), (0.0, LEAVES_UP, 0.0)))
+        def lit(p, n):
+            a = dot(n, c.axis)
+            leafy = unit(add(mul(sub(n, mul(c.axis, a)), LEAFY), mul(c.axis, a)))
+            v = unit(add(mul(leafy, own), mul(bough.normal(c.lobe, p), 1 - own)))
+            # Only the leaves over the head's shoulders turn up to the sky; under it they hang in its shade.
+            return unit(add(v, (0.0, LEAVES_UP * smooth((a + 0.25) / 0.6), 0.0)))
+        return lit
+    return lit_for
 
-    under = (CROWN_CELLS[material]["bowl"], CROWN_CELLS[material]["core_metres"])
+
+def sprays(m, c, at, atlas, lit, rng):
+    """The cut-out sprays of a head, radiating from its core all round as the twigs' ends of a clump of leaves do, the
+    lower ones drooping, each lit as the head is where it leaves it: from any side the head's outline is leaves, and a
+    spray seen end on, in front of the core or behind it, costs little."""
+    count = at["sprays"]
+    golden = math.pi * (3 - math.sqrt(5))
+    turn = rng.uniform(0, 2 * math.pi)
+    for k in range(count):
+        # Over the head from near its top to near its bottom, evenly, each a little off.
+        y = mix(0.96, -0.9, (k + rng.uniform(0.2, 0.8)) / count)
+        theta = math.acos(max(-1.0, min(1.0, y)))
+        phi = turn + golden * k + rng.uniform(-0.3, 0.3)
+        at_surface = c.point(theta, phi)
+        own = c.light(theta, phi)
+        radial = unit(sub(at_surface, c.centre))
+        # Out from the middle, toward the way the head faces there, the lower ones bending down.
+        along = unit(add(add(mul(radial, 0.6), mul(c.own(theta, phi), 0.4)), (0.0, -0.25 * smooth((theta - 1.2) / 1.2), 0.0)))
+        s = c.r * at["spray"] * rng.uniform(0.85, 1.12)
+        root = sub(at_surface, mul(along, s * 0.14))
+        flat = sub(c.axis, mul(along, dot(c.axis, along)))
+        flat = unit(flat) if length(flat) > 1e-3 else unit(cross(along, c.e1))
+        normal = rotate(flat, along, rng.uniform(-math.pi / 2, math.pi / 2))
+        sun = c.tier == 0 or (c.tier == 1 and theta < 1.4)
+        cell = rng.choice(TOP if sun and theta < 1.9 else RIM)
+        card(m, atlas, cell, root, along, normal, s, lambda x, own=own: lit(x, own), coarse=at["coarse"], cut=at["cut"])
+
+
+def head_crown(m, heads, lod, rng, atlas, material, shade):
+    """A crown on the levels with pictures: its heads of leaves (heads.py), each wearing its cell of `material`, the
+    inner ones more coarsely, the outer ones as cores with sprays of cut-out leaves from `atlas` radiating from them."""
+    at = HEAD_LEVELS[lod]
+    lit_for = head_light(shade, at["own"])
     for c in heads:
-        clusters.head(m, c, lod, material, crown_cell(material, c.tier, c.variant), lit_for(c), under)
-    if at["core"]:
-        small = [canopy.Ball(b.centre, b.r * at["shrink"], b.squash, b.floor, b.lobe) for b in balls]
-        pts, tris, owners = canopy.nets(small, at["core"] * grain)
-        normals = [unit(add(shade.normal(small[o].lobe, p), (0.0, -at["sink"], 0.0))) for p, o in zip(pts, owners)]
-        # The core is what is seen deep between heads: shade leaves, in the dark of the crown; underneath, the ceiling
-        # of leaves a survivor looks up into, the heads' bowls' leaves.
-        cells = CROWN_CELLS[material]
-        skin(m, pts, tris, normals, (material, (cells["bowl"], cells["core"]), cells["core_metres"]), [n[1] < -0.55 for n in normals])
-    # Sprays laid over each head, lit as the head is where each lies: one on its top and a ring round its shoulders, so
-    # the head's surface and outline break into leaves while it keeps the light of one head.
-    ring = at["sprays"]
+        c.core = 1.0 if c.inner else at["core"]
+        hd.mesh(m, c, at["inner"] if c.inner else lod, material, head_cell(material, c.tier, c.variant), under_cell(material, c.below), lit_for(c))
+    if at["sprays"]:
+        for c in heads:
+            if not c.inner:
+                sprays(m, c, at, atlas, lit_for(c), rng)
     for c in heads:
-        lit = lit_for(c)
-        places = [(0.0, rng.uniform(0, 2 * math.pi))] if at["crowned"] else []
-        turn = rng.uniform(0, 2 * math.pi)
-        places += [(rng.uniform(0.55, 0.68), turn + 2 * math.pi * (j + rng.uniform(-0.15, 0.15)) / ring) for j in range(ring)]
-        for rho, phi in places:
-            p = c.point(rho, phi, True)
-            face = c.facing(rho, phi, True)
-            # The spray reaches out down the head from where it is laid, its twig toward the top; only its leaves'
-            # outer part is drawn, standing past the head's outline.
-            along = unit(sub(c.point(min(1.0, rho + 0.2), phi, True), p)) if rho > 0 else c.out(phi)
-            normal = unit(add(face, mul(cross(face, along), rng.uniform(-0.35, 0.35))))
-            s = c.r * at["spray"] * rng.uniform(0.9, 1.1) * (0.85 if rho == 0 else 1.0)
-            cell = rng.choice(TOP) if rho == 0 or c.tier == 0 else rng.choice(RIM)
-            cut = at["cut"] if rho > 0 else None
-            # Seen from beneath, a spray shows its leaves' undersides in the head's shade.
-            under = unit(add(mul(face, -0.4), (0.0, -1.0, 0.0)))
-            card(m, atlas, cell, add(add(p, mul(face, 0.06)), mul(along, s * (0.3 if cut else 0.22))), along, normal, s, lambda x, lit=lit, face=face: lit(x, face), coarse=at["coarse"], cut=cut,
-                 back=lambda x, lit=lit, under=under: lit(x, under))
-    for c in heads:
-        radial = unit(tuple((c.site[k] - shade.mid[k]) / shade.radii[k] ** 2 for k in range(3)))
-        outer = dot(c.normal, radial) >= 0.45
-        k, first, _ = SCALLOPS[c.variant]
-        want = k * (at["outer"] if outer else at["rims"])
-        count = int(want) + (rng.random() < want - int(want))
-        peaks = [math.radians(first) + 2 * math.pi * (j + 0.5) / k for j in range(k)]
-        # The scallops that look most the way the crown faces first, unless the head looks up, when any will do.
-        flat = (c.normal[0], 0.0, c.normal[2])
-        ranked = sorted(peaks, key=lambda phi: -dot(c.out(phi), flat) + rng.uniform(0, 0.6 if length(flat) > 0.5 else 3.0))
-        for phi in ranked[:count]:
-            root = c.point(1.0, phi, True)
-            up = unit(add(mul(c.out(phi), 0.9), mul(c.axis, rng.uniform(-0.25, 0.15))))
-            side = unit(cross(up, c.axis))
-            # Tipped from upright toward lying as leaves lie, never edge on to the head above or below.
-            normal = rotate(side, up, math.radians(rng.choice((-1, 1)) * rng.uniform(25, 70)))
-            n = unit(add(add(mul(c.facing(1.0, phi, True), own), mul(shade.normal(c.lobe, root), 1 - own)), (0.0, LEAVES_UP, 0.0)))
-            cell = rng.choice(RIM)
-            s = size * at["fin"] * rng.uniform(0.85, 1.15)
-            card(m, atlas, cell, add(root, mul(up, s * FIN_CUT * 0.12)), up, normal, s, lambda x, n=n: n, coarse=at["coarse"], cut=FIN_CUT)
+        c.core = 1.0
 
 
 def flat_heads(m, heads, lod, colours, count, seed):
-    """A crown on the flat levels: its heads gathered into `count` (clusters.merged), each in the light, middle and dark
-    greens by the way each face looks: its top light, its sides middle, its bowl dark; a head in shade a step darker,
-    one in sun a step lighter."""
-    light, mid, dark = colours
-    steps = (light, mid, dark)
-    for c in clusters.merged(heads, count, seed):
+    """A crown on the flat levels: its heads gathered into `count` (gathered), each face in the light, middle or dark
+    green by the way it looks: a head's top light, its sides middle, its underside dark; a head in shade a step
+    darker, one in sun a step lighter."""
+    for c in gathered(heads, count, seed):
         def paint(n, c=c):
             k = 0 if n[1] > 0.55 else 2 if n[1] < -0.3 else 1
             if c.tier == 2 and k < 2 and n[1] < 0.8:
                 k += 1
             elif c.tier == 0 and k == 1 and n[1] > 0.15:
                 k = 0
-            return steps[k]
+            return colours[k]
 
-        clusters.head(m, c, lod, mid, None, lambda p, n: n, paint=paint)
+        hd.mesh(m, c, lod, None, None, None, lambda p, n: n, paint=paint)
 
 
 def masses(lobes, count):

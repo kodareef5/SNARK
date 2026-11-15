@@ -7,8 +7,8 @@
 import math
 
 import broadleaf as bl
-import clusters
 import far
+import heads as hd
 import oaks
 from kit import UP, Mesh, add, dot, hash01, horizontal, interp, mix, mul, rng_for, sub, unit
 from layout import CUTS
@@ -50,10 +50,10 @@ ORDERS = {"orders": [
     {"count": (1, 2), "along": (0.4, 0.9), "turn": (25, 50), "rise": (10, 26), "length": (0.9, 1.6), "girth": (0.5, 0.65), "points": 4, "wander": 0.2, "droop": 4},
 ]}
 SPECS = {y["name"]: y for y in YOUNG}
-# How far apart the heads of leaves stand over the crown (clusters.py): each about 1.6 m across. On the flat levels
-# they are gathered into so many.
-SPACING = 1.2
-FLAT_HEADS = {3: 22, 4: 9}
+# How far apart the heads of leaves stand over the crown (heads.py), each 1.3 to 1.9 m across; on the coarser levels
+# they are gathered into so many against the finest's count, or so many in all.
+SPACING = 1.8
+GATHERED = {2: 0.62, 3: 20, 4: 9}
 
 
 def lean(spec):
@@ -117,20 +117,20 @@ def young(name, lod):
     rng = rng_for(name, "level", lod)
     limbs, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
-    heads, balls = bl.clusters_of(name, limbs, lobes, shade, SPACING)
-    if lod == 3:
-        heads = clusters.merged(heads, FLAT_HEADS[3], name)
+    heads, balls = bl.heads_of(name, limbs, lobes, shade, SPACING)
+    if lod in (2, 3):
+        heads = bl.gathered(heads, GATHERED[lod], name)
     sides, rings = {0: (16, 8), 1: (10, 4), 2: (6, 3), 3: (5, 2), 4: (4, 2)}[lod]
     trunk_mesh(m, spec, sides, rings)
     order_sides, keep, least = {0: ((10, 6, 4), (12, 6, 4), 0.0), 1: ((6, 4, 3), (6, 3, 2), 0.03), 2: ((4, 3, 0), (3, 2, 1), 0.06),
                                 3: ((4, 0, 0), (2, 1, 1), 0.08), 4: ((3, 0, 0), (1, 1, 1), 0.1)}[lod]
     bl.wood(m, limbs, order_sides, keep, BARK, STEM, least)
     if lod <= 3:
-        bl.clustered(m, heads, balls, lod, rng, ATLAS, 0.9, MASS[0], shade)
+        bl.head_crown(m, heads, lod, rng, ATLAS, MASS[0], shade)
         if lod <= 1:
             oaks.epiphytes(m, spec, limbs, shade, lobes, lod, beards=(3, 2), ferns=False)
     else:
-        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), FLAT_HEADS[lod], name)
+        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
     return m
 
 
