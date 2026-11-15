@@ -206,24 +206,20 @@ function keepTimes(junit: string): void {
   renameSync(`${TEST_TIMES}.${process.pid}`, TEST_TIMES);
 }
 
-async function checkTests(): Promise<void> {
-  const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
+const hasTests = walk(join(ROOT, "tests")).some((f) => f.endsWith(".test.ts"));
+
+/** Runs every test, with `env` from sharedPack, leaving a report in `dir`. */
+async function checkTests(dir: string, env: Record<string, string>): Promise<void> {
   if (!hasTests) return;
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
   // A busy machine can make a one-second test take five, so a test is called hung at 20 s, and later in step with the load
   // when more work waits than there are cores, up to two minutes.
   const hung = Math.round(20000 * Math.min(6, Math.max(1, loadavg()[0]! / cpus().length)));
-  const dir = mkdtempSync(join(tmpdir(), "snark-check-"));
   const report = join(dir, "junit.xml");
   // The slowest files start first, by their times in the last check, or the last of them may start when the rest are done.
   const timed = existsSync(TEST_TIMES) ? ["--timings", TEST_TIMES] : [];
-  let r: { ok: boolean; out: string };
-  try {
-    r = await run(["bun", "test", "--parallel", "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...(await sharedPack(dir)) });
-    if (r.ok) keepTimes(readFileSync(report, "utf8"));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const r = await run(["bun", "test", "--parallel", "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...env });
+  if (r.ok) keepTimes(readFileSync(report, "utf8"));
   if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
   else console.log("  " + (r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()).join(", ")));
 }
@@ -235,8 +231,18 @@ const step = async (name: string, fn: () => void | Promise<void>) => {
   console.log(`${name.padEnd(12)} ${((performance.now() - t) / 1000).toFixed(2)}s`);
 };
 
-await step("policy", checkPolicy);
-await Promise.all([step("types", checkTypes), step("tests", checkTests)]);
+const dir = mkdtempSync(join(tmpdir(), "snark-check-"));
+try {
+  let env: Record<string, string> = {};
+  if (hasTests) await step("pack", async () => void (env = await sharedPack(dir)));
+  const types = step("types", checkTypes);
+  const tests = step("tests", () => checkTests(dir, env));
+  // The type check and the tests have started in processes of their own; the policy runs here beside them.
+  await step("policy", checkPolicy);
+  await Promise.all([types, tests]);
+} finally {
+  rmSync(dir, { recursive: true, force: true });
+}
 
 const seconds = (performance.now() - t0) / 1000;
 // With more work waiting than there are cores, the clock times the neighbours and not the tests, so the budget is not counted.
