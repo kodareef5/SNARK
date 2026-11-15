@@ -800,7 +800,7 @@ def take_off(r):
                   (25, 46.0), (N - 1, HOVER_PITCH)])
     flat = Keys([(0, 0.0), (3, 0.0), (12, 1.0)])
     # The hands leave the ground at hands_off and follow the free arm, which takes over by `free`. The wings open
-    # from open0, through TUCK, up over the back, and are spread at stroke0.
+    # from open0, up over the back (OPEN), and are spread at stroke0.
     hands_off, free, open0, stroke0 = 4.0, 9.0, 4.0, 16.0
     fold = Keys([(0, 1.0), (open0, 1.0), (11, 0.5, -0.07), (stroke0, 0.04)])
     open_flap = Keys([(0, 0.0), (open0, 2.0), (11, 22.0), (stroke0, 38.0)])
