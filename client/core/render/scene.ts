@@ -27,7 +27,7 @@ import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
-import { FrameBudget, crownScale, leavesAt, thinning } from "./budget.ts";
+import { FrameBudget, coverScale, crownScale, leavesAt, thinning } from "./budget.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
@@ -1089,8 +1089,9 @@ export class Scene {
    * farthest points ask for the same level and all of it is short of the tier's hand-over band, each mesh is one draw;
    * otherwise each cell takes the level the nearest of its nodes asks for, measured to its trunk. A cell all past the band
    * is left to the far store, and one that reaches into it fades out over it as the far store's draw fades in (hand.ts).
-   * A tree's crown is chosen at the budget's squeeze, as if it stood farther off, and its leaves thinned by it, while its
-   * trunk takes the level its distance asks. Every draw of the chunk is in the depth ranges `passes`.
+   * A tree's crown is chosen at the budget's squeeze, as if it stood farther off, and its leaves thinned by it; its trunk,
+   * and any other node, at the squeeze's later scale for cover (budget.ts). Every draw of the chunk is in the depth
+   * ranges `passes`.
    */
   private nodeRanges(cam: Camera, b: ChunkBatch, id: number, dist: number, x0: number, z0: number, passes: number): void {
     const [from, to] = this.assets.tier.nodes.band;
@@ -1104,15 +1105,15 @@ export class Scene {
     const far = Math.sqrt(fx * fx + fy * fy + fz * fz);
     const [ox, oy, oz] = [x0 - cam.x, -cam.y, z0 - cam.z];
     const squeeze = this.budget.squeeze;
-    const scale = crownScale(squeeze);
+    const [scale, cover] = [crownScale(squeeze), coverScale(squeeze)];
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
       const errors = this.assets.table.error[mesh]!;
       const reach = b.reach![q]!;
       const tree = this.treeOf[mesh] === 1;
-      const near = this.assets.choose(errors, dist / reach, b.level[q]!);
+      const near = this.assets.choose(errors, (dist * cover) / reach, b.level[q]!);
       const crown = tree ? this.assets.choose(errors, (dist * scale) / reach, b.crown[q]!) : near;
-      if (far <= from && near === this.assets.choose(errors, far / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!))) {
+      if (far <= from && near === this.assets.choose(errors, (far * cover) / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!))) {
         [b.level[q], b.crown[q], b.thin[q]] = [near, crown, tree ? thinning(squeeze, dist, to, b.thin[q]!) : 0];
         levels.fill(near, q * cells, (q + 1) * cells);
         crowns.fill(crown, q * cells, (q + 1) * cells);
@@ -1144,7 +1145,7 @@ export class Scene {
         const hand = most > from ? HAND_NEAR : 0;
         const qc = q * cells + c;
         const seen = d / b.cellReach![qc]!;
-        const level = (levels[qc] = this.assets.choose(errors, seen, levels[qc]!));
+        const level = (levels[qc] = this.assets.choose(errors, seen * cover, levels[qc]!));
         const crown = (crowns[qc] = tree ? this.assets.choose(errors, seen * scale, crowns[qc]!) : level);
         const thin = (thins[qc] = tree ? thinning(squeeze, d, to, thins[qc]!) : 0);
         // A run is its first and end instance, its level and the coarsest a cell of it asked for, its nearest distance,

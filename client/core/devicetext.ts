@@ -210,15 +210,19 @@ function treesLines(r: DeviceReport): string[] {
   out.push(row(["wood", "tier", "order", "frames", "median", "p95", "mean", "windows", "read", "windows", "gpu"], widths));
   for (const g of t.rungs) {
     for (const o of g.orders) out.push(row([g.wood, g.tier, `${o.order}${o.small ? "¼" : ""}`, String(o.frames), String(o.frameMs.median), String(o.frameMs.p95), String(o.meanMs), o.means.join("/"), String(o.readMs), o.reads.join("/"), n(o.gpuMs)], widths));
+    const b = g.budget;
+    if (b) out.push(row([g.wood, g.tier, "budget", String(b.frames), String(b.frameMs.median), String(b.frameMs.p95), String(b.meanMs), b.means.join("/"), "-", "-", n(b.gpuMs)], widths));
     const c = t.counts.find((x) => x.wood === g.wood && x.tier === g.tier);
     const counted = c ? `${c.cut} cut-out layers a pixel, ${c.front} in front of the nearest opaque, ${c.old} as made, ${c.first} in front of the ground` : "not counted";
     out.push(`          ${g.wood} ${g.tier} at ${g.at.map(Math.round).join(", ")}, canvas ${g.canvas.join("x")}, ${count(g.calls)} draws, ${count(g.tris)} triangles; ${g.invalid ? `invalid: ${g.invalid}; ` : ""}${counted}`);
+    if (b) out.push(`          the budget: ${count(b.tris)} triangles of ${count(b.allowed)}, crowns near ${count(b.crowns)}, ${count(b.draws)} draws, squeeze ${b.squeeze} (most ${b.most})`);
     if (g.verdict) out.push(`          ${g.verdict}`);
   }
   out.push("median, p95, mean: ms between frames, the mean of each window after; read: ms from handing a frame to WebGL to a pixel of it read");
   out.push("back, median, each window's after; gpu: by timer query; ¼: at half the pixel ratio, read back only. The counts are of the");
-  out.push("same view (wood.ts), in layers a pixel");
+  out.push("same view (wood.ts), in layers a pixel. budget: drawn as the frame's budget draws it, its cut-outs last; every other row whole");
   out.push(`verdict   ${t.verdict || "not judged"}`);
+  if (t.budget) out.push(`budget    ${t.budget}`);
   return out;
 }
 

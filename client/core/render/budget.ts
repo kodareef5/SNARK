@@ -2,10 +2,11 @@
 // the levels its distance asks for and counted, but crowns near take only what the tier's number leaves once all above
 // them is drawn, nearest last. They give it up by one dial, the squeeze: first their leaves thin, the sprays least seen
 // first (tools/pack/sprays.ts), from the band inward; then their levels are chosen as if they stood farther off, each
-// whole step of the squeeze twice as far, while their trunks keep the level their distance asks. The squeeze follows the
-// last frame's count: it rises while the frame is over, and falls only once the frame has been well under for a second,
-// never back to where it was over in the last twenty seconds; and a crown's level and share keep a margin before they
-// move. So nothing goes back and forth while the count hovers at the limit.
+// whole step of the squeeze twice as far. Trunks, stones and bushes keep the level their distance asks until the crowns
+// have given two whole steps, and then give a step for each of theirs. The squeeze follows the last frame's count: it
+// rises while the frame is over, and falls only once the frame has been well under for a second, never back to where it
+// was over in the last twenty seconds; and a crown's level and share keep a margin before they move. So nothing goes back
+// and forth while the count hovers at the limit.
 
 import type { Tier } from "../assets/tiers.ts";
 
@@ -22,9 +23,11 @@ export const ORDER = ["own", "bodies", "fight", "built", "ground", "cover", "cro
 export type Share = (typeof ORDER)[number];
 
 /** The share of a crown's leaves left at the squeeze's first whole step. */
-export const LEAVES_LEFT = 0.3;
-/** The squeeze's most: crowns drawn as if four times as far, every leaf thinned. */
-export const SQUEEZE_MOST = 3;
+export const LEAVES_LEFT = 0.2;
+/** The squeeze's most: crowns drawn as if eight times as far, every leaf thinned, and trunks, stones and bushes as if four times. */
+export const SQUEEZE_MOST = 4;
+/** The squeeze from which trunks, stones and bushes give too, a whole step for each of the crowns'. */
+const COVER_FROM = 2;
 /** Metres over which the thinning's edge goes from none to all, as it sweeps in from the band. */
 const RAMP = 16;
 /** Steps of a thinning a crown is drawn at, and how far past a step the thinning must go before it is taken. */
@@ -45,8 +48,9 @@ const FORGET_MOST = 320000;
 /** A frame over within this long of the squeeze falling was over because it fell. */
 const FELL_MS = 2000;
 
-/** How many times as far as they stand crowns are drawn at a squeeze. */
+/** How many times as far as they stand crowns, and trunks, stones and bushes, are drawn at a squeeze. */
 export const crownScale = (squeeze: number): number => (squeeze > 1 ? 2 ** (squeeze - 1) : 1);
+export const coverScale = (squeeze: number): number => (squeeze > COVER_FROM ? 2 ** (squeeze - COVER_FROM) : 1);
 
 /**
  * The thinning of a crown `metres` off at a squeeze, from 0 for none to STEPS for all of LEAVES_LEFT: it sweeps in from
@@ -80,6 +84,12 @@ export class FrameBudget {
   private floorUntil = 0;
   private forget = FORGET_MS;
   private fellAt = -Infinity;
+
+  /** Starts again from no squeeze, as a new scene does. */
+  reset(): void {
+    this.squeeze = this.floor = this.under = this.floorUntil = 0;
+    [this.forget, this.fellAt] = [FORGET_MS, -Infinity];
+  }
 
   begin(tier: Tier): void {
     this.triangles = tier.budget.triangles;
