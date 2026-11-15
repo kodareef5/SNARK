@@ -3,7 +3,8 @@ the surface (every face corner's texture coordinate, position, normal and feathe
 
     blender --background --factory-startup --disable-autoexec --python ref/bakes/bake.py -- [--size 1024] [--samples 48]
 
-Writes ref/bakes/dodo_occlusion.png and the surface to the system's temporary folder; then run `python3 ref/bakes/draw.py`.
+Writes ref/bakes/dodo_occlusion.png, the same with the wings and legs apart (dodo_occlusion_apart.png), what they hide
+at rest (dodo_covered.png), and the surface to the system's temporary folder; then run `python3 ref/bakes/draw.py`.
 """
 
 import json
@@ -20,6 +21,9 @@ import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 FOLDER = os.path.dirname(os.path.dirname(HERE))
 SCRATCH = os.path.join(tempfile.gettempdir(), "dodo_surface.json")
+# The pieces the clips lift off the body: the folded wings stand out from the flanks, and the legs fold, out of the
+# skin they go into at rest.
+MOVERS = ("wing_l_in", "wing_l_out", "shoulder_l", "leg_l", "toe4_")
 
 
 def args():
@@ -127,8 +131,10 @@ def surface(model, obj, flow):
     return faces
 
 
-def occlusion(obj, size, samples):
-    """Ambient occlusion of the opaque surface, the cards left out, baked into its texture."""
+def occlusion(obj, size, samples, apart=False):
+    """Ambient occlusion of the opaque surface, the cards left out, baked into its texture. With `apart`, the wings and
+    legs are taken a metre out to their sides first: what they cover at rest then has the occlusion it has once they
+    are off it, and they have theirs away from the body."""
     import model
     scene = bpy.context.scene
     scene.render.engine = "CYCLES"
@@ -144,6 +150,12 @@ def occlusion(obj, size, samples):
     bm.from_mesh(copy.data)
     cards = list(model.rig.MATERIALS).index("dodo_cards")
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.material_index == cards], context="FACES")
+    if apart:
+        names = list(obj["islands"])
+        island = bm.faces.layers.int.get("island")
+        moved = {v for f in bm.faces if names[f[island]].startswith(MOVERS) for v in f.verts}
+        for v in moved:
+            v.co.x += math.copysign(1.0, v.co.x)
     bm.to_mesh(copy.data)
     bm.free()
     img = bpy.data.images.new("occlusion", size, size, alpha=False)
@@ -159,9 +171,46 @@ def occlusion(obj, size, samples):
         o.hide_render = o != copy
     bpy.context.view_layer.objects.active = copy
     bpy.ops.object.bake(type="AO", margin=8, margin_type="EXTEND", use_clear=True)
-    img.filepath_raw = os.path.join(HERE, "dodo_occlusion.png")
+    img.filepath_raw = os.path.join(HERE, "dodo_occlusion_apart.png" if apart else "dodo_occlusion.png")
     img.file_format = "PNG"
     img.save()
+    bpy.data.objects.remove(copy)
+
+
+def covered(faces, opaque, size, reach=0.03):
+    """Which texels of the opaque surface lie hidden at rest under or inside a piece the clips lift off, or are such a
+    piece's hidden side: the flank under a folded wing, the skin a leg goes into, the wing's inner face, the top of the
+    leg inside the body. A texel is hidden where the line out along its normal meets the other side's surface within
+    `reach`, or meets it from inside. The right side is the left mirrored, so the left's faces are drawn."""
+    from mathutils import Vector
+    from mathutils.bvhtree import BVHTree
+    tris = []
+    for f in faces:
+        for j in range(1, len(f["p"]) - 1) if f["m"] == opaque else ():
+            tris.append((f["i"].startswith(MOVERS), *(np.array([f[k][c] for c in (0, j, j + 1)], float) for k in ("p", "n", "uv"))))
+    # Each side is tested against the other's surface.
+    trees = {}
+    for moves in (True, False):
+        group = [p for m, p, _, _ in tris if m == moves]
+        trees[not moves] = BVHTree.FromPolygons([tuple(c) for p in group for c in p], [(3 * k, 3 * k + 1, 3 * k + 2) for k in range(len(group))])
+    out = np.zeros((size, size), np.float32)
+    for moves, p, n, uv in tris:
+        if p[:, 0].mean() < 0:
+            continue
+        q = uv * size - 0.5
+        lo, hi = np.clip(np.floor(q.min(0)), 0, size - 1).astype(int), np.clip(np.ceil(q.max(0)), 0, size - 1).astype(int)
+        xs, ys = (a.ravel() for a in np.meshgrid(np.arange(lo[0], hi[0] + 1), np.arange(lo[1], hi[1] + 1)))
+        t = np.array([q[1] - q[0], q[2] - q[0]]).T
+        if abs(np.linalg.det(t)) < 1e-12:
+            continue
+        b = np.linalg.solve(t, np.stack([xs - q[0, 0], ys - q[0, 1]]))
+        w = np.stack([1 - b[0] - b[1], b[0], b[1]])
+        for k in np.nonzero((w > -1e-6).all(0))[0]:
+            d = Vector(w[:, k] @ n).normalized()
+            hit, normal, _, far = trees[moves].ray_cast(Vector(w[:, k] @ p) + d * 1e-4, d, 1.0)
+            if hit is not None and (far < reach or normal.dot(d) > 0):
+                out[ys[k], xs[k]] = 1.0
+    return out
 
 
 def main():
@@ -173,7 +222,15 @@ def main():
         json.dump({"faces": faces, "materials": list(model.rig.MATERIALS), "atlas": model.ATLAS,
                    "nape_wedge": model.NAPE_WEDGE}, fh)
     occlusion(obj, a["size"], a["samples"])
+    occlusion(obj, a["size"], a["samples"], apart=True)
+    hidden = covered(faces, list(model.rig.MATERIALS).index("dodo"), a["size"])
+    img = bpy.data.images.new("covered", a["size"], a["size"], alpha=False)
+    img.pixels.foreach_set(np.dstack([hidden, hidden, hidden, np.ones_like(hidden)]).ravel())
+    img.filepath_raw = os.path.join(HERE, "dodo_covered.png")
+    img.file_format = "PNG"
+    img.save()
     print(f"bake: {len(faces)} faces, occlusion at {a['size']}; now run python3 {os.path.join(HERE, 'draw.py')}")
 
 
-main()
+if __name__ == "__main__":
+    main()

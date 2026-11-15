@@ -22,6 +22,8 @@ site.addsitedir(site.getusersitepackages())
 import numpy as np
 from PIL import Image
 from scipy.ndimage import distance_transform_edt, zoom
+from scipy.sparse import coo_matrix
+from scipy.sparse.linalg import spsolve
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEX = os.path.dirname(HERE)
@@ -160,13 +162,55 @@ def separate(idx, original):
     return idx
 
 
+def carried(value, hole, piece):
+    """`value` carried into the texels of `hole` from the texels round them on the same piece: each the mean of its
+    neighbours, so it is smooth and meets what is round it without a step. A hole with nothing round it is 0."""
+    ys, xs = np.nonzero(hole)
+    index = np.full(hole.shape, -1)
+    index[ys, xs] = np.arange(len(ys))
+    rows, cols = [], []
+    known = np.zeros(len(ys))
+    count = np.full(len(ys), 1e-6)
+    for dy, dx in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+        ny, nx = np.clip(ys + dy, 0, hole.shape[0] - 1), np.clip(xs + dx, 0, hole.shape[1] - 1)
+        same = (piece[ny, nx] == piece[ys, xs]) & ((ny != ys) | (nx != xs))
+        count += same
+        inner = same & hole[ny, nx]
+        rows.append(np.nonzero(inner)[0])
+        cols.append(index[ny, nx][inner])
+        outer = same & ~hole[ny, nx]
+        known[outer] += value[ny, nx][outer]
+    rows, cols = np.concatenate(rows), np.concatenate(cols)
+    a = coo_matrix((np.concatenate([count, -np.ones(len(rows))]), (np.concatenate([np.arange(len(ys)), rows]),
+                                                                  np.concatenate([np.arange(len(ys)), cols]))))
+    out = np.zeros(hole.shape)
+    out[ys, xs] = spsolve(a.tocsr(), known)
+    return out
+
+
+def form_occlusion(piece):
+    """The modeller's form occlusion (ref/bakes/bake.py) at the maps' size. What a folded wing or a leg hides at rest,
+    the flank under the wing, the skin a leg goes into, the wing's inner face and the top of the leg, bakes black, and
+    the clips lift them off it. There it is the bake with them apart, brought to meet the skin round it."""
+    whole, apart, hidden = (np.asarray(Image.open(os.path.join(BAKES, f"dodo_{name}.png")).convert("L")).astype(np.float64) / 255.0
+                            for name in ("occlusion", "occlusion_apart", "covered"))
+    k = SIZE // whole.shape[0]
+    small = piece[::k, ::k]
+    # The pieces with more than a few hidden texels: a neighbour's faces drawn a texel over a piece's edge are not its.
+    named, count = np.unique(small[hidden > 0.5], return_counts=True)
+    on = named[(count > 64) & (named > 0)]
+    hidden = (hidden > 0.5) & np.isin(small, on)
+    form = np.where(hidden, np.clip(apart + carried(whole - apart, hidden, small), 0, 1), whole)
+    return np.where(np.isin(piece, on), zoom(form, k, order=1), zoom(whole, k, order=1))
+
+
 def compose_dodo(out, report):
     meta = json.load(open(os.path.join(HERE, "pieces.json")))
     number = {p["name"]: p["number"] for p in meta["pieces"]}
     piece = np.asarray(Image.open(os.path.join(HERE, "pieces.png")))[..., 0].astype(np.int32)
     texel_mm = np.asarray(Image.open(os.path.join(HERE, "texel_mm.png"))).astype(np.float64) / 1000.0
     bake_idx = region_index(np.asarray(Image.open(os.path.join(BAKES, "dodo_regions.png")).convert("RGB")))
-    form = zoom(np.asarray(Image.open(os.path.join(BAKES, "dodo_occlusion.png")).convert("L")).astype(np.float64) / 255.0, SIZE / 1024, order=1)
+    form = form_occlusion(piece)
     covered = piece > 0
 
     base = np.full((SIZE, SIZE, 3), lin(188 / 255.0))
