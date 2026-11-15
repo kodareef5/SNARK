@@ -96,7 +96,7 @@ async function boot(): Promise<void> {
   if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
   const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.context() : null);
   app.voice = voice;
-  for (const gesture of ["pointerdown", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
+  for (const gesture of ["pointerdown", "pointerup", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
   const voiceCheck = selfcheck && params.get("voice") === "1";
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */

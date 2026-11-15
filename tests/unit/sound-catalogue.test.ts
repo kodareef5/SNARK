@@ -53,6 +53,17 @@ test("every occasion the client fires by a literal name is in the catalogue, and
   for (const c of CUES) expect(c.status).toMatch(/^(built|fire|hook|gap|waits:[A-Za-z0-9]+)$/);
 });
 
+test("the page lets its audio play on a gesture a phone counts as one: a touch is one as it lifts, not as it lands", () => {
+  // HTML's activation-triggering events: keydown, mousedown, pointerdown of a mouse, pointerup of anything else, touchend.
+  const shell = readFileSync(join(import.meta.dir, "../../client/shell/main.ts"), "utf8");
+  const gestures = shell.match(/for \(const gesture of (\[[^\]]*\])\) addEventListener\(gesture, \(\) => \(voice\.unlock\(\), sound\?\.unlock\(\)\)\)/)?.[1];
+  expect(gestures).toBeDefined();
+  const list = JSON.parse(gestures!) as string[];
+  expect(list).toContain("keydown");
+  expect(list).toContain("pointerdown");
+  expect(list.includes("pointerup") || list.includes("touchend")).toBe(true);
+});
+
 test("an owner is heard by its own sound, else the first fallback the build has, at the stand-in's rate, and silence is counted", () => {
   const ids = ["core:dodo/sound/hurt", "core:dodo/sound/step/grass", "core:surface/sound/step/stone", "core:surface/sound/step/water"];
   const r = new Resolver(new Map(ids.map((id, i) => [id, i])));
