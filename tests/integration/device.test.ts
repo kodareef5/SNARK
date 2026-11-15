@@ -15,11 +15,11 @@ import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
-const TIMING: Timing = { measureMs: 300, rungMs: 100, settleMs: 3000, loadMs: 20000, soakMs: 2000, holdMs: 100 };
+const TIMING: Timing = { measureMs: 300, rungMs: 100, settleMs: 3000, loadMs: 20000, soakMs: 2000, holdMs: 100, flightMs: 2000, teleportMs: 500 };
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 27_2_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.8103.37 Mobile/15E148 Safari/604.1";
 
 /** A browser made of numbers. Its timers never fire, so nothing is waited out. `frameMs` is the display's interval. */
-function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; frameMs?: number } = {}) {
+function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; tests?: string; frameMs?: number } = {}) {
   const posts: DeviceReport[] = [];
   const asked: number[] = [];
   const page = { text: "", whole: false, saved: opts.saved ?? null };
@@ -28,7 +28,7 @@ function browser(opts: { saved?: string; clock?: () => number; expected?: Record
     global: { navigator: { userAgent: UA, hardwareConcurrency: 6, maxTouchPoints: 5 }, screen: { width: 390, height: 844 }, innerWidth: 390, innerHeight: 844, devicePixelRatio: 3 },
     id: "fedcba9876543210",
     dpr: 3,
-    query: (name) => (name === "mode" ? (opts.mode ?? null) : null),
+    query: (name) => (name === "mode" ? (opts.mode ?? null) : name === "tests" ? (opts.tests ?? null) : null),
     now: opts.clock ?? (() => 0),
     sleep: () => new Promise(() => {}),
     nextFrame: (fn) => queueMicrotask(() => fn((frame += opts.frameMs ?? 16.6))),
@@ -255,6 +255,37 @@ test("a rung that did not draw all it was given, or never settled, is invalid: n
   expect(table.some((line) => line.startsWith("most held 0 bodies, 0 pieces, 0 triangles, 0 draws"))).toBe(true);
   expect(table.some((line) => line.startsWith("invalid   medium bodies 25: ") && line.includes("draws skipped, never settled"))).toBe(true);
   expect(table.some((line) => line.startsWith("broke "))).toBe(false);
+});
+
+test("the terrain flight is offered only by its own server's link, flies the camera over each of its tiers with jumps, and times each jump's window", async () => {
+  const { h, pack, app, expected } = client();
+  const offers = async (tests?: string): Promise<boolean[]> => {
+    const shown = browser({ expected, ...(tests ? { tests } : {}) });
+    void new DeviceProbe(TOKEN, shown.b, TIMING).before();
+    await settle();
+    return ["quick", "terrain"].map((m) => shown.page.text.includes(`data-mode="${m}"`));
+  };
+  expect([await offers(), await offers("terrain")]).toEqual([[true, false], [false, true]]);
+  const card = renderer();
+  const { b } = browser({ clock: () => h.now + card.spent(), expected, mode: "terrain", tests: "terrain" });
+  const probe = new DeviceProbe(TOKEN, b, TIMING);
+  await probe.before();
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
+  // How far the camera strays from the body it would follow.
+  let strayed = 0;
+  await run(probe, h, app, card.r, 60000, { each: () => void (strayed = Math.max(strayed, Math.hypot(app.cam.x - app.session.own.x, app.cam.z - app.session.own.z))) });
+  const r = probe.report;
+  expect([r.done, r.errors, r.probes]).toEqual([true, [], null]);
+  const t = r.terrain!;
+  expect([t.side, t.flights.map((f) => f.tier)]).toEqual([512, ["medium", "lowpoly"]]);
+  for (const f of t.flights) {
+    expect(f.frames).toBeGreaterThan(100);
+    // Three jumps in 2 s of flight; on the proving ground the window is the whole map, so each is in at once.
+    expect(f.fills).toEqual([1, 1, 1]);
+  }
+  expect(strayed).toBeGreaterThan(100);
+  expect(lacking(r, "terrain")).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window"]);
+  expect(deviceTable(r).some((line) => line.startsWith("terrain   a map 0.5 km across"))).toBe(true);
 });
 
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {

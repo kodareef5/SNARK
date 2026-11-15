@@ -1,9 +1,10 @@
 // `bun run device`: a throwaway game server for measuring a phone, and the reports its page sends. It prints a short path
 // to open. With --tunnel it also runs a temporary Cloudflare tunnel (cloudflared, no account) and prints the whole link.
 // The page shows which device it takes itself to be on and three tests to tap (client/core/device.ts): a quick look, a
-// load ladder, and a soak. It posts its report after every step; each run is kept in .cache/device/ and printed as a
+// load ladder, and a soak. With --terrain the server is on the bench's 8 km map instead, and the page offers only the
+// terrain flight (D253). It posts its report after every step; each run is kept in .cache/device/ and printed as a
 // table when it is done. With --self the local headless Chrome opens the link and runs a test without a tap, which must
-// finish: `--self` for the quick look, `--self ladder` or `--self soak` (with --soak-minutes n), the test that the probe
+// finish: `--self` for the quick look, `--self ladder`, `--self soak` (with --soak-minutes n) or `--self terrain`, the test that the probe
 // works, not part of the check. --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED name
 // the programs.
 //
@@ -16,7 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TIERS } from "../client/core/assets/tiers.ts";
-import { AXES, MEMORY_MB, MODES, deviceScenarios, scenesOf, type DeviceReport, type Mode } from "../client/core/device.ts";
+import { AXES, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, deviceScenarios, scenesOf, type DeviceReport, type Mode } from "../client/core/device.ts";
 import { BASE_MOST, basePieces, crowdScene } from "../client/core/devicescene.ts";
 import { deviceTable } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -26,6 +27,8 @@ import { stopOnSignals } from "../server/signals.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { parsePack } from "../shared/pack/pack.ts";
+import { writeMap } from "../shared/world/mapfile.ts";
+import { benchHills } from "./bench/terrain.ts";
 import { buildClient } from "./build-client.ts";
 
 /** A report larger than this is refused, and so is any post past these counts. A ladder posts after each of a hundred or so rungs. */
@@ -47,6 +50,8 @@ export interface DeviceOptions {
   /** The letters of the short path, which leads to the page with the token and the game's password. */
   code: string;
   password: string;
+  /** The tests the page is to offer, as its link names them, or "" for all but the terrain flight. */
+  tests?: string;
   /** The server's hashes of the scenarios, for the page to compare its own with. */
   expected: Record<string, string>;
   say(line: string): void;
@@ -136,7 +141,7 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
     }
     if (path === `/d/${o.code}` && wrong < MAX_WRONG) {
       o.say("the short path was opened");
-      return new Response(null, { status: 302, headers: { location: `/?device=${o.token}&password=${o.password}`, "cache-control": "no-store" } });
+      return new Response(null, { status: 302, headers: { location: `/?device=${o.token}&password=${o.password}${o.tests ? `&tests=${o.tests}` : ""}`, "cache-control": "no-store" } });
     }
     if (path.startsWith("/d/")) {
       if (++wrong === MAX_WRONG) o.say(`${MAX_WRONG} wrong guesses at the short path, so it is closed; the whole link still works`);
@@ -166,7 +171,8 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   if (!r.done) out.push("it never finished");
   if (r.reloadedDuring) out.push(`the page was reloaded during ${r.reloadedDuring}`);
   for (const e of r.errors) out.push(`error: ${e}`);
-  for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
+  // The picture probes look at the proving ground, which the terrain flight's map is not.
+  for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", mode === "terrain" || r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
   for (const p of r.probes ?? []) if (!p.ok) out.push(`probe ${p.name} is wrong`);
   for (const h of r.hashes ?? []) if (h.got !== h.want) out.push(`hash ${h.name} differs from the server's`);
   if (r.link.missed > 0) out.push(`${r.link.missed} snapshots missed on this machine's own link`);
@@ -187,6 +193,14 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
     if (!m || (m.failedMB === null && m.heldMB !== MEMORY_MB.at(-1)) || m.heldMB === 0) out.push(`texture memory did not finish: ${m ? m.how : "no memory step"}`);
   }
   if (mode === "soak" && (r.soak?.minutes.length ?? 0) < (r.soak?.minutesWanted ?? 1)) out.push("the soak did not run its minutes");
+  if (mode === "terrain") {
+    const flights = r.terrain?.flights ?? [];
+    if (flights.length < FLIGHT_TIER_COUNT) out.push(`the terrain flight flew ${flights.length} of ${FLIGHT_TIER_COUNT} tiers`);
+    for (const f of flights) {
+      if (f.windowFrames === 0) out.push(`no frame on ${f.tier} carried rows of the terrain window`);
+      if (f.fills.length === 0 || f.fills.some((x) => x < 0)) out.push(`a jump on ${f.tier} did not have its window before the next: ${f.fills.join(" ")}`);
+    }
+  }
   if (mode === "soak" && r.soak && TIERS.find((t) => t.name === r.soak!.tier)!.texture > 0 && !r.soak.minutes.some((m) => m.mat > 0)) out.push(`the soak drew nothing with materials on ${r.soak.tier}, which has them`);
   return out;
 }
@@ -212,6 +226,7 @@ if (import.meta.main) {
   const mode = MODES.find((m) => m === value("--self")) ?? "quick";
   const soakMinutes = Number(value("--soak-minutes") ?? 10);
   const tunnel = process.argv.includes("--tunnel");
+  const terrain = mode === "terrain" || process.argv.includes("--terrain");
   const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find((p) => p && existsSync(p));
   const cloudflared = process.env.CLOUDFLARED ?? Bun.which("cloudflared") ?? "/opt/homebrew/bin/cloudflared";
   if (self && !chrome) {
@@ -264,12 +279,16 @@ if (import.meta.main) {
     }
     return built.length;
   };
-  const probe = deviceRoutes({ dir, token, code, password, expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }) });
+  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }) });
   const { rules } = loadConfig({ gus: `[ServerSettings]\nServerPassword=${password}\n` });
+  // For the terrain flight, the bench's 8 km of hills as a map file, with no water and one spawn point in the middle.
+  const hills = terrain ? benchHills() : null;
+  const mapDir = hills ? mkdtempSync(join(tmpdir(), "snark-device-map-")) : "";
+  if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
   // The fixed scene of the boot probe, where nothing wakes, and behind the spawn point the crowd scene's thatch and bodies.
-  server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", probeScene: true, config: rules, routes: probe.routes });
+  server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", probeScene: true, config: rules, routes: probe.routes, ...(hills ? { map: join(mapDir, "hills.snmap") } : {}) });
   const running = server;
-  const scene = crowdScene();
+  const scene = terrain ? { bodies: [], floor: { x: 0, z: 0 }, pieces: [] } : crowdScene();
   const world = running.host.world;
   const crowd = scene.bodies.filter((s) => running.host.spawnCreature(s.species, s.x, s.z, 1) >= 0).length;
   const ground = world.hf.heightAt(scene.floor.x, scene.floor.z);
@@ -285,6 +304,7 @@ if (import.meta.main) {
     child?.kill();
     child = null;
     running.stop();
+    if (mapDir) rmSync(mapDir, { recursive: true, force: true });
   };
   process.on("exit", () => child?.kill());
   stopOnSignals(stop);
@@ -330,19 +350,20 @@ if (import.meta.main) {
     say(through ? "a request through the tunnel reached the server" : "a request through the tunnel did not reach the server from here yet; a phone may still get through");
   }
 
-  console.log(`\nSNARK device probe: ${crowd} bodies in the crowd and ${pieces} pieces of thatch; reports go to ${dir}`);
+  console.log(terrain ? `\nSNARK device probe on the bench's 8 km map, for the terrain flight; reports go to ${dir}` : `\nSNARK device probe: ${crowd} bodies in the crowd and ${pieces} pieces of thatch; reports go to ${dir}`);
+  const tests = terrain ? "&tests=terrain" : "";
   console.log(`  open on the device:  ${base0}/d/${code}`);
-  console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}`);
+  console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}${tests}`);
   if (tunnel) console.log(`  on this machine:     http://127.0.0.1:${running.port}/d/${code}`);
-  console.log(`  the page asks which test to run: a quick look, the load ladder, or a ten-minute soak`);
+  console.log(terrain ? "  the page offers the terrain flight alone" : "  the page asks which test to run: a quick look, the load ladder, or a ten-minute soak; `--terrain` serves the terrain flight");
   console.log(`  Ctrl+C stops it; it stops by itself in ${minutes} minutes${tunnel ? ", and takes the tunnel down" : ""}\n`);
 
   if (self) {
     const profile = mkdtempSync(join(tmpdir(), "snark-device-"));
     // A phone's shape: a narrow window three device pixels to the CSS pixel. The test starts without a tap.
-    const link = `${base0}/?device=${token}&password=${password}&mode=${mode}&minutes=${soakMinutes}`;
+    const link = `${base0}/?device=${token}&password=${password}${tests}&mode=${mode}&minutes=${soakMinutes}`;
     const browser = Bun.spawn([chrome!, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=430,932", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
-    const limit = (mode === "soak" ? soakMinutes + 5 : mode === "ladder" ? 20 : 6) * 60000;
+    const limit = (mode === "soak" ? soakMinutes + 5 : mode === "ladder" ? 20 : mode === "terrain" ? 8 : 6) * 60000;
     const got = await Promise.race([whole, new Promise<null>((r) => setTimeout(() => r(null), limit))]);
     browser.kill();
     await browser.exited;

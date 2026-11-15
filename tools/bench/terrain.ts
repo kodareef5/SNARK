@@ -20,7 +20,7 @@ const SPEEDS = [60, 600, 3000];
 const FLIGHT = 3000;
 
 /** The bench map's hills, as tools/bench.ts makes them. */
-function benchHills(): Heightfield {
+export function benchHills(): Heightfield {
   const hf = new Heightfield({ chunksX: 128, chunksZ: 128 }, TERRAIN_CELL, -32, 1 / 64);
   for (let j = 0; j < hf.nz; j++) {
     for (let i = 0; i < hf.nx; i++) {

@@ -18,16 +18,18 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
-import { GpuQuestions, type Gl2, type GpuReport } from "./devicegpu.ts";
+import { FrameTimer, GpuQuestions, type Gl2, type GpuReport } from "./devicegpu.ts";
 import { BodyCopies, LOOK, TextureMemory, rocks } from "./devicescene.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
-import { DRAW_TEXTURED, type FramePacket } from "./render/packet.ts";
+import { DRAW_TEXTURED, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
+import { groundSize } from "./render/terrain.ts";
 import type { Thing } from "./render/scene.ts";
 import { probePasses, provingProbes } from "./selfcheck.ts";
 import { stressThings } from "./stress.ts";
 
-export type Mode = "quick" | "ladder" | "soak";
-export const MODES: readonly Mode[] = ["quick", "ladder", "soak"];
+/** The terrain flight runs on a server of its own, on the 8 km map (tools/device.ts --terrain); the others on the proving ground. */
+export type Mode = "quick" | "ladder" | "soak" | "terrain";
+export const MODES: readonly Mode[] = ["quick", "ladder", "soak", "terrain"];
 
 /**
  * The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the
@@ -58,8 +60,18 @@ export interface Timing {
   /** How long the soak turns, and how long a held amount of texture memory is watched. */
   soakMs: number;
   holdMs: number;
+  /** How long the terrain flight flies on each tier, and how often it jumps. */
+  flightMs: number;
+  teleportMs: number;
 }
-export const TIMING: Timing = { measureMs: 5000, rungMs: 1500, settleMs: 10000, loadMs: 60000, soakMs: 600000, holdMs: 1500 };
+export const TIMING: Timing = { measureMs: 5000, rungMs: 1500, settleMs: 10000, loadMs: 60000, soakMs: 600000, holdMs: 1500, flightMs: 60000, teleportMs: 10000 };
+/** The terrain flight: its tiers, how fast and how high it flies, how fast it turns, and the least jump. */
+const FLIGHT_TIERS = ["medium", "lowpoly"];
+export const FLIGHT_TIER_COUNT = FLIGHT_TIERS.length;
+const FLIGHT_SPEED = 100;
+const FLIGHT_UP = 60;
+const FLIGHT_TURN = (2 * Math.PI) / 30;
+const JUMP = 2000;
 /** Frames in a row with nothing on its way and nothing waiting to go on the graphics card: settled then. */
 const STILL = 30;
 /** A quick phase this slow, in ms a frame, and the tiers above it are not tried. */
@@ -179,6 +191,34 @@ export interface SoakReport {
   hiddenMs: number;
 }
 
+/** One tier's terrain flight (D253): frames, and those that carried rows of the terrain window against those that did not. */
+export interface FlightReport {
+  tier: string;
+  frames: number;
+  frameMs: Spread;
+  /** Frames that carried window rows, the worst of them, and the median of frames that carried none. */
+  windowFrames: number;
+  windowWorst: number;
+  plainMedian: number;
+  /** Medians of our code's ms handing the frame to WebGL, and of the GPU's ms for the frame by timer query (null without), with rows and without. */
+  drawWindow: number;
+  drawPlain: number;
+  gpuWindow: number | null;
+  gpuPlain: number | null;
+  /** For each jump, frames until the new window was in (-1 if not before the next), and the mean of TerrainLod.coarser over those frames. */
+  fills: number[];
+  coarser: number;
+}
+
+export interface TerrainReport {
+  /** The map's side in metres, the terrain pictures' bytes (groundSize) and all the card has reserved for what is not an asset. */
+  side: number;
+  groundBytes: number;
+  reservedBytes: number;
+  minutesWanted: number;
+  flights: FlightReport[];
+}
+
 export interface DeviceInfo {
   userAgent: string;
   screen: number[];
@@ -270,6 +310,7 @@ export interface DeviceReport {
   again: PhaseReport | null;
   ladder: { display: number; rungs: RungReport[]; memory: MemoryReport | null } | null;
   soak: SoakReport | null;
+  terrain: TerrainReport | null;
   /** The quick look's answers to what round 8's depth, sky and shadows lean on (devicegpu.ts). */
   gpuTests: GpuReport | null;
   skipped: string[];
@@ -286,7 +327,7 @@ export function newReport(run: string, mode: Mode = "quick"): DeviceReport {
   return {
     run, mode, seq: 0, stage: "starting", done: false, device: null, gpu: null, idleFrameMs: null, wakeLock: "not asked",
     link: { httpMs: null, gameMs: null, snapshots: 0, missed: 0, missedLoading: 0, missedHidden: 0, server: null, longestGapMs: 0, bytesIn: 0, clockJumps: 0, corrections: 0, undecodable: 0 },
-    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
+    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, terrain: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
   };
 }
 
@@ -497,11 +538,13 @@ export interface DeviceSide {
   memory: TextureMemory | null;
   /** The GPU questions, made when the quick look comes to them, once the canvas has its size. Null where the renderer gives none. */
   questions: (() => GpuQuestions) | null;
+  /** The GPU's time for whole frames where the browser has timer queries; null where the renderer gives none. */
+  frames: FrameTimer | null;
   /** The display's interval between frames, which a rung holds or not. */
   display: number;
 }
 
-type Stage = "load" | "probes" | "hashes" | "gpu" | "steps" | "memory" | "soak" | "done";
+type Stage = "load" | "probes" | "hashes" | "gpu" | "steps" | "memory" | "soak" | "terrain" | "done";
 
 export class DeviceRun {
   readonly report: DeviceReport;
@@ -555,6 +598,10 @@ export class DeviceRun {
   private sweepsAt = 0;
   /** Whether the scene is drawn in one depth range, and the scene whose build looks at it. */
   private flat = false;
+  /** Where the terrain flight puts the camera, if it does. */
+  private fly: { x: number; y: number; z: number; yaw: number; pitch: number } | null = null;
+  /** The terrain flight under way: its tier, clock, heading, jumps, and the jump whose window is awaited. */
+  private flight: { tier: number; ms: number; heading: number; jumps: number; wait: { frames: number; coarser: number } | null; fills: number[]; coarser: number[]; rows: boolean[]; gpu: { ms: number; tag: boolean }[] } | null = null;
   private wrapped: object | null = null;
   /** The quick look's GPU questions, while they are asked. */
   private questions: GpuQuestions | null = null;
@@ -605,6 +652,7 @@ export class DeviceRun {
     else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
     else if (this.stage === "memory") news = this.memory(now, gap);
     else if (this.stage === "soak") news = this.soak(now, gap, p, buildMs, drawMs);
+    else if (this.stage === "terrain") news = this.terrain(now, gap, p, drawMs);
     if (news) this.sync();
     return news;
   }
@@ -675,8 +723,9 @@ export class DeviceRun {
     load.diskBytes = r.stats.cached;
     load.failed = this.failures();
     load.cache = r.cache?.mode ?? "none";
-    this.stage = "probes";
-    this.report.stage = "probes";
+    // The probes look at the proving ground, which the terrain flight's map is not.
+    this.stage = this.mode === "terrain" ? "hashes" : "probes";
+    this.report.stage = this.stage;
     return true;
   }
 
@@ -733,6 +782,13 @@ export class DeviceRun {
     const s = this.side.app.session;
     if (this.base) this.report.link.missedLoading = this.missedSince(this.base);
     this.base ??= s.latestSnapshot > 0 ? { snapshots: s.stats.snapshots, latest: s.latestSnapshot } : null;
+    if (this.mode === "terrain") {
+      const hf = this.side.hf;
+      const r = this.side.app.scene!.assets.residency;
+      this.report.terrain = { side: (hf.nx - 1) * hf.cell, groundBytes: groundSize(hf).bytes, reservedBytes: r.reserved, minutesWanted: (this.timing.flightMs * FLIGHT_TIERS.length) / 60000, flights: [] };
+      this.stage = "terrain";
+      return this.takeOff(0);
+    }
     if (this.mode === "soak") {
       const tier = this.soakTier();
       this.report.soak = { tier: tier.name, load: this.soakFrom.load, from: this.soakFrom.from, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0 };
@@ -859,8 +915,110 @@ export class DeviceRun {
     scene.build = (cam, remote) => {
       const t = scene.assets.tier;
       if (this.flat && t.split > 0) scene.assets.tier = copies.get(t) ?? copies.set(t, { ...t, split: 0 }).get(t)!;
+      // The flight moves the camera as it builds; the body stays where the server has it.
+      if (this.fly) [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [this.fly.x, this.fly.y, this.fly.z, this.fly.yaw, this.fly.pitch];
       return build(cam, remote);
     };
+  }
+
+  /**
+   * The terrain flight on its `k`th tier: the camera FLIGHT_UP over the ground, FLIGHT_SPEED a second, turning, and
+   * every teleportMs at a spot JUMP or more away (a third of the map's side on a smaller map). Once the tier has
+   * settled, flightMs of frames are measured.
+   */
+  private takeOff(k: number): void {
+    const name = FLIGHT_TIERS[k];
+    if (name === undefined) {
+      this.fly = null;
+      this.side.frames?.stop();
+      return this.end();
+    }
+    this.apply(bare(tierOf(name), 0));
+    this.flight = { tier: k, ms: 0, heading: 0, jumps: 0, wait: null, fills: [], coarser: [], rows: [], gpu: [] };
+    this.place(this.spot(0));
+    [this.measuring, this.at] = [false, -1];
+    this.report.stage = `terrain ${name}`;
+  }
+
+  /** The jump `n`'s spot: points spread by the golden ratio over the map less 300 m round, the first far enough from the last. */
+  private spot(n: number): { x: number; z: number } {
+    const side = this.report.terrain!.side;
+    const from = this.fly ?? { x: side / 2, z: side / 2 };
+    const [least, edge] = [Math.min(JUMP, side / 3), Math.min(300, side / 4)];
+    for (let i = n * 7; ; i++) {
+      const x = edge + ((i * 0.618034 + 0.3) % 1) * (side - 2 * edge);
+      const z = edge + ((i * 0.754878 + 0.6) % 1) * (side - 2 * edge);
+      if (Math.hypot(x - from.x, z - from.z) >= least || i > n * 7 + 500) return { x, z };
+    }
+  }
+
+  private place(at: { x: number; z: number }): void {
+    const f = this.flight!;
+    const hf = this.side.hf;
+    const side = this.report.terrain!.side;
+    const [x, z] = [Math.min(Math.max(at.x, 0), side), Math.min(Math.max(at.z, 0), side)];
+    this.fly = { x, y: Math.max(hf.heightAt(x, z), hf.seaLevel) + FLIGHT_UP, z, yaw: f.heading, pitch: -0.3 };
+  }
+
+  private terrain(now: number, gap: number, p: FramePacket, drawMs: number): boolean {
+    const f = this.flight!;
+    const g = p.groundWindow;
+    const rows = g[3]! >= 0;
+    this.side.frames?.tick(rows);
+    if (this.at < 0) this.at = now;
+    if (!this.measuring) {
+      if (this.still < STILL && now - this.at < this.timing.settleMs) return false;
+      this.measuring = true;
+      for (const list of Object.values(this.samples)) list.length = 0;
+      this.side.frames?.take();
+      return false;
+    }
+    if (gap <= 0) return false;
+    if (this.away) {
+      if (this.hiddenAt < 0) this.away = false;
+      return false;
+    }
+    const s = this.samples;
+    s.frame.push(gap);
+    s.draw.push(drawMs);
+    f.rows.push(rows);
+    f.gpu.push(...(this.side.frames?.take() ?? []));
+    // The jump's new window is in once the window drawn lies near where one round the camera, as it was for this frame,
+    // would: held inside the map, so a spot near its edge counts too.
+    const hf = this.side.hf;
+    const w = groundSize(hf).width[SOURCE_WINDOW]!;
+    const near = (at: number, corner: number, n: number): boolean => Math.abs(corner - Math.min(Math.max(at / hf.cell - (w - 1) / 2, 0), n - w)) < w / 4;
+    if (f.wait) {
+      f.wait.frames++;
+      f.wait.coarser += this.side.app.scene!.terrain.coarser;
+      if (g[0]! >= 0 && near(this.fly!.x, g[1]!, hf.nx) && near(this.fly!.z, g[2]!, hf.nz)) {
+        f.fills.push(f.wait.frames);
+        f.coarser.push(f.wait.coarser / f.wait.frames);
+        f.wait = null;
+      }
+    }
+    f.ms += gap;
+    f.heading = (f.heading + (FLIGHT_TURN * gap) / 1000) % (2 * Math.PI);
+    const jump = Math.floor(f.ms / this.timing.teleportMs) > f.jumps && f.ms < this.timing.flightMs;
+    if (jump) {
+      f.jumps++;
+      if (f.wait) f.fills.push(-1);
+      f.wait = { frames: 0, coarser: 0 };
+      this.place(this.spot(f.jumps));
+    } else this.place({ x: this.fly!.x + Math.sin(f.heading) * FLIGHT_SPEED * (gap / 1000), z: this.fly!.z + Math.cos(f.heading) * FLIGHT_SPEED * (gap / 1000) });
+    if (f.ms < this.timing.flightMs) return false;
+    if (f.wait) f.fills.push(-1);
+    const pick = (list: number[], with_: boolean): number[] => list.filter((_, i) => f.rows[i] === with_);
+    const gpu = (tag: boolean): number | null => (this.side.frames?.on ? spread(f.gpu.filter((x) => x.tag === tag).map((x) => x.ms)).median : null);
+    const windowed = pick(s.frame, true);
+    this.report.terrain!.flights.push({
+      tier: FLIGHT_TIERS[f.tier]!, frames: s.frame.length, frameMs: spread(s.frame),
+      windowFrames: windowed.length, windowWorst: spread(windowed).worst, plainMedian: spread(pick(s.frame, false)).median,
+      drawWindow: spread(pick(s.draw, true)).median, drawPlain: spread(pick(s.draw, false)).median, gpuWindow: gpu(true), gpuPlain: gpu(false),
+      fills: f.fills, coarser: tenth(f.coarser.reduce((a, b) => a + b, 0) / Math.max(1, f.coarser.length)),
+    });
+    this.takeOff(f.tier + 1);
+    return true;
   }
 
   /** Begins the step under way afresh. */
@@ -1103,6 +1261,8 @@ export class DeviceProbe {
   private readonly b: DeviceBrowser;
   private readonly timing: Timing;
   private readonly recovered: boolean;
+  /** The tests this page's server offers, which its link names in `tests`: the terrain flight on its own map, or the rest. */
+  private readonly offered: readonly Mode[];
   private run: DeviceRun | null = null;
   private side: DeviceSide | null = null;
   private renderer: RendererLike | null = null;
@@ -1135,6 +1295,8 @@ export class DeviceProbe {
       saved = JSON.parse(browser.load() ?? "null") as Saved;
     } catch {}
     this.recovered = saved !== null && saved.token === token && saved.report?.done === false;
+    const named = (browser.query("tests") ?? "").split(",");
+    this.offered = MODES.filter((m) => (named[0] === "" ? m !== "terrain" : named.includes(m)));
     this.report = this.recovered ? saved!.report! : newReport(browser.id);
     if (this.recovered) this.report.reloadedDuring = this.report.stage;
   }
@@ -1145,7 +1307,7 @@ export class DeviceProbe {
    */
   async before(): Promise<boolean> {
     if (this.recovered) this.finish();
-    else this.b.show(startPage(this.report, this.b.global), PAGE);
+    else this.b.show(startPage(this.report, this.b.global, this.offered), PAGE);
     void this.wake();
     const within: Within = (f, ms, or) => this.within(f, ms, or);
     const pings: number[] = [];
@@ -1165,7 +1327,7 @@ export class DeviceProbe {
     const device = deviceOf(this.b.global, features);
     const idle = frames ? spread(frames.slice(1).map((t, i) => t - frames[i]!)).median : null;
     const http = pings.length > 0 ? spread(pings) : null;
-    const auto = MODES.find((m) => m === this.b.query("mode"));
+    const auto = this.offered.find((m) => m === this.b.query("mode"));
     if (auto) this.start(auto);
     const mode = await this.chosen;
     if (this.recovered) this.report = newReport(this.nextId(), mode);
@@ -1180,7 +1342,7 @@ export class DeviceProbe {
 
   /** A test was tapped, or named in the address. On a page done with one test, the next begins with the game as it is. */
   start(name: string): void {
-    const mode = MODES.find((m) => m === name);
+    const mode = this.offered.find((m) => m === name);
     if (!mode) return;
     if (this.mode === null) {
       [this.mode, this.finished] = [mode, false];
@@ -1226,6 +1388,7 @@ export class DeviceProbe {
       base: (n) => this.within(() => b.fetch(`base/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
       memory: new TextureMemory(gl, create, gpu.variant),
       questions: () => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight]),
+      frames: new FrameTimer(gl),
       display: this.report.idleFrameMs ?? 16.7,
     };
     this.run = new DeviceRun(this.report, this.side, this.mode ?? "quick", this.timing);
@@ -1324,7 +1487,7 @@ export class DeviceProbe {
   }
 
   private page(status: string): void {
-    this.b.show(donePage(this.report, this.b.global, status), PAGE);
+    this.b.show(donePage(this.report, this.b.global, status, this.offered), PAGE);
   }
 
   /** Posts go one after another, so the server has them in order. The last is tried four times. */

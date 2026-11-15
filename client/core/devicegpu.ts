@@ -1281,6 +1281,54 @@ void main() { gl_Position = vec4(aPos * 0.001 + uOffset, 1.0); }`, COLOUR_FRAGME
   }
 }
 
+/**
+ * The GPU's time for whole frames, by timer query where there is one: a query from the end of one frame to the end of
+ * the next holds everything the next frame gave the GPU. `tick` ends the query under way, marked with `tag`, and
+ * begins the next; `take` hands over the times that have come, with their marks. Nothing where there are no timers.
+ */
+export class FrameTimer {
+  readonly on: boolean;
+  private readonly gl: Gl2;
+  private readonly elapsed: number;
+  private open: Obj = null;
+  private readonly waiting: { q: Obj; tag: boolean }[] = [];
+
+  constructor(gl: Gl2) {
+    this.gl = gl;
+    const ext = gl.getExtension("EXT_disjoint_timer_query_webgl2") as { TIME_ELAPSED_EXT?: number } | null;
+    this.elapsed = ext?.TIME_ELAPSED_EXT ?? 0;
+    this.on = this.elapsed !== 0;
+  }
+
+  tick(tag: boolean): void {
+    if (!this.on || this.gl.isContextLost()) return;
+    if (this.open) {
+      this.gl.endQuery(this.elapsed);
+      this.waiting.push({ q: this.open, tag });
+    }
+    this.open = this.gl.createQuery();
+    this.gl.beginQuery(this.elapsed, this.open);
+  }
+
+  take(): { ms: number; tag: boolean }[] {
+    const out: { ms: number; tag: boolean }[] = [];
+    const disjoint = this.on && Boolean(this.gl.getParameter(GL.GPU_DISJOINT));
+    while (this.waiting.length > 0 && this.gl.getQueryParameter(this.waiting[0]!.q, GL.QUERY_RESULT_AVAILABLE)) {
+      const { q, tag } = this.waiting.shift()!;
+      if (!disjoint) out.push({ ms: Number(this.gl.getQueryParameter(q, GL.QUERY_RESULT)) / 1e6, tag });
+      this.gl.deleteQuery(q);
+    }
+    return out;
+  }
+
+  stop(): void {
+    if (this.open && !this.gl.isContextLost()) this.gl.endQuery(this.elapsed);
+    for (const { q } of this.waiting.splice(0)) this.gl.deleteQuery(q);
+    if (this.open) this.gl.deleteQuery(this.open);
+    this.open = null;
+  }
+}
+
 /** A pass's note once it is not answered, or `over` its numbers, which a lost context leaves in doubt. */
 const failPass = (pass: PassTime) => (why: string, over = false): void => {
   if (over) [pass.timer, pass.slope, pass.error] = [null, null, null];
