@@ -295,9 +295,10 @@ def face_sets(obj):
     return wing, inner, solid
 
 
-def measure_frame(obj, sets):
+def measure_frame(obj, sets, ground=0.0):
     """Pairs of a wing's triangles that cross (sharing no corner, no corners within 2 cm), of its inner skin crossing
-    the body, of the two wings crossing, and how far the lowest point of the mesh is under the ground."""
+    the body, of the two wings crossing, and how far the lowest point of the mesh is under the ground. With a
+    `ground`, only triangles whose middle is above it count: the ground hides the rest."""
     wing, inner, solid = sets
     ev = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
     m = ev.to_mesh()
@@ -309,7 +310,8 @@ def measure_frame(obj, sets):
     ev.to_mesh_clear()
 
     def tris(faces):
-        return [t for f in faces for t in by_face.get(f, [])]
+        return [t for f in faces for t in by_face.get(f, [])
+                if ground is None or sum(verts[i].z for i in t) / 3.0 > ground]
 
     def tree(ts):
         return BVHTree.FromPolygons(verts, ts, epsilon=0.0) if ts else None
@@ -337,7 +339,7 @@ def measure(r, rig, clip):
     last = int(action_of(clip).frame_range[1])
     for f in sorted(set(list(range(0, last + 1, 3)) + [last])):
         bpy.context.scene.frame_set(f)
-        rows[f] = measure_frame(obj, sets)
+        rows[f] = measure_frame(obj, sets, None if clip in AIR else 0.0)
     r.rest()
     print(f"preview: {clip}: " + "; ".join(f"{f} {row}" for f, row in rows.items()))
     return rows
@@ -364,11 +366,11 @@ def main():
             bpy.context.scene.frame_set(int(f))
             cams = air if clip in AIR else ground
             lines.hide_render = clip in AIR
-            views = ["side", "below", "front", "three"] if clip in AIR else ["side", "top", "front", "tamer"]
+            views = ["side", "below", "front", "three"] if clip in AIR else ["side", "top", "close", "tamer"]
             row = np.concatenate([render(cams[v], 640, os.path.join(tmp, "v.png"))[::-1] for v in views], axis=1)
             save_jpeg(row[::-1], os.path.join(out, f"still_{clip}_{f}.jpg"))
             obj = skinned()
-            print("preview: still:", measure_frame(obj, face_sets(obj)))
+            print("preview: still:", measure_frame(obj, face_sets(obj), None if clip in AIR else 0.0))
             chosen = []
         if "strip" in opts:
             # --strip CLIP:VIEW[:EVERY], frames of one view in rows of six, large.
