@@ -265,8 +265,10 @@ STANCE = {
 # solved from these into turns of each bone relative to its parent, so it rides with the chest in any pose. The elbow
 # lies back by the flank; the forearm leans forward and the long hand bone down to the hand on the ground; the wing
 # finger folds back up along the outside of that strut, past the elbow, to a tip that points up and back behind the
-# hips. The battens are aimed so the skin gathers between the arm, the finger and the leg without entering the body
-# (searched; ref/blockout/checks.json).
+# hips. The battens point where the skin should go: the first and second down from the elbow and wrist toward the
+# ground, so the inner skin hangs in layers between the arm's strut and the leg, hidden behind the outer wing, which
+# hangs from the finger (FINGER_ROLL). They and model.py's membrane weights were searched together so the folded skin
+# crosses neither itself, the body nor the other wing (ref/wing/).
 FOLD = {
     "elbow":    (0.300, 0.580, -0.170),
     "wrist":    (0.340, 0.360, 0.300),
@@ -277,9 +279,9 @@ FOLD = {
     "wing_2":   (0.420, 0.700, -0.360),
     "wing_3":   (0.420, 0.950, -0.790),
     "wing_4":   (0.410, 1.076, -1.128),
-    "web_1":    (0.420, 0.700, -0.600),
-    "web_2":    (0.360, 0.360, -0.100),
-    "web_3":    (0.430, 0.750, -0.400),
+    "web_1":    (0.330, 0.159, -0.586),
+    "web_2":    (0.485, 0.245, -0.328),
+    "web_3":    (0.590, 0.313, 0.408),
 }
 # The wing tucked in the air, halfway to FOLD: where each joint lies with the body at rest (level). The elbow goes back
 # by the flank, the wrist forward under the shoulder, the long hand bone and the finger fold back along the body to a
@@ -294,16 +296,16 @@ TUCK = {
     "wing_2":   (0.440, 0.660, -1.580),
     "wing_3":   (0.420, 0.640, -2.080),
     "wing_4":   (0.390, 0.630, -2.440),
-    "web_1":    (0.280, 0.400, -0.600),
-    "web_2":    (0.400, 0.450, -0.300),
-    "web_3":    (0.420, 0.620, -1.300),
+    "web_1":    (0.606, 0.202, -1.011),
+    "web_2":    (0.713, 0.715, -1.576),
+    "web_3":    (0.591, 0.182, -1.453),
 }
 
 # How far the wing finger's four bones roll about their own length in TUCK and in FOLD, in degrees: the joints do not
 # move, but the membrane on the finger turns with it, so folded on the ground the outer wing hangs from the finger as
 # one panel down to the ground and the rear edge, as the concept's folded views have it. The third batten rides on the
 # finger and rolls with it; its targets above are where it points before the roll.
-FINGER_ROLL = {"tuck": -6.4, "fold": 66.1}
+FINGER_ROLL = {"tuck": -8.0, "fold": 66.3}
 
 # =====================================================================================================================
 # Block-out masses. Fitted to the concept views (ref/blockout_vs_concept.png).

@@ -133,8 +133,8 @@ ROOT_IN = 0.030
 # (v0 to v1, as fractions of the chord, nearer the body and further out), how much at most (rib_max), how far out
 # the body's own bones reach before the first batten (root_reach, a fraction of the span), how the change between two
 # battens is eased across the span, and how many rounds of smoothing. Searched with rig.py's fold (ref/wing/).
-MEMBRANE_FIT = {"v0": 0.0, "v1_inner": 0.188, "v1_outer": 0.819, "rib_max": 0.905, "root_reach": 0.0913,
-                "span_ease": 0.0, "smooth": 4}
+MEMBRANE_FIT = {"v0": 0.0, "v1_inner": 0.153, "v1_outer": 0.852, "rib_max": 0.895, "root_reach": 0.0913,
+                "span_ease": 0.0, "smooth": 5}
 # The front membrane: columns from the shoulder to the wrist, rows from the arm to its free edge.
 FRONT_COLUMNS, FRONT_ROWS = 10, 3
 
@@ -1046,11 +1046,12 @@ def wing_uv(p, face):
     return (o[0] + (x - x0) * s, o[1] + (z - z0) * s)
 
 
-def slab(part, grid, weights, island, thick_at):
+def slab(part, grid, weights, island, thick_at, mark_cells=True):
     """A thin closed slab over a grid of middle points (columns, rows, 3): an upper face, an under face, and a rim they
     share (the first and last column and row). A column whose points are all one place is one point. Each face's
     corners carry the middle surface's normal, up or down, so each side is shaded as one side of the skin, and the
-    texture each side has on the wing's picture."""
+    texture each side has on the wing's picture. With `mark_cells` each face notes its grid cell (column * 256 + row)
+    in the mesh's "cell" attribute, for ref/wing/check.py."""
     nu, nv = grid.shape[:2]
     n = grid_normals(grid)
     up, dn = [], []
@@ -1073,14 +1074,16 @@ def slab(part, grid, weights, island, thick_at):
         up.append(ru)
         dn.append(rd)
     part.slab = (up, dn)
+    part.cells = []
     for i in range(nu - 1):
         for j in range(nv - 1):
             cells = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
-            _face(part, [up[a][b] for a, b in cells], uv=[wing_uv(grid[a, b], "upper") for a, b in cells],
-                  island=island + "_upper", normals=[tuple(n[a, b]) for a, b in cells])
-            cells = cells[::-1]
-            _face(part, [dn[a][b] for a, b in cells], uv=[wing_uv(grid[a, b], "under") for a, b in cells],
-                  island=island + "_under", normals=[tuple(-n[a, b]) for a, b in cells])
+            for face, side, sign in ((up, "_upper", 1.0), (dn, "_under", -1.0)):
+                before = len(part.faces)
+                _face(part, [face[a][b] for a, b in cells], uv=[wing_uv(grid[a, b], side[1:]) for a, b in cells],
+                      island=island + side, normals=[tuple(sign * n[a, b]) for a, b in cells])
+                part.cells += [i * 256 + j if mark_cells else -1] * (len(part.faces) - before)
+                cells = cells[::-1]
     return up, dn
 
 
@@ -1262,7 +1265,7 @@ def front_part():
             t = sum(w.values())
             row.append({k: x / t for k, x in w.items()})
         weights.append(row)
-    slab(part, grid, weights, "membrane", lambda i, j: MEMBRANE_HALF * 0.8)
+    slab(part, grid, weights, "membrane", lambda i, j: MEMBRANE_HALF * 0.8, mark_cells=False)
     for f in range(len(part.faces)):
         part.regions[f] = WASH_R
     part.grid = grid
@@ -1400,6 +1403,8 @@ def mirrored(part, name):
     out.sharp = set(part.sharp)
     out.seams = set(part.seams)
     out.oriented = getattr(part, "oriented", False)
+    if hasattr(part, "cells"):
+        out.cells = list(part.cells)
     return out
 
 
@@ -1667,6 +1672,7 @@ def assemble(parts, materials=(BODY_MAT, WING_MAT), name="pteranodon_model", lay
     region = bm.faces.layers.int.new("region")
     island = bm.faces.layers.int.new("island")
     given = bm.faces.layers.int.new("given")
+    cell = bm.faces.layers.int.new("cell")
     uv_layer = bm.loops.layers.uv.new("UVMap")
     mats = list(materials)
     by_material = {lay.material: lay for lay in layouts}
@@ -1695,6 +1701,7 @@ def assemble(parts, materials=(BODY_MAT, WING_MAT), name="pteranodon_model", lay
                 made.append((part.name, fi, corners, mark))
                 face = bm.faces.new([verts[f[k]] for k in corners])
                 face[region] = r
+                face[cell] = part.cells[fi] if hasattr(part, "cells") else -1
                 face[island] = names.index(isl)
                 face.material_index = mats.index(part.material)
                 face.smooth = True
