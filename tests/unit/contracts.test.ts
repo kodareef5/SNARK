@@ -51,11 +51,12 @@ test("a hurt stage is a quarter of health wide, and never more than a glance sho
 test("the new codes are each one of their kind, and deadlines have kinds of their own", () => {
   const ops = Object.entries(P).filter(([k]) => k.startsWith("CMD_")).map(([, v]) => v);
   expect(new Set(ops).size).toBe(ops.length);
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 14]);
-  const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS];
+  // 14 is the cluster's, 15 the flyers' (below).
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 15]);
+  const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
-  expect(new Set([P.CARRY_PICK_UP, P.CARRY_DROP, P.CARRY_THROW]).size).toBe(3);
+  expect(new Set([P.CARRY_PICK_UP, P.CARRY_DROP, P.CARRY_THROW, P.CARRY_GRAB, P.CARRY_RELEASE]).size).toBe(5);
   const kinds = [DEADLINE_VITALS, DEADLINE_DESPAWN, DEADLINE_NODE, DEADLINE_CRAFT, DEADLINE_BUFF, DEADLINE_FIRE, DEADLINE_TAME, DEADLINE_BREED, DEADLINE_SPAWN, DEADLINE_CORPSE, DEADLINE_FECES];
   expect(new Set(kinds).size).toBe(kinds.length);
 });
@@ -63,9 +64,13 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
 test("the new columns change nothing for content that does not use them", () => {
   for (let i = 1; i < reg.defs.length; i++) {
     const d = reg.defs[i]!;
-    // A tame stands on steeper ground than a wild one; past that, its numbers are its species' but for a tamed sprint.
-    if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }) });
-    if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual([0, 0, 0, 0, 0]);
+    // A tame stands on steeper ground than a wild one; past that, its numbers are its species' but for a tamed sprint, on
+    // the ground and in the air.
+    const sprints = d.type === "species" ? { ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }), ...(d.fly?.tamedSprintMul === undefined ? {} : { flySprintMul: d.fly.tamedSprintMul }) } : {};
+    if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
+    // The pteranodon is carried as 149 of drag weight by what can lift it, and its mass is 190.
+    const dragged = ({ "core:pteranodon": [0, 149, 190, 0, 0] } as Record<string, number[]>)[d.id];
+    if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
     // Prime meat (content/corpses.ts) is what the young give in place of raw meat.
@@ -78,12 +83,13 @@ test("the new columns change nothing for content that does not use them", () => 
 
 test("every species that lays an egg leaves feces, and its egg is an item, fertilised or not", () => {
   const layers = reg.defs.filter((d) => d?.type === "species" && d.breeds?.egg !== undefined).map((d) => d!.id);
-  expect(layers.sort()).toEqual(["core:dodo", "core:parasaur", "core:raptor"]);
+  expect(layers.sort()).toEqual(["core:dodo", "core:parasaur", "core:pteranodon", "core:raptor"]);
   const ids = (col: Uint16Array, i: number): string => (col[i] === 0 ? "" : reg.ids[col[i]!]!);
-  expect(layers.map((id) => ids(reg.feces, at(id)))).toEqual(["core:feces_small", "core:feces_medium", "core:feces_small"]);
+  expect(layers.map((id) => ids(reg.feces, at(id)))).toEqual(["core:feces_small", "core:feces_medium", "core:feces_small", "core:feces_small"]);
   expect(layers.map((id) => [ids(reg.propItem, reg.breedEgg[at(id)]!), ids(reg.propFertile, reg.breedEgg[at(id)]!)])).toEqual([
     ["core:dodo_egg", "core:dodo_egg_fertile"],
     ["core:parasaur_egg", "core:parasaur_egg_fertile"],
+    ["core:pteranodon_egg", "core:pteranodon_egg_fertile"],
     ["core:raptor_egg", "core:raptor_egg_fertile"],
   ]);
   // Only an egg prop names items, and only a species leaves feces.

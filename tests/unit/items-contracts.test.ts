@@ -13,7 +13,8 @@ import { FLAG_BLUEPRINT, QUALITY_COST, QUALITY_CRAFT_XP, QUALITY_NAMES, QUALITY_
 test("task E built quality and blueprints: the flag is the wire's bit, slots save as component 22 in record format 5, ARK's tier table, and loot is rolled", async () => {
   expect(FLAG_BLUEPRINT).toBe(P.SLOT_BLUEPRINT);
   const store = await Bun.file(new URL("../../server/persist/codec.ts", import.meta.url)).text();
-  expect([/const COMP_SLOTS3 = (\d+);/.exec(store)?.[1], /const RECORD_FORMAT = (\d+);/.exec(store)?.[1]]).toEqual(["22", "5"]);
+  // The flyers' contracts raised the format to 6 for the flying bit (tests/unit/contracts.test.ts).
+  expect([/const COMP_SLOTS3 = (\d+);/.exec(store)?.[1], /const RECORD_FORMAT = (\d+);/.exec(store)?.[1]]).toEqual(["22", "6"]);
   expect(QUALITY_NAMES).toEqual(["primitive", "ramshackle", "apprentice", "journeyman", "mastercraft", "ascendant"]);
   expect([QUALITY_RATING, QUALITY_CRAFT_XP, QUALITY_COST]).toEqual([[1, 1.25, 2.5, 4.5, 7, 10], [1, 2, 3, 4, 5, 6], [1, 1.33, 1.67, 2, 2.5, 3.5]]);
   expect(CLASSES.find((r) => r.id === "loot")).toMatchObject({ status: "partial", waits: "loot" });
