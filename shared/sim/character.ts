@@ -905,10 +905,11 @@ function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: 
 }
 
 /**
- * Before a flyer's step, its roll's clock runs, and it takes off or falls. Its jump held on the ground or in water, it takes
- * off unless winded, too heavy (MF_NO_JUMP), rooted or out, rising TAKEOFF_RISE to a hover. Knocked out or caught by a bola
- * in the air, it stops flying and falls as a walker does; too heavy and so rooted by its load, it is put down by its flight
- * as one spent is. Returns the buttons its walking or swimming step takes: it never hops, has no low stance, and floats.
+ * Before a flyer's step, its roll's clock runs, and it takes off or falls. Its jump held on the ground, in water or falling,
+ * it takes off unless winded, too heavy (MF_NO_JUMP), rooted or out, from the ground rising TAKEOFF_RISE to a hover. Knocked
+ * out or caught by a bola in the air, it stops flying and falls as a walker does; too heavy and so rooted by its load, it is
+ * put down by its flight as one spent is. Returns the buttons its walking or swimming step takes: it never hops, has no low
+ * stance, and floats.
  */
 function takeWing(w: CollisionWorld, b: Body, buttons: number, p: MoveParams): number {
   if (b.rollWait > 0) b.rollWait--;
@@ -916,12 +917,12 @@ function takeWing(w: CollisionWorld, b: Body, buttons: number, p: MoveParams): n
   if (b.mode === MODE_FLYER) {
     if (!p.flies || (flags & MF_OUT) !== 0 || (flags & (MF_ROOTED | MF_NO_JUMP)) === MF_ROOTED) b.mode = MODE_WALK;
   } else if ((buttons & BTN_JUMP) !== 0 && (b.mode === MODE_WALK || b.mode === MODE_SWIM) && b.stance === STANCE_STAND && (flags & (MF_NO_JUMP | MF_ROOTED | MF_OUT | MF_WINDED)) === 0) {
-    // From the water it rises clear of the surface first.
+    // From the ground it springs up, and from the water clear of the surface first. Falling, it flies on from its fall.
     const sea = w.hf.seaLevel;
     const rise = TAKEOFF_RISE + (b.mode === MODE_SWIM && b.y < sea ? sea - b.y : 0);
+    if (b.grounded || b.mode === MODE_SWIM) b.vy = Math.fround(Math.sqrt(2 * p.accelFly * rise));
     b.mode = MODE_FLYER;
     b.grounded = false;
-    b.vy = Math.fround(Math.sqrt(2 * p.accelFly * rise));
     stepOut.tookOff = true;
     return buttons;
   }

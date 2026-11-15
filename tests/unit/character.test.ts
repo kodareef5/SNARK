@@ -441,6 +441,11 @@ test("a pteranodon takes off on its jump held and hovers a few feet up; winded, 
     }
     expect([flags, g.mode, high]).toEqual([flags, MODE_WALK, 0]);
   }
+  // Falling, as when a bola lets go of it in the air, it flies on from its fall, slowing it at its acceleration.
+  const f = flyerAt(w, 64, 64);
+  [f.y, f.vy, f.grounded] = [40, -20, false];
+  stepBody(w, f, 0, 0, NORTH, 0, BTN_JUMP, p, TICK_DT);
+  expect([stepOut.tookOff, f.mode, f.vy]).toEqual([true, MODE_FLYER, expect.closeTo(-20 + 12 / 30, 5)]);
 });
 
 test("it flies where it looks at 6 m/s, sprints at 16.5 wild and 18.975 tamed, climbs and dives by the look alone, and with no way forward slows to a hover", () => {
