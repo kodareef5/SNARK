@@ -917,7 +917,6 @@ def torpor_eat():
         raise_bone(p, "neck_3", 6.0 * k)
         raise_bone(p, "neck_4", 9.0 * k)
         p.turn["skull"] = fk(p)[0]["neck_4"].inverted() @ q(pitch=8.0 * k) @ LIE_SKULL
-        p.rot("jaw", pitch=-beak(f) * rig.BEAK_OPEN)
         # The swallow runs from the throat down to the chest.
         for i, g in enumerate(gulp):
             raise_bone(p, NECK[3 - i], 2.0 * g(f))
@@ -1084,7 +1083,7 @@ def death():
         "body": Keys([(0, 0.0), (3, 1.0), (5, 1.05), (12, 2.0), (19, 2.9), (21, 3.0)]),
         "tail": Keys([(0, 0.0), (4, 1.0), (14, 2.0), (24, 3.0)]),
         "neck": Keys([(0, 0.0), (2, 1.0), (6, 1.05), (14, 2.0), (22, 2.75), (30, 3.0)]),
-        "head": Keys([(0, 0.0), (2, 1.0), (7, 1.05), (15, 2.0), (23, 2.7), (32, 3.0)]),
+        "head": Keys([(0, 0.0), (2, 1.0), (7, 1.05), (14, 2.0), (20, 2.6), (24, 2.9), (30, 3.0)]),
         "arm_r": Keys([(0, 0.0), (3, 1.0), (10, 2.0), (18, 3.0)]),
         "arm_l": Keys([(0, 0.0), (3, 1.0), (12, 2.0), (21, 2.85), (30, 3.0)]),
         "finger_r": Keys([(0, 0.0), (3, 1.0), (13, 2.0), (22, 3.0)]),
@@ -1092,23 +1091,27 @@ def death():
         "leg_r": Keys([(0, 0.0), (3, 1.0), (12, 2.0), (20, 3.0)]),
         "leg_l": Keys([(0, 0.0), (3, 1.0), (13, 2.0), (22, 3.0)]),
     }
-    # The jaw falls open as the head comes down onto its cheek, before LIMP, so the corpse lies gaping.
-    beak = Keys([(0, 0.0), (21, 0.0), (25, 0.33), (28, 0.33)])
+    # The cry snaps shut as it falls; the jaw falls open only once the head lies on its cheek, before LIMP, so the
+    # corpse lies gaping.
+    gape = Keys([(0, 0.0), (2, 0.75), (5, 0.7), (9, 0.04), (21, 0.03), (25, 0.42), (28, 0.45)])
     tracks = {"r": {"fold": Keys([(0, 1.0), (6, 1.0), (13, 0.6), (18, 0.3), (22, 0.12)]),
                     "flap": Keys([(0, 0.0), (8, 0.0), (16, -6.0), (22, -12.0)])},
               "l": {"fold": Keys([(0, 1.0), (8, 1.0), (16, 0.6), (23, 0.3), (30, 0.1)]),
                     "flap": Keys([(0, 0.0), (8, 0.0), (14, -20.0), (22, -16.0), (32, -10.0)])}}
     into = lambda f: {"r": smooth((f - 19.0) / 7.0), "l": smooth((f - 26.0) / 8.0)}
     shudder = Keys([(0, 0.0), (36, 0.0), (38, 1.0), (41, -0.5), (44, 0.0)])
-    # The head turns in the world straight from one pose's turn to the next, so its long beak and crest swing round
-    # level as the neck carries it down, never through pointing at the ground.
-    skulls = [fk(x)[0]["skull"] for x in poses]
+    # The head's heading, pitch and roll in the world, pose by pose (STANCE, jolt, fail, DEAD), turned between by
+    # each on its own: the bill swings round to the side and the head rolls onto its cheek with the bill held level,
+    # never pointing at the ground on the way.
+    angles = [(0.0, 0.0, 0.0), (30.0, 0.0, -8.0), (-6.0, 8.0, -14.0), (-4.0, 84.0, -80.0)]
 
     def extra(f, p):
         folding(p, f, tracks, DEAD, into)
         x = min(max(timing["head"](f), 0.0), len(poses) - 1.0)
         i = min(int(x), len(poses) - 2)
-        p.turn["skull"] = fk(p)[0]["neck_4"].inverted() @ slerp(skulls[i], skulls[i + 1], x - i)
+        a = [u + (v - u) * (x - i) for u, v in zip(angles[i], angles[i + 1])]
+        p.turn["skull"] = fk(p)[0]["neck_4"].inverted() @ q(*a)
+        p.turn["jaw"] = q(pitch=-gape(f) * rig.BEAK_OPEN)
         # The left hand skids out from under the jolt; the right lets go as the shoulder drops.
         for s, out in (("l", Vector((0.14, 0.0, 0.04))), ("r", Vector((-0.04, 0.0, 0.02)))):
             if f < 3:
@@ -1117,7 +1120,6 @@ def death():
                 let_go(p, s, (STANCE.reach[s][0] + out, STANCE.reach[s][1]), smooth((f - 3) / 4.0))
             else:
                 p.reach[s], p.hold[s] = None, 0.0
-        p.rot("jaw", pitch=-beak(f) * rig.BEAK_OPEN)
         p.rot("wing_2_l", roll=-4.0 * shudder(f))
         p.rot("wing_3_l", roll=-4.0 * shudder(f))
 

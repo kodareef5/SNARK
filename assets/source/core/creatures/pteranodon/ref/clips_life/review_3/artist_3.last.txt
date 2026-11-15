@@ -1,0 +1,7 @@
+1. **`torpor_out`: keep.** Around **34–40**, the hands now get a readable planted pause before the main rise. The shoulders rise over the supports, and the later wing folding no longer substitutes for pushing up. No remaining wince worth another revision.
+
+2. **`torpor_in`: keep.** Around **36–54**, the wings arrive separately and settle after the body. Enough to lose the conspicuous paired, deliberate unfolding. Leave it.
+
+3. **`death`: not as pictured.** The supplied close strip contradicts your description: the beak visibly gapes around **10–14** (first row’s last tile, second row’s first two), then points almost straight toward the floor around **18–20**. That still reads as landing on the bill before rolling onto the cheek. Keep the jaws together and turn the bill sideways earlier, letting the cheek arrive before the gape. **Check for a stale render before revising the animation again.** The final corpse is still fine.
+
+Frame numbers are approximate from the sampled strips.
