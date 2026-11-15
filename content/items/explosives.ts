@@ -14,7 +14,7 @@ export const EXPLOSIVES: readonly Def[] = [
   // to the point the table gives, so every structure takes what it took when the grenade did 788 to all.
   {
     type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 1, color: 7,
-    weapon: { kind: "thrown", damage: 175, structures: 788 / 175, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" },
+    weapon: { kind: "thrown", damage: 175, structures: 788 / 175, type: "explosive", speed: 18, fuse: 5, blast: 6, uses: 1, mesh: id("grenade"), hold: "tool" },
   },
 
   // The level is the reference game's.

@@ -370,7 +370,7 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   const grenade = id("grenade");
   const [gx, gy, gz] = [rowOf(far)[1]! / U, rowOf(far)[2]! / U, rowOf(far)[3]! / U];
   const src: Source = { by: rec(cy), x: gx, z: gz - 10, item: grenade, base: reg.damage[grenade]!, type: DMG_EXPLOSIVE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
-  expect([reg.damage[grenade], reg.damage[grenade]! * reg.structureMul[grenade]!, reg.blast[grenade], reg.maxHp[kindAt(far)]]).toEqual([175, 788, 5, 15000]);
+  expect([reg.damage[grenade], reg.damage[grenade]! * reg.structureMul[grenade]!, reg.blast[grenade], reg.maxHp[kindAt(far)]]).toEqual([175, 788, 6, 15000]);
   // Each lands under the east edge, three metres from the wall on the west edge.
   const burst = (): void => h.host.combat.blast(src, gx + 1.4, gy - FOUNDATION_THICK / 2 - 0.05, gz, reg.blast[grenade]!);
   expect(rowOf(shelter)[1]! / U).toBeCloseTo(gx - 1.5, 2);

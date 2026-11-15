@@ -88,7 +88,7 @@ test("the grenade does ARK's 175 to a body and, by its structure factor, what it
   const { h, rec, reg, at, ents, structs, id, dummy, health, hp } = range();
   const grenade = id("grenade");
   // "175 (6 meter radius)" (Grenade); 788 to thatch and wood, 1,838 to stone, 237 to metal (Table of explosives, patch 257).
-  expect([reg.damage[grenade], reg.structureMul[grenade]! * 175, reg.weapon[grenade]!.kind]).toEqual([175, 788, W_THROWN]);
+  expect([reg.damage[grenade], reg.blast[grenade], reg.structureMul[grenade]! * 175, reg.weapon[grenade]!.kind]).toEqual([175, 6, 788, W_THROWN]);
   const src = (item: number, base: number): Source => ({ by: rec, x: at.x, z: at.z, item, base, type: DMG_EXPLOSIVE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 });
   // Bare at her feet, a dummy takes all 175, once.
   const d = dummy(0, 20);
