@@ -253,7 +253,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
       // The pack decides which skeletons exist, so only an empty name is an error here.
       if (d.skeleton !== undefined && d.skeleton.length === 0) errors.push(`${d.id}: a skeleton must be named`);
-      if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
+      if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0 && (d.stamina.walk ?? 0) >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
       if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
       if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);
       for (const [name, st] of [["crouch", d.crouch], ["prone", d.prone]] as const) {
@@ -350,6 +350,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (v !== undefined && !(v >= 0 && v <= 100)) errors.push(`${d.id}: ${name} must be from 0 to 100`);
       }
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
+      if (d.damage !== undefined && !DAMAGE_TYPES.includes(d.damage)) errors.push(`${d.id}: damage must name a kind of damage`);
     } else if (d.type === "structure") {
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
@@ -773,6 +774,8 @@ function moveParams(d: SpeciesDef): MoveParams {
     staminaSprint: Math.round(((d.stamina?.sprint ?? STAMINA_DEFAULT.sprint) * STAMINA_UNITS) / TICK_RATE),
     staminaRegen: Math.round(((d.stamina?.regen ?? STAMINA_DEFAULT.regen) * STAMINA_UNITS) / TICK_RATE),
     staminaJump: Math.round((d.stamina?.jump ?? STAMINA_DEFAULT.jump) * STAMINA_UNITS),
+    // A cost that would round to nothing is a unit.
+    staminaWalk: d.stamina?.walk ? Math.max(1, Math.round((d.stamina.walk * STAMINA_UNITS) / TICK_RATE)) : 0,
     // Whole units per tick, so both sides turn the same.
     turnRate: d.turn === undefined ? 0 : Math.max(1, Math.round(((d.turn / 360) * 65536) / TICK_RATE)),
     strafe: d.strafe !== false,

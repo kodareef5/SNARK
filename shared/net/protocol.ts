@@ -143,7 +143,7 @@ export const CMD_PLACE = 18;
 export const CMD_STRUCT = 19;
 /**
  * Orders a tribe creature: entity index u32 or ORDER_ALL, then order u8. The order is an ORDER_ value, ORDER_STANCE plus a
- * stance (passive, neutral, aggressive), or ORDER_LEVEL plus a stat to spend one of its unspent levels on.
+ * stance (passive, neutral, aggressive), ORDER_YOURS, or ORDER_LEVEL plus a stat to spend one of its unspent levels on.
  */
 export const CMD_ORDER = 20;
 export const ORDER_STAY = 0;
@@ -158,8 +158,10 @@ export const ORDER_UNMATE = 7;
 export const ORDER_WANDER = 8;
 /** Protocol 11. Followed by the target's entity index u32: it goes for that body. A whistle may give it. */
 export const ORDER_ATTACK = 9;
+/** Protocol 11. Its stance becomes attacking your target (ARK's "Attack My Target" whistle): neutral, and it goes for what its tribe hurts. */
+export const ORDER_YOURS = 10;
 export const ORDER_LEVEL = 16;
-/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE or ORDER_LEVEL. */
+/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE, ORDER_WANDER or ORDER_LEVEL. */
 export const ORDER_ALL = 0xffffffff;
 /** Metres. */
 export const WHISTLE_RANGE = 40;
