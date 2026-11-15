@@ -13,7 +13,8 @@ const MAX_FACES = 2 * MAX_CORNERS - 4;
  * each three numbers of `at` in metres: along the piece's first axis, up, and along its second. Its faces are face[p] up to
  * face[p + 1], each three of its corners in `faceCorners`, counted from its first, that go round the face counter-clockwise
  * seen from outside. Its edges are edge[p] up to edge[p + 1], each two corners in `edgeCorners`. With `sixty` set the second
- * axis is the first turned 60 degrees, so a triangle of two whole-number sides is drawn on them.
+ * axis is the first turned 60 degrees, so a triangle of two whole-number sides is drawn on them. Face f, drawn, is every
+ * corner on it: ring[f] up to ring[f + 1] of `ringCorners`, round it as its three are.
  */
 export interface HullTable {
   readonly start: Uint32Array;
@@ -24,6 +25,8 @@ export interface HullTable {
   readonly at: Float64Array;
   readonly faceCorners: Uint8Array;
   readonly edgeCorners: Uint8Array;
+  readonly ring: Uint32Array;
+  readonly ringCorners: Uint8Array;
 }
 
 /** A part as content writes it. */
@@ -39,9 +42,9 @@ export function hullPoint(c: readonly [number, number, number], sixty: boolean):
 
 /**
  * The faces and edges of the hull of a part's corners, or a reason it is not a solid one. Each face is the first three corners
- * found on its plane; every corner must be on the hull.
+ * found on its plane; every corner must be on the hull. `rings` holds each face's every corner, in order round it.
  */
-export function hullOf(def: HullDef): { faces: number[]; edges: number[] } | string {
+export function hullOf(def: HullDef): { faces: number[]; edges: number[]; rings: number[][] } | string {
   const n = def.corners.length;
   if (n < 4 || n > MAX_CORNERS) return `a part has 4 to ${MAX_CORNERS} corners`;
   const p = def.corners.map((c) => hullPoint(c, def.sixty === true));
@@ -88,7 +91,35 @@ export function hullOf(def: HullDef): { faces: number[]; edges: number[] } | str
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) if (planes.filter((plane) => on(plane, p[i]!) && on(plane, p[j]!)).length >= 2) edges.push(i, j);
   }
-  return { faces, edges };
+  const rings = planes.map((plane, f) => ringOf(p, plane, faces.slice(f * 3, f * 3 + 3)));
+  return { faces, edges, rings };
+}
+
+/**
+ * The corners of `p` on `plane` in order round the face, starting from the first of its three `tri`, which go round it
+ * counter-clockwise seen from outside. Ordered by which side of the first corner each lies and then by turn, with no angle
+ * worked out, so every engine orders them alike.
+ */
+function ringOf(p: readonly number[][], plane: readonly number[], tri: readonly number[]): number[] {
+  const on = p.flatMap((q, i) => (Math.abs(plane[0]! * q[0]! + plane[1]! * q[1]! + plane[2]! * q[2]! - plane[3]!) < 1e-9 ? [i] : []));
+  const m = [0, 1, 2].map((a) => on.reduce((s, i) => s + p[i]![a]!, 0) / on.length);
+  const first = p[tri[0]!]!;
+  const u = [first[0]! - m[0]!, first[1]! - m[1]!, first[2]! - m[2]!];
+  // w is the plane's normal crossed with u: a quarter turn on from u, counter-clockwise seen from outside.
+  const w = [plane[1]! * u[2]! - plane[2]! * u[1]!, plane[2]! * u[0]! - plane[0]! * u[2]!, plane[0]! * u[1]! - plane[1]! * u[0]!];
+  const along = (i: number): [number, number] => {
+    const d = [p[i]![0]! - m[0]!, p[i]![1]! - m[1]!, p[i]![2]! - m[2]!];
+    return [d[0]! * u[0]! + d[1]! * u[1]! + d[2]! * u[2]!, d[0]! * w[0]! + d[1]! * w[1]! + d[2]! * w[2]!];
+  };
+  const half = (a: number, b: number): number => (b > 1e-12 || (Math.abs(b) <= 1e-12 && a > 0) ? 0 : 1);
+  return on.sort((i, j) => {
+    if (i === tri[0]) return -1;
+    if (j === tri[0]) return 1;
+    const [ai, bi] = along(i);
+    const [aj, bj] = along(j);
+    const h = half(ai, bi) - half(aj, bj);
+    return h !== 0 ? h : aj * bi - ai * bj;
+  });
 }
 
 /** Builds the table of every kind's parts. `partsOf(k)` lists kind k's parts, each already accepted by hullOf. */
@@ -101,10 +132,12 @@ export function hullTable(kinds: number, partsOf: (kind: number) => readonly Hul
   const at: number[] = [];
   const faceCorners: number[] = [];
   const edgeCorners: number[] = [];
+  const ring: number[] = [];
+  const ringCorners: number[] = [];
   for (let k = 0; k < kinds; k++) {
     start[k] = sixty.length;
     for (const def of partsOf(k)) {
-      const built = hullOf(def) as { faces: number[]; edges: number[] };
+      const built = hullOf(def) as Exclude<ReturnType<typeof hullOf>, string>;
       corner.push(at.length / 3);
       face.push(faceCorners.length / 3);
       edge.push(edgeCorners.length / 2);
@@ -112,12 +145,17 @@ export function hullTable(kinds: number, partsOf: (kind: number) => readonly Hul
       for (const c of def.corners) at.push(c[0], c[1], c[2]);
       faceCorners.push(...built.faces);
       edgeCorners.push(...built.edges);
+      for (const r of built.rings) {
+        ring.push(ringCorners.length);
+        ringCorners.push(...r);
+      }
     }
   }
   start[kinds] = sixty.length;
   corner.push(at.length / 3);
   face.push(faceCorners.length / 3);
   edge.push(edgeCorners.length / 2);
+  ring.push(ringCorners.length);
   return {
     start,
     corner: Uint32Array.from(corner),
@@ -127,6 +165,8 @@ export function hullTable(kinds: number, partsOf: (kind: number) => readonly Hul
     at: Float64Array.from(at),
     faceCorners: Uint8Array.from(faceCorners),
     edgeCorners: Uint8Array.from(edgeCorners),
+    ring: Uint32Array.from(ring),
+    ringCorners: Uint8Array.from(ringCorners),
   };
 }
 
