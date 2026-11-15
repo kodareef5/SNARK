@@ -1,3 +1,5 @@
 /layers/
 /checks/
+/superseded/
 /__pycache__/
+# paint.py writes no files under source/; its three JSON inputs are retained.

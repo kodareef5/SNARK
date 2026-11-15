@@ -11,7 +11,7 @@ import paint
 
 ROOT=Path(__file__).resolve().parent
 MEM=paint.study('membrane',['membrane_upper_base.png'])
-FUZZ=ROOT/'source/accepted_fuzz'
+FUZZ=paint.fuzz_study()
 w=paint.Wing()
 base=np.asarray(Image.open(ROOT/'layers/pteranodon_wing_base.png'))
 h=np.asarray(Image.open(ROOT/'layers/pteranodon_wing_height.png')).astype(np.float32)/65535*.8

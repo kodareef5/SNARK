@@ -1,71 +1,80 @@
-# Wing paint
+# Wing paint — round 2 accepted, final fuzz
 
-Painted every texel of `pteranodon_wing`: `membrane_upper`, `membrane_under`, `arm`, and `finger`. The six delivered maps and `layers.json` are in `layers/`. Run `python3 tex/paint/wing/paint.py` from the animal directory to regenerate them. The build is deterministic for a given set of study layers and bakes; a second run reproduced all seven files byte for byte.
+The wing's four individually routed, unequal vascular supplies are accepted. This final pass reads the accepted round-four fuzz directly from its study on every build, replacing the earlier locally copied fuzz. All painting parameters, placement, filtering, vascular geometry, wash, tips and face means are retained.
 
-## Construction and placement
+## Vascular network
 
-The membrane uses the accepted membrane study's extracted skin, thickness, stretch, gathered-detail and pleat fields. The fine crease drawing remains in the neutral base as well as its shallow relief. Source fields are filtered to the wing's roughly 600 texels/metre before physical sampling, with a continuous, nonuniform coordinate warp. Gathered skin blends into the taut surface within approximately 75 mm of the arm/finger and 95 mm of the flank. The extracted pleats are placed at those attachments. The trailing edge is the same skin, slightly darker and smoother over about 5.5 mm; there is no drawn hem.
+[The authored network](source/network.json) specifies the major routes and their connections in the animal's absolute X/Z coordinates. One trunk enters from the flank and three from the arm/finger insertion. Their lengths are **0.676, 0.882, 0.726 and 0.602 m**. They run rearward, sweep toward the tip, and finish near the trailing edge. Their first substantial forks occur at different stages; the daughters have independently placed bends, lengths and later forks. Wide empty areas alternate with narrower gaps. Four authored connecting branches and finer growth that meets an existing centreline produce **19 reconnections** in the complete drawing.
 
-The vascular layout is authored for this wing, using the study's traced curves as bend templates. Sixteen primary supplies enter from the arm/finger, four enter from the flank, and seven small trees supply the front membrane. The trunk directions sample the baked flow. Daughters fork, narrow, and fade; branch growth stops before unrelated vessels. There are 573 path segments in total. This is a new anatomical arrangement of source-derived curves, not the study's vascular tile repeated across the wing. The main vessel roots are 3.8–5.2 mm wide, or about 2.24–3.07 membrane texels, with narrower daughters and terminal taper. Vessel rise is 0.080 mm. Measured vessel-core pigment is approximately 21% darker than surrounding upper skin and 30% darker underneath after physical filtering.
+The four trunks replace the old spanwise root sequence. Fine daughters grow at unequal intervals, with unequal counts, sides and lengths; there is no alternating fork schedule or repeated tree along the wing. The accepted membrane study's traced bends supply local deviations, with restrained millimetre-scale irregularity in the long paths. The front membrane has three small supplies of different extents and different branch counts. There are **116 paths altogether**, including the main supplies, branches, connections, twigs and front-membrane drawing.
 
-Both faces sample one drawing in animal X/Z coordinates. The actual position bake stores the painted wing at negative X, so span is read as absolute X; the Y difference between the two sides is the model's skin thickness. Independent UV sampling accounts for the slight raster differences between faces. Upper and under values converge toward 0.50 at their insertion into the spar, with a shallow crease rather than a separate dark stroke.
+Trunk root widths are **3.8–4.9 mm FWHM**, or **2.24–2.89 texels** at the measured membrane density. They hold their width through the first part of their length, then narrow toward their ends. Major branches start at approximately 1.6–3.0 mm; fine twigs start at 1.55–1.9 mm, approximately one texel, and taper and fade. Vessel rise remains **0.080 mm**. Measured vessel-core pigment is **22.8% darker** than surrounding upper skin and **30.5% darker** underneath.
 
-The warm wash is a region-1 mask, full at the flank and fading over 0.4 m. Its edge wanders gently with the vascular drawing. Region 4 fills the remaining main and front membrane. Region 0 starts at 80% of the measured half span, with a 36 mm transition and a small continuous variation in its edge. The same physical boundary crosses the finger. The arm is entirely region 5; the finger is region 5 until its region-0 tip. Six mask weights sum to exactly 255 on every owned texel, including blends. Regions 2 and 3 are unused.
+Both faces sample the same animal-space drawing, with absolute X accounting for the bake's negative-X wing. The Y difference is the skin's modelled thickness. Comparing all 646,505 underside texels to the upper face gives **0.9824 subpixel vein correlation**; nearest centres are a median 0.713 mm apart. Raster sampling explains the remaining difference, rather than independently placed veins.
 
-The arm reads the current `fuzz` layers and metadata every run, at the study's 0.5 m tile span and 6–12 mm filament scale. Its strip's measured physical coordinates carry the pile out along the limb. Median agreement with the baked direction is 0.984. Coverage thins over the last 0.32 m toward the knuckle. The finger starts with sparse `fuzz_face` at its 3–6 mm scale, disappearing by X = 1.86 m. Its bare skin uses the accepted skin study reduced from a 0.20 m to a 0.14 m tile span, with quieter value and relief. Both strip cuts converge to quiet skin at the membrane insertion. The tip is bare.
+## Accepted treatment retained
 
-No new image generations were needed. Existing originals remain in their study folders. `source/recipe.json` records the physical dimensions, seed and anatomical roots. `checks/inputs.json` records hashes of the source layers and bakes actually read. If required study outputs are missing, their unchanged build scripts run in private copies under this group's `checks/study_cache/`, leaving the other painters' directories untouched.
+Both colour-mask PNGs are **byte-identical** to the incoming accepted delivery. Thus the 0.4 m flank wash, outer-fifth tips, 36 mm soft tip boundary, and arm/finger region assignments stay in place. The former vascular influence on the wash is retained separately in [wash_support.json](source/wash_support.json), used only to reproduce the accepted mask boundary; it is no longer the visible vein drawing. The six weights still sum to exactly 255 on every owned texel, and regions 2 and 3 remain unused.
 
-## Delivered pictures
+The membrane's generated skin detail, thickness, stretch, gathered creases, attachment pleats and trailing-edge treatment retain their sampling, gains and physical scales. Membrane height, roughness and fine occlusion are pixel-identical to the accepted delivery; the vascular drawing and gather diagnostics are byte-identical. The existing whole-material mean correction moves only **13 membrane base pixels by one 8-bit level** after the fuzz replacement.
 
-All pictures are 2048 square and zero outside the four owned pieces.
+The arm and knuckle now sample the accepted [round-four fuzz study](../../studies/fuzz/REPORT.md): `fuzz` and `fuzz_face` base, height and packed layers, with height ranges read from its `study.json`. Both `paint.py` and `review.py` use the live deliveries; missing inputs invoke that study's unmodified `build.py`. The old `source/accepted_fuzz/` copies have been deleted. Sampling, coverage, limb transitions and physical spans remain unchanged. The study itself was not modified, verified by hashes of all its files.
 
-| File | Contents and method |
-|---|---|
-| `pteranodon_wing_base.png` | Computed from the accepted generated studies and the anatomical drawing; RGBA sRGB, identical RGB channels, alpha 255 on all 1,622,755 owned texels |
-| `pteranodon_wing_height.png` | Computed, aligned 16-bit relief; black to white represents **0.8 mm**, with the skin's working middle around 0.4 mm |
-| `pteranodon_wing_rough.png` | Computed matte skin and dry fuzz roughness; slightly smoother vessels and trailing edge |
-| `pteranodon_wing_occlusion.png` | Computed material-scale occlusion only; no baked form shadow |
-| `pteranodon_wing_mask.png` | Computed RGB weights for regions 0, 1, 2 |
-| `pteranodon_wing_mask2.png` | Computed RGB weights for regions 3, 4, 5 |
+No Blender or new image generation was used. All edits and new sources are confined to this wing folder.
 
-No normal or categorical region map is delivered. The compositor derives the normal from the physical height.
+## Delivery and measurements
 
-| Piece | Texels | Linear base mean | Encoded height extent, mm | Roughness |
-|---|---:|---:|---:|---:|
-| Arm | 205,061 | 0.500069 | 0.3755–0.4218 | 0.761–0.863 |
-| Finger | 124,588 | 0.500949 | 0.3762–0.4076 | 0.753–0.780 |
-| Membrane under | 646,505 | 0.599932 | 0.2640–0.4814 | 0.718–0.773 |
-| Membrane upper | 646,601 | 0.399924 | 0.2677–0.4815 | 0.718–0.773 |
+`python3 tex/paint/wing/paint.py` regenerates the six 2048-square PNGs and `layers.json`. It rereads the ownership and position bakes, paints all **1,622,755** owned texels and leaves everything else zero. Source inputs are recorded in [archived input hashes](superseded/final_checks/inputs.json).
 
-Weighted linear means over both faces and limbs are **0.499967 / 0.500006 / 0.500004 / 0.500093** for regions **0 / 1 / 4 / 5**. The compositor reports x1.000 for all four, with no grey correction warning. Fine occlusion remains 0.965–1 on the membrane and 0.984–1 on the limbs.
+| File in `layers/` | Construction |
+| --- | --- |
+| `pteranodon_wing_base.png` | Computed from accepted generated material fields and the revised vascular graph; neutral RGBA sRGB, full alpha on owned pieces |
+| `pteranodon_wing_height.png` | Computed aligned uint16 relief; full range still **0.8 mm**, working middle 0.4 mm |
+| `pteranodon_wing_rough.png` | Computed matte skin/fuzz, with slightly smoother vessels |
+| `pteranodon_wing_occlusion.png` | Fine material occlusion from the accepted studies; membrane unchanged, limbs use final fuzz |
+| `pteranodon_wing_mask.png` | Accepted weights for regions 0, 1, 2, unchanged |
+| `pteranodon_wing_mask2.png` | Accepted weights for regions 3, 4, 5, unchanged |
 
-## Checks and visual review
+No normal map is delivered; the compositor derives it from physical height.
 
-Ran:
+| Piece | Texels | Linear base mean | Height extent, mm |
+| --- | ---: | ---: | ---: |
+| Arm | 205,061 | 0.500064 | 0.3683–0.4343 |
+| Finger | 124,588 | 0.500355 | 0.3762–0.4076 |
+| Membrane under | 646,505 | 0.599996 | 0.2640–0.4851 |
+| Membrane upper | 646,601 | 0.399992 | 0.2677–0.4855 |
+
+Weighted linear means for regions **0 / 1 / 4 / 5** are **0.500096 / 0.500010 / 0.500001 / 0.500087**. The earlier accepted game-render pass reported x1.000 for each without a grey-correction warning.
+
+## Checks and renderer review
+
+Ran from the animal directory (the second clean paint also ran from `/private/tmp`):
 
 ```sh
 python3 tex/paint/wing/paint.py
-python3 tex/paint/wing/check.py --rebuild
+python3 tex/paint/wing/check.py
 python3 tex/paint/wing/review.py
-zsh tex/paint/look.sh tex/paint/wing/checks/look --maps
 ```
 
-`check.py` passes format, exact ownership, full alpha, neutral RGB, permitted regions, exact mask sums, physical vessel-root widths, piece means, region means and deterministic rebuild checks. It compares all 646,505 underside texels to the upper face in animal space. Their nearest texel centres are a median 0.713 mm apart; resampling the upper drawing to the actual underside positions gives **0.9785 vein correlation**. The 99th-percentile nearest-texel mask difference is one 8-bit level. These are raster comparisons, not claims that different texel grids have identical bytes. Full figures and delivery hashes are in [checks/measurements.json](checks/measurements.json).
+All checks pass: formats, ownership, alpha, neutral RGB, permitted regions, mask sums, piece and region means, physical trunk widths, four main supplies, reconnections and face registration. `layers/` and `checks/` were absent before **each of two builds**; all seven delivery files match by SHA-256. [Rebuild and preservation audit](superseded/final_fuzz_rebuild.json) records the hashes, live fuzz inputs and comparison with the accepted wing. [Final measurements](superseded/final_checks/measurements.json) and review pictures are archived locally; `paint.py`, `check.py` and `review.py` recreate their diagnostics in ignored `checks/`.
 
-Reviewed the game's above/below, inner-wing, under-wing and rider views, and its 20/60/150/400 m size sheets, in design, loud and dark dyes. The final arm has fine laid pile without the stretched bands seen in the first trial. The wash is soft in loud yellow as well as ash; tip boundaries line up across the membrane and spar. No UV-band seam, broad pigment blotch or repeated vascular tile was apparent. The close wing shows connected trunks, smaller branches and skin creases; most fine drawing settles into the tone at distance. The design's dark tips and pale centre remain distinct on the small silhouette.
+Before this final fuzz-only pass, the accepted wing was reviewed in the game's own renderer:
 
-Useful review pictures:
+- [Inner wing](superseded/checks/round1_final/inner_wing_design.png): long trunks with different forks and open intervals replace the row of equal-height trees. Fine branches remain quieter than the main routes.
+- [Under wing](superseded/checks/round1_final/under_wing_design.png): the same network is more legible underneath, with distinct thick-to-fine hierarchy and irregular connections; no repeating spanwise border.
+- [Below](superseded/checks/round1_final/below_design.png): the vascular drawing remains restrained over the whole membrane; the accepted wash and dark tips retain their placement.
+- [Sizes](superseded/checks/round1_final/sizes_design.png): at 20/60/150/400 m the veins merge into an even tone, retaining the dark-tipped M and pale body. Loud and dark size sheets were also checked.
 
-- [Game inner wing](checks/look/inner_wing_design.png), [under wing](checks/look/under_wing_design.png), [rider](checks/look/rider_design.png).
-- [Game sizes](checks/look/sizes_design.png), [loud dye](checks/look/below_loud.png), [dark dye](checks/look/below_dark.png).
-- [Source, accepted study, painted base and three relief lights at 600 px/m](checks/source_base_relief.png). These three relief views are labelled Python diagnostics, not game renders.
-- [Fuzz source and placement at the arm's physical density](checks/fuzz_at_scale.png), plus `checks/unlit_{design,loud,dark}.png`.
+[The source/base/relief comparison](superseded/final_checks/source_base_relief.png) places the accepted study and this wing at 600 px/m, with three labelled Python relief views. The accepted trunks are deliberately wider than the study vessels to survive the animal's lower density; the fine skin treatment remains intact.
 
-## Remaining limitations
+## Remaining limits
 
-The game's opaque underside is substantially darker and less luminous than the concept's painted slate. This is also present in the accepted membrane study; the requested 0.40/0.60 face means are preserved. Near-black dye and the renderer's half-resolution rgba maps suppress the finest skin and finger wrinkles. The source comparison shows that the broad generated gathered folds become much shallower, local attachment creases on the actual taut wing. The vascular layout is more explicitly organised into leading-edge supplies than the study's denser, interconnecting network.
+The game's rgba preview halves the maps to 1024, so the faintest terminal twigs soften away. Near-black dye reduces them further. The opaque renderer still lacks the concept's transmitted-light appearance underneath; the accepted 0.40/0.60 face means remain unchanged. There is no form-occlusion bake, so this delivery continues to provide only fine material occlusion. The existing narrow raised front-membrane silhouette is geometry and is unchanged.
 
-The shared preview combines the other painters' current layers; this report's measurements cover the wing alone. The current model also shows a narrow raised front-membrane silhouette in some rider/under-wing angles. These bakes did not prevent painting or registering the wing, but paint cannot change that geometry. There is no form-occlusion bake yet; the compositor says so, and this delivery supplies only the requested fine material occlusion.
+The earlier vascular revision took approximately 15 minutes, including three game-render passes. This final pass changes only the fuzz input and tidies the rebuild files; no new game-render pass or art revision was made.
 
-Approximately 15 minutes of work, including reading, two material-placement revisions, renderer reviews, source comparisons and the byte-for-byte rebuild. No Blender was run.
+## Files
+
+The build reads the wing ownership, position and texel-size maps in `tex/paint/`, normal/flow bakes in `ref/bakes/`, the membrane study's material fields and traced paths, the skin study's delivered layers, and the live fuzz study's `fuzz`/`fuzz_face` layers and metadata. Local `source/` contains only the three required data files: `recipe.json`, `network.json` and `wash_support.json`; generated originals and their prompts remain in the shared studies. Dependencies are Python, NumPy, Pillow and SciPy.
+
+`paint.py`, `check.py`, `review.py`, briefs, feedback and `artist_*.last.txt` remain. Earlier scripts, deliveries, review images and diagnostics are under ignored `superseded/`; the current delivery remains in ignored `layers/`. There are no TypeScript files anywhere in this wing folder. `paint.py` writes nothing under local `source/`, so there are no regenerated source files to list in `.gitignore`. Two runs from clean `layers/` rebuilt all six PNGs and `layers.json` **byte for byte**; hashes are in the audit above.
