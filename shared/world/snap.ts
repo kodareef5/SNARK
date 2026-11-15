@@ -3,7 +3,8 @@
 
 import { STRUCT_UNITS, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
-import { frameAxes } from "./frame.ts";
+import { Solid, boxSolid, hullFace, partSolid, rayHull, solidsCross } from "./convex.ts";
+import { frame, frameAxes, frameOf } from "./frame.ts";
 import { Found, type PartTable, type StructureStore } from "./structures.ts";
 
 export { HALF_SIDE, frameAxes } from "./frame.ts";
@@ -129,15 +130,21 @@ const THIN = 0.02;
 const SHRINK_OTHER = 0.05;
 const YAW_TO_RAD = TAU / YAW_UNITS;
 const near = new Found();
+/** The new piece's parts and one of a built piece's, as solids. */
+const mine: Solid[] = [];
+const theirs = new Solid();
 
-/** Whether a piece of `kind` at this pose (metres) overlaps a built structure. Pieces that only touch, as neighbours do, do not count. */
+/**
+ * Whether a piece of `kind` at this pose (metres) overlaps a built structure. Pieces that only touch, as neighbours do, do not
+ * count. Boxes meet boxes by their shrunk rectangles; a convex part meets a box or a part as solids that give way as much.
+ */
 export function obstructed(structs: StructureStore, parts: PartTable, kind: number, x: number, y: number, z: number, yaw: number): boolean {
   const a = yaw * YAW_TO_RAD;
   const s = detSin(a);
   const c = detCos(a);
   const box = parts.box;
-  // Query every structure whose footprint is near. The piece is no wider than a side and a half.
-  const reach = 3;
+  // Query every structure whose footprint reaches as far as the piece does from its middle.
+  const reach = structs.spread[kind]!;
   const n = structs.query(x - reach, z - reach, x + reach, z + reach, near);
   const refs = near.refs;
   for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) {
@@ -163,6 +170,42 @@ export function obstructed(structs: StructureStore, parts: PartTable, kind: numb
         const qz = t.z[slot]! - os * box[q]! + oc * box[q + 2]!;
         if (rectsCross(cx, cz, c, s, hx, hz, qx, qz, oc, os, Math.max(THIN, box[q + 3]! - SHRINK_OTHER), Math.max(THIN, box[q + 5]! - SHRINK_OTHER))) return true;
       }
+    }
+  }
+  const hulls = parts.hulls;
+  if (!hulls) return false;
+  const boxes = parts.start[kind + 1]! - parts.start[kind]!;
+  const count = boxes + hulls.start[kind + 1]! - hulls.start[kind]!;
+  let made = false;
+  for (let k = 0; k < n; k++) {
+    const ref = refs[k]!;
+    const t = structs.chunks[Math.floor(ref / 65536)]!;
+    const slot = ref & 0xffff;
+    const other = t.kind[slot]!;
+    const otherHulls = hulls.start[other + 1]! - hulls.start[other]!;
+    if (count === boxes && otherHulls === 0) continue;
+    // Every part of the new piece as a solid, its convex parts after its boxes, once some part is to be asked.
+    if (!made) {
+      made = true;
+      while (mine.length < count) mine.push(new Solid());
+      for (let i = 0; i < count; i++) {
+        if (i < boxes) {
+          const p = (parts.start[kind]! + i) * 6;
+          boxSolid(x + c * box[p]! + s * box[p + 2]!, y + box[p + 1]!, z - s * box[p]! + c * box[p + 2]!, c, s, box[p + 3]!, box[p + 4]!, box[p + 5]!, mine[i]!);
+        } else partSolid(hulls, hulls.start[kind]! + i - boxes, yaw, x, y, z, mine[i]!);
+      }
+    }
+    const oa = t.yaw[slot]! * YAW_TO_RAD;
+    const os = detSin(oa);
+    const oc = detCos(oa);
+    // Their boxes against my convex parts; then their convex parts against all of mine. Box against box was asked above.
+    for (let q = parts.start[other]! * 6, qend = parts.start[other + 1]! * 6; q < qend && count > boxes; q += 6) {
+      boxSolid(t.x[slot]! + oc * box[q]! + os * box[q + 2]!, t.y[slot]! + box[q + 1]!, t.z[slot]! - os * box[q]! + oc * box[q + 2]!, oc, os, box[q + 3]!, box[q + 4]!, box[q + 5]!, theirs);
+      for (let i = boxes; i < count; i++) if (solidsCross(mine[i]!, SHRINK, SHRINK_Y, theirs, SHRINK_OTHER, 0, THIN)) return true;
+    }
+    for (let h = hulls.start[other]!, hend = hulls.start[other + 1]!; h < hend; h++) {
+      partSolid(hulls, h, t.yaw[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, theirs);
+      for (let i = 0; i < count; i++) if (solidsCross(mine[i]!, SHRINK, SHRINK_Y, theirs, SHRINK_OTHER, 0, THIN)) return true;
     }
   }
   return false;
@@ -338,22 +381,63 @@ export function overPiece(ox: number, oz: number, oyaw: number, x: number, z: nu
   return Math.abs(a) <= axes[0]! * axes[0]! + axes[1]! * axes[1]! && Math.abs(b) <= axes[2]! * axes[2]! + axes[3]! * axes[3]!;
 }
 
+/** Set by floorTop: whether the top it found is level. */
+export const floorFace = { level: false };
+/** The least upward share of a face's normal for it to count as level. */
+const LEVEL = 0.9999;
+
+/**
+ * Where a thing set on or falling onto the foundation or ceiling at `ref`, its middle over (x, z) lattice units, rests: the
+ * lattice height of the floor's top there, or NaN if it is not a floor or the point is not over it. A floor of boxes is met by
+ * the top of the box that holds it, a side square about its middle. One with convex parts is met by the first of its parts
+ * straight down, whose face there may slope; `floorFace` says whether it is level.
+ */
+export function floorTop(structs: StructureStore, tables: PieceTables, ref: number, x: number, z: number): number {
+  const t = structs.chunks[Math.floor(ref / 65536)];
+  const slot = ref & 0xffff;
+  if (!t || slot >= t.high || t.kind[slot] === 0) return NaN;
+  const kind = t.kind[slot]!;
+  if (tables.role[kind] !== ROLE_FOUNDATION && tables.role[kind] !== ROLE_CEILING) return NaN;
+  const parts = tables.parts;
+  const hulls = parts.hulls;
+  floorFace.level = true;
+  if (!hulls || hulls.start[kind + 1] === hulls.start[kind]) return overPiece(units(t.x[slot]!), units(t.z[slot]!), t.yaw[slot]!, x, z) ? units(t.y[slot]!) + units(tables.halfY[kind]!) : NaN;
+  // Down from over the holding box's top, measured from the piece's middle.
+  const dx = x / STRUCT_UNITS - t.x[slot]!;
+  const dz = z / STRUCT_UNITS - t.z[slot]!;
+  const from = tables.halfY[kind]! + 1;
+  let down = Infinity;
+  for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
+    const d = rayHull(hulls, p, t.yaw[slot]!, dx, from, dz, 0, -1, 0, 0);
+    if (d >= down) continue;
+    down = d;
+    floorFace.level = hullFace.ny >= LEVEL;
+  }
+  frameOf(t.yaw[slot]!);
+  const fx = frame.cos * dx - frame.sin * dz;
+  const fz = frame.sin * dx + frame.cos * dz;
+  const box = parts.box;
+  for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) {
+    const d = from - box[p + 1]! - box[p + 4]!;
+    if (d >= down || Math.abs(fx - box[p]! * frame.stretch) > box[p + 3]! * frame.stretch || Math.abs(fz - box[p + 2]! * frame.stretch) > box[p + 5]! * frame.stretch) continue;
+    down = d;
+    floorFace.level = true;
+  }
+  return down < Infinity ? units(t.y[slot]!) + Math.ceil((from - down) * STRUCT_UNITS - 1e-6) : NaN;
+}
+
 /**
  * The pose of a thing set on top of the piece at `target`, centred over (px, pz) metres. False if `kind` is not a thing, the
- * target is not a foundation or a ceiling, or the point is not over it.
+ * target is not a foundation or a ceiling, or the point is not over a level top of it: as in ARK, nothing is set on a slope.
  */
 export function restPose(structs: StructureStore, tables: PieceTables, target: number, kind: number, px: number, pz: number, yaw: number, out: Pose): boolean {
   if (tables.role[kind] !== ROLE_THING) return false;
-  const t = structs.chunks[Math.floor(target / 65536)];
-  const slot = target & 0xffff;
-  if (!t || slot >= t.high || t.kind[slot] === 0) return false;
-  const under = t.kind[slot]!;
-  if (tables.role[under] !== ROLE_FOUNDATION && tables.role[under] !== ROLE_CEILING) return false;
   out.x = Math.round(px * STRUCT_UNITS);
   out.z = Math.round(pz * STRUCT_UNITS);
   out.yaw = yaw & (YAW_UNITS - 1);
-  if (!overPiece(units(t.x[slot]!), units(t.z[slot]!), t.yaw[slot]!, out.x, out.z)) return false;
-  out.y = units(t.y[slot]!) + units(tables.halfY[under]!) + units(tables.halfY[kind]!);
+  const top = floorTop(structs, tables, target, out.x, out.z);
+  if (Number.isNaN(top) || !floorFace.level) return false;
+  out.y = top + units(tables.halfY[kind]!);
   return true;
 }
 

@@ -2,6 +2,7 @@
 
 import { expect, test } from "bun:test";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, RISE, WALL_HEIGHT } from "../../content/building.ts";
+import { slopeKind } from "../../content/slopes.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import {
@@ -13,6 +14,8 @@ import {
   ROLE_PILLAR,
   ROLE_STAIRS,
   ROLE_WALL,
+  floorFace,
+  floorTop,
   frameAxes,
   freePose,
   makeAim,
@@ -20,6 +23,7 @@ import {
   obstructed,
   pickSnap,
   poseAt,
+  restPose,
   socketsFor,
   socketsOf,
   tooHigh,
@@ -27,6 +31,7 @@ import {
   units,
   type Pose,
 } from "../../shared/world/snap.ts";
+import { ROOF_RISE, ROOF_THICK, TRIANGLE_HALF, hullWorld } from "../fixtures/hulls.ts";
 import { flatWorld, type TestWorld } from "../fixtures/world.ts";
 
 const U = STRUCT_UNITS;
@@ -281,4 +286,96 @@ test("on open ground: a foundation's top a little above the highest ground under
   expect(freePose(flat, w.reg, w.kind("core:pillar_stone"), 50, 60, 0, 0, pose)).toBe(true);
   expect((pose.y - units(WALL_HEIGHT / 2)) / U).toBe(-0.125);
   for (const piece of ["wall_stone", "ceiling_stone", "stairs_stone", "door_stone", "doorframe_stone"]) expect(freePose(flat, w.reg, w.kind(`core:${piece}`), 50, 60, 0, 0, pose)).toBe(false);
+});
+
+test("a sloped piece is in the way where its parts are and not where its box holds air, and is not in the way of what only touches it, at any facing", () => {
+  const w = hullWorld();
+  const ramp = w.kind("test:ramp");
+  const box = w.kind("core:storage_box");
+  const wall = w.kind("core:wall_stone");
+  const blocked = (kind: number, x: number, y: number, z: number, yaw = 0): boolean => obstructed(w.structs, w.reg.parts, kind, x, y, z, yaw);
+  // A ramp a storey high on flat ground, rising toward +Z: its slope is y = z - 98.5 between z = 98.5 and 101.5.
+  const r = w.structs.add(ramp, 100, 1.5, 100, 0, 7, 1);
+  expect(blocked(box, 100, 0.5, 101)).toBe(true);
+  // Over its low end, in the air its box holds.
+  expect(blocked(box, 100, 2, 99)).toBe(false);
+  // Before its foot, beside it, beyond its high end.
+  expect(blocked(box, 100, 0.3125, 98.1)).toBe(false);
+  expect(blocked(box, 102.05, 0.3125, 100)).toBe(false);
+  expect(blocked(box, 100, 0.3125, 101.9)).toBe(false);
+  // A wall across it, either way round, and a second ramp half on it; not one beside it or one going on from its top.
+  expect(blocked(wall, 100, 1.5, 100, Q)).toBe(true);
+  const across = w.structs.add(wall, 100, 1.5, 100, Q, 7, 1);
+  w.structs.remove(r);
+  expect(blocked(ramp, 100, 1.5, 100)).toBe(true);
+  w.structs.remove(across);
+  w.structs.add(ramp, 100, 1.5, 100, 0, 7, 1);
+  expect(blocked(ramp, 100, 1.5, 101.5)).toBe(true);
+  expect(blocked(ramp, 103, 1.5, 100)).toBe(false);
+  expect(blocked(ramp, 100, 4.5, 103)).toBe(false);
+
+  // A ramp on a foundation, rising from the edge of a second to a ceiling a storey up, a wall along its side: each fits among
+  // the others wherever the first was turned, and moved a little into one of them, it does not.
+  const axes = new Int32Array(4);
+  for (let yaw = 0; yaw < 4 * Q; yaw += 1531) {
+    frameAxes(yaw, axes);
+    const at = (i: number, j: number): [number, number] => [(150 * U + i * axes[0]! + j * axes[2]!) / U, (150 * U + i * axes[1]! + j * axes[3]!) / U];
+    // Each piece, and how far it is moved across the ramp, up, and up the ramp to go into a neighbour.
+    const put = (id: string, [x, z]: [number, number], y: number, turn: number, by: [number, number, number]) => ({ k: w.kind(id), x, y, z, a: (yaw + turn) & 0xffff, by });
+    const set = [
+      put("core:foundation_stone", at(0, 0), FOUNDATION_THICK / 2, 0, [0, 0, 0.5]),
+      put("core:foundation_stone", at(0, 2), FOUNDATION_THICK / 2, 0, [0, 0.2, 0]),
+      put("test:ramp", at(0, 2), FOUNDATION_THICK + 1.5, 0, [0, -0.2, 0]),
+      put("core:ceiling_stone", at(0, 4), FOUNDATION_THICK + 3 - FLOOR_THICK / 2, 0, [0, -0.25, -0.5]),
+      put("core:wall_stone", at(1, 2), FOUNDATION_THICK + 1.5, Q, [-0.5, 0, 0]),
+    ];
+    for (let left = 0; left < set.length; left++) {
+      const refs = set.flatMap((p, i) => (i === left ? [] : [w.structs.add(p.k, p.x, p.y, p.z, p.a, 7, 1)]));
+      const { k, x, y, z, a, by } = set[left]!;
+      const mx = (by[0] * axes[0]! + by[2] * axes[2]!) / HALF_SIDE;
+      const mz = (by[0] * axes[1]! + by[2] * axes[3]!) / HALF_SIDE;
+      expect([yaw, left, blocked(k, x, y, z, a), blocked(k, x + mx, y + by[1], z + mz, a)]).toEqual([yaw, left, false, true]);
+      for (const ref of refs) w.structs.remove(ref);
+    }
+  }
+});
+
+test("a large new piece is asked against what stands under its far end, past the 3 m a building piece reaches", () => {
+  const w = flatWorld(4);
+  const roof = w.kind(slopeKind("roof"));
+  const box = w.kind("core:storage_box");
+  // An 8 m pitched roof whose middle is at (96.9, 96.9); a box in its ridge 3.6 m east of that, in the next 4 m cell.
+  w.structs.add(box, 100.5, 6.25, 96.9, Q, 7, 1);
+  expect(obstructed(w.structs, w.reg.parts, roof, 96.9, 5, 96.9, 0)).toBe(true);
+  expect(obstructed(w.structs, w.reg.parts, roof, 96.9, 7, 96.9, 0)).toBe(false);
+});
+
+test("a thing is set on a floor's top under its middle: a box's within a side square, a part's where the part is and only where it is level", () => {
+  const w = hullWorld();
+  const box = w.kind("core:storage_box");
+  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const lift = units(0.3125);
+  // A foundation of boxes, as before.
+  const f = w.structs.add(w.kind("core:foundation_stone"), 50, FOUNDATION_THICK / 2, 50, 0, 7, 1);
+  expect(restPose(w.structs, w.reg, f, box, 50.4, 49.2, 0, pose)).toBe(true);
+  expect([pose.x, pose.y, pose.z]).toEqual([units(50.4), units(FOUNDATION_THICK) + lift, units(49.2)]);
+  expect(restPose(w.structs, w.reg, f, box, 52, 50, 0, pose)).toBe(false);
+  // A triangle, its corner at its origin and its top level: on it, and not on the rest of the square about that corner.
+  const tri = w.structs.add(w.kind("test:triangle"), 100, TRIANGLE_HALF, 100, 0, 7, 1);
+  expect(restPose(w.structs, w.reg, tri, box, 101.5, 100.8, 0, pose)).toBe(true);
+  expect(pose.y).toBe(units(2 * TRIANGLE_HALF) + lift);
+  expect([floorTop(w.structs, w.reg, tri, units(101.5), units(100.8)), floorFace.level]).toEqual([units(2 * TRIANGLE_HALF), true]);
+  for (const [x, z] of [[99, 99], [102.8, 102.4], [100.2, 101.4]]) expect([x, z, restPose(w.structs, w.reg, tri, box, x!, z!, 0, pose)]).toEqual([x, z, false]);
+  // A sloped roof slab: its top is found where the thing would be, rising with the slope, but nothing is set on it.
+  const roof = w.structs.add(w.kind("test:roof"), 150, 6, 150, 0, 7, 1);
+  for (const z of [-1, 0, 1.2]) {
+    const top = floorTop(w.structs, w.reg, roof, units(150.3), units(150 + z));
+    expect(top / U).toBeCloseTo(6 + (z * ROOF_RISE) / 3 + ROOF_THICK / 2, 2);
+    expect(floorFace.level).toBe(false);
+    expect(restPose(w.structs, w.reg, roof, box, 150.3, 150 + z, 0, pose)).toBe(false);
+  }
+  expect(floorTop(w.structs, w.reg, roof, units(152), units(150))).toBeNaN();
+  // Nor on what is no floor.
+  const r = w.structs.add(w.kind("test:ramp"), 200, 1.5, 200, 0, 7, 1);
+  expect(floorTop(w.structs, w.reg, r, units(200), units(200))).toBeNaN();
 });

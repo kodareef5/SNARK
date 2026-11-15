@@ -19,10 +19,11 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_WAIT } from "../../shared/net/protocol.ts";
 import { BTN_USE, stanceEye } from "../../shared/sim/character.ts";
 import { lookDirection } from "../../shared/world/ray.ts";
-import { ON_TOP } from "../../shared/world/snap.ts";
+import { ON_TOP, floorFace, floorTop, poseAt, units, type Pose } from "../../shared/world/snap.ts";
 import { GONE_FELL } from "../../shared/world/structures.ts";
 import { NO_PIN, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_UNLOCK, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { builder } from "../fixtures/build.ts";
+import { ROOF_RISE, ROOF_THICK, hullRegistry } from "../fixtures/hulls.ts";
 import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
@@ -384,6 +385,41 @@ test("a vault whose floor goes comes down whole, onto whatever is under it, with
   expect(row(h, state.at).y).toBeCloseTo(Math.ceil(at.y * U) / U + 1.25, 6);
   expect([h.host.items.inv(state).total(id("stone")), h.host.fixtures.count]).toEqual([70, 1]);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a vault that comes down onto a sloped roof lands on the slope under its middle, not at the height of the roof's top edge, and stands there", () => {
+  const reg = hullRegistry();
+  const kind = (name: string): number => reg.index.get(name)!;
+  const h = new Harness({}, 1, 60, { dev: true }, reg);
+  const g = flatGround(h, 12, 12);
+  const structs = h.world.structs;
+  const pose: Pose = { x: 0, y: 0, z: 0, yaw: 0 };
+  const pillar = (x: number, z: number): number => structs.add(kind("core:pillar_wood"), x, g.y + 1.375, z, 0, 1, 10000);
+  const on = (target: number, name: string): number => {
+    expect(poseAt(structs, reg, target, kind(name), 0, 0, pose)).toBe(true);
+    return structs.add(kind(name), pose.x / U, pose.y / U, pose.z / U, 0, 1, 10000);
+  };
+  // A roof slab on a pillar, rising half a metre a metre toward +Z. Beside it two pillars, one on the other, and a floor on them
+  // reaching over the roof, with a vault on it whose middle is over the slab a metre up its slope.
+  const [rx, rz] = [g.x + 4, g.z + 6];
+  const roof = on(pillar(rx, rz), "test:roof");
+  const base = pillar(rx + 2.7, rz);
+  const floor = on(on(base, "core:pillar_wood"), "core:ceiling_wood");
+  const [vx, vz] = [rx + 1.3, rz + 1];
+  const vault = structs.add(kind("core:vault"), vx, (floorTop(structs, reg, floor, units(vx), units(vz)) + units(1.25)) / U, vz, 0, 1, 50000);
+  expect([roof, floor, vault].map((ref) => h.host.build.support.standsRef(ref))).toEqual([true, true, true]);
+  const was = row(h, vault);
+  const slope = floorTop(structs, reg, roof, units(vx), units(vz)) / U;
+  expect(floorFace.level).toBe(false);
+  expect(Math.abs(slope - row(h, roof).y - (ROOF_RISE / 3 + ROOF_THICK / 2))).toBeLessThan(2 / U);
+  structs.damage(base, 1e9, h.world.tick);
+  h.run(900);
+  expect([row(h, floor).kind, row(h, roof).kind !== 0, h.host.build.landed]).toEqual([0, true, 1]);
+  let at = -1;
+  for (const [c, t] of structs.chunks.entries()) for (let s = 0; t && s < t.high; s++) if (t.kind[s] === kind("core:vault")) at = c * 65536 + s;
+  // Before, it landed at the height of the slab's top edge, 0.65 m higher, over the whole of the slab.
+  expect([row(h, at).x, row(h, at).z, row(h, at).y]).toEqual([was.x, was.z, slope + 1.25]);
+  expect(h.host.build.support.standsRef(at)).toBe(true);
 });
 
 test("in the whole client: a box is named with the key that opens it; another tribe's, locked with a PIN, asks for the PIN once and is given it after that", () => {

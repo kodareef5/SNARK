@@ -1,6 +1,7 @@
 // Convex parts: a piece's form as the hull of a few corners, for ramps, sloped roofs and triangles. A part's corners are set by
 // the same whole-number frame vectors the piece is placed by, so pieces that share corners share faces at every yaw. An upright
-// capsule meets a part by the separating-axis test, and a ray by clipping it against the part's planes.
+// capsule meets a part by the separating-axis test, and a ray by clipping it against the part's planes. For placing, a part
+// meets a box or another part by the same test, as two solids.
 
 import { HALF_SIDE, frameAxes, sixtyOf } from "./frame.ts";
 
@@ -379,6 +380,117 @@ function onFace(faces: number, face: number, x: number, y: number, z: number): b
     if (f !== face && planes[o]! * x + planes[o + 1]! * y + planes[o + 2]! * z - planes[o + 3]! > 1e-9) return false;
   }
   return true;
+}
+
+/** Most edges a part's hull can have. */
+const MAX_EDGES = 3 * MAX_CORNERS - 6;
+
+/**
+ * A convex solid in the world, to ask whether two overlap: its corners, and its faces' and edges' directions as unit vectors,
+ * each direction kept once. A placed part (partSolid) or a box turned about the vertical (boxSolid).
+ */
+export class Solid {
+  corners = 0;
+  faces = 0;
+  edges = 0;
+  readonly at = new Float64Array(3 * MAX_CORNERS);
+  readonly face = new Float64Array(3 * MAX_FACES);
+  readonly edge = new Float64Array(3 * MAX_EDGES);
+}
+
+/** Adds the direction (x, y, z) to `to`, of which `n` are kept, unless it or its opposite is there. Returns how many are kept. */
+function keep(to: Float64Array, n: number, x: number, y: number, z: number): number {
+  const l = Math.sqrt(x * x + y * y + z * z);
+  if (l < 1e-12) return n;
+  x /= l;
+  y /= l;
+  z /= l;
+  for (let k = 0; k < n * 3; k += 3) if (Math.abs(to[k]! * x + to[k + 1]! * y + to[k + 2]! * z) > 1 - 1e-9) return n;
+  to[n * 3] = x;
+  to[n * 3 + 1] = y;
+  to[n * 3 + 2] = z;
+  return n + 1;
+}
+
+/** Part `p` of `t` on a piece at (x, y, z) metres turned `yaw`, into `out`. */
+export function partSolid(t: HullTable, p: number, yaw: number, x: number, y: number, z: number, out: Solid): void {
+  place(t, p, yaw);
+  const corners = t.corner[p + 1]! - t.corner[p]!;
+  for (let c = 0; c < corners * 3; c += 3) {
+    out.at[c] = x + placed[c]!;
+    out.at[c + 1] = y + placed[c + 1]!;
+    out.at[c + 2] = z + placed[c + 2]!;
+  }
+  out.corners = corners;
+  out.faces = 0;
+  for (let o = 0, end = (t.face[p + 1]! - t.face[p]!) * 4; o < end; o += 4) out.faces = keep(out.face, out.faces, planes[o]!, planes[o + 1]!, planes[o + 2]!);
+  out.edges = 0;
+  const ec = t.edgeCorners;
+  for (let e = t.edge[p]!, end = t.edge[p + 1]!; e < end; e++) {
+    const i = ec[e * 2]! * 3;
+    const j = ec[e * 2 + 1]! * 3;
+    out.edges = keep(out.edge, out.edges, placed[j]! - placed[i]!, placed[j + 1]! - placed[i + 1]!, placed[j + 2]! - placed[i + 2]!);
+  }
+}
+
+/** A box centred at (x, y, z) metres with half extents (hx, hy, hz), its X along (c, 0, -s) and its Z along (s, 0, c), into `out`. */
+export function boxSolid(x: number, y: number, z: number, c: number, s: number, hx: number, hy: number, hz: number, out: Solid): void {
+  for (let m = 0; m < 8; m++) {
+    const i = m & 1 ? hx : -hx;
+    const j = m & 2 ? hy : -hy;
+    const k = m & 4 ? hz : -hz;
+    out.at[m * 3] = x + c * i + s * k;
+    out.at[m * 3 + 1] = y + j;
+    out.at[m * 3 + 2] = z - s * i + c * k;
+  }
+  out.corners = 8;
+  out.faces = keep(out.face, keep(out.face, keep(out.face, 0, c, 0, -s), 0, 1, 0), s, 0, c);
+  out.edges = keep(out.edge, keep(out.edge, keep(out.edge, 0, c, 0, -s), 0, 1, 0), s, 0, c);
+}
+
+/**
+ * Whether two solids overlap by more than each gives way. Along any direction a solid gives way by `side` for as much of the
+ * direction as is level and `up` for as much as is upright, but never so far that it is left thinner than 2 * `thin`, as a
+ * box shrunk for the same test would be. They are apart exactly when one of their faces' directions, or a direction square to
+ * an edge of each, separates them.
+ */
+export function solidsCross(a: Solid, aSide: number, aUp: number, b: Solid, bSide: number, bUp: number, thin: number): boolean {
+  for (let k = 0; k < a.faces * 3; k += 3) if (apart(a, aSide, aUp, b, bSide, bUp, thin, a.face[k]!, a.face[k + 1]!, a.face[k + 2]!)) return false;
+  for (let k = 0; k < b.faces * 3; k += 3) if (apart(a, aSide, aUp, b, bSide, bUp, thin, b.face[k]!, b.face[k + 1]!, b.face[k + 2]!)) return false;
+  const ae = a.edge;
+  const be = b.edge;
+  for (let i = 0; i < a.edges * 3; i += 3) {
+    for (let j = 0; j < b.edges * 3; j += 3) {
+      const x = ae[i + 1]! * be[j + 2]! - ae[i + 2]! * be[j + 1]!;
+      const y = ae[i + 2]! * be[j]! - ae[i]! * be[j + 2]!;
+      const z = ae[i]! * be[j + 1]! - ae[i + 1]! * be[j]!;
+      const l = Math.sqrt(x * x + y * y + z * z);
+      if (l > 1e-9 && apart(a, aSide, aUp, b, bSide, bUp, thin, x / l, y / l, z / l)) return false;
+    }
+  }
+  return true;
+}
+
+function apart(a: Solid, aSide: number, aUp: number, b: Solid, bSide: number, bUp: number, thin: number, nx: number, ny: number, nz: number): boolean {
+  let a0 = Infinity;
+  let a1 = -Infinity;
+  for (let k = 0; k < a.corners * 3; k += 3) {
+    const d = a.at[k]! * nx + a.at[k + 1]! * ny + a.at[k + 2]! * nz;
+    if (d < a0) a0 = d;
+    if (d > a1) a1 = d;
+  }
+  let b0 = Infinity;
+  let b1 = -Infinity;
+  for (let k = 0; k < b.corners * 3; k += 3) {
+    const d = b.at[k]! * nx + b.at[k + 1]! * ny + b.at[k + 2]! * nz;
+    if (d < b0) b0 = d;
+    if (d > b1) b1 = d;
+  }
+  const level = Math.sqrt(nx * nx + nz * nz);
+  const upright = Math.abs(ny);
+  const ga = Math.min(aSide * level + aUp * upright, Math.max(0, (a1 - a0) / 2 - thin));
+  const gb = Math.min(bSide * level + bUp * upright, Math.max(0, (b1 - b0) / 2 - thin));
+  return a1 - ga <= b0 + gb || b1 - gb <= a0 + ga;
 }
 
 /** The outward normal of the face the last rayHull entered by, in world space, or all zero if the ray began inside. */

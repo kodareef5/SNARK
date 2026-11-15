@@ -1,14 +1,15 @@
 // The far city on a GPU (client/core/render/farcity.ts), a check of tools/probe-lit.ts. A street of frame buildings from
-// 250 m to 1.5 km off on medium, every box, lattice, the fade between the lattice and the mass, and the mass, drawn by runs
-// of chunks with some of them held by the near store, is held to the software rasterizer pixel by pixel: the ranged
-// draws, the tiles' vertices and the fade in as well as out.
+// 250 m to 1.5 km off on medium, with ruins of the sloped statics across it, every box, lattice, the fade between the
+// lattice and the mass, and the mass, drawn by runs of chunks with some of them held by the near store, is held to the
+// software rasterizer pixel by pixel: the ranged draws, the tiles' vertices, sloped parts' faces and the fade in as well
+// as out.
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { CITY_SLOTS } from "../../client/core/render/farcity.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import type { MapStatic } from "../../shared/world/mapfile.ts";
-import { building, cityWorld, type CityWorld } from "../../tests/fixtures/cityworld.ts";
+import { building, cityWorld, slopes, type CityWorld } from "../../tests/fixtures/cityworld.ts";
 import { buildCorePack } from "../pack/build.ts";
 import { PICK_FAR } from "../snap/raster.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
@@ -34,7 +35,12 @@ const made = { key: "", held: [] as Held[] };
 
 function street(): MapStatic[] {
   const out: MapStatic[] = [];
-  for (let d = FROM, k = 0; d <= TO; d += CHUNK_SIZE, k++) out.push(...building(AT.x + d + 32, AT.z + (k % 2 === 0 ? 40 : -40), 0, 4 + (k * 7) % 9, 2, (k * 3100) % 16384));
+  for (let d = FROM, k = 0; d <= TO; d += CHUNK_SIZE, k++) {
+    const side = k % 2 === 0 ? 40 : -40;
+    out.push(...building(AT.x + d + 32, AT.z + side, 0, 4 + (k * 7) % 9, 2, (k * 3100) % 16384));
+    // Across from each building, a ruin of every sloped kind, turned on from the last.
+    out.push(...slopes(AT.x + d + 32, AT.z - side, 0, (k * 5300) % 65536).all);
+  }
   return out;
 }
 
