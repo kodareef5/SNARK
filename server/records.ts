@@ -96,6 +96,11 @@ export class EntityRecord {
   /** Content index of its saddle, or 0. */
   saddle = 0;
   /**
+   * A creature in its own flight (MODE_FLYER) when last saved, so that it loads in the air and does not fall
+   * (planning/reference/flyers-plan.md, FL0). Refreshed from the simulation when saved, as the position is.
+   */
+  flying = false;
+  /**
    * Breeding (server/breeding.ts). `mating` is whether an owned creature is willing to mate, and `mateReadyAt` the tick
    * from which a female may again (0 for now). `span` and `grown` are the ticks growing takes and the tick it ends,
    * both 0 for one that is grown. `growDue` is the tick it is next a hundredth more grown. It is derived, not saved.

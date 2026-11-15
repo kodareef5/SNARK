@@ -10,7 +10,7 @@ import { B_CHEST, B_FINGERS_L, B_FOOT_L, B_HEAD, B_HIPS, B_NECK, B_SHOULDER_L, B
 import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
-import { MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
+import { MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
 import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
 import { cradle } from "./hold.ts";
 
@@ -31,6 +31,30 @@ export const DIR_STEPS = 16;
 export const PITCH_STEPS = 31;
 
 /**
+ * A creature in its own flight (MODE_FLYER), protocol 14 (planning/reference/flyers-plan.md, FL0), has its motion bits laid
+ * out anew, since in flight it neither crouches, strafes, swims nor stands: its speed through the air in FLY_SPEED_STEP
+ * units in the speed bits (30 m/s at most), its bank in the direction bits, ANIM_FLYING in the stance bits, and its climb in
+ * the two bits a swimmer and a faller use. Any other body packs as it did. FL4 poses it.
+ */
+export const FLY_SPEED_STEP = 2;
+/** The stance bits' value for a body in flight. No stance is 3. */
+export const ANIM_FLYING = 3;
+/**
+ * `AnimState.bank`, from -BANK_STEPS to BANK_STEPS: how far, in BANK_STEP radians, it faces to the left of the way it
+ * travels, as when it turns left and its velocity lags its facing. FL4 rolls it toward that side. 0 at no speed.
+ */
+export const BANK_STEPS = 7;
+export const BANK_STEP = PI / 32;
+/** `AnimState.climb`: the way it travels, level, rising above 15 degrees, falling below 15, and falling below 45. */
+export const CLIMB_LEVEL = 0;
+export const CLIMB_UP = 1;
+export const CLIMB_DOWN = 2;
+export const CLIMB_DIVE = 3;
+/** The sines of 15 and 45 degrees, written out so both engines compare the same numbers. */
+const SIN_15 = 0.25881904510252074;
+const SIN_45 = 0.7071067811865476;
+
+/**
  * A creature's cues (shared/anim/creature.ts), sent beside the pose state as one word: knocked out in bit 0, then a CUE_
  * for what its whole body goes through and the low byte of its first tick, then a LAYER_ for what plays over that and
  * the low byte of its first tick. The server clears a cue before its start can be counted twice. Then states that last
@@ -43,6 +67,13 @@ export const CUE_STARTLE = 1;
 export const CUE_LAND = 2;
 /** Going down when knocked out, getting up when not. */
 export const CUE_TORPOR = 3;
+/**
+ * Protocol 14 (planning/reference/flyers-plan.md): a flyer taking off, and its barrel roll. 6 and 7 are free. A creature
+ * that carries in its feet has HOLD_CARRY as its hold, as a survivor carrying in her arms does, so its grab and its letting
+ * go can begin at its action's start and need no cue.
+ */
+export const CUE_TAKEOFF = 4;
+export const CUE_ROLL = 5;
 export const LAYER_NONE = 0;
 export const LAYER_FLINCH = 1;
 export const LAYER_EAT = 2;
@@ -79,6 +110,9 @@ export class AnimState {
   /** -PITCH_STEPS (down) to PITCH_STEPS (up). */
   pitch = 0;
   stance = STANCE_STAND;
+  /** In flight only (MODE_FLYER), else 0: -BANK_STEPS to BANK_STEPS, and a CLIMB_. Its `speed` then counts FLY_SPEED_STEP and `dir` is 0. */
+  bank = 0;
+  climb = CLIMB_LEVEL;
   /** The act (shared/sim/weapon.ts) in the low three bits, then the hold (HOLD_*) in three. actionStart is the low byte of the act's first tick. */
   action = 0;
   actionStart = 0;
@@ -100,7 +134,10 @@ export class AnimState {
 
   /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
-    const motion = this.speed | (this.dir << 4) | (this.stance << 8) | (this.mode === MODE_SWIM ? 1 << 10 : 0) | (this.grounded ? 0 : 1 << 11);
+    const motion =
+      this.mode === MODE_FLYER
+        ? this.speed | ((this.bank & 15) << 4) | (ANIM_FLYING << 8) | ((this.climb & 3) << 10)
+        : this.speed | (this.dir << 4) | (this.stance << 8) | (this.mode === MODE_SWIM ? 1 << 10 : 0) | (this.grounded ? 0 : 1 << 11);
     return (motion | ((this.pitch & 63) << ANIM_LOOK_SHIFT) | (this.action << ANIM_ACTION_SHIFT) | ((this.actionStart & 255) << (ANIM_ACTION_SHIFT + 6))) >>> 0;
   }
 
@@ -134,27 +171,56 @@ export class AnimState {
   unpack(word: number, cue = 0): void {
     this.unpackCue(cue);
     this.speed = word & 15;
-    this.dir = (word >>> 4) & 15;
-    this.stance = (word >>> 8) & 3;
-    this.mode = (word & (1 << 10)) !== 0 ? MODE_SWIM : MODE_WALK;
-    this.grounded = (word & (1 << 11)) === 0;
+    if (((word >>> 8) & 3) === ANIM_FLYING) {
+      this.mode = MODE_FLYER;
+      this.grounded = false;
+      this.stance = STANCE_STAND;
+      this.dir = 0;
+      this.bank = ((word >>> 4) & 15) >= 8 ? ((word >>> 4) & 15) - 16 : (word >>> 4) & 15;
+      this.climb = (word >>> 10) & 3;
+    } else {
+      this.dir = (word >>> 4) & 15;
+      this.stance = (word >>> 8) & 3;
+      this.mode = (word & (1 << 10)) !== 0 ? MODE_SWIM : MODE_WALK;
+      this.grounded = (word & (1 << 11)) === 0;
+      this.bank = 0;
+      this.climb = CLIMB_LEVEL;
+    }
     const look = (word >>> ANIM_LOOK_SHIFT) & 63;
     this.pitch = look >= 32 ? look - 64 : look;
     this.action = (word >>> ANIM_ACTION_SHIFT) & 63;
     this.actionStart = (word >>> (ANIM_ACTION_SHIFT + 6)) & 255;
   }
 
-  /** `yaw` and `pitch` are in radians. */
-  setMotion(vx: number, vz: number, yaw: number, pitch: number): void {
+  /** `yaw` and `pitch` are in radians. Set `mode` first: a flyer's speed counts `vy` too, which no other body's does. */
+  setMotion(vx: number, vz: number, yaw: number, pitch: number, vy = 0): void {
     const s = detSin(yaw);
     const c = detCos(yaw);
     const forward = vx * s + vz * c;
     const left = vx * c - vz * s;
+    this.pitch = clamp(Math.floor((pitch / (PI / 2)) * PITCH_STEPS + 0.5), -PITCH_STEPS, PITCH_STEPS);
+    if (this.mode === MODE_FLYER) {
+      const through = Math.sqrt(vx * vx + vy * vy + vz * vz);
+      const speed = Math.floor(through / FLY_SPEED_STEP + 0.5);
+      this.speed = speed > SPEED_MAX ? SPEED_MAX : speed;
+      this.dir = 0;
+      if (this.speed === 0) {
+        this.bank = 0;
+        this.climb = CLIMB_LEVEL;
+        return;
+      }
+      // Travelling to the right of its facing is facing to the left of its travel.
+      this.bank = clamp(Math.floor(-detAtan2(left, forward) / BANK_STEP + 0.5), -BANK_STEPS, BANK_STEPS);
+      const rise = vy / through;
+      this.climb = rise >= SIN_15 ? CLIMB_UP : rise <= -SIN_45 ? CLIMB_DIVE : rise <= -SIN_15 ? CLIMB_DOWN : CLIMB_LEVEL;
+      return;
+    }
     const speed = Math.floor(Math.sqrt(vx * vx + vz * vz) / SPEED_STEP + 0.5);
     this.speed = speed > SPEED_MAX ? SPEED_MAX : speed;
     const turn = detAtan2(left, forward) / TAU;
     this.dir = this.speed === 0 ? 0 : (Math.floor(turn * DIR_STEPS + 0.5) + DIR_STEPS) % DIR_STEPS;
-    this.pitch = clamp(Math.floor((pitch / (PI / 2)) * PITCH_STEPS + 0.5), -PITCH_STEPS, PITCH_STEPS);
+    this.bank = 0;
+    this.climb = CLIMB_LEVEL;
   }
 }
 

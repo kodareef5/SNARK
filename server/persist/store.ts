@@ -27,8 +27,10 @@ const CHUNK_FORMAT = 1;
  * unread, and an egg taken up would never hatch.
  * 5 saves slots as COMP_SLOTS3, with each slot's flags (a blueprint), and a job's blueprint quality. A build without them
  * would keep the slots unread and the record empty-handed.
+ * 6 saves whether a creature flies, a bit at the end of COMP_STATE. A build without it would write the part back without
+ * the bit, and a flyer parked in the air would load walking and fall.
  */
-const RECORD_FORMAT = 5;
+const RECORD_FORMAT = 6;
 /** The first revision whose vitals hold, beyond a body's own rates, only what its saved buffs give. */
 const FORMAT_BUFFS = 3;
 // A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
@@ -41,7 +43,7 @@ const COMP_IDENTITY = 6;
 const COMP_SLOTS = 7;
 const COMP_VITALS4 = 8;
 const COMP_MARKERS = 5;
-/** Dead flag, expiry tick and the hotbar slot in hand. */
+/** Dead flag, expiry tick, the hotbar slot in hand, and whether it flies. */
 const COMP_STATE = 9;
 /** The bytes of shared/anim/look.ts. */
 const COMP_LOOK = 10;
@@ -378,7 +380,7 @@ export class WorldStore {
     w.string(rec.name);
     const inv = rec.inv;
     const used = inv ? inv.used() : 0;
-    const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0;
+    const hasState = rec.dead || rec.expiresAt !== 0 || rec.held >= 0 || rec.flying;
     const hasProgress = rec.xp > 0 || rec.engrams.length > 0 || rec.jobs.length > 0;
     const hasBreed = rec.mating || rec.mateReadyAt !== 0 || rec.grown !== 0 || rec.egg !== null;
     let refs = 0;
@@ -483,6 +485,8 @@ export class WorldStore {
       c.uint53(rec.expiresAt);
       // The hotbar slot in hand plus one, or 0 for none. Older saves end before this.
       c.u8(rec.held + 1);
+      // Whether it flies. Saves before revision 6 end before it, and their padding reads as 0.
+      c.bool(rec.flying);
       this.part(COMP_STATE);
     }
     if (rec.team !== 0) {
@@ -738,6 +742,7 @@ export class WorldStore {
           rec.dead = c.bool();
           rec.expiresAt = c.uint53();
           rec.held = c.pos + 8 <= blob.length * 8 ? c.u8() - 1 : -1;
+          rec.flying = c.pos + 1 <= blob.length * 8 && c.bool();
         } else if (component === COMP_TEAM) {
           rec.team = c.varint();
           rec.rank = c.u8();
