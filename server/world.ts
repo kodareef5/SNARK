@@ -1,3 +1,4 @@
+import type { CreatureAnim } from "../shared/anim/creature.ts";
 import type { Rig } from "../shared/anim/rigs.ts";
 import { NO_CLIPS } from "../shared/anim/clip.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
@@ -36,6 +37,8 @@ export interface ServerWorld extends CollisionWorld {
   anim: HumanAnim;
   /** Creature skeletons by rig id, from the same pack as the clips. Empty without one. */
   rigs: Map<string, Rig>;
+  /** What each species drawn on a rig of its own plays on it, by content index. */
+  anims: (CreatureAnim | null)[];
   /** Where moving entities were over the last few ticks. Code that starts or stops stepping an entity must tell it. */
   readonly history: History;
   /** Persisted. Never reset and never set by hand. */
@@ -72,6 +75,7 @@ export function createWorld(reg: Registry, dims: MapDims, hf: Heightfield, mapId
     history: new History(ents),
     anim: new HumanAnim(NO_CLIPS),
     rigs: new Map(),
+    anims: [],
     mapId,
     mapHash,
     spawn,

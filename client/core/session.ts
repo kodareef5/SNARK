@@ -157,8 +157,9 @@ export class RemoteSample {
   readonly name: string[] = new Array<string>(MAX_VIEW).fill("");
   /** The moment sampled, in ticks. It may be fractional. */
   tick = 0;
-  /** The pose, packed as the server sent it. See `AnimState.pack`. */
+  /** The pose and the cues, packed as the server sent them. See `AnimState.pack` and `packCue`. */
   readonly anim = new Uint32Array(MAX_VIEW);
+  readonly cue = new Uint32Array(MAX_VIEW);
   /** LOOK_BYTES each, valid where `hasLook` is 1. */
   readonly look = new Uint8Array(MAX_VIEW * LOOK_BYTES);
   readonly hasLook = new Uint8Array(MAX_VIEW);
@@ -596,8 +597,10 @@ export class ClientSession {
         out.yaw[n] = ((a!.yaw[i]! + turn * k) * TAU) / 1024;
         // The pose is not blended. It comes from the nearer snapshot.
         out.anim[n] = k < 0.5 ? a!.anim[i]! : b.anim[j]!;
+        out.cue[n] = k < 0.5 ? a!.cue[i]! : b.cue[j]!;
       } else {
         out.anim[n] = b.anim[j]!;
+        out.cue[n] = b.cue[j]!;
         out.x[n] = dequantX(b.qx[j]!);
         out.y[n] = dequantY(b.qy[j]!);
         out.z[n] = dequantX(b.qz[j]!);

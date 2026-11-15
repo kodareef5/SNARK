@@ -1,6 +1,6 @@
 // Every creature found under assets/source, held to what its asset.ts says of it. A new creature is tested without being named here.
 import { expect, test } from "bun:test";
-import { creaturePose, rayCreature } from "../../shared/anim/creature.ts";
+import { CreatureAnim, creaturePose, rayCreature } from "../../shared/anim/creature.ts";
 import { ZONE_HEAD, ZONE_NONE } from "../../shared/anim/human.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
@@ -73,6 +73,7 @@ test("a creature stands, walks, runs and strikes on its clips: its feet stay by 
   const st = new AnimState();
   for (const { id, spec } of CREATURE_ASSETS) {
     const rig = rigs.get(id)!;
+    const a = new CreatureAnim(rig, 4, 0);
     const scale = rig.mid;
     const feet = spec.feet.map((name) => rig.names.indexOf(name));
     const headZone = spec.zones.find((z) => z.zone === "head");
@@ -85,7 +86,7 @@ test("a creature stands, walks, runs and strikes on its clips: its feet stay by 
         st.speed = speed;
         st.seed = 11;
         st.setAction(strike ? ACT_SWING : ACT_NONE, HOLD_HANDS, 205);
-        creaturePose(rig, st, tick, 4, rig.a);
+        creaturePose(a, st, tick, rig.a);
         solve(rig, rig.a, rig.solved);
         const pos = rig.solved.pos;
         for (let k = 0; k < pos.length; k++) expect(Number.isFinite(pos[k]!)).toBe(true);
@@ -104,19 +105,19 @@ test("a creature stands, walks, runs and strikes on its clips: its feet stay by 
         expect(low, where).toBeGreaterThan(-0.25 * scale);
         expect(high, where).toBeLessThan(0.45 * scale);
       }
-      if (speed > 0 && feet.length > 1 && rig.walk) expect(apart, where).toBeGreaterThan(0.3 * scale);
+      if (speed > 0 && feet.length > 1 && a.walk) expect(apart, where).toBeGreaterThan(0.3 * scale);
     }
     // Below walking speed the pose is a blend of standing and walking.
-    if (!rig.idle || !rig.walk) continue;
+    if (!a.idle || !a.walk) continue;
     st.setAction(ACT_NONE, HOLD_HANDS, 0);
     st.speed = 1;
-    creaturePose(rig, st, 50, 4, rig.a);
+    creaturePose(a, st, 50, rig.a);
     const blended = rig.a.rot.slice();
     st.speed = 0;
-    creaturePose(rig, st, 50, 4, rig.a);
+    creaturePose(a, st, 50, rig.a);
     const still = rig.a.rot.slice();
     st.speed = 3;
-    creaturePose(rig, st, 50, 4, rig.a);
+    creaturePose(a, st, 50, rig.a);
     let between = 0;
     for (let k = 0; k < blended.length; k++) if (Math.abs(blended[k]! - still[k]!) > 1e-4 && Math.abs(blended[k]! - rig.a.rot[k]!) > 1e-4) between++;
     expect(between, id).toBeGreaterThan(10);
@@ -128,7 +129,8 @@ test("a creature is hit where it is: its head from in front, every zone from som
   st.setAction(ACT_NONE, HOLD_HANDS, 0);
   for (const { id, spec } of CREATURE_ASSETS) {
     const rig = rigs.get(id)!;
-    creaturePose(rig, st, 0, 4, rig.a);
+    const a = new CreatureAnim(rig, 4, 0);
+    creaturePose(a, st, 0, rig.a);
     solve(rig, rig.a, rig.solved);
     const out = [0, 0, 0];
     // The middle of a bone's capsule, in model space.
@@ -136,7 +138,7 @@ test("a creature is hit where it is: its head from in front, every zone from som
       boneToModel(rig.solved, b, (rig.capA[b * 3]! + rig.capB[b * 3]!) / 2, (rig.capA[b * 3 + 1]! + rig.capB[b * 3 + 1]!) / 2, (rig.capA[b * 3 + 2]! + rig.capB[b * 3 + 2]!) / 2, out);
       return [...out];
     };
-    const ray = (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, yaw = 0, bx = 0, bz = 0): number => rayCreature(rig, st, 0, 4, bx, 0, bz, yaw, ox, oy, oz, dx, dy, dz, 80);
+    const ray = (ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, yaw = 0, bx = 0, bz = 0): number => rayCreature(a, st, 0, bx, 0, bz, yaw, ox, oy, oz, dx, dy, dz, 80);
     // Every zone it has can be hit: a ray along some axis, at the middle of one of the zone's capsules, hits that zone first.
     const sides = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]] as const;
     for (const zone of new Set(spec.zones.map((z) => z.zone))) {

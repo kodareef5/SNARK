@@ -538,10 +538,15 @@ export class App {
       body.state.setMotion(session.own.vx, session.own.vz, body.yaw, 0);
       body.state.setAction(session.own.act, 0, session.simTick - session.own.actTicks);
       body.state.seed = bodySeed(body.id);
-      // The mount's colours come from its remote copy.
+      // The mount's colours and cues come from its remote copy.
       body.colors.fill(0);
+      body.state.unpackCue(0);
       const r = this.remote;
-      for (let i = 0; i < r.count; i++) if (r.id[i] === session.driving) body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
+      for (let i = 0; i < r.count; i++) {
+        if (r.id[i] !== session.driving) continue;
+        body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
+        body.state.unpackCue(r.cue[i]!);
+      }
     }
     this.scene.skip = riding ? session.driving : -1;
     this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;

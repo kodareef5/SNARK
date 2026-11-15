@@ -77,7 +77,8 @@ export class SkyBuilder {
   private readonly horizon: number | undefined;
   private readonly skies = new Map<number, Float64Array>();
   private readonly c = new Float64Array(3);
-  private readonly m = new Float64Array(3);
+  private readonly p = new Float64Array(6);
+  private readonly m = new Float64Array(6);
 
   constructor(air: Air = AIR, grades: readonly Grade[] = GRADES, horizon: number | undefined = HORIZON_ANCHOR) {
     this.atm = new Atmosphere(air);
@@ -95,12 +96,15 @@ export class SkyBuilder {
     return cardExposure(height, luminance(l.sun), luminance(l.moon), luminance(l.above));
   }
 
-  /** The physical sky with the sun at `height` degrees due +X, the sun's and the moon's added, before any scale. */
+  /**
+   * The physical sky with the sun at `height` degrees due +X, the sun's and the moon's added, before any scale: six
+   * numbers, the whole and the part the haze sends on from the sun or the moon straight, its glow round them.
+   */
   physical(height: number, view: readonly number[], out: Float64Array): void {
     const s = [Math.cos(height * DEG), Math.sin(height * DEG), 0];
     this.atm.sky(view, s, out);
     this.atm.sky(view, [-s[0]!, -s[1]!, 0], this.m);
-    for (let k = 0; k < 3; k++) out[k] = out[k]! + MOON * this.m[k]!;
+    for (let k = 0; k < 6; k++) out[k] = out[k]! + MOON * this.m[k]!;
   }
 
   /**
@@ -110,17 +114,17 @@ export class SkyBuilder {
   private skyFor(height: number): Float64Array {
     let s = this.skies.get(height);
     if (s) return s;
-    s = new Float64Array((SKY_SIZE * SKY_SIZE + RINGS * ROUND) * 3);
+    s = new Float64Array((SKY_SIZE * SKY_SIZE + RINGS * ROUND) * 6);
     let i = 0;
-    for (let y = 0; y < SKY_SIZE; y++) for (let x = 0; x < SKY_SIZE; x++, i += 3) this.physical(height, toward(elevationOf(y / (SKY_SIZE - 1)), aroundOf(x / (SKY_SIZE - 1))), s.subarray(i, i + 3));
-    for (let r = 0; r < RINGS; r++) for (let q = 0; q < ROUND; q++, i += 3) this.physical(height, toward(((r + 0.5) / RINGS) * 90, ((q + 0.5) / ROUND) * 180), s.subarray(i, i + 3));
+    for (let y = 0; y < SKY_SIZE; y++) for (let x = 0; x < SKY_SIZE; x++, i += 6) this.physical(height, toward(elevationOf(y / (SKY_SIZE - 1)), aroundOf(x / (SKY_SIZE - 1))), s.subarray(i, i + 6));
+    for (let r = 0; r < RINGS; r++) for (let q = 0; q < ROUND; q++, i += 6) this.physical(height, toward(((r + 0.5) / RINGS) * 90, ((q + 0.5) / ROUND) * 180), s.subarray(i, i + 6));
     this.skies.set(height, s);
     return s;
   }
 
-  /** Physical light `p` (three numbers at `at`) as the dome shows it before exposure: scaled and graded. */
+  /** Physical light `p` (six numbers at `at`) as the dome shows it before exposure: its haze glow graded, scaled, graded. */
   private graded(p: Float64Array, at: number, height: number, g: Grade, elevation: number, around: number, out: Float64Array): void {
-    for (let k = 0; k < 3; k++) out[k] = p[at + k]! * this.dome;
+    for (let k = 0; k < 3; k++) out[k] = (p[at + k]! + (g.haze - 1) * p[at + 3 + k]!) * this.dome;
     const v = toward(elevation, around);
     const cos = v[0]! * Math.cos(height * DEG) + v[1]! * Math.sin(height * DEG);
     gradeDome(out, g, elevation, Math.acos(Math.max(-1, Math.min(1, cos))) / DEG);
@@ -128,8 +132,8 @@ export class SkyBuilder {
 
   /** The dome before exposure at `elevation` and `around` degrees, for tools that look at it between texels. */
   domeAt(height: number, elevation: number, around: number, out: Float64Array): void {
-    this.physical(height, toward(elevation, around), out);
-    this.graded(out, 0, height, gradeAt(height, this.grades), elevation, around, out);
+    this.physical(height, toward(elevation, around), this.p);
+    this.graded(this.p, 0, height, gradeAt(height, this.grades), elevation, around, out);
   }
 
   /** Sunlight at the ground with the sun at `height`, or moonlight, balanced and scaled, its disc partly set near the horizon. */
@@ -146,8 +150,8 @@ export class SkyBuilder {
   private afterglow(height: number, g: Grade, above: Rgb): Rgb {
     const share = g.afterglow * (1 - discUp(height)) * smooth((height + GLOW_GONE) / (GLOW_GONE - GLOW_FULL));
     if (share <= 0) return [0, 0, 0];
-    this.physical(height, toward(3, 0), this.c);
-    this.graded(this.c, 0, height, g, 3, 0, this.c);
+    this.physical(height, toward(3, 0), this.p);
+    this.graded(this.p, 0, height, g, 3, 0, this.c);
     const c = [0, 1, 2].map((k) => this.c[k]! * this.balance[k]!);
     const k = (share * luminance(above)) / Math.max(luminance(c), 1e-30);
     return c.map((v) => v * k) as Rgb;
@@ -163,12 +167,12 @@ export class SkyBuilder {
     const s = this.skyFor(height);
     const above: Rgb = [0, 0, 0];
     let plain = 0;
-    let i = SKY_SIZE * SKY_SIZE * 3;
+    let i = SKY_SIZE * SKY_SIZE * 6;
     for (let r = 0; r < RINGS; r++) {
       const e = ((r + 0.5) / RINGS) * 90;
       // A cell is a ring's height by its share of half the circle, and the other half mirrors it.
       const w = 2 * Math.sin(e * DEG) * Math.cos(e * DEG) * (Math.PI / 2 / RINGS) * (Math.PI / ROUND);
-      for (let q = 0; q < ROUND; q++, i += 3) {
+      for (let q = 0; q < ROUND; q++, i += 6) {
         plain += luminance(s.subarray(i, i + 3)) * this.dome * w;
         this.graded(s, i, height, g, e, ((q + 0.5) / ROUND) * 180, this.c);
         for (let k = 0; k < 3; k++) above[k] += this.c[k]! * w;
@@ -205,7 +209,7 @@ export class SkyBuilder {
     const shade = cardTakes([-1, 0, 0], [-1, 0, 0], l);
     const facing = 0.5 + 0.5 * s;
     const k1 = (1 - facing) * GROUND;
-    const point = new Float64Array(3);
+    const point = new Float64Array(6);
     this.physical(NOON, toward(3, 180), point);
     for (let pass = 0; pass < 8; pass++) {
       this.dome = horizon === undefined ? 1 : horizon / luminance(point);
@@ -243,7 +247,7 @@ export class SkyBuilder {
     const c = this.c;
     for (let y = 0; y < SKY_SIZE; y++) {
       for (let x = 0; x < SKY_SIZE; x++) {
-        this.graded(s, (y * SKY_SIZE + x) * 3, height, g, elevationOf(y / (SKY_SIZE - 1)), aroundOf(x / (SKY_SIZE - 1)), c);
+        this.graded(s, (y * SKY_SIZE + x) * 6, height, g, elevationOf(y / (SKY_SIZE - 1)), aroundOf(x / (SKY_SIZE - 1)), c);
         const o = texelAt(x, y, 0);
         encodeTexel([c[0]! * exposure, c[1]! * exposure, c[2]! * exposure], bytes, o);
       }

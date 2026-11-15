@@ -11,7 +11,7 @@ import { STUCK_TICKS } from "../../server/projectiles.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { ZONE_HEAD, ZONE_TORSO } from "../../shared/anim/human.ts";
 import { boneToModel, rayCapsule, solve } from "../../shared/anim/skeleton.ts";
-import { creaturePose } from "../../shared/anim/creature.ts";
+import { CreatureAnim, creaturePose } from "../../shared/anim/creature.ts";
 import { AnimState, bodySeed } from "../../shared/anim/pose.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -636,12 +636,13 @@ test("a creature that came as a model is hit where its capsules are, in the pose
   h.world.ents.yaw[e] = rec.yaw = 16384;
   h.run(300);
   const rig = buildRigs(corePack().header.rigs, corePack().clips).get("core:parasaur")!;
+  const plays = new CreatureAnim(rig, registry!.runAt[kind]!, 0);
   const st = new AnimState();
-  st.unpack(h.world.ents.anim[e]!);
+  st.unpack(h.world.ents.anim[e]!, h.world.ents.cue[e]!);
   st.seed = bodySeed(e);
   // The middle of a bone's capsule, in model space. The creature faces +X, so model z runs along world +X.
   const middle = (bone: string): number[] => {
-    creaturePose(rig, st, h.world.tick, registry!.runAt[kind]!, rig.a);
+    creaturePose(plays, st, h.world.tick, rig.a);
     solve(rig, rig.a, rig.solved);
     const b = rig.names.indexOf(bone);
     const out = [0, 0, 0];

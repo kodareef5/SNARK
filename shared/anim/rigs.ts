@@ -1,35 +1,38 @@
 // Turns a pack's creature rig into the same Skeleton the humanoid uses, so one code path poses, solves and hits both.
-// A rig's clips are found by its id ("core:raptor/walk").
+// A rig's clips are found by its id ("core:raptor/walk"), and what each shows by its name (RIG_CLIPS,
+// shared/anim/creature.ts).
 
 import type { PackRig } from "../pack/pack.ts";
 import { PI } from "../math/scalar.ts";
 import { Pose, type Clip, type ClipSet } from "./clip.ts";
-import { footRadius, footStart, gaitClip, type GaitClip } from "./gait.ts";
+import { footRadius } from "./gait.ts";
 import type { Socket } from "./human.ts";
 import type { RagdollDef } from "./ragdoll.ts";
 import { Solved, type Skeleton } from "./skeleton.ts";
 
-/** A rig's clip ids are "<rig id>/<one of these>". */
-export const RIG_CLIPS = ["idle", "walk", "run", "attack", "jump", "death"] as const;
+/**
+ * The clips a creature plays, by name: a rig's clip ids are "<rig id>/<one of these>", which its asset maps to the actions
+ * it makes them from. Besides these, each clip named "idle_" and a word plays now and then in place of a turn of its idle.
+ * "held", "carried" and "jump" wait for a game that holds, carries or jumps a creature.
+ */
+export const RIG_CLIPS = [
+  "idle", "walk", "run", "attack", "swim", "swim_idle", "fall", "land", "turn", "startled", "flinch", "call",
+  "torpor_in", "torpor_idle", "torpor_eat", "torpor_out", "death", "held", "carried", "jump",
+] as const;
+export type RigClip = (typeof RIG_CLIPS)[number];
 
 export interface Rig extends Skeleton {
-  /** Null for a clip the rig lacks. */
-  readonly idle: Clip | null;
-  readonly walk: Clip | null;
-  readonly run: Clip | null;
-  readonly attack: Clip | null;
-  readonly jump: Clip | null;
-  readonly death: Clip | null;
+  /** Its clips, by the name its asset gives each: "walk", "attack", "idle_look". */
+  readonly clips: ReadonlyMap<string, Clip>;
+  /** Metres one turn of a clip carries the body, for the clips its asset gives a stride. */
+  readonly strides: ReadonlyMap<string, number>;
+  /** The bones it stands on. Gaits are lined up by the first. */
+  readonly feet: readonly number[];
   /** Named points, such as where a rider sits and where it bites. */
   readonly sockets: ReadonlyMap<string, Socket>;
   /** In metres. Roughly, no part of it in any pose is farther than `reach` from the ground point it stands on. `mid` is the height of its middle. */
   readonly reach: number;
   readonly mid: number;
-  /** Its walk and run as gaits, where its asset gives them a stride, null where not. */
-  readonly walkGait: GaitClip | null;
-  readonly runGait: GaitClip | null;
-  /** Every moving clip it has, slowest first, when all of them have a stride and so blend in step. Otherwise empty. */
-  readonly gaits: readonly GaitClip[];
   /** How far its feet stand from where it turns, in metres. */
   readonly turn: number;
   readonly ragdoll: RagdollDef | null;
@@ -37,6 +40,9 @@ export interface Rig extends Skeleton {
   readonly a: Pose;
   readonly b: Pose;
   readonly c: Pose;
+  readonly d: Pose;
+  readonly e: Pose;
+  readonly f: Pose;
   readonly w: Float64Array;
   readonly solved: Solved;
 }
@@ -71,48 +77,34 @@ export function buildRig(r: PackRig, clips: ClipSet): Rig | null {
     if (d > far) far = d;
     if (rest[b * 3 + 1]! > top) top = rest[b * 3 + 1]!;
   }
-  const clip = (name: string): Clip | null => {
-    const c = clips.clips[clips.index.get(`${r.id}/${name}`) ?? -1];
-    return c && c.bones === bones ? c : null;
-  };
+  const own = new Map<string, Clip>();
+  const prefix = `${r.id}/`;
+  for (const c of clips.clips) if (c.id.startsWith(prefix) && c.bones === bones) own.set(c.id.slice(prefix.length), c);
+  const strides = new Map<string, number>();
+  for (const [name, stride] of Object.entries(r.strides ?? {})) if (stride > 0) strides.set(name, stride);
   const sockets = new Map<string, Socket>();
   for (const s of r.sockets ?? []) if (s.bone >= 0 && s.bone < bones) sockets.set(s.name, { bone: s.bone, x: s.x, y: s.y, z: s.z });
   const skeleton: Skeleton = { id: r.id, bones, names: r.names, parent: Int8Array.from(r.parent), rest, zoneBones: bones, zone, capA, capB, capR };
   const feet = (r.feet ?? []).filter((b) => b >= 0 && b < bones);
-  const a = new Pose(bones);
-  const solved = new Solved(bones);
-  const gait = (name: string): GaitClip | null => {
-    const c = clip(name);
-    const stride = r.strides?.[name];
-    return c && c.loop && stride !== undefined && stride > 0 ? gaitClip(c, stride, feet.length > 0 ? footStart(skeleton, c, feet[0]!, a, solved) : 0) : null;
-  };
-  const walk = clip("walk");
-  const run = clip("run");
-  const walkGait = gait("walk");
-  const runGait = gait("run");
-  const moving = [walk ? walkGait : undefined, run ? runGait : undefined].filter((g) => g !== undefined);
   return {
     ...skeleton,
-    idle: clip("idle"),
-    walk,
-    run,
-    attack: clip("attack"),
-    jump: clip("jump"),
-    death: clip("death"),
+    clips: own,
+    strides,
+    feet,
     sockets,
     // Half as far again as the rest pose reaches, plus the widest capsule radius, covers a swung limb or a lowered head.
     reach: Math.max(far, top) * 1.5 + wide,
     mid: top / 2,
-    walkGait,
-    runGait,
-    gaits: moving.length > 0 && moving.every((g) => g !== null) ? (moving as GaitClip[]).sort((p, q) => p.speed - q.speed) : [],
     turn: footRadius(skeleton, feet),
     ragdoll: ragdollOf(r, skeleton),
-    a,
+    a: new Pose(bones),
     b: new Pose(bones),
     c: new Pose(bones),
+    d: new Pose(bones),
+    e: new Pose(bones),
+    f: new Pose(bones),
     w: new Float64Array(2),
-    solved,
+    solved: new Solved(bones),
   };
 }
 

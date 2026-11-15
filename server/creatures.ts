@@ -1,10 +1,11 @@
 // Spawns creatures, wakes and sleeps them, and steps the awake ones. A chunk is awake while a player is within wakeRadius chunks of it.
 // Creatures in sleeping chunks are not stepped or iterated. Slow quantities such as hunger are lazy and belong to server/survival.ts.
 
+import { AnimState, CUE_LAND, CUE_NONE, CUE_OUT, CUE_STARTLE, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
 import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { Body, MODE_SWIM, stepBody } from "../shared/sim/character.ts";
+import { Body, MF_OUT, MODE_SWIM, stepBody, stepOut } from "../shared/sim/character.ts";
 import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
-import { Behavior } from "./behavior.ts";
+import { Behavior, MIND_FLEE } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
@@ -16,6 +17,10 @@ import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
 const CREATURE_SPAWN = event("creature.spawn");
+/** Ticks a cue stays in a creature's state: past any clip it starts and the fade after, and short of the 256 its start counts. */
+export const CUE_TICKS = 240;
+/** Metres a second at which a creature falling lands for its landing to show: a drop of about half a metre. Chosen. */
+const LAND_SPEED = 3;
 
 export class Creatures {
   bus: Bus = NO_BUS;
@@ -44,6 +49,9 @@ export class Creatures {
   /** 1 for kinds that stand where they are put. */
   private readonly still: Uint8Array;
   private readonly body = new Body();
+  /** Creatures with a cue still to clear (EntityStore.cue). */
+  private readonly cued = new Set<number>();
+  private readonly cues = new AnimState();
 
   constructor(world: ServerWorld, game: GameServer, records: Records, survival: Survival, seed: number, wakeRadius = 3) {
     this.world = world;
@@ -68,8 +76,71 @@ export class Creatures {
     const ents = this.world.ents;
     // The victim may be a survivor. Its tribe's creatures near it may come to help.
     this.mind.alert(ents.team[e]!, e, by);
+    const anim = this.world.anims[ents.kind[e]!];
+    const conscious = anim && (ents.mflags[e]! & MF_OUT) === 0 ? anim : null;
+    // It flinches, unless it is still flinching from the last blow.
+    if (conscious?.flinch && !this.cueing(e, LAYER_FLINCH, conscious.flinch.frames - 1)) this.cue(e, LAYER_FLINCH, true);
     if (this.awakeSlot[e]! < 0 || this.still[ents.kind[e]!] || ents.driven[e] !== 0) return;
+    const was = this.mind.mind[e];
     this.mind.provoke(e, x, z, by);
+    // One that takes fright is startled before it runs.
+    if (conscious?.startled && was !== MIND_FLEE && this.mind.mind[e] === MIND_FLEE) this.cue(e, CUE_STARTLE, false);
+  }
+
+  /** `e` went out cold, or came round: it goes down, or gets up. */
+  knocked(e: number, out: boolean): void {
+    const ents = this.world.ents;
+    if (!this.world.anims[ents.kind[e]!]) return;
+    ents.cue[e] = out ? ents.cue[e]! | CUE_OUT : ents.cue[e]! & ~CUE_OUT;
+    this.cue(e, CUE_TORPOR, false);
+  }
+
+  /** `e`, knocked out, ate a piece it was fed. */
+  ate(e: number): void {
+    if (this.world.anims[this.world.ents.kind[e]!]?.torporEat) this.cue(e, LAYER_EAT, true);
+  }
+
+  /** Sets a CUE_ of `e`'s whole body, or with `layer` a LAYER_ over it, beginning now. */
+  private cue(e: number, kind: number, layer: boolean): void {
+    const st = this.cues;
+    const ents = this.world.ents;
+    st.unpack(0, ents.cue[e]!);
+    if (layer) {
+      st.layer = kind;
+      st.layerStart = this.world.tick & 255;
+    } else {
+      st.cue = kind;
+      st.cueStart = this.world.tick & 255;
+    }
+    ents.cue[e] = st.packCue();
+    this.world.history.cued(e);
+    this.cued.add(e);
+  }
+
+  /** Whether `e` has the LAYER_ `layer`, begun fewer than `ticks` ticks ago. */
+  private cueing(e: number, layer: number, ticks: number): boolean {
+    const st = this.cues;
+    st.unpack(0, this.world.ents.cue[e]!);
+    return st.layer === layer && ((this.world.tick - st.layerStart) & 255) < ticks;
+  }
+
+  /** Clears each cue CUE_TICKS after it began, before the low byte of its start could be counted again. */
+  private expire(tick: number): void {
+    if (this.cued.size === 0) return;
+    const ents = this.world.ents;
+    const st = this.cues;
+    for (const e of this.cued) {
+      st.unpack(0, ents.cue[e]!);
+      if (st.cue !== CUE_NONE && ((tick - st.cueStart) & 255) >= CUE_TICKS) st.cue = CUE_NONE;
+      if (st.layer !== LAYER_NONE && ((tick - st.layerStart) & 255) >= CUE_TICKS) st.layer = LAYER_NONE;
+      const word = st.packCue();
+      if (word !== ents.cue[e]) {
+        ents.cue[e] = word;
+        this.world.history.cued(e);
+      }
+      // Also one gone from the world, whose place another may have taken with no cue.
+      if (st.cue === CUE_NONE && st.layer === LAYER_NONE) this.cued.delete(e);
+    }
   }
 
   /**
@@ -114,6 +185,8 @@ export class Creatures {
     refreshMods(this.world.reg, ents, e, rec.genome, 0, 1, false, false, this.swimGain);
     ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
     this.records.entOf.set(rec.pid, e);
+    // One saved knocked out lies where it was, and does not fall again.
+    if (rec.out && this.world.anims[rec.kind]) ents.cue[e] = CUE_OUT;
     this.mind.reset(e);
     this.mind.stance[e] = rec.stance;
     ents.setTeam(e, rec.team);
@@ -148,6 +221,7 @@ export class Creatures {
     const ents = world.ents;
     const b = this.body;
     const mind = this.mind;
+    this.expire(tick);
     // Ways asked for are searched before anyone steers, within the tick's budget.
     mind.plan(tick);
     let stepped = 0;
@@ -173,6 +247,7 @@ export class Creatures {
       const z0 = b.z;
       const p = world.reg.move[kind]!;
       stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT);
+      if (stepOut.landSpeed >= LAND_SPEED && (b.mflags & MF_OUT) === 0 && world.anims[kind]?.land) this.cue(e, CUE_LAND, false);
       mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
       // A bite goes through the same action step as any blow.
       const jaws = world.reg.weapon[kind];

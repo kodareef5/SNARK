@@ -512,7 +512,8 @@ function checkRagdoll(rig: Rig, spec: CreatureAsset, pack: Pack, faults: string[
     if (i > 0 && doll.parent[i]! < 0) faults.push(`ragdoll: "${b.bone}" has no listed body above it, and only the first may not`);
     if (!(b.mass > 0)) faults.push(`ragdoll: "${b.bone}" has no share of the mass`);
   });
-  if (rig.death && def.limp > rig.death.frames - 1) faults.push(`ragdoll: it goes limp at frame ${def.limp}, past the death clip's last, ${rig.death.frames - 1}`);
+  const death = rig.clips.get("death");
+  if (death && def.limp > death.frames - 1) faults.push(`ragdoll: it goes limp at frame ${def.limp}, past the death clip's last, ${death.frames - 1}`);
   // How far each clip bends each joint, in the body's own frame against its parent body's.
   const bent = listed.map((): [number, number] => [0, 0]);
   const pose = new Pose(rig.bones);

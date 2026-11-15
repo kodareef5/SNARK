@@ -3,7 +3,7 @@
 // up, turns on the spot and swims, survivors stride by their clips, and the client draws what the gait says.
 import { expect, test } from "bun:test";
 import { Pose, sampleClip } from "../../shared/anim/clip.ts";
-import { advanceCreature, creatureStride, creaturePose } from "../../shared/anim/creature.ts";
+import { CreatureAnim, advanceCreature, creatureStride, creaturePose } from "../../shared/anim/creature.ts";
 import { Gait, gaitShares } from "../../shared/anim/gait.ts";
 import { B_FOOT_L, B_FOOT_R, B_TOE_L, B_TOE_R, HUMAN, HUMAN_BONES } from "../../shared/anim/human.ts";
 import { AnimState, SPEED_STEP, advanceHuman, bodySeed } from "../../shared/anim/pose.ts";
@@ -20,6 +20,8 @@ import { FOOT_L, FOOT_R, HIP_L, strider } from "../fixtures/strider.ts";
 
 const FPS = 60;
 const rigs = buildRigs(corePack().header.rigs, corePack().clips);
+/** A species on `rig` that runs from `runAt` metres a second. */
+const species = (rig: Rig, runAt: number): CreatureAnim => new CreatureAnim(rig, runAt, 0);
 
 /** Each foot's world place (x, y, z) and its place along the body, a frame at a time. */
 type Track = number[][][];
@@ -29,6 +31,7 @@ type Track = number[][][];
  * for `frames` frames at FPS, posed by its gait as the client poses it.
  */
 function stride(rig: Rig, feet: readonly number[], runAt: number, size: number, frames: number, speedAt: (f: number) => number, back = false): Track {
+  const a = species(rig, runAt);
   const st = new AnimState();
   const g = new Gait();
   const out: Track = [];
@@ -39,8 +42,8 @@ function stride(rig: Rig, feet: readonly number[], runAt: number, size: number, 
     st.speed = Math.min(15, Math.round(v / SPEED_STEP));
     st.dir = back ? 8 : 0;
     const tick = 1000 + (f * 30) / FPS;
-    advanceCreature(rig, g, st, tick, runAt, 0, z, 0, size);
-    creaturePose(rig, st, tick, runAt, rig.a, g);
+    advanceCreature(a, g, st, tick, 0, z, 0, size);
+    creaturePose(a, st, tick, rig.a, g);
     solve(rig, rig.a, rig.solved);
     const p = rig.solved.pos;
     out.push(feet.map((b) => [p[b * 3]! * size, p[b * 3 + 1]! * size, p[b * 3 + 2]! * size + z, p[b * 3 + 2]! * size]));
@@ -104,6 +107,7 @@ test("backing up plays the gait backward, and the planted foot holds", () => {
 
 test("speeding up from a walk to a run blends the two in step: the feet hold and no joint jumps between frames", () => {
   const rig = strider();
+  const a = species(rig, 99);
   const st = new AnimState();
   const g = new Gait();
   const before = new Float32Array(rig.bones * 4);
@@ -115,8 +119,8 @@ test("speeding up from a walk to a run blends the two in step: the feet hold and
     z += v / FPS;
     st.speed = Math.round(v / SPEED_STEP);
     const tick = (f * 30) / FPS;
-    advanceCreature(rig, g, st, tick, 99, 0, z, 0, 1);
-    creaturePose(rig, st, tick, 99, rig.a, g);
+    advanceCreature(a, g, st, tick, 0, z, 0, 1);
+    creaturePose(a, st, tick, rig.a, g);
     if (f > 0) for (let b = 0; b < rig.bones; b++) {
       const dot = Math.abs(before[b * 4]! * rig.a.rot[b * 4]! + before[b * 4 + 1]! * rig.a.rot[b * 4 + 1]! + before[b * 4 + 2]! * rig.a.rot[b * 4 + 2]! + before[b * 4 + 3]! * rig.a.rot[b * 4 + 3]!);
       jump = Math.max(jump, (2 * Math.acos(Math.min(1, dot)) * 180) / Math.PI);
@@ -134,32 +138,33 @@ test("speeding up from a walk to a run blends the two in step: the feet hold and
 
 test("turning on the spot steps by the arc the feet turn through, and standing still stands", () => {
   const rig = strider();
+  const a = species(rig, 99);
   const st = new AnimState();
   const g = new Gait();
   const idle = new Pose(rig.bones);
-  creaturePose(rig, st, 0, 99, idle);
+  creaturePose(a, st, 0, idle);
   // A quarter turn a second: the feet, 0.2 m from the middle, go 0.31 m a second.
-  for (let f = 0; f <= FPS; f++) advanceCreature(rig, g, st, (f * 30) / FPS, 99, 5, 5, (f * Math.PI) / 2 / FPS, 1);
+  for (let f = 0; f <= FPS; f++) advanceCreature(a, g, st, (f * 30) / FPS, 5, 5, (f * Math.PI) / 2 / FPS, 1);
   expect(g.speed).toBeCloseTo((0.2 * Math.PI) / 2, 2);
-  creaturePose(rig, st, 30, 99, rig.a, g);
+  creaturePose(a, st, 30, rig.a, g);
   expect(rig.a.rot[HIP_L * 4]).not.toBeCloseTo(idle.rot[HIP_L * 4]!, 3);
   // Standing, it eases back to standing.
-  for (let f = FPS + 1; f <= 2 * FPS; f++) advanceCreature(rig, g, st, (f * 30) / FPS, 99, 5, 5, Math.PI / 2, 1);
+  for (let f = FPS + 1; f <= 2 * FPS; f++) advanceCreature(a, g, st, (f * 30) / FPS, 5, 5, Math.PI / 2, 1);
   expect(g.speed).toBeLessThan(0.01);
 });
 
 test("a body in water strokes by the water it covers, a creature and a survivor alike", () => {
-  const rig = strider();
+  const a = species(strider(), 99);
   const st = new AnimState();
   st.mode = MODE_SWIM;
   st.grounded = false;
   st.speed = 2;
   const g = new Gait();
-  advanceCreature(rig, g, st, 0, 99, 0, 0, 0, 1);
+  advanceCreature(a, g, st, 0, 0, 0, 0, 1);
   const from = g.phase;
   // A metre in 20 ticks, the creature paddling with its walk, a stride's worth of turn for each stride of water.
-  for (let f = 1; f <= 20; f++) advanceCreature(rig, g, st, f, 99, 0, f / 20, 0, 1);
-  const turns = 1 / creatureStride(rig, g.speed, 99);
+  for (let f = 1; f <= 20; f++) advanceCreature(a, g, st, f, 0, f / 20, 0, 1);
+  const turns = 1 / creatureStride(a, st, g.speed);
   expect((g.phase - from + 1) % 1).toBeCloseTo(turns - Math.floor(turns), 2);
   // A survivor's strokes go by its swim's stride: what it covers at its own rate, 2.4 m/s.
   const anim = coreAnim();
@@ -175,14 +180,15 @@ test("the creatures in the repository slide a planted foot no farther over one t
   for (const { id, spec } of CREATURE_ASSETS) {
     const rig = rigs.get(id)!;
     const feet = spec.feet.map((n) => rig.names.indexOf(n));
-    for (const gait of [rig.walkGait, rig.runGait]) {
+    const plays = species(rig, 99);
+    for (const gait of [plays.walkGait, plays.runGait]) {
       if (!gait) continue;
       // The stride's own slide: the clip played at its own rate as the body moves at its own speed, which time and
       // distance agree on.
-      const own = slip(stride(rig, feet, gait === rig.runGait ? 0.01 : 99, 1, 6 * FPS, () => gait.speed)).down;
+      const own = slip(stride(rig, feet, gait === plays.runGait ? 0.01 : 99, 1, 6 * FPS, () => gait.speed)).down;
       for (const size of [1, 0.5]) {
         for (const share of [0.6, 1, 1.4]) {
-          const s = slip(stride(rig, feet, gait === rig.runGait ? 0.01 : 99, size, 6 * FPS, () => gait.speed * share * size));
+          const s = slip(stride(rig, feet, gait === plays.runGait ? 0.01 : 99, size, 6 * FPS, () => gait.speed * share * size));
           expect([id, gait.clip.id, size, share, s.down < own * size * 1.25 + 0.01]).toEqual([id, gait.clip.id, size, share, true]);
         }
       }
@@ -225,6 +231,7 @@ test("the client draws a creature with the gait it keeps for it", () => {
   const cam = new Camera();
   const kind = reg.index.get("core:raptor")!;
   const rig = rigs.get("core:raptor")!;
+  const a = species(rig, reg.runAt[kind]!);
   remote.count = 1;
   [remote.id[0], remote.kind[0], remote.flags[0], remote.yaw[0]] = [77, kind, 1, 0.3];
   const st = new AnimState();
@@ -241,8 +248,8 @@ test("the client draws a creature with the gait it keeps for it", () => {
     [cam.x, cam.y, cam.z] = [remote.x[0]! - 8, remote.y[0]! + 3, remote.z[0]! - 8];
     cam.yaw = Math.PI / 4;
     const p = scene.build(cam, remote);
-    advanceCreature(rig, g, st, remote.tick, reg.runAt[kind]!, remote.x[0]!, remote.z[0]!, 0.3, 1);
-    creaturePose(rig, st, remote.tick, reg.runAt[kind]!, rig.a, g);
+    advanceCreature(a, g, st, remote.tick, remote.x[0]!, remote.z[0]!, 0.3, 1);
+    creaturePose(a, st, remote.tick, rig.a, g);
     solve(rig, rig.a, rig.solved);
     writeBones(expected, 0, rig.solved, rig.rest, null, remote.x[0]! - cam.x, remote.y[0]! - cam.y, remote.z[0]! - cam.z, 0.3, 1);
     let off = 0;
