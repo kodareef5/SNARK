@@ -35,5 +35,4 @@ install and give byte-identical layers on 3.12. Run every Python tool with `-I`:
 Digital Coast DEM's VRT index, as Miami's). The world build also needs `world/world.json` (districts, spawn points,
 sea) and `ruins/vocabulary.json` and `ruins/places.json`, which are written by hand for each city.
 
-Memory: `fine.py` holds about 2.7 GB and the build about 6 GB for Tampa; run them under
-`lockf -t 7200 /tmp/snark-render.lock`.
+Memory: `fine.py` holds about 2.7 GB and the build about 6 GB for Tampa; run one at a time.

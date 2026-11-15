@@ -8,8 +8,10 @@ import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { RuinRecord } from "./ruins.ts";
 
-const folder = "assets/source/maps/miami/reports/ruins2";
 const map = parseMap(new Uint8Array(readFileSync(process.argv[2] ?? "var/maps/miami.snmap")));
+// The city is the map file's own: core:<name> is built from assets/source/maps/<name>.
+const city = `assets/source/maps/${map.id.split(":")[1]}`;
+const folder = `${city}/reports/ruins2`;
 const reg = compileContent(CORE_CONTENT).registry!; const hf = mapHeightfield(map);
 const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts); placeStatics(map, structs, reg);
 const source = mapNodes(map, hf, reg); const nodes = source ? new NodeField(map.dims, reg, source) : null;

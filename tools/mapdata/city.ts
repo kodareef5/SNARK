@@ -16,8 +16,6 @@ if (!name) {
 const folder = join(ROOT, "assets/source/maps", name);
 const python = join(ROOT, "tools/mapdata/.venv/bin/python");
 const py = (script: string, ...args: string[]): string[] => [python, "-I", join(ROOT, "tools/mapdata", script), folder, ...args];
-// Steps that hold several GB wait their turn with other agents' renders.
-const heavy = (command: string[]): string[] => ["lockf", "-t", "7200", "/tmp/snark-render.lock", ...command];
 
 const STEPS: [string, string[]][] = [
   ["frame", py("frame.py")],
@@ -25,11 +23,11 @@ const STEPS: [string, string[]][] = [
   ["prepare", py("prepare.py")],
   ["attributes", ["bun", join(ROOT, "tools/mapworld/fetch-attributes.ts"), name]],
   ["future", py("future.py")],
-  ["fine", heavy(py("fine.py"))],
+  ["fine", py("fine.py")],
   ["bathymetry", py("bathy.py")],
   ["labels", py("labels.py")],
   ["ways", py("ways.py")],
-  ["build", heavy(["bun", join(ROOT, "tools/mapworld/build.ts"), name])],
+  ["build", ["bun", join(ROOT, "tools/mapworld/build.ts"), name]],
 ];
 
 if (!existsSync(join(folder, "city.json"))) throw new Error(`${folder} has no city.json`);

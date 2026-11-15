@@ -7,6 +7,7 @@ same rules as Miami's `blocks/labels.py`, with positions in the map's own projec
 USA Structures (CC BY 4.0); see `../SOURCES.md`. Labels are joined evidence, not a survey.
 
 Two things in them are known to be wrong and are left as the join gives them (`../REPLICATION.md`):
-OpenStreetMap's imported heights run about 7 m above USA Structures' for ordinary houses, and they win; and
+OpenStreetMap's imported heights are feet with no unit (7.2 m above USA Structures' at the median; divided by 3.28
+they match it within 1.0 m on average), and they win; and
 footprint 26291430, Raymond James Stadium, is named "Pirate Ship" after a feature inside its bowl, which
 `../ruins/places.json` corrects for the ruin. There is no `height-corrections.json` or `research.json` yet.
