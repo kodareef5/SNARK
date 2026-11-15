@@ -368,6 +368,18 @@ export class Corpses {
     return best;
   }
 
+  /** Where a body's middle lies now: its ragdoll's first body, or a third of the way up its box. For aiming at it. */
+  middle(b: Body): { x: number; y: number; z: number } {
+    const anim = this.ctx.world.anims[b.kind];
+    const bone = anim?.rig.ragdoll?.bone[0];
+    if (!b.pose || !b.fall || bone === undefined) return { x: b.x, y: b.y + this.ctx.world.reg.bodyHeight[b.kind]! * b.size * 0.33, z: b.z };
+    const s = detSin(b.yaw);
+    const c = detCos(b.yaw);
+    const px = b.pose.pos[bone * 3]! * b.size;
+    const pz = b.pose.pos[bone * 3 + 2]! * b.size;
+    return { x: b.x + c * px + s * pz, y: b.y + b.pose.pos[bone * 3 + 1]! * b.size, z: b.z + c * pz - s * px };
+  }
+
   /** Where a ray meets the body that is entity `e` within `maxT`, or `maxT` if it misses or `e` is no body. */
   hit(e: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
     const b = this.byEnt.get(e);
