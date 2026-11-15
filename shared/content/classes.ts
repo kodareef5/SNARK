@@ -18,6 +18,8 @@ export interface Field {
   open?: boolean;
   /** A stub field is declared and checked, and nothing reads it until the feature it waits for is built. */
   waits?: Feature;
+  /** Fields inside a facet that are stubs in the same sense, and the feature each waits for. The facet itself is read. */
+  stubs?: Readonly<Record<string, Feature>>;
 }
 
 export interface Slot {
@@ -81,8 +83,13 @@ const ITEM = {
   label: f("text", "DescriptiveNameBase"),
   color: f("number"),
   tool: f("facet"),
-  weapon: f("facet", "WeaponTemplate", { refs: { "ammo[]": "item", "fits[]": "item/attachment" }, open: true }),
-  ammo: f("facet", "", { refs: { buff: "buff" } }),
+  // The stubs inside the weapon and ammo facets are planning/reference/weapons-plan.md's, each flipped by its project.
+  weapon: f("facet", "WeaponTemplate", {
+    refs: { "ammo[]": "item", "fits[]": "item/attachment", "cloud.prop": "prop/cloud", "cloud.buff": "buff" },
+    open: true,
+    stubs: { auto: "polish", reloadEach: "polish", melee: "polish", spread: "polish", recoil: "polish", structures: "polish", cloud: "polish" },
+  }),
+  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
@@ -229,6 +236,9 @@ const BUFF = {
   root: f("switch"),
   immune: f("switch"),
   good: stub("polish", "switch"),
+  only: stub("polish", "list", "the species a bola takes (Bola)", { refs: { "[]": "species" } }),
+  survivorSeconds: stub("polish", "number", "a bola's time on a survivor"),
+  after: stub("polish", "text", "", { refs: { "": "buff" } }),
 } satisfies Fields<BuffDef>;
 
 const MATERIAL = {
@@ -412,9 +422,10 @@ row("prop", "prop", PROP, { abstract: true, ark: "an actor that is not alive", s
 row("prop/container", "prop", PROP, { parent: "prop", ark: "a death cache, a dropped bag", shelf: "props/containers", must: [...PROP_BODY, "slots"], slots: PROP_SLOTS, doc: "Holds what was dropped or left by the dead." });
 row("prop/projectile", "prop", PROP, { parent: "prop", ark: "a projectile actor", status: "partial", shelf: "props/projectiles", must: PROP_BODY, may: ["pitched"], slots: PROP_SLOTS, doc: "Something loosed or thrown, where it lies. How it flies is on the ammunition." });
 row("prop/egg", "prop", PROP, { parent: "prop", ark: "a laid or dropped egg, fertilised or not", shelf: "props/eggs", must: PROP_BODY, may: ["size", "item", "fertile"], slots: PROP_SLOTS, doc: "An egg where it lies: taken up as its item, and hatching where it lies if fertilised." });
+row("prop/cloud", "prop", PROP, { parent: "prop", ark: "the gas and smoke actors of grenades", status: "stub", waits: "polish", shelf: "props/clouds", must: PROP_BODY, slots: PROP_SLOTS, doc: "Smoke or gas that stays where a grenade burst, as far as its radius, for its grenade's seconds, giving its buff to the bodies inside it (planning/reference/weapons-plan.md, W5)." });
 row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "stub", waits: "loot", shelf: "props/crates", must: PROP_BODY, may: ["slots"], slots: PROP_SLOTS, doc: "Comes down with loot and goes when it is emptied." });
 
-row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "damage", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
+row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "damage", "speed", "dealt", "taken", "root", "immune", "good", "only", "survivorSeconds", "after"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
 
 row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
 row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "partial", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts, qualities and blueprint chances. A seeded roll draws from it (shared/sim/loot.ts) and the console's loot mints one; what opens a crate or leaves a body waits for map zones." });
@@ -463,6 +474,7 @@ export function classFaults(): string[] {
     for (const [name, field] of Object.entries(fields)) {
       for (const target of Object.values(field.refs ?? {})) if (!names(target)) out.push(`${type}.${name}: names "${target}", which is no class`);
       if (field.waits !== undefined && !(field.waits in FEATURES)) out.push(`${type}.${name}: a stub field names the feature it waits for`);
+      for (const [part, waits] of Object.entries(field.stubs ?? {})) if (field.kind !== "facet" || !(waits in FEATURES)) out.push(`${type}.${name}.${part}: a stub inside a facet names the feature it waits for`);
       // Every field belongs to some class of its family, or nothing could declare it.
       if (!CLASSES.some((r) => r.type === type && (r.must.includes(name) || r.may.includes(name)))) out.push(`${type}.${name}: no class may declare it`);
     }

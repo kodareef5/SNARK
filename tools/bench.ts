@@ -40,6 +40,7 @@ import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
 import { storeRows } from "./bench/store.ts";
 import { benchTactical } from "./bench/tactical.ts";
+import { benchCity } from "./bench/city.ts";
 import { benchFar } from "./bench/far.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
@@ -54,6 +55,7 @@ import { benchLatency } from "./bench/latency.ts";
 import { benchPoses } from "./bench/poses.ts";
 import { benchRagdoll } from "./bench/ragdoll.ts";
 import { benchCorpses } from "./bench/corpses.ts";
+import { benchDetails } from "./bench/details.ts";
 import { benchShadow } from "./bench/shadow.ts";
 import { benchTextured } from "./bench/textured.ts";
 import { benchDepth } from "./bench/depth.ts";
@@ -1229,6 +1231,7 @@ benchLatency(section, record);
 benchPoses(section, record);
 benchRagdoll(section, record);
 benchCorpses(section, record);
+benchDetails(section, record);
 benchShadow(section, record);
 benchTextured(section, record);
 benchDepth(section, record);
@@ -1236,6 +1239,9 @@ benchTerrain(section, record, hf);
 await benchTextures(section, record);
 // Brotli at 11 over every part is minutes of work on a set of 2 GB and holds no budget, so it runs only when asked for.
 if (process.argv.includes("--parts")) await benchParts(section, record);
+// The far city needs a built map with a city on it (bun tools/mapworld/build.ts miami), so it runs only when given one.
+const cityAt = process.argv.indexOf("--city");
+if (cityAt >= 0) benchCity(section, record, process.argv[cityAt + 1] ?? "var/maps/miami.snmap");
 benchTransport(section, record);
 await benchGpu(section, record);
 

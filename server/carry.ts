@@ -1,5 +1,6 @@
 // A survivor picks a small creature up in both arms, holds it and throws it, as ARK has done since ASE 241.0 for the dodo
-// (ark.wiki.gg, Dodo: Carryable By Humans). Only a creature content marks carriable, and only its tribe's, awake. Held, it
+// (ark.wiki.gg, Dodo: Carryable By Humans). Only a creature content marks carriable, awake, and a wild one or its tribe's,
+// never another tribe's. Held, it
 // takes no damage and is not struck at all; it pecks from the arms what it would peck on its feet, if it reaches; its
 // inventory weighs half on its carrier, whose hands are full: no tool, no weapon, no blow, and no lying down. It is
 // set down, never inside anything and never past a wall, when it is put down, and when its carrier dies, leaves,
@@ -137,12 +138,12 @@ export class Carry {
 
   /**
    * The use key on entity `e`, which the session looks at with nothing nearer. Returns a RESULT code, or -1 to pass the press
-   * on: for anything not carriable, and for a carriable creature that is not the session's to take, which it opens as before.
+   * on: for anything not carriable, and for a carriable creature of another tribe or knocked out, which it opens as before.
    */
   use(c: Client, e: number): number {
     const { world, records, tribes } = this.ctx;
     const rec = records.byPid.get(world.ents.pid[e]!);
-    if (!rec || world.reg.carriable[rec.kind] !== 1 || rec.team === 0 || rec.out || !tribes.may(records.byPid.get(c.pid), rec.team)) return -1;
+    if (!rec || world.reg.carriable[rec.kind] !== 1 || rec.out || (rec.team !== 0 && !tribes.may(records.byPid.get(c.pid), rec.team))) return -1;
     return this.pickUp(c, e, true);
   }
 
@@ -160,7 +161,7 @@ export class Carry {
     if (!(e >= 0 && e < ents.cap) || (ents.flags[e]! & (F_ALIVE | F_PROP | F_PLAYER)) !== F_ALIVE) return RESULT_INVALID;
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec || rec.dead || rec.keyHash !== null || reg.defs[rec.kind]?.type !== "species" || reg.carriable[rec.kind] !== 1) return RESULT_INVALID;
-    if (rec.team === 0 || !tribes.may(me, rec.team)) return RESULT_NOT_YOURS;
+    if (rec.team !== 0 && !tribes.may(me, rec.team)) return RESULT_NOT_YOURS;
     if (rec.out) return RESULT_DENIED;
     if (this.holds.has(e) || ents.driven[e] !== 0 || ents.seat[e] !== 0) return RESULT_BUSY;
     // Within reach of the eye, and in sight of it, as the use key's ray would find it.
@@ -270,7 +271,7 @@ export class Carry {
     return (ents.flags[hold.e]! & F_ALIVE) !== 0 && ents.gen[hold.e] === hold.gen && ents.pid[hold.e] === hold.pid && rec !== undefined && !rec.dead;
   }
 
-  /** Whether the carrier may go on holding it: connected, alive, awake, on its feet, out of the water, on no mount, its tribe's, and where it was a tick ago. */
+  /** Whether the carrier may go on holding it: connected, alive, awake, on its feet, out of the water, on no mount, no other tribe's, and where it was a tick ago. */
   private fit(hold: Hold): boolean {
     const { world, records, tribes } = this.ctx;
     const ents = world.ents;
@@ -281,7 +282,7 @@ export class Carry {
     const body = c.ent;
     if (body < 0 || ents.pid[body] !== hold.by || ents.seat[hold.e] !== body + 1) return false;
     if (ents.mode[body] !== MODE_WALK || ents.stance[body] === STANCE_PRONE) return false;
-    if (it.team === 0 || !tribes.may(me, it.team)) return false;
+    if (it.team !== 0 && !tribes.may(me, it.team)) return false;
     const moved = Math.hypot(ents.x[body]! - hold.x, ents.y[body]! - hold.y, ents.z[body]! - hold.z);
     return moved <= TELEPORT;
   }

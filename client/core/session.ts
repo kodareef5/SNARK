@@ -92,6 +92,8 @@ import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
+import type { CitySource } from "./render/farcity.ts";
+import type { CityStatics } from "../../shared/world/city.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
@@ -112,6 +114,8 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
+  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). */
+  city?(registry: Registry): CityStatics | null;
 }
 
 /** Null if the tuning does not parse or the derived content does not compile. */
@@ -272,7 +276,7 @@ export class ClientSession {
   /** Reject reason from the server, or a negative local reason. */
   closeReason = 0;
 
-  world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource }) | null = null;
+  world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
@@ -990,6 +994,10 @@ export class ClientSession {
       ev.vy = r.f32();
       ev.vz = r.f32();
       if (ev.flies) ev.back = r.u8();
+      // Protocol 13: rays, seed and silenced, read past until shots of many rays and the silencer are built.
+      r.u8();
+      r.u32();
+      r.bool();
     } else if (kind === EVENT_BLAST) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -1007,6 +1015,8 @@ export class ClientSession {
       ev.damage = r.u16();
       ev.bearing = r.u8();
       ev.zone = r.bits(4);
+      // Protocol 13: whether the side is shown, read past until a silenced shot can hide it.
+      r.bool();
       if (kind === EVENT_DEATH) {
         ev.kill = true;
         ev.name = r.string(EVENT_NAME_BYTES);
@@ -1073,7 +1083,9 @@ export class ClientSession {
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
-    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes };
+    const statics = this.opts.city?.(reg) ?? null;
+    const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete } } : {};
+    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city };
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);

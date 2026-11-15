@@ -50,10 +50,12 @@ const WAYS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [
 
 /**
  * Whether the far fade keeps a fragment `dist` metres off at window pixel (x, y), counted from the bottom left, of a
- * draw gone at `gone` metres that fades over the last `share` of it. FAR_FADE's twin.
+ * draw gone at `gone` metres that fades over the last `share` of it. A draw at -`gone` fades in over the same distances,
+ * keeping exactly the fragments the other drops. FAR_FADE's twin.
  */
 export function fadeKeeps(dist: number, gone: number, share: number, x: number, y: number): boolean {
-  return (gone - dist) * 16 > (FADE_ORDER[(y & 3) * 4 + (x & 3)]! + 0.5) * gone * share;
+  const g = Math.abs(gone);
+  return (g - dist) * 16 > (FADE_ORDER[(y & 3) * 4 + (x & 3)]! + 0.5) * g * share === gone > 0;
 }
 
 /** What the scene draws far bases from: the far feed's cells, and which chunks the near store holds whole. */
@@ -61,6 +63,15 @@ export interface FarSource {
   readonly cells: FarStore;
   /** Whether the near store holds `chunk` whole: its last row has come since it was last dropped. */
   complete(chunk: number): boolean;
+}
+
+/**
+ * The far city (farcity.ts) as the far blocks see it: per chunk, the far feed's top byte of each cell as the map's own
+ * standing pieces make it, which the blocks leave to the city, and a count of changes to that.
+ */
+export interface FarCityCells {
+  topsOf(chunk: number): Uint8Array | null;
+  readonly goneVersion: Uint32Array;
 }
 
 /** One chunk's blocks: four corners a face, x and z from its tile's corner, y in the world, and a palette colour a corner. */
@@ -148,8 +159,9 @@ const step = (byte: number): number => (byte > 128 ? 2 : 0.5);
  * the chunk is lower or empty, merged along its row. A side on the chunk's edge is always drawn, so a chunk's blocks do
  * not depend on its neighbours.
  */
-export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz: number, hf: Heightfield, colours: Uint8Array = SAME_COLOURS): FarPart {
-  const { top } = cells;
+export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz: number, hf: Heightfield, colours: Uint8Array = SAME_COLOURS, city: Uint8Array | null = null): FarPart {
+  // A cell no taller than the map's own pieces make it is the far city's to draw (farcity.ts); one taller is drawn above them.
+  const top = city ? cells.top.map((t, c) => (t <= city[c]! ? 0 : t)) : cells.top;
   const tint = cells.tint.map((t) => colours[t]!);
   const n = Math.round(TACTICAL_CELL / hf.cell);
   for (let c = 0; c < CELLS; c++) {
@@ -158,7 +170,7 @@ export function farPart(cells: FarCells, x0: number, z0: number, ox: number, oz:
     const z = z0 + Math.floor(c / SIDE) * TACTICAL_CELL;
     const ground = hf.heightAt(x + TACTICAL_CELL / 2, z + TACTICAL_CELL / 2);
     tops[c] = ground + farTopMetres(top[c]!);
-    feet[c] = Math.min(ground, lowestUnder(hf, Math.round(x / hf.cell), Math.round(z / hf.cell), n)) - FOOT;
+    feet[c] = city && city[c]! > 0 ? ground + farTopMetres(city[c]!) : Math.min(ground, lowestUnder(hf, Math.round(x / hf.cell), Math.round(z / hf.cell), n)) - FOOT;
   }
   // A top is kept over the ground at its cell's middle, to a step, so a level roof over rough ground comes in steps.
   // Touching tops of one colour within a step of the first of them are taken as one roof, at their mean.
@@ -315,9 +327,12 @@ export class FarBlocks {
   private readonly list: FarPart[] = [];
   private readonly waiting: number[] = [];
   private readonly colours: Uint8Array;
+  /** The far city, whose cells these leave to it, and per chunk its count of changes when last looked at. */
+  private readonly city: FarCityCells | null;
+  private readonly cityStamp: Uint32Array;
 
   /** `bounds` is FAR_MESH's centre and half extent, as the pack has them, and `colours` what farColours gives. */
-  constructor(source: FarSource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, colours: Uint8Array = SAME_COLOURS) {
+  constructor(source: FarSource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }, colours: Uint8Array = SAME_COLOURS, city: FarCityCells | null = null) {
     this.source = source;
     this.dims = dims;
     this.hf = hf;
@@ -325,9 +340,11 @@ export class FarBlocks {
     this.center = bounds.center;
     this.half = bounds.half;
     this.colours = colours;
+    this.city = city;
     this.tilesX = Math.ceil(dims.chunksX / FAR_TILE);
     this.far = new Uint8Array(chunkCount(dims));
     this.stamp = new Uint32Array(chunkCount(dims));
+    this.cityStamp = new Uint32Array(chunkCount(dims));
   }
 
   /** Whether `chunk` is drawn far this frame, so its real pieces are not. */
@@ -351,10 +368,12 @@ export class FarBlocks {
     for (const chunk of cells.chunks.keys()) {
       const far = this.source.complete(chunk) ? 0 : 1;
       const stamp = cells.changed[chunk]!;
-      if (far === this.far[chunk] && stamp === this.stamp[chunk]) continue;
-      if (stamp !== this.stamp[chunk]) {
+      const cityStamp = this.city?.goneVersion[chunk] ?? 0;
+      if (far === this.far[chunk] && stamp === this.stamp[chunk] && cityStamp === this.cityStamp[chunk]) continue;
+      if (stamp !== this.stamp[chunk] || cityStamp !== this.cityStamp[chunk]) {
         this.parts.delete(chunk);
         this.stamp[chunk] = stamp;
+        this.cityStamp[chunk] = cityStamp;
         this.known.add(chunk);
       }
       this.far[chunk] = far;
@@ -477,7 +496,7 @@ export class FarBlocks {
       if (this.far[chunk] !== 1) return;
       let part = this.parts.get(chunk);
       const cells = this.source.cells.chunks.get(chunk);
-      if (!part && cells) this.parts.set(chunk, (part = farPart(cells, x0, z0, ox, oz, this.hf, this.colours)));
+      if (!part && cells) this.parts.set(chunk, (part = farPart(cells, x0, z0, ox, oz, this.hf, this.colours, this.city?.topsOf(chunk) ?? null)));
       if (!part || part.faces === 0) return;
       list.push(part);
       faces += part.faces;

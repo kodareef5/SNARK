@@ -37,7 +37,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 13;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -253,6 +253,11 @@ export const OWN_SLOTS = 3;
  * (CMD_CRAFT_BLUEPRINT) and never spent. Stacks join only at the same quality and flags (shared/sim/items.ts FLAG_BLUEPRINT).
  */
 export const SLOT_BLUEPRINT = 1;
+/**
+ * Reserved in protocol 13 for the weapons program (planning/reference/weapons-plan.md, W7): the weapon's attachment is
+ * switched on. Nothing sets it yet.
+ */
+export const SLOT_ON = 2;
 
 /** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
 export const OWN_OPEN = 4;
@@ -316,7 +321,8 @@ export const MARKER_DEATH = 1;
 /**
  * Kinds of S_EVENT, each after a u8 naming it.
  * HIT, to the attacker: position (3 x f32), zone 4 bits, damage u16, killed 1 bit, armor stopped some 1 bit.
- * HURT, to the victim: damage u16, the side it came from (u8, 256ths of a turn, as a facing), zone 4 bits.
+ * HURT, to the victim: damage u16, the side it came from (u8, 256ths of a turn, as a facing), zone 4 bits, and from protocol 13
+ *   whether the side is shown 1 bit (always 1 until a silenced shot hides it: planning/reference/weapons-plan.md, W7).
  * DEATH, to the victim: the HURT fields, then killer name string, weapon content index u16 (0 for bare hands), distance u16 (tenths of a metre).
  * KILL, to the killer: victim name string, its level u16, experience gained u16 (tenths).
  */
@@ -328,7 +334,9 @@ export const EVENT_DEATH = 3;
 export const EVENT_KILL = 4;
 /**
  * SHOT, to other clients nearby: origin (3 x f32), ammunition content index u16, flies 1 bit, then 3 x f32. For a shot that
- * flies they are its velocity, followed by the ticks since it left u8. Otherwise they are where it ended.
+ * flies they are its velocity, followed by the ticks since it left u8. Otherwise they are where it ended. From protocol 13
+ * three more follow, each sent as what it means today and read past: rays u8 (1: the shot is the one ray above), seed u32
+ * (0: the seed a shot of many rays is cast from, W3 of planning/reference/weapons-plan.md), silenced 1 bit (0: W7).
  */
 export const EVENT_SHOT = 5;
 /** BLAST, to clients nearby: position (3 x f32), reach f32 in metres. */
@@ -425,7 +433,10 @@ export class InputBuffer {
   }
 }
 
-/** 344 bits: position and velocity exactly, then the rest of the predicted state. */
+/**
+ * 360 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
+ * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them).
+ */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
   w.f32(b.y);
@@ -448,6 +459,8 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u8(b.actTicks);
   w.u8(b.rounds);
   w.u8(b.reloadTo);
+  w.u8(b.bloom);
+  w.u8(b.kick);
 }
 
 export function readBody(r: BitReader, b: Body): void {
@@ -472,6 +485,8 @@ export function readBody(r: BitReader, b: Body): void {
   b.actTicks = r.u8();
   b.rounds = r.u8();
   b.reloadTo = r.u8();
+  b.bloom = r.u8();
+  b.kick = r.u8();
 }
 
 /** `key` must be KEY_BYTES long. */
