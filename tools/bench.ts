@@ -37,6 +37,7 @@ import type { VoicePeer } from "../server/voice.ts";
 import { crowdRows, fullViewRows } from "./bench/limits.ts";
 import { storeRows } from "./bench/store.ts";
 import { benchTactical } from "./bench/tactical.ts";
+import { benchFar } from "./bench/far.ts";
 import { buildCorePack } from "./pack/build.ts";
 import { stressSet } from "./pack/stress.ts";
 import { assetWorld, type Thing } from "../tests/fixtures/assetworld.ts";
@@ -767,6 +768,7 @@ let siegeChunk = -1;
 }
 
 benchTactical(host, siegeChunk, (ticks) => run(ticks, null), section, record);
+benchFar(host, run, section, record);
 
 // ---------------------------------------------------------------- breeding
 section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and ten survivors among them");

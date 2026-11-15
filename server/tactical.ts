@@ -1,15 +1,17 @@
 // The server's part of the map. Each chunk's structures are baked to cells (shared/world/tactical.ts) and sent to the clients
 // that may see them, so a base shows far beyond the view without a piece of it being sent. Once a second each tribe's members
-// and creatures are sent to it as marks, wherever they are. What each client holds is kept here by client id.
+// and creatures are sent to it as marks, wherever they are. The same bake keeps far cells, every tribe's alike and with no
+// owner, which are sent within FarRadius for drawing on the horizon and never reach the map. What each client holds is kept
+// here by client id.
 
 import { CHUNK_SIZE, TICK_RATE, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitWriter } from "../shared/net/codec.ts";
-import { CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_MARKS, S_TACTICAL } from "../shared/net/protocol.ts";
+import { CMD_FAR, CMD_MAP_ZOOM, RESULT_INVALID, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../shared/net/protocol.ts";
 import { CH_UNRELIABLE, type Connection } from "../shared/net/transport.ts";
 import { F_ALIVE, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import type { MapExtent } from "../shared/world/coords.ts";
-import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, writeCells, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
+import { MARK_MATE, MARK_OTHER, MARK_TAME, MAX_MARKS, PLAYERS_ALL, PLAYERS_OFF, PLAYERS_VIEW, Summary, bakeChunk, levelFor, onlyTeam, pieceShapes, writeCells, writeFar, writeMark, writeMarksHead, type PieceShapes } from "../shared/world/tactical.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
@@ -24,6 +26,13 @@ const BAKES_PER_TICK = 4;
 const LOOKS_PER_TICK = 16;
 /** Bytes of cells sent to one client in a second. */
 const CELL_BYTES = 1024;
+/**
+ * Bytes of far cells sent to one client in a second: 2 KB of chunks it holds older, and 8 KB in all while some in its reach
+ * it holds not at all. A second's go out over its ticks, a kilobyte or one message a tick, so they never come as one burst.
+ */
+const FAR_BYTES = 2048;
+const FAR_NEW_BYTES = 8192;
+const FAR_TICK_BYTES = 1024;
 /** Ticks between listing each tribe's creatures afresh, and the longest an unchanged list of marks goes unsent. */
 const TAMES_EVERY = 10 * TICK_RATE;
 const MARKS_REPEAT = 5 * TICK_RATE;
@@ -48,10 +57,20 @@ class Held {
   marksKey = 0;
   marksHead = -1;
   marksAt = 0;
+  /** Per chunk: the far version it was sent, 0 for none. What was sent is never taken back. */
+  readonly farSent: Uint32Array;
+  /** The metres of far cells it asked for. */
+  farAsk = 0;
+  /** The chunks due this second, nearest first, how many of them have been seen to, and the bytes sent of them, in all and of chunks it held older. */
+  readonly farDue: number[] = [];
+  farNext = 0;
+  farAll = 0;
+  farOlder = 0;
 
   constructor(chunks: number) {
     this.sent = new Uint32Array(chunks);
     this.how = new Uint8Array(chunks);
+    this.farSent = new Uint32Array(chunks);
   }
 }
 
@@ -88,17 +107,17 @@ class TeamMarks {
 
 export class Tactical {
   /**
-   * Chunks baked, S_TACTICAL messages and bytes sent, S_MARKS messages and bytes sent, and the marks left out of those
-   * messages because a tribe had more than one holds.
+   * Chunks baked, S_TACTICAL messages and bytes sent, S_MARKS messages and bytes sent, the marks left out of those
+   * messages because a tribe had more than one holds, and S_FAR messages and bytes sent.
    */
-  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0, marksLeftOut: 0 };
+  readonly stats = { bakes: 0, cells: 0, cellBytes: 0, marks: 0, markBytes: 0, marksLeftOut: 0, far: 0, farBytes: 0 };
   /** Per chunk, or null for one that has never held a structure. */
   readonly summaries: (Summary | null)[];
 
   private readonly world: ServerWorld;
   private readonly game: GameServer;
   private readonly records: Records;
-  /** TacticalRadius and MapPlayers are read where they are used, so a change takes effect within a second. */
+  /** TacticalRadius, MapPlayers and FarRadius are read where they are used, so a change takes effect within a second. */
   private readonly rules: Rules;
   private readonly shapes: PieceShapes;
   private readonly held: (Held | null)[];
@@ -126,14 +145,17 @@ export class Tactical {
   /** Scratch for a tribe with more marks than a message holds: each mark's distance from the reader, and those sorted. */
   private far = new Float64Array(0);
   private sorted = new Float64Array(0);
+  /** Chunks that have had far cells, which are all the far feed looks at. */
+  private readonly farChunks: number[] = [];
+  /** Scratch: the chunks a session is due, as distance squared times 65536 plus the chunk, so they sort nearest first. */
+  private farOrder = new Float64Array(256);
 
   constructor(world: ServerWorld, game: GameServer, records: Records, rules: Rules) {
     this.world = world;
     this.game = game;
     this.records = records;
     this.rules = rules;
-    const reg = world.reg;
-    this.shapes = { halfX: reg.halfX, halfY: reg.halfY, halfZ: reg.halfZ, tint: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0)) };
+    this.shapes = pieceShapes(world.reg);
     const chunks = chunkCount(world.dims);
     this.summaries = new Array<Summary | null>(chunks).fill(null);
     this.held = new Array<Held | null>(game.clients.length).fill(null);
@@ -151,6 +173,12 @@ export class Tactical {
       this.of(c).zoom = zoom;
       return RESULT_OK;
     });
+    game.handle(CMD_FAR, (c, r) => {
+      const metres = r.u16();
+      if (r.overflow) return RESULT_INVALID;
+      this.ask(c, metres);
+      return RESULT_OK;
+    });
   }
 
   /** Call for each connected session once a tick, beside its other replication. */
@@ -158,8 +186,18 @@ export class Tactical {
     const T = this.world.tick;
     if (T !== this.steppedAt) this.step(T);
     // Each session's second for cells starts on a tick of its own. Marks are made for everyone on the same tick.
-    if ((T + c.id * 7) % TICK_RATE === 0) this.sendCells(c, this.of(c));
-    if (T % TICK_RATE === 0) this.sendMarks(c, this.of(c), T);
+    const h = this.of(c);
+    if ((T + c.id * 7) % TICK_RATE === 0) {
+      this.sendCells(c, h);
+      this.listFar(c, h);
+    }
+    if (h.farNext < h.farDue.length) this.sendFar(c, h);
+    if (T % TICK_RATE === 0) this.sendMarks(c, h, T);
+  }
+
+  /** How far off a session wants far cells, in metres. It is sent them within the smaller of this and FarRadius. */
+  ask(c: Client, metres: number): void {
+    this.of(c).farAsk = metres;
   }
 
   private of(c: Client): Held {
@@ -173,6 +211,9 @@ export class Tactical {
       h.zoom = 0;
       h.cursor = 0;
       h.marksHead = -1;
+      h.farSent.fill(0);
+      h.farAsk = 0;
+      h.farDue.length = 0;
     }
     return h;
   }
@@ -220,8 +261,17 @@ export class Tactical {
     this.stats.bakes++;
     let s = this.summaries[chunk];
     // A bake that changes nothing a map shows (health, a piece under another) gives no new version, so nothing is sent for it.
-    if (s ? s.same(fresh) : fresh.filled === 0) return;
+    // The far cells have a version of their own, so a change to one is never sent as the other.
+    const mapSame = s ? s.same(fresh) : fresh.filled === 0;
+    const farSame = s ? s.far.same(fresh.far) : fresh.far.filled === 0;
+    if (mapSame && farSame) return;
     s ??= this.summaries[chunk] = new Summary();
+    if (!farSame) {
+      if (s.farVersion === 0) this.farChunks.push(chunk);
+      s.far.copy(fresh.far);
+      s.farVersion++;
+    }
+    if (mapSame) return;
     for (let i = 0; i < s.teamCount; i++) {
       const list = fresh.teamIndex(s.teams[i]!) < 0 ? this.ofTeam.get(s.teams[i]!) : undefined;
       const at = list ? list.indexOf(chunk) : -1;
@@ -301,6 +351,70 @@ export class Tactical {
     this.stats.cells++;
     this.stats.cellBytes += w.byteLength;
     return budget - w.byteLength;
+  }
+
+  /** Once a second for each session: the chunks within its reach whose far cells it holds older, nearest first. */
+  private listFar(c: Client, h: Held): void {
+    h.farDue.length = h.farNext = h.farAll = h.farOlder = 0;
+    const reach = Math.min(this.rules.num("FarRadius"), h.farAsk);
+    if (reach <= 0) return;
+    const dims = this.world.dims;
+    const list = this.farChunks;
+    let order = this.farOrder;
+    let n = 0;
+    for (let i = 0; i < list.length; i++) {
+      const chunk = list[i]!;
+      const s = this.summaries[chunk]!;
+      const had = h.farSent[chunk]!;
+      // An empty chunk is news only to a session that was sent it filled.
+      if (had === s.farVersion || (had === 0 && s.far.filled === 0)) continue;
+      const dx = (chunkCx(dims, chunk) + 0.5) * CHUNK_SIZE - c.body.x;
+      const dz = (chunkCz(dims, chunk) + 0.5) * CHUNK_SIZE - c.body.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 > reach * reach) continue;
+      if (n === order.length) {
+        order = new Float64Array(n * 2);
+        order.set(this.farOrder);
+        this.farOrder = order;
+      }
+      order[n++] = Math.floor(d2) * 65536 + chunk;
+    }
+    order.subarray(0, n).sort();
+    for (let i = 0; i < n; i++) h.farDue.push(order[i]! % 65536);
+  }
+
+  /**
+   * Sends what is due of the far cells, each chunk whole in one message, within the second's bytes and this tick's. They go in
+   * what the chunk rows leave of the window, so a join's near chunks come first.
+   */
+  private sendFar(c: Client, h: Held): void {
+    let tick = 0;
+    for (; h.farNext < h.farDue.length; h.farNext++) {
+      const chunk = h.farDue[h.farNext]!;
+      const s = this.summaries[chunk]!;
+      const had = h.farSent[chunk]!;
+      if (had === s.farVersion || (had === 0 && s.far.filled === 0) || (had !== 0 && h.farOlder >= FAR_BYTES)) continue;
+      // Open decision 2 (F5): a terrain check would test a chunk here, before its first send, since a send cannot be taken back.
+      const w = this.game.begin(S_FAR);
+      writeFar(w, chunk, s.far);
+      const bytes = w.byteLength;
+      if (h.farAll + bytes > FAR_NEW_BYTES) {
+        h.farDue.length = 0;
+        return;
+      }
+      if (had !== 0 && h.farOlder + bytes > FAR_BYTES) {
+        h.farOlder = FAR_BYTES;
+        continue;
+      }
+      if ((tick > 0 && tick + bytes > FAR_TICK_BYTES) || !this.game.spendChunkWindow(c, bytes)) return;
+      this.game.endOwn(c);
+      h.farSent[chunk] = s.farVersion;
+      tick += bytes;
+      h.farAll += bytes;
+      if (had !== 0) h.farOlder += bytes;
+      this.stats.far++;
+      this.stats.farBytes += bytes;
+    }
   }
 
   /** A tribe's creatures are found by a pass over every entity, so the list is made seldom. One tamed since shows at the next. */

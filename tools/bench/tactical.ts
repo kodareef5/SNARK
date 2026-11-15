@@ -14,7 +14,7 @@ import { LoopbackNet } from "../../shared/net/loopback.ts";
 import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import { Summary, bakeChunk, writeCells } from "../../shared/world/tactical.ts";
+import { Summary, bakeChunk, pieceShapes, writeCells } from "../../shared/world/tactical.ts";
 
 type Record = (name: string, value: number, unit: string, budget?: number | null) => void;
 
@@ -23,7 +23,7 @@ export function benchTactical(host: Host, chunk: number, run: (ticks: number) =>
   section("The map: a 20,000-piece chunk baked, and the two feeds over thirty seconds");
   const world = host.world;
   const reg = world.reg;
-  const shapes = { halfX: reg.halfX, halfY: reg.halfY, halfZ: reg.halfZ, tint: Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0)) };
+  const shapes = pieceShapes(reg);
   const summary = new Summary();
   const table = world.structs.chunks[chunk]!;
   const [x0, z0] = [chunkCx(world.dims, chunk) * CHUNK_SIZE, chunkCz(world.dims, chunk) * CHUNK_SIZE];
