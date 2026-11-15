@@ -36,6 +36,12 @@ export class WorldSounds {
   private hour = -1;
   /** What the ear was last found to be near, kept a while so that a bed does not flicker at an edge. */
   biome = 2;
+  /** What the music hears of the place: under water, night, and the open sea about the ear. */
+  under = false;
+  night = false;
+  get openSea(): boolean {
+    return this.sea >= 0.85;
+  }
   private recheckMs = 0;
   private sea = 0;
 
@@ -52,6 +58,8 @@ export class WorldSounds {
       this.biome = this.sea > 0 ? 0 : trees(x, z, RING) >= JUNGLE_TREES ? 1 : 2;
     }
     const under = y < hf.seaLevel;
+    this.under = under;
+    this.night = hour < SUNRISE || hour >= SUNSET;
     const night = hour < SUNRISE || hour >= SUNSET ? 1 : 0;
     const openSea = this.sea >= 0.85;
     BED.forEach((pair, b) => pair.forEach((key, t) => loop(WORLD_LOOPS + b * 2 + t, key, 1, !under && !openSea && b === this.biome && t === night)));

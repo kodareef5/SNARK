@@ -142,6 +142,8 @@ class Heard {
   /** The turn of its idle it was last standing in, or -1 while it was not standing. */
   slot = -1;
   out = false;
+  /** Its distance from the ear last frame. */
+  lastD = Infinity;
   /** Seconds at which it next calls while running, and growls while stalking; 0 while it does neither. */
   nextCall = 0;
   nextGrowl = 0;
@@ -154,7 +156,16 @@ class Heard {
 /** Hands on a sound of the library to be heard: how it is heard and weighed, whose it is, where, how loud, how high and when. */
 export type Emit = (sound: number, kind: number, weight: number, entity: number, x: number, y: number, z: number, lift: number, level: number, rate: number, delay: number) => void;
 
+/** Metres within which a moving hunter is a threat the music hears, and a running one a chaser; a hunter this tall or taller is an apex. */
+const THREAT_NEAR = 40;
+const CHASE_NEAR = 30;
+const APEX_HEIGHT = 3;
+
 export class CreatureSounds {
+  /** This frame: hunters moving within reach of the ear, those running at it, and whether any is an apex (music.ts). */
+  hunters = 0;
+  chasers = 0;
+  apex = false;
   /** By content index, or null for a kind with no sounds. */
   readonly books: (Book | null)[];
   readonly bodies = new Map<number, Heard>();
@@ -181,6 +192,9 @@ export class CreatureSounds {
    */
   update(remote: RemoteSample, hf: Heightfield, ex: number, ey: number, ez: number, emit: Emit, want: (sound: number, metres: number) => void): void {
     const frame = ++this.frame;
+    this.hunters = 0;
+    this.chasers = 0;
+    this.apex = false;
     const st = this.st;
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
@@ -238,6 +252,13 @@ export class CreatureSounds {
       b.actStart = st.actionStart;
       b.out = st.out;
       b.kind = kind;
+      if (this.reg.temper[kind] === TEMPER_HUNTS && st.speed > 0 && !st.out && d < THREAT_NEAR) {
+        this.hunters++;
+        // Running and nearer than last frame: it runs at the ear.
+        if (st.speed * SPEED_STEP >= (book.anim?.runAt ?? 6) * 0.8 && d < CHASE_NEAR && d < b.lastD) this.chasers++;
+        if (this.reg.bodyHeight[kind]! >= APEX_HEIGHT) this.apex = true;
+      }
+      b.lastD = d;
       this.calls(book, b, st, remote.tick / TICK_RATE, first, d, this.reg.temper[kind] === TEMPER_HUNTS, play);
       if (book.anim) this.idles(book, book.anim, b, st, remote.tick, first, id, x, y, z, size, pitch, quiet, emit);
       if (ground >= 0 && book.anim) this.steps(book, book.anim, b, st, remote.tick, remote.yaw[i]!, size, ground, d, id, x, y, z, pitch, quiet, emit);

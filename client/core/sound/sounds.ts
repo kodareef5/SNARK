@@ -22,6 +22,9 @@ import { InlineDecoder, SOUND_BUDGET, SOUND_BUDGET_TOUCH, SoundLibrary, type Sou
 import { FLAT, KIND_NAMES, KIND_STEP, KIND_VOCAL, LOOP, Mixer, spread, type Ear } from "./mixer.ts";
 import { SoundPacket, type SoundSink } from "./packet.ts";
 import { earAxes, semitones } from "./place.ts";
+import { MusicDirector, type MusicState, type MusicTrack } from "./music.ts";
+import { paved } from "./ground.ts";
+import { V_HEALTH } from "../../../shared/sim/vitals.ts";
 import { Resolver } from "./resolve.ts";
 import { WorldSounds } from "./world.ts";
 
@@ -118,6 +121,9 @@ export class Sounds {
   readonly actions: ActionSounds;
   readonly build: BuildSounds;
   readonly world = new WorldSounds();
+  /** The music director, once the build's music.json has come (setMusic); null for none. */
+  music: MusicDirector | null = null;
+  private readonly musicState: MusicState = { alive: false, place: "grass", night: false, hunters: 0, chasers: 0, apex: false, sinceHurt: Infinity, sinceFight: Infinity, health: 1, home: false };
   /** Plays only the takes made by this (a take's `from`, as "moss"), where a sound has any, or "" for every take. */
   from = "";
   /** The last occasions asked for, newest last: key, owner, sound (-1 for none) and what became of it. */
@@ -233,6 +239,7 @@ export class Sounds {
       this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
       this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true));
     }
+    this.actions.nowMs = nowMs;
     this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);
     for (const a of this.asked) {
       lib.want(a.sound, Infinity);
@@ -248,6 +255,7 @@ export class Sounds {
     this.pending.length = 0;
     this.crowd.clear();
     this.fade(dt, running, nowMs);
+    p.music = this.music && view ? this.music.update(nowMs, this.hearing(view, hf, ear, nowMs)) : null;
     this.mixer.follow(p, this.ear, this.locate);
     lib.end(p);
     sink.apply(p);
@@ -306,6 +314,29 @@ export class Sounds {
     this.loops.clear();
     this.pending.length = 0;
     sink.apply(p);
+  }
+
+  /** Starts the music director on the tracks the build lists. */
+  setMusic(tracks: readonly MusicTrack[]): void {
+    this.music = new MusicDirector(tracks, new Rng(23));
+  }
+
+  /** What the player is going through, for the music, from what the producers saw this frame. */
+  private hearing(view: SoundView, hf: Heightfield, ear: Listener, nowMs: number): MusicState {
+    const m = this.musicState;
+    const w = this.world;
+    m.alive = view.own.alive;
+    m.place = w.under ? "under" : w.openSea ? "sea" : paved(hf, ear.x, ear.z) ? "ruins" : (["beach", "jungle", "grass"] as const)[w.biome] ?? "grass";
+    m.night = w.night;
+    m.hunters = this.creatures.hunters;
+    m.chasers = this.creatures.chasers;
+    m.apex = this.creatures.apex;
+    m.sinceHurt = (nowMs - this.actions.hurtAtMs) / 1000;
+    m.sinceFight = (nowMs - this.actions.fightAtMs) / 1000;
+    const v = view.own.vitals;
+    m.health = v ? v.at(V_HEALTH, view.own.tick) / (v.max[V_HEALTH] || 1) : 1;
+    m.home = this.build.fireNear;
+    return m;
   }
 
   /** Plays a sound at (x, y, z) as soon as it is held, or not at all if that takes more than five seconds. */

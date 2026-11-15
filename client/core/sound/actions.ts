@@ -98,6 +98,10 @@ export class ActionSounds {
   private food = -1;
   private water = -1;
   private hungry = false;
+  /** The frame's time, set by Sounds; and when the player was last hurt and last struck something (ms), for the music. */
+  nowMs = 0;
+  hurtAtMs = -Infinity;
+  fightAtMs = -Infinity;
 
   /**
    * `ownerOf` gives the resolver's owner number of an id: a weapon's sounds are its own (`core:shotgun/sound/fire`), or
@@ -177,10 +181,12 @@ export class ActionSounds {
     // ---- Combat events.
     for (const e of this.events) {
       if (e.kind === EVENT_HIT) {
+        this.fightAtMs = this.nowMs;
         // A blow that kills is followed by EVENT_KILL, which is where the kill is heard.
         hear(ui, e.zone === ZONE_HEAD ? K.head : K.marker, -1, 0, 0, 0, 0, 1, true);
         hear(survivor, e.zone === ZONE_NONE ? K.stone : K.flesh, -1, e.x, e.y, e.z, 0, Math.min(1, 0.4 + e.damage / 60), false);
       } else if (e.kind === EVENT_HURT && own.vitals) {
+        this.hurtAtMs = this.nowMs;
         const max = own.vitals.max[V_HEALTH]! || 1;
         hear(survivor, (e.damage * 1e6) / max >= 0.25 ? HURT_BADLY[sex]! : HURT[sex]!, -1, 0, 0, 0, 0, 1, true);
       } else if (e.kind === EVENT_DEATH) {

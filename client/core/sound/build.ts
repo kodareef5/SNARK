@@ -90,6 +90,9 @@ export class BuildSounds {
   private hear: Hear | null = null;
 
   /** One frame: what changed since the last, heard; and the fires `lit` finds near (ex, ey, ez) held burning through `burn`. */
+  /** Whether a lit fire burns within hearing of the ear: the music hears a camp. */
+  fireNear = false;
+
   update(ex: number, ey: number, ez: number, hear: Hear, burn: (id: number, owner: number, key: number, x: number, y: number, z: number, on: boolean) => void, lit: Lit | null = null): void {
     this.hear = hear;
     for (const f of this.queue) f();
@@ -105,6 +108,7 @@ export class BuildSounds {
     for (let f = 0; f < fires.length; f += 4) if (Math.hypot(fires[f]! - ex, fires[f + 1]! - ey, fires[f + 2]! - ez) < FIRE_REACH) near.push(f);
     const d = (f: number): number => Math.hypot(fires[f]! - ex, fires[f + 1]! - ey, fires[f + 2]! - ez);
     near.sort((a, b) => d(a) - d(b));
+    this.fireNear = near.length > 0;
     for (let i = 0; i < FIRES; i++) {
       const f = near[i];
       burn(i, f === undefined ? -1 : this.owner[fires[f + 3]!]!, K.burn, f === undefined ? 0 : fires[f]!, f === undefined ? 0 : fires[f + 1]!, f === undefined ? 0 : fires[f + 2]!, f !== undefined);

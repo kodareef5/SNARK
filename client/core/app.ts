@@ -51,6 +51,7 @@ import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts
 import type { SoundSink } from "./sound/packet.ts";
 import { Sounds } from "./sound/sounds.ts";
 import type { SoundDecoder } from "./sound/library.ts";
+import type { MusicTrack } from "./sound/music.ts";
 import { hearSession, soundView } from "./sound/view.ts";
 import { cueKey } from "../../shared/sound/cues.ts";
 import { soundCommand } from "./sound/command.ts";
@@ -215,6 +216,8 @@ export class App {
   sounds: Sounds | null = null;
   /** Decodes sounds off the main thread: the browser's worker, set before the first frame. Null decodes inline. */
   soundDecoder: SoundDecoder | null = null;
+  /** The music tracks the build lists (assets/music/music.json), once fetched; null for none. */
+  musicTracks: readonly MusicTrack[] | null = null;
   /** Tames already heard of the session's queue, which the naming prompt empties. */
   private tamedHeard = 0;
   talking = false;
@@ -894,6 +897,7 @@ export class App {
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     this.listen(hud);
     const vol = this.ui.settings;
+    if (this.sounds && this.musicTracks && !this.sounds.music) this.sounds.setMusic(this.musicTracks);
     if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;

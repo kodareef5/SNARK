@@ -3,8 +3,8 @@
 // it for good. What is fetched whole has a Brotli copy beside it. What is fetched by range is stored a part at a time,
 // deflated where that is smaller, and the levels drawn with materials are ordered for the vertex cache first.
 
-import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
 import { gameTextures } from "./art/materials.ts";
 import { buildCorePack, importedMeshes } from "./pack/build.ts";
@@ -46,6 +46,12 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   if (!result.success) throw new Error(result.logs.map(String).join("\n"));
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));
   copyFileSync(join(root, "client/sound/sounds.html"), join(dist, "sounds.html"));
+  // The music as it is played: each track's layers as Opus, music.json listing them, and the lab to hear them.
+  const music = join(root, "assets/source/core/music");
+  if (existsSync(join(music, "music.json"))) {
+    cpSync(music, join(dist, "assets/music"), { recursive: true, filter: (f) => statSync(f).isDirectory() || /\.(opus|json)$/.test(f) && !f.includes(`${sep}sound${sep}`) });
+    if (existsSync(join(music, "listen.html"))) copyFileSync(join(music, "listen.html"), join(dist, "music.html"));
+  }
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));
   const split = splitPack(core, "core");
   const manifest = split.manifest;
