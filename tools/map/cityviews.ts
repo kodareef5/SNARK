@@ -119,6 +119,8 @@ for (const v of views) {
     view.reg, view.pack, view.port ? { manifest: files.manifest, port: view.port } : undefined,
   );
   view.scene = scene;
+  // A client standing there long enough has made every tile it wants.
+  if (scene.city) scene.city.makeMs = Infinity;
   const levels = values.levels ? readLevels(values.levels) : tier.city.levels;
   const reach = values.reach ? Number(values.reach) : tier.reach.city;
   scene.assets.tier = { ...tier, city: { levels }, reach: { ...tier.reach, city: reach } };
@@ -130,9 +132,9 @@ for (const v of views) {
   const p = scene.packet;
   // One more frame, timed, as a client standing there builds it.
   const b0 = performance.now();
-  scene.build(cam, view.remote);
+  const timed = scene.build(cam, view.remote);
   const buildMs = performance.now() - b0;
-  view.raster.render(scene.build(cam, view.remote));
+  view.raster.render(timed);
   const out = join(folder, `${v.name}.png`);
   writeFileSync(out, encodePng(w, h, view.raster.color));
   let cityDraws = 0;

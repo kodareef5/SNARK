@@ -477,7 +477,8 @@ const SMALL_HALF = TACTICAL_CELL / 2;
  */
 function pieceCells(city: CityStatics, i: number, x0: number, z0: number, hf: Heightfield, each: (cell: number, top: number) => void): void {
   const k = city.kind[i]!;
-  const h = city.y[i]! + city.halfY[k]!;
+  // A float32, as the bake keeps a cell's top.
+  const h = Math.fround(city.y[i]! + city.halfY[k]!);
   const hx = city.halfX[k]!;
   const hz = city.halfZ[k]!;
   const px = city.x[i]! - x0;
