@@ -294,9 +294,8 @@ interface Tile {
 export class FarBlocks {
   /** The pack mesh of the tiles' bounds, as a draw names it. */
   readonly mesh: number;
-  /** Bytes of tiles on the card, and tiles made this frame. */
+  /** Bytes of tiles on the card. */
   bytes = 0;
-  made = 0;
   private readonly source: FarSource;
   private readonly dims: MapDims;
   private readonly hf: Heightfield;
@@ -349,7 +348,6 @@ export class FarBlocks {
    * farther. Uploads and drops go into the packet, and what they weigh is spent and reserved in `budget`.
    */
   update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, x: number, z: number, reach: number): void {
-    this.made = 0;
     this.on = reach > 0;
     const cells = this.source.cells;
     for (const chunk of cells.chunks.keys()) {
@@ -439,7 +437,6 @@ export class FarBlocks {
     tile.slot = -1;
     tile.dirty = false;
     this.make(t, tile);
-    this.made++;
     if (!tile.data) this.tiles.delete(t);
   }
 
