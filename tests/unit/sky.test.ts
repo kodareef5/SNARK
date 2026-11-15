@@ -1,14 +1,12 @@
 // The sky on lit tiers: the sun's path, the table the dome, haze and light come from, and the exposure that keeps a grey
 // card as bright as low poly shows it.
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { SKY_SIZE, aroundOf, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, heightOf, hourOfSun, luminance, sampleSky, shownSky, skyFrame, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { linearToSrgb } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
-import { SKY_POINTS, apart, basePoints, tableAt } from "../../tools/sky/fit.ts";
+import { apart, basePoints, cardColours, domeApart, keyCards } from "../../tools/sky/fit.ts";
 import { sceneWorld } from "../fixtures/sceneworld.ts";
 
 const sky = theSky();
@@ -196,7 +194,8 @@ test("at dusk the dome is brightest low toward fTrueSun, 8 degrees down, and rea
     }
   }
   const toward = (Math.atan2(sun[2]!, sun[0]!) * 180) / Math.PI;
-  expect(at[0]!).toBeLessThan(5);
+  // The key's yellow layer, over its ember line.
+  expect(at[0]!).toBeLessThan(10);
   // The glow lies along the horizon either side of the sun, about even for 20 degrees: its brightest is on that stretch.
   expect(Math.abs((((at[1]! - toward) % 360) + 540) % 360 - 180)).toBeLessThan(25);
   const held = [f[F.sun]!, f[F.sun + 1]!, f[F.sun + 2]!];
@@ -221,12 +220,22 @@ test("at noon a grey card sunlit and seen head on shows 128, and one in its own 
   expect(255 * linearToSrgb(luminance(shaded))).toBeCloseTo(70, 0);
 });
 
-test("at each key's hour the dome is within 6 of the accepted key at its four sky points (OKLab times 100), read from the table as the game reads it", () => {
-  const keys = JSON.parse(readFileSync(resolve(import.meta.dir, "../../assets/source/core/sky/keys/points-read.json"), "utf8")).keys as Record<string, { points: Record<string, number[]> }>;
-  let worst = 0;
+test("at each key's hour the game shows the accepted key over its whole clear sky: half of it within 1.5 OKLab times 100, nine tenths within 4", () => {
   for (const key of basePoints()) {
-    const seen = tableAt(sky, key);
-    for (const p of SKY_POINTS) worst = Math.max(worst, apart(seen[p]!, keys[key.name]!.points[p]!));
+    const d = domeApart(sky, key, 4);
+    expect(d.median).toBeLessThan(1.5);
+    expect(d.p90).toBeLessThan(4);
   }
-  expect(worst).toBeLessThanOrEqual(6);
+});
+
+test("twilight is over by the table's slice past 18 degrees down: from 20 down the horizon is as bright toward the sunken sun as away from it", () => {
+  for (const height of [-20, -30, -45, -60]) {
+    const hour = hourOfSun(height, true);
+    expect(apart(dome(hour, 3, 0), dome(hour, 3, 180))).toBeLessThan(2);
+  }
+});
+
+test("as the sun goes down the white balance goes with it: at dusk a grey card in its own shade is lit the colour of the sky shown, as the dusk key has it", () => {
+  const dusk = basePoints().find((k) => k.name === "dusk")!;
+  expect(apart(cardColours(sky, dusk.hour, false).shaded, keyCards().dusk!.shaded!)).toBeLessThan(2);
 });
