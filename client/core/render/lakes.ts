@@ -218,24 +218,35 @@ export class Lakes {
     // A sheet down each side of a body's square that has lower water beside it, merged along its row.
     for (const [di, dj] of WAYS) {
       for (let line = 0; line < n; line++) {
-        let [from, top, foot] = [-1, 0, 0];
+        let from = -1;
+        let top = 0;
+        let foot = 0;
         for (let step = 0; step <= n; step++) {
-          let [t, f] = [-Infinity, -Infinity];
+          let t = -Infinity;
+          let f = -Infinity;
           if (step < n) {
-            const [i, j] = di !== 0 ? [line, step] : [step, line];
+            const i = di !== 0 ? line : step;
+            const j = di !== 0 ? step : line;
             const v = grid[j * n + i]!;
-            if (v !== 0 && v !== SEA) {
-              const below = waterOn(ox + (i + di) * cell, oz + (j + dj) * cell);
-              if (below > -Infinity && below < surface[v]!) [t, f] = [surface[v]!, below];
+            const ni = i + di;
+            const nj = j + dj;
+            if (v !== 0 && v !== SEA && (ni < 0 || nj < 0 || ni >= n || nj >= n || grid[nj * n + ni] !== v)) {
+              const below = waterOn(ox + ni * cell, oz + nj * cell);
+              if (below > -Infinity && below < surface[v]!) {
+                t = surface[v]!;
+                f = below;
+              }
             }
           }
           if (from >= 0 && t === top && f === foot) continue;
           if (from >= 0) {
-            const [a, e, h] = [from * cell, step * cell, top - foot];
-            if (di !== 0) face((line + (di > 0 ? 1 : 0)) * cell, foot, a, 0, h, 0, 0, 0, e - a);
-            else face(a, foot, (line + (dj > 0 ? 1 : 0)) * cell, 0, h, 0, e - a, 0, 0);
+            const [a, e] = [from * cell, step * cell];
+            if (di !== 0) face((line + (di > 0 ? 1 : 0)) * cell, foot, a, 0, top - foot, 0, 0, 0, e - a);
+            else face(a, foot, (line + (dj > 0 ? 1 : 0)) * cell, 0, top - foot, 0, e - a, 0, 0);
           }
-          [from, top, foot] = [t > -Infinity ? step : -1, t, f];
+          from = t > -Infinity ? step : -1;
+          top = t;
+          foot = f;
         }
       }
     }
