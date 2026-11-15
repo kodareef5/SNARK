@@ -217,8 +217,10 @@ pieces: [{ id: "core:pick", object: "pick", hold: "prop_r", dropped: "auto", ico
   or of an item with no lying mesh, as the bag.
 - `icon`: the view its inventory picture is drawn from, where the usual
   three-quarter view with its length on the diagonal does not suit it: angles
-  in radians round and above, `roll` about the view, and `zoom` past the
-  framing that fits it.
+  in radians round and above, `roll` about the view, `zoom` past the
+  framing that fits it, and `shift`, the middle of the picture moved right and
+  up as shares of that framing's half side: with a zoom, the part of a long
+  thing that says what it is (the spear's head).
 
 Its materials, levels and budgets are any piece's. Seen closer than anything
 else in first person, a held piece is worth its finest level.

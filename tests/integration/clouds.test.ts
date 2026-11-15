@@ -15,6 +15,7 @@ import { BTN_PRIMARY } from "../../shared/sim/character.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
+import { underLoad } from "../fixtures/load.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -204,7 +205,7 @@ test("many clouds are cheap: the most there may be look at a crowd in well under
     for (let k = 0; k < ticks; k++) clouds.step();
     each = Math.min(each, (performance.now() - t0) / ticks);
   }
-  expect(each).toBeLessThan(1);
+  expect(each).toBeLessThan(underLoad(1));
 
   // The client draws every one in view as puffs, the cut-out core first, and never more than the packet holds.
   const looks = new CloudLooks(reg, corePack().header.details, corePack().palette);
@@ -231,8 +232,8 @@ test("many clouds are cheap: the most there may be look at a crowd in well under
   expect(cut).toBeGreaterThan(0);
   expect(p.detailCount).toBeLessThanOrEqual(MAX_DETAILS);
   expect(looks.written + looks.dropped).toBeGreaterThan(cut);
-  // About 4 ms for these 7,936 puffs on an idle machine; the room is for a busy one.
-  expect(ms).toBeLessThan(25);
+  // About 4 ms for these 7,936 puffs on an idle machine; the room is for a busy one, and stretches with its load.
+  expect(ms).toBeLessThan(underLoad(25));
   // The see-through rim comes far to near.
   let last = Infinity;
   for (let k = cut; k < p.detailCount; k++) {
