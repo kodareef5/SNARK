@@ -56,7 +56,7 @@ test("where nodes stand is a pure function of the map: the same every time, dry,
   expect([...sizes].sort((x, y) => x - y)).toEqual(Array.from({ length: SIZE_STEPS }, (_, s) => Math.round((0.4 + (0.35 * s) / 15) * SIZE_UNITS)));
 });
 
-test("a world saved before the new kinds came keeps every node where it was and of its kind: the first 96 slots are as they were", () => {
+test("a world saved before the new kinds came keeps every node where it was and of its kind: the first 96 slots are as they were, but where a rock's footing fails", () => {
   // The rule as it stood: a slot's place and its kind and turn from two hashes, trees, rocks and bushes 5, 3 and 3 beyond the plaza.
   const kinds = [...Array(5).fill(kind("core:tree")), ...Array(3).fill(kind("core:rock")), ...Array(3).fill(kind("core:bush"))] as number[];
   const was = (chunk: number, index: number): number[] => {
@@ -71,22 +71,26 @@ test("a world saved before the new kinds came keeps every node where it was and 
   const now = provingNodes(hf, reg);
   const s = spot();
   let standing = 0;
+  let footless = 0;
   for (let chunk = 0; chunk < CHUNKS; chunk++) {
     for (let i = 0; i < PROVING_NODES_PER_CHUNK; i++) {
       now.at(chunk, i, s);
-      expect(s.kind === 0 ? [0] : [s.kind, s.x, s.z, s.yaw]).toEqual(was(chunk, i));
+      const before = was(chunk, i);
+      // A rock grows nowhere the ground falls away under its base further than the base is buried.
+      if (s.kind === 0 && before[0] === kind("core:rock")) footless++;
+      else expect(s.kind === 0 ? [0] : [s.kind, s.x, s.z, s.yaw]).toEqual(before);
       if (s.kind !== 0) standing++;
     }
   }
-  expect(standing).toBeGreaterThan(1500);
+  expect([standing > 1500, footless]).toEqual([true, 73]);
 });
 
-test("the zoned layer's slots keep their places and kinds: an elder oak grows only where the ground was bare, and a strangler fig only where a banyan's footing fails", () => {
-  // The zones as they were, without the elder oak, and the content without the banyan's footing.
+test("the zoned layer's slots keep their places and kinds: an elder oak grows only where the ground was bare, a strangler fig only where a banyan's footing fails, and nothing where a heap's or a metal rock's does", () => {
+  // The zones as they were, without the elder oak, and the content without footings.
   const layers = provingNodeLayers(hf);
   const zoned = layers[1] as NodeZoned;
   const before = [layers[0]!, { ...zoned, zones: zoned.zones.map((z) => ({ bare: z.bare + z.kinds.filter(([id]) => id === "core:oak").length, kinds: z.kinds.filter(([id]) => id !== "core:oak") })) }];
-  const level = compileContent(CORE_CONTENT.map((d) => (d.id === "core:banyan" && d.type === "node" ? { ...d, footing: undefined } : d))).registry!;
+  const level = compileContent(CORE_CONTENT.map((d) => (d.type === "node" ? { ...d, footing: undefined } : d))).registry!;
   const was = nodeLayers(PROVING_DIMS, hf, level, before)!;
   const now = provingNodes(hf, reg);
   const [a, b] = [spot(), spot()];
@@ -99,13 +103,14 @@ test("the zoned layer's slots keep their places and kinds: an elder oak grows on
         if (a.kind !== 0) expect([b.x, b.y, b.z, b.yaw]).toEqual([a.x, a.y, a.z, a.yaw]);
         continue;
       }
-      const key = `${a.kind === 0 ? "bare" : level.ids[a.kind]} to ${reg.ids[b.kind]}`;
+      const key = `${a.kind === 0 ? "bare" : level.ids[a.kind]} to ${b.kind === 0 ? "bare" : reg.ids[b.kind]}`;
       changed.set(key, (changed.get(key) ?? 0) + 1);
-      if (a.kind !== 0) expect([b.x, b.y, b.z, b.yaw]).toEqual([a.x, a.y, a.z, a.yaw]);
+      if (a.kind !== 0 && b.kind !== 0) expect([b.x, b.y, b.z, b.yaw]).toEqual([a.x, a.y, a.z, a.yaw]);
     }
   }
-  // Of the 25 banyans, 6 stood where the ground falls away under their outer trunks further than they are buried.
-  expect(Object.fromEntries(changed)).toEqual({ "bare to core:oak": 44, "core:banyan to core:fig": 6 });
+  // Of the 25 banyans, 6 stood where the ground falls away under their outer trunks further than they are buried; of the
+  // 97 heaps of rubble 22, and of the 30 metal rocks 5, where it falls away under their bases.
+  expect(Object.fromEntries(changed)).toEqual({ "bare to core:oak": 44, "core:banyan to core:fig": 6, "core:rubble to bare": 22, "core:metal_rock to bare": 5 });
 });
 
 test("a kind with a footing grows only where the ground under it falls no further than it allows, and the kind it names elsewhere", () => {

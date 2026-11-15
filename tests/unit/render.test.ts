@@ -72,7 +72,7 @@ test("the frame from the spawn point shows the right thing under known pixels", 
   // Structures take one draw per mesh per chunk.
   expect(packet.uploads.length).toBeGreaterThan(0);
   // Structures, plus one for each variant of a node kind in each chunk in view, or for each of its materials and each run of
-  // cells at one level where it has them (514 with the rocks of 2026-11-15, twelve meshes more), and never two alike for
+  // cells at one level where it has them (492 with the rocks of 2026-11-15, twelve meshes more), and never two alike for
   // one mesh in one chunk.
   expect(packet.drawCount).toBeLessThan(600);
   const batches = [...packet.drawBuffer.subarray(0, packet.drawCount)].map((b, d) => `${b}/${packet.drawMesh[d]}/${packet.drawFlags[d]}`).filter((key) => !key.startsWith(`${TRANSIENT_BUFFER}/`));
