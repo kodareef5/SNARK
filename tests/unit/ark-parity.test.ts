@@ -5,7 +5,7 @@ import { expect, test } from "bun:test";
 import { Items } from "../../server/items.ts";
 import { Records } from "../../server/records.ts";
 import type { ServerWorld } from "../../server/world.ts";
-import type { BuffDef } from "../../shared/content/defs.ts";
+import type { BuffDef, ItemDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { DAMAGE_TYPES } from "../../shared/sim/damage.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -28,6 +28,25 @@ test("raw and cooked prime meat spoil into spoiled meat, in 280 s and 46 minutes
   expect([reg.spoilsInto[at("meat_prime")], reg.spoilsInto[at("meat_prime_cooked")]]).toEqual([at("spoiled_meat"), at("spoiled_meat")]);
   // Every meat spoils into it (Spoilage: "All forms of Meat spoil and become Spoiled Meat").
   expect([reg.spoilsInto[at("meat")], reg.spoilsInto[at("meat_cooked")]]).toEqual([at("spoiled_meat"), at("spoiled_meat")]);
+});
+
+test("what a survivor gets of eating each food is its infobox's (Raw Meat, Cooked Meat, Raw Prime Meat, Cooked Prime Meat, Spoiled Meat, Mejoberry, Amarberry, Azulberry, Tintoberry, Narcoberry, Narcotic)", () => {
+  /** Food, water and health eaten (health given over time), and health taken at once. */
+  const eaten = (name: string): [number, number, number, number] => {
+    const d = reg.defs[at(name)] as ItemDef;
+    const now = d.use?.adds?.find((a) => a.stat === "health" && a.seconds === undefined)?.amount ?? 0;
+    return [d.eat?.food ?? 0, d.eat?.water ?? 0, d.eat?.health ?? 0, now];
+  };
+  expect(eaten("meat")).toEqual([10, 0, 0, -5]);
+  expect(eaten("meat_cooked")).toEqual([20, 0, 8, 0]);
+  expect(eaten("meat_prime")).toEqual([20, 0, 0, -5]);
+  expect(eaten("meat_prime_cooked")).toEqual([35, 0, 25, 0]);
+  // The infobox's 2.5 and 12 (its text says 3.5 and 12.5).
+  expect(eaten("spoiled_meat")).toEqual([2.5, 0, 0, -12]);
+  // One berry for the four that feed alike.
+  expect(eaten("berry")).toEqual([1.5, 0.2, 0, 0]);
+  expect([eaten("narcoberry"), reg.doseTorpor[at("narcoberry")], reg.doseSeconds[at("narcoberry")]]).toEqual([[4, 0, 0, 0], 7.5, 3]);
+  expect([eaten("narcotic"), reg.doseTorpor[at("narcotic")], reg.doseSeconds[at("narcotic")]]).toEqual([[0, 0, 8, 0], 40, 8]);
 });
 
 test("a flame arrow burns for 22 a second for 8 seconds, as fire (Flame Arrow)", () => {

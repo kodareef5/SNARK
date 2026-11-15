@@ -44,7 +44,9 @@ const GEAR: Def[] = [
   { type: "item", class: "resource", id: id("ore"), stack: 300, weight: 1, label: "metal ore", color: 4 },
   { type: "item", class: "resource", id: id("ingot"), stack: 300, weight: 1, label: "metal ingot", color: 2 },
   { type: "item", class: "resource", id: id("gunpowder"), stack: 100, weight: 0.1, color: 11 },
-  { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
+  // Eaten, 8 health and 40 torpor over 8 seconds ("Increases your health, but puts you to sleep", ark.wiki.gg, Narcotic,
+  // 2026-11-15).
+  { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, eat: { health: 8 }, dose: { torpor: 40, seconds: 8 } },
 
   { type: "item", class: "weapon", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
   ...ARMOR,
@@ -381,9 +383,12 @@ const ALL: readonly Def[] = [
   { type: "item", class: "resource", id: "core:fiber", stack: 300, weight: 0.01, color: 7 },
   // A slingshot's ammunition. Its speed is chosen.
   { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15, ammo: { damage: 14, type: "melee", speed: 35, gravity: 9.81, torpor: { instant: 1.35, over: 0, seconds: 0 }, mesh: "core:stone_shot" } },
-  { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 4, water: 2 }, color: 8 },
-  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 }, spoilsInto: "core:spoiled_meat" },
-  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 35, health: 8 }, color: 3, label: "cooked meat", spoilsInto: "core:spoiled_meat" },
+  // What a survivor gets of eating each is its infobox's (ark.wiki.gg, 2026-11-15). Our one berry stands for the four that
+  // feed alike, each 1.5 food and 0.2 water (Mejoberry, Amarberry, Azulberry, Tintoberry). Raw meat is 10 food and takes
+  // 5 health, at once as spoiled meat's harm is (Raw Meat); cooked meat 20 food and 8 health (Cooked Meat).
+  { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 1.5, water: 0.2 }, color: 8 },
+  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 10 }, use: { adds: [{ stat: "health", amount: -5 }] }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 }, spoilsInto: "core:spoiled_meat" },
+  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 20, health: 8 }, color: 3, label: "cooked meat", spoilsInto: "core:spoiled_meat" },
   { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
   { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
   { type: "item", class: "resource", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
