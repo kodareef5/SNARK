@@ -52,12 +52,16 @@ def main():
         print('districts with no row, taking the default:', missing)
     compositions_path = m.root / 'ruins/compositions.json'
     compositions = json.loads(compositions_path.read_text()) if compositions_path.exists() else {}
-    footprints = len(json.loads((m.root / 'base/buildings.geojson').read_text())['features'])
+    features = json.loads((m.root / 'base/buildings.geojson').read_text())['features']
+    footprints = len(features)
+    resolve_places(m, features)
     labels = json.loads((m.root / 'blocks/labels.json').read_text())
     tallest = max((v['height_m'] or 0 for v in labels.values()), default=0)
     budgets = dict(rules['budgets'])
     budgets['maxCity'] = max(1_500_000, settings.get('blocks_per_footprint', 130) * footprints)
     budgets['maxHeight'] = max(budgets['maxHeight'], int(math.ceil(tallest / 16) * 16))
+    # A city's own budgets, in city.json's "ruins": Las Vegas's towers stand closer than a chunk holds at eight playable floors.
+    budgets.update(settings.get('budgets', {}))
     out = {'version': before.get('version', rules.get('version'))}
     out.update({k: before[k] if k in before else rules[k] for k in TABLES})
     out.update({k: v for k, v in before.items() if k not in MADE and k not in out})
@@ -72,6 +76,34 @@ def main():
     (m.root / 'ruins').mkdir(exist_ok=True)
     path.write_text(json.dumps(out, indent=2, ensure_ascii=False) + '\n')
     print(f"vocabulary: extends {LIBRARY.relative_to(ROOT)}, {len(table)} district rows, {len(compositions)} compositions, budgets {budgets}")
+
+
+def resolve_places(m, features):
+    """A named place may name its OpenStreetMap building ("osm_way", a relation's id negative) rather than a footprint id,
+    which moves whenever the split does: its footprint is the largest piece cut from that building, written back here."""
+    path = m.root / 'ruins/places.json'
+    if not path.exists():
+        return
+    places = json.loads(path.read_text())
+    from shapely.geometry import shape
+    pieces = {}
+    for f in features:
+        p = f['properties']
+        if p.get('osm_way') is not None and not p.get('osm_part') and not p.get('parts_remainder'):
+            pieces.setdefault(p['osm_way'], []).append((shape(f['geometry']).area, p['id']))
+    changed = False
+    for place in places:
+        if 'osm_way' not in place:
+            continue
+        found = max(pieces.get(place['osm_way'], []), default=None)
+        if found is None:
+            raise SystemExit(f"no footprint was cut from OpenStreetMap's {place['osm_way']} for {place['name']}")
+        if place.get('footprint') != found[1]:
+            place['footprint'] = found[1]
+            changed = True
+    if changed:
+        path.write_text(json.dumps(places, indent=2, ensure_ascii=False) + '\n')
+        print('places: footprints resolved from their OpenStreetMap buildings')
 
 
 if __name__ == '__main__':

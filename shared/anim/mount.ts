@@ -12,7 +12,8 @@ import {
 } from "./human.ts";
 import type { Solved } from "./skeleton.ts";
 
-export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced"] as const;
+/** `ride` sits astride a saddle (shared/anim/seat.ts): its rider's hands on the grips, a passenger's upper body its own. */
+export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride"] as const;
 export type MountMotionRole = typeof MOUNT_MOTION_ROLES[number];
 
 export interface MountMotionProfile {
@@ -92,11 +93,11 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
   }
   // Copy the passenger's local upper pose after seating; the procedural seated hips have identity rotation.
   // Do this before writing out, so callers can pass an existing humanPose as both upper and output.
-  if (input.role === "passenger" && input.upper) {
+  if ((input.role === "passenger" || input.role === "ride") && input.upper) {
     for (let i = B_SPINE * 4; i < B_UPPER_LEG_L * 4; i++) sampled.rot[i] = input.upper.rot[i]!;
     for (let i = B_FINGERS_L * 4; i < HUMAN_BONES * 4; i++) sampled.rot[i] = input.upper.rot[i]!;
   }
-  const mirror = input.side === -1 && input.role !== "drive" && input.role !== "passenger";
+  const mirror = input.side === -1 && input.role !== "drive" && input.role !== "passenger" && input.role !== "ride";
   for (let b = 0; b < HUMAN_BONES; b++) {
     const src = (mirror ? mirrors[b]! : b) * 4;
     out.rot[b * 4] = sampled.rot[src]!;
@@ -149,6 +150,25 @@ function seated(driver: boolean, steering = 0): Pose {
   return b.pose;
 }
 
+/**
+ * Astride a saddle, in the seat's frame with the origin SEAT_DROP (0.55) below the seat: the hips 0.10 over it, leaning 6
+ * degrees forward, thighs forward and down either side, shins hanging, hands forward on the grips. These are the joints
+ * the pteranodon's rig was fitted to (RIDER in assets/source/core/creatures/pteranodon/rig.py).
+ */
+function astride(): Pose {
+  const b = new PoseBuilder().hips(0, 0.65, 0).turn(B_SPINE, 6);
+  for (const side of [1, -1] as const) {
+    const left = side === 1;
+    b.aim(left ? B_UPPER_LEG_L : B_UPPER_LEG_R, side * 0.155, -0.2, 0.34);
+    b.aim(left ? B_LOWER_LEG_L : B_LOWER_LEG_R, side * 0.01, -0.42, 0.1);
+    b.level(left ? B_FOOT_L : B_FOOT_R).turn(left ? B_FOOT_L : B_FOOT_R, 25);
+    b.aim(left ? B_UPPER_ARM_L : B_UPPER_ARM_R, side * 0.05, -0.228, 0.09);
+    b.aim(left ? B_LOWER_ARM_L : B_LOWER_ARM_R, -side * 0.08, -0.19, 0.22);
+    b.level(left ? B_HAND_L : B_HAND_R);
+  }
+  return b.pose;
+}
+
 function standing(): PoseBuilder {
   return new PoseBuilder()
     .aim(B_UPPER_ARM_L, 0.1, -1, 0.06).aim(B_LOWER_ARM_L, 0, -1, 0.12)
@@ -187,6 +207,7 @@ function fallbacks(): Fallbacks {
       enter: keyframes("enter", [stand, touch, duck, sit]), exit: keyframes("exit", [sit, duck, touch, stand]),
       carjack: keyframes("carjack", [stand, touch, grab, grab]),
       displaced: keyframes("displaced", [sit, recoil, duck, stand]),
+      ride: keyframes("ride", [astride()]),
     },
     left: seated(true, -1), right: seated(true, 1),
   };

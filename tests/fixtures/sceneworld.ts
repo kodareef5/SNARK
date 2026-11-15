@@ -58,7 +58,7 @@ const DEFS: readonly Def[] = [
   { type: "item", class: "weapon", id: CLUB, stack: 1, weight: 1, color: 5, weapon: { kind: "melee", damage: 10, type: "melee", uses: 10, mesh: CLUB, hold: "tool" } },
   // The panel again as a thing that lies as it landed, tilted, as an arrow does. It is drawn hanging from its origin.
   { type: "prop", class: "projectile", id: SHARD, mesh: PANEL, color: 5, radius: 0.1, height: 0.1, pitched: true },
-  { type: "item", class: "saddle", id: TUBE_SADDLE, stack: 1, weight: 10, color: 3, saddle: { fits: TUBE, armor: 25 } },
+  { type: "item", class: "saddle", id: TUBE_SADDLE, stack: 1, weight: 10, color: 3, saddle: { fits: TUBE, armor: 25, seats: [{ id: "rider", driver: true, anchor: [0, 2, 0], entry: [0.85, 0, 0] }] } },
 ];
 
 /**

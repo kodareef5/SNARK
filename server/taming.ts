@@ -102,6 +102,8 @@ export class Taming {
   /** Breeding hooks. `onMate` gets ORDER_MATE or ORDER_UNMATE and returns a RESULT code. `bred` fills a Subject's breeding fields. */
   onMate: ((rec: EntityRecord, what: number) => number) | null = null;
   bred: ((rec: EntityRecord) => typeof NO_BREEDING) | null = null;
+  /** Whether anyone sits on creature `e` or is getting on or off it, steering or not (server/riding.ts). */
+  ridden: ((e: number) => boolean) | null = null;
   private readonly ctx: TamingContext;
   private readonly rng: Rng;
   /** Pids of creatures being tamed. Few at any time. */
@@ -518,7 +520,7 @@ export class Taming {
       if (what === ORDER_UNSADDLE) {
         // The saddle comes off into its inventory.
         if (rec.saddle === 0) return RESULT_INVALID;
-        if (ents.driven[e] !== 0) return RESULT_BUSY;
+        if (ents.driven[e] !== 0 || this.ridden?.(e)) return RESULT_BUSY;
         if (this.ctx.items.mint(rec, rec.saddle, 1) === 0) return RESULT_FULL;
         rec.saddle = 0;
         this.ctx.refresh(rec);

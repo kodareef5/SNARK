@@ -53,6 +53,9 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     lap(`${pieces.length} static pieces of ${layer.name}`);
     return pieces;
   });
+  // A kind the content does not have would load nowhere: say so here, not when a server or a picture opens the map.
+  const unknown = [...new Set(layered.map((p) => p.kind))].filter((kind) => !reg.index.has(kind));
+  if (unknown.length) throw new Error(`static pieces of kinds the content does not have: ${unknown.join(", ")}`);
   // The obelisks come last, so every other piece keeps its slot in its chunk.
   const obelisks = placeObelisks(ground, world, toSample, size, staticCover(layered, reg, n, size));
   const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 })))];

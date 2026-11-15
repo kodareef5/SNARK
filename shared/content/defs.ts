@@ -3,6 +3,7 @@
 // `type` is a definition's family. A family with several classes also says which: shared/content/classes.ts has what
 // each class must and may declare.
 
+import type { Seat } from "../sim/seats.ts";
 import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
 import type { Feature } from "../features.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
@@ -325,8 +326,12 @@ export interface ItemDef extends Named {
   readonly fuel?: number;
   /** When one piece of it has burnt out in a fire, the fire gets one of this, as wood leaves charcoal (M4); with no room it is lost. */
   readonly burnsInto?: string;
-  /** The species it fits and the armor it gives the creature that wears it (the reference's rating). */
-  readonly saddle?: { readonly fits: string; readonly armor: number };
+  /**
+   * The species it fits, the armor it gives the creature that wears it (the reference's rating), and the seats it puts on
+   * that creature (shared/sim/seats.ts): the rider's, who steers, and any passengers'. Each names the socket of the
+   * creature's rig it moves with, and its anchor is that socket at rest.
+   */
+  readonly saddle?: { readonly fits: string; readonly armor: number; readonly seats: readonly Seat[] };
   /** Fed to an unconscious creature, it adds this much torpor over this many seconds. */
   readonly dose?: { readonly torpor: number; readonly seconds: number };
   /** Over a fire it becomes `into` after `seconds`. */
