@@ -11,12 +11,19 @@ import { App } from "../../client/core/app.ts";
 import type { ClientSession } from "../../client/core/session.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { FLOOR_THICK } from "../../content/building.ts";
-import { anchorFrame, SEAT_FLOATS } from "../../shared/anim/seat.ts";
+import { Pose } from "../../shared/anim/clip.ts";
+import { B_HEAD, HUMAN, HUMAN_BONES, ZONE_HEAD } from "../../shared/anim/human.ts";
+import { createMountMotion, mountPose } from "../../shared/anim/mount.ts";
+import { AnimState, bodySeed } from "../../shared/anim/pose.ts";
+import { anchorFrame, SEAT_FLOATS, seatOn } from "../../shared/anim/seat.ts";
+import { Solved, solve } from "../../shared/anim/skeleton.ts";
+import { GEAR_WORN } from "../../shared/sim/entities.ts";
+import { mounted } from "../fixtures/flyer/course.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import type { LinkOptions } from "../../shared/net/loopback.ts";
 import { CMD_ORDER, ORDER_UNSADDLE, RESULT_BUSY, RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_JUMP, BTN_USE, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_STAND } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SPRINT, BTN_USE, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_STAND } from "../../shared/sim/character.ts";
 import type { Seat } from "../../shared/sim/seats.ts";
 import { V_TORPOR } from "../../shared/sim/vitals.ts";
 import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
@@ -314,6 +321,52 @@ test("in the whole client the riding camera is behind the look, on a boom as lon
   for (const v of seen) expect([v.species, v.behind, v.walled > 0 && v.walled < 2.1]).toEqual([v.species, true, true]);
   expect(seen[0]!.back).toBeGreaterThan(4);
   expect(seen[1]!.back).toBeGreaterThan(seen[0]!.back * 1.5);
+});
+
+test("on the block-out pteranodon in a hard bank, its rider is pinned in her seat's whole frame and a shot at her head as it is drawn there finds her head", () => {
+  const m = mounted(60, ["bob"]);
+  const { h, e } = m;
+  const ents = h.world.ents, pilot = h.pilots[0]!;
+  const rider = h.ent(m.ada), shooter = h.ent(m.others[0]!);
+  const anim = h.world.anims[ents.kind[e]!]!;
+  const seat = h.reg.saddleSeats[ents.gear[e]![GEAR_WORN]!]![0]!;
+  const frame = new Float64Array(SEAT_FLOATS), st = new AnimState();
+  const seatNow = (): void => {
+    st.unpack(ents.anim[e]!, ents.cue[e]!);
+    st.seed = bodySeed(e);
+    seatOn(anim, seat, st, h.world.tick, ents.x[e]!, ents.y[e]!, ents.z[e]!, (ents.yaw[e]! / 65536) * Math.PI * 2, frame);
+  };
+  // Up, sprinting, then the look swung hard round: the chest, and the seat on it, bank.
+  pilot.buttons = BTN_JUMP;
+  pilot.moveZ = 127;
+  pilot.pitch = 0.4;
+  h.run(4000);
+  pilot.pitch = 0;
+  pilot.buttons = BTN_JUMP | BTN_SPRINT;
+  h.run(2000);
+  let tilt = 0;
+  for (let t = 0; t < 2000 && tilt < 0.25; t += 50) {
+    pilot.yaw += 0.12;
+    h.run(50);
+    seatNow();
+    tilt = Math.acos(Math.min(1, frame[7]!));
+  }
+  expect([ents.mode[e], tilt > 0.25]).toEqual([MODE_FLYER, true]);
+  // Where she is pinned is her seat's origin as the flyer is posed now.
+  expect(Math.hypot(ents.x[rider]! - frame[0]!, ents.y[rider]! - frame[1]!, ents.z[rider]! - frame[2]!)).toBeLessThan(1e-3);
+  // Her head as every client draws her: astride, in the seat's frame.
+  const pose = new Pose(HUMAN_BONES), solved = new Solved(HUMAN_BONES);
+  mountPose(createMountMotion(), { role: "ride", tick: 0, startTick: 0, durationTicks: 1 }, pose);
+  solve(HUMAN, pose, solved);
+  const [lx, ly, lz] = [solved.pos[B_HEAD * 3]!, solved.pos[B_HEAD * 3 + 1]! + 0.1, solved.pos[B_HEAD * 3 + 2]!];
+  const head = [0, 1, 2].map((r) => frame[r]! + frame[3 + r * 3]! * lx + frame[4 + r * 3]! * ly + frame[5 + r * 3]! * lz);
+  // A ray from 6 m off, square to the seat's forward and level, through that point.
+  const [fx, fz] = [frame[5]!, frame[11]!];
+  const [sx, sz] = [-fz / Math.hypot(fx, fz), fx / Math.hypot(fx, fz)];
+  const combat = h.host.combat;
+  expect([combat.castBodies(shooter, head[0]! - sx * 6, head[1]!, head[2]! - sz * 6, sx, 0, sz, 12), combat.zone]).toEqual([rider, ZONE_HEAD]);
+  // The same ray 0.45 m over it passes over her.
+  expect(combat.castBodies(shooter, head[0]! - sx * 6, head[1]! + 0.45, head[2]! - sz * 6, sx, 0, sz, 12)).not.toBe(rider);
 });
 
 test("seats are not saved: a rider when the server stops comes back standing beside the mount, not up in its seat", () => {
