@@ -156,7 +156,8 @@ test("a body drawn with its materials and the same body drawn flat agree in mean
   };
   // The flat colours come no nearer the pictures than 12 of 255 a channel with four dyes and 17 with one (D154), and
   // the two ways of lighting differ by up to 7 off mid grey (D155). On the lit tiers, where LIT lights the flat body as
-  // SURFACE lights a fully rough one, measured here: 9.0 and 6.8 (15 and 16 when the flat body was drawn as low poly).
+  // SURFACE lights a fully rough one, measured here: 13 and 10 under the graded noon sky (15 and 16 when the flat body
+  // was drawn as low poly).
   for (const [colors, within] of [[[8, 7, 14, 6], 12 + 7], [[9, 9, 9, 9], 17 + 7]] as const) {
     const [drawn, flat] = [mean(colors, {}, false), mean(colors, { texture: 0 }, true)];
     for (let c = 0; c < 3; c++) expect(Math.abs(drawn[c]! - flat[c]!)).toBeLessThan(within);
