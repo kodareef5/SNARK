@@ -392,8 +392,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 543691550 until the pack held the smoke and poison clouds' boxes, which are never drawn (render/clouds.ts draws
   // a cloud as puffs); without the two grenades, their clouds and the poison's buff (content/items/explosives.ts) it is that again.
   // It was 828002586 until Miami's third round of ruins added 160 static box definitions, which take mesh numbers before
-  // the grey boxes'; the draws, triangles and uploads are as they were.
-  expect(hash).toBe(3699520576);
+  // the grey boxes'; the draws, triangles and uploads are as they were. It was 3699520576 until San Francisco's 8 m solid
+  // (zmass8, content/ruins.ts) added eight more the same way.
+  expect(hash).toBe(4047886636);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
