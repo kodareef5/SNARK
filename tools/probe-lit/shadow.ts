@@ -9,7 +9,8 @@
 // within 3 steps and a survivor in the room within 7, and the floor is set beside low poly's. With PROBE_PICTURES naming
 // a folder, what a player sees is written there with materials, each with shadows off beside it: the thatch house with
 // a survivor and a dodo at 10:00, noon and 17:30, a wall's foot, the wall and ceiling joints from inside at 10:00 and
-// 17:30, the dodo at noon and 17:30 (its feather cards and the thatch's fringe are cut out) and the slab under 15 degrees.
+// 17:30, the dodo at noon and 17:30 (its feather cards and the thatch's fringe are cut out), the slab under 15 degrees
+// and the sunlit wall close by at 17:30.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -418,6 +419,8 @@ async function pictureShots(): Promise<Shot[]> {
     ["dodo-1200", 12, outside, dodo, 45],
     ["dodo-1730", 17.5, outside, dodo, 45],
     ["slab-15", hourOfSun(15, false), [], [[SLAB.x - 8, GROUND + 4, SLAB.z - 8], [SLAB.x + 0.5, GROUND, SLAB.z + 0.5]], 60],
+    // The sunlit wall close by at 17:30, where the upper row's fringe shades the row below it.
+    ["wall-1730", 17.5, [], [[ROOM.x + 5.5, FLOOR + 1.7, ROOM.z - 1], [ROOM.x + 3, FLOOR + 1.4, ROOM.z + 0.2]], 40],
   ];
   for (const [name, hour, list, [eye, at], fov] of views) {
     w.scene.hour = hour;
