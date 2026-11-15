@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --used X,Z, --ui (--console TEXT, --inventory, --chat).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -31,7 +31,7 @@ import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../sh
 import { SKY_COLOR } from "../shared/pack/palette.ts";
 import type { TextureRole } from "../shared/pack/texture.ts";
 import { Heightfield } from "../shared/world/heightfield.ts";
-import { NodeField } from "../shared/world/nodes.ts";
+import { NodeField, type NodeSpot } from "../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { findAssets } from "./art/assets.ts";
@@ -120,6 +120,21 @@ export function houseView(view: ProvingView, tier: string, look: HouseView): voi
   }
   if (look === "wall") at(x0 + 0.8, ground + FOUNDATION_THICK + 1.62, z0 + 15.2, 72, -4);
   else at(x0 - 3, ground + 4.5, z0 - 3, 42, -16);
+}
+
+/** Uses up the node standing nearest (x, z), as a client is told one was: what is left of it stands there, or nothing. */
+function useUp(view: ProvingView, x: number, z: number): void {
+  const { nodes } = view;
+  const spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  let [best, chunk, index] = [Infinity, -1, -1];
+  for (let c = 0; c < PROVING_DIMS.chunksX * PROVING_DIMS.chunksZ; c++) {
+    for (let i = 0; i < nodes.source.perChunk; i++) {
+      nodes.source.at(c, i, spot);
+      const d = Math.hypot(spot.x - x, spot.z - z);
+      if (spot.kind !== 0 && d < best) [best, chunk, index] = [d, c, i];
+    }
+  }
+  if (chunk >= 0) nodes.set(chunk, index, false);
 }
 
 /** Removes houseScene's house and shows it falling as a client would, `ms` after the removal, from the south-west foundation. */
@@ -963,6 +978,8 @@ if (import.meta.main) {
       statesScene(view, arg("states") ?? "knockout", Number(arg("tick") ?? 400), (Number(arg("face") ?? -90) * Math.PI) / 180, dodo?.kind === "creature" ? dodo.regions.map((region) => region.sample) : []);
     }
     if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
+    const used = arg("used")?.split(",").map(Number);
+    if (used) useUp(view, used[0]!, used[1]!);
   };
   const graphics = arg("graphics");
   if (graphics !== undefined) {
