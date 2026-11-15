@@ -32,8 +32,9 @@ const WIND_SHARE = 0.1;
 const GUST = 0.4;
 /** Seconds a frame is stepped at most, so a stall does not throw particles through the ground. */
 const LONGEST_STEP = 0.1;
-/** The most bursts waiting for their moment. */
-const MOST_WAITING = 256;
+/** The most bursts waiting for their moment, and the most made in a frame. A burst past those waits a frame, nearest made first. */
+const MOST_WAITING = 512;
+const MOST_BURSTS = 24;
 /** A see-through particle within this many metres of the eye fades out, so one through the camera does not fill the screen. */
 const EYE_FADE = 1;
 
@@ -81,6 +82,10 @@ export class Details {
   private readonly colour = [0, 0, 0];
   private readonly order = new Uint32Array(MAX_DETAILS);
   private readonly index = new Map<number, number>();
+  private readonly due: Waiting[] = [];
+  /** The body last posed for a burst this frame, and the tick it was posed at. */
+  private posed = -1;
+  private posedAt = 0;
   private readonly birth: Float32Array;
 
   /** `animOf` gives what a species of a kind plays, or null for one not drawn on a rig of its own. */
@@ -139,16 +144,23 @@ export class Details {
     const wz = LOW.wind[1] * WIND_SHARE * gust;
     const full = this.pool.count / Math.max(1, tier.details.pool);
     this.pool.step(dt, this.effects, hf, wx, wz, Math.max(0, 1 - full * full));
-    let fill = this.fill;
+    // The bursts whose moment has come, nearest first, as many as a frame makes; the rest wait a frame.
+    const due = this.due;
+    due.length = 0;
     let kept = 0;
     for (const w of this.waiting) {
-      if (w.due > tick) {
-        this.waiting[kept++] = w;
-        continue;
-      }
-      fill += this.burst(w, remote, hf, tier, cam, tick, fill);
+      if (w.due > tick) this.waiting[kept++] = w;
+      else due.push(w);
     }
     this.waiting.length = kept;
+    if (due.length > MOST_BURSTS) {
+      const far = (w: Waiting): number => (w.h.x - ex) ** 2 + (w.h.z - ez) ** 2;
+      due.sort((a, b) => far(a) - far(b));
+      for (const w of due.splice(MOST_BURSTS)) this.waiting.push(w);
+    }
+    let fill = this.fill;
+    this.posed = -1;
+    for (const w of due) fill += this.burst(w, remote, hf, tier, cam, tick, fill);
     return this.write(p, cam, hf);
   }
 
@@ -178,8 +190,12 @@ export class Details {
         if (r.grown[i] !== 0) size = youngScale(this.birth[h.kind]!, r.span[i]!, r.grown[i]!, r.tick);
       } else st.unpack(h.anim, h.cue);
       st.seed = bodySeed(h.id);
-      creaturePose(book.anim, st, w.due, rig.a);
-      solve(rig, rig.a, rig.solved);
+      // The answers of one occasion at one moment share a pose.
+      if (this.posed !== h.id || this.posedAt !== w.due) {
+        creaturePose(book.anim, st, w.due, rig.a);
+        solve(rig, rig.a, rig.solved);
+        [this.posed, this.posedAt] = [h.id, w.due];
+      }
       solved = rig.solved;
     }
     const [s, c] = [Math.sin(yaw), Math.cos(yaw)];
