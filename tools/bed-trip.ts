@@ -1,4 +1,4 @@
-// `bun tools/bed-trip.ts`: beds played through the game's own agent over the Model Context Protocol (agent/main.ts), to be
+// `bun run bed-trip`: beds played through the game's own agent over the Model Context Protocol (agent/main.ts), to be
 // run now and then: it is too slow for the check. It starts a throwaway dev server on the proving ground with no creatures,
 // plays, and stops it; the client must be built (`bun run build`). The survivor builds two beds on foundations and names
 // them, travels from one to the other and leaves what it carries at the first, dies and rises at the one that is ready while
