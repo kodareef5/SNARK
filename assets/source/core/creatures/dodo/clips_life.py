@@ -747,7 +747,7 @@ LIE = {
     "belly.pitch": -2.0, "chest.pitch": -4.0,
     "head.arc": 1.0, "head.lean": 112.0, "head.side": 45.0, "head.ext": 1.0, "head.pitch": 12.0, "head.limp": 1.0,
     "jaw": 0.04, "lid_l": 1.0, "lid_r": 1.0, "throat": 0.1, "hood": 0.05,
-    "wing_r.out": 0.1, "wing_l.roll": 12.0, "tail.lift": -12.0, "tail.wag": 22.0,
+    "wing_r.out": 0.0, "wing_l.roll": 12.0, "tail.lift": -12.0, "tail.wag": 22.0,
     "foot_l.att": 1.0, "foot_l.x": 0.07, "foot_l.y": 0.07, "foot_l.z": -0.12, "foot_l.pitch": -45.0,
     "knee_l.x": 0.07, "knee_l.y": 0.05, "knee_l.z": -0.26,
     "foot_r.att": 1.0, "foot_r.x": 0.065, "foot_r.y": 0.09, "foot_r.z": -0.06, "foot_r.pitch": -55.0, "foot_r.roll": 10.0,
@@ -755,7 +755,7 @@ LIE = {
 }
 DEAD = dict(mirror(LIE), **{
     "head.side": -77.0, "lid_l": 0.75, "lid_r": 0.75, "jaw": 0.28, "hood": 0.0, "throat": 0.0,
-    "wing_l.out": 0.15, "wing_r.out": 0.0, "tail.lift": -15.0, "tail.wag": -25.0,
+    "wing_l.out": 0.0, "wing_r.out": 0.0, "tail.lift": -15.0, "tail.wag": -25.0,
     "foot_l.x": -0.06, "foot_l.y": 0.05, "foot_l.z": -0.04, "foot_l.pitch": -30.0, "knee_l.x": -0.06})
 STAND_FEET = {k: v for k, v in REST.items() if k.startswith(("foot_", "knee_"))}
 # The head on its neck, as it stands at rest; head.arc swings it from here.
@@ -866,8 +866,8 @@ def torpor_idle():
         p["body.roll"] += 1.4 * b
         p["body.pitch"] -= 1.2 * b
         p["throat"] += 0.15 * b
-        p["wing_r.out"] += 0.10 * b
-        p["wing_r.roll"] -= 5.0 * b
+        p["wing_r.out"] += 0.03 * b
+        p["wing_r.roll"] -= 2.0 * b
         p["tail.lift"] += 7.0 * b
         p["hood"] += 0.08 * b
         # The snore rattles on the deep breath's way out.
@@ -883,7 +883,7 @@ def torpor_idle():
         p["foot_r.pitch"] -= 13.0 * dream
         p["foot_r.z"] -= 0.006 * dream
         p["lid_r"] -= 0.16 * bump(f, 30, 33, 36) + 0.1 * bump(f, 36, 38, 42) + 0.08 * bump(f, 268, 271, 275)
-        p["wing_r.out"] += 0.06 * bump(f, 168, 171, 178)
+        p["wing_r.out"] += 0.03 * bump(f, 168, 171, 178)
         out.append(p)
     return secondary(out, loop=True)
 
@@ -934,7 +934,7 @@ def torpor_out():
     t.key(35, {"body.roll": -4.0})
     t.key(37, {"head.lean": 35.0, "head.side": 0.0, "head.ext": 0.93, "head.pitch": -12.0, "head.limp": 0.0})
     t.key(39, {"body.roll": 0.0})
-    for f, out_r, flap_r in ((20, 0.1, 0.0), (24, 0.45, 20.0), (27, 0.35, -10.0), (30, 0.45, 18.0), (34, 0.0, 0.0)):
+    for f, out_r, flap_r in ((20, 0.0, 0.0), (24, 0.45, 20.0), (27, 0.35, -10.0), (30, 0.45, 18.0), (34, 0.0, 0.0)):
         t.key(f, {"wing_r.out": out_r, "wing_r.flap": flap_r})
     for f, out_l, flap_l in ((27, 0.0, 0.0), (30, 0.25, 10.0), (35, 0.0, 0.0)):
         t.key(f, {"wing_l.out": out_l, "wing_l.flap": flap_l})
@@ -1009,7 +1009,7 @@ def death():
     t.key(24, {k: DEAD[k] for k in ("body.x", "body.z", "body.pitch", "head.lean", "head.side", "head.ext", "head.pitch",
                                     "head.limp")},
           {"body.roll": (-84.0, -9.0, 0.0), "body.y": 0.0, "head.roll": 0.0, "jaw": 0.35, "tail.lift": -10.0,
-           "wing_l.out": 0.3, "wing_r.out": 0.0, "wing_r.roll": 20.0}, both(lid=0.7, foot__att=1.0))
+           "wing_l.out": 0.1, "wing_r.out": 0.0, "wing_r.roll": 20.0}, both(lid=0.7, foot__att=1.0))
     t.key(26, {"head.lean": 100.0})
     t.key(29, {"head.lean": DEAD["head.lean"]})
     for f, roll in ((27, -78.0), (31, -82.5)):
@@ -1019,7 +1019,7 @@ def death():
     t.key(30, {"foot_l.x": 0.01, "foot_l.y": 0.0, "foot_l.z": -0.24, "foot_l.pitch": 25.0, "knee_l.x": 0.01})
     t.key(33, {"foot_l.x": -0.04, "foot_l.y": 0.04, "foot_l.z": -0.10, "foot_l.pitch": -20.0, "knee_l.x": -0.04})
     t.key(35, {"foot_l.x": -0.02, "foot_l.y": 0.03, "foot_l.z": -0.15, "foot_l.pitch": 0.0, "knee_l.x": -0.02})
-    t.key(33, {"hood": 0.0, "wing_l.out": 0.17})
+    t.key(33, {"hood": 0.0, "wing_l.out": 0.0})
     t.key(39, DEAD)
     t.key(n - 1, DEAD)
     return secondary(poses(t, n), settle=14)
