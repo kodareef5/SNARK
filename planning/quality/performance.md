@@ -176,41 +176,46 @@ At 480 chunks: 17.7, 56.3, 61.3 and 61.3 far draws by tier (plan: 9 to 17, then
 
 ### The far city
 
-Miami's ruins as built on 2026-11-15: 1,091,202 statics in 6,341 chunks
-(`bun tools/bench/city.ts var/maps/miami.snmap`, M). Held by chunk on the client in
-17 ms and 16.7 MB. A busy chunk (the 200 with most pieces) takes, median and worst:
-every box 0.50, 1.85 ms; the lattice 0.46, 1.01; mass in 4 m cells 0.74, 2.14; in
-8 m cells 0.37, 0.74; the far feed's tops and what they show gone 0.05, 0.10.
+Miami's ruins with round two's bridges, wings and district colours, built from
+main at 3d88e06 on 2026-11-15: 1,188,264 statics in 6,893 chunks (`bun
+tools/bench/city.ts var/maps/miami.snmap`, M). Held by chunk on the client in 19 ms
+and 18.2 MB. A busy chunk (the 200 with most pieces) takes, median and worst: every
+box 0.57, 1.92 ms; the lattice 0.49, 1.01; mass in 4 m cells 1.09, 2.66; in 8 m
+cells 0.39, 1.25; the far feed's tops and what they show gone 0.05, 0.10.
 
-The six cameras of `assets/source/maps/miami/reports/farcity/views.json` at 1,920
-by 1,080, the near window held whole; draws and triangles as listed in the packet,
-a run across the split counted in both ranges:
+The eight cameras of `assets/source/maps/miami/reports/farcity/views.json` at
+1,920 by 1,080, the near window held whole; draws and triangles as listed in the
+packet, a run across the split counted in both ranges:
 
 | | Low poly | Medium | High | Ultra |
 | --- | --- | --- | --- | --- |
 | Reach; every box, lattice, mass 4 m to | 2,048 m; 340, 600, none | 2,048 m; 400, 900, none | 3,072 m; 500, 1,300, 2,000 m | 4,096 m; 600, 1,800, 2,800 m |
-| Draws, the most in a view | 158 | 216 | 283 | 338 |
-| Triangles, the most in a view | 283 k | 393 k | 773 k | 1.04 M |
-| On the card, the most in a view | 12.3 MB | 15.6 MB | 29.7 MB | 42.9 MB |
-| Frame build, median in the slowest view | 0.38 ms | 0.30 ms | 0.22 ms | 0.22 ms |
+| Draws, the most in a view | 160 | 220 | 297 | 350 |
+| Triangles, the most in a view | 376 k | 517 k | 994 k | 1.32 M |
+| On the card, the most in a view | 17.2 MB | 21.4 MB | 37.3 MB | 51.7 MB |
+| Frame build, median in the slowest view | 0.39 ms | 0.23 ms | 0.20 ms | 0.23 ms |
+
+The worst views are from the air over downtown (`air-handover`, `air-wide`); from
+the bay at 2 km medium draws 70 runs and 86 k triangles. Ending medium's lattice at
+700 m in place of 900 m takes about a quarter off its worst view.
 
 A ghost at 600 m/s 120 to 150 m over downtown on medium, six seconds each way, near
-chunks never held whole: with 2 ms a frame of making, frame build 1.5 to 2.2 ms
-median, 2.9 ms at the 99th percentile and 6.4 to 10.9 ms in one frame of each run,
-and a tile in view unmade in 1 or 2 frames of 360, past 2,040 m. With 0.5 ms, as a
-phone four times slower would have 2 ms, tiles in view are unmade only past 2,020 m,
-inside the last tenth of reach where they fade in anyway, for at most 133 ms, and
-up to 14 tiles at a time are drawn a level coarser than wanted. Walking through
-downtown at 6 m/s, a frame in which a chunk changes hands builds in 0.64 ms median
-and 1.10 ms at worst: a tile holds every chunk and a draw takes the runs drawn far,
-so nothing is remade.
+chunks never held whole: with 2 ms a frame of making, frame build 2.2 to 2.3 ms
+median, 3.0 ms at the 99th percentile and 5.2 to 6.5 ms in its worst frame, and a
+tile in view unmade in 2 to 5 frames of 360, for one frame each, past 2,041 m.
+With 0.5 ms, as a phone four times slower would have 2 ms, tiles in view are unmade
+only past 1,985 m, in the last tenth of reach where they are fading in anyway, up
+to 7 at a time, none for more than 183 ms; up to 18 tiles at a time are drawn a
+level coarser than wanted. Walking through downtown at 6 m/s, a frame in which a
+chunk changes hands builds in 0.74 ms median and 2.1 ms at worst: a tile holds every
+chunk and a draw takes the runs drawn far, so nothing is remade.
 
-The device page's terrain flight over the city (`bun run device -- --self terrain
---terrain --map var/maps/miami.snmap`, headless Chrome on the M5, 60 m up at
-100 m/s with a jump of 2 km or more every 10 s) held 16.7 ms on medium and low poly:
-the far city 41 and 15 draws and 34 k and 11 k triangles a frame (median, at
-800 by 600), at most 4.9 and 5.9 ms of making in a frame, and after each jump 15 to
-95 frames before no tile in view was unmade.
+The device page's terrain flight over the city before round two's bridges (`bun run
+device -- --self terrain --terrain --map var/maps/miami.snmap`, headless Chrome on
+the M5, 60 m up at 100 m/s with a jump of 2 km or more every 10 s) held 16.7 ms on
+medium and low poly: the far city 41 and 15 draws and 34 k and 11 k triangles a
+frame (median, at 800 by 600), at most 4.9 and 5.9 ms of making in a frame, and after
+each jump 15 to 95 frames before no tile in view was unmade.
 
 ### Far trees, rocks and bushes (D353, D354)
 
