@@ -42,7 +42,7 @@ const { nx, nz, cell } = hf;
 // What blocks the way. A piece reaches its store's spread out from its middle, and from the lowest to the highest of its
 // boxes up and down; it is in the way of a sample where it stands over the ground there by more than a step and under a head.
 const blocked = new Uint8Array(nx * nz);
-for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) if (hf.sample(i, j) < hf.seaLevel - WADE) blocked[j * nx + i] = 1;
+for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) if (hf.sample(i, j) < hf.waterAt(i * hf.cell, j * hf.cell) - WADE) blocked[j * nx + i] = 1;
 const pad = params.radius + cell / 2;
 const span = (parts: PartTable, halfY: Float32Array): [Float32Array, Float32Array] => {
   const low = new Float32Array(halfY.length);

@@ -72,10 +72,10 @@ export class Pool {
     this.lying.copyWithin(i * 6, last * 6, last * 6 + 6);
   }
 
-  /** The floor under (x, z) for particle `i`: its plane, or the ground, never under the sea. */
+  /** The floor under (x, z) for particle `i`: its plane, or the ground, never under the water. */
   floor(i: number, x: number, z: number, hf: Heightfield): number {
     const p = this.plane[i]!;
-    return p === p ? p : Math.max(hf.heightAt(x, z), hf.seaLevel);
+    return p === p ? p : Math.max(hf.heightAt(x, z), hf.waterAt(x, z));
   }
 
   /**
@@ -138,7 +138,7 @@ export class Pool {
   private lie(i: number, x: number, z: number, hf: Heightfield): void {
     const p = this.plane[i]!;
     let [nx, ny, nz] = [0, 1, 0];
-    if (p !== p && hf.heightAt(x, z) > hf.seaLevel) {
+    if (p !== p && hf.heightAt(x, z) > hf.waterAt(x, z)) {
       const d = 0.25;
       nx = hf.heightAt(x - d, z) - hf.heightAt(x + d, z);
       nz = hf.heightAt(x, z - d) - hf.heightAt(x, z + d);

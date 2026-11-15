@@ -22,7 +22,7 @@ export function coreRegistry(): Registry {
   return (core = registry);
 }
 
-function wrap(dims: MapDims, hf: Heightfield, reg: Registry): TestWorld {
+export function wrap(dims: MapDims, hf: Heightfield, reg: Registry = coreRegistry()): TestWorld {
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   return { dims, hf, structs, reg, kind: (id) => reg.index.get(id)! };
 }

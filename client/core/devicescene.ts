@@ -159,7 +159,7 @@ export class BodyCopies {
       out.name[to] = "";
       out.x[to] = spot.x;
       out.z[to] = spot.z;
-      out.y[to] = Math.max(this.hf.heightAt(spot.x, spot.z), this.hf.seaLevel);
+      out.y[to] = Math.max(this.hf.heightAt(spot.x, spot.z), this.hf.waterAt(spot.x, spot.z));
       out.yaw[to] = (i * 2.399963) % (2 * Math.PI);
       out.anim[to] = out.anim[from]!;
       out.colors.copyWithin(to * 6, from * 6, from * 6 + 6);

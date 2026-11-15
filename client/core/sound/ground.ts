@@ -20,7 +20,7 @@ const ROCK_SLOPE = 0.77;
 
 /** The kind of ground at (x, z), for a body whose feet are at height `y`. */
 export function groundAt(hf: Heightfield, x: number, y: number, z: number): number {
-  if (y < hf.seaLevel - 0.1) return GROUND_WATER;
+  if (y < hf.waterAt(x, z) - 0.1) return GROUND_WATER;
   const i = Math.max(0, Math.min(hf.nx - 1, Math.round(x / hf.cell)));
   const j = Math.max(0, Math.min(hf.nz - 1, Math.round(z / hf.cell)));
   if (PAVED.has(hf.tint[j * hf.nx + i]!)) return GROUND_STONE;

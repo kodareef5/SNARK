@@ -7,16 +7,30 @@ import { crafting } from "../craft.ts";
 // crystal, obsidian and silica pearls are gathered from the nodes of content/items/nodes.ts. The colours are chosen.
 
 export const RESOURCES: readonly Def[] = [
-  // Cementing paste, moved here unchanged from content/building.ts (S0): made in the hand from 4 chitin and 8 stone, as
-  // DEV51 says, until it moves to the mortar and pestle with ARK's numbers (S6).
+  // Cementing paste, moved here from content/building.ts (S0) and to the mortar and pestle by S6 (ark.wiki.gg, Cementing
+  // Paste, infobox, 2026-11-15): 4 chitin (or keratin or shell fragments, which we do not have; chitin alone is a whole
+  // recipe) and 8 stone at the mortar and pestle, one a grind in 1 s, craftingxp 1.2 (our 4.8, D465's four times); level
+  // 13, 3 engram points. The chemistry bench's recipe waits for the bench.
   { type: "item", class: "resource", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
-  crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 }),
-  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, item: "core:paste" },
+  crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 1, xp: 4.8, at: "core:mortar" }),
+  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 13, cost: 3, item: "core:paste" },
 
   // Charcoal: "one Charcoal every time the burning of the current fuel piece has ended" for wood in any fire; no engram.
+  // Wood leaves it (`burnsInto`, content/core.ts), so every fire that burns wood makes it (S1).
   { type: "item", class: "resource", id: "core:charcoal", stack: 100, weight: 0.25, label: "charcoal", color: 11 },
-  // Gasoline: 5 from 6 oil and 5 hide at the refining forge; burns 900 s in the fabricator.
-  { type: "item", class: "resource", id: "core:gasoline", stack: 100, weight: 0.1, label: "gasoline", color: 6 },
+  // Gasoline: 5 from 6 oil and 5 hide at the refining forge, made by the forge itself while it burns (fired, S1), in 10 s:
+  // the forge's refining table, whose two rows agree (6 oil and 5 hide in 10 s; 240 oil and 200 hide in 6 m 40 s). The
+  // Gasoline page's 30 s is unverified (Decided 5, D519). No engram, no experience. Burns 900 s in the fabricator.
+  {
+    type: "item",
+    class: "resource",
+    id: "core:gasoline",
+    stack: 100,
+    weight: 0.1,
+    label: "gasoline",
+    color: 6,
+    craft: { needs: [{ item: "core:oil", count: 6 }, { item: "core:hide", count: 5 }], seconds: 10, xp: 0, count: 5, at: "core:forge", fired: true },
+  },
   // Oil: oil rocks in the ocean and on the snowy coast, and underwater caves.
   { type: "item", class: "resource", id: "core:oil", stack: 100, weight: 0.2, label: "oil", color: 4 },
   // Crystal: crystal formations in mountains and caves.

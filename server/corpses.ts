@@ -313,7 +313,7 @@ export class Corpses {
     const world = this.ctx.world;
     const m = b.drop!;
     const p = world.reg.move[b.kind]!;
-    const wet = m.y + p.height * 0.5 < world.hf.seaLevel;
+    const wet = m.y + p.height * 0.5 < world.hf.waterAt(m.x, m.z);
     if (wet) {
       m.vx = Math.fround(m.vx * WET_KEEP);
       m.vy = Math.fround(m.vy * WET_KEEP);

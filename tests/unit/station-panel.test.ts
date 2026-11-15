@@ -23,6 +23,7 @@ import {
   RECIPE_STATUS,
   StationPanel,
   clockWords,
+  stationRecipes,
 } from "../../client/core/ui/station.ts";
 import { CORE_PACK } from "../../content/core.ts";
 import { compilePacks, type ContentPack } from "../../shared/content/packs.ts";
@@ -177,7 +178,9 @@ test("the fire's line says how long it burns from the out tick, and its button l
   const mortar = standIn(core, new Inventory(24), {}, []).session;
   mortar.station!.kind = id(core, "mortar");
   const m = panelOf(mortar, core).f;
-  expect([m.find(KEY_STATION_FIRE), m.find(KEY_STATION_LIGHT), text(m, row(0))]).toEqual([null, null, "sparkpowder x2: 2 flint, 1 stone"]);
+  // Sparkpowder's row is its place among what the mortar makes (the narcotic and cementing paste too, since S6).
+  const spark = stationRecipes(core, id(core, "mortar")).indexOf(id(core, "sparkpowder"));
+  expect([m.find(KEY_STATION_FIRE), m.find(KEY_STATION_LIGHT), text(m, row(spark))]).toEqual([null, null, "sparkpowder x2: 2 flint, 1 stone"]);
   const fire = standIn(core, new Inventory(3), {}, []).session;
   fire.station!.kind = id(core, "campfire");
   const c = panelOf(fire, core).f;
@@ -356,6 +359,8 @@ test("through the server: the panel's button lights the oven and its line change
     h.run(300);
     expect([code, rec.jobs.map((j) => [j.item, j.left, j.bp]), text(build(), KEY_STATION_JOB)]).toEqual([P.RESULT_OK, [[loaf, 1, undefined]], text(f, KEY_STATION_JOB)]);
     h.run(1500);
+    // While it burns, the fire makes crumbs by itself from the berries in it, 3 a second (S1's lanes), so it is given more.
+    h.host.items.mint(rec, id(reg, "berry"), 9);
     screen.pointer(0, row(0, RECIPE_MAKE), 0, s);
     h.run(300);
     expect([code, rec.jobs.map((j) => [j.item, j.bp])]).toEqual([P.RESULT_OK, [[loaf, 2]]]);
