@@ -2,10 +2,24 @@ import { expect, test } from "bun:test";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
 import { Governor, JOIN_MS, ladder, middleMean } from "../../client/core/governor.ts";
 import { HudModel } from "../../client/core/hud.ts";
-import { run } from "../fixtures/frames.ts";
+import { curve, leaves, phoneSoaks, run } from "../fixtures/frames.ts";
 
 /** Each step leaves this share of the GPU's time: a made-up card on which every step buys a little. */
 const leave = (level: number): number => 0.88 ** level;
+/**
+ * The share of the GPU's time each of high's steps left of the level before on this Mac, in tools/bench/gpu.ts's base
+ * scene at the iPhone's pixel ratio, frame by frame the least of three runs at a load of 5 to 17 (a step that measured
+ * slower is taken as buying nothing). A louder run in this order gave 0.73 and 0.58 for the first two and nothing past.
+ */
+const MAC_SHARES: Readonly<Record<string, number>> = {
+  "the farther cascade every other frame": 0.894,
+  "shadows to 60% as far": 0.704,
+  "85% of the pixels a side": 1,
+  "far trees, rocks and bushes to 70% as far": 0.99,
+  "one cascade fewer": 0.772,
+  "70% of the pixels a side": 0.937,
+  "no sun shadows": 1,
+};
 
 test("a tier's levels are its steps that change something, least visible first, and none touches the near nodes or the far bases", () => {
   const names = (tier: string, dpr: number) => ladder(tierOf(tier), dpr).map((l) => l.name);
@@ -26,6 +40,20 @@ test("a tier's levels are its steps that change something, least visible first, 
 test("the mean of the middle eight tenths is not moved by a hitch", () => {
   expect(middleMean([...Array(19).fill(16.7), 400])).toBeCloseTo(16.7, 5);
   expect(middleMean([...Array(10).fill(16.7), ...Array(10).fill(33.3)])).toBeCloseTo(25, 5);
+});
+
+test("the iPhone's kept soaks, replayed with what each step left on this Mac's GPU, end no slower than their first minute", () => {
+  const soaks = phoneSoaks();
+  expect(soaks.length).toBe(3);
+  for (const { points, tier } of soaks) {
+    const left = leaves(tier, 3, MAC_SHARES);
+    const { minutes, governor } = run(10, (t, level) => ({ gpu: curve(points)(t) * left[level]! }), { tier });
+    expect(minutes.at(-1)!.median).toBeLessThanOrEqual(Math.min(points[0]!, minutes[0]!.median) + 0.5);
+    for (const m of minutes.slice(1)) expect(m.median).toBeLessThan(17.8);
+    // It went down as the phone warmed, and never tried back up while it did.
+    expect(governor.steps.length).toBeGreaterThanOrEqual(2);
+    expect(governor.steps.filter((s) => s.why.startsWith("the try missed")).length).toBe(0);
+  }
 });
 
 test("a hitch, a collected heap, uploads, a hidden page and a lost context are no reason to step", () => {

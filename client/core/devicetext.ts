@@ -192,8 +192,8 @@ function terrainLines(r: DeviceReport): string[] {
   if (t.wood.length === 0) return out;
   out.push("wood      the map's trees, rocks and bushes, 160 slots a chunk, to each tier's reach, from eye height at its middle, turning");
   out.push(row(["tier", "held", "median", "p95", "worst", "build", "draw", "calls", "tris", "nodes", "gpu"], fw));
-  for (const g of t.wood) out.push(row([g.tier, held(g), String(g.frameMs.median), String(g.frameMs.p95), String(g.frameMs.worst), String(g.buildMs), String(g.drawMs), count(g.calls), count(g.tris), String(g.nodeDraws), g.gpuMs === null ? "-" : String(g.gpuMs)], fw));
-  out.push(`nodes: far node draws a frame; trees reach ${t.wood.map((g) => `${g.reach} m on ${g.tier}`).join(", ")}`);
+  for (const g of t.wood) out.push(row([g.band ? `${g.tier}*` : g.tier, held(g), String(g.frameMs.median), String(g.frameMs.p95), String(g.frameMs.worst), String(g.buildMs), String(g.drawMs), count(g.calls), count(g.tris), String(g.nodeDraws), g.gpuMs === null ? "-" : String(g.gpuMs)], fw));
+  out.push(`nodes: far node draws a frame; trees reach ${t.wood.filter((g) => !g.band).map((g) => `${g.reach} m on ${g.tier}`).join(", ")}; *: the near nodes in the hand-over band drawn without its discard`);
   for (const g of t.wood.filter((x) => x.invalid)) out.push(`invalid   wood ${g.tier}: ${g.invalid}`);
   return out;
 }

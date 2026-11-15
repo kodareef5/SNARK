@@ -28,6 +28,7 @@ import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
 import { groundSize } from "./render/terrain.ts";
 import type { Thing } from "./render/scene.ts";
+import { effectsOff } from "./passes.ts";
 import { heldTo, probePasses, provingProbes } from "./selfcheck.ts";
 import { stressThings } from "./stress.ts";
 
@@ -280,10 +281,14 @@ export interface FarRung extends TerrainRung {
   farDraws: number;
 }
 
-/** The wood (D259): far trees, rocks and bushes out to a tier's reach, its trees' in metres. */
+/**
+ * The wood (D259): far trees, rocks and bushes out to a tier's reach, its trees' in metres. `band` marks medium's again
+ * with the near nodes in the hand-over band drawn without the far program's discard (passes.ts "band"), for its cost.
+ */
 export interface WoodRung extends TerrainRung {
   tier: string;
   reach: number;
+  band?: boolean;
   /** Far node draws a frame, median. */
   nodeDraws: number;
 }
@@ -1185,20 +1190,21 @@ export class DeviceRun {
    * tier's reach, at eye height. After the last the bases are taken away and the test ends.
    */
   private terrainRung(k: number): void {
-    const steps = [...FAR_CHUNKS.map((n) => ({ wood: false, tier: tierOf("medium"), n })), ...takes(this.side.maxTexture).map((tier) => ({ wood: true, tier, n: 0 }))];
+    const steps = [...FAR_CHUNKS.map((n) => ({ wood: false, tier: tierOf("medium"), n, band: false })), ...takes(this.side.maxTexture).map((tier) => ({ wood: true, tier, n: 0, band: false })), { wood: true, tier: tierOf("medium"), n: 0, band: true }];
     const step = steps[k];
     if (!step) {
       this.rungs = null;
       return this.end();
     }
     this.rungs = { k, wood: step.wood, draws: [], gpu: [] };
+    this.side.app.off = step.band ? effectsOff("band") : effectsOff(null);
     const load = { ...bare(step.tier, 0), noWood: !step.wood };
     this.step = { kind: "rung", load };
     this.apply(load);
     this.middle(step.wood ? EYE_UP : FAR_UP, step.wood ? 0 : -0.02);
     this.placeFar(step.n);
     [this.measuring, this.at] = [false, -1];
-    this.report.stage = `terrain ${step.wood ? `wood ${step.tier.name}` : `far ${step.n}`}`;
+    this.report.stage = `terrain ${step.wood ? `wood ${step.tier.name}${step.band ? " band without discard" : ""}` : `far ${step.n}`}`;
   }
 
   /** The camera over the map's middle, where the body stands, `up` metres over the ground. */
@@ -1261,7 +1267,7 @@ export class DeviceRun {
     const { held, limit, invalid } = judgeRung(phase, this.side.display);
     const frame = { held, limit, invalid, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, gpuMs: frames?.on ? spread(g.gpu).median : null };
     const tier = this.step!.load.tier;
-    if (g.wood) this.report.terrain!.wood.push({ tier: tier.name, reach: tier.reach.trees, ...frame, nodeDraws: spread(g.draws).median });
+    if (g.wood) this.report.terrain!.wood.push({ tier: tier.name, reach: tier.reach.trees, ...frame, nodeDraws: spread(g.draws).median, ...(this.side.app.off.has("band") ? { band: true } : {}) });
     else this.report.terrain!.far.push({ asked: FAR_CHUNKS[g.k]!, chunks: this.bases?.placed ?? 0, ...frame, farDraws: spread(g.draws).median });
     this.terrainRung(g.k + 1);
     return true;
@@ -1466,6 +1472,7 @@ export class DeviceRun {
   private end(): void {
     this.side.frames?.stop();
     this.side.app.governor.held = 0;
+    this.side.app.off = effectsOff(null);
     this.placeFar(0);
     this.fly = null;
     this.apply(bare(tierOf(DEFAULT_TIER), 0));
