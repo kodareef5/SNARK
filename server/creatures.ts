@@ -320,7 +320,7 @@ export class Creatures {
   /** Whether the eyes of `e`, stepped with `p`, are under water. */
   private under(e: number, p: MoveParams): boolean {
     const ents = this.world.ents;
-    return ents.y[e]! + stanceEye(p, ents.stance[e]!) < this.world.hf.seaLevel;
+    return ents.y[e]! + stanceEye(p, ents.stance[e]!) < this.world.hf.waterAt(ents.x[e]!, ents.z[e]!);
   }
 
   /** Tells Survival when the head of `e` goes under water or comes up, so it loses its oxygen and then drowns as a survivor does. */

@@ -2,12 +2,12 @@
 // serves it, and each client fetches it, so both stand on the same bytes. Little-endian:
 //
 //   0   "SNMP"
-//   4   u16 version (2, and 1 is still read: it had no zoned nodes), u16 reserved
+//   4   u16 version (3 with water standing apart from the sea, else 2; 1 is still read: it had no zoned nodes), u16 reserved
 //   8   u32 hash        FNV-1a of every byte after it
 //   12  u16 chunksX, u16 chunksZ
 //   16  f32 cell        metres between samples, which is 2
 //   20  f64 minY, f64 stepY, f64 seaLevel
-//                       a height is minY + sample * stepY metres; a sea level of -Infinity is no water
+//                       a height is minY + sample * stepY metres; a sea level of -Infinity is no sea
 //   44  string id
 //   ..  sections, each a 4-byte tag, a u32 byte length and its bytes. A tag this build does not know is skipped.
 //
@@ -27,6 +27,10 @@
 //   SPWN  u8 count, then each a string name, i32 x, i32 z in 1/512 m, u16 yaw. The first is where a new survivor arrives.
 //   WILD  where wild creatures live: u16 count, then each a string spawns id, u16 count it holds at 1x, u8 shape (0 a circle,
 //         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
+//   WATR  water standing on its own surfaces (shared/world/water.ts), only in a file of version 3: u8 metres a square (1, 2,
+//         4, 8, 16, 32 or 64), u16 count of bodies, each a string name and a u16 surface in the heights' units, then a u32
+//         count of the chunks holding water, each a u32 chunk index, ascending, and its squares as u16, row by row from
+//         z = 0: the number of its body counting from 1, or 0 for the sea's.
 //
 // A string is a varint byte length and UTF-8, as on the wire. A yaw is in 1/65,536 turns.
 
@@ -38,8 +42,11 @@ import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
 import { formOf, mix, nodeForms, scatterNodes, type NodeSource } from "./nodes.ts";
 import type { StructureStore } from "./structures.ts";
+import { MAX_WATER_BODIES, MapWater } from "./water.ts";
 
-export const MAP_VERSION = 2;
+/** The version of a file with water standing apart from the sea. One without is written at 2, as it always was. */
+export const MAP_VERSION = 3;
+const MAP_VERSION_DRY = 2;
 const MAGIC = 0x504d4e53;
 const HEADER_BYTES = 44;
 /** Slots a chunk's nodes may take over every layer (shared/world/nodes.ts). */
@@ -217,7 +224,7 @@ export interface MapData {
   readonly minY: number;
   /** Metres per height unit. A power-of-two fraction keeps round heights exact. */
   readonly stepY: number;
-  /** -Infinity for a map with no water. */
+  /** -Infinity for a map with no sea. */
   readonly seaLevel: number;
   /** Row by row from z = 0, as a Heightfield holds them. */
   readonly heights: Uint16Array;
@@ -229,6 +236,8 @@ export interface MapData {
   readonly spawns: readonly MapSpawn[];
   /** Spawn regions, each naming a `spawns` definition and the creatures it holds. They are added to those of the map's definition. */
   readonly regions?: readonly MapZone[];
+  /** Lakes, ponds, reservoirs and the reaches of rivers, each on its own surface. Without it the sea is the only water. */
+  readonly water?: MapWater;
 }
 
 /** A map read from a file, with the hash that names those bytes. */
@@ -286,6 +295,12 @@ function check(m: MapData): void {
     if (layer.allow === null ? cell !== 0 : !whole(cell, 1, CHUNK_SIZE) || CHUNK_SIZE % cell !== 0 || layer.allow.length !== Math.ceil(((sizeX / cell) * (sizeZ / cell)) / 8)) fail("where scattered nodes may stand is not a bit per square of 1, 2, 4, 8, 16, 32 or 64 m");
   }
   if (slots > NODE_SLOTS) fail(`its nodes take ${slots} slots in a chunk, and a chunk has ${NODE_SLOTS}`);
+  const w = m.water;
+  if (w) {
+    if (!whole(w.cell, 1, CHUNK_SIZE) || CHUNK_SIZE % w.cell !== 0 || w.dims.chunksX !== chunksX || w.dims.chunksZ !== chunksZ) fail("its water is not in squares of 1, 2, 4, 8, 16, 32 or 64 m over its chunks");
+    if (!whole(w.bodies.length, 1, MAX_WATER_BODIES) || w.bodies.some((b) => !whole(b.level, 0, 65535) || b.name.length > MAX_TEXT)) fail(`it has ${w.bodies.length} bodies of water, and a map with water has 1 to ${MAX_WATER_BODIES}, each a surface on its heights' lattice and a name of at most ${MAX_TEXT} characters`);
+    if (w.squares.length !== w.chunks().length * w.side * w.side || w.squares.some((b) => b > w.bodies.length)) fail("a square of its water is in a body it does not list");
+  }
   const regions = m.regions ?? [];
   if (regions.length > MAX_REGIONS) fail(`it has ${regions.length} spawn regions, and a map has ${MAX_REGIONS} at most`);
   for (const z of regions) {
@@ -361,7 +376,7 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
     o.view.setUint32(at, o.at - at - 4, true);
   };
   o.u32(MAGIC);
-  o.u16(MAP_VERSION);
+  o.u16(m.water ? MAP_VERSION : MAP_VERSION_DRY);
   o.u16(0);
   o.u32(0);
   o.u16(m.dims.chunksX);
@@ -470,6 +485,26 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
         const [rx, rz] = z.half ?? [z.radius!, z.radius!];
         o.u32(Math.round(rx * STRUCT_UNITS));
         o.u32(Math.round(rz * STRUCT_UNITS));
+      }
+    });
+  }
+  const w = m.water;
+  if (w) {
+    section("WATR", () => {
+      o.u8(w.cell);
+      o.u16(w.bodies.length);
+      for (const b of w.bodies) {
+        o.text(b.name);
+        o.u16(b.level);
+      }
+      const chunks = w.chunks();
+      const per = w.side * w.side;
+      o.u32(chunks.length);
+      for (const c of chunks) {
+        o.u32(c);
+        const at = o.take(per * 2);
+        const from = w.block[c]!;
+        for (let q = 0; q < per; q++) o.view.setUint16(at + q * 2, w.squares[from + q]!, true);
       }
     });
   }
@@ -590,6 +625,7 @@ function read(r: In): Omit<MapFile, "hash"> {
   const nodes: NodeLayer[] = [];
   const spawns: MapSpawn[] = [];
   const regions: MapZone[] = [];
+  let water: MapWater | null = null;
   while (r.at < r.bytes.length) {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
     const s = new In(r.take(r.u32()));
@@ -634,11 +670,27 @@ function read(r: In): Omit<MapFile, "hash"> {
         const rz = s.u32() / STRUCT_UNITS;
         regions.push(box ? { kind: "spawn", spawns, count, at, half: [rx, rz] } : { kind: "spawn", spawns, count, at, radius: rx });
       }
+    } else if (tag === "WATR") {
+      if (water) throw new Error("map: it has two WATR sections");
+      const cell = s.u8();
+      if (!(cell >= 1 && cell <= CHUNK_SIZE && CHUNK_SIZE % cell === 0)) throw new Error(`map: its water is in squares of ${cell} m, and a square is 1, 2, 4, 8, 16, 32 or 64 m`);
+      const bodies = Array.from({ length: s.u16() }, () => ({ name: s.text(), level: s.u16() }));
+      const per = (CHUNK_SIZE / cell) ** 2;
+      const n = s.u32();
+      if (n > chunkCount(dims) || n * (4 + per * 2) > s.bytes.length - s.at) throw new RangeError();
+      const chunks = new Uint32Array(n);
+      const squares = new Uint16Array(n * per);
+      for (let k = 0; k < n; k++) {
+        chunks[k] = s.u32();
+        if (chunks[k]! >= chunkCount(dims) || (k > 0 && chunks[k]! <= chunks[k - 1]!)) throw new Error("map: its water's chunks are off the map or out of order");
+        for (let q = 0; q < per; q++) squares[k * per + q] = s.u16();
+      }
+      water = new MapWater(dims, minY, stepY, cell, bodies, chunks, squares);
     }
   }
   if (!heights) throw new Error("map: it has no heights");
   statics ??= new MapStatics(dims, [], 0, () => {});
-  return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}) };
+  return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(water ? { water } : {}) };
 }
 
 /** Throws with a reason if the file is not a map this build can play on. */
@@ -646,7 +698,7 @@ export function parseMap(file: Uint8Array): MapFile {
   const r = new In(file);
   if (file.length < HEADER_BYTES || r.u32() !== MAGIC) throw new Error("map: this is not a map file");
   const version = r.u16();
-  if (version !== MAP_VERSION && version !== 1) throw new Error(`map: version ${version} is not one this build reads`);
+  if (version !== MAP_VERSION && version !== MAP_VERSION_DRY && version !== 1) throw new Error(`map: version ${version} is not one this build reads`);
   r.at += 2;
   const hash = r.u32();
   if (hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
@@ -663,6 +715,7 @@ export function parseMap(file: Uint8Array): MapFile {
 export function mapHeightfield(map: MapData): Heightfield {
   const hf = new Heightfield(map.dims, TERRAIN_CELL, map.minY, map.stepY, map.heights, map.tint);
   hf.seaLevel = map.seaLevel;
+  hf.water = map.water ?? null;
   return hf;
 }
 

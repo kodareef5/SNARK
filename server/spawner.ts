@@ -376,7 +376,7 @@ export class Spawner {
    */
   private land(p: NonNullable<Registry["move"][number]>, x: number, z: number): boolean {
     const world = this.ctx.world;
-    if (world.hf.heightAt(x, z) < world.hf.seaLevel || groundAt(world, p, x, z) !== GROUND_FREE) return false;
+    if (world.hf.heightAt(x, z) < world.hf.waterAt(x, z) || groundAt(world, p, x, z) !== GROUND_FREE) return false;
     return !world.unloaded?.meets(x, groundUnder(world.hf, x, z, p.radius), z, p.radius, p.height + p.stepUp);
   }
 

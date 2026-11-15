@@ -94,7 +94,7 @@ export class Use {
     const { world, records } = this.ctx;
     const e = records.entOf.get(rec.pid);
     if (e === undefined) return false;
-    return world.ents.y[e]! < world.hf.seaLevel && world.ents.mode[e] !== MODE_SWIM;
+    return world.ents.y[e]! < world.hf.waterAt(world.ents.x[e]!, world.ents.z[e]!) && world.ents.mode[e] !== MODE_SWIM;
   }
 
   /**

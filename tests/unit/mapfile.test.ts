@@ -39,7 +39,7 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   expect(() => parseMap(file.subarray(0, file.length - 9))).toThrow("map: the file is damaged");
   expect(() => parseMap(new Uint8Array(100))).toThrow("map: this is not a map file");
   expect(() => parseMap(file.subarray(0, 20))).toThrow("map: this is not a map file");
-  expect(() => parseMap(rehashed((view) => view.setUint16(4, 3, true)))).toThrow("map: version 3 is not one this build reads");
+  expect(() => parseMap(rehashed((view) => view.setUint16(4, 4, true)))).toThrow("map: version 4 is not one this build reads");
   // A file of the version before zoned nodes is read as it was.
   expect(parseMap(rehashed((view) => view.setUint16(4, 1, true))).heights).toEqual(parseMap(file).heights);
   expect(() => parseMap(rehashed((view) => view.setFloat32(16, 4, true)))).toThrow("map: its samples are 4 m apart");

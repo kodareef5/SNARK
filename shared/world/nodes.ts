@@ -232,7 +232,7 @@ export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perCh
       const grows = kindsAt(x, z);
       if (grows === null || grows.length === 0) return;
       const y = hf.heightAt(x, z);
-      if (y < hf.seaLevel + 0.3 || hf.slopeCosAt(x, z) < 0.85) return;
+      if (y < hf.waterAt(x, z) + 0.3 || hf.slopeCosAt(x, z) < 0.85) return;
       let kind = grows[g % grows.length]!;
       if (kind !== 0 && ring[kind]! > 0 && !fits(kind, chunkCx(dims, chunk) * 65536 + (h & 0xffff), chunkCz(dims, chunk) * 65536 + (h >>> 16))) kind = forms.footElse[kind]!;
       if (kind === 0) return;
