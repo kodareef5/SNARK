@@ -3,7 +3,7 @@
 // picture encoded is kept under .cache/ by what went into it, so a build encodes only what it has not seen before.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -104,9 +104,12 @@ function kept(dir: string, key: string, bytes: number): Uint8Array | null {
   }
 }
 
+/** Written whole or not at all, so checkouts may share one cache folder through a link. */
 function keep(dir: string, key: string, picture: Uint8Array): void {
   mkdirSync(join(dir, key.slice(0, 2)), { recursive: true });
-  writeFileSync(join(dir, key.slice(0, 2), key), picture);
+  const path = join(dir, key.slice(0, 2), key);
+  writeFileSync(`${path}.${process.pid}.tmp`, picture);
+  renameSync(`${path}.${process.pid}.tmp`, path);
 }
 
 export interface EncodeOptions {
