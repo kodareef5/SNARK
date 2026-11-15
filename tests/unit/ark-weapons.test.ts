@@ -93,3 +93,11 @@ test("attachments weigh 0.1, at ARK's levels and experience; the flashlight's 52
     { needs: "50 ingot, 40 stone", seconds: 6, xp: 544, count: 1, at: "hand" },
   ]);
 });
+
+test("a grenade weighs 0.5, stacks to 10, goes off 5 s after the pin and is learned at level 38 for 45.6 experience (Grenade)", () => {
+  expect([carried("grenade"), reg.fuseTicks[at("grenade")]]).toEqual([[0.5, 10], 5 * TICK_RATE]);
+  // Its 4 oil wait for oil (DEV130); its page gives no crafting time (DEV125).
+  expect([made("grenade"), engram("grenade")]).toEqual([{ needs: "15 fiber, 20 stone, 30 gunpowder, 5 hide, 2 ingot", seconds: 8, xp: 45.6, count: 1, at: "hand" }, [38, 20]]);
+  // Its damage is W6's: 788 within 5 m until it does ARK's 175 within 6 m with a structure factor of 4.5 (D435, DEV31).
+  expect([reg.damage[at("grenade")], reg.blast[at("grenade")]]).toEqual([788, 5]);
+});
