@@ -353,8 +353,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // palm's last level for the pulled draws' three. The hand-over band (hand.ts) alone leaves it as it was: every node
   // here stands within 152 m, and with the band past the near field it is this again. It was 4087841682 until the common
   // tree grew at 0.85 to 1.15 of its models, not 0.4 to 0.75, and the 300 frames took two draws more: the sizes alone give
-  // it, and its four young variants and the elders' boxes alone leave it as it was.
-  expect(hash).toBe(3734161494);
+  // it, and its four young variants and the elders' boxes alone leave it as it was. It was 3734161494 until feces lying
+  // (core:feces) had a grey box, which numbers the meshes after it on: drawn with the bag's mesh, it is that again.
+  expect(hash).toBe(3294409758);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
