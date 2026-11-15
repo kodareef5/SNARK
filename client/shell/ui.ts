@@ -1,7 +1,7 @@
 // Draws the interface: one element per node, placed where client/core says, with no layout or state here.
 // Text is always set as text, never as markup, so nothing a player types or is named can become HTML.
 
-import { K_BAR, K_BUTTON, K_IMAGE, K_INPUT, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
+import { K_BAR, K_BUTTON, K_IMAGE, K_INPUT, K_SLIDER, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
 import { STYLES } from "../core/ui/style.ts";
 
 export interface UiEvents {
@@ -49,7 +49,7 @@ export class UiView {
     this.events = events;
     root.textContent = "";
     const forward = (kind: number) => (e: PointerEvent) => {
-      const key = Number((e.target as HTMLElement).dataset?.k ?? 0);
+      const key = Number((e.target as HTMLElement).closest<HTMLElement>("[data-k]")?.dataset.k ?? 0);
       if (key !== 0 && this.scale > 0) events.pointer(kind, key, e.clientX / this.scale, e.clientY / this.scale, e.button);
     };
     root.addEventListener("pointerdown", forward(0));
@@ -105,9 +105,14 @@ export class UiView {
         b.alpha = n.alpha;
         s.opacity = String(n.alpha);
       }
-      if (n.kind === K_INPUT) {
+      if (n.kind === K_INPUT || n.kind === K_SLIDER) {
         const field = b.el as HTMLInputElement;
-        if (field.value !== n.text) field.value = n.text;
+        // Integer native steps keep both endpoints reachable, including fractions such as sensitivity's 1/28.
+        const value = n.kind === K_SLIDER ? String(Math.round(n.value/n.step)) : n.text;
+        if (n.kind === K_SLIDER && field.max !== String(Math.round(1/n.step))) field.max = String(Math.round(1/n.step));
+        if ((n.kind !== K_SLIDER || b.value !== n.value) && field.value !== value) field.value = value;
+        b.value = n.value;
+        if (n.kind === K_SLIDER && b.text !== n.text) field.setAttribute("aria-valuetext", n.text);
         b.text = n.text;
       } else if (b.text !== n.text) {
         b.text = n.text;
@@ -176,19 +181,20 @@ export class UiView {
   }
 
   private create(n: UiNode): Bound {
-    const el = document.createElement(n.kind === K_INPUT ? "input" : n.kind === K_IMAGE ? "canvas" : n.kind === K_BUTTON ? "button" : "div");
+    const el = document.createElement(n.kind === K_INPUT || n.kind === K_SLIDER ? "input" : n.kind === K_IMAGE ? "canvas" : n.kind === K_BUTTON ? "button" : "div");
     if (n.kind === K_BUTTON) { (el as HTMLButtonElement).type = "button"; el.tabIndex = -1; }
     let fill: HTMLElement | null = null;
     if (n.kind === K_BAR) {
       fill = document.createElement("div");
       fill.style.height = "100%";
       el.append(fill);
-    } else if (n.kind === K_INPUT) {
+    } else if (n.kind === K_INPUT || n.kind === K_SLIDER) {
       const field = el as HTMLInputElement;
+      if (n.kind === K_SLIDER) { field.type = "range"; field.min = "0"; field.step = "1"; }
       field.spellcheck = false;
       field.autocomplete = "off";
       // Frame nodes are pooled and can change key; the bound element owns this input's stable key.
-      field.addEventListener("input", () => this.events.text(Number(field.dataset.k), field.value));
+      field.addEventListener("input", () => this.events.text(Number(field.dataset.k), field.type === "range" ? String(Number(field.value)/Number(field.max)) : field.value));
     } else if (n.kind === K_IMAGE) el.style.imageRendering = "pixelated";
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";

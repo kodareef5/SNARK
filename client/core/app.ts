@@ -177,8 +177,10 @@ export class App {
     this.ui.palette = pack.palette;
     const app = this;
     this.padTarget = {
-      get inMenu() { return !app.ui.wantsPointerLock; }, get heldSlot() { return app.session.held; },
+      get inMenu() { return !app.ui.wantsPointerLock; },
       get inspecting() { return app.ui.inspect; },
+      get flying() { return app.controls.onFlyer; },
+      adjust: by => this.ui.adjustFocused(by),
       key: (code, down) => { this.key(code, down, false, 1); }, mouse: (button, down) => this.mouseButton(button, down, 1),
       move: (x, z) => this.controls.padMove(x, z), look: (x, y) => this.look(x,y), used: () => { this.ui.inputDevice = 1; },
       navigate: (direction, press) => {

@@ -431,7 +431,7 @@ test("the talk key with Alt is a whisper and with Shift a yell; set to switch, o
   run(50);
   app.pointer(0, KEY_SETTINGS_TAB + 1, 0, 0, 0);
   run(50);
-  expect(app.ui.frame.find(KEY_SETTINGS_MIC + 1)!.value).toBeCloseTo(1 + (20 * Math.log10(0.25)) / 60, 5);
+  expect(Array.from({length:16},(_,i)=>app.ui.frame.find(KEY_SETTINGS_MIC+1+i)!).filter(n=>n.alpha>.5 && !n.interactive).length).toBe(13);
 });
 
 test("the melee key reaches the controls through the whole client, and F does not", () => {

@@ -1,20 +1,20 @@
 import { expect, test } from "bun:test";
 import { GamepadInput, padAxis, type PadTarget } from "../../client/core/gamepad.ts";
 import { Controls } from "../../client/core/controls.ts";
-import { BTN_JUMP, BTN_PRIMARY } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_PRIMARY, BTN_RELOAD, BTN_ROLL, BTN_BRAKE } from "../../shared/sim/character.ts";
 
 function rig() {
   const controls = new Controls(), driver = new GamepadInput(), actions: string[] = [];
   const pad = { connected: true, mapping: "standard", axes: [0,0,0,0], buttons: Array.from({length:17},()=>({ pressed:false, value:0 })) };
   const target: PadTarget = {
-    inMenu:false, inspecting:false, heldSlot:-1,
+    inMenu:false, inspecting:false, get flying() { return controls.onFlyer; },
     key(code,down) { actions.push(`${code}:${down}`); controls.key(code,down,1); if (code === "KeyH") Object.assign(target, { inMenu:down, inspecting:down }); },
     mouse(button,down) { controls.mouseButton(button,down,1); },
     move(x,z) { controls.padMove(x,z); }, look(x,y) { controls.look(x,y); },
-    navigate(direction,press) { actions.push(`nav:${direction}:${press}`); }, used() {},
+    navigate(direction,press) { actions.push(`nav:${direction}:${press}`); }, adjust:()=>false, used() {},
   };
   let now=0;
-  return { controls, target, pad, actions, step:()=>driver.update([pad],now+=16,target), disconnect:()=>driver.update([],now+=16,target) };
+  return { controls, target, pad, actions, step:(ms=16)=>driver.update([pad],now+=ms,target), disconnect:()=>driver.update([],now+=16,target) };
 }
 
 test("standard pads apply dead zones, bounded analogue movement and edge-triggered actions",()=>{
@@ -25,7 +25,7 @@ test("standard pads apply dead zones, bounded analogue movement and edge-trigger
   expect(r.controls.moveX).toBeCloseTo((.5-.18)/.82); expect(r.controls.moveZ).toBe(1);
   expect(r.controls.buttons & BTN_PRIMARY).toBe(BTN_PRIMARY); expect(r.controls.yaw).toBeLessThan(0);
   r.pad.buttons[5]!.pressed=true; r.step(); r.step();
-  expect(r.actions).toEqual(["Digit1:true","Digit1:false"]);
+  expect(r.actions).toEqual(["KeyG:true"]);
   r.pad.mapping=""; r.step();
   expect([r.controls.moveX,r.controls.moveZ,r.controls.buttons]).toEqual([0,0,0]);
 });
@@ -52,11 +52,12 @@ test("opening a menu stops attacks; a held trigger cannot resume until released 
 });
 
 test("holding HUD inspection survives the transition to cursor navigation and releases on disconnect",()=>{
-  const r=rig(); r.pad.buttons[12]!.pressed=true; r.step(); r.step(); r.step();
+  const r=rig(); r.pad.buttons[8]!.pressed=true; r.step(); r.step(350); r.step();
   expect(r.target.inspecting).toBe(true); expect(r.actions).toEqual(["KeyH:true"]);
   r.disconnect(); expect(r.target.inspecting).toBe(false);
-  r.pad.buttons[12]!.pressed=false; r.step(); r.pad.buttons[12]!.pressed=true; r.step();
-  r.pad.buttons[12]!.pressed=false; r.step(); expect(r.target.inspecting).toBe(false);
+  r.pad.buttons[8]!.pressed=false; r.step(); r.pad.buttons[8]!.pressed=true; r.step();
+  r.pad.buttons[8]!.pressed=false; r.step(); expect(r.target.inspecting).toBe(false);
+  expect(r.actions.slice(-2)).toEqual(["KeyM:true","KeyM:false"]);
 });
 
 test("controller jump keeps the incoming flyer takeoff/landing toggle semantics through menu releases",()=>{
@@ -70,4 +71,67 @@ test("controller jump keeps the incoming flyer takeoff/landing toggle semantics 
   r.pad.buttons[0]!.pressed=true; r.step(); expect(r.controls.wing).toBe(false);
   r.controls.fly(false,false); r.pad.buttons[0]!.pressed=false; r.step();
   r.pad.buttons[0]!.pressed=true; r.step(); expect(r.controls.buttons & BTN_JUMP).toBe(BTN_JUMP);
+});
+
+test("ARK face buttons, contextual holds and all ten hotbar slots have distinct edges",()=>{
+  const r=rig();
+  const press=(i:number,ms=16)=>{r.pad.buttons[i]!.pressed=true;r.step();r.step(ms);r.pad.buttons[i]!.pressed=false;r.step();};
+  press(1);press(3);press(5);
+  expect(r.actions).toEqual(["KeyI:true","KeyI:false","KeyE:true","KeyE:false","KeyG:true","KeyG:false"]);
+  r.actions.length=0;
+  press(2);expect(r.controls.buttons & BTN_RELOAD).toBe(BTN_RELOAD);
+  r.step();expect(r.controls.buttons & BTN_RELOAD).toBe(0);
+  press(2,350);press(11);press(11,350);
+  expect(r.actions).toEqual(["KeyR:true","KeyR:false","KeyF:true","KeyF:false","KeyC:true","KeyC:false","KeyX:true","KeyX:false"]);
+  r.actions.length=0;
+  for(const i of [12,15,13,14])press(i);
+  r.pad.buttons[4]!.pressed=true;r.step();
+  for(const i of [12,15,13,14,2,3])press(i);
+  expect(r.actions.filter(a=>a.endsWith(":true"))).toEqual([1,2,3,4,5,6,7,8,9,0].map(i=>`Digit${i}:true`));
+  press(5);expect(r.actions.slice(-2)).toEqual(["KeyV:true","KeyV:false"]);
+});
+
+test("a pending hold is cancelled by menus and disconnect, without a delayed gameplay tap",()=>{
+  for(const button of [2,8,11])for(const disconnect of [false,true]) {
+    const r=rig();r.pad.buttons[button]!.pressed=true;r.step();
+    if(disconnect)r.disconnect();else {Object.assign(r.target,{inMenu:true});r.step();}
+    r.step(400);r.pad.buttons[button]!.pressed=false;r.step();
+    expect(r.actions).toEqual([]);
+  }
+});
+
+test("controller horizontal navigation adjusts values and repeats, while unadjustable controls move focus",()=>{
+  const r=rig();Object.assign(r.target,{inMenu:true,adjust:(by:number)=>{r.actions.push(`adjust:${by}`);return true;}});
+  r.pad.buttons[15]!.pressed=true;r.step();r.step();r.step(180);
+  expect(r.actions).toEqual(["adjust:1","adjust:1"]);
+  r.pad.buttons[15]!.pressed=false;r.step();
+  Object.assign(r.target,{adjust:()=>false});r.pad.buttons[14]!.pressed=true;r.step();
+  expect(r.actions.at(-1)).toBe("nav:-1:0");
+});
+
+test("flyer roll and brake remain held abilities, without on-foot stance taps",()=>{
+  const r=rig();r.controls.fly(true,true);
+  r.pad.buttons[11]!.pressed=true;r.step();r.step(400);
+  expect(r.controls.buttons & BTN_ROLL).toBe(BTN_ROLL);
+  r.pad.buttons[11]!.pressed=false;r.step();expect(r.controls.buttons & BTN_ROLL).toBe(0);
+  r.pad.buttons[4]!.pressed=true;r.pad.buttons[11]!.pressed=true;r.step();
+  expect(r.controls.buttons & BTN_BRAKE).toBe(BTN_BRAKE);
+  r.disconnect();expect(r.controls.buttons & (BTN_ROLL|BTN_BRAKE)).toBe(0);
+  expect(r.actions).toEqual(["KeyC:true","KeyC:false","KeyX:true","KeyX:false"]);
+});
+
+test("Sony touchpad mappings use the touchpad for map and leave Share/Create alone",()=>{
+  const r=rig();Object.assign(r.pad,{id:"Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 09cc)"});
+  r.pad.buttons.push({pressed:false,value:0});
+  r.pad.buttons[8]!.pressed=true;r.step();r.pad.buttons[8]!.pressed=false;r.step();expect(r.actions).toEqual([]);
+  r.pad.buttons[17]!.pressed=true;r.step();r.pad.buttons[17]!.pressed=false;r.step();
+  expect(r.actions).toEqual(["KeyM:true","KeyM:false"]);
+});
+
+test("changing between foot and flyer cancels a pending stance or held flight ability",()=>{
+  const r=rig();r.pad.buttons[11]!.pressed=true;r.step();r.controls.fly(true,true);r.step(400);
+  r.pad.buttons[11]!.pressed=false;r.step();expect(r.actions).toEqual([]);
+  r.pad.buttons[11]!.pressed=true;r.step();expect(r.controls.buttons & BTN_ROLL).toBe(BTN_ROLL);
+  r.controls.fly(false,false);r.step();expect(r.actions).toEqual(["KeyC:true","KeyC:false"]);
+  r.step(400);expect(r.actions).toHaveLength(2);
 });

@@ -401,18 +401,22 @@ Reasoned from the rows, in the order a growing world meets them.
 `feat/ui-hud-plan` on `c70b9a79`, 2026-11-15; Intel Core i9-13980HX,
 32 logical cores, Linux, Bun 1.4.3. `bun run bench -- --ui` isolates the HUD
 from the world sizing run. These are CPU layout measurements on a shared,
-busy host, not browser frame times or an idle-machine baseline.
+busy host, not browser frame times or an idle-machine baseline. These rows
+include the controls/slider polish pass. The expanded body/ring atlas costs
+2,668 additional transfer bytes; its dimensions and decoded size are unchanged.
 
 | Row | Result | Budget |
 | --- | --- | --- |
-| Play layout, median / p99 | 0.006 / 0.017 ms | 0.25 / 1 ms |
-| Menu layout, median / p99 | 0.001 / 0.003 ms | 0.25 / 1 ms |
-| Settings layout, median / p99 | 0.002 / 0.005 ms | 0.25 / 1 ms |
-| Keyboard layout, median / p99 | 0.006 / 0.013 ms | 0.25 / 1 ms |
-| Largest frame; node growth after warmup | 339; 0 | 500; 0 |
+| Play layout, median / p99 | 0.011 / 0.019 ms | 0.25 / 1 ms |
+| Menu layout, median / p99 | 0.002 / 0.004 ms | 0.25 / 1 ms |
+| Settings layout, median / p99 | 0.003 / 0.009 ms | 0.25 / 1 ms |
+| Keyboard layout, median / p99 | 0.014 / 0.028 ms | 0.25 / 1 ms |
+| Audio layout, median / p99 | 0.005 / 0.010 ms | 0.25 / 1 ms |
+| Controller layout, median / p99 | 0.010 / 0.019 ms | 0.25 / 1 ms |
+| Largest frame; node growth after warmup | 263; 0 | 500; 0 |
 | Shared sheet decoded | 917,504 B | 1,048,576 B |
-| Sheet plus Brotli font, excluding HTTP headers | 61,855 B | 98,304 B |
-| Primitive fallback creation, once at boot | 69.7 ms | none |
+| Sheet plus Brotli font, excluding HTTP headers | 64,523 B | 98,304 B |
+| Primitive fallback creation, once at boot | 43.7 ms | none |
 
 An earlier busy-host play p99 missed at 1.205 ms; subsequent runs passed.
 The sheet figure excludes browser copies, fallback pixels and canvas uploads.

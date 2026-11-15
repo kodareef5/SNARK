@@ -9,14 +9,15 @@ import { ChatState, KEY_CHAT_INPUT, KEY_CHAT_TAG } from "./chat.ts";
 import { CreatorScreen } from "./creator.ts";
 import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand } from "./hud.ts";
-import { buildControls } from "./controls-help.ts";
+import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
+import { CONTROL_GROUPS } from "./controls-guide.ts";
 import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS } from "./menu.ts";
 import { InventoryScreen } from "./inventory.ts";
-import { UiFrame } from "./nodes.ts";
+import { K_SLIDER, UiFrame } from "./nodes.ts";
 import { buildMap } from "./screens.ts";
 import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
 import { Settings } from "../settings.ts";
-import { buildSettings, settingsClick } from "./settings.ts";
+import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./settings.ts";
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { TravelScreen } from "./travel.ts";
@@ -48,6 +49,7 @@ export class Ui {
   menu = false;
   help = false;
   helpDevice = 0;
+  helpGroup = 0;
   inputDevice = 0;
   inspect = false;
   reconnectRequested = false;
@@ -95,8 +97,16 @@ export class Ui {
     return this.menuFocus;
   }
 
+  adjustFocused(by: number, end = false): boolean {
+    if(this.console.open || this.chat.open || (!this.menu && !this.creating))return false;
+    const n=this.frame.find(this.menuFocus);
+    if(n?.kind===K_SLIDER) { this.input(n.key,String(end?(by>0?1:0):n.value+by*n.step)); return true; }
+    return !end && this.options && settingsAdjust(this.menuFocus,by,this.settings);
+  }
+
   /** Returns true if the interface used the key. The shell must then suppress the browser's own handling. */
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
+    if(down && ["ArrowLeft","ArrowRight","Home","End"].includes(code) && this.adjustFocused(code==="ArrowLeft"||code==="Home"?-1:1,code==="Home"||code==="End"))return true;
     if (this.menu) {
       if (code === "ShiftLeft" || code === "ShiftRight") this.menuShift = down;
       if (code === "Escape" && down && !repeat) {
@@ -109,6 +119,10 @@ export class Ui {
     }
     const con = this.console;
     const chat = this.chat;
+    if(this.creating && !con.open) {
+      if(code==="ShiftLeft" || code==="ShiftRight")this.menuShift=down;
+      if(code==="Tab") { if(down)this.moveFocus(this.menuShift?-1:1); return true; }
+    }
     // The name prompt has the keyboard until it is answered.
     if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
     if (this.structure.naming && !con.open) return this.structure.key(code, down, repeat, session);
@@ -200,15 +214,19 @@ export class Ui {
 
   /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
   pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null): void {
+    if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
     if (this.menu) {
       if (kind === 2 && this.frame.find(key)?.interactive) this.menuFocus = key;
       if (kind === 0 && button === 0) {
+        if(this.frame.find(key)?.interactive)this.focusTo(key);
         if (key === KEY_MENU_RESUME) { if (session?.state === "closed") this.reconnectRequested = true; else this.menu = false; }
         else if (key === KEY_MENU_SETTINGS) { this.options = true; this.focusTo(KEY_MENU_BACK); }
         else if (key === KEY_MENU_CONTROLS) { this.help = true; this.helpDevice = this.inputDevice; this.focusTo(KEY_MENU_BACK); }
         else if (key === KEY_MENU_BACK) { this.options = this.help = false; this.focusTo(KEY_MENU_RESUME); }
         else if (key === KEY_MENU_LEAVE) { session?.close(); this.focusTo(KEY_MENU_RESUME); }
         else if (this.help && (key === KEY_CONTROLS_DEVICE || key === KEY_CONTROLS_DEVICE + 1)) this.helpDevice = key - KEY_CONTROLS_DEVICE;
+        else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;
+        else if (this.help && key === KEY_CONTROL_GLYPHS) { this.settings.padGlyphs=1-this.settings.padGlyphs; this.settings.changed(); }
         else if (this.options) settingsClick(key, this.settings);
       }
       return;
@@ -223,7 +241,7 @@ export class Ui {
       return;
     }
     if (this.creating) {
-      this.creator.pointer(kind, key, x, session);
+      this.creator.pointer(kind, key, session);
       return;
     }
     if (kind === 0 && key !== 0) this.hear?.("click");
@@ -236,6 +254,13 @@ export class Ui {
   }
 
   input(key: number, value: string): void {
+    const n=this.frame.find(key);
+    if(n?.kind===K_SLIDER) {
+      if(value.trim()==="" || !Number.isFinite(Number(value)))return;
+      const v=Math.max(0,Math.min(1,Math.round(Number(value)/n.step)*n.step));
+      if(this.options?settingsValue(key,v,this.settings):this.creating && this.creator.value(key,v))n.value=v;
+      return;
+    }
     if (key === KEY_NAME_INPUT) this.naming.edit(value);
     else if (key === KEY_STRUCT_NAME_INPUT) this.structure.edit(value);
     else if (key === KEY_CHOOSE_FILTER) this.choosing.edit(value);
@@ -272,7 +297,7 @@ export class Ui {
       if (this.menu) {
         if (this.options) {
           buildSettings(f, this.settings, hud.micLevel, this.menuFocus);
-        } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus);
+        } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus, this.helpGroup, this.settings.padGlyphs);
         else buildMenu(f, hud, session?.state === "active", this.menuFocus);
       } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) this.choosing.build(f, session, hud);

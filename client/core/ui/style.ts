@@ -86,6 +86,12 @@ export const S_ICE = 54;
 export const S_MENU_FOCUS = 55;
 export const S_MENU_HEADING = 56;
 export const S_WARNING = 57;
+export const S_KEY = 58;
+export const S_KEY_SMALL = 59;
+export const S_KEY_EDGE = 60;
+export const S_KEY_FILL = 61;
+export const S_KEY_ACTIVE = 62;
+export const S_CONTROL_TITLE = 63;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -146,4 +152,10 @@ export const STYLES: readonly Style[] = [
   /* S_MENU_FOCUS */ style(0x69b8df18, 0xe9f8ff, 15),
   /* S_MENU_HEADING */ style(0, 0xe3f4fc, 24),
   /* S_WARNING */ style(0, 0xf2a477, 13, 1, true),
+  /* S_KEY */ style(0, 0xc9e7f3, 13, 1),
+  /* S_KEY_SMALL */ style(0, 0xc9e7f3, 10, 1),
+  /* S_KEY_EDGE */ style(0x77b8d45a, 0xb5dbea),
+  /* S_KEY_FILL */ style(0x0b2134df, 0xb5dbea),
+  /* S_KEY_ACTIVE */ style(0x326483bb, 0xe8f8ff),
+  /* S_CONTROL_TITLE */ style(0, 0xe3f4fc, 18),
 ];

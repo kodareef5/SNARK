@@ -14,6 +14,12 @@
   #ui { position: fixed; inset: 0; overflow: hidden; pointer-events: none; color: #e3f4fc; font: 500 13px Hud, Arial, sans-serif; font-kerning: none; user-select: none; }
   #ui > * { position: absolute; left: 0; top: 0; box-sizing: border-box; white-space: pre; overflow: hidden; }
   #ui > input { border: 0; outline: 0; padding: 0 6px; font-family: inherit; user-select: text; }
+  #ui > input[type=range] { appearance: none; margin: 0; padding: 0; background: none; touch-action: none; cursor: ew-resize; }
+  #ui > input[type=range]::-webkit-slider-runnable-track { height: 2px; background: transparent; }
+  #ui > input[type=range]::-webkit-slider-thumb { appearance: none; width: 16px; height: 28px; margin-top: -13px; background: transparent; border: 0; }
+  #ui > input[type=range]::-moz-range-track { height: 2px; background: transparent; }
+  #ui > input[type=range]::-moz-range-thumb { width: 16px; height: 28px; background: transparent; border: 0; }
+  #ui > input[type=range]:focus-visible { outline: 1px solid #a6e3f4; outline-offset: -2px; }
   #ui > button { border: 0; padding: 0; font: inherit; border-radius: 0; cursor: pointer; }
   #ui > button:focus-visible { outline: 1px solid #a6e3f4; outline-offset: -2px; }
   /* These four actions already have core's selected wash and vertical focus stroke. */

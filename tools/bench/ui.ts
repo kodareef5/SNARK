@@ -19,8 +19,8 @@ export function benchUi(section:(title:string)=>void, record:RecordRow):void {
   const ui=new Ui(), hud=new HudModel();
   hud.hotbar.push(...Array.from({length:10},(_,i)=>({ tint:0x88aabb, label:`Item ${i}`, number:"100" })));
   for (const vital of hud.vitals) vital.fraction=.5;
-  for (const mode of ["play", "menu", "settings", "controls"] as const) {
-    ui.menu=mode!=="play"; ui.options=mode==="settings"; ui.help=mode==="controls";
+  for (const mode of ["play", "menu", "settings", "audio", "controls", "controller"] as const) {
+    ui.menu=mode!=="play"; ui.options=mode==="settings"||mode==="audio"; ui.settings.tab=mode==="audio"?1:0; ui.help=mode==="controls"||mode==="controller"; ui.helpDevice=mode==="controller"?1:0;
     for (let i=0;i<200;i++) { hud.vitals[0]!.fraction=(i%100)/100; ui.build(16/9,hud,null); }
     const allocated=ui.frame.nodes.length, times:number[]=[];
     for (let i=0;i<2000;i++) {

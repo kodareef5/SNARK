@@ -375,10 +375,10 @@ test("settings: a player's own, stepped from a screen, and what they change", ()
   const meter = (level: number): number => {
     f.begin(16 / 9);
     buildSettings(f, s, level);
-    return f.find(KEY_SETTINGS_MIC + 1)!.value;
+    return Array.from({length:16},(_,i)=>f.find(KEY_SETTINGS_MIC+1+i)!).filter(n=>n.alpha>.5 && !n.interactive).length/16;
   };
   expect([meter(0), meter(1), meter(2)]).toEqual([0, 1, 1]);
-  expect(meter(0.03)).toBeCloseTo(0.49, 1);
+  expect(meter(0.03)).toBe(8/16);
   expect(meter(0.0001)).toBe(0);
   expect([f.find(KEY_SETTINGS_ROW + 13)!.text, f.find(KEY_SETTINGS_ROW + 17)!.text]).toEqual(["0%", "on and off"]);
 

@@ -16,6 +16,8 @@ export const K_IMAGE = 3;
 export const K_INPUT = 4;
 /** A panel with a centred label that can be pressed. */
 export const K_BUTTON = 5;
+/** Native range interaction; core draws its track and thumb separately. */
+export const K_SLIDER = 6;
 
 export const CANVAS_HEIGHT = 720;
 /** The narrowest canvas laid out is a phone held upright. */
@@ -35,6 +37,7 @@ export interface UiNode {
   /** Accessible name and hover detail, without permanent HUD text. */
   label: string;
   value: number;
+  step: number;
   /** Index into the frame's image table, for K_IMAGE. */
   image: number;
   /** For K_IMAGE, the part of the image shown, in its pixels: left, top, width, height. A width of 0 shows all of it. */
@@ -90,7 +93,7 @@ export class UiFrame {
   add(key: number, kind: number, x: number, y: number, w: number, h: number, style: number): UiNode {
     let n = this.nodes[this.count];
     if (!n) {
-      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", label: "", value: 0, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1 };
+      n = { key: 0, kind: 0, x: 0, y: 0, w: 0, h: 0, style: 0, text: "", label: "", value: 0, step: .01, image: 0, sx: 0, sy: 0, sw: 0, sh: 0, interactive: false, focus: false, tint: -1, alpha: 1 };
       this.nodes.push(n);
     }
     this.count++;
@@ -104,6 +107,7 @@ export class UiFrame {
     n.text = "";
     n.label = "";
     n.value = 0;
+    n.step = .01;
     n.image = 0;
     n.sx = n.sy = n.sw = n.sh = 0;
     n.interactive = false;

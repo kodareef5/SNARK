@@ -38,6 +38,7 @@ export class Controls {
   private analogZ = 0;
   /** BTN_CROUCH, BTN_PRONE or 0. The bit is sent every tick while the stance is wanted. */
   private stance = 0;
+  get onFlyer(): boolean { return this.flyer; }
 
   /**
    * Gives Space, C and X their flying meaning while `on` (driving a flyer), and back again once off. `aloft` says whether

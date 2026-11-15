@@ -1,10 +1,12 @@
 import { expect, test } from "bun:test";
 import { HudModel } from "../../client/core/hud.ts";
 import { Settings, SETTING_ROWS } from "../../client/core/settings.ts";
+import { KEY_CONTROL_DETAIL, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "../../client/core/ui/controls-help.ts";
+import { KEY_CONTROL_PAD } from "../../client/core/ui/controller.ts";
 import { SETTING_GROUPS } from "../../client/core/ui/settings.ts";
 import { KEY_HOTBAR, KEY_MINIMAP, KEY_MINIMAP_TOGGLE, KEY_READOUT, KEY_VITAL } from "../../client/core/ui/hud.ts";
-import { KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_RESUME, KEY_MENU_SETTINGS } from "../../client/core/ui/menu.ts";
-import { K_IMAGE, UiFrame, textWidth, type UiImage } from "../../client/core/ui/nodes.ts";
+import { KEY_CONTROLS_DEVICE, KEY_MENU, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_RESUME, KEY_MENU_SETTINGS } from "../../client/core/ui/menu.ts";
+import { K_IMAGE, K_SLIDER, UiFrame, textWidth, type UiImage } from "../../client/core/ui/nodes.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { filledVital } from "../../client/core/ui/vitals.ts";
 import { IMAGE_SKIN, ICON_SIZE, SKIN_HEIGHT, SKIN_WIDTH } from "../../client/core/ui/skin.ts";
@@ -115,9 +117,9 @@ test("every menu, settings group and device layout fits from phone portrait to u
   const grouped: number[] = SETTING_GROUPS.flatMap(g=>[...g.rows]);
   expect(grouped.sort((a,b)=>a-b)).toEqual(SETTING_ROWS.map((_,i)=>i));
   const ui=new Ui(),hud=new HudModel();
-  for (const aspect of [9/16,4/3,16/9,21/9,32/9]) for (const mode of [0,1,2,3,4,5,6]) {
+  for (const aspect of [9/16,4/3,16/9,21/9,32/9]) for (const mode of [0,1,2,3,4,5,6]) for(const context of (mode>=5?[0,1,2,3,4,5]:[0])) for(const glyphs of (mode===6?[0,1]:[0])) {
     ui.menu=true; ui.options=mode>=1 && mode<=4; ui.settings.tab=mode-1; ui.help=mode>=5; ui.helpDevice=mode-5;
-    ui.build(aspect,hud,null);
+    ui.helpGroup=context;ui.settings.padGlyphs=glyphs;ui.build(aspect,hud,null);
     const nodes=ui.frame.nodes.slice(0,ui.frame.count), keys=new Set<number>();
     for (const n of nodes) {
       const where=`aspect=${aspect} mode=${mode} key=${n.key}`;
@@ -132,4 +134,47 @@ test("every menu, settings group and device layout fits from phone portrait to u
       expect(a.x<b.x+b.w && b.x<a.x+a.w && a.y<b.y+b.h && b.y<a.y+a.h,`overlap ${a.key}/${b.key}`).toBe(false);
     }
   }
+});
+
+test("sliders accept pointer values, reject invalid input, and support repeated precise keyboard adjustments",()=>{
+  const ui=new Ui(),hud=new HudModel();ui.menu=ui.options=true;ui.settings.tab=2;
+  ui.build(16/9,hud,null);
+  const slider=ui.frame.nodes.slice(0,ui.frame.count).find(n=>n.kind===K_SLIDER)!;
+  expect(slider.label).toBe("Mouse sensitivity");
+  ui.pointer(0,slider.key,slider.x+slider.w*.5,slider.y,0,null);
+  ui.input(slider.key,".5");expect(ui.settings.sensitivity).toBe(1.6);
+  for(const value of ["", " ","NaN","Infinity","broken"])ui.input(slider.key,value);
+  expect(ui.settings.sensitivity).toBe(1.6);
+  ui.key("ArrowRight",true,false,null);ui.key("ArrowRight",true,true,null);
+  expect(ui.settings.sensitivity).toBe(1.8); // Two events before the next layout must both count.
+  ui.key("Home",true,false,null);expect(ui.settings.sensitivity).toBe(.2);
+  ui.key("End",true,false,null);expect(ui.settings.sensitivity).toBe(3);
+  ui.input(slider.key,"-8");expect(ui.settings.sensitivity).toBe(.2);
+  ui.input(slider.key,"8");expect(ui.settings.sensitivity).toBe(3);
+  const copy=new Settings();copy.restoreInterface(ui.settings.interfacePreferences());expect(copy.sensitivity).toBe(3);
+  ui.console.open=true;expect(ui.adjustFocused(-1)).toBe(false);expect(ui.settings.sensitivity).toBe(3);
+  ui.console.open=false;ui.options=ui.menu=false;ui.key("ArrowLeft",true,false,null);expect(ui.settings.sensitivity).toBe(3);
+});
+
+test("control contexts and symbol preference change the guide and persist only the preference",()=>{
+  const ui=new Ui(),hud=new HudModel();ui.menu=ui.help=true;
+  ui.build(16/9,hud,null);ui.pointer(0,KEY_CONTROL_GROUP+3,0,0,0,null);ui.build(16/9,hud,null);
+  const e=ui.frame.nodes.slice(0,ui.frame.count).find(n=>n.interactive && n.label==="E: Rotate")!;
+  expect(e).toBeDefined();ui.pointer(0,e.key,0,0,0,null);ui.build(16/9,hud,null);
+  expect(ui.frame.find(KEY_CONTROL_DETAIL+2)!.text).toBe("E  /  Rotate");
+  ui.pointer(0,KEY_CONTROLS_DEVICE+1,0,0,0,null);ui.pointer(0,KEY_CONTROL_GROUP+2,0,0,0,null);ui.build(16/9,hud,null);
+  expect(ui.frame.find(KEY_CONTROL_PAD+1)!.label).toBe("B: Inventory");
+  ui.pointer(0,KEY_CONTROL_GLYPHS,0,0,0,null);ui.build(16/9,hud,null);
+  expect(ui.frame.find(KEY_CONTROL_PAD+1)!.label).toBe("○: Inventory");
+  const copy=new Settings();copy.restoreInterface(ui.settings.interfacePreferences());expect(copy.padGlyphs).toBe(1);
+  expect(JSON.parse(copy.interfacePreferences()).helpGroup).toBeUndefined();
+});
+
+test("horizontal value adjustment follows direction, and never invokes the asset download action",()=>{
+  const ui=new Ui(),hud=new HudModel();ui.menu=ui.options=true;ui.build(16/9,hud,null);
+  ui.menuFocus=2310+11*4+2; // Graphics' previous button remains focused for both directions.
+  ui.settings.tier="medium";expect(ui.adjustFocused(-1)).toBe(true);expect(String(ui.settings.tier)).toBe("lowpoly");
+  expect(ui.adjustFocused(1)).toBe(true);expect(ui.settings.tier).toBe("medium");
+  ui.settings.tab=3;ui.build(16/9,hud,null);ui.menuFocus=2310+10*4+3;
+  expect(ui.adjustFocused(1)).toBe(false);expect(ui.settings.download).toBe(false);
 });

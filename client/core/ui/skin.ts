@@ -2,6 +2,8 @@
 
 import { K_IMAGE, type UiFrame, type UiImage, type UiNode } from "./nodes.ts";
 import { S_LABEL } from "./style.ts";
+import { devicePixels } from "./device-art.ts";
+export { PAD_X, PAD_Y, PAD_WIDTH, PAD_HEIGHT, RING_X, RING_Y, STICK_Y } from "./device-art.ts";
 
 export const IMAGE_SKIN = 32;
 export const SKIN_WIDTH = 512;
@@ -11,7 +13,6 @@ export const GLASS_X = 0;
 export const GLASS_Y = 256;
 export const GLASS_SIZE = 64;
 export const GLASS_INSET = 8;
-export const PAD_X = 64, PAD_Y = 256, PAD_WIDTH = 384, PAD_HEIGHT = 192;
 export const VITAL_KINDS = 7;
 export const ICE = 0xa6e3f4;
 export const WARNING = 0xf2a477;
@@ -24,7 +25,6 @@ const CROSS = [0.36,0.12, 0.64,0.12, 0.64,0.36, 0.88,0.36, 0.88,0.64, 0.64,0.64,
 const BOLT = [0.50,0.09, 0.78,0.09, 0.59,0.40, 0.81,0.40, 0.29,0.93, 0.42,0.58, 0.20,0.58];
 const HOURGLASS = [0.24,0.14, 0.76,0.14, 0.73,0.34, 0.57,0.5, 0.73,0.66, 0.76,0.86, 0.24,0.86, 0.27,0.66, 0.43,0.5, 0.27,0.34];
 const WEIGHT = [0.28,0.33, 0.72,0.33, 0.83,0.84, 0.17,0.84];
-const PAD_BODY = [.17,.12, .83,.12, .89,.20, .93,.40, .98,.84, .95,.96, .89,.98, .69,.76, .31,.76, .11,.98, .05,.96, .02,.84, .07,.40, .11,.20];
 
 function polygon(x: number, y: number, p: readonly number[]): boolean {
   let inside = false;
@@ -79,26 +79,7 @@ export function skinPixels(): UiImage {
     const edge = x === 0 || y === 0 || x === 63 || y === 63 || x + y === 5 || (63-x)+(63-y) === 5;
     put(GLASS_X + x, GLASS_Y + y, edge ? 0x86b8ce : 0x102c42, edge ? (y < 32 ? 170 : 80) : 154 - y / 2);
   }
-  // Original device geometry occupies unused sheet space; labels remain live UI text.
-  const rings = [[.24,.36,.067], [.62,.64,.067], [.78,.24,.035], [.71,.38,.035], [.85,.38,.035], [.78,.52,.035]];
-  for (let py = 0; py < PAD_HEIGHT; py++) for (let px = 0; px < PAD_WIDTH; px++) {
-    let body = 0, edge = 0;
-    for (let sy = 0; sy < 2; sy++) for (let sx = 0; sx < 2; sx++) {
-      const x = (px+(sx+.5)/2)/PAD_WIDTH, y = (py+(sy+.5)/2)/PAD_HEIGHT;
-      if (polygon(x,y,PAD_BODY)) {
-        body++;
-        if (!polygon(x-.003,y,PAD_BODY) || !polygon(x+.003,y,PAD_BODY) || !polygon(x,y-.006,PAD_BODY) || !polygon(x,y+.006,PAD_BODY)) edge++;
-        else if (rings.some(([cx,cy,r])=>ellipse(x,y,cx!,cy!,r!,r!*2) && !ellipse(x,y,cx!,cy!,r!-.003,(r!-.003)*2))) edge++;
-        else if ((Math.abs(x-.38)<.015 && Math.abs(y-.63)<.10) || (Math.abs(x-.38)<.05 && Math.abs(y-.63)<.03)) edge++;
-      } else if (y>.045 && y<.06 && ((x>.16 && x<.32) || (x>.68 && x<.84))) edge++;
-    }
-    const a = Math.max(0,body-edge)*155/4 + edge*235/4;
-    if (a > 0) {
-      const mix = Math.min(1,edge*235/(a*4));
-      const ink = (Math.round(16+118*mix)<<16) | (Math.round(44+140*mix)<<8) | Math.round(66+140*mix);
-      put(PAD_X+px,PAD_Y+py,ink,a);
-    }
-  }
+  devicePixels(data,SKIN_WIDTH);
   fallback = { width: SKIN_WIDTH, height: SKIN_HEIGHT, data, version: 1 };
   return fallback;
 }

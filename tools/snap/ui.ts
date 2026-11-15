@@ -1,6 +1,6 @@
 // Draws an interface frame over a picture with the browser binder's rectangles and colours, and a bitmap font in place of a real one.
 
-import { K_BAR, K_IMAGE, K_INPUT, glyphAdvance, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
+import { K_BAR, K_IMAGE, K_INPUT, K_SLIDER, glyphAdvance, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
 import { STYLES } from "../../client/core/ui/style.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./font.ts";
 
@@ -24,6 +24,7 @@ export function drawUi(color: Uint8ClampedArray, width: number, height: number, 
   };
   for (let i = 0; i < f.count; i++) {
     const n = f.nodes[i]!;
+    if (n.kind === K_SLIDER) continue;
     const st = STYLES[n.style]!;
     const fa = (st.fill & 255) / 255;
     const ir = (st.ink >> 16) & 255;
