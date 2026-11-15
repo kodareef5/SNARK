@@ -91,6 +91,9 @@ export class EntityStore {
   actTicks: Uint8Array;
   rounds: Uint8Array;
   reloadTo: Uint8Array;
+  /** Aim state (Body.bloom, Body.kick): 0 until planning/reference/weapons-plan.md's W1 steps them. */
+  bloom: Uint8Array;
+  kick: Uint8Array;
   /** HOLD_*, for the pose. Set with its gear. */
   hold: Uint8Array;
   /** 1 while a session's inputs drive it (a mount). */
@@ -158,6 +161,8 @@ export class EntityStore {
     this.actTicks = new Uint8Array(cap);
     this.rounds = new Uint8Array(cap);
     this.reloadTo = new Uint8Array(cap);
+    this.bloom = new Uint8Array(cap);
+    this.kick = new Uint8Array(cap);
     this.hold = new Uint8Array(cap);
     this.driven = new Uint8Array(cap);
     this.team = new Uint32Array(cap);
@@ -219,6 +224,8 @@ export class EntityStore {
     this.actTicks[i] = 0;
     this.rounds[i] = 0;
     this.reloadTo[i] = 0;
+    this.bloom[i] = 0;
+    this.kick[i] = 0;
     this.hold[i] = 0;
     this.driven[i] = 0;
     this.team[i] = 0;
@@ -266,6 +273,8 @@ export class EntityStore {
     this.actTicks = wider(this.actTicks, cap);
     this.rounds = wider(this.rounds, cap);
     this.reloadTo = wider(this.reloadTo, cap);
+    this.bloom = wider(this.bloom, cap);
+    this.kick = wider(this.kick, cap);
     this.hold = wider(this.hold, cap);
     this.driven = wider(this.driven, cap);
     this.team = wider(this.team, cap);
@@ -377,6 +386,8 @@ export class EntityStore {
     b.actTicks = this.actTicks[i]!;
     b.rounds = this.rounds[i]!;
     b.reloadTo = this.reloadTo[i]!;
+    b.bloom = this.bloom[i]!;
+    b.kick = this.kick[i]!;
   }
 
   /** Returns true if the entity changed chunk. */
@@ -393,6 +404,8 @@ export class EntityStore {
     this.act[i] = b.act;
     this.actTicks[i] = b.actTicks;
     this.rounds[i] = b.rounds;
+    this.bloom[i] = b.bloom;
+    this.kick[i] = b.kick;
     return this.setPosition(i, b.x, b.y, b.z);
   }
 

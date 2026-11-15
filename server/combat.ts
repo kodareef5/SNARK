@@ -722,6 +722,8 @@ export class Combat {
       // The side it came from, in 256ths of a turn.
       w.u8(Math.round((Math.atan2(ax - vx, az - vz) / (Math.PI * 2)) * 256) & 255);
       w.bits(zone, 4);
+      // The side is shown (protocol 13). A silenced shot will clear it (planning/reference/weapons-plan.md, W7).
+      w.bool(true);
       if (killed) {
         w.string(!by ? "someone" : by.name !== "" ? by.name.slice(0, 24) : speciesLabel(reg.ids[by.kind]!));
         w.u16(item);
