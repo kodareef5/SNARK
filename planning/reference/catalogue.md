@@ -163,17 +163,17 @@ Packs may add to: `drops`, `eats`, `buffs`.
 - **`structure/container`** on shelf `structures/containers`. Holds stacks: a box, a vault.
 - **`structure/station`** on shelf `structures/stations`. Things are made or changed at it: fuel burns and food cooks, and an item whose craft names it in `at` is made from what lies in it. How fast it makes things waits.
 - **`structure/bed`** on shelf `structures/beds`. Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down.
-- **`structure/static`** on shelf `structures/static`. Part of a map: set there with the world and joined to nothing. With a shape it may be sloped.
+- **`structure/static`** on shelf `structures/static`. Part of a map: set there with the world and joined to nothing. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin.
 - **`structure/defence`** on shelf `structures/defences`. Harms what comes near it.
 
 Asset slots:
 
-- `structure/piece`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
-- `structure/container`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
-- `structure/station`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
-- `structure/bed`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
-- `structure/static`: `#mesh` mesh, must, from `{mesh}`, else `box` then `shape`.
-- `structure/defence`: `#mesh` mesh, must, from `{mesh}`, else `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/piece`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/container`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/station`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/bed`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
+- `structure/static`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `box` then `shape`.
+- `structure/defence`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
 
 ARK's names: `shape` is SnapPoints; `hp` is Health; `material` is StructureSettingsClass; `slots` is an inventory component; `decayDays` is DecayDestructionPeriod.
 

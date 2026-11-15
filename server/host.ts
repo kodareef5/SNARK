@@ -403,19 +403,24 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
-  const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0): number => {
+  const parkVehicle = (id: string, x: number, z: number, ownerTeam: number, yaw: number, why: string): number => {
     const kind = reg.index.get(id);
     if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
-    const e = spawnCreature(id, x, z, 1, "admin");
+    const e = creatures.spawn(kind, x, z, 1, why);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
     rec.team = ownerTeam; rec.yaw = Math.round(yaw / (2 * Math.PI) * 65536) & 65535;
-    world.ents.yaw[e] = rec.yaw; world.ents.vehicleYaw[e] = Math.fround(yaw);
+    world.ents.yaw[e] = rec.yaw;
+    // Registered once turned, so the parked state it saves at once has its yaw.
+    urban.register(e);
+    world.ents.vehicleYaw[e] = Math.fround(yaw);
+    if (persistence) persistence.attach(rec, e);
     records.dirty.add(rec.pid);
     items.inv(rec);
     refreshBody(rec);
     return e;
   };
+  const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0): number => parkVehicle(id, x, z, ownerTeam, yaw, "admin");
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus });
   const progression = new Progression(world, records, items, deadlines);
   progression.rules = rules;
@@ -785,6 +790,12 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     // The herd starts in the map's first spawn zone and the hunters in its last.
     scatter(world.zones[0], opts.startingSpecies ?? "core:grazer", opts.startingCreatures ?? 0);
     scatter(world.zones[world.zones.length - 1], "core:raptor", opts.startingHunters ?? 0);
+    // The map's parked vehicles, owned by nobody. From here on the save keeps them, as it keeps any record.
+    const missed = new Map<string, number>();
+    for (const v of parsed?.vehicles ?? []) {
+      if (parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild") < 0) missed.set(v.kind, (missed.get(v.kind) ?? 0) + 1);
+    }
+    if (missed.size > 0) say(`not parked, for want of the content or of room: ${[...missed].map(([id, n]) => `${n} of the map's ${id}`).join(", ")}`);
   }
   if (spawner) {
     const fresh = !loaded || loaded.fresh;
