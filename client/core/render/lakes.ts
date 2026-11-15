@@ -78,7 +78,8 @@ export class Lakes {
     const dims = hf.dims;
     [this.seaX, this.seaZ] = [Math.ceil(hf.sizeX / WATER_TILE), Math.ceil(hf.sizeZ / WATER_TILE)];
     this.holes = new Uint8Array(this.seaX * this.seaZ);
-    // Each body square's water, `surface[b]` where its ground goes under it, and the tiles that hold any.
+    // The body squares whose ground goes under their surface, the sea's tiles where a body's ground goes under the sea,
+    // and the tiles here that hold a body's squares.
     const wet = new Uint8Array(water.squares.length);
     const tilesX = Math.ceil(dims.chunksX / FAR_TILE);
     const made = new Set<number>();
