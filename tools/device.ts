@@ -388,8 +388,9 @@ if (import.meta.main) {
     }
     return [at[0]!, at[2]!];
   };
-  // The tree order's views, counted by wood.ts on the map the server stands on, a process for each wood and tier, two
-  // at a time since each holds the whole pack. A page asks once and then how it goes; three views at most.
+  // The tree order's views, counted by wood.ts on the map the server stands on, a process for each wood and tier, one at
+  // a time since each holds the whole pack (4.6 GB with the crowns). A page asks once and then how it goes; three views
+  // at most.
   const views = new Map<string, LayerAnswer>();
   const counting = new Set<ReturnType<typeof Bun.spawn>>();
   process.on("exit", () => counting.forEach((c) => c.kill()));
@@ -413,10 +414,9 @@ if (import.meta.main) {
     views.set(key, answer);
     const from = Date.now();
     say(`counting the tree order's view, ${w} by ${h} CSS pixels ${fov} degrees high, with wood.ts`);
-    const jobs = TREE_TIERS.flatMap((tier) => WOODS.map((_, k) => () => countOne(w, h, fov, tier, k)));
     void (async () => {
       const counts: LayerCount[] = [];
-      for (let i = 0; i < jobs.length; i += 2) counts.push(...(await Promise.all(jobs.slice(i, i + 2).map((job) => job()))));
+      for (const tier of TREE_TIERS) for (let k = 0; k < WOODS.length; k++) counts.push(await countOne(w, h, fov, tier, k));
       return counts;
     })().then(
       (counts) => (Object.assign(answer, { state: "done", counts }), say(`counted the view ${key} in ${Math.round((Date.now() - from) / 1000)} s: ${counts.map((c) => `${c.wood} ${c.tier} ${c.cut} layers, ${c.front} in front`).join("; ")}`)),
