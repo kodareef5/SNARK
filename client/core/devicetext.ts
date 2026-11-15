@@ -82,14 +82,15 @@ function ladderLines(r: DeviceReport): string[] {
     const broke = mine.find((g) => !g.held);
     if (mine.length === 0) return "not run";
     if (!broke) return `all ${held!.n}, ours ${tenth(held!.buildMs + held!.drawMs)} ms`;
-    return `${held ? held.n : "none"}; ${broke.n} ${broke.limit}`;
+    return `${held ? held.n : "none"}; ${broke.n} ${broke.invalid ? "invalid" : broke.limit}`;
   };
   const line = (cells: string[]): string => cells.map((c, i) => c.padEnd(i === 0 ? 8 : 24)).join(" ").trimEnd();
   out.push(line(["tier", ...AXES]));
   for (const tier of tiers) out.push(line([tier, ...AXES.map((a) => cell(tier, a))]));
-  out.push("each: the most that held, and then the first that did not and what took its frame (our code, the GPU, or a lost context);");
+  out.push("each: the most that held, and then the first that did not and what took its frame (our code, the GPU, or a lost context),");
+  out.push("or invalid where it did not draw all it was given or never settled, so its frames prove nothing;");
   out.push("where all held: our code's ms a frame at the last rung, which is the engine's most for bodies, draws and pieces");
-  for (const g of l.rungs.filter((x) => !x.held)) out.push(`broke     ${g.tier} ${g.axis} ${g.n}: frames ${g.frameMs.median} ms, 95th ${g.frameMs.p95}; our code ${g.buildMs} + ${g.drawMs} ms; ${count(g.calls)} draws, ${count(g.tris)} triangles, ${count(g.bones)} bones, ${g.mat} with materials, canvas ${g.canvas.join("x")}`);
+  for (const g of l.rungs.filter((x) => !x.held)) out.push(`${g.invalid ? "invalid  " : "broke    "} ${g.tier} ${g.axis} ${g.n}: ${g.invalid ? `${g.invalid}; ` : ""}frames ${g.frameMs.median} ms, 95th ${g.frameMs.p95}; our code ${g.buildMs} + ${g.drawMs} ms; ${count(g.calls)} draws, ${count(g.tris)} triangles, ${count(g.bones)} bones, ${g.mat} with materials, canvas ${g.canvas.join("x")}`);
   const top = (axis: Axis): string => count(Math.max(0, ...l.rungs.filter((g) => g.axis === axis && g.held).map((g) => (axis === "triangles" ? g.tris : axis === "draws" ? g.calls : g.n))));
   out.push(`most held ${top("bodies")} bodies, ${top("pieces")} pieces, ${top("triangles")} triangles, ${top("draws")} draws, on any tier; the rungs: ${AXES.map((a) => `${a} ${RUNGS[a].join(" ")}`).join("; ")}`);
   const m = l.memory;

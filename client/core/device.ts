@@ -118,8 +118,10 @@ export interface RungReport {
   axis: Axis;
   n: number;
   held: boolean;
-  /** Where a rung that did not hold spent its frame: "our code", "the GPU", or "lost" for a lost context. Empty if it held. */
+  /** Where a rung that broke spent its frame: "our code", "the GPU", or "lost" for a lost context. Empty if it held or is invalid. */
   limit: string;
+  /** Why the rung's frames do not stand for its load, so it neither held nor broke. Empty if they do. */
+  invalid: string;
   canvas: number[];
   settled: boolean;
   frameMs: Spread;
@@ -378,6 +380,19 @@ export function rungLoad(tier: Tier, axis: Axis, n: number): Load {
   return load;
 }
 
+/**
+ * A rung's verdict (D246). A lost context is a result. Otherwise its frames count only if it drew everything it was
+ * given, settled, fetched all it asked for and kept its tier; if not, it is invalid and neither held nor broke.
+ */
+export function judgeRung(p: PhaseReport, display: number): { held: boolean; limit: string; invalid: string } {
+  if (p.lost > 0) return { held: false, limit: "lost", invalid: "" };
+  const why = [p.dropped > 0 ? `${p.dropped} things dropped` : "", p.skipped > 0 ? `${p.skipped} draws skipped` : "", p.failed > 0 ? `${p.failed} fetches failed` : "", p.fellTo ? `the game fell to ${p.fellTo}` : "", p.settled ? "" : "never settled"];
+  const invalid = why.filter((w) => w !== "").join(", ");
+  if (invalid) return { held: false, limit: "", invalid };
+  const held = p.frameMs.median <= display * HOLD_MEDIAN && p.frameMs.p95 <= display * HOLD_P95;
+  return { held, limit: held ? "" : p.buildMs.median + p.drawMs.median >= p.frameMs.median * 0.75 ? "our code" : "the GPU", invalid };
+}
+
 /** The tiers a device whose textures go up to `maxTexture` wide can take. */
 const takes = (maxTexture: number): Tier[] => TIERS.filter((t) => t.texture <= maxTexture);
 
@@ -396,7 +411,7 @@ export class LadderPlan {
     this.tiers = takes(maxTexture);
   }
 
-  /** The next rung after one that `held` or not, or was `lost`. Null at the end. */
+  /** The next rung after one that `held` or not (broke or invalid), or was `lost`. Null at the end. */
   next(held: boolean, lost: boolean): { tier: Tier; axis: Axis; n: number } | null {
     if (lost) this.tier = this.tiers.length;
     else if (this.rung >= 0 && !held) [this.axis, this.rung] = [this.axis + 1, -1];
@@ -680,11 +695,8 @@ export class DeviceRun {
       this.report.phases.push(phase);
       this.next(phase);
     } else {
-      const display = this.side.display;
-      const held = phase.frameMs.median <= display * HOLD_MEDIAN && phase.frameMs.p95 <= display * HOLD_P95 && phase.lost === 0;
-      const ours = phase.buildMs.median + phase.drawMs.median;
-      const limit = held ? "" : phase.lost > 0 ? "lost" : ours >= phase.frameMs.median * 0.75 ? "our code" : "the GPU";
-      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, missed: phase.missed });
+      const { held, limit, invalid } = judgeRung(phase, this.side.display);
+      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, invalid, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, missed: phase.missed });
       this.nextRung(held, phase.lost > 0);
     }
     return true;

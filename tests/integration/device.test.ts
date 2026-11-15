@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { DeviceProbe, MEMORY_MB, deviceScenarios, newReport, type DeviceBrowser, type DeviceReport, type RendererLike, type Timing } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
+import type { FramePacket } from "../../client/core/render/packet.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, lacking } from "../../tools/device.ts";
 import { Harness } from "../fixtures/net.ts";
 import { corePack } from "../fixtures/pack.ts";
@@ -80,8 +81,11 @@ function renderer(room = 300) {
 
 const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
-/** A whole client on the harness with a probe on it, run until the probe says it is done, or `ms` of virtual time. */
-async function run(probe: DeviceProbe, h: Harness, app: App, gpu: RendererLike, ms = 30000, each?: (now: number) => void): Promise<void> {
+/**
+ * A whole client on the harness with a probe on it, run until the probe says it is done, or `ms` of virtual time.
+ * `tamper` may change a frame's packet before the probe sees it.
+ */
+async function run(probe: DeviceProbe, h: Harness, app: App, gpu: RendererLike, ms = 30000, each?: (now: number) => void, tamper?: (p: FramePacket) => void): Promise<void> {
   for (let t = 0; t < ms && !probe.report.done; t += 100) {
     h.run(100, (now) => {
       const p = app.frame(now, 390, 844);
@@ -90,6 +94,7 @@ async function run(probe: DeviceProbe, h: Harness, app: App, gpu: RendererLike, 
       const most = app.scene!.assets.tier.pixelRatio;
       const ratio = most > 0 ? Math.min(3, most) : 3;
       [gpu.gl.drawingBufferWidth, gpu.gl.drawingBufferHeight] = [Math.floor(390 * ratio), Math.floor(844 * ratio)];
+      tamper?.(p);
       probe.frame(now, p, now - 1, now - 0.5);
       each?.(now);
     });
@@ -175,6 +180,31 @@ test("the ladder climbs until a rung breaks, asks the server for the base, and e
   const table = deviceTable(r);
   expect(table).toContain("memory    256 MB of astc textures held besides the game's 0 MB, frames 128 MB 16.7 ms, 256 MB 16.7 ms; at 512 MB: out of memory");
   expect(table.some((line) => line.startsWith("broke     medium bodies 25: frames 16.7 ms"))).toBe(true);
+});
+
+test("a rung that did not draw all it was given, or never settled, is invalid: neither held nor broke, and not counted as held", async () => {
+  const { h, pack, app, expected } = client();
+  // A display the harness keeps up with, so every rung would hold on its frames alone.
+  const { b } = browser({ clock: () => h.now, expected, mode: "ladder" });
+  const probe = new DeviceProbe(TOKEN, b, TIMING);
+  await probe.before();
+  const card = renderer(300);
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
+  // Ten draws skipped and ten things dropped every frame, as an outside review did.
+  await run(probe, h, app, card.r, 60000, undefined, (p) => void ((p.skipped += 10), (p.dropped += 10)));
+  const r = probe.report;
+  expect([r.done, r.errors]).toEqual([true, []]);
+  const rungs = r.ladder!.rungs;
+  expect(rungs.map((g) => `${g.tier} ${g.axis} ${g.n}`)).toEqual(["lowpoly", "medium", "high"].flatMap((t) => [`${t} bodies 25`, `${t} triangles 8`, `${t} draws 256`, `${t} pieces 64`]));
+  for (const g of rungs) {
+    expect([g.held, g.limit, g.settled]).toEqual([false, "", false]);
+    expect(g.invalid).toMatch(/^\d+ things dropped, \d+ draws skipped, never settled$/);
+  }
+  const table = deviceTable(r);
+  expect(table).toContain("lowpoly  none; 25 invalid         none; 8 invalid          none; 256 invalid        none; 64 invalid");
+  expect(table.some((line) => line.startsWith("most held 0 bodies, 0 pieces, 0 triangles, 0 draws"))).toBe(true);
+  expect(table.some((line) => line.startsWith("invalid   medium bodies 25: ") && line.includes("draws skipped, never settled"))).toBe(true);
+  expect(table.some((line) => line.startsWith("broke "))).toBe(false);
 });
 
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {
