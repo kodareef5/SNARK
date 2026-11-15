@@ -2,15 +2,17 @@
 # oaks.py, figs.py, banyans.py, mangroves.py) says its individuals and what is its own: the elder oak's buttressed
 # trunk, the fig's root wall, the banyan's pillars, the mangrove's cage.
 #
-# A crown fills an outline of its own (a Dome, its underside closed into a ceiling of leaves) with lobes on the ends and
-# outer parts of its branches, and a lobe is a few billows, rounded heads of leaves, each made of clumps. On the levels
-# drawn with pictures the crown is one opaque surface, the outside of the union of its clumps (canopy.py), wearing the
-# kind's crown skin, sun leaves where it looks up and shade leaves under it, so what is behind it costs nothing to
-# draw; only a fringe of cut-out clusters stands out along its outer side to break its outline into leaves. It is lit
-# by the ball each point lies on and by normals that round each billow, its lobe and the whole crown and bend down into
-# shade inside and under it, so it takes the sun as clumps with lit tops in rounded masses at any hour. On the flat
-# levels it is the same surface over a few masses gathered from the billows, in a light, a middle and a dark green by
-# the way each face is lit.
+# A crown fills an outline of its own (a Dome) with lobes on the ends and outer parts of its branches, and a lobe is a
+# few billows. Over the outside of the billows lie heads of leaves (heads.py), dozens of clumps 1.5 to 3 m across, each
+# on a twig from its branch, with a layer of smaller shade heads deeper in, so the folds between heads show leaves in
+# shade. On the levels drawn with pictures a head is an opaque core wearing its cell of the kind's crown picture, with
+# cut-out sprays of the kind's leaf clusters radiating from it all round, so its outline is leaves from any side; a spray
+# seen end on, in front of its core or behind it, costs little, and only the leaves' outer part is drawn. Every part of
+# a head is lit by the head's own rounded shape, pressed toward its axis as foliage is lit from above, mixed with its
+# bough's and the crown's normals, which turn down into shade deep in the crown and under it (Shade): each head has a
+# lit top and a dark underside, the crown a lit side and a shaded one, at any hour, and nothing is lit by a face. The
+# coarser levels gather the heads into fewer, rounder ones with fewer, simpler sprays, and the flat level draws them in
+# a light, a middle and a dark green by the way each face is lit.
 
 import copy
 import json
@@ -803,6 +805,8 @@ def heads_of(name, trunks, lobes, shade, spacing, **kw):
             twig_to(parent, t, add(target, mul(c.axis, c.under * 0.6)), rng, thick=max(0.02, min(0.05, c.r * 0.03)))
     small = [canopy.Ball(b.centre, b.r * INNER, b.squash, b.floor, b.lobe) for b in balls]
     deeper = hd.place(small, shade, f"{name} inner", spacing * INNER_GAP, tiers=(99.0, 99.0), size=INNER_SIZE, **kw)
+    # Under the crown the outer heads are sparse and the sky shows between them, as it should: no inner head hangs there.
+    deeper = [c for c in deeper if c.normal[1] > -0.35]
     for c in deeper:
         c.inner = True
     return got + deeper, balls

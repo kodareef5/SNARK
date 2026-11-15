@@ -1,14 +1,13 @@
-# The opaque crown materials. Every head of a broadleaf crown is an opaque core wearing its kind's crown skin
-# (tex/crown_skins/, a periodic rectangle twice as wide as it is tall), with only a fringe of cut-out cards round it.
-# A level may be drawn with three materials, so a kind's skin shares its picture with what the kind has besides bark
-# and leaves:
+# The opaque crown materials the figs' and the mangroves' crowns wear. A level may be drawn with three materials, so a
+# kind's crown picture shares itself with what the kind has besides bark and leaves:
 #
-#   oak_crown       the oak skin, two periods down, so it is square
-#   fig_crown       the fig skin above, and below it what the figs and the banyan swallowed (tex/ruins/), re-laid
+#   fig_crown       the fig's heads of leaves above (tex/fig_heads/, layout.py HEAD_CELLS), or until they are made its
+#                   crown skin; below them what the figs and the banyan swallowed (tex/ruins/), re-laid
 #   mangrove_crown  the mangrove skin above, and below it the prop roots' picture (tex/mangrove_roots/)
 #
-# Each layer is resampled region by region, normals as directions. Until the skins are made, a stand-in is taken from
-# each leaf atlas's mass, lifted to a lit crown's colour. Run with python3 from this folder; writes tex/<name>/.
+# The oak's crown picture (tex/oak_crown/) is all heads and is painted whole. Each layer is resampled region by region,
+# normals as directions. Until a skin is made, a stand-in is taken from its leaf atlas's mass, lifted to a lit crown's
+# colour. Run with python3 from this folder; writes tex/<name>/.
 
 import os
 import sys
@@ -107,10 +106,15 @@ def build(name):
     os.makedirs(out, exist_ok=True)
     for role in ROLES:
         kind = name.split("_")[0]
-        # The sun leaves over the shade leaves, each the whole skin.
-        top = np.concatenate([skin(kind, role, "sun"), skin(kind, role, "shade")], axis=0)
-        if role == "base":
-            top = top * np.array(TINT[kind], np.float32)
+        heads = os.path.join(TEX, f"{kind}_heads", f"{kind}_heads_{role}.png")
+        if os.path.exists(heads):
+            # The kind's heads of leaves, painted as the picture's upper half.
+            top = read(heads, role)
+        else:
+            # The sun leaves over the shade leaves, each the whole skin.
+            top = np.concatenate([skin(kind, role, "sun"), skin(kind, role, "shade")], axis=0)
+            if role == "base":
+                top = top * np.array(TINT[kind], np.float32)
         side = 1024 if name == "oak_crown" else 2048
         if role == "orm":
             side //= 2
@@ -140,5 +144,5 @@ def build(name):
 
 
 if __name__ == "__main__":
-    for name in sys.argv[1:] or ("oak_crown", "fig_crown", "mangrove_crown"):
+    for name in sys.argv[1:] or ("fig_crown", "mangrove_crown"):
         build(name)

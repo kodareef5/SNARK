@@ -44,6 +44,12 @@ ORDERS = {"orders": [
     {"count": (1, 2), "along": (0.5, 0.95), "turn": (30, 60), "rise": (10, 30), "length": (0.6, 1.1), "girth": (0.5, 0.7), "points": 4, "wander": 0.3, "droop": 4},
 ]}
 SPECS = {s["name"]: s for s in MANGROVES}
+# How far apart the heads of leaves stand over the crown (heads.py), each 1.1 to 1.7 m across; on the coarser levels
+# they are gathered into so many against the finest's count, or so many in all; and the share of each level's sprays
+# a head carries, a mangrove's shore being a band of them.
+SPACING = 1.45
+GATHERED = {2: 0.5, 3: 12, 4: 7}
+SPRAYS = 0.6
 
 
 def stem(spec):
@@ -153,11 +159,14 @@ def root_tube(m, b, sides, flat, lumpy=True):
 def mangrove(name, lod):
     spec = SPECS[name]
     if lod == far.LEVEL:
-        return far.crown(mangrove(name, 3), (LIGHT, MID, DARK), STEM, spec["stem"], name, stilts=(spec["reach"] * 0.9, WET))
-    m = Mesh(lod <= 2)
+        return far.crown(mangrove(name, 4), (LIGHT, MID, DARK), STEM, spec["stem"], name, stilts=(spec["reach"] * 0.9, WET))
+    m = Mesh(lod <= 3)
     rng = rng_for(name, "level", lod)
     hs, path, ribs, roots, limbs, broken, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
+    heads, _ = bl.heads_of(name, limbs, lobes, shade, SPACING)
+    if lod in (2, 3):
+        heads = bl.gathered(heads, GATHERED[lod], name)
     sides = {0: 16, 1: 10, 2: 7, 3: 5, 4: 4}[lod]
     keep = {0: len(hs), 1: 6, 2: 4, 3: 3, 4: 2}[lod]
     idx = sorted({round(i * (len(hs) - 1) / (keep - 1)) for i in range(keep)})
@@ -174,12 +183,12 @@ def mangrove(name, lod):
     bl.wood(m, limbs, order_sides, keep_, BARK, STEM, least)
     if broken is not None and lod <= 2:
         bl.bark_tube(m, bl.coarser(broken, {0: 5, 1: 3, 2: 2}[lod]), order_sides[0], BARK, STEM, caps=(True, True))
-    if lod <= 2:
-        bl.crown(m, lobes, lod, rng, ATLAS, 0.8, MASS, shade=shade, grain=0.8)
+    if lod <= 3:
+        bl.head_crown(m, heads, lod, rng, ATLAS, ROOTS, shade, SPRAYS)
         if lod == 0 and spec.get("broken"):
             hanging(m, broken, rng)
     else:
-        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 8 if lod == 3 else 4)
+        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), GATHERED[lod], name)
     return m
 
 

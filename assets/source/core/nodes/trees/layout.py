@@ -77,6 +77,7 @@ def crown_mass(name):
 HEAD_CELLS = {
     "oak_crown": {"tops": [[(v, t) for v in range(4)] for t in range(3)], "under": [(0, 3), (1, 3)], "core": (0.5, 0.75, 1.0, 1.0), "metres": 4.8},
     "fig_crown": {"tops": [[(0, 0), (1, 0)], [(2, 0), (3, 0)], [(0, 1), (1, 1)]], "under": [(2, 1)], "core": (0.75, 0.25, 1.0, 0.5), "metres": 2.4},
+    "mangrove_crown": {"tops": [[(0, 0), (1, 0)], [(2, 0), (3, 0)], [(0, 1), (1, 1)]], "under": [(2, 1)], "core": (0.75, 0.25, 1.0, 0.5), "metres": 2.4},
 }
 
 

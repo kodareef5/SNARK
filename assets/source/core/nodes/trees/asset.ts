@@ -41,6 +41,8 @@ const tree = (object: string, height: number): number[] => [
   FAR,
 ];
 const STUMP = at([8, 25, 60]);
+// The oak's leaves warmed: the sky fills a crown's shade with blue, and the concept's shade is a deep warm olive.
+const LEAVES_TINT = [0.96, 1.0, 0.72] as const;
 
 /** The trees, by object name, and how tall each stands in metres. Each leaves a stump, `<name>_depleted`. */
 const PIECES: Record<string, number> = {
@@ -67,8 +69,8 @@ export default {
     royal_frond: picture("royal_frond", { cutout: true }),
     coconut_frond: picture("coconut_frond", { cutout: true }),
     oak_bark: picture("oak_bark", { tiles: 2 }),
-    oak_leaves: picture("oak_leaves", { cutout: true }),
-    oak_crown: picture("oak_crown"),
+    oak_leaves: picture("oak_leaves", { cutout: true, tint: LEAVES_TINT }),
+    oak_crown: picture("oak_crown", { tint: LEAVES_TINT }),
     stump_cuts: picture("stump_cuts"),
     fig_bark: picture("fig_bark", { tiles: 2 }),
     fig_leaves: picture("fig_leaves", { cutout: true }),
@@ -77,5 +79,5 @@ export default {
     mangrove_crown: picture("mangrove_crown"),
     mangrove_leaves: picture("mangrove_leaves", { cutout: true }),
   }).filter(([name]) => ONLY.length === 0 || ONLY.some((k) => USES[k]!.includes(name)))),
-  budgets: { triangles: [150000, 50000, 16000, 1200, 400, 16], texture: { top: 2048, megabytes: 240 } },
+  budgets: { triangles: [120000, 48000, 7000, 1600, 400, 16], texture: { top: 2048, megabytes: 240 } },
 } satisfies PiecesAsset;

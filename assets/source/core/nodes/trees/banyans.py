@@ -62,7 +62,7 @@ SPECS = {b["name"]: b for b in BANYANS}
 # How far apart the heads of leaves stand over the roof (heads.py), as the fig's; on the coarser levels they are
 # gathered into so many against the finest's count, or so many in all.
 SPACING = 2.6
-GATHERED = {2: 0.45, 3: 36, 4: 14}
+GATHERED = {2: 0.45, 3: 34, 4: 11}
 # The flat levels draw only the pillars this thick or more.
 FAR_PILLAR = 0.25
 
