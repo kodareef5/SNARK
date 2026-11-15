@@ -168,20 +168,22 @@ At 480 chunks: 17.7, 56.3, 61.3 and 61.3 far draws by tier (plan: 9 to 17, then
 ### Far trees, rocks and bushes (D353, D354)
 
 The bench map's wood, every slot filled, from its middle (M): `core:tree`,
-`core:rock` and `core:bush`, now the young live oak with its far level, the
-limestone with none of its own, and the berry bush (D291). Plan figures in
+`core:rock` and `core:bush`, now the young hardwoods (D357), the limestones with
+their 8-triangle far level (D361) and the berry bush (D291), on 2026-11-15. Plan figures in
 brackets (round 8 plan, "Budgets per tier").
 
 | | Low poly | Medium | High | Ultra |
 | --- | --- | --- | --- | --- |
-| Reach of trees, rocks, bushes | 383, 0, 0 m | 1,019, 321, 151 m | 1,715, 515, 252 m | 2,583, 705, 302 m |
-| Draws a frame, mean (most) | 8.3 (10) [5 to 15] | 71 (91) [35 to 100] | 135 (174) [90 to 270] | 207 (249) [190 to 570] |
-| Triangles in view and reach (budget) | 34 k (39 k) | 302 k (315 k) | 861 k (900 k) | 1.94 M (2.0 M) |
-| Tiles held | 30, 0.6 MB | 108, 2.6 MB | 252, 5.5 MB | 522, 10.8 MB |
-| Share of frame build, median; worst crossing a chunk border | 0.04; 0.72 ms | 0.05; 1.46 ms | 0.11 ms | 0.15; 1.11 ms |
+| Reach of trees, rocks, bushes | 417, 0, 0 m | 1,092, 565, 151 m | 1,836, 867, 252 m | 2,763, 1,166, 302 m |
+| Draws a frame, mean (most) | 8.3 (10) [5 to 15] | 106 (145) [35 to 100] | 160 (201) [90 to 270] | 238 (279) [190 to 570] |
+| Triangles in view and reach (budget) | 37 k (39 k) | 314 k (315 k) | 881 k (900 k) | 1.97 M (2.0 M) |
+| Tiles held | 30, 0.7 MB | 108, 2.9 MB | 252, 6.5 MB | 522, 13.0 MB |
+| Share of frame build, median; worst crossing a chunk border | 0.02; 0.74 ms | 0.05; 1.23 ms | 0.10 ms | 0.15; 1.74 ms |
 
 The border budget is 2 ms. In the trees' review wood, far draws on medium fell
-from 531 to 905 to 57 to 73 when a tile became a few draws (D353).
+from 531 to 905 to 57 to 73 when a tile became a few draws (D353). The stones'
+far level is a group of its own and reaches further, which took medium's bench
+draws from 71 (91) to 106 (145).
 
 ### Sun shadows (D313)
 
@@ -297,10 +299,9 @@ design estimated 0.1 MB for a 256-square roof map on medium and 0.5 MB for 512.
 soaks above and `touchShadows` unset. Its timer rows, steps and touch values go
 here.
 
-**Broadleaf trees and the stones' far level** (art). Trees' far levels took
-medium's tree reach from 232 to 641 m to 1,039 to 1,200 m before the band's cut
-(D342, D354); stones reach 321, 515 and 705 m until they have one (D351). The
-far-node rows move with the art.
+**Broadleaf crowns** (art, `r8/n-trees-4`). The trees' third round and the
+stones' far level are in the rows above (D357, D361). The crowns' surface has a
+round of its own, which may move the trees' counts, far levels and reaches again.
 
 ## Recording a result
 

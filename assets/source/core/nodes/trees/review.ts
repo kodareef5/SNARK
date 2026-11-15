@@ -5,7 +5,7 @@
 //   bun assets/source/core/nodes/trees/review.ts --view hill --tier medium --out artifacts/trees/hill.png
 //
 // --view: near (one tree a few metres off, --hero N of the kinds, --turn degrees), trunk (its trunk from 3.6 m), mid (one
-// tree 30 m off), lineup (the first three kinds side by side, --gap metres apart and twice that off), grove (eye height
+// tree --dist metres off, 30 by default, the camera --up metres over the ground and --pitch degrees up), lineup (the first three kinds side by side, --gap metres apart and twice that off), grove (eye height
 // among them), slope (one tree --dist metres off, 45 by default, standing on ground that falls away across the view at
 // 20 degrees), hill (a hillside across the water, 300 m to 1.2 km off), above (the hillside from a flyer), wood (a wooded
 // hill on a map of its own, 4 km across, behind a lagoon fringed with mangroves: the camera --off metres short of the
@@ -27,7 +27,7 @@ import { dirname, resolve } from "node:path";
 import { TIERS, tierOf } from "../../../../../client/core/assets/tiers.ts";
 import { Camera } from "../../../../../client/core/render/camera.ts";
 import { FAMILY_TRIANGLES, FAR_NODE_BUFFERS, NodeChanges, farNodeOf } from "../../../../../client/core/render/farnodes.ts";
-import { ATLAS_REGION } from "../../../../../client/core/render/packet.ts";
+import { ATLAS_REGION, DRAW_TEXTURED } from "../../../../../client/core/render/packet.ts";
 import { NODE_BUFFERS, Scene } from "../../../../../client/core/render/scene.ts";
 import { RemoteSample } from "../../../../../client/core/session.ts";
 import { CORE_CONTENT } from "../../../../../content/core.ts";
@@ -110,7 +110,7 @@ const CAMERA = wood ? { x: FOOT - OFF, z: 1024 } : { x: 760, z: SHORE + (args.in
 const HERO = Number(arg("hero", "3"));
 const GAP = Number(arg("gap", "24"));
 const HEROES: [number, number, number, number][] =
-  view === "near" ? [[1.2, 6.5, HERO, Number(arg("turn", "40"))]] : view === "trunk" ? [[0.3, 3.6, HERO, Number(arg("turn", "40"))]] : view === "mid" ? [[0, 30, HERO, Number(arg("turn", "40"))]] : view === "lineup" ? [[-GAP, GAP * 1.9, 0, 300], [0, GAP * 1.9, 1, 30], [GAP, GAP * 1.9, 2, 120]]
+  view === "near" ? [[1.2, 6.5, HERO, Number(arg("turn", "40"))]] : view === "trunk" ? [[0.3, 3.6, HERO, Number(arg("turn", "40"))]] : view === "mid" ? [[0, Number(arg("dist", "30")), HERO, Number(arg("turn", "40"))]] : view === "lineup" ? [[-GAP, GAP * 1.9, 0, 300], [0, GAP * 1.9, 1, 30], [GAP, GAP * 1.9, 2, 120]]
   : view === "slope" ? [[0, Number(arg("dist", "45")), HERO, Number(arg("turn", "40"))]]
   : view === "grove" ? [[-3.5, 7, 3, 10], [4, 12, 0, 70], [-9, 18, 5, 200], [7, 26, 4, 300], [-2, 34, 1, 120], [12, 40, 2, 20]] : [];
 // --front stands the camera with the sun behind it, looking south at trees set south of it; else it looks north, into the sun.
@@ -169,11 +169,11 @@ const source: NodeSource = {
 };
 
 // The wood's kinds where they grow: mangroves on the lagoon's shores, palms on the low ground and one in eight above it,
-// and on the hill live oaks, figs and banyans, three to two to one.
+// and on the hill young oaks, elder oaks, figs and banyans, six to one to two to one.
 const byName = (re: RegExp, times = 1): number[] => kinds.filter((_, i) => re.test(trees[i]!)).flatMap((k) => Array<number>(times).fill(k));
 const MANGROVES = byName(/mangrove/);
 const PALMS = byName(/palm/);
-const HARDWOODS = [...byName(/tree_/, 3), ...byName(/fig_/, 2), ...byName(/banyan/)];
+const HARDWOODS = [...byName(/tree_/, 6), ...byName(/oak_/), ...byName(/fig_/, 2), ...byName(/banyan/)];
 
 function plantWood(chunk: number, index: number, out: Parameters<NodeSource["at"]>[2]): void {
   const h = mix(11, chunk, index);
@@ -230,7 +230,7 @@ const eye = (x: number, z: number, up = 1.7): number => hf.heightAt(x, z) + up;
 if (view === "near") at(CAMERA.x, eye(CAMERA.x, CAMERA.z), CAMERA.z, 8, 22);
 else if (view === "trunk") at(CAMERA.x, eye(CAMERA.x, CAMERA.z), CAMERA.z, 5, 6);
 else if (view === "grove") at(CAMERA.x, eye(CAMERA.x, CAMERA.z), CAMERA.z, 5, 8);
-else if (view === "mid") at(CAMERA.x, eye(CAMERA.x, CAMERA.z), CAMERA.z, 0, 12);
+else if (view === "mid") at(CAMERA.x, eye(CAMERA.x, CAMERA.z, UP), CAMERA.z, 0, Number(arg("pitch", "12")));
 else if (view === "slope") at(CAMERA.x, eye(CAMERA.x, CAMERA.z), CAMERA.z, 0, Number(arg("pitch", "8")));
 else if (view === "lineup") at(CAMERA.x, eye(CAMERA.x, CAMERA.z), CAMERA.z, 0, 9);
 else if (view === "hill") at(760, 55, SHORE - 230, 0, 0);
@@ -269,6 +269,22 @@ if (args.includes("--levels")) {
   console.log([...seen].map(([k, n]) => `${k}: ${n}`).join("\n"));
 }
 const near = nodes.store.chunks.reduce((n, c) => n + (c?.live ?? 0), 0);
+if (args.includes("--levels")) console.log(scene.assets.line());
+if (args.includes("--materials")) {
+  // Each pixel in a colour for the material of the draw that wrote it, beside the picture.
+  const mats = (files.manifest ?? pack.header).materials ?? [];
+  const named = new Map<number, number>();
+  const img = new Uint8ClampedArray(W * H * 4);
+  for (let i = 0; i < W * H; i++) {
+    const d = raster.pickDraw[i]!;
+    const m = d < 0 || (p.drawFlags[d]! & DRAW_TEXTURED) === 0 ? -1 : p.drawMaterial[d]!;
+    named.set(m, (named.get(m) ?? 0) + 1);
+    const h = m < 0 ? 0 : mix(m, 3, 5);
+    img.set(m < 0 ? [raster.color[i * 4]! * 0.3, raster.color[i * 4 + 1]! * 0.3, raster.color[i * 4 + 2]! * 0.3, 255] : [h & 255, (h >>> 8) & 255, (h >>> 16) & 255, 255], i * 4);
+  }
+  writeFileSync(out.replace(/\.png$/, ".materials.png"), encodePng(W, H, img));
+  console.log([...named].map(([m, n]) => `${m < 0 ? "flat or none" : mats[m]!.id}: ${(mix(m, 3, 5) & 0xffffff).toString(16).padStart(6, "0")} ${((100 * n) / (W * H)).toFixed(1)}%`).join("\n"));
+}
 const reach = scene.nodesFar ? `; far reach ${[...new Set(kinds.map((k) => Math.round(scene.nodesFar!.reachOf(k))))].join(", ")} m` : "";
 console.log(`${out}: ${tierName}, ${frames} frames to fill the card; ${near} trees near; draws ${p.drawCount}; triangles ${p.triangles}${reach}`);
 if (far) {

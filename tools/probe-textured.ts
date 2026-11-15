@@ -320,7 +320,7 @@ interface House {
  */
 function house(manifest: Manifest, files: Uint8Array[], format: TextureFormat, tierName: string): House {
   // The oak is a kind of its own here, the first of the live oaks, which grows to that size alone.
-  const oak = CORE_CONTENT.find((d): d is NodeDef => d.type === "node" && d.id === "core:tree")!;
+  const oak = CORE_CONTENT.find((d): d is NodeDef => d.type === "node" && d.id === "core:oak")!;
   const reg = compileContent([...CORE_CONTENT, { ...oak, id: SMALL_OAK.id, size: [SMALL_OAK.size, SMALL_OAK.size], variants: oak.variants!.slice(0, 1) }]).registry!;
   const hf = buildProvingHeightfield();
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);

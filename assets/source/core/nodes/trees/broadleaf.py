@@ -1,22 +1,24 @@
-# What the broadleaf trees share: limbs grown from a few numbers, and crowns built of lobes. Each kind (oaks.py,
-# figs.py, banyans.py, mangroves.py) says its individuals and what is its own: the oak's buttressed trunk, the fig's
-# root wall, the banyan's pillars, the mangrove's cage.
+# What the broadleaf trees share: limbs grown from a few numbers, and crowns built of lobes. Each kind (young.py,
+# oaks.py, figs.py, banyans.py, mangroves.py) says its individuals and what is its own: the elder oak's buttressed
+# trunk, the fig's root wall, the banyan's pillars, the mangrove's cage.
 #
-# A crown fills an outline of its own (a Dome) with lobes on the ends and outer parts of its branches, and a lobe is a few
-# billows, flattened rounded clumps of leaves. On the levels drawn with pictures each billow is a closed low shell
-# wearing the leaf atlas's mass, the crown's interior, its underside opened into cut-out clusters; over it cards of sun
-# leaves lie on its top and cards of shade leaves stand round its rim and hang beneath it. Shell and cards are lit by one
-# set of normals that round each billow, its lobe and the whole crown and bend down into shade inside and under it, so a
-# crown takes the sun as rounded masses with lit tops and shaded undersides at any hour. Further off a crown is a few
-# rounded masses gathered from its billows, and on the flat levels the same masses in a light, a middle and a dark green
-# by the way each face looks.
+# A crown fills an outline of its own (a Dome, its underside closed into a ceiling of leaves) with lobes on the ends and
+# outer parts of its branches, and a lobe is a few billows, rounded heads of leaves, each made of clumps. On the levels
+# drawn with pictures the crown is one opaque surface, the outside of the union of its clumps (canopy.py), wearing the
+# kind's crown skin, sun leaves where it looks up and shade leaves under it, so what is behind it costs nothing to
+# draw; only a fringe of cut-out clusters stands out along its outer side to break its outline into leaves. It is lit
+# by the ball each point lies on and by normals that round each billow, its lobe and the whole crown and bend down into
+# shade inside and under it, so it takes the sun as clumps with lit tops in rounded masses at any hour. On the flat
+# levels it is the same surface over a few masses gathered from the billows, in a light, a middle and a dark green by
+# the way each face is lit.
 
 import json
 import math
 import os
 
+import canopy
 from kit import UP, Mesh, add, cross, dot, horizontal, interp, length, lerp, mix, mul, rng_for, rotate, smooth, sub, tube, unit
-from layout import LEAVES, MASS, SPANS, leaf_cell, picture_dir
+from layout import SPANS, leaf_cell, picture_dir
 
 LEVELS = 5
 
@@ -303,8 +305,10 @@ class Dome:
     widest to `rim` metres up at its edge, its width varied by `wobble` round about, less `notches` (azimuth, elevation
     and half-width in degrees, seen from its centre), the sky windows a crown keeps."""
 
-    def __init__(self, centre, radii, rim, notches=(), wobble=0.12, seed="dome", spacing=1.75):
+    def __init__(self, centre, radii, rim, notches=(), wobble=0.12, seed="dome", spacing=1.75, under=0.0):
         self.spacing = spacing
+        # How far in from its edge the crown's underside is closed, as a share of its radius: a ceiling of leaves.
+        self.under = under
         self.centre = centre
         self.radii = radii
         self.rim = rim
@@ -338,6 +342,16 @@ class Dome:
             if any(self.notched(p, *n_) for n_ in self.notches):
                 continue
             out.append((p, n))
+        # The underside: a ring in from the skirt's foot, rising a little toward the trunk, facing down.
+        ring = round(count * self.under * (2 - self.under) * 0.4)
+        for k in range(ring):
+            f = 1.0 - self.under * math.sqrt((k + 0.5) / ring)
+            az = golden * k * 1.7
+            w = self.reach(az)
+            p = (cx + math.cos(az) * rx * w * 0.86 * f, self.rim + 0.4 + 1.2 * (1 - f * f), cz + math.sin(az) * rz * w * 0.86 * f)
+            if any(self.notched(p, *n_) for n_ in self.notches):
+                continue
+            out.append((p, (0.0, -1.0, 0.0)))
         return out
 
     def notched(self, p, az, el, half):
@@ -381,7 +395,7 @@ def twig_to(parent, t, target, rng, thick=None):
     return tw
 
 
-def foliage(trunks, radii, rng, gap=1.15, along=None, deepest=None, dome=None, fill=1.0, rise=0.0):
+def foliage(trunks, radii, rng, gap=1.15, along=None, deepest=None, dome=None, fill=1.0, rise=0.0, heads=None):
     """The lobes of a crown, carried by the branches below `trunks`: one on the end of every branch that carries no
     other, and more along the outer part of each branch of the first order, so the leaves run along the wood as they do
     and the crown is one canopy, not a ball on each stick. Each lobe a little above its wood; lobes nearer than `gap` of
@@ -436,7 +450,7 @@ def foliage(trunks, radii, rng, gap=1.15, along=None, deepest=None, dome=None, f
             tw = twig_to(parent, t, sub(c, (0.0, lr[1] * 0.3, 0.0)), rng)
             kept.append(Lobe(c, lr, tw))
     for l in kept:
-        billow(l, rng, size=fill)
+        billow(l, rng, count=heads, size=fill)
         # A twig from the lobe's branch up into the underside of each billow, seen from beneath.
         if l.anchor is not None:
             for i, (q, rb) in enumerate(l.billows):
@@ -493,162 +507,93 @@ class Shade:
         return unit(add(n, (0.0, -shut, 0.0)))
 
 
-def neighbours(lobes):
-    """For each lobe, the others near enough to overlap it."""
-    out = {}
-    for a in lobes:
-        ra = max(a.radii)
-        out[id(a)] = [b for b in lobes if b is not a and length(sub(a.centre, b.centre)) < (ra + max(b.radii)) * 1.05]
-    return out
-
-
-SPHERES = {}
-
-
-def sphere(k, octa=False):
-    """A sphere: an icosahedron (20 faces), or an octahedron (8), each of whose faces is cut into k by k. Returns (points,
-    triangles), the triangles wound outward."""
-    if (k, octa) in SPHERES:
-        return SPHERES[k, octa]
-    if octa:
-        v = [(1.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, 1.0), (0.0, 0.0, -1.0)]
-        f = [(2, 4, 0), (2, 0, 5), (2, 5, 1), (2, 1, 4), (3, 0, 4), (3, 5, 0), (3, 1, 5), (3, 4, 1)]
-    else:
-        # Standing on a corner, so a billow pressed flat keeps a round outline from the side.
-        y, r = 1 / math.sqrt(5), 2 / math.sqrt(5)
-        v = [(0.0, 1.0, 0.0)] + [(r * math.cos(2 * math.pi * i / 5), y, r * math.sin(2 * math.pi * i / 5)) for i in range(5)]
-        v += [(r * math.cos(2 * math.pi * (i + 0.5) / 5), -y, r * math.sin(2 * math.pi * (i + 0.5) / 5)) for i in range(5)] + [(0.0, -1.0, 0.0)]
-        f = [(0, 1 + (i + 1) % 5, 1 + i) for i in range(5)] + [(11, 6 + i, 6 + (i + 1) % 5) for i in range(5)]
-        f += [(1 + i, 1 + (i + 1) % 5, 6 + i) for i in range(5)] + [(6 + i, 1 + (i + 1) % 5, 6 + (i + 1) % 5) for i in range(5)]
-    pts, index = [], {}
-
-    def point(p):
-        key = tuple(round(c, 6) for c in p)
-        if key not in index:
-            index[key] = len(pts)
-            pts.append(p)
-        return index[key]
-
-    tris = []
-    for a, b, c in f:
-        A, B, C = v[a], v[b], v[c]
-        grid = {}
-        for i in range(k + 1):
-            for j in range(k + 1 - i):
-                w = (k - i - j) / k
-                grid[i, j] = point(unit(add(add(mul(A, w), mul(B, i / k)), mul(C, j / k))))
-        for i in range(k):
-            for j in range(k - i):
-                tris.append((grid[i, j], grid[i + 1, j], grid[i, j + 1]))
-                if i + j < k - 1:
-                    tris.append((grid[i + 1, j], grid[i + 1, j + 1], grid[i, j + 1]))
-    # Wound outward.
-    tris = [tr if dot(cross(sub(pts[tr[1]], pts[tr[0]]), sub(pts[tr[2]], pts[tr[0]])), pts[tr[0]]) > 0 else (tr[0], tr[2], tr[1]) for tr in tris]
-    SPHERES[k, octa] = (pts, tris)
-    return SPHERES[k, octa]
-
-
-def surface(m, pts, tris, normal, atlas, flat=None, open_below=None):
-    """A closed surface of leaves. With pictures it wears the atlas's mass, laid flat on each face, lit by `normal(p)`;
-    flat, each face takes `flat(n)`, its colour by the way the normal looks there. Faces looking down further than
-    `open_below` wear a cluster instead, cut out, so from beneath a billow is clumps of leaves with sky between and its
-    lower edge is ragged."""
-    idx = [m.point(p) for p in pts]
-    normals = [normal(p) for p in pts]
-    if not m.textured:
-        for a, b, c in tris:
-            m.face((idx[a], idx[b], idx[c]), flat(unit(add(add(normals[a], normals[b]), normals[c]))))
-        return
-    width = LEAVES[atlas]["mass"]
-    height = width / 2
-    u0, v0, u1, v1 = MASS
-    margin = 4 / 2048
-    for a, b, c in tris:
-        tri = (pts[a], pts[b], pts[c])
-        nf = unit(cross(sub(tri[1], tri[0]), sub(tri[2], tri[0])))
-        ref = UP if abs(nf[1]) < 0.85 else (1.0, 0.0, 0.0)
-        e1 = unit(cross(ref, nf))
-        e2 = cross(nf, e1)
-        if open_below is not None and nf[1] < -open_below:
-            # A cluster's picture, centred on the face and as large as the face needs, never past its cell.
-            cell = RIM[len(m.faces) % len(RIM)]
-            cu0, cv0, cu1, cv1 = leaf_cell(cell)
-            mid = mul(add(add(tri[0], tri[1]), tri[2]), 1 / 3)
-            xs = [dot(sub(p, mid), e1) for p in tri]
-            ys = [dot(sub(p, mid), e2) for p in tri]
-            span = max(LEAVES[atlas]["cluster"], 2.1 * max(max(abs(x) for x in xs), max(abs(y) for y in ys)))
-            hair = (len(m.faces) * 0.618034) % 1 * 0.02
-            uv = [(mix(cu0, cu1, 0.5 + x / span + hair), mix(cv0, cv1, 0.5 - y / span)) for x, y in zip(xs, ys)]
-            m.face((idx[a], idx[b], idx[c]), atlas, uv, [normals[a], normals[b], normals[c]])
-            continue
-        us = [dot(p, e1) / width for p in tri]
-        vs = [-dot(p, e2) / height for p in tri]
-        # A face larger than the mass's rectangle has the picture shrunk onto it, so it never reaches past it.
-        fit = min(1.0, (1 - 3 * margin) / max(max(us) - min(us), max(vs) - min(vs), 1e-6))
-        us = [x * fit for x in us]
-        vs = [y * fit for y in vs]
-        # Into the mass's rectangle, keeping the face whole: shifted by whole lengths where it can be, so faces side by
-        # side mostly meet.
-        room_u = 1 - 2 * margin - (max(us) - min(us))
-        room_v = 1 - 2 * margin - (max(vs) - min(vs))
-        # A hair apart face from face, so no corner is shared by two faces laying the picture different ways round.
-        hair = (len(m.faces) * 0.618034) % 1 * 2e-3
-        du = margin + (min(us) % max(room_u, 1e-3)) - min(us) + hair * (room_u > 0.01)
-        dv = margin + (min(vs) % max(room_v, 1e-3)) - min(vs)
-        uv = [(mix(u0, u1, x + du), mix(v0, v1, y + dv)) for x, y in zip(us, vs)]
-        m.face((idx[a], idx[b], idx[c]), atlas, uv, [normals[a], normals[b], normals[c]])
-
-
 def billow_floor(lobe, q, r, low=0.45):
     """How low a billow's shell hangs: a little below its middle, never below its lobe's underside. Beneath it hang
     clusters of leaves and the twigs that carry them."""
     return max(lobe.floor, q[1] - r * lobe.squash * low)
 
 
-def billow_shell(m, lobe, shade, q, r, k, atlas, flat=None, low=0.45, open_below=None):
-    """One billow's shell: a sphere (`k` as `sphere` takes it) round `q`, its underside drawn up nearly flat to
-    `billow_floor`."""
-    unit_pts, tris = sphere(*k)
-    floor = billow_floor(lobe, q, r, low)
-    pts = []
-    for d in unit_pts:
-        p = add(q, (d[0] * r, d[1] * r * lobe.squash, d[2] * r))
-        if p[1] < floor:
-            p = (p[0], floor - (floor - p[1]) * 0.3, p[2])
-        pts.append(p)
-    surface(m, pts, tris, lambda p: shade.normal(lobe, p), atlas, flat, open_below)
-
-
-def inside(p, spheres, by=0.0, squash=1.0):
-    """Whether `p` lies inside any of the billows (centre, radius, as tall as `squash` of that), by `by` at least."""
-    return any(length((p[0] - q[0], (p[1] - q[1]) / squash, p[2] - q[2])) < r - by for q, r in spheres)
+def clumps_of(rng, count):
+    """`count` directions over a head, more over its top than under it, each a little off an even spread."""
+    golden = math.pi * (3 - math.sqrt(5))
+    turn = rng.uniform(0, 2 * math.pi)
+    out = []
+    for k in range(count):
+        y = 1.0 - 1.6 * (k + 0.5) / count
+        r = math.sqrt(max(0.0, 1 - y * y))
+        a = turn + golden * k + rng.uniform(-0.3, 0.3)
+        out.append(unit((math.cos(a) * r, y + rng.uniform(-0.1, 0.1), math.sin(a) * r)))
+    return out
 
 
 OUTLINES = {}
 
 
-def outline(atlas, cell, coarse=False):
+def ears(poly):
+    """A simple polygon cut into triangles by clipping ears, as index triples, wound as the polygon is."""
+    area = sum(poly[i][0] * poly[(i + 1) % len(poly)][1] - poly[(i + 1) % len(poly)][0] * poly[i][1] for i in range(len(poly)))
+    sign = 1.0 if area > 0 else -1.0
+    turn = lambda u, v, w: ((v[0] - u[0]) * (w[1] - u[1]) - (v[1] - u[1]) * (w[0] - u[0])) * sign
+    idx = list(range(len(poly)))
+    out = []
+    while len(idx) > 3:
+        for k in range(len(idx)):
+            i, j, l = idx[k - 1], idx[k], idx[(k + 1) % len(idx)]
+            pa, pb, pc = poly[i], poly[j], poly[l]
+            if turn(pa, pb, pc) <= 0:
+                continue
+            if any(turn(pa, pb, poly[o]) >= 0 and turn(pb, pc, poly[o]) >= 0 and turn(pc, pa, poly[o]) >= 0 for o in idx if o not in (i, j, l)):
+                continue
+            out.append((i, j, l))
+            idx.pop(k)
+            break
+        else:
+            break
+    out.append(tuple(idx[:3]))
+    return out
+
+
+def outline(atlas, cell, coarse=False, cut=None):
     """The outline of a leaf cluster's picture as points (across, down) within its cell from 0 to 1, and the triangles it
-    is cut into: as fit.py measured them off its alpha, fine or coarse, else an octagon inside the cell."""
+    is cut into: as fit.py measured them off its alpha, fine or coarse, else an octagon inside the cell. With `cut`, only
+    the part of it above that far down the cell: its leaves' outer part."""
     if atlas not in OUTLINES:
         path = os.path.join(picture_dir(atlas), "fitted.json")
         OUTLINES[atlas] = {int(k): v for k, v in json.load(open(path)).items()} if os.path.exists(path) else {}
+    key = (atlas, cell, coarse, cut)
+    if key in OUTLINES:
+        return OUTLINES[key]
     got = OUTLINES[atlas].get(cell)
     if got:
         g = got["coarse" if coarse else "fine"]
-        return [tuple(p) for p in g["ring"]], [tuple(t) for t in g["triangles"]]
-    ring = [(0.5 + 0.47 * math.cos(a), 0.5 - 0.47 * math.sin(a)) for a in (math.pi * k / 4 for k in range(8))]
-    return ring, [(0, k, k + 1) for k in range(1, 7)]
+        ring, tris = [tuple(p) for p in g["ring"]], [tuple(t) for t in g["triangles"]]
+    else:
+        ring = [(0.5 + 0.47 * math.cos(a), 0.5 - 0.47 * math.sin(a)) for a in (math.pi * k / 4 for k in range(8))]
+        tris = [(0, k, k + 1) for k in range(1, 7)]
+    if cut is not None:
+        kept = []
+        for i, p in enumerate(ring):
+            q = ring[(i + 1) % len(ring)]
+            if p[1] <= cut:
+                kept.append(p)
+            if (p[1] <= cut) != (q[1] <= cut):
+                kept.append((p[0] + (q[0] - p[0]) * (cut - p[1]) / (q[1] - p[1]), cut))
+        ring, tris = kept, ears(kept)
+    OUTLINES[key] = (ring, tris)
+    return ring, tris
 
 
-def card(m, atlas, cell, centre, up, normal, size, lit, coarse=False, lift=0.003):
+def card(m, atlas, cell, centre, up, normal, size, lit, coarse=False, lift=0.003, cut=None):
     """A leaf cluster's card centred on `centre`, the picture's top along `up` and its face along `normal`, cut to the
-    cluster's outline, both sides drawn and both lit by `lit(point)`, the crown's normal there. The front's largest
-    triangle is lifted at its middle by `lift`, so the two sides enclose something and the card is a closed part."""
+    cluster's outline, both sides drawn and both lit by `lit(point)`, the crown's normal there. With `cut` it is only the
+    part of the picture above that far down it, and `centre` is the middle of the cut. The front's largest triangle is
+    lifted at its middle by `lift`, so the two sides enclose something and the card is a closed part."""
     side = unit(cross(up, normal))
     up = unit(cross(normal, side))
+    if cut is not None:
+        centre = sub(centre, mul(up, (0.5 - cut) * size))
     u0, v0, u1, v1 = leaf_cell(cell)
-    shape, tris = outline(atlas, cell, coarse)
+    shape, tris = outline(atlas, cell, coarse, cut)
     ring = []
     for a, b in shape:
         x, y = (a - 0.5) * size, (0.5 - b) * size
@@ -680,118 +625,152 @@ def card(m, atlas, cell, centre, up, normal, size, lit, coarse=False, lift=0.003
             m.face([pts[j] for j in t], atlas, [ring[j][1] for j in t] if m.textured else None, [(ns if sgn > 0 else backs)[j] for j in t] if m.textured else None)
 
 
-# Which clusters lie on top of a billow and which stand round its rim and hang beneath it: the round clumps, and the
-# broader clump and the spray.
+# Which clusters show sun leaves and which shade leaves: the round clumps, and the broader clump and the spray.
 TOP = (0, 2)
 RIM = (1, 3)
 
 
-def cards_on(lobe, shade, rng, size, at, others=()):
-    """Where a lobe's cards go, billow by billow, where no other billow covers the place: lying on its top, tilted a
-    little, so its surface is leaves (`top`, a share of its cap); standing out round it and over it, each in the plane
-    of the billow's outward way, so wherever the billow is seen from its outline is broken by clusters seen face on
-    (`rim`, how many); and hanging beneath it, facing down (`under`, how many). Returns (centre, up, normal, size,
-    cell, lit) for each."""
-    spheres = list(lobe.billows) + list(others)
-    golden = math.pi * (3 - math.sqrt(5))
-    out = []
-    sq = lobe.squash
-
-    def lit_at(q, rb):
-        def lit(x):
-            # Lit as the point of the billow under it.
-            v = sub(x, q)
-            u = unit((v[0], v[1] / sq, v[2]))
-            return shade.normal(lobe, add(q, (u[0] * rb, u[1] * rb * sq, u[2] * rb)))
-        return lit
-
-    def clear(p, q):
-        return not inside(p, [b for b in spheres if b[0] is not q], 0.04, sq)
-
-    for i, (q, rb) in enumerate(lobe.billows):
-        if i == 0 and len(lobe.billows) > 1:
-            continue
-        lit = lit_at(q, rb)
-        floor = billow_floor(lobe, q, rb)
-        turn = rng.uniform(0, 2 * math.pi)
-        # Lying on the cap.
-        count = round(at["top"] * 2 * math.pi * rb * rb / (size * size))
-        for k in range(count):
-            y = 1.0 - 0.75 * (k + 0.5) / max(count, 1)
-            r = math.sqrt(max(0.0, 1 - y * y))
-            a = turn + golden * k
-            d = unit((math.cos(a) * r, y / sq, math.sin(a) * r))
-            p = add(q, (math.cos(a) * r * rb, y * rb * sq, math.sin(a) * r * rb))
-            if not clear(p, q):
-                continue
-            axis = unit(cross(d, unit((rng.gauss(0, 1), rng.gauss(0, 1), rng.gauss(0, 1)))))
-            normal = unit(rotate(d, axis, math.radians(rng.uniform(0, 30))))
-            s = size * rng.uniform(0.85, 1.15)
-            up = sub((d[0], 0.0, d[2]), mul(normal, dot((d[0], 0.0, d[2]), normal)))
-            up = unit(up) if length(up) > 1e-3 else unit(cross(normal, (1.0, 0.0, 0.0)))
-            out.append((add(p, mul(d, rng.uniform(0.0, 0.05) * s)), rotate(up, normal, rng.uniform(-0.8, 0.8)), normal, s, rng.choice(TOP), lit))
-        # Standing out round it and over it.
-        count = at["rim"]
-        for k in range(count):
-            a = turn + 2 * math.pi * (k + rng.uniform(-0.3, 0.3)) / count
-            y = rng.uniform(-0.4, 0.75)
-            r = math.sqrt(max(0.0, 1 - y * y))
-            p = add(q, (math.cos(a) * r * rb, y * rb * sq, math.sin(a) * r * rb))
-            if p[1] < floor or not clear(p, q):
-                continue
-            d = unit((math.cos(a) * r, y / sq, math.sin(a) * r))
-            tangent = (-math.sin(a), 0.0, math.cos(a))
-            normal = unit(rotate(tangent, d, math.radians(rng.uniform(-30, 30))))
-            s = size * rng.uniform(0.85, 1.2)
-            up = unit(sub(d, mul(normal, dot(d, normal))))
-            out.append((add(p, mul(d, s * rng.uniform(0.25, 0.4))), rotate(up, normal, rng.uniform(-0.4, 0.4)), normal, s, rng.choice(RIM), lit))
-        # Hanging beneath, lit as the billow's underside.
-        count = at["under"]
-        for k in range(count):
-            a = turn + golden * k * 3
-            f = math.sqrt((k + 0.5) / max(count, 1)) * 0.8
-            p = (q[0] + math.cos(a) * f * rb, floor - size * rng.uniform(0.05, 0.2), q[2] + math.sin(a) * f * rb)
-            if not clear(p, q):
-                continue
-            out_way = (math.cos(a), 0.0, math.sin(a))
-            normal = unit(rotate((0.0, -1.0, 0.0), (-math.sin(a), 0.0, math.cos(a)), math.radians(rng.uniform(15, 60))))
-            up = unit(sub(out_way, mul(normal, dot(out_way, normal))))
-            s = size * rng.uniform(0.8, 1.1)
-            out.append((p, rotate(up, normal, rng.uniform(-0.6, 0.6)), normal, s, rng.choice(RIM), lit))
-    return out
+# How far down a cluster's picture a fringe card begins: its leaves' outer part.
+FRINGE_CUT = 0.55
 
 
-# How each textured level draws a crown: a few masses standing for its billows (0 for each billow its own shell), the
-# spheres the shells are made of (as `sphere` takes them), and its cards: how many lie on each billow's top for a square
-# metre of its cap, how many stand round each and hang under each, their size against the finest's, and whether they
-# are cut coarsely.
-CROWN_LEVELS = {
-    0: {"masses": 0, "sphere": (2, True), "top": 0.3, "rim": 6, "under": 3, "size": 1.0, "coarse": False, "open": 0.35},
-    1: {"masses": 0, "sphere": (1, False), "top": 0.15, "rim": 3, "under": 0, "size": 1.25, "coarse": True, "open": 0.45},
-    2: {"masses": 14, "sphere": (2, True), "top": 0.0, "rim": 2, "under": 0, "size": 2.0, "coarse": True, "open": 0.5},
+# How each textured level draws a crown as one surface (canopy.py): the grid it is found on, in metres; how many clumps
+# each billow is made of (0, the billow alone); how much of a point's light comes from the ball it lies on, the rest
+# from the crown's normals (Shade); and the fringe of cut-out cards over its outer side, as `fringe_of` takes it.
+CANOPY_LEVELS = {
+    0: {"cell": 0.42, "clumps": 9, "own": 0.6, "fringe": 1.6, "inward": -0.2, "roll": 30, "sun": 0.0, "size": 1.2, "coarse": False},
+    1: {"cell": 0.7, "clumps": 7, "own": 0.55, "fringe": 1.4, "inward": 0.0, "roll": 30, "sun": 0.0, "size": 1.7, "coarse": True},
+    2: {"cell": 1.55, "clumps": 0, "own": 0.45, "fringe": 0.6, "inward": 0.15, "roll": 30, "sun": 0.0, "size": 2.8, "coarse": True},
 }
 
 
-def crown(m, lobes, lod, rng, atlas, size, shade=None, closed=False):
-    """A crown on the levels with pictures: each lobe's billows, or a few masses standing for them, and the cards over
-    and under them. A `closed` crown keeps its billows' undersides whole, a ceiling of leaves in their own shade."""
-    at = dict(CROWN_LEVELS[lod])
-    if closed:
-        at["open"] = None
-    if at["masses"]:
-        lobes = masses(lobes, at["masses"])
-        shade = Shade(lobes)
-    shade = shade or Shade(lobes)
-    near = neighbours(lobes)
+def balls_of(lobes, rng, clumps):
+    """The balls a crown's surface is the union of: each billow, or with `clumps` a smaller middle ball of each and that
+    many balls round it, its clumps, reaching as far out as the billow did."""
+    out = []
     for lobe in lobes:
-        for i, (q, r) in enumerate(lobe.billows):
-            # The middle billow of a lobe is all but hidden: the coarsest sphere does, and further off none.
-            if i == 0 and len(lobe.billows) > 2 and lod > 0:
+        for q, r in lobe.billows:
+            floor = billow_floor(lobe, q, r)
+            if not clumps:
+                out.append(canopy.Ball(q, r, lobe.squash, floor, lobe))
                 continue
-            billow_shell(m, lobe, shade, q, r, (1, True) if i == 0 and len(lobe.billows) > 1 else at["sphere"], atlas, open_below=at["open"])
-        others = [b for o in near[id(lobe)] for b in o.billows]
-        for centre, up, normal, s, cell, lit in cards_on(lobe, shade, rng, size * at["size"], at, others=others):
-            card(m, atlas, cell, centre, up, normal, s, lit, coarse=at["coarse"])
+            out.append(canopy.Ball(q, r * 0.72, lobe.squash, floor, lobe))
+            for c in clumps_of(rng, clumps):
+                at = add(q, (c[0] * r * 0.58, c[1] * r * 0.58 * lobe.squash, c[2] * r * 0.58))
+                out.append(canopy.Ball(at, r * 0.42, lobe.squash, floor, lobe))
+    return out
+
+
+# A clump of a crown whose top is lit as looking up further than this wears its sun leaves, the rest its shade leaves.
+SUN_FROM = 0.15
+
+
+def sunny(balls, shade):
+    """For each ball of a crown, whether its leaves are sun leaves: whether its top, seen from its billow's middle, is lit
+    as looking up. A clump's faces all wear one, so sun and shade leaves meet in the creases between clumps."""
+    out = []
+    for b in balls:
+        way = unit(add(sub(b.centre, b.lobe.centre), (0.0, b.r, 0.0)))
+        out.append(shade.normal(b.lobe, add(b.centre, mul(way, b.r)))[1] > SUN_FROM)
+    return out
+
+
+def skin(m, pts, tris, normals, mass, sun):
+    """A closed surface wearing a crown skin (`mass`: its material, its rectangles of sun leaves and of shade leaves, and
+    the metres across): each face takes the picture as it lies on the plane of the axis the face looks most along, so
+    faces that look alike meet, shifted by whole periods into its rectangle down the picture, and across it as it
+    repeats, the skin spanning the picture's width. A face wears the sun leaves where `sun` says so of most of its
+    corners."""
+    material, rects, width = mass
+    margin = 3 / 2048
+    idx = [m.point(p) for p in pts]
+    for f, (a, b, c) in enumerate(tris):
+        u0, v0, u1, v1 = rects[0] if sun[a] + sun[b] + sun[c] >= 2 else rects[1]
+        height = width * (v1 - v0) / (u1 - u0)
+        wraps = u0 == 0.0 and u1 == 1.0
+        tri = (pts[a], pts[b], pts[c])
+        nf = cross(sub(tri[1], tri[0]), sub(tri[2], tri[0]))
+        k = max(range(3), key=lambda i: abs(nf[i]))
+        axis = tuple((1.0 if nf[k] > 0 else -1.0) if i == k else 0.0 for i in range(3))
+        e1 = unit(cross(UP if k != 1 else (0.0, 0.0, -1.0), axis))
+        e2 = cross(axis, e1)
+        us = [dot(p, e1) / width for p in tri]
+        vs = [-dot(p, e2) / height for p in tri]
+        # A face larger than a period has the picture shrunk onto it, so it never reaches past its rectangle.
+        fit = min(1.0, (1 - 3 * margin) / max(max(vs) - min(vs), 1e-6))
+        if fit < 1.0:
+            us = [u * fit for u in us]
+            vs = [v * fit for v in vs]
+        lo_v = math.floor(min(vs))
+        vs = [v - lo_v for v in vs]
+        if max(vs) > 1 - margin:
+            # Across a period's edge: laid against the rectangle's far side, a seam where it meets its neighbours.
+            vs = [v - (max(vs) - (1 - margin)) for v in vs]
+        vs = [v + max(0.0, margin - min(vs)) for v in vs]
+        if not wraps:
+            lo_u = math.floor(min(us))
+            us = [u - lo_u for u in us]
+            if max(us) > 1 - margin:
+                us = [u - (max(us) - (1 - margin)) for u in us]
+            us = [u + max(0.0, margin - min(us)) for u in us]
+        uv = [(u0 + (u1 - u0) * u, mix(v0, v1, v)) for u, v in zip(us, vs)]
+        m.face((idx[a], idx[b], idx[c]), material, uv, [normals[a], normals[b], normals[c]])
+
+
+def fringe_of(pts, tris, normals, shade, rng, size, at):
+    """The cut-out cards that break a crown's surface into leaves along its outline: the outer part of a cluster
+    standing out of the surface along the way it faces and upright, so it faces the level ways that place is outline
+    from, on the faces that look out of the crown (no further in than `inward`, as the cosine from the way out), as
+    many as `fringe` to each square of a card's size of them. Sun leaves above `sun` on the crown, as a share of its
+    height from its middle, and shade leaves below. Returns (root, up, normal, size, cell, lit)."""
+    out = []
+    for a, b, c in tris:
+        p0, p1, p2 = pts[a], pts[b], pts[c]
+        nf = cross(sub(p1, p0), sub(p2, p0))
+        area = length(nf) / 2
+        if area <= 0:
+            continue
+        nf = mul(nf, 0.5 / area)
+        mid = mul(add(add(p0, p1), p2), 1 / 3)
+        way = unit(tuple((mid[k] - shade.mid[k]) / shade.radii[k] for k in range(3)))
+        if dot(nf, way) < at["inward"] or nf[1] < -0.75:
+            continue
+        # As many as the face's share of cards, kept by chance where that is less than one.
+        want = at["fringe"] * area / (size * size)
+        count = int(want) + (rng.random() < want - int(want))
+        for _ in range(count):
+            s, t = rng.random(), rng.random()
+            if s + t > 1:
+                s, t = 1 - s, 1 - t
+            p = add(p0, add(mul(sub(p1, p0), s), mul(sub(p2, p0), t)))
+            n = unit(add(add(normals[a], normals[b]), normals[c]))
+            root = sub(p, mul(nf, size * 0.12))
+            side = unit(cross(nf, UP)) if abs(nf[1]) < 0.9 else horizontal(rng.uniform(0, 2 * math.pi))
+            normal = rotate(side, nf, math.radians(rng.uniform(-at["roll"], at["roll"])))
+            up = rotate(nf, normal, rng.uniform(-0.3, 0.3))
+            height = (p[1] - shade.mid[1]) / shade.radii[1]
+            cell = rng.choice(TOP) if height + rng.uniform(-0.4, 0.4) > at["sun"] else rng.choice(RIM)
+            out.append((root, up, normal, size * rng.uniform(0.85, 1.15), cell, lambda x, n=n: n))
+    return out
+
+
+def crown(m, lobes, lod, rng, atlas, size, mass, shade=None, grain=1.0):
+    """A crown on the levels with pictures: the outside of the union of its billows as one opaque surface wearing the
+    crown's skin, lit by the ball each point lies on and by the crown's normals, with a fringe of cut-out cards over its
+    outer side to break its outline into leaves."""
+    at = CANOPY_LEVELS[lod]
+    shade = shade or Shade(lobes)
+    balls = balls_of(lobes, rng, at["clumps"])
+    pts, tris, owners = canopy.nets(balls, at["cell"] * grain)
+    own = at["own"]
+    normals = []
+    for p, o in zip(pts, owners):
+        ball = balls[o]
+        normals.append(unit(add(mul(shade.normal(ball.lobe, p), 1 - own), mul(canopy.facing(ball, p), own))))
+    lit = sunny(balls, shade)
+    skin(m, pts, tris, normals, mass, [lit[o] for o in owners])
+    for root, up, normal, s, cell, lit in fringe_of(pts, tris, normals, shade, rng, size * at["size"], at):
+        card(m, atlas, cell, root, up, normal, s, lit, coarse=at["coarse"], cut=FRINGE_CUT)
 
 
 def masses(lobes, count):
@@ -829,16 +808,26 @@ def masses(lobes, count):
     return out
 
 
-def flat_crown(m, lobes, lod, colours, count, shade=None):
-    """A crown on the flat levels: `count` rounded masses standing for its billows, each face lit, middling or dark by the
-    way the crown's normal looks there."""
+def flat_canopy(m, lobes, colours, cell, shade=None, own=0.4, light_from=0.35, dark_from=-0.35):
+    """A crown on the flat levels: the outside of the union of its billows, as the levels with pictures have it, found
+    on a coarser grid of `cell` metres, each face light, middling or dark by the way it is lit there."""
     light, mid, dark = colours
+    shade = shade or Shade(lobes)
+    balls = balls_of(lobes, None, 0)
+    pts, tris, owners = canopy.nets(balls, cell)
+    normals = [unit(add(mul(shade.normal(balls[o].lobe, p), 1 - own), mul(canopy.facing(balls[o], p), own))) for p, o in zip(pts, owners)]
+    idx = [m.point(p) for p in pts]
+    for a, b, c in tris:
+        ny = (normals[a][1] + normals[b][1] + normals[c][1]) / 3
+        m.face((idx[a], idx[b], idx[c]), light if ny > light_from else dark if ny < dark_from else mid)
+
+
+def flat_crown(m, lobes, lod, colours, count, shade=None):
+    """A crown on the flat levels: `count` rounded masses standing for its billows, their union's outside found on a
+    grid a little finer than they are wide, each face light, middling or dark by the way it is lit there."""
     big = masses(lobes, count)
-    shade = shade or Shade(big)
-    pick = lambda n: light if n[1] > 0.42 else dark if n[1] < -0.3 else mid
-    for lobe in big:
-        # The nearer flat level a rounder sphere, so its masses read as heads of leaves, not cut stones.
-        billow_shell(m, lobe, shade, lobe.billows[0][0], lobe.billows[0][1], (2, True) if lod == 3 else (1, False), None, flat=pick)
+    mean = sum(l.billows[0][1] for l in big) / len(big)
+    flat_canopy(m, big, colours, mean * (0.75 if lod == 3 else 0.95))
 
 
 def crown_centre(lobes):

@@ -10,11 +10,13 @@ import figs
 import mangroves
 import oaks
 import palms
+import young
 
 # kind: (module, size range, a weight for each individual in the module's order)
 KINDS = {
     "core:palm": (palms, (0.85, 1.15), (3, 2, 2, 3, 2, 2)),
-    "core:tree": (oaks, (0.85, 1.2), (3, 2, 2)),
+    "core:tree": (young, (0.85, 1.15), (3, 3, 2, 2)),
+    "core:oak": (oaks, (0.85, 1.2), (3, 2, 2)),
     "core:fig": (figs, (1.0, 1.25), (2, 3, 2)),
     "core:banyan": (banyans, (0.9, 1.15), (3, 2, 1)),
     "core:mangrove": (mangroves, (0.8, 1.2), (2, 3, 3, 2)),

@@ -1,4 +1,4 @@
-# The live oaks of core:tree, the hardwoods of the hammock: three individuals from the concept (ref/concept/broadleaf/
+# The elder live oaks of core:oak, the great hardwoods of the hammock: three individuals from the concept (ref/concept/
 # DESIGN.md, O01 to O03) and the stump each leaves. A short massive trunk, buttressed into the ground and fluted, splits
 # low into four or five great limbs that sweep out further than up, dip and rise again, and fork at elbows; the crown is
 # shallow terraces of dense billows on their ends, with moss hanging beneath the limbs and fern along their tops.
@@ -8,9 +8,10 @@ import math
 import broadleaf as bl
 import far
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, length, lerp, mix, mul, rng_for, rotate, sheet, sub, tube, unit
-from layout import CUTS, FERN_SIZE, MOSS_SIZE, OAK_FERN, OAK_MOSS, SPANS
+from layout import CUTS, FERN_SIZE, MOSS_SIZE, OAK_FERN, OAK_MOSS, SPANS, crown_mass
 
 ATLAS = "oak_leaves"
+MASS = crown_mass("oak_crown")
 BARK = "oak_bark"
 STEM = "f493f34"
 LIGHT, MID, DARK = "f6b7c44", "f5d6a39", "f434924"
@@ -22,7 +23,7 @@ LIGHT, MID, DARK = "f6b7c44", "f5d6a39", "f434924"
 OAKS = [
     # O01, the low sweep: four great limbs from a fork near 2 m, the western one dipping to 2.4 m and turning up, an
     # open notch in the top.
-    {"name": "oak_o1", "stem": 0.75, "fork": 2.0, "lobe": (2.8, 1.5, 2.7), "buttresses": 5,
+    {"name": "oak_o1", "stem": 0.75, "fork": 2.0, "lobe": (2.8, 2.1, 2.7), "buttresses": 5,
      "dome": ((0.0, 7.4, 0.0), (10.0, 4.6, 10.0), 3.4, [(70, 62, 16)]),
      "limbs": [(200, [(0, 50), (0.12, 12), (0.3, -6), (0.55, -10), (0.75, 4), (1, 36)], 11.0, 0.52, 2),
                (20, [(0, 58), (0.15, 22), (0.5, 8), (0.8, 10), (1, 30)], 9.6, 0.5, 2),
@@ -30,7 +31,7 @@ OAKS = [
                (288, [(0, 62), (0.18, 28), (0.55, 12), (1, 32)], 9.0, 0.47, 2)]},
     # O02, the park elder: five main limbs from a fork near 2.5 m in broad tiers, two long ones sweeping out low to
     # either side, the others lifting the crown's middle; fern along the big limbs and moss beneath them.
-    {"name": "oak_o2", "stem": 1.0, "fork": 2.5, "lobe": (3.2, 1.65, 3.1), "buttresses": 7,
+    {"name": "oak_o2", "stem": 1.0, "fork": 2.5, "lobe": (3.2, 2.3, 3.1), "buttresses": 7,
      "dome": ((0.0, 9.0, 0.0), (12.0, 7.0, 12.0), 4.4, []),
      "limbs": [(12, [(0, 56), (0.12, 18), (0.4, 2), (0.7, 4), (1, 30)], 13.0, 0.66, 2),
                (168, [(0, 52), (0.12, 14), (0.45, -4), (0.72, 2), (1, 32)], 13.5, 0.64, 2),
@@ -39,7 +40,7 @@ OAKS = [
                (306, [(0, 72), (0.3, 48), (0.7, 34), (1, 40)], 9.0, 0.5, 1)]},
     # O03, the storm survivor: four limbs and a healed collar where a fifth was lost, one long elbow reaching out and
     # turning back up; the lost limb leaves a window in the crown.
-    {"name": "oak_o3", "stem": 0.85, "fork": 2.2, "lobe": (3.0, 1.6, 2.9), "buttresses": 6, "collar": 140,
+    {"name": "oak_o3", "stem": 0.85, "fork": 2.2, "lobe": (3.0, 2.2, 2.9), "buttresses": 6, "collar": 140,
      "dome": ((0.0, 8.2, 0.0), (11.0, 5.8, 11.0), 4.0, [(140, 18, 26)]),
      "limbs": [(40, [(0, 50), (0.12, 10), (0.35, -2), (0.6, -4), (0.8, 16), (1, 46)], 13.0, 0.58, 2),
                (215, [(0, 62), (0.18, 26), (0.55, 12), (1, 26)], 10.0, 0.52, 2),
@@ -73,7 +74,7 @@ def skeleton(spec):
         bl.clear_ground(limb, 2.4, 1.5)
         limbs.append(limb)
     centre, radii, rim, notches = spec["dome"]
-    lobes = bl.foliage(limbs, spec["lobe"], rng, dome=bl.Dome(centre, radii, rim, notches, seed=spec["name"]))
+    lobes = bl.foliage(limbs, spec["lobe"], rng, dome=bl.Dome(centre, radii, rim, notches, seed=spec["name"], spacing=1.4, under=0.55))
     return limbs, lobes
 
 
@@ -114,7 +115,7 @@ def interp_h(h, fork):
 def oak(name, lod):
     spec = SPECS[name]
     if lod == far.LEVEL:
-        return far.broadleaf(oak(name, lod - 1), skeleton(spec)[1], (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
+        return far.crown(oak(name, 3), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
     m = Mesh(lod <= 2)
     rng = rng_for(name, "level", lod)
     limbs, lobes = skeleton(spec)
@@ -128,11 +129,11 @@ def oak(name, lod):
     if spec.get("collar") is not None:
         collar(m, spec, lod)
     if lod <= 2:
-        bl.crown(m, lobes, lod, rng, ATLAS, 0.9, shade=shade)
+        bl.crown(m, lobes, lod, rng, ATLAS, 0.9, MASS, shade=shade, grain=1.3)
         if lod <= 1:
             epiphytes(m, spec, limbs, shade, lobes, lod)
     else:
-        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 10 if lod == 3 else 6)
+        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 14 if lod == 3 else 7)
     return m
 
 
@@ -146,13 +147,14 @@ def collar(m, spec, lod):
     rr = r * 0.42
     sides = {0: 12, 1: 8, 2: 6, 3: 4, 4: 4}[lod]
     if m.textured:
-        tube(m, path, [rr * 0.9, rr, rr * 0.85], sides, BARK, uv=(0.0, 2.0, 0.0, SPANS[BARK]), caps=(True, True), cap_material="stump_cuts",
-             cap_uv=lambda p, c, e1, e2: (mix(CUTS["oak"][0], CUTS["oak"][2], 0.5 + 0.3 * dot(sub(p, c), e1) / rr), mix(CUTS["oak"][1], CUTS["oak"][3], 0.5 + 0.3 * dot(sub(p, c), e2) / rr)))
+        # Healed over: its end is bark, drawn in toward the hollow. (The cut wood would be a fourth material.)
+        tube(m, path, [rr * 0.9, rr, rr * 0.85], sides, BARK, uv=(0.0, 2.0, 0.0, SPANS[BARK]), caps=(True, True),
+             cap_uv=lambda p, c, e1, e2: (0.5 + dot(sub(p, c), e1) / SPANS[BARK], 0.5 + dot(sub(p, c), e2) / SPANS[BARK]))
     else:
         tube(m, path, [rr * 0.9, rr, rr * 0.85], sides, STEM)
 
 
-def epiphytes(m, spec, limbs, shade, lobes, lod):
+def epiphytes(m, spec, limbs, shade, lobes, lod, beards=(9, 6), ferns=True):
     """Beards of Spanish moss hanging under the limbs and beds of fern along their tops."""
     rng = rng_for(spec["name"], "epiphytes")
     u0, v0, u1, v1 = OAK_MOSS
@@ -162,7 +164,7 @@ def epiphytes(m, spec, limbs, shade, lobes, lod):
         for c in limb.children[:2]:
             hang.append((c, rng.uniform(0.2, 0.6)))
     rng.shuffle(hang)
-    for b, t in hang[: (9 if lod == 0 else 6)]:
+    for b, t in hang[: beards[min(lod, 1)]]:
         p, d, r = b.at(t)
         top = sub(p, (0.0, r * 0.75, 0.0))
         long_ = MOSS_SIZE[1] * rng.uniform(0.55, 1.15)
@@ -178,7 +180,7 @@ def epiphytes(m, spec, limbs, shade, lobes, lod):
             out = unit((p[0], 0.0, p[2])) if abs(p[0]) + abs(p[2]) > 1e-3 else side
             n = unit(add(add(mul(out, 0.7), mul(normal, 0.3)), (0.0, -0.15, 0.0)))
             sheet(m, grid, ATLAS, uvs, [[n] * 3] * 3, [[unit(add(n, (0.0, 0.06, 0.0)))] * 3] * 3)
-    if lod > 0:
+    if lod > 0 or not ferns:
         return
     u0, v0, u1, v1 = OAK_FERN
     for limb in sorted(limbs, key=lambda b: -b.radii[0])[:4]:
@@ -228,10 +230,25 @@ def stump(name, lod):
 
 
 def boxes(name):
-    """The trunk, as high as the fork: the limbs above it are passed under, as in ARK."""
+    """The trunk to above a survivor's head and into its fork, and the foot of each great limb, in two boxes along it
+    to 2.2 m out from the trunk, so a swing or a look at eye height meets the tree from every side. Each limb's boxes
+    stop 2 m up, so a survivor walks under them; the limbs beyond are passed under, as in ARK."""
     spec = SPECS[name]
     r = spec["stem"] * 1.05
-    return [{"at": [0.0, round(spec["fork"] / 2, 2), 0.0], "half": [round(r, 2), round(spec["fork"] / 2, 2), round(r, 2)]}]
+    top = max(spec["fork"] + 0.3, 2.6)
+    out = [{"at": [0.0, round(top / 2, 2), 0.0], "half": [round(r, 2), round(top / 2, 2), round(r, 2)]}]
+    for limb in skeleton(spec)[0]:
+        for near, far_ in ((spec["stem"] * 0.8, 1.2), (1.2, 2.2)):
+            got = [(p, rr) for p, rr in zip(limb.pts, limb.radii) if near <= math.hypot(p[0], p[2]) <= far_]
+            if not got:
+                continue
+            lo = [min(p[k] - rr * (0.8 if k != 1 else 1.0) for p, rr in got) for k in range(3)]
+            hi = [max(p[k] + rr * (0.8 if k != 1 else 1.0) for p, rr in got) for k in range(3)]
+            lo[1] = max(lo[1], 2.0)
+            if hi[1] <= lo[1] + 0.2:
+                continue
+            out.append({"at": [round((lo[k] + hi[k]) / 2, 2) for k in range(3)], "half": [round((hi[k] - lo[k]) / 2, 2) for k in range(3)]})
+    return out
 
 
 def stump_boxes(name):
@@ -239,9 +256,9 @@ def stump_boxes(name):
     return [{"at": [0.0, 0.35, 0.0], "half": [round(r, 2), 0.35, round(r, 2)]}]
 
 
-# core:tree_1 to core:tree_3, each with its own stump.
+# core:oak_1 to core:oak_3, the elders, each with its own stump.
 ORDER = ["oak_o1", "oak_o2", "oak_o3"]
-PIECES = [(f"tree_{i + 1}", n) for i, n in enumerate(ORDER)] + [(f"tree_{i + 1}_depleted", n) for i, n in enumerate(ORDER)]
+PIECES = [(f"oak_{i + 1}", n) for i, n in enumerate(ORDER)] + [(f"oak_{i + 1}_depleted", n) for i, n in enumerate(ORDER)]
 
 
 def build(piece, lod):

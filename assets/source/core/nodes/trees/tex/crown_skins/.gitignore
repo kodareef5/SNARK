@@ -1,0 +1,14 @@
+# Rebuildable geometry evidence; never required as a source input.
+.cache/
+__pycache__/
+# Reader-facing evidence is retained; intermediate proofs are not.
+!checks/
+checks/*
+!checks/*.jpg
+!checks/*_purpose*.png
+!checks/*_normal_and_tier_controls.png
+!checks/*_uv_cuts.png
+!checks/fig_head_*h_5m.png
+!checks/metrics.json
+!checks/rebuild_verification.json
+!checks/rebuild_run.log

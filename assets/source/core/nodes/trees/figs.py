@@ -8,9 +8,11 @@ import math
 import broadleaf as bl
 import far
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, sheet, sub, tube, unit
-from layout import CUTS, FIG_ROOTS, ROOTS_SIZE, RUIN_SIZE, RUINS
+from layout import CUTS, FIG_ROOTS, ROOTS_SIZE, RUIN_SIZE, RUINS, crown_mass
 
 ATLAS = "fig_leaves"
+CROWN = "fig_crown"
+MASS = crown_mass(CROWN)
 BARK = "fig_bark"
 STEM = "f908a80"
 LIGHT, MID, DARK = "f446730", "f3a5625", "f2c3b2b"
@@ -24,22 +26,22 @@ RUST = "f8c4f2e"
 FIGS = [
     # F01, the pole fig: a concrete utility pole inside two narrow root windows, broken off among the limbs; the left
     # shoulder of the crown higher, an old scaffold break making a notch.
-    {"name": "fig_f1", "stem": 0.8, "fork": 3.6, "ribbons": 9, "thing": "pole", "windows": [(30, 0.5, 3.0, 0.17), (205, 1.0, 3.2, 0.15)],
-     "lobe": (3.3, 1.9, 3.2), "dome": ((0.0, 8.8, 0.0), (10.8, 6.6, 10.8), 3.8, [(300, 40, 14)]),
+    {"name": "fig_f1", "stem": 0.8, "fork": 3.6, "ribbons": 9, "thing": "pole", "windows": [(30, 0.4, 3.4, 0.3), (205, 0.9, 3.4, 0.26), (120, 1.6, 2.7, 0.17)],
+     "lobe": (3.3, 2.3, 3.2), "dome": ((0.0, 10.6, 0.0), (11.0, 5.6, 10.8), 5.8, [(300, 40, 14)]),
      "limbs": [(20, [(0, 44), (0.3, 18), (1, 24)], 9.0, 0.36), (95, [(0, 50), (0.35, 24), (1, 30)], 8.2, 0.33),
                (170, [(0, 40), (0.3, 16), (1, 22)], 9.4, 0.37), (250, [(0, 46), (0.35, 20), (1, 30)], 8.6, 0.35),
                (325, [(0, 58), (0.45, 36), (1, 36)], 7.0, 0.31)]},
     # F02, the portico fig: a square portico column inside the root wall, its capital standing out at the first fork;
     # the broadest dome, the longer scaffold to the east.
-    {"name": "fig_f2", "stem": 0.95, "fork": 4.0, "ribbons": 11, "thing": "column", "windows": [(60, 0.3, 3.0, 0.26), (155, 1.2, 3.4, 0.22), (300, 0.5, 2.5, 0.2)],
-     "lobe": (3.6, 2.0, 3.4), "dome": ((0.0, 9.8, 0.0), (12.6, 7.4, 12.4), 4.2, []),
+    {"name": "fig_f2", "stem": 0.95, "fork": 4.0, "ribbons": 11, "thing": "column", "windows": [(60, 0.3, 3.4, 0.4), (155, 1.0, 3.6, 0.32), (300, 0.5, 2.8, 0.28)],
+     "lobe": (3.6, 2.4, 3.4), "dome": ((0.0, 12.0, 0.0), (12.8, 6.4, 12.4), 6.2, []),
      "limbs": [(0, [(0, 40), (0.3, 14), (1, 22)], 11.4, 0.42), (72, [(0, 46), (0.35, 18), (1, 26)], 10.4, 0.39),
                (140, [(0, 36), (0.3, 10), (1, 20)], 12.4, 0.44), (215, [(0, 44), (0.35, 18), (1, 26)], 10.6, 0.4),
                (288, [(0, 50), (0.4, 24), (1, 30)], 9.8, 0.38), (110, [(0, 66), (0.5, 46), (1, 40)], 7.6, 0.33)]},
     # F03, the sign fig: a rusted street sign at 2.2 m, its blade standing out of the roots; the upper stem leans and a
     # lost limb opens a sky window on the west.
-    {"name": "fig_f3", "stem": 0.7, "fork": 3.4, "ribbons": 8, "thing": "sign", "windows": [(80, 1.5, 2.7, 0.16), (250, 1.0, 2.4, 0.12)],
-     "lobe": (3.1, 1.8, 3.0), "dome": ((1.0, 8.0, 0.4), (9.4, 6.0, 9.4), 3.6, [(285, 28, 22)]), "stub": 285,
+    {"name": "fig_f3", "stem": 0.7, "fork": 3.4, "ribbons": 8, "thing": "sign", "windows": [(80, 1.2, 2.9, 0.32), (250, 0.8, 2.6, 0.2)],
+     "lobe": (3.1, 2.2, 3.0), "dome": ((1.0, 9.8, 0.4), (9.6, 4.8, 9.4), 5.4, [(285, 28, 22)]), "stub": 285,
      "limbs": [(40, [(0, 42), (0.3, 18), (1, 28)], 8.4, 0.34), (130, [(0, 38), (0.3, 14), (1, 24)], 8.8, 0.35),
                (210, [(0, 52), (0.4, 28), (1, 32)], 7.2, 0.31), (340, [(0, 44), (0.3, 20), (1, 26)], 8.0, 0.32)]},
 ]
@@ -127,7 +129,7 @@ def skeleton(spec):
         a = math.radians(spec["stub"])
         stub = bl.grow(add((0.0, fork - 0.6, 0.0), mul(horizontal(a), r * 0.25)), a, [(0, 50), (1, 34)], 2.0, 0.3, 0.27, 5, 0, rng, wander=0.05, leave=UP, blend=1.0)
     centre, radii, rim, notches = spec["dome"]
-    lobes = bl.foliage(limbs, spec["lobe"], rng, dome=bl.Dome(centre, radii, rim, notches, wobble=0.08, seed=spec["name"], spacing=1.15))
+    lobes = bl.foliage(limbs, spec["lobe"], rng, dome=bl.Dome(centre, radii, rim, notches, wobble=0.08, seed=spec["name"], spacing=1.15, under=0.5))
     return limbs, stub, lobes
 
 
@@ -178,7 +180,7 @@ def swallowed(m, spec, lod, cut=None):
     broken off among the limbs, or a sign on its post with the blade standing out of the roots. Cut off at `cut` for
     the stump."""
     thing = spec["thing"]
-    mat = "ruins" if m.textured else (RUST if thing == "sign" else CONCRETE)
+    mat = CROWN if m.textured else (RUST if thing == "sign" else CONCRETE)
     bottom = -0.6 * (spec["stem"] * 1.5) - 0.1
     if thing == "column":
         w = HALF["column"]
@@ -187,11 +189,12 @@ def swallowed(m, spec, lod, cut=None):
         block(m, (-w, bottom, -w), (w, top, w), mat, "column", 0.6 + max(0.0, 3.9 - top))
         if cut is None and lod <= 2:
             # The capital, broader, where the first limbs leave, standing out of the wall on one side.
-            cw = 0.33
-            block(m, (-cw, top - 0.05, -cw), (cw, top + 0.55, cw * 0.6), mat, "column", 0.0)
+            cw = 0.45
+            block(m, (-cw, top - 0.05, -cw), (cw, top + 0.7, cw * 0.7), mat, "column", 0.0)
         return
     radius = HALF[thing]
-    top = cut if cut is not None else (spec["fork"] + 1.8 if thing == "pole" else 3.0)
+    # The pole broken off high among the limbs, where it stands out of the crown's underside.
+    top = cut if cut is not None else (spec["fork"] + 3.4 if thing == "pole" else 3.0)
     sides = {0: 10, 1: 7}.get(lod, 5) if thing == "pole" else {0: 6}.get(lod, 4)
     u0, v0, u1, v1 = RUINS[thing]
     height = RUIN_SIZE[thing][1]
@@ -200,25 +203,33 @@ def swallowed(m, spec, lod, cut=None):
         tube(m, path, [radius, radius * (0.95 if thing == "pole" else 1.0)], sides, mat, uv=(u0, u1, v1, -height / (v1 - v0)), caps=(True, True))
     else:
         tube(m, path, [radius, radius], sides, mat)
+    if thing == "pole" and cut is None and lod <= 2:
+        # Its crossarm, a little below the break, reaching out of the wood both ways.
+        arm = [(-0.85, top - 0.6, 0.0), (0.85, top - 0.6, 0.0)]
+        if m.textured:
+            tube(m, arm, [0.07, 0.07], 4, mat, uv=(u0, u1, v0, height / (v1 - v0)), caps=(True, True))
+        else:
+            tube(m, arm, [0.07, 0.07], 4, mat)
     if thing == "sign" and cut is None and lod <= 2:
-        # The blade, bolted to the post at 2.2 m and standing out through the window on its side.
-        a = math.radians(spec["windows"][0][0])
-        out = horizontal(a)
-        side = horizontal(a + math.pi / 2)
-        c = add((0.0, 2.25, 0.0), mul(out, 0.12))
-        w, h = 0.75, 0.45
-        p = lambda x, y: add(c, add(mul(out, x), (0.0, y, 0.0)))
+        # Two street blades, bolted to the post at 2.25 and 2.6 m across each other, each standing out through a window.
         su0, sv0, su1, sv1 = RUINS["sign"]
         mid_u = (su0 + su1) / 2
-        grid = [[p(0.0, h / 2), p(w, h / 2)], [p(0.0, -h / 2), p(w, -h / 2)]]
-        grid = [[add(q, mul(side, 0.004)) for q in row] for row in grid]
-        face(m, grid, mat, [[(su0, sv0), (mid_u, sv0)], [(su0, sv1), (mid_u, sv1)]], back=[[(su1, sv0), (mid_u, sv0)], [(su1, sv1), (mid_u, sv1)]])
+        for window, y in ((spec["windows"][0], 2.25), (spec["windows"][1], 2.62)):
+            a = math.radians(window[0])
+            out = horizontal(a)
+            side = horizontal(a + math.pi / 2)
+            c = add((0.0, y, 0.0), mul(out, 0.1))
+            w, h = 0.95, 0.32
+            p = lambda x, yy: add(c, add(mul(out, x), (0.0, yy, 0.0)))
+            grid = [[p(0.0, h / 2), p(w, h / 2)], [p(0.0, -h / 2), p(w, -h / 2)]]
+            grid = [[add(q, mul(side, 0.004)) for q in row] for row in grid]
+            face(m, grid, mat, [[(su0, sv0), (mid_u, sv0)], [(su0, sv1), (mid_u, sv1)]], back=[[(su1, sv0), (mid_u, sv0)], [(su1, sv1), (mid_u, sv1)]])
 
 
 def fig(name, lod):
     spec = SPECS[name]
     if lod == far.LEVEL:
-        return far.broadleaf(fig(name, lod - 1), skeleton(spec)[2], (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
+        return far.crown(fig(name, 3), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
     m = Mesh(lod <= 2)
     rng = rng_for(name, "level", lod)
     limbs, stub, lobes = skeleton(spec)
@@ -240,11 +251,11 @@ def fig(name, lod):
     if stub is not None and lod <= 3:
         bl.bark_tube(m, bl.coarser(stub, {0: 5, 1: 3, 2: 2, 3: 1}[lod]), order_sides[0], BARK, STEM, caps=(True, True))
     if lod <= 2:
-        bl.crown(m, lobes, lod, rng, ATLAS, 1.2, shade=shade)
+        bl.crown(m, lobes, lod, rng, ATLAS, 1.2, MASS, shade=shade, grain=1.35)
         if lod <= 1:
             curtains(m, spec["name"], limbs, lobes, lod, count=(14, 18), reach=(2.0, 5.0))
     else:
-        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 10 if lod == 3 else 6)
+        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 14 if lod == 3 else 7)
     return m
 
 

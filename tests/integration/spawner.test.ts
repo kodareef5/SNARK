@@ -203,7 +203,7 @@ test("a save made before the spawner keeps its herd, counted for the region it s
   expect([herd!.count, beach!.count, hunters!.count]).toEqual([30, 0, 0]);
   ticks(host, 30);
   expect(host.spawner!.made).toBe(0);
-  // Two checks each, as one may find every place its group would stand taken: the beach's first, by a live oak's trunk.
+  // Two checks each, as one may find every place its group would stand taken.
   ticks(host, 2 * CHECK_SECONDS * TICK_RATE);
   expect([herd!.count, beach!.count > 0, hunters!.count > 0]).toEqual([30, true, true]);
   host.shutdown();

@@ -1,7 +1,8 @@
-# Holds each tree's far level (far.py) to its level 4, and every level to the slope rule, without Blender. For each
-# tree: triangles, how far the far level's box is from level 4's on each axis and at its base, and the area and mean
-# colour seen from the side (eight ways round, above the ground) and from above, by drawing both into a depth buffer in
-# the colours their faces name; colours as OKLab lightness and distance in palette steps (the earth ramps' 0.056). Then
+# Holds each tree's far level (far.py) to the level it is made to (a broadleaf tree's 3, a palm's 4), and every level to
+# the slope rule, without Blender. For each tree: triangles, how far the far level's box is from that level's on each
+# axis and at its base, the area and mean colour seen from the side (eight ways round, above the ground) and from above,
+# by drawing both into a depth buffer in the colours their faces name, and the pixels the two share at 170 m; colours
+# as OKLab lightness and distance in palette steps (the earth ramps' 0.056). Then
 # any part of any level that meets the ground and is carried below the origin by less than 0.6 of how far out it meets
 # it, as the README asks. Run with python3 from this folder.
 
@@ -15,8 +16,10 @@ import figs
 import mangroves
 import oaks
 import palms
+import young
 
 STEP = (0.912 - 0.273) / 11.5
+PX_AT_HAND = 1080 / (2 * 170 * math.tan(math.radians(35)))
 
 
 def linear(name):
@@ -29,8 +32,9 @@ def oklab(lin):
     return np.array([[0.2104542553, 0.7936177850, -0.0040720468], [1.9779984951, -2.4285922050, 0.4505937099], [0.0259040371, 0.7827717662, -0.8086757660]]) @ lms
 
 
-def seen(mesh, extent, res=0.08):
-    """{view: (area in square metres, OKLab mean)} of the mesh drawn orthographically from the side and from above."""
+def seen(mesh, extent, res=0.08, masks=None):
+    """{view: (area in square metres, OKLab mean)} of the mesh drawn orthographically from the side and from above.
+    Given a list, `masks` gets the pixels each view covers."""
     tris, cols = [], []
     for idx, mat, _, _ in mesh.faces:
         p = [mesh.points[i] for i in idx]
@@ -64,13 +68,17 @@ def seen(mesh, extent, res=0.08):
             sub[near] = z[near]
             img[j0 : j1 + 1, i0 : i1 + 1][near] = cols[t]
         mask = np.isfinite(depth)
+        if masks is not None:
+            masks.append(mask)
         area, total = out.get(name, (0.0, np.zeros(3)))
         out[name] = (area + mask.sum() * res * res / (8 if name == "side" else 1), total + img[mask].sum(0))
     return {k: (a, oklab(t / (a / res / res * (8 if k == "side" else 1)))) for k, (a, t) in out.items()}
 
 
 def compare(mod, piece):
-    near, far_ = mod.build(piece, 4), mod.build(piece, 5)
+    # A broadleaf tree's far level is made to level 3, which the near store draws where it hands the tree over; a
+    # palm's to its level 4.
+    near, far_ = mod.build(piece, 4 if mod is palms else 3), mod.build(piece, 5)
     (lo4, hi4), (lo5, hi5) = near.bounds(), far_.bounds()
     extent = max(abs(v) for v in lo4 + hi4 + lo5 + hi5) + 1
     a, b = seen(near, extent), seen(far_, extent)
@@ -79,6 +87,13 @@ def compare(mod, piece):
     for view in ("side", "above"):
         (a4, c4), (a5, c5) = a[view], b[view]
         line += f"  {view}: area {a5 / a4 * 100:3.0f}%, lightness {(c5[0] - c4[0]) / STEP:+.2f}, colour {np.linalg.norm(c5 - c4) / STEP:.2f} steps"
+    # The pixels the two share where the far layer takes over: at 170 m on medium (1,080 rows, 70 degrees high) a metre
+    # is 4.54 pixels. Of the pixels either covers, the share both do, from the eight sides and from above.
+    m4, m5 = [], []
+    seen(near, extent, 1 / PX_AT_HAND, m4)
+    seen(far_, extent, 1 / PX_AT_HAND, m5)
+    shared = [(x & y).sum() / max((x | y).sum(), 1) for x, y in zip(m4, m5)]
+    line += f"  shared at 170 m: {np.mean(shared[:8]) * 100:.0f}% from the side (least {min(shared[:8]) * 100:.0f}%), {shared[8] * 100:.0f}% from above"
     print(line)
 
 
@@ -120,7 +135,7 @@ def grounded(mod, piece):
 
 
 if __name__ == "__main__":
-    for mod in (palms, oaks, figs, banyans, mangroves):
+    for mod in (palms, young, oaks, figs, banyans, mangroves):
         for piece, _ in mod.PIECES:
             if not piece.endswith("_depleted"):
                 compare(mod, piece)
