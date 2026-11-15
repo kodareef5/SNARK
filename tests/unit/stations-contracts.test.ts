@@ -45,9 +45,10 @@ test("protocol 17 and record format 7 are the stations wave's, and it took no co
 
 test("the fields: a station's own fuel is built, the forge's (S1) are built, and the rest are stubs that wait for stations, each its project's", () => {
   expect(FIELDS.structure.burns.waits).toBeUndefined();
-  // S1 built cooks, dry, burnsInto and craft.fired (the refining forge); S2 built `powered` (server/power.ts,
-  // tests/integration/fabricator.test.ts).
-  expect([FIELDS.structure.cooks.waits, FIELDS.structure.keeps.waits, FIELDS.structure.powered.waits, FIELDS.structure.dry.waits]).toEqual([undefined, "stations", undefined, undefined]);
+  // S1 built cooks, dry, burnsInto and craft.fired (the refining forge); S2 `powered` (server/power.ts,
+  // tests/integration/fabricator.test.ts); S3 `keeps` on structures and `cooks: false` too (server/preserve.ts, the hearth;
+  // tests/integration/preserving.test.ts).
+  expect([FIELDS.structure.cooks.waits, FIELDS.structure.keeps.waits, FIELDS.structure.powered.waits, FIELDS.structure.dry.waits]).toEqual([undefined, undefined, undefined, undefined]);
   expect([FIELDS.item.burnsInto.waits, FIELDS.item.craft.stubs]).toEqual([undefined, undefined]);
   for (const f of ["burns", "cooks", "keeps", "powered", "dry"]) expect([f, classRow("structure/station")!.may.includes(f)]).toEqual([f, true]);
   // A container may keep things longer too, as the feeding trough will.
@@ -75,20 +76,26 @@ test("the eight resources are plain items at their pages' weights and stacks, an
   expect(CORE_CONTENT.some((d) => d.type === "engram" && d.item === "core:ingot")).toBe(false);
 });
 
-test("the core pack compiles to the columns: each station is its own base, a fire lit and out is one, only the fabricator names its own fuel and is powered, and the forge and fabricator are dry and do not cook", () => {
+test("the core pack compiles to the columns: each station is its own base, a fire lit and out is one, only the fabricator and the preserving bin name their own fuel, the fabricator alone is powered, the forge and fabricator are dry, none of the three cooks, and the bin's lit kind alone keeps longer", () => {
   const structures = reg.defs.flatMap((d, k) => (d?.type === "structure" ? [k] : []));
   const forge = [id(reg, "forge"), id(reg, "forge_lit")];
   const fabricator = [id(reg, "fabricator"), id(reg, "fabricator_lit")];
   const both = [...forge, ...fabricator].sort((a, b) => a - b);
   expect([reg.stationBase[id(reg, "campfire")], reg.stationBase[id(reg, "campfire_lit")], reg.stationBase[id(reg, "mortar")], reg.stationBase[id(reg, "stone")]]).toEqual([id(reg, "campfire"), id(reg, "campfire"), id(reg, "mortar"), 0]);
-  expect(structures.filter((k) => k !== id(reg, "campfire_lit") && k !== forge[1] && k !== fabricator[1] && reg.stationBase[k] !== k)).toEqual([]);
+  const bin = [id(reg, "preserving_bin"), id(reg, "preserving_bin_lit")];
+  expect(structures.filter((k) => k !== id(reg, "campfire_lit") && k !== forge[1] && k !== fabricator[1] && k !== bin[1] && reg.stationBase[k] !== k)).toEqual([]);
+  const byIndex = (ks: number[]): number[] => [...ks].sort((a, b) => a - b);
   // S2's fabricator: gasoline alone, powered, not lit under water, and it cooks nothing (stations-plan.md, S2).
-  expect(reg.stationFuel.flatMap((t, k) => (t === null ? [] : [k]))).toEqual(fabricator);
-  expect(structures.filter((k) => reg.structKeeps[k] !== 1 || reg.powered[k] !== 0)).toEqual(fabricator);
+  // S3's preserving bin: sparkpowder alone, half an hour a piece (Preserving Bin), and it cooks nothing.
+  expect(reg.stationFuel.flatMap((t, k) => (t === null ? [] : [k]))).toEqual(byIndex([...fabricator, ...bin]));
+  expect(structures.filter((k) => reg.structKeeps[k] !== 1 || reg.powered[k] !== 0)).toEqual(byIndex([...fabricator, bin[1]!]));
   expect(fabricator.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.powered[k], reg.dry[k]])).toEqual(fabricator.map(() => [fabricator[0], 0, 1, 1]));
+  expect([reg.stationFuel[bin[0]!]![id(reg, "sparkpowder")], reg.stationFuel[bin[0]!]!.filter((v) => v !== 0).length]).toEqual([1800 * TICK_RATE, 1]);
+  // Its lit kind keeps 10 times as long, Registry.keeps with it; out, it keeps as the hand does.
+  expect(bin.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.structKeeps[k], reg.keeps[k], reg.powered[k], reg.dry[k]])).toEqual([[bin[0], 0, 1, 1, 0, 0], [bin[0], 0, 10, 10, 0, 0]]);
   // S1's forge: it burns every item's own fuel, is not powered, is dry and does not cook; the ingot and gasoline are fired
   // at it, and wood leaves charcoal.
-  expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([both, both]);
+  expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([byIndex([...both, ...bin]), both]);
   expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"]], [["core:wood", "core:charcoal"]]]);
   // Sparkpowder is made at the mortar, as before.
   expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar"))]).toEqual([id(reg, "mortar"), [id(reg, "sparkpowder")]]);

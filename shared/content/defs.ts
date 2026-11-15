@@ -279,9 +279,13 @@ export interface StructureDef extends Named {
    * sparkpowder). Omitted, it burns every item by the item's own `fuel`, as a campfire does.
    */
   readonly burns?: readonly { readonly item: string; readonly seconds: number }[];
-  /** False for a fire that does not cook what has `cooks` (M1). Omitted, it cooks. */
+  /** False for a fire that does not cook what has `cooks` (M1), as the forge and the preserving bin do not. Omitted, it cooks. */
   readonly cooks?: boolean;
-  /** How many times as long things keep in it, as a species' `keeps` (M6). A stub until S3. */
+  /**
+   * How many times as long things keep in it, as a species' `keeps` (M6): a feeding trough's 4 always, a preserving bin's
+   * 10 on its lit kind only. A station whose two kinds keep differently has every spoil clock rescaled at the tick it swaps
+   * (server/preserve.ts).
+   */
   readonly keeps?: number;
   /**
    * Its jobs run only while it burns (M5): no job is taken while it is out, and a unit under way when it goes out waits with

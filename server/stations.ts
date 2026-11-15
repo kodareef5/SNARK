@@ -168,7 +168,7 @@ export class Stations {
         return true;
       },
       waiting: () => {
-        // A fire that does not cook (the forge) leaves raw meat raw.
+        // A station that does not cook (`cooks: false`: the forge, the preserving bin) has nothing waiting over it (M1).
         if (this.world.reg.stationCooks[this.rec!.kind] === 0) return 0;
         const s = first(reg.cooksInto);
         return s < 0 ? 0 : reg.cookTicks[this.rec!.inv!.item[s]!]!;
