@@ -1,0 +1,62 @@
+**The animal reads immediately as a pterosaur. Glide is the strongest clip; take-off and landing need the most work.** The main weakness is that the wings change shape more convincingly than the body receives or produces force.
+
+Frame numbers below are zero-based animation frames. Fly, hover, dive, take-off and land show every second frame; the last take-off/landing image is frame 35. I distinguish visible problems from one contact issue checked in the source. Sampled stills cannot establish an exact one-frame pop.
+
+`fly` — Reads as a large pterosaur flapping steadily, but the shoulders feel underpowered.
+
+1. **Frames 4–18:** The head is commendably steady, but the chest beneath it barely appears to work. Give the chest a little more upward travel through the loaded downstroke, with its highest position slightly after the strongest push. An additional 5–10 cm is a reasonable first experiment; preserve the level beak.
+2. **Frames 18–26:** The flexed recovery is recognizably different from the downstroke. Around 20–24, make the elbow lead and the long finger follow more clearly, rather than letting the inner and outer wing reverse almost together. A small delay is enough; excessive finger curl would make this large wing look rubbery.
+3. **Player scale:** The silhouette survives at both sizes. The frontal wing becoming thin around frames 6–10 is ordinary foreshortening, not a broken silhouette. I see no compelling reason to enlarge the stroke beyond the rider limit.
+
+`fly_fast` — Reads mainly as faster playback of cruising flight; the sprint posture needs more distinction.
+
+1. **Frames 0–17:** The side-view head and neck remain very close to cruising. Carry the head farther forward through a flatter neck curve, with the chest committed forward beneath it. Keep the beak level.
+2. **Frames 0–2 and 15–17:** The tall upper-stroke silhouette still resembles `fly`. Reduce the outer wing’s upward excursion slightly and carry the wrists farther aft throughout the cycle. Make the difference visible in a single pose.
+3. **Frames 7–12:** Preserve a firm, extended working surface through the push, then release it briskly into recovery. At small sizes, cadence will carry most of the distinction; the current silhouette does not disappear.
+
+`hover` — Reads as hovering or braking hard, with the correct upright body and hanging legs.
+
+1. **Frames 12–16:** Several successive poses cluster near the bottom of the stroke. That apparent dwell weakens the sense of continuously supporting a large animal. Begin the recovery a little earlier, with the wrist leading the change.
+2. **Frames 18–24:** Emphasize the recovery travelling **back and inward** before opening for the next push. From below, it currently resembles another broad flap more than a deliberately unloaded return.
+3. **Frames 6–18:** Give the chest a stronger response to the push and let the dangling feet lag that response slightly. Keep the head controlled. Sustained, ridden, still-air hovering should be treated as a game assumption rather than established Pteranodon behaviour; visually, it should look expensive.
+
+`glide` — Reads convincingly as a large soaring animal, and is the closest match to the brief.
+
+1. **Frames 0–87:** Keep the broad, quiet wing carriage. The shallow M survives at player scale, and the small asymmetries already help. This does not need conspicuous wing motion to prove that it is alive.
+2. **For stronger character:** Concentrate one correction around frames 15–24, followed by a clear settled interval around 30–45. A wrist/tip adjustment that happens and finishes will read more intentionally than continuous low-amplitude variation.
+3. **Around frames 60–75:** Make the existing look more purposeful: a modest turn and downward eye-line, a hold, then a return. Move the head more than the entire neck. It can remain invisible at 36 pixels; the wing silhouette is doing the identification there.
+
+`dive` — Reads as a held high-wing pose, almost a frozen upper stroke, rather than an arrow-shaped descent.
+
+1. **Frames 0–28:** This is the clearest flight-pose problem. In front view, the wings form a tall U/V; in side view, a large wing projects upward. The dominant change is elevation, not backward sweep.
+2. Bring the outer wings farther **aft relative to the torso**, with the elbows and wrists drawing the span inward. Judge that shape before the game pitches the root: rotating the whole animal downward will not fix the relationship between its wings and body.
+3. **Player scale:** It remains visible, but becomes a short, broad, bat-like shape. Aim for a clearer relationship between the projecting beak and two trailing wing points. The restrained movement within the held pose is appropriate.
+
+`take_off` — Reads as being lifted while unfolding, followed by a flap; the quadrupedal vault does not yet sell.
+
+1. **Frames 0–5: a contact fault hidden by the tracking camera.** In the [clip source I inspected](/home/user/dev/SNARK/.claude/worktrees/agent-a172644c8afc1a6cf/assets/source/core/creatures/pteranodon/clips_move.py), the nominally planted hand targets remain fixed relative to the rising root. Consequently, they rise roughly **37 cm by frame 2 and 69 cm by frame 4** above their original ground position. Ground contact must be maintained in world space during the push; otherwise the crouch and vault happen in mid-air.
+2. **The release order also needs correcting:** the inspected timing releases hands at frame 4 and feet at frame 5. For the intended quadrupedal vault, make the hindlimbs initiate the movement and the forelimbs deliver the final ground impulse. The arms need a visibly loaded extension before leaving. Forelimb-powered launch is supported by biomechanical work, although its precise animation timing remains a reconstruction. [Griffin et al., 2024](https://pmc.ncbi.nlm.nih.gov/articles/PMC11308997/)
+3. **Frames 8 → 10 → 12 → 14:** This is a conspicuous visual reversal. The wings begin spreading, narrow back into an overhead bundle, then spread again. At small size the animal visibly expands, contracts, expands. Check the wrist and long-finger trajectories: give deployment one continuous, legible path. Pleating the membrane will not remove that reversal of the wing extremities.
+4. **Frames 16–24:** Make this first downstroke the strongest shoulder action in the set. Follow it with a diminishing body response through 26–33. Preserve the final hover pose, and check that the movement into frames 33–35 joins the hover smoothly as well.
+
+`land` — Reads as landing and putting the wings away, but the fold distracts from the impact.
+
+1. **Frames 0–6:** Feet-first contact is a sound choice. Make the initial leg compression and forward transfer of the chest more legible, followed by a smaller recovery. A short skid can belong here; sliding is not automatically an error. A fossil pterodactyloid landing trackway records hindfeet-first contact, short subsequent movements, and later forelimb placement. [Mazin et al., 2009](https://pubmed.ncbi.nlm.nih.gov/19692407/)
+2. **Frames 10 → 12 → 14 → 16:** The wings nearly disappear into the body silhouette at 12, then reopen into a conspicuous U at 14 before folding again. This is the strongest apparent “pop” interval in the sheets, although the missing intermediate frames prevent calling it a single-frame discontinuity. Keep the long fingers travelling consistently backward while the hands descend.
+3. **Frames 16–22:** Give hand contact its own visible consequence: the shoulders settle onto the arms, the elbows yield, then arrest the descent. Currently the folded pose arrives more clearly than the weight does.
+4. **Frames 22–35:** Let the recovery diminish into the crouch. The level head is useful, but a very small delayed head translation would help prevent it looking mechanically isolated from the landing.
+
+`walk` — Reads as an animal shuffling on folded wings, but it lacks the deliberate transfer of weight of a careful quadruped.
+
+1. **Around contacts at frames 0, 5, 10 and 15:** Make the chest move more decisively onto the supporting limbs. The body currently stays almost at the same height and attitude while the limbs cycle underneath it. Increase the shoulder weight shift and the yielding after placement; keep the head substantially steadier than the chest.
+2. **Right-hand recovery around frames 2–9; left around 12–19:** Make lifting, swinging and setting down easier to distinguish. The folded wing assembly appears to travel forward as a large object, obscuring the hand’s small clearance. Some of that is the slab membrane; the animation should still give the hand a clean departure and arrival.
+3. **Contact verdict:** I cannot identify a definite planted-foot skate against the lines from these sheets. Nor would I call the apparent membrane “skis” an animation fault. Once the membrane is gathered, the supporting hand and the raised long finger must read as separate things.
+4. **Timing check:** A 1.5 m stride over 20 frames at 30 fps travels at **2.25 m/s**. At 2.6 m/s, playback must be about **1.156×** that rate. Distance-driven playback resolves this; fixed-rate playback would introduce about 23 cm of mismatch per loop.
+
+`idle` — Reads as resting watchfully, although most of its personality disappears beyond close range.
+
+1. **Frames 12–30 and 36–54:** The two look directions are visible, especially from the front. Preserve distinct holds. With six frames between samples, these sheets cannot fairly establish whether the turns themselves are sufficiently quick.
+2. **Around frames 96–108:** The wing shrug is too buried in the standing outline to carry much character. Give one shoulder a clearer lift and settlement, with the folded finger following; a slight asymmetry would suit this skittish animal.
+3. **Around frame 66:** The beak action is too sparsely sampled to judge the clack’s closure. Breathing and clacking can remain close-range details. At 36 pixels, a stable resting silhouette is acceptable; at 90 pixels, one readable weight shift would help.
+
+One anatomical constraint matters across the revisions: **borrow force and timing from birds and bats, but respect the pterosaur wing’s different joints.** Its main wing support is one elongated finger, and the wrist and finger-base articulations have constrained paths. The take-off and landing reversals deserve scrutiny at those joints before being attributed to skin folding. I do **not** see enough in these sheets to declare a specific neck or wrist anatomically dislocated. [Wilkinson et al., 2008](https://onlinelibrary.wiley.com/doi/full/10.1111/j.1096-3642.2008.00409.x)
