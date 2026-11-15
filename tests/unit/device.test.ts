@@ -214,7 +214,7 @@ test("texture memory grows a megabyte at a time on a spare unit, and says when t
 test("a report with nothing in it yet still reads as a table", () => {
   const lines = deviceTable(newReport("0123456789abcdef", "ladder"));
   expect(lines[0]).toBe("SNARK device report 0123456789abcdef, ladder: stopped at starting");
-  expect(lines).toContain("materials none asked for: no tier with materials ran");
+  expect(lines).toContain("materials none counted: no phase, rung or soak minute of this test ran on a tier that has them");
 });
 
 test("a tier that has materials and drew none of them is said to lack them, plainly; low poly has none to lack", () => {

@@ -95,7 +95,7 @@ function materialsLine(r: DeviceReport): string {
   const { drawn, lacking } = materialsLacking(r);
   const made = drawn.length === 0 ? "" : r.texturesMade > 0 ? `drawn on ${drawn.join(", ")}: the renderer made ${r.texturesMade} textures` : `drawn on ${drawn.join(", ")}, but the renderer made no textures`;
   const lack = lacking.length === 0 ? "" : `none drawn on ${lacking.join(", ")}, which have them: a lack, as their textures never arrived or the card refused them`;
-  return [made, lack].filter((w) => w !== "").join("; ") || "none asked for: no tier with materials ran";
+  return [made, lack].filter((w) => w !== "").join("; ") || "none counted: no phase, rung or soak minute of this test ran on a tier that has them";
 }
 
 /** The ladder for each tier: per axis the most that held the display's rate, and the first that did not, with why. */
