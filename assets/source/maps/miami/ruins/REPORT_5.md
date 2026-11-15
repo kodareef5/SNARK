@@ -2,6 +2,16 @@
 
 The city uses true sloped collision for its building flights, rail connectors, roofs and fallen floors. Miami has 57 high refuges: 51 at twelve floors and six at sixteen, with a second stair out of each. The final city contains 1,235,962 statics and its busiest packed chunk contains 999. Miami, Tampa, San Francisco and Los Angeles pass their complete map proofs and reproduce byte for byte.
 
+Landing on main (`r9/ruins5-land`): all five cities build on round five's library with main's lakes and the 2,000-piece chunk (D566). Each city builds to the same bytes twice and passes every stair, exit, room, approach, deck, spawn and obelisk walk; Las Vegas keeps the Sahara deck's one failure from round four, and its other thirty are gone. Las Vegas takes Miami's budgets as D566 left it, so it now has sixteen playable floors like the others; that refuses one more footprint and builds one more at full detail, and every landmark stands. The budget mostly went to buildings that 999 had cut short: Miami builds 13 buildings at reduced detail instead of 31 and has 70 twelve-floor and 12 sixteen-floor refuges instead of 51 and 6; San Francisco admits 81 more buildings and has 99 and 7 refuges instead of 94 and 6. Tampa and Los Angeles barely move, because their towers were not short of room. One fix was needed. At 2,000 San Francisco admits an apartment on ground that Hotel Fusion's lower rooms had cut away, which left its door 0.86 m above the ground. A door and corridor in that position now get their floor back, unless the floor would stand in the lower neighbour's rooms. The gallery was drawn again on main's water. The refuge views are now the first refuge at twelve floors (One Biscayne Tower) and the first at sixteen (Southeast Financial Center). Each of the other four cities keeps pictures of its refuges, a flight, pitched roofs and its water in its own `reports/ruins5`.
+
+| City | Pieces, round 4 / artist on 999 / landed | Busiest chunk, the same three | Refuges at 12 and 16 floors, artist / landed | Walks failed, round 4 / landed | Bytes, landed | SHA-256, landed |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Miami | 1,210,204 / 1,235,962 / 1,257,230 | 998 / 999 / 1,815 | 51, 6 / 70, 12 | 0 / 0 | 72,302,284 | `8af8d3ed…65d365` |
+| Tampa | 2,271,141 / 2,566,903 / 2,574,300 | 984 / 987 / 1,464 | 17, 1 / 18, 1 | 0 / 0 | 95,690,507 | `0277de3d…cdf51` |
+| San Francisco | 2,889,874 / 2,984,014 / 3,006,090 | 999 / 999 / 1,830 | 94, 6 / 99, 7 | 21 / 0 | 101,566,434 | `dc4998e7…e9c02f` |
+| Los Angeles | 2,729,470 / 2,906,801 / 2,909,021 | 987 / 942 / 1,813 | 8, 0 / 8, 0 | 7 / 0 | 101,898,408 | `f219779c…f8c71` |
+| Las Vegas | 2,082,068 / not built / 2,251,935 | 1,991 / none / 1,991 | none / 23, 6 | 31 / 1 | 88,856,624 | `8c1dccd0…1914b` |
+
 The [gallery](../reports/ruins5/index.html) pairs round four with round five. The [blind kinds](../reports/ruins5/lineup-kind.png), [blind falls](../reports/ruins5/lineup-fall.png), [selections](../reports/ruins5/samples.json) and [cameras](../reports/ruins5/views.json) are separate, so the key need not be opened first.
 
 ## The library and the saving
