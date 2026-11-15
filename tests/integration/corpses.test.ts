@@ -9,18 +9,20 @@ import { join } from "node:path";
 import { Corpses as Drawn } from "../../client/core/ragdoll.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { CORPSE_TICKS, type Body } from "../../server/corpses.ts";
-import type { HostOptions } from "../../server/host.ts";
+import { createHost, type HostOptions } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, STAGE_WORST } from "../../shared/anim/pose.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import type { BitWriter } from "../../shared/net/codec.ts";
+import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_MOVE, CMD_OPEN, RESULT_INVALID } from "../../shared/net/protocol.ts";
 import { BTN_USE } from "../../shared/sim/character.ts";
 import { SWING_TICKS } from "../../shared/sim/weapon.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { DROPS, OP_BLOW, OP_LAY } from "../fixtures/corpse-child.ts";
 import { swing, takeInHand } from "../fixtures/gather.ts";
 import { Harness } from "../fixtures/net.ts";
+import { coreRegistry } from "../fixtures/world.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-corpses-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -320,4 +322,61 @@ test("a body survives a restart where it lay, with the harvest health and the ti
   expect(Array.from(b2.pose!.pos)).toEqual(pose);
   expect(h2.host.items.audit()).toEqual([]);
   h2.host.shutdown();
+});
+
+/** Runs the corpse child until it has acknowledged `acks` commits, kills it without warning, and returns the last journal entry acknowledged. */
+async function untilKilled(db: string, seed: number, acks: number): Promise<number> {
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../fixtures/corpse-child.ts"), db, String(seed)], { stdout: "pipe", stderr: "inherit" });
+  const decoder = new TextDecoder();
+  let text = "";
+  let killed = false;
+  for await (const chunk of proc.stdout) {
+    text += decoder.decode(chunk);
+    if (!killed && text.split("acked").length > acks) {
+      proc.kill(9);
+      killed = true;
+    }
+  }
+  await proc.exited;
+  return Number([...text.matchAll(/acked (\d+)\n/g)].at(-1)![1]);
+}
+
+test("killing the process at any moment of a harvest loses nothing: each body's health and each harvester's pieces are the blows committed, and the ledger balances", async () => {
+  const reg = coreRegistry();
+  const items = DROPS.map((d) => reg.index.get(d)!);
+  for (const [seed, acks] of [[5, 30], [6, 70]] as const) {
+    const db = join(dir, `harvest-${seed}.db`);
+    const last = await untilKilled(db, seed, acks);
+    // Loading audits the ledger, so a piece in two places or in none stops it here.
+    const host = createHost(reg, { dbPath: db });
+    const journal = host.persistence!.store.journal();
+    expect(journal.at(-1)!.seq).toBeGreaterThanOrEqual(last);
+    const max = new Map<number, number>();
+    const dealt = new Map<number, number>();
+    const got = new Map<number, number[]>();
+    for (const j of journal) {
+      const r = new BitReader(j.data);
+      if (j.op === OP_LAY) max.set(r.uint53(), r.f64());
+      if (j.op !== OP_BLOW) continue;
+      const body = r.uint53();
+      const by = r.uint53();
+      dealt.set(body, (dealt.get(body) ?? 0) + r.varint());
+      const g = got.get(by) ?? items.map(() => 0);
+      for (let k = 0; k < items.length; k++) g[k] = g[k]! + r.varint();
+      got.set(by, g);
+    }
+    expect(dealt.size).toBeGreaterThan(5);
+    for (const [pid, most] of max) {
+      const b = host.corpses.bodies.get(pid);
+      // One still lying has taken exactly the blows committed. One gone was used up by them.
+      if (b) expect([b.max, b.max - b.left, b.e >= 0]).toEqual([most, dealt.get(pid) ?? 0, true]);
+      else expect(dealt.get(pid)!).toBeGreaterThanOrEqual(most);
+    }
+    expect(host.corpses.count).toBe([...max.keys()].filter((pid) => (dealt.get(pid) ?? 0) < max.get(pid)!).length);
+    for (const pid of host.persistence!.survivors.values()) {
+      const inv = host.items.inv(host.records.byPid.get(pid)!);
+      expect(items.map((item) => inv.total(item))).toEqual(got.get(pid) ?? items.map(() => 0));
+    }
+    host.shutdown();
+  }
 });

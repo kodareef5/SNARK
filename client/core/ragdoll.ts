@@ -16,8 +16,10 @@ import type { RemoteSample } from "./session.ts";
 
 /** Ticks over which the last pose alive blends into the death clip. */
 const BLEND = 4;
-/** Ticks between the snapshot that said a creature died and the frame its body is first drawn, either way, for the two to be one. */
+/** Ticks between the snapshot that said a creature died and the frame it was last drawn, either way, for it to have died there. */
 const TOLD = 8;
+/** Ticks after that within which its body may come, in a later snapshot when the one that said it died was full. */
+const LATE = 30;
 /** Metres between where a creature was last drawn and where a body lies, for the two to be one. */
 const NEAR = 2;
 /** Ticks of falling stepped in one frame for the bodies a client comes upon, nearest first. The rest wait for the next frame. */
@@ -55,6 +57,17 @@ export interface Corpse {
   readonly solved: Solved;
   /** The update that last saw its entity. */
   seen: number;
+}
+
+/** A creature the server said died, as it was last drawn, waiting for its body. */
+interface Fallen {
+  id: number;
+  kind: number;
+  x: number;
+  z: number;
+  anim: number;
+  cue: number;
+  tick: number;
 }
 
 /** A copy twice as long. */
@@ -113,6 +126,7 @@ export class Corpses {
   private readonly st = new AnimState();
   private readonly a: Pose[] = [];
   private readonly waiting: Corpse[] = [];
+  private readonly fallen: Fallen[] = [];
 
   /**
    * `mortal` is what each kind plays, indexed by content kind, null for a kind whose body is not drawn here. A body carries
@@ -134,6 +148,17 @@ export class Corpses {
     const now = this.now;
     now.count = 0;
     for (let i = 0; i < remote.count; i++) if (this.mortal[remote.kind[i]!] && (remote.cue[i]! & CUE_DEAD) === 0) now.push(remote, i);
+    // The living gone since the last frame whom the server said died, each to be met with its body when that comes.
+    const was = this.was;
+    const fallen = this.fallen;
+    for (let k = 0; k < was.count; k++) {
+      const told = remote.died.get(was.id[k]!);
+      if (told === undefined || Math.abs(told - tick) > TOLD || now.has(was.id[k]!)) continue;
+      fallen.push({ id: was.id[k]!, kind: was.kind[k]!, x: was.at[k * 3]!, z: was.at[k * 3 + 2]!, anim: was.anim[k]!, cue: was.cue[k]!, tick });
+    }
+    let kept = 0;
+    for (const f of fallen) if (tick - f.tick <= LATE) fallen[kept++] = f;
+    fallen.length = kept;
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
       if (!this.mortal[kind] || (remote.cue[i]! & CUE_DEAD) === 0) continue;
@@ -148,7 +173,6 @@ export class Corpses {
       c.decay = (remote.cue[i]! >>> CUE_DECAY_SHIFT) & 3;
     }
     for (let k = this.list.length - 1; k >= 0; k--) if (this.list[k]!.seen !== seen) this.forget(this.list[k]!);
-    // The living this frame are the ones the next frame's bodies are matched against.
     this.now = this.was;
     this.was = now;
     const waiting = this.waiting;
@@ -178,26 +202,25 @@ export class Corpses {
     const x = wireX(r.x[i]!);
     const y = wireY(r.y[i]!);
     const z = wireX(r.z[i]!);
-    const was = this.was;
+    const fallen = this.fallen;
     let from = -1;
     let near = NEAR * NEAR;
-    for (let k = 0; k < was.count; k++) {
-      if (was.kind[k] !== kind || this.now.has(was.id[k]!)) continue;
-      const told = r.died.get(was.id[k]!);
-      if (told === undefined || Math.abs(told - tick) > TOLD) continue;
-      const dx = was.at[k * 3]! - x;
-      const dz = was.at[k * 3 + 2]! - z;
-      if (dx * dx + dz * dz >= near) continue;
-      near = dx * dx + dz * dz;
+    for (let k = 0; k < fallen.length; k++) {
+      const f = fallen[k]!;
+      const far = (f.x - x) * (f.x - x) + (f.z - z) * (f.z - z);
+      if (f.kind !== kind || far >= near) continue;
+      near = far;
       from = k;
     }
     let alive: Pose | null = null;
     if (from >= 0) {
+      const f = fallen[from]!;
+      fallen.splice(from, 1);
       const st = this.st;
-      st.unpack(was.anim[from]!, was.cue[from]!);
-      st.seed = bodySeed(was.id[from]!);
+      st.unpack(f.anim, f.cue);
+      st.seed = bodySeed(f.id);
       alive = new Pose(rig.bones);
-      creaturePose(m, st, tick, alive, gaits.get(was.id[from]!) ?? null);
+      creaturePose(m, st, tick, alive, gaits.get(f.id) ?? null);
     }
     const c: Corpse = {
       kind,
