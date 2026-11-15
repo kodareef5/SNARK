@@ -1,9 +1,9 @@
 chunk-report
-{"mapHash":3915436485,"total":2566903,"maximum":987,"cap":999,"passed":true}
+{"mapHash":779721272,"total":2574300,"maximum":1464,"cap":2000,"passed":true}
 
 ruin-walk
 {
-  "mapHash": 3915436485,
+  "mapHash": 779721272,
   "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
   "sampledBuildings": 1007,
   "stairRoutes": 2850,
@@ -18,29 +18,29 @@ ruin-walk
 
 room-walk
 {
-  "mapHash": 3915436485,
-  "routes": 12992,
+  "mapHash": 779721272,
+  "routes": 13082,
   "kinds": {
     "suites": 4788,
-    "rubble": 399,
-    "refuge": 18,
-    "rooms": 1982,
+    "rubble": 400,
+    "refuge": 19,
+    "rooms": 2026,
     "lobby": 32,
     "classrooms": 553,
+    "shops": 597,
     "wards": 110,
     "storage": 613,
-    "shops": 553,
     "street-gap": 3944
   },
-  "passed": 12992,
+  "passed": 13082,
   "failed": 0,
   "failures": []
 }
 
 access-walk
 {
-  "mapHash": 3915436485,
-  "routes": 47770,
+  "mapHash": 779721272,
+  "routes": 47755,
   "buildingsWithApproach": 26610,
   "coresWithoutStreetApproach": [
     {
@@ -140,14 +140,14 @@ access-walk
       "name": null
     }
   ],
-  "passed": 47770,
+  "passed": 47755,
   "failed": 0,
   "failures": []
 }
 
 bridge-walk
 {
-  "mapHash": 3915436485,
+  "mapHash": 779721272,
   "ways": 591,
   "built": 590,
   "deckRuns": 576,
@@ -165,7 +165,7 @@ bridge-walk
 }
 
 walk
-host on core:tampa in 1756 ms, 282 spawn regions; 1384 MB resident, 1043 MB of heap
+host on core:tampa in 1710 ms, 282 spawn regions; 1588 MB resident, 1066 MB of heap
 ok   Curtis Hixon Park arrived 0.0 m from its point at y 4.5; walked 27 m to y 4.1, 27 m to y -0.8, 20 m to y -0.5, 19 m to y -0.5
 ok   Bayshore       arrived 0.0 m from its point at y 1.0; walked 26 m to y -0.8, 27 m to y -0.5, 27 m to y 0.7, 16 m to y 0.8
 ok   Davis Islands  arrived 0.0 m from its point at y 1.5; walked 27 m to y 1.7, 27 m to y 1.4, 27 m to y 1.6, 27 m to y 1.5
@@ -176,22 +176,23 @@ ok   Ybor City      arrived 0.0 m from its point at y 6.7; walked 27 m to y 6.5,
 ok   Raymond James Stadium arrived 0.0 m from its point at y 10.5; walked 27 m to y 10.6, 27 m to y 10.4, 13 m to y 10.5, 27 m to y 10.4
 ok   Hookers Point  arrived 0.0 m from its point at y 2.6; walked 27 m to y 2.7, 8 m to y 2.8, 20 m to y 2.6, 27 m to y 2.7
 ok   Water Works Park arrived 0.0 m from its point at y 2.8; walked 27 m to y 2.6, 23 m to y 2.8, 21 m to y 2.8, 12 m to y 2.8
-1396 wild creatures after 391 s of virtual time; 1411 MB resident, 1043 MB of heap, server and client in one process
+1420 wild creatures after 391 s of virtual time; 1602 MB resident, 1066 MB of heap, server and client in one process
 
 obelisk-walk
-core:tampa: 2566903 static pieces and 331791 standing nodes in the way, 45.6% of samples closed, in 1.0 s
+core:tampa: 2574300 static pieces and 333167 standing nodes in the way, 45.7% of samples closed, in 0.9 s
 ok   Raymond James Stadium  terminal at 7018.9, 7410.2 facing 143 degrees: from Raymond James Stadium, 343 m of way, walked in 73 s to 0.12 m of its front at y 9.7
 ok   Ybor City              terminal at 1141.5, 5832.3 facing 249 degrees: from Ybor City, 208 m of way, walked in 46 s to 0.10 m of its front at y 5.8
 ok   Davis Islands          terminal at 2070.2, 903.7 facing 119 degrees: from Davis Islands, 821 m of way, walked in 172 s to 0.09 m of its front at y 1.6
-3 of 3 reached in 1.1 s
+3 of 3 reached in 1.0 s
 
 server-bench
 {
-  "milliseconds": 1504.7,
-  "residentMiB": 1147.9,
-  "heapMiB": 459.8,
-  "peakResidentMiB": 1147.9,
-  "mapBytes": 95555915,
+  "milliseconds": 1480,
+  "residentMiB": 1333.3,
+  "heapMiB": 823.5,
+  "peakResidentMiB": 1377.5,
+  "mapBytes": 95690507,
   "spawnRegions": 282,
   "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
 }
+
