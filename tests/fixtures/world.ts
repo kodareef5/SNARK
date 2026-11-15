@@ -12,10 +12,14 @@ export interface TestWorld extends CollisionWorld {
   kind(id: string): number;
 }
 
+let core: Registry | null = null;
+
+/** Compiled once per test process and shared: nothing changes a registry once it is made. */
 export function coreRegistry(): Registry {
+  if (core) return core;
   const { registry, errors } = compileContent(CORE_CONTENT);
   if (!registry) throw new Error(errors.join("\n"));
-  return registry;
+  return (core = registry);
 }
 
 function wrap(dims: MapDims, hf: Heightfield, reg: Registry): TestWorld {
