@@ -49,6 +49,11 @@ const MAX_ACTORS = 1 << 16;
 const VEHICLE_COMPONENT = 0x757262;
 /** One preserved unreadable component, bounded by the record codec's ordinary part limit. */
 const VEHICLE_QUARANTINE = 0x757263;
+/**
+ * The saved component, little-endian: version u8 (4), these fields as f32 in this order, then whether it stands on its
+ * wheels u8. Versions 1 to 3 held the first 6, 13 and 16 and are read. A field added goes at the end, after the wheels
+ * byte, as version 5, and restoreSaved gives an older component that field's parked default.
+ */
 const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
 const PLAIN = defaultLook();
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
