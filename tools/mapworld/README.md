@@ -8,6 +8,7 @@ no dependency; the map file format and its folder of layers are the engine's
 bun tools/mapworld/build.ts miami                    # base/ to var/maps/miami/layers and var/maps/miami.snmap
 bun server/main.ts --dev --map var/maps/miami.snmap --port 8788
 bun tools/mapworld/walk.ts var/maps/miami.snmap      # a headless client at every spawn point, walking
+bun tools/mapworld/obelisk-walk.ts var/maps/miami.snmap   # a survivor from a spawn point to each obelisk's terminal
 bun tools/mapworld/pictures.ts var/maps/miami.snmap <folder> [zoom] [col,row ...]   # the map screen's relief
 bun tools/mapworld/views.ts var/maps/miami.snmap assets/source/maps/miami/reports/world1/views.json <folder> medium
 bun run snap -- --map var/maps/miami.snmap --graphics medium --pos x,y,z --yaw d --pitch d
@@ -28,9 +29,9 @@ file is regenerable and lives under `var/`, which git ignores; its inputs are
 | `heaps.ts` | The stand-in ruins: a heap per footprint, by surveyed height where there is one. `"heaps": false` in `world.json` leaves each footprint a bare slab |
 | `tint.ts` | One palette index a sample, by ground and by the district a ruin stood in |
 | `nodes.ts` | Two zoned node layers at 4 m: trees and plants, and stones |
-| `places.ts` | Spawn points set on the nearest fit ground to where `world.json` names them, and spawn regions found from the ground |
+| `places.ts` | Spawn points and obelisks set on the nearest fit ground to where `world.json` names them, and spawn regions found from the ground |
 | `statics.ts` | The slot for layers of static pieces, such as a ruin generator's blocks |
-| `walk.ts`, `views.ts`, `pictures.ts` | Proof: the walk, the rasterizer's pictures with the asset files read once, the map screen's relief |
+| `walk.ts`, `obelisk-walk.ts`, `views.ts`, `pictures.ts` | Proof: the walks, the rasterizer's pictures with the asset files read once, the map screen's relief |
 
 ## A layer of statics
 
@@ -43,6 +44,25 @@ Add the layer to `STATIC_LAYERS`; the build runs each in order after the
 ground and writes their pieces into `statics.json`. Shapes come from hashes of
 footprint ids, as the heaps' do, so a rebuild gives the same bytes. Set
 `"heaps": false` when the blocks stand.
+
+## Obelisks
+
+Where survivors leave for another server of the cluster. `world.json` lists
+them as it lists spawn points:
+
+```json
+"obelisks": [{ "name": "Wynwood", "at": [-80.1990, 25.8040], "face": [-80.2000, 25.8015] }]
+```
+
+Each is set on the nearest ground to `at` that is open and dry, level to a
+quarter metre under the obelisk and to half a metre round its terminal, with no
+static piece within 10 m of its middle or 6 m of where its user stands. The
+terminal turns toward `face`. The build adds each one's pieces
+(`shared/world/obelisks.ts`) after every layer's, so the others keep their
+slots, keeps plants 14 m off, and lists the places in `stats.json`.
+`obelisk-walk.ts` finds a way on foot from the nearest spawn point to each
+terminal's front and walks it with the survivor's capsule; move an obelisk it
+cannot reach.
 
 ## Miami ruins
 
