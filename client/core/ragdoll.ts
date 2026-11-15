@@ -163,8 +163,8 @@ export class Corpses {
       const kind = remote.kind[i]!;
       if (!this.mortal[kind] || (remote.cue[i]! & CUE_DEAD) === 0) continue;
       let c = this.byId.get(remote.id[i]!);
-      // A body whose entity's place another has taken is a new one.
-      if (c && c.kind !== kind) {
+      // A body whose entity's place another has taken is a new one. A body never moves, so one elsewhere is another.
+      if (c && (c.kind !== kind || c.x !== wireX(remote.x[i]!) || c.z !== wireX(remote.z[i]!))) {
         this.forget(c);
         c = undefined;
       }
