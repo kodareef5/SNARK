@@ -56,6 +56,14 @@ export interface Tier {
    * whether its settings offer the tier at all. Each value is a phone's report's (planning/decisions.md, M2's rows).
    */
   readonly touch: { readonly shadows?: Tier["shadows"]; readonly offered?: boolean } | null;
+  /**
+   * What a frame may spend (render/budget.ts): triangles, which crowns near give up for what stands above them in the
+   * frame's order, and draws, which are counted and told. From the iPhone's tree order (D423) on medium: the young wood
+   * held 60 a second at 2.1 M triangles and the elder oaks took 6.5 ms more for each million past it.
+   */
+  readonly budget: { readonly triangles: number; readonly draws: number };
+  /** How many times the tier's threshold a body's level may err by: 1, and more at the governor's last step. */
+  readonly bodyError: number;
   /** Cloud layers over the dome. */
   readonly clouds: number;
   /** The sea: "flat", one see-through colour as low poly draws it, or "simple": the sky reflected, a glint, lighter over shallows. */
@@ -74,19 +82,19 @@ const MB = 1024 * 1024;
 export const TIERS: readonly Tier[] = [
   {
     name: "lowpoly", texture: 0, textureShare: 0, view: 256, bones: 8192, threshold: 0.44, finest: 1, instanced: 160, pixelRatio: 1, gpuBytes: 96 * MB, uploadBytes: 0.5 * MB, diskBytes: 256 * MB,
-    lit: false, split: 0, reach: { bases: 1024, trees: 500, rocks: 0, bushes: 0 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, clouds: 0, water: "flat",
+    lit: false, split: 0, reach: { bases: 1024, trees: 500, rocks: 0, bushes: 0 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, budget: { triangles: 2e6, draws: 2048 }, bodyError: 1, clouds: 0, water: "flat",
   },
   {
     name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
-    lit: true, split: 384, reach: { bases: 2048, trees: 1200, rocks: 600, bushes: 300 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false } }, clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, trees: 1200, rocks: 600, bushes: 300 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false } }, budget: { triangles: 2e6, draws: 1024 }, bodyError: 1, clouds: 2, water: "simple",
   },
   {
     name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
-    lit: true, split: 384, reach: { bases: 2048, trees: 2000, rocks: 900, bushes: 500 }, fade: 0.1, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false } }, clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, trees: 2000, rocks: 900, bushes: 500 }, fade: 0.1, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false } }, budget: { triangles: 4e6, draws: 2048 }, bodyError: 1, clouds: 2, water: "simple",
   },
   {
     name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
-    lit: true, split: 384, reach: { bases: 2048, trees: 3000, rocks: 1200, bushes: 600 }, fade: 0.1, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false }, clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, trees: 3000, rocks: 1200, bushes: 600 }, fade: 0.1, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false }, budget: { triangles: 8e6, draws: 4096 }, bodyError: 1, clouds: 2, water: "simple",
   },
 ];
 
