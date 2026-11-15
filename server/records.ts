@@ -79,11 +79,12 @@ export class EntityRecord {
   tame: { affinity: number; sum: number; by: number; seen: number; due: number } | null = null;
   te = 0;
   /**
-   * For an owned creature: a STANCE_ of server/behavior.ts, the record id it follows (0 to stay), and the tick it
-   * is next due to eat from what it carries (0 for none).
+   * For an owned creature: a STANCE_ of server/behavior.ts, the record id it follows (0 to stay), whether it wanders (it
+   * follows nobody then), and the tick it is next due to eat from what it carries (0 for none).
    */
   stance = 1;
   follow = 0;
+  wander = false;
   mealDue = 0;
   /** Content index of its saddle, or 0. */
   saddle = 0;

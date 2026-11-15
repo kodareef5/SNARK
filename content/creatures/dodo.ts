@@ -56,8 +56,8 @@ export const DODO: readonly Def[] = [
     // Chosen: ARK's turning rate is not published.
     turn: 180,
     strafe: false,
-    // Running costs 4 a second. Recovery and jumping are the engine's defaults.
-    stamina: { sprint: 4, regen: 8, jump: 6 },
+    // Running costs 4 a second and walking 0.025, a unit a tick, which is 0.03. Recovery and jumping are the engine's defaults.
+    stamina: { sprint: 4, regen: 8, jump: 6, walk: 0.025 },
     // The peck: 5, once every half second, landing at tick 6 of its 15 as its clip does. Its reach is the beak's: at that
     // frame the beak's tip is 0.40 m ahead of the middle of the body and 0.31 m below the eye, 0.50 m from it. ARK's
     // attack range is 1.1 m, measured from a point the wiki does not give.

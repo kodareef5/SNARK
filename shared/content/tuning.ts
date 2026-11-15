@@ -201,7 +201,7 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
       }
       if (m === 1 && stats === d.stats) return d;
       const s = d.stamina ?? STAMINA_DEFAULT;
-      const out: SpeciesDef = { ...d, ...(stats ? { stats } : {}), ...(m !== 1 ? { stamina: { sprint: s.sprint * m, regen: s.regen, jump: s.jump * m } } : {}) };
+      const out: SpeciesDef = { ...d, ...(stats ? { stats } : {}), ...(m !== 1 ? { stamina: { ...s, sprint: s.sprint * m, jump: s.jump * m } } : {}) };
       return out;
     }
     if (d.type === "node") {

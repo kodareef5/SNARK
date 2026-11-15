@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { RemoteSample } from "../../client/core/session.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BTN_JUMP, BTN_SPRINT, MF_WINDED, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SPRINT, MF_WINDED, MODE_FLY, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS } from "../../shared/sim/character.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { Harness } from "../fixtures/net.ts";
 
@@ -150,6 +152,77 @@ test("ghost passes through walls and is still seen; walk and tp refuse solid spa
   expect(h.say(bo, "ghost")[0]).toContain("denied");
   expect(h.say(bo, "tp 10 10")[0]).toContain("denied");
   expect(h.say(bo, "setstat speed 255")[0]).toContain("denied");
+});
+
+test("fly is stopped by what is built and by the ground, where a ghost goes through; it is predicted with no corrections, and walk drops the flyer as any fall", () => {
+  const { h, s, pilot, ents, e } = admin({ latencyMs: 60 });
+  const block = h.world.structs.chunks.flatMap((t, chunk) => (t ? [...t.kind.subarray(0, t.high)].map((k, slot) => ({ k, chunk, slot, t })) : [])).find((r) => r.k === h.reg.index.get("core:block"))!;
+  const [bx, bz] = [block.t.x[block.slot]!, block.t.z[block.slot]!];
+  const p = h.reg.move[ents.kind[e]!]!;
+  const ground = (): number => groundUnder(h.world.hf, ents.x[e]!, ents.z[e]!, p.radius);
+  expect(h.say(s, `tp ${bx} ${bz - 4}`)[0]).toContain(`at ${bx}`);
+  expect(h.say(s, "fly")).toEqual(["flying"]);
+  expect([ents.mode[e], s.own.mode]).toEqual([MODE_FLY, MODE_FLY]);
+  h.run(500);
+  const settled = s.stats.corrections;
+  let inside = 0;
+  const watch = (): void => void (capsuleFree(h.world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height) || inside++);
+  // Sprinting north, level, at the block: it stops against its south face.
+  [pilot.yaw, pilot.pitch, pilot.moveZ, pilot.buttons] = [0, 0, 1, BTN_SPRINT];
+  h.run(1500, watch);
+  expect(ents.z[e]!).toBeLessThan(bz - 1 - p.radius + 0.01);
+  // Straight down: it stops on the ground.
+  pilot.pitch = -Math.PI / 2;
+  h.run(1000, watch);
+  expect(ents.y[e]!).toBeCloseTo(ground(), 2);
+  // Up, as fast as a ghost rises, 12 m a second, with nothing above.
+  [pilot.pitch, pilot.moveZ, pilot.buttons] = [0, 0, BTN_JUMP];
+  h.run(1000, watch);
+  const up = ents.y[e]! - ground();
+  expect([up > 10, up <= 12.01]).toEqual([true, true]);
+  pilot.buttons = 0;
+  h.run(500, watch);
+  expect([inside, s.stats.corrections - settled]).toEqual([0, 0]);
+  // Walk drops it, and the fall hurts as any fall from there does.
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  const health = h.host.survival.value(rec, V_HEALTH);
+  expect(h.say(s, "walk")).toEqual(["flying off"]);
+  h.run(3000);
+  expect([ents.mode[e], ents.y[e]! - ground() < 0.01, h.host.survival.value(rec, V_HEALTH) < health]).toEqual([MODE_WALK, true, true]);
+  expect(h.say(s, "walk")).toEqual(["you are neither a ghost nor flying"]);
+
+  // A ghost from the same place goes into the block and on through it, and down through the ground.
+  expect(h.say(s, `tp ${bx} ${bz - 4}`)[0]).toContain(`at ${bx}`);
+  expect(h.say(s, "ghost")).toEqual(["ghost on"]);
+  [pilot.yaw, pilot.pitch, pilot.moveZ] = [0, 0, 1];
+  h.run(1000);
+  expect(ents.z[e]!).toBeGreaterThan(bz + 1 + p.radius);
+  pilot.pitch = -Math.PI / 2;
+  h.run(500);
+  expect(ents.y[e]!).toBeLessThan(ground() - 2);
+  // Flying is refused inside the ground, as walking is.
+  expect(h.say(s, "fly")[0]).toContain("inside something");
+  expect(ents.mode[e]).toBe(MODE_GHOST);
+});
+
+test("a ghost holding sprint ramps to 600 m/s and back to 12 alike on both sides: no correction over a clean link", () => {
+  const { h, s, pilot, ents, e } = admin({ latencyMs: 60 });
+  expect(h.say(s, "ghost")).toEqual(["ghost on"]);
+  h.run(500);
+  const settled = s.stats.corrections;
+  const speed = (): number => Math.hypot(ents.vx[e]!, ents.vy[e]!, ents.vz[e]!);
+  let most = 0;
+  [pilot.pitch, pilot.moveZ, pilot.buttons] = [0.2, 1, BTN_SPRINT];
+  h.run(5000, (now) => {
+    pilot.yaw = now / 700;
+    most = Math.max(most, speed());
+  });
+  pilot.buttons = 0;
+  h.run(500);
+  expect([most, speed(), s.stats.corrections - settled]).toEqual([expect.closeTo(600, 2), expect.closeTo(12, 3), 0]);
+  pilot.moveZ = 0;
+  h.run(1000);
+  expect([s.own.x, s.own.y, s.own.z, s.stats.corrections - settled]).toEqual([ents.x[e]!, ents.y[e]!, ents.z[e]!, 0]);
 });
 
 test("a small correction is hidden by an offset that fades; the drawn position never jumps", () => {

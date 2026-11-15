@@ -57,6 +57,7 @@ import {
   EVENT_HIT,
   EVENT_TAMED,
   OWN_SUBJECT,
+  OWN_OVERHEAD,
   EVENT_HURT,
   EVENT_KILL,
   EVENT_NAME_BYTES,
@@ -68,6 +69,7 @@ import {
   S_SNAPSHOT,
   S_TEXT,
   S_WELCOME,
+  nextCommandSeq,
   readBody,
   writeCommand,
   writeHello,
@@ -328,6 +330,8 @@ export class ClientSession {
   readonly tamed: { handle: number; kind: number; level: number; te: number }[] = [];
   /** The creature whose inventory is open, or null when the open container is not a creature. Shares are 0 to 1. */
   subject: { taming: boolean; owned: boolean; level: number; progress: number; te: number; torpor: number; food: number; id: number; points: number; stance: number; following: boolean; saddled: boolean; breeds: boolean; mating: boolean; female: boolean; stage: number; maturity: number; mate: number; wait: number } | null = null;
+  /** What the server tells of the creature the survivor looks at (OWN_OVERHEAD), or null. Shares are 0 to 1, or -1 where it tells nothing. */
+  looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
   open: { name: string; inventory: Inventory } | null = null;
   /** Oldest first. */
@@ -438,7 +442,7 @@ export class ClientSession {
   command(op: number, args?: (w: BitWriter) => void): number {
     // The server expects sequence numbers without gaps, so an unsent command uses none.
     if (this.state !== "active") return 0;
-    const seq = (this.commandSeq + 1) & 0xffff;
+    const seq = nextCommandSeq(this.commandSeq);
     const w = this.w;
     w.reset();
     writeCommand(w, seq, op);
@@ -657,8 +661,8 @@ export class ClientSession {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
     const buttons = inp.buttons[i]!;
-    // The body steps with the move parameters of the kind the server last sent: its own species or its mount's.
-    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.move[this.own.kind] ?? this.move!, TICK_DT);
+    // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
+    stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
     if (this.driving >= 0) {
       // A mount's bite is stepped here as the server steps it, so both agree on the body's action.
       const jaws = this.registry.weapon[this.own.kind];
@@ -846,6 +850,19 @@ export class ClientSession {
       else {
         const next = { taming: r.bool(), owned: r.bool(), level: r.u16(), progress: r.bits(10) / 1000, te: r.bits(10) / 1000, torpor: r.bits(10) / 1000, food: r.bits(10) / 1000, id: r.u32(), points: r.u8(), stance: r.bits(2), following: r.bool(), saddled: r.bool(), breeds: r.bool(), mating: r.bool(), female: r.bool(), stage: r.bits(2), maturity: r.bits(10) / 1000, mate: r.bits(10) / 1000, wait: r.varint() };
         if (!r.overflow) this.subject = next;
+      }
+    } else if (component === OWN_OVERHEAD) {
+      if (!r.bool()) this.looked = null;
+      else {
+        const share = (): number => (r.bool() ? r.bits(10) / 1000 : -1);
+        const id = r.u32();
+        const [health, food, torpor] = [share(), share(), share()];
+        const tamed = r.bool();
+        const taming = tamed ? r.bits(10) / 1000 : -1;
+        const te = tamed ? r.bits(10) / 1000 : -1;
+        const mating = share();
+        const tribe = r.bool() ? r.string(MAX_NAME_BYTES * 3) : "";
+        if (!r.overflow) this.looked = { id, health, food, torpor, taming, te, mating, tribe };
       }
     } else if (component === OWN_OPEN) {
       if (!r.bool()) this.open = null;

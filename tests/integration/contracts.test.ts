@@ -7,7 +7,7 @@ import { F_GROUNDED, F_HELD } from "../../shared/sim/entities.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
-test("a wild creature is not picked up, taking an egg and the new orders are refused until they are built, and a held creature is not stepped", () => {
+test("a wild creature is not picked up or ordered, taking an egg is refused until it is built, and a held creature is not stepped", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const ada = h.join("ada");
   h.run(500);
@@ -24,7 +24,8 @@ test("a wild creature is not picked up, taking an egg and the new orders are ref
   ada.command(CMD_ORDER, (w) => (w.u32(e), w.u8(ORDER_WANDER)));
   ada.command(CMD_ORDER, (w) => (w.u32(e), w.u8(ORDER_ATTACK), w.u32(e)));
   h.run(400);
-  expect(codes).toEqual([RESULT_NOT_YOURS, RESULT_INVALID, RESULT_INVALID, RESULT_INVALID, RESULT_INVALID]);
+  // Carrying and the orders are built (tests/integration/carry.test.ts, orders.test.ts): a wild dodo is nobody's to pick up or order.
+  expect(codes).toEqual([RESULT_NOT_YOURS, RESULT_INVALID, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_NOT_YOURS]);
   expect([h.host.corpses, h.host.carry, h.host.feces, h.host.eggs, h.host.overhead, h.host.hurt].every((m) => m !== undefined)).toBe(true);
 
   // Lifted into the air and held, it stays there; let go, it falls.

@@ -96,7 +96,7 @@ class Stride extends Gait {
 /** Frames a body may go undrawn before its gait is forgotten. */
 const FORGET_GAIT = 600;
 /** Numbers kept for each held creature posed in a frame (Characters.inArms). */
-const HELD_FIELDS = 9;
+const HELD_FIELDS = 10;
 
 export class Characters {
   readonly anim: HumanAnim;
@@ -153,7 +153,8 @@ export class Characters {
   private readonly dead: Corpses;
   /**
    * This frame: whose arms each held creature is in, by id; the point between the palms of each survivor posed holding one,
-   * camera-relative, by id; and the held creatures posed, each its first bone, its bones, its place, facing, size and kind.
+   * camera-relative, by id; and the held creatures posed, each its first bone, its bones, its place, facing, size, carrier,
+   * kind and id.
    */
   private readonly carriedBy = new Map<number, number>();
   private readonly palms = new Map<number, Float64Array>();
@@ -162,6 +163,10 @@ export class Characters {
   private placed = false;
   /** The point between the palms of a survivor standing and crouched, from its clips, for a held creature not yet put right. */
   private readonly cradled: Float64Array[] = [];
+  /** Where each creature posed this frame shows its overhead marks, by its id: a slot of three world coordinates in `headAt`. */
+  private readonly heads = new Map<number, number>();
+  private headAt = new Float32Array(3 * 256);
+  private readonly socketAt = [0, 0, 0];
 
   constructor(reg: Registry, pack: Pack, assets: Assets) {
     const { table, bind } = assets;
@@ -332,6 +337,13 @@ export class Characters {
         p.bones[o + 7]! += dy;
         p.bones[o + 11]! += dz;
       }
+      // Its overhead marks go with it.
+      const head = this.heads.get(list[k + 9]!);
+      if (head !== undefined) {
+        this.headAt[head * 3]! += dx;
+        this.headAt[head * 3 + 1]! += dy;
+        this.headAt[head * 3 + 2]! += dz;
+      }
     }
   }
 
@@ -349,10 +361,54 @@ export class Characters {
       solve(rig, rig.a, rig.solved);
       writeBones(p.bones, first * BONE_FLOATS, rig.solved, rig.rest, null, x, y, z, yaw, size);
       this.posed++;
+      if (!unseen) this.keepHead(c, id, p.camX + x, p.camY + y, p.camZ + z, yaw, size);
     }
     const carrier = st.held ? this.carriedBy.get(id) : undefined;
-    if (carrier !== undefined) this.inArms.push(first, rigid ? 1 : rig.bones, x, y, z, yaw, size, carrier, kind);
+    if (carrier !== undefined) this.inArms.push(first, rigid ? 1 : rig.bones, x, y, z, yaw, size, carrier, kind, id);
     this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid, unseen);
+    return true;
+  }
+
+  /**
+   * Keeps where the pose just solved puts its `overhead` socket, or a little above its highest joint on a rig without one.
+   * A head turned over, as on a body lying on its back, takes the socket below it, so the socket is held at its bone's height.
+   */
+  private keepHead(c: Creature, id: number, x: number, y: number, z: number, yaw: number, size: number): void {
+    const rig = c.anim.rig;
+    const out = this.socketAt;
+    const socket = rig.sockets.get("overhead");
+    const pos = rig.solved.pos;
+    if (socket) {
+      boneToModel(rig.solved, socket.bone, socket.x, socket.y, socket.z, out);
+      out[1] = Math.max(out[1]!, pos[socket.bone * 3 + 1]!);
+    } else {
+      let top = 0;
+      for (let b = 1; b < rig.bones; b++) if (pos[b * 3 + 1]! > pos[top * 3 + 1]!) top = b;
+      out[0] = pos[top * 3]!;
+      out[1] = pos[top * 3 + 1]! + 0.2;
+      out[2] = pos[top * 3 + 2]!;
+    }
+    const n = this.heads.size;
+    if (n * 3 + 3 > this.headAt.length) {
+      const wider = new Float32Array(this.headAt.length * 2);
+      wider.set(this.headAt);
+      this.headAt = wider;
+    }
+    const s = Math.sin(yaw);
+    const co = Math.cos(yaw);
+    this.headAt[n * 3] = x + (co * out[0]! + s * out[2]!) * size;
+    this.headAt[n * 3 + 1] = y + out[1]! * size;
+    this.headAt[n * 3 + 2] = z + (co * out[2]! - s * out[0]!) * size;
+    this.heads.set(id, n);
+  }
+
+  /** Writes to `out` where creature `id` shows its overhead marks as drawn this frame, in world coordinates. False if it was not posed. */
+  overhead(id: number, out: number[]): boolean {
+    const n = this.heads.get(id);
+    if (n === undefined) return false;
+    out[0] = this.headAt[n * 3]!;
+    out[1] = this.headAt[n * 3 + 1]!;
+    out[2] = this.headAt[n * 3 + 2]!;
     return true;
   }
 
@@ -414,6 +470,7 @@ export class Characters {
     this.carriedBy.clear();
     this.inArms.length = 0;
     this.placed = false;
+    this.heads.clear();
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const [id, g] of this.gaits) if (this.frame - g.seen > FORGET_GAIT) this.gaits.delete(id);

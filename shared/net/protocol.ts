@@ -8,7 +8,7 @@
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
 //                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
 //                            one bit: 1 = same as the one before.
-//     COMMAND   reliable     sequence u16, op u8, arguments by op
+//     COMMAND   reliable     sequence u16 (1 to 65,535, then 1 again), op u8, arguments by op
 //   server -> client
 //     WELCOME   reliable     version u16, tick u32, own handle u32, species u16, session state 2 bits, admin 1 bit,
 //                            day offset u32, map id string, map hash u32, chunksX-1 u8, chunksZ-1 u8, own body,
@@ -23,7 +23,7 @@
 //                            Rows are read first. A removal leaves alone any row newer than itself.
 //     CHUNK_DROP reliable    chunk u16
 //     REJECT    reliable     reason u8
-//     RESULT    reliable     command sequence u16, code u8
+//     RESULT    reliable     command sequence u16 (0 when no command asked), code u8
 //     TEXT      reliable     channel u8, text string
 //     OWN       reliable     component u8, then that component's fields
 //     NODES     reliable     chunk u16, version u32, count u8, used-up slots (u8 each)
@@ -143,7 +143,7 @@ export const CMD_PLACE = 18;
 export const CMD_STRUCT = 19;
 /**
  * Orders a tribe creature: entity index u32 or ORDER_ALL, then order u8. The order is an ORDER_ value, ORDER_STANCE plus a
- * stance (passive, neutral, aggressive), or ORDER_LEVEL plus a stat to spend one of its unspent levels on.
+ * stance (passive, neutral, aggressive), ORDER_YOURS, or ORDER_LEVEL plus a stat to spend one of its unspent levels on.
  */
 export const CMD_ORDER = 20;
 export const ORDER_STAY = 0;
@@ -158,8 +158,10 @@ export const ORDER_UNMATE = 7;
 export const ORDER_WANDER = 8;
 /** Protocol 11. Followed by the target's entity index u32: it goes for that body. A whistle may give it. */
 export const ORDER_ATTACK = 9;
+/** Protocol 11. Its stance becomes attacking your target (ARK's "Attack My Target" whistle): neutral, and it goes for what its tribe hurts. */
+export const ORDER_YOURS = 10;
 export const ORDER_LEVEL = 16;
-/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE or ORDER_LEVEL. */
+/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE, ORDER_WANDER or ORDER_LEVEL. */
 export const ORDER_ALL = 0xffffffff;
 /** Metres. */
 export const WHISTLE_RANGE = 40;
@@ -278,6 +280,12 @@ export const OWN_VOICE = 13;
  * (thousandths, 10 bits each), and the seconds until a female may mate again (varint).
  */
 export const OWN_SUBJECT = 14;
+/**
+ * The creature the survivor looks at (server/overhead.ts): present 1 bit, then entity index u32, and each only where the viewer
+ * is told it: health, food and torpor as shares (1 bit, then thousandths in 10 bits each), taming 1 bit then its progress and
+ * effectiveness (10 bits each), its pair's mating progress (1 bit, 10 bits), its tribe's name (1 bit, string).
+ */
+export const OWN_OVERHEAD = 15;
 
 export const MARKER_DEATH = 1;
 
@@ -453,6 +461,11 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
   if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
   w.string(password);
+}
+
+/** A connection's commands are numbered from 1 without gaps. After 65,535 comes 1, since 0 names no command. */
+export function nextCommandSeq(seq: number): number {
+  return seq >= 0xffff ? 1 : seq + 1;
 }
 
 /** The caller appends the op's arguments. */

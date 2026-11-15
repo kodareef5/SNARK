@@ -81,7 +81,7 @@ const ITEM = {
   label: f("text", "DescriptiveNameBase"),
   color: f("number"),
   tool: f("facet"),
-  weapon: f("facet", "WeaponTemplate", { refs: { "ammo[]": "item/ammo", "fits[]": "item/attachment" }, open: true }),
+  weapon: f("facet", "WeaponTemplate", { refs: { "ammo[]": "item", "fits[]": "item/attachment" }, open: true }),
   ammo: f("facet", "", { refs: { buff: "buff" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
@@ -219,6 +219,7 @@ const BUFF = {
   again: f("text"),
   health: f("number", "ValuesToAddPerSecond"),
   torpor: f("number", "ValuesToAddPerSecond"),
+  damage: f("text"),
   speed: f("number", "CharacterMultiplier"),
   dealt: f("number", "CharacterMultiplier"),
   taken: f("number", "CharacterMultiplier"),
@@ -339,7 +340,7 @@ function row<T extends Record<string, Field>>(id: string, type: ClassRow["type"]
 const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", "blueprint", "decomposeHours"] as const;
 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
-row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto", "youngFor"], slots: ITEM_SLOTS, doc: "A material: gathered, stacked, and spent in crafting." });
+row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto", "youngFor", "ammo"], slots: { shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "A material: gathered, stacked, and spent in crafting. One a weapon fires, as a slingshot fires stone, has an ammo facet." });
 row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "spoilsInto", "cooks", "fuel", "youngFor"], any: ["eat", "dose"], slots: ITEM_SLOTS, doc: "Something eaten, drunk or fed for what it does to a body." });
 row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool"], slots: { held: mesh("must", "{weapon.mesh}", "none"), ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool." });
 row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: ANY_ITEM, slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
@@ -410,7 +411,7 @@ row("prop/projectile", "prop", PROP, { parent: "prop", ark: "a projectile actor"
 row("prop/egg", "prop", PROP, { parent: "prop", ark: "a dropped fertilised egg", shelf: "props/eggs", must: PROP_BODY, may: ["size", "item"], slots: PROP_SLOTS, doc: "An egg where it was laid, until it hatches." });
 row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "stub", waits: "loot", shelf: "props/crates", must: PROP_BODY, may: ["slots"], slots: PROP_SLOTS, doc: "Comes down with loot and goes when it is emptied." });
 
-row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
+row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "damage", "speed", "dealt", "taken", "root", "immune", "good"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });
 
 row("damage", "damage", DAMAGE, { ark: "DmgType_", status: "partial", waits: "polish", shelf: "damage", may: ["label", "torpor", "trueShare", "melee"], doc: "A type of harm. Five are named in code: melee, pierce, bullet, fire, explosive." });
 row("loot", "loot", LOOT, { ark: "a crate's item sets, a death inventory template", status: "stub", waits: "loot", shelf: "loot", must: ["from"], may: ["sets"], doc: "Sets of items with weights, counts and qualities, drawn from when something is opened or dies." });
