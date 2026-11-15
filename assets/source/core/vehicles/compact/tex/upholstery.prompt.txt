@@ -1,7 +1,0 @@
-Use case: photorealistic-natural
-Asset type: seamless square albedo texture for visible sport-car bucket-seat upholstery in an original game vehicle.
-Primary request: perfectly flat orthographic material scan of premium charcoal black perforated automotive leather. Small evenly spaced circular perforations in a subtle staggered pattern, delicate natural leather grain between holes, low contrast, tactile but clean and well maintained. This is a repeatable surface tile rather than a photograph of a seat.
-Color palette: dark neutral graphite, average RGB about 42, 43, 45. Perforations slightly darker; fine leather grain restrained. No strong color tint.
-Lighting: diffuse neutral scan, uniform illumination, no reflection, no directional highlight, no baked shadow or gradient. The holes are tiny surface details, not transparent background.
-Composition: one square tile edge to edge, seamless repeat both directions. 1024 by 1024 pixels.
-Constraints: no stitching, no seat silhouette, no large seams, no badges, no logos, no text, no watermarks, no objects. Opaque image. Original texture only.

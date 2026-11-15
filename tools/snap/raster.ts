@@ -59,7 +59,6 @@ interface Texture {
  * flags say, and its layer with the level it is drawn at, 0 for none.
  */
 interface Surfaced {
-  emissive: number;
   maps: Texture[];
   layer: Texture | null;
   level: number;
@@ -865,7 +864,7 @@ export class Rasterizer {
     const level = p.drawLayer[d]!;
     const layer = level > 0 ? (this.textures.get(material.layer ?? -1) ?? null) : null;
     if (level > 0 && !layer) throw new Error(`draw ${d} draws the layer of ${material.id}, which is not on the graphics card`);
-    const s: Surfaced = { emissive: (flags & DRAW_CUTOUT) !== 0 ? 0 : material.emissive, maps, layer, level: level / LAYER_LEVELS, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -1197,7 +1196,6 @@ export class Rasterizer {
           for (let i = 0; i < 3; i++) reflected[i] = twice * normal[i]! - eye[i]!;
           skyFrom(mirrored, p.frame, reflected, this.look);
           lit(light, albedo, mro, normal, eye, p.frame, mirrored);
-          for (let c = 0; c < 3; c++) light[c]! += albedo[c]! * base[3]! * s.emissive;
           shown(rgb, light, dist, p);
           this.color[at * 4] = rgb[0]! * 255;
           this.color[at * 4 + 1] = rgb[1]! * 255;

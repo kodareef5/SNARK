@@ -417,7 +417,6 @@ export class GlRenderer {
     const mat = this.materials[m]!;
     gl.uniform3fv(prog.uniform("uTint"), mat.tint);
     gl.uniform1f(prog.uniform("uGrey"), mat.grey);
-    gl.uniform1f(prog.uniform("uEmissive"), cutout ? 0 : mat.emissive);
     gl.uniform1f(prog.uniform("uCutoff"), cutout ? mat.cutoff : 0);
     gl.uniform4fv(prog.uniform("uUv"), this.uv, mesh * 4, 4);
     if (level > 0) gl.uniform1f(prog.uniform("uLevel"), level / LAYER_LEVELS);

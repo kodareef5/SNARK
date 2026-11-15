@@ -1,4 +1,8 @@
-/** Measured authoring contract. Metres, +Y up, +Z forward, +X driver-left; origin on the ground. */
+/**
+ * The compact's measured contract, which the simulation and seats depend on: metres, +Y up, +Z forward, +X the driver's
+ * side (the car's left), origin on the ground. rig.py and shape.py build the rig on these numbers, asset.ts takes the
+ * sockets from them, and tests/unit/vehicle-asset.test.ts holds the built pack to them. ref/DESIGN.md says what each is.
+ */
 export const COMPACT = {
   id: "core:compact",
   envelope: { min: [-0.9, 0, -2], max: [0.9, 1.5, 2] },
@@ -22,6 +26,4 @@ export const COMPACT = {
     exhaust_left: [0.57, 0.255, -1.99],
     exhaust_right: [-0.57, 0.255, -1.99],
   },
-  textures: { base: "tex/paint.source.png", packed: "tex/paint-packed-512.png", upholstery: "tex/upholstery.source.png", runtimeTop: 512 },
-  budgets: { triangles: [15000, 8000, 2200, 300], bones: 8, materials: 3, textureTop: 512 },
 } as const;

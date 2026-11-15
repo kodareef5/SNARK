@@ -6,6 +6,7 @@
 // meshes in and has the page draw them: three rocks must each show the colour of the level their distance asks for.
 // --textured holds the shell's textures and materials to our decoders and the software rasterizer (tools/probe-textured.ts).
 // --lit holds what the shell draws at the lit tiers to the rasterizer and to each check under tools/probe-lit/ (tools/probe-lit.ts).
+// --drive has the page get into a car and drive it, and writes what it saw under artifacts/urban-drive/.
 
 import { existsSync, mkdtempSync, readFileSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,10 +16,10 @@ import { buildClient } from "./build-client.ts";
 import { litProbe } from "./probe-lit.ts";
 import { texturedProbe } from "./probe-textured.ts";
 
-const integrated = process.argv.includes("--integrated");
-// Exercise the real player controls, including entering a driven car, on the isolated native probe world.
-const drive = integrated && process.argv.includes("--drive");
-const integratedTier = process.argv.includes("--medium") ? "medium" : "lowpoly";
+// --drive puts a car with a seated civilian by the spawn and has the page drive it with the real player controls, on
+// the ordinary build: the car is in the core pack. --medium draws it on the medium tier rather than low poly.
+const drive = process.argv.includes("--drive");
+const driveTier = process.argv.includes("--medium") ? "medium" : "lowpoly";
 const CANDIDATES = [
   process.env.CHROME,
   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
@@ -34,28 +35,28 @@ if (!chrome) {
 }
 
 // The lit probe builds the core pack itself and needs no client.
-if (!integrated && !process.argv.includes("--lit")) await buildClient({ stress: process.argv.includes("--stress") });
+if (!process.argv.includes("--lit")) await buildClient({ stress: process.argv.includes("--stress") });
 for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe]] as const) {
   if (!process.argv.includes(flag)) continue;
   const passed = await run(chrome);
   console.log(passed ? "\nprobe: PASS" : "\nprobe: FAIL");
   process.exit(passed ? 0 : 1);
 }
-const server = startServer({ dev: true, port: 0, probeScene: true, ...(integrated && process.env.SNARK_PROBE_DIST ? { clientDir: process.env.SNARK_PROBE_DIST } : {}) });
-if (integrated) {
+const server = startServer({ dev: true, port: 0, probeScene: true });
+if (drive) {
   const h = server.host, s = h.world.spawn;
   // South is clear acceleration room; the north fixture intentionally holds collision blocks.
-  const x = s.x + (drive ? 1.6 : -6), z = s.z + (drive ? -.12 : 9);
-  const car = h.spawnVehicle("core:compact", x, z, 0, drive ? Math.PI : 0);
-  const driver = h.spawnCreature("core:civilian", x + (drive ? -1.25 : 1.25), z + (drive ? -.12 : .12), 1);
-  if (car < 0 || driver < 0 || h.urban.seatNpc(driver, car) !== 0) throw new Error("integrated probe could not seat the native civilian");
+  const x = s.x + 1.6, z = s.z - .12;
+  const car = h.spawnVehicle("core:compact", x, z, 0, Math.PI);
+  const driver = h.spawnCreature("core:civilian", x - 1.25, z - .12, 1);
+  if (car < 0 || driver < 0 || h.urban.seatNpc(driver, car) !== 0) throw new Error("drive probe could not seat the civilian");
 }
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));
 // Unless --no-voice is given, the page talks to itself through the server. VOICE_FLAGS give Chrome a fake microphone, grant it
 // without a prompt, and let sound start without a gesture.
-const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${integrated ? `&urban=1&tier=${integratedTier}` : ""}${drive ? "&urbanDrive=1" : ""}${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
+const url = `http://localhost:${server.port}/?selfcheck=1&creature=1&name=probe${drive ? `&urban=1&tier=${driveTier}&urbanDrive=1` : ""}${process.argv.includes("--no-voice") ? "" : "&voice=1"}${process.argv.includes("--lose") ? "&lose=1" : ""}${process.argv.includes("--slow") ? "&assetnet=300,1500,2" : ""}${process.argv.includes("--stress") ? "&stress=1" : ""}`;
 const VOICE_FLAGS = ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"];
-const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", integrated ? "--window-size=800,600" : "--window-size=1280,720", ...(integrated ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: integrated ? Bun.file(join(profile, "chrome.log")) : "ignore" });
+const browser = Bun.spawn([chrome, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", drive ? "--window-size=800,600" : "--window-size=1280,720", ...(drive ? ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--remote-debugging-port=0"] : []), ...VOICE_FLAGS, `--user-data-dir=${profile}`, url], { stdout: "ignore", stderr: drive ? Bun.file(join(profile, "chrome.log")) : "ignore" });
 
 async function pageTarget(): Promise<string | null> {
   if (!existsSync(join(profile, "DevToolsActivePort"))) return null;
@@ -82,7 +83,7 @@ let finished = false;
 // Preserve progress even when expensive shader compilation or a stalled main thread prevents the final report.
 // This observes the real page. It changes no graphics settings, controls, deadlines or pass criteria.
 const progress: unknown[] = [];
-const observing = integrated ? (async () => {
+const observing = drive ? (async () => {
   while (!finished) {
     await Bun.sleep(2000);
     if (finished) break;
@@ -105,7 +106,7 @@ const gesture = drive ? (async () => {
     await pageCommand(target, "Input.dispatchKeyEvent", { type: "keyDown", key: "F8", code: "F8", windowsVirtualKeyCode: 119 });
     await pageCommand(target, "Input.dispatchKeyEvent", { type: "keyUp", key: "F8", code: "F8", windowsVirtualKeyCode: 119 });
   }
-})().catch(error => console.error("integrated gesture:", error)) : Promise.resolve();
+})().catch(error => console.error("drive gesture:", error)) : Promise.resolve();
 
 const timeout = new Promise<null>((r) => setTimeout(() => r(null), 30000));
 const report = (await Promise.race([server.nextSelfcheck(), timeout])) as { ok?: boolean } | null;
@@ -122,9 +123,9 @@ if (report && process.argv.includes("--voice")) {
   await listener.exited;
   rmSync(profile2, { recursive: true, force: true });
 }
-if (integrated) {
-  const dir = join(import.meta.dir, "../artifacts/urban-integrated"); mkdirSync(dir, { recursive: true });
-  const name = `${drive ? "driving" : "probe"}-${integratedTier}`;
+if (drive) {
+  const dir = join(import.meta.dir, "../artifacts/urban-drive"); mkdirSync(dir, { recursive: true });
+  const name = `driving-${driveTier}`;
   // Write evidence before a screenshot request, which can itself time out behind a busy renderer.
   writeFileSync(join(dir, `${name}-diagnostics.json`), JSON.stringify({ url, report, progress }, null, 2) + "\n");
   writeFileSync(join(dir, `${name}-chrome.log`), readFileSync(join(profile, "chrome.log")));
@@ -132,11 +133,11 @@ if (integrated) {
     const target = await pageTarget();
     if (!target) throw new Error("native probe has no browser target");
     const screenshot = await pageCommand(target, "Page.captureScreenshot", { format: "png" });
-    writeFileSync(join(dir, drive ? "driving.png" : "browser.png"), Buffer.from(screenshot.data, "base64"));
-    writeFileSync(join(dir, drive ? "driving.json" : "probe.json"), JSON.stringify(report, null, 2) + "\n");
-  } catch (error) { console.error("integrated screenshot:", error); }
+    writeFileSync(join(dir, "driving.png"), Buffer.from(screenshot.data, "base64"));
+    writeFileSync(join(dir, "driving.json"), JSON.stringify(report, null, 2) + "\n");
+  } catch (error) { console.error("drive screenshot:", error); }
 }
-if (integrated && !report) console.error(readFileSync(join(profile, "chrome.log"), "utf8").slice(-6000));
+if (drive && !report) console.error(readFileSync(join(profile, "chrome.log"), "utf8").slice(-6000));
 browser.kill();
 await browser.exited;
 let again: { ok?: boolean; assets?: { fetched: number; cached: number } } | null | undefined;

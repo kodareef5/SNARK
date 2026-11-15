@@ -1,21 +1,17 @@
-# Compact sport coupe — native asset revision 2
+# The compact
 
-An original angular sport coupe with a crowned hood and roof, swept shoulders,
-true wheel openings, recessed grille, hood gills, segmented LED lamps, a rear
-plate recess and lower diffuser. Ten alloy spokes, brake discs/calipers, rounded
-tyre shoulders, mirror pods and flush handles reward a close view. Generated
-perforated leather covers the bucket seats and door interiors. This is original
-art, not a replica of a licensed vehicle.
+An original two-door compact coupe: a long sloping hood over flush slim headlamps
+and a honeycomb grille, a raked windscreen, a fastback roof with wide sails, a
+deck with a full-width tail-lamp band and twin tailpipes, flared arches over
+five-spoke alloys, black sills, bumper lips and side mouldings. Bucket seats in
+leather, a dash with a binnacle over two dials, a centre stack and console. It
+copies no real make, model or livery; its only mark is a chevron over a bar.
 
-The dodo asset establishes the process standard: measured proportions, semantic
-rig/socket names, repeatable source, material provenance, explicit budgets and
-native review at near and small sizes. This revision substantially replaces the
-first box placeholder while retaining its integration contract. Body animation
-and surfaces remain replaceable. It is not a claim of final production art.
-
-The measured source is `../contract.ts`, loaded explicitly by `tools/urban/source.ts`.
-It is not a Blender `AssetSpec` and does not participate in the core catalogue’s
-`asset.ts` discovery.
+It is an asset like every other (`../asset.ts`, `bun run art -- core:compact`),
+a creature asset with no clips whose parts are rigid on their bones; how it is
+built is `assets/source/README.md`, "A vehicle". The numbers below are the
+measured contract the simulation and the seats depend on, kept in
+`../contract.ts` and held to the built pack by `tests/unit/vehicle-asset.test.ts`.
 
 ## Stable measured contract
 
@@ -38,9 +34,9 @@ bone; the car is one mesh, not a collection of independent entities.
 
 The original first seven indices/names/rest pivots are unchanged. Steering is an
 appended semantic bone. Wheel support radius .30, visual width ≤.24, wheelbase
-2.50 and track1.56 are unchanged. The arch opening radius is .349. A wheel's
-brake and trim follow its rigid bone; an eventual separate brake articulation is
-outside this presentation revision.
+2.50 and track1.56 are unchanged. The wheel wells are .35 round the axle, their
+inner walls .62 out. A wheel's brake disc and trim turn with its rigid bone; there
+are no calipers, which would turn with it.
 
 | Socket | Position | Meaning |
 | --- | --- | --- |
@@ -68,69 +64,32 @@ Current seated HUMAN capsules have crown1.431 and foot minimum.1871: about9mm
 under the inner ceiling1.44 and37mm above the floor. These are measured current
 capsule bounds, not a guarantee for every future body proportion.
 
-This revision keeps those anchors and the inner ceiling. Seat backs/headrests
-remain behind the human back plane. The steering ring center is unchanged;
-radius .191 plus .017 rim thickness gives a closer placeholder grip. Current
+The model keeps those anchors and the inner ceiling. Seat backs and headrests
+stay behind the human back plane, and the footwell reaches z 1.16 for the toes.
+The steering wheel's centre is the pivot; its rim is .186 round with a .0175 grip. Current
 neutral hand centers are (.6684,.9088,.5367) and (.1716,.9088,.5367), so a precise
 finger grip remains a future pose correction. The relaxed passenger arm capsule
 previously reached X=-.859 and can overlap the side; that motion-fit issue should
 be reviewed with actual body art instead of scaling down the person.
 
-Side windows are rolled fully down. The windscreen and rear window have open
-centers, narrow structural pillars/gaskets and small tinted perimeter strips.
-There is deliberately no large opaque glass plate hiding the existing survivor.
-This is a visibility shim for the native opaque/cutout pipeline, not simulated
-transparent glass. Interior and real game riders can now be inspected together.
+The side windows are rolled down. The windscreen and the rear glass are closed
+slabs, tinted and smooth outside with a dotted black band round the edge; their
+inside face is cut out of the picture (`cabin` is a cutout material), so a rider
+looks out through them and anyone outside sees glass. Riders are seen through
+the side windows. To show the cabin through the windscreen too, cut the outer
+face out as well (`glass` in `tex/paint.py`).
 
-## Materials and native budgets
+## Materials, levels and layers
 
-Three sections fit the engine's existing maximum: paint, trim and upholstery.
-Six512-square maps stream through the normal native material/texture pipeline;
-BC, ASTC and RGBA variants are all encoded for the integrated game. Original
-paint and newly generated upholstery sources, exact prompts, hashes and physical
-channel choices are documented in `../tex/PROVENANCE.md`. All maps use existing
-linear-light mips. No invented normal map or renderer transparency is introduced.
+Three materials, each with base colour, normal, packed occlusion, roughness and
+metal, a colour-region mask, a height map for the check, and a hurt and a decay
+picture: `body` (painted panels and shut lines), `trim` (tyres, alloys, lamps,
+grilles, rubber, chrome, black plastic) and `cabin` (glass and the interior).
+All are 2048 across, the masks and packed maps 1024, the layers stored at 512.
+The paint is region 0, the leather region 1, the alloys region 2. Lamps are
+ordinary trim: nothing on the car emits light yet.
 
-Trim base alpha is selective lamp emission, not coverage. Only lamp swatches have
-nonzero alpha; ordinary trim remains opaque and unlit. The shader/raster existing
-material contract supplies emissive1.5. The source maps preserve RGB underalpha0.
-
-| LOD | Triangles | Presentation |
-| --- | ---: | --- |
-| 0 | 14534 | Smooth shoulders/bevels, detailed alloy/brakes, leather and stitches |
-| 1 | 7500 | Reduced bevel/detail density and16-sided wheels |
-| 2 | 2106 | Simpler wheels/trim; still three materials |
-| 3 | 266 | Palette silhouette, six-sided solid wheels, no hidden interior details |
-
-Authoring ceilings are15000/8000/2200/300 triangles, eight bones and three
-materials. LOD errors are0/.055/.14/.34m. LOD3 retains eight semantic bone IDs
-with a minimal steering hub; flat distant color requires no material upload.
-The default and copper paint variants share geometry, rig, sockets and six maps.
-Only paint tint and the palette fallback differ, proving model presentation can
-change independently of mechanics.
-
-## Repeatable bounded review
-
-```sh
-bun tools/urban/compact.ts
-```
-
-This builds only this car's pack, six RGBA mip chains, manifest and native software
-review. It does not discover/rebuild core art, start a world or restart the live
-server. `dist/` is ignored output. `review/sheet.png` shows eight exterior angles,
-a driver door open1.1rad, a close cabin view and actual128/48/16-pixel renderings.
-Small views are not enlarged. `review/paint-variants.png` renders both materials
-through the same native stage. `review/report.json` records budgets and source
-hashes. These are visual inspections, not collision or multiplayer tests.
-
-`tools/urban/build-integrated.ts` appends the two presentations and six maps to
-the actual core manifest/boot. It preserves original human/dodo geometry and
-animation data byte-for-byte and pins immutable core streams in the task-owned
-cache, without a full art build. Rebuilding the actual client is a separate step
-for the root integrator; this source review does not modify the running bundle.
-
-Later refinements can add artist-authored interaction clips, exact grip/foot
-poses, richer panel normal/roughness maps, true glass, detailed underside and
-independent brake suspension parts. Maintain semantic names and measured cabin
-clearance while replacing artwork. Wider/taller replacements require their own
-collision and seat-clearance review.
+The finest level is the model's; the rest are made from it. Levels 0 and 1 are
+drawn with materials, the rest flat, each triangle in the palette colour its
+pictures give it and the paint in region 0, so a car keeps its colour to the
+horizon. The check prints where each tier first draws each level.
