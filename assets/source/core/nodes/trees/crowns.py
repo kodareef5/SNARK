@@ -102,7 +102,71 @@ def region(a, rect, size):
     return a[round(v0 * size) : round(v1 * size), round(u0 * size) : round(u1 * size)]
 
 
+# The cells' height, metres, as the 16 bits of the picture.
+CELL_LOW, CELL_HIGH = -0.15, 0.25
+# The core's leaves against the shade skin's, as sRGB scales, and the light let into it: the dark deep in a crown.
+CORE_TINT = (0.62, 0.68, 0.72)
+CORE_OPEN = 0.42
+# A head's bowl, the leaves under it: lit from below by the ground and the sky round it.
+BOWL_TINT = (0.95, 1.0, 1.02)
+BOWL_OPEN = 0.7
+
+
+def build_cells(name, atlas):
+    """A crown picture of heads (layout.py CROWN_CELLS): the cells by tier and variant (cells.py), and the core's
+    rectangle of shade leaves, the kind's shade skin at its own scale."""
+    import cells
+    from layout import CROWN_CELLS, crown_cell
+
+    out = os.path.join(TEX, name)
+    os.makedirs(out, exist_ok=True)
+    kind = name.split("_")[0]
+    made = cells.cells(atlas)
+    side = 2048
+    core = CROWN_CELLS[name]["core"]
+    for role in ROLES:
+        n = side // 2 if role == "orm" else side
+        if role == "normal":
+            pic = np.zeros((n, n, 3), np.float32)
+            pic[..., 2] = 1.0
+        elif role == "height":
+            pic = np.full((n, n), 0.5 * 65535, np.float32)
+        else:
+            pic = np.zeros((n, n, 3), np.float32)
+        # The core's rectangle and the heads' bowls', the shade skin: the core's darker and closed in.
+        for rect, tint, light in ((core, CORE_TINT, CORE_OPEN), (CROWN_CELLS[name]["bowl"], BOWL_TINT, BOWL_OPEN)):
+            top = skin(kind, role, "shade" if role == "base" else None)
+            if role == "base":
+                top = top * np.array(TINT[kind], np.float32) * np.array(tint, np.float32)
+            if role == "orm":
+                top = top * np.array((light, 1.0, 1.0), np.float32)
+            if role == "height":
+                metres = top / 65535.0 * 0.12 - 0.06
+                top = (metres - CELL_LOW) / (CELL_HIGH - CELL_LOW) * 65535
+            u0, v0, u1, v1 = rect
+            w, h = round((u1 - u0) * n), round((v1 - v0) * n)
+            pic[round(v0 * n) : round(v0 * n) + h, round(u0 * n) : round(u0 * n) + w] = resample(top, w, h)
+        for (tier, variant), c in made.items():
+            u0, v0, u1, v1 = crown_cell(name, tier, variant)
+            w = round((u1 - u0) * n)
+            if role == "base":
+                got = c["base"]
+            elif role == "normal":
+                got = c["normal"]
+            elif role == "height":
+                got = np.clip((c["height"] - CELL_LOW) / (CELL_HIGH - CELL_LOW), 0, 1) * 65535
+            else:
+                got = np.dstack([c["occlusion"] * 255, c["rough"] * 255, np.zeros_like(c["rough"])])
+            pic[round(v0 * n) : round(v0 * n) + w, round(u0 * n) : round(u0 * n) + w] = resample(np.asarray(got, np.float32), w, w)
+        write(pic, os.path.join(out, f"{name}_{role}.png"), role)
+    print(name)
+
+
 def build(name):
+    from layout import CROWN_CELLS
+
+    if name in CROWN_CELLS:
+        return build_cells(name, STANDIN[name.split("_")[0]][0])
     out = os.path.join(TEX, name)
     os.makedirs(out, exist_ok=True)
     for role in ROLES:

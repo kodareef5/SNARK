@@ -6,6 +6,7 @@
 import math
 
 import broadleaf as bl
+import clusters
 import far
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, length, lerp, mix, mul, rng_for, rotate, sheet, sub, tube, unit
 from layout import CUTS, FERN_SIZE, MOSS_SIZE, OAK_FERN, OAK_MOSS, SPANS, crown_mass
@@ -56,6 +57,10 @@ ORDERS = {"orders": [
      "collar": 0.2},
 ]}
 SPECS = {o["name"]: o for o in OAKS}
+# How far apart the heads of leaves stand over the crown (clusters.py): each about 2.6 m across. On the flat levels
+# they are gathered into so many.
+SPACING = 2.0
+FLAT_HEADS = {3: 33, 4: 12}
 
 
 def skeleton(spec):
@@ -115,25 +120,28 @@ def interp_h(h, fork):
 def oak(name, lod):
     spec = SPECS[name]
     if lod == far.LEVEL:
-        return far.crown(oak(name, 3), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
-    m = Mesh(lod <= 2)
+        return far.crown(oak(name, 4), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
+    m = Mesh(lod <= 3)
     rng = rng_for(name, "level", lod)
     limbs, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
+    heads, balls = bl.clusters_of(name, limbs, lobes, shade, SPACING)
+    if lod == 3:
+        heads = clusters.merged(heads, FLAT_HEADS[3], name)
     trunk_sides, trunk_rings = {0: (32, 14), 1: (16, 6), 2: (8, 3), 3: (6, 3), 4: (5, 2)}[lod]
     trunk_mesh(m, spec, trunk_sides, trunk_rings)
     # Sides of each order of wood at each level, how many points each keeps, and the thinnest drawn.
     sides, keep, least = {0: ((12, 8, 5, 3), (16, 9, 5, 3), 0.0), 1: ((7, 5, 3, 3), (8, 4, 3, 2), 0.07), 2: ((4, 3, 0, 0), (3, 1, 1, 1), 0.2),
-                          3: ((4, 3, 0, 0), (3, 1, 1, 1), 0.25), 4: ((4, 0, 0, 0), (2, 1, 1, 1), 0.3)}[lod]
+                          3: ((4, 0, 0, 0), (3, 1, 1, 1), 0.25), 4: ((4, 0, 0, 0), (2, 1, 1, 1), 0.3)}[lod]
     bl.wood(m, limbs, sides, keep, BARK, STEM, least)
     if spec.get("collar") is not None:
         collar(m, spec, lod)
-    if lod <= 2:
-        bl.crown(m, lobes, lod, rng, ATLAS, 0.9, MASS, shade=shade, grain=1.3)
+    if lod <= 3:
+        bl.clustered(m, heads, balls, lod, rng, ATLAS, 0.9, MASS[0], shade, grain=1.3)
         if lod <= 1:
             epiphytes(m, spec, limbs, shade, lobes, lod)
     else:
-        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 14 if lod == 3 else 7)
+        bl.flat_heads(m, heads, lod, (LIGHT, MID, DARK), FLAT_HEADS[lod], name)
     return m
 
 

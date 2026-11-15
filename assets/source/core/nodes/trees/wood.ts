@@ -169,7 +169,7 @@ for (let k = 0; k < turns; k++) {
         }
       }
     }
-    if (cutout) byMesh.set(`level ${p.drawLod[d]}`, (byMesh.get(`level ${p.drawLod[d]}`) ?? 0) + count);
+    if (cutout) byMesh.set(key, (byMesh.get(key) ?? 0) + count);
   }
   let cuts = 0, nearest = 0, litNearest = 0, covered = 0;
   for (let i = 0; i < W * H; i++) {
@@ -200,7 +200,7 @@ const ms = ((totals.cut * SURFACE_MS + totals.nearest * SURFACE_MS + totals.litN
 console.log(`${tierName}, ${W}x${H}, ${turns} headings: cut-out layers ${(totals.cut / px).toFixed(2)} a pixel of the screen, ${(totals.cut / Math.max(totals.covered, 1)).toFixed(2)} a pixel of the wood (${((100 * totals.covered) / px).toFixed(0)}% of the screen), 99th percentile ${totals.p99}, most ${totals.most}`);
 console.log(`  nearest opaque: textured ${((100 * totals.nearest) / px).toFixed(0)}%, flat ${((100 * totals.litNearest) / px).toFixed(0)}% of the screen`);
 console.log(`  on the phone's figures, ${PHONE_MP} MP: cut-out ${((totals.cut * SURFACE_MS) / 1e6 * scale).toFixed(2)} ms, nearest opaque ${(((totals.nearest * SURFACE_MS + totals.litNearest * LIT_MS) / 1e6) * scale).toFixed(2)} ms, ${ms.toFixed(2)} ms in all`);
-console.log(`  cut-out layers by level: ${[...byMesh].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / turns / px).toFixed(2)}`).join(", ")}`);
+console.log(`  cut-out layers by mesh and level: ${[...byMesh].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / turns / px).toFixed(2)}`).join(", ")}`);
 const all = [...levels.values()].reduce((n, l) => n + l.triangles, 0);
 console.log(`  drawn a heading: ${(all / 1000).toFixed(0)} k triangles; by level ${[...levels].sort().map(([k, l]) => `${k} ${l.instances.toFixed(0)} drawn, ${(l.triangles / 1000).toFixed(0)} k`).join("; ")}`);
 if (args.includes("--heat") && heat) {
