@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
+import { LETTER_BLOCKS } from "../../content/lettering.ts";
 import { TERMINALS } from "../../content/terminals.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
@@ -39,13 +40,15 @@ test("the class table is sound: parents exist, stubs name what they wait for, sl
 test("the core pack's definitions fall into the classes, each passing its row, and old ids are renamed", () => {
   const counts: Record<string, number> = {};
   for (const d of rest) counts[classOf(d)] = (counts[classOf(d)] ?? 0) + 1;
+  // The stations wave moved cementing paste, its engram and its recipe's old id to content/items/resources.ts, and took the
+  // ingot's engram out (planning/reference/stations-plan.md, S0): a resource, two engrams and a rename fewer here.
   expect(counts).toEqual({
-    "item/resource": 11,
+    "item/resource": 10,
     "item/consumable": 4,
     "item/weapon": 3,
     "item/armor": 20,
     "item/structure": 29,
-    engram: 55,
+    engram: 53,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
@@ -57,18 +60,18 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 3,
-    "structure/static": 8 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_SHAPES.length,
-    shape: 17 + SLOPE_SHAPES.length,
+    "structure/static": 8 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2,
+    shape: 17 + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2,
     material: 4,
     node: 14,
     "prop/container": 2,
     "prop/projectile": 2,
     buff: 7,
     spawns: 4,
-    map: 3,
-    rename: 59,
+    map: 4,
+    rename: 58,
   });
-  expect(rest.length).toBe(291 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length);
+  expect(rest.length).toBe(288 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

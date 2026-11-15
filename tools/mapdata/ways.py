@@ -29,13 +29,18 @@ def metres(v):
 def main():
     root = Path(sys.argv[1]).resolve()
     tm = Transformer.from_crs(4326, json.loads((root / 'map.json').read_text())['crs_wkt'], always_xy=True)
-    out, supports, stairs = [], [], []
+    out, supports, stairs, signs = [], [], [], []
     for el in json.loads((root / 'raw/osm/ways.json').read_text())['elements']:
         if el['type'] != 'way' or not el.get('geometry'):
             continue
         t = el.get('tags', {})
         pts = [tm.transform(p['lon'], p['lat']) for p in el['geometry']]
         length = round(sum(math.dist(a, b) for a, b in zip(pts, pts[1:])), 1)
+        if re.fullmatch(r'[A-Z ]{1,24}', t.get('inscription', '')) and metres(t.get('height')) and el['geometry'][0] != el['geometry'][-1]:
+            # Letters standing on the ground, mapped as the line they stand along, read from its first point.
+            signs.append({'id': el['id'], 'inscription': t['inscription'], 'height_m': metres(t['height']), 'name': t.get('name'),
+                          'length_m': length, 'points': [[round(x, 1), round(y, 1)] for x, y in pts]})
+            continue
         if t.get('man_made') == 'tower' and t.get('tower:type') == 'bridge':
             # A bridge tower mapped in three dimensions: each part a solid between its two heights above the ground.
             supports.append({'id': el['id'], 'kind': 'bridge_tower', 'name': t.get('name'), 'min_height_m': metres(t.get('min_height')) or 0,
@@ -64,11 +69,13 @@ def main():
                     'width_m': metres(t.get('width')), 'closed': len(pts) > 2 and el['geometry'][0] == el['geometry'][-1],
                     'length_m': length, 'structure': t.get('bridge:structure'),
                     'points': [[round(x, 1), round(y, 1)] for x, y in pts]})
-    for rows in (out, supports, stairs):
+    for rows in (out, supports, stairs, signs):
         rows.sort(key=lambda w: w['id'])
     (root / 'blocks/ways.json').write_text(json.dumps(out) + '\n')
     (root / 'blocks/supports.json').write_text(json.dumps(supports) + '\n')
     (root / 'blocks/stairs.json').write_text(json.dumps(stairs) + '\n')
+    (root / 'blocks/signs.json').write_text(json.dumps(signs) + '\n')
+    print(len(signs), 'lettered signs:', ' '.join(s['inscription'] for s in signs))
     c = collections.Counter(w['kind'] for w in out)
     km = collections.defaultdict(float)
     for w in out:

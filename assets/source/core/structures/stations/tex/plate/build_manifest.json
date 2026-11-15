@@ -1,0 +1,16 @@
+{
+  "seed": 2711049,
+  "build_seconds": 18.474,
+  "tile_metres": 1.5,
+  "height_range_mm": 8.0,
+  "files": {
+    "plate_base.png": "d6d79bf688aea05b4735e0fa02f67bf0a0d31ba1b51d2ebf6a5985958945c529",
+    "plate_base_1024.png": "413839a5a8d7b7030b5af82e3bc5848539016e57454e9eff179c69f6fe6e5452",
+    "plate_height.png": "0e9f173b9ff0c5496ae3f900c12ce136aed05cbb93e3ccb6bdafcf85f0e9e5bc",
+    "plate_height_1024.png": "65a3f2a0722af6cacf22d45dc06e19e2e6dc730b971bae6b1271899c2cee7b7b",
+    "plate_normal.png": "b173afc5fd8219458e0735186a89442e121a02ec01eed0e1dd87cf9cc3568d7a",
+    "plate_normal_1024.png": "46fdf86151c95891ae4728c56b194a1094bdfe7dad50cff7b3d3f3f3281a5cff",
+    "plate_orm.png": "dc69710d186e4f148afa5fa1f7cfb082c38653efa9d7c97843bc21cb3428c84b",
+    "plate_orm_1024.png": "47b1db999620952d31841dd3a238c2d0b12d91d0e49e2d67e4a76d40e02a2c4a"
+  }
+}

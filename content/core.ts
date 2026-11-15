@@ -12,6 +12,7 @@ import { KNOCKOUT } from "./knockout.ts";
 import { MAPS } from "./maps.ts";
 import { RUIN_BLOCKS } from "./miami-ruins.ts";
 import { SLOPE_BLOCKS } from "./slopes.ts";
+import { LETTER_BLOCKS } from "./lettering.ts";
 import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
 import { ROADS } from "./vehicles/roads.ts";
@@ -47,7 +48,9 @@ const GEAR: Def[] = [
   { type: "item", class: "resource", id: id("ore"), stack: 300, weight: 1, label: "metal ore", color: 4 },
   { type: "item", class: "resource", id: id("ingot"), stack: 300, weight: 1, label: "metal ingot", color: 2 },
   { type: "item", class: "resource", id: id("gunpowder"), stack: 100, weight: 0.1, color: 11 },
-  { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
+  // Eaten, 8 health and 40 torpor over 8 seconds ("Increases your health, but puts you to sleep", ark.wiki.gg, Narcotic,
+  // 2026-11-15).
+  { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, eat: { health: 8 }, dose: { torpor: 40, seconds: 8 } },
 
   { type: "item", class: "weapon", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
   ...ARMOR,
@@ -219,7 +222,10 @@ const NODES: NodeDef[] = [
   { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: REGROW, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.8, 1.25], variants: ROCKS, footing: { reach: 4, fall: 1.9 } },
   { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.85, 1.15], variants: RUBBLE, footing: { reach: 4, fall: 1.85 } },
   // A metal rock, darker and veined, which a player learns to spot. It is harder than limestone, and a pick gets its ore.
-  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
+  // It gives obsidian too, at a reduced rate: "Mountain-rocks which yield Metal now also yield Obsidian at a reduced rate"
+  // (Obsidian, patch 171.8). Ours is the only metal rock, so every one does. The rate is unverified and chosen: none to one
+  // a hit, times the pick's 3, a quarter of the ore it gives.
+  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }, { item: "core:obsidian", min: 0, max: 1, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
   // Berry bushes, their berries red. How many narcoberries each picking gives is chosen, as the wiki gives no figure.
   plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }, { item: "core:narcoberry", min: 0, max: 2 }], [0.8, 1.2], BUSHES),
   // Saw palmetto bears a few berries. A fern bears none.
@@ -234,7 +240,11 @@ const NODES: NodeDef[] = [
 const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
   ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["narcoberry", 5], ["meat", 1]]),
-  ...making("ingot", "Smelting", 20, 6, 1, 6, [["ore", 2], ["wood", 1]]),
+  // The metal ingot has no engram and is not made in the hand, as in ARK, where the refining forge makes it (by the user,
+  // 2026-11-15, on planning/reference/stations-plan.md's question 2: no rename, no refund). The forge's recipe is S1's; until
+  // then ingots come from what is given. A save that knew the engram "Smelting" loads without it, and a job of ingots it was
+  // making is dropped (server/progression.ts). Its recipe's old id still reads as the ingot.
+  { type: "rename", id: id("make-ingot"), to: [id("ingot")] },
   ...making("gunpowder", "Gunpowder", 21, 2, 1, 2, [["flint", 1], ["stone", 1], ["wood", 1]]),
   // Each piece of an armor tier has its own engram, at the tier's level and cost. They were one engram for all five once,
   // and a save that knew the set knows every piece.
@@ -315,7 +325,9 @@ const ALL: readonly Def[] = [
     killXp: 10,
     // Knocked out at 200 torpor, and out for most of a minute.
     torporDrain: 4,
-    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0] },
+    // Crafting Skill is 100% and a point adds 10% (ark.wiki.gg, Human, "Base Stats and Growth", and Crafting Skill,
+    // 2026-11-15); a blueprint's bonus is up to a twentieth of it (D419).
+    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0], crafting: [1, 0, 0.1] },
   },
   // A practice target with a survivor's shape and zones.
   {
@@ -368,11 +380,16 @@ const ALL: readonly Def[] = [
   { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // Holds items dropped on the ground.
   { type: "prop", class: "container", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
-  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8, damage: "fire" },
+  // A flame arrow's burn: "approximately 22 damage per second to players" for 8 seconds (ark.wiki.gg, Flame Arrow,
+  // 2026-11-15), as fire, so a body takes its own share of it. ARK's grows with the creature's size (DEV28).
+  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -22, damage: "fire" },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
   // A narcotic at work. Doses run one after another.
   { type: "buff", id: "core:drugged", label: "Drugged", color: 9, seconds: 8 },
-  { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 3, root: true },
+  // A shock dart's stun holds a survivor where it stands for 2 seconds ("Decreased the stun on humans from shocking tranq
+  // darts from 5 seconds to 2 seconds", patch 265.0, ark.wiki.gg, Shocking Tranquilizer Dart, 2026-11-15). A creature is
+  // not stunned: "It can also stop the player from moving."
+  { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 2, root: true, only: ["core:survivor"] },
   { type: "buff", id: "core:injured", label: "Injured", color: 8, speed: 0.8 },
   // What a meal mends comes at this rate. A piece of cooked meat is 8 health over five seconds.
   { type: "buff", id: "core:fed", label: "Fed", color: 12, seconds: 5, health: 1.6, good: true },
@@ -382,9 +399,12 @@ const ALL: readonly Def[] = [
   { type: "item", class: "resource", id: "core:fiber", stack: 300, weight: 0.01, color: 7 },
   // A slingshot's ammunition. Its speed is chosen.
   { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15, ammo: { damage: 14, type: "melee", speed: 35, gravity: 9.81, torpor: { instant: 1.35, over: 0, seconds: 0 }, mesh: "core:stone_shot" } },
-  { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 4, water: 2 }, color: 8 },
-  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 }, spoilsInto: "core:spoiled_meat" },
-  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 35, health: 8 }, color: 3, label: "cooked meat", spoilsInto: "core:spoiled_meat" },
+  // What a survivor gets of eating each is its infobox's (ark.wiki.gg, 2026-11-15). Our one berry stands for the four that
+  // feed alike, each 1.5 food and 0.2 water (Mejoberry, Amarberry, Azulberry, Tintoberry). Raw meat is 10 food and takes
+  // 5 health, at once as spoiled meat's harm is (Raw Meat); cooked meat 20 food and 8 health (Cooked Meat).
+  { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 1.5, water: 0.2 }, color: 8 },
+  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 10 }, use: { adds: [{ stat: "health", amount: -5 }] }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 }, spoilsInto: "core:spoiled_meat" },
+  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 20, health: 8 }, color: 3, label: "cooked meat", spoilsInto: "core:spoiled_meat" },
   { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
   { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
   { type: "item", class: "resource", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
@@ -402,7 +422,7 @@ const ALL: readonly Def[] = [
   LEVELS,
 ];
 
-export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS]);
+export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS]);
 
 /** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

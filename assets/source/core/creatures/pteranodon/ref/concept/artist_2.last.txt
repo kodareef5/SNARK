@@ -1,0 +1,7 @@
+Saved all **31 requested PNGs**, plus scripts, prompts and checks. `round1/` and `blockout_guides/` remain unchanged.
+
+[Review sheet](/home/user/dev/SNARK/.claude/worktrees/agent-a01a89f1f31e749da/assets/source/core/creatures/pteranodon/ref/concept/checks/round2/paintings_review.png) · [Report](/home/user/dev/SNARK/.claude/worktrees/agent-a01a89f1f31e749da/assets/source/core/creatures/pteranodon/ref/concept/REPORT.md)
+
+Outer contours are within **8 px**. The report documents guide-stencil fitting, the **18 px internal jaw-slot exception**, and readability limits at the smallest size.
+
+Paintings used built-in image generation; the [prompts](/home/user/dev/SNARK/.claude/worktrees/agent-a01a89f1f31e749da/assets/source/core/creatures/pteranodon/ref/concept/round2_prompts) are retained.

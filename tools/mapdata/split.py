@@ -11,6 +11,7 @@ from pathlib import Path
 from pyproj import Transformer
 from shapely import make_valid
 from shapely.geometry import Polygon
+from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -52,7 +53,7 @@ def main():
             osm.append((el['id'], p))
             tags[el['id']] = el.get('tags', {})
     tree = STRtree([p for _, p in osm])
-    out, split, pieces_total, rows = [], 0, 0, []
+    out, split, pieces_total, rows, remainders = [], 0, 0, [], 0
     next_id = SPLIT_BASE
     used = set()
     for g, props in sorted(usa, key=lambda gp: gp[1]['id']):
@@ -68,15 +69,23 @@ def main():
                 continue
             pieces.append((way, piece))
             taken = piece if taken is None else taken.union(piece)
-        if len(pieces) < 2 or sum(p.area for _, p in pieces) < cover_min * g.area:
+        covered = sum(p.area for _, p in pieces)
+        rest = []
+        if pieces and covered < cover_min * g.area and g.area >= rule.get('split_remainder_m2', float('inf')):
+            # A large footprint OpenStreetMap only partly draws (a mall round a theatre and a hotel tower) would take its
+            # tallest building's height everywhere: its mapped buildings stand apart and what is left keeps the survey's.
+            left = g.difference(unary_union([p for _, p in pieces])).buffer(-1.5).buffer(1.5, join_style=2)
+            rest = [h for h in getattr(left, 'geoms', [left]) if h.geom_type == 'Polygon' and h.area >= 60]
+        if not rest and (len(pieces) < 2 or covered < cover_min * g.area):
             out.append((g, props))
             continue
         split += 1
-        for way, piece in sorted(pieces, key=lambda wp: wp[0]):
+        for way, piece in sorted(pieces, key=lambda wp: wp[0]) + [(None, h) for h in sorted(rest, key=lambda h: (h.centroid.x, h.centroid.y))]:
             out.append((piece, {'id': next_id, 'parent': props['id'], 'osm_way': way}))
             rows.append((next_id, props['id'], round(piece.area, 1)))
             next_id += 1
             pieces_total += 1
+        remainders += len(rest)
     # Buildings USA Structures lacks, most of them newer than its imagery (San Francisco's tallest among them): an
     # OpenStreetMap outline of 40 m2 or more, on land, that USA Structures' footprints overlap by less than a fifth.
     usa_tree = STRtree([g for g, _ in usa])
@@ -122,7 +131,7 @@ def main():
         derived.append(r)
     attrs['fields'], attrs['rows'] = fields, own + derived
     path.write_text(json.dumps(attrs) + '\n')
-    print(f'split: {split} of {len(usa)} USA Structures footprints into {pieces_total} OpenStreetMap buildings; {added} OpenStreetMap buildings added; {len(out)} footprints')
+    print(f'split: {split} of {len(usa)} USA Structures footprints into {pieces_total - remainders} OpenStreetMap buildings and {remainders} remainders; {added} OpenStreetMap buildings added; {len(out)} footprints')
 
 
 if __name__ == '__main__':

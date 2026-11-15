@@ -1,0 +1,14 @@
+# What the scripts here make again, left out as the other assets leave it out: the concept scenes and their raw renders
+# and check pictures (build_stations.py and its finishing scripts make them), the materials' check pictures, construction
+# fields and 2,048 sets (build_material.py makes them; the game reads the 1,024 sets), and the snaps as PNG (kept as JPEG).
+*.blend
+*.blend1
+ref/concept-*/renders/
+ref/concept-*/checks/*.png
+tex/*/checks/
+tex/*/source/*.npz
+tex/*/*_base.png
+tex/*/*_height.png
+tex/*/*_normal.png
+tex/*/*_orm.png
+ref/game/*.png
