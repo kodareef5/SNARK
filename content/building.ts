@@ -87,9 +87,8 @@ const STORES: readonly { name: string; label: string; half: readonly [number, nu
   { name: "storage_large", label: "Large storage box", half: [0.75, 0.5, 0.4375], color: 3, hp: 2400, material: "wood", slots: 45, stack: 100, weight: 8, level: 16, cost: 9, needs: [["wood", 50], ["thatch", 35], ["fiber", 25]] },
   // ark.wiki.gg, Vault, infobox, 2026-11-15 (stations S6; Evolved's, D465): at the fabricator, 500 ingots, 100 cementing paste, 70
   // oil and 90 polymer, craftingxp 82 (our 328, D465's four times); level 75, 30 engram points; weighs 20, stacks to 1. No
-  // page gives a crafting time: 5 s is ours (DEV135). Its 70 oil and 90 polymer are left out while the structure menu's
-  // "costs" and "gives" line cannot hold four ingredients on a 4:3 window (DEV175).
-  { name: "vault", label: "Vault", half: [0.75, 1.25, 0.625], color: 11, hp: 50000, material: "metal", slots: 350, falls: true, stack: 1, weight: 20, level: 75, cost: 30, xp: 328, at: "core:fabricator", needs: [["ingot", 500], ["paste", 100]] },
+  // page gives a crafting time: 5 s is ours (DEV135).
+  { name: "vault", label: "Vault", half: [0.75, 1.25, 0.625], color: 11, hp: 50000, material: "metal", slots: 350, falls: true, stack: 1, weight: 20, level: 75, cost: 30, xp: 328, at: "core:fabricator", needs: [["ingot", 500], ["paste", 100], ["oil", 70], ["polymer", 90]] },
   // ark.wiki.gg, Campfire, 2026-11-15: 100 health, decaytime 172800 (2 days).
   { name: "campfire", label: "Campfire", half: [0.5, 0.1875, 0.5], color: 5, hp: 100, material: "stone", slots: 3, fire: true, decayDays: 2, stack: 3, weight: 4, level: 2, cost: 3, needs: [["thatch", 12], ["flint", 1], ["stone", 16], ["wood", 2]] },
 ];

@@ -159,8 +159,8 @@ const FABRICATOR: Readonly<Record<string, Made>> = {
   laser: ["fabricator", "50 ingot, 60 crystal, 40 electronics", 6, 544, 1, 59, 24],
   // Poison Grenade: its 14 charcoal and 5 crystal; no crafting time, the grenade's 8 s (DEV143).
   grenade_poison: ["fabricator", "10 narcotic, 14 charcoal, 5 ingot, 18 sparkpowder, 12 gunpowder, 5 crystal, 20 fiber, 5 flint", 8, 33, 1, 40, 18],
-  // Vault: craftingxp 82; no crafting time (DEV135); its 70 oil and 90 polymer wait for the structure menu (DEV175).
-  piece_vault: ["fabricator", "500 ingot, 100 paste", 5, 328, 1, 75, 30],
+  // Vault: craftingxp 82; no crafting time (DEV135).
+  piece_vault: ["fabricator", "500 ingot, 100 paste, 70 oil, 90 polymer", 5, 328, 1, 75, 30],
 };
 
 test("the fabricator makes the shock dart, the flashlight and laser, the poison grenade and the vault, at ARK's numbers (Fabricator, and each page)", () => {
