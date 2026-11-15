@@ -89,6 +89,8 @@ export class Cluster {
   /** Names given out here whose survivor is elsewhere. */
   readonly away = new Map<string, Away>();
   private ctx: ClusterContext | null = null;
+  /** The world being started will resume what its records hold (start). */
+  private resumes = false;
   private readonly lock: SaveLock;
   private readonly saveId: string;
   private readonly savePath: string;
@@ -153,13 +155,18 @@ export class Cluster {
     throw new Error(`the cluster in ${root} has no world id left for a new save`);
   }
 
-  /** Call once the world is loaded, before anything resumes: does over again what the save lost of the cluster's transfers. */
+  /**
+   * Call once the world is loaded, before anything resumes: does over again what the save lost of the cluster's transfers.
+   * A save that never committed has lost them too, since its world took its id before then.
+   */
   start(ctx: ClusterContext, fresh: boolean): void {
     this.ctx = ctx;
+    // What a loaded save holds resumes with the rest of it. A new world resumes nothing, so what comes into it now is put in.
+    this.resumes = !fresh;
     if (this.first && !fresh) this.checkTeams();
-    if (!fresh) this.recover();
+    this.recover();
     this.rebuildAway();
-    this.expire(this.folder.places(), true);
+    this.expire(this.folder.places(), this.resumes);
     this.announce();
   }
 
@@ -203,12 +210,15 @@ export class Cluster {
 
   private announcement(): Announcement {
     const { rules, world, game, reg } = this.ctx!;
+    // A map content names is shown by its label, as the map screen does.
+    const def = reg.defs[reg.index.get(world.mapId) ?? 0];
+    const map = (def?.type === "map" ? def.label : undefined) ?? world.mapId;
     return {
       world: this.world,
       saveId: this.saveId,
       save: this.savePath,
-      name: rules.text("SessionName") || world.mapId,
-      map: world.mapId,
+      name: rules.text("SessionName") || map,
+      map,
       port: this.port,
       url: this.url,
       players: game.playerCount,
@@ -258,19 +268,23 @@ export class Cluster {
     const rec = records.byPid.get(c.pid);
     if (!rec || c.ent < 0 || c.state !== SESSION_ALIVE || rec.dead) return "only a survivor in the world can travel";
     if (persistence.failing) return "this server cannot save just now, so nobody may leave it";
-    const dest = this.folder.announcement(to);
     if (to === this.world) return "you are on that server";
-    if (!dest || dest.at <= this.now() - LIVE_MS) return `${dest?.name || `world ${to}`} is not running`;
-    const why = this.whyNot(dest) || ctx.mayLeave(c, rec);
-    if (why !== "") return why;
+    const state = ctx.mayLeave(c, rec);
+    if (state !== "") return state;
+    // What it carries first, as ARK's message has it, then where it goes.
     items.inv(rec);
     const recs = this.carried(rec);
     const held = new Map<number, number>();
     for (const r of recs) items.held(r, held);
     for (const item of held.keys()) {
-      if ((reg.defs[item] as ItemDef | undefined)?.travels === false) return `you are carrying ${reg.ids[item]}, which cannot be transferred: drop such items and try again`;
+      const def = reg.defs[item] as ItemDef | undefined;
+      if (def?.travels === false) return `you are carrying ${def.label ?? reg.ids[item]}, which cannot be transferred: drop such items and try again`;
     }
     if (held.size > 0 && rules.on("PreventUploadItems")) return "this server does not let things leave it: drop what you carry and try again";
+    const dest = this.folder.announcement(to);
+    if (!dest || dest.at <= this.now() - LIVE_MS) return `${dest?.name || `world ${to}`} is not running`;
+    const why = this.whyNot(dest);
+    if (why !== "") return why;
     if (held.size > 0 && !dest.items) return `${dest.name} takes no things from other servers: drop what you carry and try again`;
     const there = this.folder.names(to)?.get(rec.name);
     if (there !== undefined && there !== rec.pid) return `the name ${rec.name} belongs to another survivor on ${dest.name}`;
@@ -445,7 +459,7 @@ export class Cluster {
       rec.yaw = world.spawn.yaw;
     }
     for (const r of recs) {
-      records.byPid.set(r.pid, r);
+      records.put(r);
       items.receive(r);
       if (pidWorld(r.pid) === this.world && pidSeq(r.pid) >= records.nextSeq) records.nextSeq = pidSeq(r.pid) + 1;
     }
@@ -573,7 +587,7 @@ export class Cluster {
         records.delete(r.pid);
       }
     }
-    this.takeIn(parcel, recs, place.key === NO_KEY ? new Uint8Array(0) : unhex(place.key), true);
+    this.takeIn(parcel, recs, place.key === NO_KEY ? new Uint8Array(0) : unhex(place.key), this.resumes);
     this.recovered.push(`${head.name} came from ${this.serverName(head.from)} by transfer ${head.id}, which this save did not know: taken in again`);
   }
 

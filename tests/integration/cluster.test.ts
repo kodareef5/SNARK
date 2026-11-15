@@ -5,7 +5,13 @@ import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { App } from "../../client/core/app.ts";
 import type { ClientSession } from "../../client/core/session.ts";
+import { arrivalOf } from "../../client/core/travel.ts";
+import { KEY_TRAVEL_BUTTON } from "../../client/core/ui/travel.ts";
+import { clusterList } from "../../server/main.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { auditCluster } from "../../server/cluster/audit.ts";
 import { TICKET_SECONDS } from "../../server/cluster/cluster.ts";
@@ -216,5 +222,165 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   expect(b.h.host.persistence!.transferRows.map((t) => t.dir)).toEqual([1, 0]);
   expect([items.sent[id("stone")], items.received[id("stone")], b.h.host.items.sent[id("stone")], b.h.host.items.received[id("stone")]]).toEqual([40, 40, 40, 40]);
   a.h.host.shutdown();
+  b.h.host.shutdown();
+});
+
+test("the page lists the other servers on L, leaves for one on a click, and goes to its address with the ticket, where the survivor arrives", async () => {
+  const clock = { ms: Date.now() };
+  const a = server("Island", "page", clock);
+  const b = server("Miami", "page", clock);
+  b.h.host.cluster!.listening(8812, "");
+  beat(a, b);
+  const app = new App(a.h.join("ada", { latencyMs: 20 }, { manual: true, key: keyAt("ada", 1) }), a.h.reg, parsePack(corePackBytes()));
+  const went: string[] = [];
+  app.page = { origin: "http://localhost:8811", protocol: "http:", hostname: "localhost", go: (url) => void went.push(url), arrived: () => {}, cluster: async () => clusterList(a.h.host) };
+  const run = (ms: number): void => a.h.run(ms, (now) => app.frame(now, 1280, 720));
+  run(500);
+  a.h.host.items.mint(rec(a, "ada")!, id("stone"), 40);
+  app.key("KeyL", true);
+  app.key("KeyL", false);
+  run(100);
+  await Promise.resolve();
+  run(100);
+  const row = app.ui.frame.find(KEY_TRAVEL_BUTTON)!;
+  expect([row.text, row.interactive]).toEqual(["Miami (proving:1), 0 of 70", true]);
+  app.pointer(0, KEY_TRAVEL_BUTTON, 0, 0, 0);
+  run(600);
+  await Promise.resolve();
+  run(100);
+  expect(went.length).toBe(1);
+  expect(went[0]!.startsWith("http://localhost:8812/#travel=")).toBe(true);
+  // The page there reads its ticket and its name from the address.
+  const arrival = arrivalOf(went[0]!.slice(went[0]!.indexOf("#")))!;
+  expect(arrival.name).toBe("ada");
+  const there = b.h.join(arrival.name, {}, { key: keyAt("ada", 2), ticket: arrival.ticket });
+  b.h.run(400);
+  expect(there.state).toBe("active");
+  expect(b.h.host.items.held(rec(b, "ada")!).get(id("stone"))).toBe(40);
+  expect(audit(a, b)).toEqual([]);
+  a.h.host.shutdown();
+  b.h.host.shutdown();
+});
+
+test("the source killed after it sealed a survivor and before it saved gives it up again as it starts, and its owner or time takes it back", () => {
+  const clock = { ms: Date.now() };
+  const a = server("Island", "kill-source", clock);
+  const b = server("Miami", "kill-source", clock);
+  const folder = b.h.host.cluster!.folder;
+  const { session, me } = survivor(a, "ada");
+  const pid = me.pid;
+  const carried = new Map(a.h.host.items.held(me));
+  expect(audit(a, b)).toEqual([]);
+  beat(a, b);
+  // Sealed and out of the world, and the server dies before the commit after which the page would have had its ticket.
+  expect(a.h.host.cluster!.leave(a.h.client(session)!, b.world)).toBe("");
+  crash(a);
+  expect(places(pid, folder, b)).toEqual(["sealed"]);
+  const a2 = server("Island", "kill-source", clock);
+  expect(a2.log.some((l) => l.startsWith("ada left for Miami by transfer") && l.includes("which this save did not know: given up again"))).toBe(true);
+  expect(places(pid, folder, a2, b)).toEqual(["sealed"]);
+  expect(audit(a2, b)).toEqual([]);
+  // The page never had its ticket. Its owner joins the island again and has it back whole.
+  const again = a2.h.join("ada", {}, { key: keyAt("ada", 1) });
+  a2.h.run(400);
+  expect(again.state).toBe("active");
+  expect(new Map(a2.h.host.items.held(rec(a2, "ada")!))).toEqual(carried);
+  expect(places(pid, folder, a2, b)).toEqual(["world 1"]);
+  expect(audit(a2, b)).toEqual([]);
+  // Once more, and nobody comes: past its ticket's time the island takes it back by itself.
+  beat(a2, b);
+  expect(a2.h.host.cluster!.leave(a2.h.client(again)!, b.world)).toBe("");
+  crash(a2);
+  const a3 = server("Island", "kill-source", clock);
+  expect(places(pid, folder, a3, b)).toEqual(["sealed"]);
+  clock.ms += TICKET_SECONDS * 1000;
+  beat(a3, b);
+  expect(places(pid, folder, a3, b)).toEqual(["world 1"]);
+  expect(a3.log.some((l) => l === "ada's ticket to Miami ran out unused, so ada is back here")).toBe(true);
+  expect(audit(a3, b)).toEqual([]);
+  a3.h.host.shutdown();
+  b.h.host.shutdown();
+});
+
+test("the source killed once its survivor's leaving is saved changes nothing: the ticket is out, and the survivor arrives", () => {
+  const clock = { ms: Date.now() };
+  const a = server("Island", "kill-saved", clock);
+  const b = server("Miami", "kill-saved", clock);
+  const folder = b.h.host.cluster!.folder;
+  const { session, me } = survivor(a, "ada");
+  const pid = me.pid;
+  beat(a, b);
+  const ticket = travel(a, session, b.world) as Uint8Array;
+  crash(a);
+  const there = b.h.join("ada", {}, { key: keyAt("ada", 2), ticket });
+  b.h.run(400);
+  expect(there.state).toBe("active");
+  const a2 = server("Island", "kill-saved", clock);
+  expect(a2.log.filter((l) => l.includes("did not know"))).toEqual([]);
+  expect(places(pid, folder, a2, b)).toEqual(["world 2"]);
+  expect(audit(a2, b)).toEqual([]);
+  a2.h.host.shutdown();
+  b.h.host.shutdown();
+});
+
+test("the destination killed after it took a survivor and before it saved takes it in again as it starts, and the page joins with its ticket", () => {
+  const clock = { ms: Date.now() };
+  const a = server("Island", "kill-dest", clock);
+  const b = server("Miami", "kill-dest", clock);
+  const folder = b.h.host.cluster!.folder;
+  const { session, me } = survivor(a, "ada");
+  const pid = me.pid;
+  const carried = new Map(a.h.host.items.held(me));
+  beat(a, b);
+  const ticket = travel(a, session, b.world) as Uint8Array;
+  expect(b.h.host.cluster!.arrive("ada", keyAt("ada", 2), ticket)).toBe("");
+  crash(b);
+  const b2 = server("Miami", "kill-dest", clock);
+  expect(b2.log.some((l) => l.startsWith("ada came from Island by transfer") && l.endsWith("which this save did not know: taken in again"))).toBe(true);
+  expect(places(pid, folder, a, b2)).toEqual(["world 2"]);
+  expect(audit(a, b2)).toEqual([]);
+  // The page tries again with the ticket it has: it is let in, and nothing moves.
+  const there = b2.h.join("ada", {}, { key: keyAt("ada", 2), ticket });
+  b2.h.run(400);
+  expect(there.state).toBe("active");
+  expect(new Map(b2.h.host.items.held(rec(b2, "ada")!))).toEqual(carried);
+  // Killed after it saved, it has the survivor at its start, and the page joins with no ticket at all.
+  b2.h.run(400);
+  crash(b2);
+  const b3 = server("Miami", "kill-dest", clock);
+  expect(b3.log.filter((l) => l.includes("did not know"))).toEqual([]);
+  const later = b3.h.join("ada", {}, { key: keyAt("ada", 2) });
+  b3.h.run(400);
+  expect(later.state).toBe("active");
+  expect(places(pid, folder, a, b3)).toEqual(["world 2"]);
+  expect(audit(a, b3)).toEqual([]);
+  a.h.host.shutdown();
+  b3.h.host.shutdown();
+});
+
+test("the source killed while it takes a survivor back takes it in again as it starts, and the ticket it had sent is refused", () => {
+  const clock = { ms: Date.now() };
+  const a = server("Island", "kill-back", clock);
+  const b = server("Miami", "kill-back", clock);
+  const folder = b.h.host.cluster!.folder;
+  const { session, me } = survivor(a, "ada");
+  const pid = me.pid;
+  beat(a, b);
+  const ticket = travel(a, session, b.world) as Uint8Array;
+  // The owner joins the island again instead: it takes the survivor back, and dies before it saves.
+  expect(a.h.host.cluster!.awayCheck("ada", keyAt("ada", 1))).toBe("");
+  crash(a);
+  const a2 = server("Island", "kill-back", clock);
+  expect(a2.log.some((l) => l.endsWith("which this save did not know: taken in again"))).toBe(true);
+  expect(places(pid, folder, a2, b)).toEqual(["world 1"]);
+  const late = b.h.join("ada", {}, { key: keyAt("ada", 2), ticket });
+  b.h.run(400);
+  expect([late.state, late.closeReason, late.closeText]).toEqual(["closed", REJECT_TRAVEL, "ada went back to Island"]);
+  expect(places(pid, folder, a2, b)).toEqual(["world 1"]);
+  const home = a2.h.join("ada", {}, { key: keyAt("ada", 1) });
+  a2.h.run(400);
+  expect(home.state).toBe("active");
+  expect(audit(a2, b)).toEqual([]);
+  a2.h.host.shutdown();
   b.h.host.shutdown();
 });

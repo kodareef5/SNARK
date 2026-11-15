@@ -184,4 +184,11 @@ export class Records {
     this.dirty.delete(pid);
     this.deleted.push(pid);
   }
+
+  /** Puts a record in that came from elsewhere. One deleted since the last commit is written again, not deleted. */
+  put(rec: EntityRecord): void {
+    this.byPid.set(rec.pid, rec);
+    for (let i = this.deleted.indexOf(rec.pid); i >= 0; i = this.deleted.indexOf(rec.pid)) this.deleted.splice(i, 1);
+    this.dirty.add(rec.pid);
+  }
 }
