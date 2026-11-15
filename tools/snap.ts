@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --ui (--console TEXT, --inventory, --chat).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -14,7 +14,7 @@ import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
-import { AnimState } from "../shared/anim/pose.ts";
+import { AnimState, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
 import type { Rig } from "../shared/anim/rigs.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
@@ -393,6 +393,73 @@ export function creaturesScene(view: ProvingView, tick: number, facing: number, 
     cam.fovY = 0.9;
     cam.pitch = -0.12;
   }
+}
+
+/** Words to write under things a scene put in view, at points in the world. The pictures of --graphics carry them. */
+const sceneLabels: { text: string; at: [number, number, number] }[] = [];
+
+/**
+ * A dodo's knock-out or its flinch, a row of bodies each a moment of it, as a client draws them from their states and cues.
+ * The knock-out stands, goes down (a fifth, two fifths and two thirds in), lies, gulps a berry, and gets up (two fifths,
+ * three fifths and four fifths in). The flinch walks, flinches over the walk (3, 5 and 8 ticks in), and flinches standing.
+ */
+export function statesScene(view: ProvingView, which: string, tick: number, facing: number, colors: readonly number[]): void {
+  sceneLabels.length = 0;
+  const r = view.remote;
+  const kind = view.reg.index.get("core:dodo")!;
+  r.count = 0;
+  r.tick = tick;
+  const st = new AnimState();
+  const at = (frames: number): number => (tick - frames) & 255;
+  type Moment = [label: string, set: (s: AnimState) => void];
+  const knockout: Moment[] = [
+    ["idle", () => {}],
+    ["in 12", (s) => ((s.out = true), (s.cue = CUE_TORPOR), (s.cueStart = at(12)))],
+    ["in 25", (s) => ((s.out = true), (s.cue = CUE_TORPOR), (s.cueStart = at(25)))],
+    ["in 41", (s) => ((s.out = true), (s.cue = CUE_TORPOR), (s.cueStart = at(41)))],
+    ["lying", (s) => (s.out = true)],
+    ["eat 12", (s) => ((s.out = true), (s.layer = LAYER_EAT), (s.layerStart = at(12)))],
+    ["out 30", (s) => ((s.cue = CUE_TORPOR), (s.cueStart = at(30)))],
+    ["out 45", (s) => ((s.cue = CUE_TORPOR), (s.cueStart = at(45)))],
+    ["out 58", (s) => ((s.cue = CUE_TORPOR), (s.cueStart = at(58)))],
+  ];
+  const flinch: Moment[] = [
+    ["walk", (s) => (s.speed = 1)],
+    ["flinch 3", (s) => ((s.speed = 1), (s.layer = LAYER_FLINCH), (s.layerStart = at(3)))],
+    ["flinch 5", (s) => ((s.speed = 1), (s.layer = LAYER_FLINCH), (s.layerStart = at(5)))],
+    ["flinch 8", (s) => ((s.speed = 1), (s.layer = LAYER_FLINCH), (s.layerStart = at(8)))],
+    ["idle", () => {}],
+    ["flinch 4", (s) => ((s.layer = LAYER_FLINCH), (s.layerStart = at(4)))],
+  ];
+  const moments = which === "flinch" ? flinch : knockout;
+  const [x0, z0, gap] = [256, 240, 0.95];
+  moments.forEach(([name, set], i) => {
+    const n = r.count++;
+    // The camera looks along +Z, so -X is to its right: the row reads from left to right.
+    const x = x0 - (i - (moments.length - 1) / 2) * gap;
+    // The same clock for every body, so each is where its cue puts it.
+    r.id[n] = idWithSeed(0) + 1024 * (n + 1);
+    r.kind[n] = kind;
+    [r.x[n], r.z[n], r.y[n], r.yaw[n], r.flags[n]] = [x, z0, view.hf.heightAt(x, z0), facing, 1];
+    r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+    for (let q = 0; q < 6; q++) r.colors[n * 6 + q] = colors[q] ?? 0;
+    r.span[n] = r.grown[n] = r.seat[n] = r.hasLook[n] = 0;
+    st.unpack(0);
+    set(st);
+    r.anim[n] = st.pack();
+    r.cue[n] = st.packCue();
+    sceneLabels.push({ text: name, at: [x, r.y[n]! - 0.08, z0] });
+  });
+  // Far enough back for the row and half a body each side, a little above it.
+  const cam = view.cam;
+  cam.fovY = 0.3;
+  const across = Math.atan(Math.tan(cam.fovY / 2) * cam.aspect);
+  const far = ((moments.length * gap) / 2 + 0.2) / Math.tan(across);
+  cam.x = x0;
+  cam.z = z0 - far;
+  cam.y = view.hf.heightAt(x0, z0) + 0.35 + far * Math.tan(0.12);
+  cam.yaw = 0;
+  cam.pitch = -0.12;
 }
 
 export function posesScene(view: ProvingView, tick: number, first: number, facing: number): void {
@@ -881,6 +948,10 @@ if (import.meta.main) {
       const samples = new Map((await findAssets(source)).flatMap((a) => (a.spec.kind === "creature" ? [[a.id, a.spec.regions.map((region) => region.sample)] as const] : [])));
       creaturesScene(view, Number(arg("tick") ?? 40), (Number(arg("face") ?? 90) * Math.PI) / 180, samples);
     }
+    if (args.includes("--states")) {
+      const dodo = (await findAssets(source)).find((a) => a.id === "core:dodo")?.spec;
+      statesScene(view, arg("states") ?? "knockout", Number(arg("tick") ?? 400), (Number(arg("face") ?? -90) * Math.PI) / 180, dodo?.kind === "creature" ? dodo.regions.map((region) => region.sample) : []);
+    }
     if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
   };
   const graphics = arg("graphics");
@@ -905,6 +976,15 @@ if (import.meta.main) {
       const [ox, oy] = [(i % across) * w!, Math.floor(i / across) * h!];
       for (let y = 0; y < h!; y++) pixels.set(view.raster.color.subarray(y * w! * 4, (y + 1) * w! * 4), ((oy + y) * W + ox) * 4);
       if (names.length > 1) label(pixels, W, name, ox + 10, oy + 10);
+      const m = view.cam.viewProj;
+      for (const { text, at } of sceneLabels) {
+        const [rx, ry, rz] = [at[0] - view.cam.x, at[1] - view.cam.y, at[2] - view.cam.z];
+        const cw = m[3]! * rx + m[7]! * ry + m[11]! * rz;
+        if (cw <= 0.05) continue;
+        const px = (((m[0]! * rx + m[4]! * ry + m[8]! * rz) / cw) * 0.5 + 0.5) * w!;
+        const py = (0.5 - ((m[1]! * rx + m[5]! * ry + m[9]! * rz) / cw) * 0.5) * h!;
+        label(pixels, W, text, Math.round(ox + px - text.length * (GLYPH_WIDTH + 1)), Math.round(oy + py));
+      }
       const p = view.scene.packet;
       const r = view.scene.assets.residency;
       const textured = [...Array(p.drawCount).keys()].filter((d) => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0).length;
