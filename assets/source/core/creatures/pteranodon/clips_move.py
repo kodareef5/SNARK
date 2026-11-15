@@ -891,20 +891,24 @@ def take_off(r):
 
 
 def land(r):
-    """Feet first at the moment it touches down: the legs reach forward with the heels down and skid, the wings flare
-    up and forward against the speed, rise and fold as the body pitches forward onto the arms, the hands come down,
-    and it settles into the crouch with a dip and a look round."""
+    """Feet first at the moment it touches down: the legs reach forward with the heels down, take the weight deep and
+    skid, the chest carrying on forward over them; the wings flare up and forward against the speed, rise and fold as
+    the body pitches forward onto the arms; the hands come down, the shoulders settle onto them and the elbows give,
+    and it rises a little into the crouch, the head following a beat behind."""
     name = "land"
     N = rig.CLIPS[name]["frames"]
     # The free arms reach down as the wings fold; the hands take hold of the ground at `hold`, where the free arm has
     # put them, and are on it at `down`.
     hold, down = 16.0, 21.0
-    body_y = Keys([(0, 0.53), (3, 0.44), (6, 0.39), (10, 0.40), (hold, 0.42), (down, STANCE_BODY.y - 0.025),
-                   (23, STANCE_BODY.y - 0.02), (27, STANCE_BODY.y + 0.006), (31, STANCE_BODY.y), (N - 1, STANCE_BODY.y)])
-    body_z = Keys([(0, -0.78), (3, -0.64), (8, -0.50), (down, STANCE_BODY.z + 0.02), (25, STANCE_BODY.z - 0.005),
+    body_y = Keys([(0, 0.53), (3, 0.40), (6, 0.335), (9, 0.36), (12, 0.40), (hold, 0.42), (down, STANCE_BODY.y),
+                   (N - 1, STANCE_BODY.y)])
+    body_z = Keys([(0, -0.78), (3, -0.62), (6, -0.49), (9, -0.45), (down, STANCE_BODY.z + 0.02), (25, STANCE_BODY.z - 0.005),
                    (30, STANCE_BODY.z), (N - 1, STANCE_BODY.z)])
-    pitch = Keys([(0, 30.0), (3, 34.0), (9, 40.0), (hold, 43.0), (down, S["body"]["pitch"] - 2.5),
-                  (25, S["body"]["pitch"] + 0.8), (N - 1, S["body"]["pitch"])])
+    pitch = Keys([(0, 30.0), (3, 36.0), (6, 40.0), (hold, 43.0), (down, S["body"]["pitch"]), (N - 1, S["body"]["pitch"])])
+    # The shoulders settle onto the planted arms, which give and then hold.
+    settle = Keys([(0, 0.0), (down - 1.0, 0.0), (down + 2.0, 1.0), (down + 6.0, -0.25), (down + 10.0, 0.05),
+                   (N - 1, 0.0)])
+    head_lag = lagging(lambda t: body_y(t) - 0.035 * settle(t), N - 1, False, 2.2, 0.45)
     bend = Keys([(0, 0.6), (5, 0.8), (hold, 1.0), (N - 1, 1.0)])
     fold = Keys([(0, 0.0), (3, 0.04), (7, 0.22), (12, 0.55, 0.075), (18, 1.0), (N - 1, 1.0)])
     flap = Keys([(0, 22.0), (2, 8.0), (6, 30.0), (12, 18.0), (18, 0.0)])
@@ -916,14 +920,17 @@ def land(r):
 
     def at(t):
         b = bend(t)
+        st = settle(t)
         p = ground()
-        p["body"] = Vector((0.0, body_y(t), body_z(t)))
-        p["body_rot"] = (pitch(t), 0.0, 0.0)
+        p["body"] = Vector((0.0, body_y(t) - 0.035 * st, body_z(t)))
+        p["body_rot"] = (pitch(t) - 1.5 * st, 0.0, 0.0)
         p["spine"] = (S["spine"]["pitch"] * b, 0.0, 0.0)
-        p["chest"] = (S["chest"]["pitch"] * b + 6.0 * (1 - b), 0.0, 0.0)
+        p["chest"] = (S["chest"]["pitch"] * b + 6.0 * (1 - b) - 2.5 * st, 0.0, 0.0)
         n = nod(t)
         lk = look(t)
-        p["head"] = within_neck(p, STANCE_HEAD + Vector((0.0, -0.06 * n + 0.10 * (1 - b), 0.03 * n - 0.10 * (1 - b))))
+        lag = head_lag[min(int(round(t)), N - 1)]
+        p["head"] = within_neck(p, STANCE_HEAD + Vector((0.0, -0.06 * n + 0.10 * (1 - b) + 0.6 * lag,
+                                                         0.03 * n - 0.10 * (1 - b))))
         p["head_rot"] = (-5.0 * max(0.0, n), lk, 0.0)
         p["neck"] = [(0.0, 0.15 * lk, 0.0)] * 4
         for s in "lr":
@@ -1024,25 +1031,27 @@ def walk(r):
                      (td["foot_l"] + 6.5 - N, 1.0)], period=N)(t)
 
     def roll(t):
-        return 2.5 * math.cos(2.0 * math.pi * (t - 1.0) / N)
+        return 4.0 * math.cos(2.0 * math.pi * (t - 1.0) / N)
 
     def yaw(t):
-        return -3.0 * math.cos(2.0 * math.pi * (t - 1.5) / N)
+        return -4.0 * math.cos(2.0 * math.pi * (t - 1.5) / N)
 
-    ly = lagging(lambda t: 0.012 * bob(t), N, True, 2.5, 0.35)
+    ly = lagging(lambda t: 0.022 * bob(t), N, True, 2.5, 0.35)
+    # The shoulders drop onto each hand as it takes the weight, and are pushed up off it.
+    yield_ = Keys([(0, 0.0), (2, 1.0), (6, -0.3), (9, 0.0), (10, 0.0), (12, 1.0), (16, -0.3), (19, 0.0)], period=N)
 
     def at(t):
         f = int(round(t)) % N
         p = ground()
         b = bob(t)
-        p["body"] = WALK_BODY + Vector((-0.012 * roll(t) / 2.5, 0.012 * b, 0.0))
-        p["body_rot"] = (S["body"]["pitch"] - 3.0 + 1.2 * b, yaw(t), roll(t))
+        p["body"] = WALK_BODY + Vector((-0.014 * roll(t) / 4.0, 0.022 * b - 0.012 * yield_(t), 0.0))
+        p["body_rot"] = (S["body"]["pitch"] - 3.0 + 1.5 * b - 1.0 * yield_(t), yaw(t), roll(t))
         p["spine"] = (S["spine"]["pitch"], -0.3 * yaw(t), -0.3 * roll(t))
-        p["chest"] = (S["chest"]["pitch"] + 2.0 + 60.0 * ly[f], -0.4 * yaw(t), -0.5 * roll(t))
+        p["chest"] = (S["chest"]["pitch"] + 2.0 + 40.0 * ly[f] - 2.5 * yield_(t), -0.4 * yaw(t), -0.5 * roll(t))
         for side in "lr":
             sign = 1.0 if side == LEFT else -1.0
             ph = (t - td["hand_" + side]) % N
-            knuckle, hrot = gait_hand(ph, N, hand_stance, hand_z, STANCE_HAND[side].x + 0.02 * sign, 0.15, side)
+            knuckle, hrot = gait_hand(ph, N, hand_stance, hand_z, STANCE_HAND[side].x + 0.02 * sign, 0.20, side)
             p["hand_" + side] = (knuckle, mrot(hrot, side))
             ph = (t - td["foot_" + side]) % N
             ankle, pitch, talons = gait_foot(ph, N, foot_stance, foot_z, STANCE_FOOT[side].x, 0.12, 55.0, 25.0)
@@ -1054,10 +1063,10 @@ def walk(r):
             p["elbow_" + side] = STANCE_ELBOW[side] + shoulder + Vector((0.0, 0.0, 0.3 * (knuckle.z - STANCE_HAND[side].z)))
         # The head rides level and steady, a little forward of the stance, swaying less than the shoulders.
         base = chain(p)["neck"]
-        p["head"] = within_neck(p, Vector((0.35 * base.x, STANCE_HEAD.y - 0.02 + 0.25 * 0.012 * b, STANCE_HEAD.z + 0.05)))
-        p["head_rot"] = (-2.0 + 30.0 * ly[f], 0.0, -0.3 * roll(t))
+        p["head"] = within_neck(p, Vector((0.35 * base.x, STANCE_HEAD.y - 0.02 + 0.25 * 0.022 * b, STANCE_HEAD.z + 0.05)))
+        p["head_rot"] = (-2.0 + 18.0 * ly[f], 0.0, -0.2 * roll(t))
         p["neck"] = [(0.0, -0.2 * yaw(t), 0.0)] * 4
-        p["tail"] = (2.0 + 200.0 * ly[f], -0.8 * yaw(t))
+        p["tail"] = (2.0 + 120.0 * ly[f], -0.8 * yaw(t))
         return p
 
     return make(r, name, N, at)
@@ -1111,13 +1120,15 @@ def idle(r):
         p["body"] = STANCE_BODY + Vector((0.010 * w, 0.004 * shrug(t), 0.0))
         p["body_rot"] = (S["body"]["pitch"], 0.6 * w + 0.03 * yaw(t), 1.2 * w + 1.2 * sv)
         p["spine"] = (S["spine"]["pitch"], 0.0, -0.4 * w)
-        p["chest"] = (S["chest"]["pitch"] + 1.5 * shrug(t), 0.04 * yaw(t), -0.6 * w - 1.5 * sv)
+        # The left shoulder hunches up and settles; the right barely follows.
+        p["chest"] = (S["chest"]["pitch"] + 1.5 * shrug(t), 0.04 * yaw(t), -0.6 * w - 1.5 * sv - 3.0 * shrug(t))
         breathe(p, breath(t, N / 2.0))
         look_head(p, yaw(t), pitch=nod(t), roll=tilt(t))
         p["beak"] = clack(t)
         for s in "lr":
             # The folded finger lifts off the arm and settles back as the shoulders shrug.
-            p["wing_extra_" + s] = {"wing_1": (0.0, 0.0, -3.0 * shrug(t) - 4.0 * lw[f])}
+            k = 1.0 if s == LEFT else 0.35
+            p["wing_extra_" + s] = {"wing_1": (0.0, 0.0, -k * (5.0 * shrug(t) + 6.0 * lw[f]))}
         p["tail"] = (1.5 * w, 2.0 * w)
         return p
 
