@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { Corpses as Drawn } from "../../client/core/ragdoll.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { CORPSE_TICKS, type Body } from "../../server/corpses.ts";
+import { FALLING } from "../../shared/anim/corpse.ts";
 import { createHost, type HostOptions } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
@@ -16,7 +17,7 @@ import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_HELD, CUE_OUT, STAGE_WORST } from "../..
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, type BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_FEED, CMD_MOVE, CMD_OPEN, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, RESULT_DENIED, RESULT_INVALID, RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_USE } from "../../shared/sim/character.ts";
+import { BTN_USE, MF_OUT, MF_ROOTED, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -592,4 +593,317 @@ test("killing the process at any moment of a harvest loses nothing: each body's 
     }
     host.shutdown();
   }
+});
+
+// Bodies from the sky (planning/reference/flyers-plan.md, FL7): the pteranodon stand-in and a body with bones, killed,
+// knocked out or bola'd 100 m up. Nothing flies yet, so each is put there and let go.
+
+/** Puts entity `e` `high` metres over the ground under it, or over the water, still and off the ground. Returns the ground's height. */
+function aloft(h: Harness, e: number, high: number): number {
+  const ents = h.world.ents;
+  const ground = h.world.hf.heightAt(ents.x[e]!, ents.z[e]!);
+  ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
+  ents.mode[e] = MODE_WALK;
+  ents.setPosition(e, ents.x[e]!, Math.max(ground, h.world.hf.seaLevel) + high, ents.z[e]!);
+  ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
+  return ground;
+}
+
+/** The body each session draws and samples, followed every frame: its Drawn bodies, and where it samples entity `e` now. */
+function watchers(h: Harness, at: { x: number; z: number }) {
+  const drawn = new Map<ClientSession, Drawn>();
+  const r = new RemoteSample();
+  const follow = (): void => {
+    for (const s of h.sessions) {
+      if (!s.world) continue;
+      let d = drawn.get(s);
+      if (!d) drawn.set(s, (d = new Drawn(h.world.anims)));
+      s.sampleRemote(r);
+      d.update(r, s.world, at.x, at.z, new Map());
+    }
+  };
+  /** Where `s` samples entity `e`, or null where it has none. */
+  const sampled = (s: ClientSession, e: number): [number, number, number] | null => {
+    s.sampleRemote(r);
+    for (let i = 0; i < r.count; i++) if (r.id[i] === e) return [r.x[i]!, r.y[i]!, r.z[i]!];
+    return null;
+  };
+  return { drawn, follow, sampled, run: (ms: number): void => h.run(ms, follow) };
+}
+
+/** Each session's drawn body for `b` lies as the server's does, to the bit. `joined` came after it lay. */
+function sameEverywhere(h: Harness, drawn: Map<ClientSession, Drawn>, b: Body, joined: ClientSession): void {
+  const id = h.reg.ids[b.kind];
+  expect([id, b.fall!.still]).toEqual([id, true]);
+  for (const s of h.sessions) {
+    const c = drawn.get(s)!.list.find((x) => x.id === b.e)!;
+    expect([id, s === joined ? !c.watched : c.watched, c.falling, c.fall!.still, c.x, c.y, c.z, c.yaw]).toEqual([id, true, false, true, b.x, b.y, b.z, b.yaw]);
+    expect([id, Array.from(c.solved.pos), Array.from(c.solved.rot)]).toEqual([id, Array.from(b.pose!.pos), Array.from(b.pose!.rot)]);
+  }
+}
+
+test("a stand-in killed 100 m up falls to the ground in 3.2 s and lies there the same for the server, two clients that watched and one that joined after, and is harvested there", () => {
+  const { h, ada, at, me, id, have } = camp();
+  const bob = h.join("bob");
+  h.run(500);
+  h.say(bob, "enablecheats");
+  h.say(bob, `tp ${(at.x + 2).toFixed(3)} ${at.z.toFixed(3)}`);
+  const w = watchers(h, at);
+  w.run(500);
+  const ents = h.world.ents;
+  // The pteranodon is a box; the raptor has bones and a ragdoll, which shows the pose too lies the same.
+  const recs = ["core:pteranodon", "core:raptor"].map((kind, k) => {
+    const e = h.host.spawnCreature(kind, at.x - 3 + k * 6, at.z + 6, 1);
+    h.host.creatures.mind.stay(e, 0xffffffff);
+    return h.host.records.byPid.get(ents.pid[e]!)!;
+  });
+  w.run(500);
+  const before = new Set(h.host.corpses.bodies.keys());
+  const ground = recs.map((rec) => aloft(h, h.host.records.entOf.get(rec.pid)!, 100));
+  for (const rec of recs) h.host.survival.hurt(rec, 1e6, me.pid);
+  const [ptero, raptor] = since(h, before);
+  expect([ptero!.kind, raptor!.kind]).toEqual([id("core:pteranodon"), id("core:raptor")]);
+  for (const [k, b] of [ptero!, raptor!].entries()) expect([b.drop !== null, ents.anim[b.e], b.y - ground[k]!, b.fall]).toEqual([true, FALLING, 100, null]);
+  // Bob sees each fall through the air, not appear on the ground.
+  const heights: number[][] = [[], []];
+  const t0 = h.world.tick;
+  while (h.host.corpses.falling > 0 && h.world.tick - t0 < 200) {
+    w.run(1000 / 30);
+    for (const [k, b] of [ptero!, raptor!].entries()) heights[k]!.push(w.sampled(bob, b.e)![1] - ground[k]!);
+  }
+  // The step falls at 20 m/s2 to 60 m/s, which it reaches at 91 m: 100 m takes 94.5 ticks.
+  expect(h.world.tick - t0).toBeGreaterThanOrEqual(94);
+  expect(h.world.tick - t0).toBeLessThanOrEqual(96);
+  for (const seen of heights) expect([seen.some((y) => y > 70 && y < 90), seen.some((y) => y > 10 && y < 30)]).toEqual([true, true]);
+  w.run(6000);
+  const cat = h.join("cat");
+  w.run(1500);
+  for (const [k, b] of [ptero!, raptor!].entries()) {
+    expect([b.drop, ents.anim[b.e], Math.abs(b.y - ground[k]!) < 0.01, b.rec.x === b.x && b.rec.y === b.y && b.rec.z === b.z]).toEqual([null, 0, true, true]);
+    // Every client is sent it where the server has it.
+    for (const s of h.sessions) expect(w.sampled(s, b.e)).toEqual([b.x, b.y, b.z]);
+  }
+  sameEverywhere(h, w.drawn, raptor!, cat);
+  // Harvested where it lies, with a swing of a hatchet.
+  h.say(ada, "give core:hatchet 1");
+  takeInHand(h, ada, id("core:hatchet"));
+  face(h, ada, ptero!);
+  const blows = h.host.corpses.blows;
+  swing(h, h.pilots[0]!, 1, SWING_TICKS);
+  expect([h.host.corpses.blows - blows, ptero!.left < ptero!.max, have("core:hide") + have("core:meat") > 0]).toEqual([1, true, true]);
+  expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a body over a building lands on its roof, one over the pool sinks to its bottom, and one that dies afloat sinks there as slowly as a ragdoll does, each the same for every client", () => {
+  const { h, at, me, id } = camp();
+  const bob = h.join("bob");
+  h.run(500);
+  h.say(bob, "enablecheats");
+  h.say(bob, `tp ${(at.x + 2).toFixed(3)} ${at.z.toFixed(3)}`);
+  const w = watchers(h, at);
+  w.run(500);
+  const ents = h.world.ents;
+  const sea = h.world.hf.seaLevel;
+  // A roof of four ceilings, six metres square and five metres up, at the far end of the level ground.
+  const ceiling = id("core:ceiling_wood");
+  const roof = { x: at.x - 8, z: at.z + 16 };
+  const floor = h.world.hf.heightAt(roof.x, roof.z) + 5;
+  for (const dx of [-1.5, 1.5]) for (const dz of [-1.5, 1.5]) h.world.structs.add(ceiling, roof.x + dx, floor, roof.z + dz, 0, 0, 10000);
+  const top = floor + h.reg.halfY[ceiling]!;
+  const spawn = (kind: string, x: number, z: number): EntityRecord => {
+    const e = h.host.spawnCreature(kind, x, z, 1);
+    h.host.creatures.mind.stay(e, 0xffffffff);
+    return h.host.records.byPid.get(ents.pid[e]!)!;
+  };
+  const entOf = (rec: EntityRecord): number => h.host.records.entOf.get(rec.pid)!;
+  const onRoof = [spawn("core:pteranodon", roof.x + 1.2, roof.z), spawn("core:raptor", roof.x - 1, roof.z + 0.5)];
+  const inPool = spawn("core:pteranodon", PROVING_POOL.x, PROVING_POOL.z);
+  const afloat = spawn("core:dodo", PROVING_POOL.x + 3, PROVING_POOL.z);
+  w.run(3000);
+  // The dodo swims at the surface; the rest are lifted 100 m and all four killed.
+  expect([ents.mode[entOf(afloat)], ents.y[entOf(afloat)]! > sea - 1]).toEqual([MODE_SWIM, true]);
+  for (const rec of [...onRoof, inPool]) aloft(h, entOf(rec), 100);
+  const before = new Set(h.host.corpses.bodies.keys());
+  for (const rec of [...onRoof, inPool, afloat]) h.host.survival.hurt(rec, 1e6, me.pid);
+  const [ptero, raptor, sunk, dodo] = since(h, before);
+  const t0 = h.world.tick;
+  let dodoAt = -1;
+  for (let k = 0; k < 120 && h.host.corpses.falling > 0; k++) {
+    w.run(250);
+    if (dodoAt < 0 && dodo!.drop === null) dodoAt = h.world.tick;
+  }
+  expect([h.host.corpses.falling, dodoAt > 0]).toEqual([0, true]);
+  // On the roof, not through it.
+  expect([Math.abs(ptero!.y - top) < 0.01, Math.abs(raptor!.y - top) < 0.01]).toEqual([true, true]);
+  // At the bottom of the pool, 8 m under.
+  const bottom = (b: Body): number => h.world.hf.heightAt(b.x, b.z);
+  expect([sunk!.y < sea - 6, Math.abs(sunk!.y - bottom(sunk!)) < 0.3, dodo!.y < sea - 6, Math.abs(dodo!.y - bottom(dodo!)) < 0.3]).toEqual([true, true, true, true]);
+  // The dodo sank from the surface at about 0.55 m/s.
+  const took = (dodoAt - t0) / TICK_RATE;
+  expect(took).toBeGreaterThan(9);
+  expect(took).toBeLessThan(18);
+  w.run(10000);
+  const cat = h.join("cat");
+  w.run(1500);
+  for (const b of [ptero!, sunk!]) for (const s of h.sessions) expect(w.sampled(s, b.e)).toEqual([b.x, b.y, b.z]);
+  sameEverywhere(h, w.drawn, raptor!, cat);
+  sameEverywhere(h, w.drawn, dodo!, cat);
+  // The raptor's ragdoll lies on the roof.
+  const lowest = Math.min(...Array.from({ length: raptor!.pose!.pos.length / 3 }, (_, k) => raptor!.pose!.pos[k * 3 + 1]!));
+  expect(raptor!.y + lowest).toBeGreaterThan(top - 0.3);
+});
+
+/** Each landing Survival is told of for `rec`: the speed, and the health it took. */
+function landings(h: Harness, rec: EntityRecord): [number, number][] {
+  const sv = h.host.survival;
+  const before = sv.landed.bind(sv);
+  const seen: [number, number][] = [];
+  sv.landed = (r, speed) => {
+    const health = sv.value(r, V_HEALTH);
+    before(r, speed);
+    if (r === rec) seen.push([speed, health - sv.value(r, V_HEALTH)]);
+  };
+  return seen;
+}
+
+/** D385: a creature lands unhurt below 16 m/s, and loses 7 x 2/3 health for each metre a second over. */
+const creatureFall = (speed: number): number => (speed - 16) * 7 * (2 / 3);
+
+test("a ridden stand-in knocked out 100 m up puts its rider off, falls, lands at the step's 60 m/s, is hurt for D385's 205 of its 210, and wakes where it landed; she falls to her death", () => {
+  const { h, ada, at, me, id } = camp();
+  const ents = h.world.ents;
+  const sv = h.host.survival;
+  sv.gods.delete(me.pid);
+  const c = h.client(ada)!;
+  const e = h.host.spawnCreature("core:pteranodon", at.x, at.z + 3, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  rec.team = me.team;
+  rec.saddle = id("core:saddle_pteranodon");
+  h.host.refreshBody(rec);
+  h.run(300);
+  expect([h.host.riding.mount(c, e), sv.value(rec, V_HEALTH)]).toEqual([RESULT_OK, 210]);
+  h.run(500);
+  const seen = landings(h, rec);
+  const hers = landings(h, me);
+  const ground = aloft(h, e, 100);
+  sv.add(rec, V_TORPOR, rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
+  expect([rec.out, (ents.mflags[e]! & MF_OUT) !== 0]).toEqual([true, true]);
+  const [x, z] = [ents.x[e]!, ents.z[e]!];
+  h.run(100);
+  expect(h.host.riding.riding(c)).toBe(false);
+  for (let k = 0; k < 40 && (seen.length === 0 || hers.length === 0); k++) h.run(100);
+  // It fell straight down, knocked out the whole way, and hit the ground at the step's terminal speed.
+  expect(seen.length).toBe(1);
+  const [speed, lost] = seen[0]!;
+  expect(speed).toBeCloseTo(60, 3);
+  expect(lost).toBeCloseTo(creatureFall(speed), 4);
+  expect([rec.out, h.host.records.byPid.has(rec.pid), Math.abs(ents.y[e]! - ground) < 0.01, Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 1e-3]).toEqual([true, true, true, true]);
+  expect(sv.value(rec, V_HEALTH)).toBeCloseTo(210 - creatureFall(60), 1);
+  // A survivor lands unhurt below 12 m/s and loses 7 for each metre a second over: 336 at 60, and she has 100.
+  expect([hers.length, hers[0]![0]]).toEqual([1, seen[0]![0]]);
+  expect(me.dead).toBe(true);
+  // Its torpor run out, it wakes where it lies, and is not hurt again.
+  h.run(2000);
+  sv.add(rec, V_TORPOR, -1e9);
+  h.run(1000);
+  expect([rec.out, (ents.mflags[e]! & MF_OUT) !== 0, seen.length, Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 1e-3, Math.abs(ents.y[e]! - ground) < 0.01]).toEqual([false, false, 1, true, true]);
+});
+
+test("a stand-in knocked out 100 m over the pool plunges in unhurt, drowns there as ARK's page warns, and its body lies on the bottom", () => {
+  const { h } = camp();
+  const ents = h.world.ents;
+  const sv = h.host.survival;
+  const sea = h.world.hf.seaLevel;
+  const e = h.host.spawnCreature("core:pteranodon", PROVING_POOL.x - 2, PROVING_POOL.z, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  h.run(500);
+  const seen = landings(h, rec);
+  aloft(h, e, 100);
+  sv.add(rec, V_TORPOR, rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
+  h.run(5000);
+  // Water takes the fall, so no landing is told, and it plunges 8 m to the bottom. Out cold, it does not swim up.
+  expect([seen.length, ents.mode[e], ents.y[e]! < sea - 1, sv.isSubmerged(rec), sv.value(rec, V_HEALTH)]).toEqual([0, MODE_SWIM, true, true, 210]);
+  const before = new Set(h.host.corpses.bodies.keys());
+  // It drowns, its oxygen gone and then its health, in about 80 s.
+  let k = 0;
+  for (; k < 600 && h.host.records.byPid.has(rec.pid); k++) h.run(1000);
+  const [b] = since(h, before);
+  expect([k > 30, k < 300, b!.out, b!.y < sea - 1]).toEqual([true, true, true, true]);
+  for (let k = 0; k < 60 && b!.drop; k++) h.run(1000);
+  expect([b!.drop, Math.abs(b!.y - h.world.hf.heightAt(b!.x, b!.z)) < 0.3, b!.y < sea - 6]).toEqual([null, true, true]);
+});
+
+test("a ridden stand-in bola'd 100 m up comes down where it was caught with its rider on it, is hurt by the landing and she is not, and stands rooted until its 30 s are out", () => {
+  const { h, ada, at, me, id } = camp();
+  const ents = h.world.ents;
+  const sv = h.host.survival;
+  sv.gods.delete(me.pid);
+  const c = h.client(ada)!;
+  const e = h.host.spawnCreature("core:pteranodon", at.x, at.z + 3, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  rec.team = me.team;
+  rec.saddle = id("core:saddle_pteranodon");
+  h.host.refreshBody(rec);
+  h.run(300);
+  expect(h.host.riding.mount(c, e)).toBe(RESULT_OK);
+  h.run(500);
+  const hers = sv.value(me, V_HEALTH);
+  const mount = landings(h, rec);
+  const rider = landings(h, me);
+  // Up 100 m with her pressing on, and caught there. The bola's own list is the weapons team's, and gains the pteranodon
+  // with them: the buff a hit gives is given here.
+  const pilot = h.pilots[0]!;
+  pilot.moveZ = 127;
+  const ground = aloft(h, e, 100);
+  const [x, z] = [ents.x[e]!, ents.z[e]!];
+  expect(h.host.buffs.give(rec, id("core:entangled"), 0)).toBe(true);
+  const caught = h.world.tick;
+  h.run(100);
+  expect((ents.mflags[e]! & MF_ROOTED) !== 0).toBe(true);
+  for (let k = 0; k < 40 && mount.length === 0; k++) h.run(100);
+  // Straight down, not where she steered, and she is still on it, on its back.
+  expect([mount.length, Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 0.01, Math.abs(ents.y[e]! - ground) < 0.01, h.host.riding.riding(c)]).toEqual([1, true, true, true]);
+  expect(mount[0]![1]).toBeCloseTo(creatureFall(mount[0]![0]), 4);
+  const her = h.ent(ada);
+  expect([Math.hypot(ents.x[her]! - x, ents.z[her]! - z) < 1, ents.y[her]! > ents.y[e]!]).toEqual([true, true]);
+  // It lies rooted until the bola's 30 s are out, then walks on under her.
+  h.run(((caught + 30 * TICK_RATE - h.world.tick) / TICK_RATE) * 1000 - 300);
+  expect([Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 0.01, (ents.mflags[e]! & MF_ROOTED) !== 0, h.host.riding.riding(c)]).toEqual([true, true, true]);
+  h.run(2500);
+  expect([Math.hypot(ents.x[e]! - x, ents.z[e]! - z) > 1, (ents.mflags[e]! & MF_ROOTED) !== 0]).toEqual([true, false]);
+  expect([rider.length, sv.value(me, V_HEALTH) >= hers]).toEqual([0, true]);
+});
+
+test("a body saved while it fell falls on after a restart, from where it was saved, and lies on the ground; one saved lying stays as it lay", () => {
+  const db = join(dir, "falling.db");
+  const { h, at, me } = camp({ dbPath: db });
+  const ents = h.world.ents;
+  const lying = killed(h, "core:raptor", at.x + 4, at.z + 4, me);
+  const pose = Array.from(lying.pose!.pos);
+  const e = h.host.spawnCreature("core:raptor", at.x - 4, at.z + 4, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  h.run(500);
+  const ground = aloft(h, e, 100);
+  const before = new Set(h.host.corpses.bodies.keys());
+  h.host.survival.hurt(rec, 1e6, me.pid);
+  const [b] = since(h, before);
+  h.run(1000);
+  expect([b!.drop !== null, b!.y < ground + 95, b!.y > ground + 50]).toEqual([true, true, true]);
+  h.host.shutdown();
+  const h2 = new Harness({}, 1, 60, { dbPath: db });
+  const b2 = h2.host.corpses.bodies.get(b!.rec.pid)!;
+  const l2 = h2.host.corpses.bodies.get(lying.rec.pid)!;
+  // The store keeps where its entity was when the record was last written, in the air.
+  expect([b2.y > ground + 50, b2.drop]).toEqual([true, null]);
+  h2.run(100);
+  expect([h2.host.corpses.falling, b2.drop !== null, b2.fall, h2.world.ents.anim[b2.e], l2.drop]).toEqual([1, true, null, FALLING, null]);
+  h2.run(8000);
+  expect([h2.host.corpses.falling, Math.abs(b2.y - ground) < 0.01, b2.fall!.still, h2.world.ents.anim[b2.e]]).toEqual([0, true, true, 0]);
+  expect(Array.from(l2.pose!.pos)).toEqual(pose);
+  expect(h2.host.items.audit()).toEqual([]);
+  h2.host.shutdown();
 });
