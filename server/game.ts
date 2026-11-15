@@ -390,6 +390,8 @@ export class GameServer {
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
   onMountLand: ((e: number, speed: number) => void) | null = null;
+  /** Told after a driven flyer's step, with stepOut as the step left it, so its take-off, roll or setting down shows. */
+  onMountFlight: ((e: number) => void) | null = null;
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -511,6 +513,7 @@ export class GameServer {
         ents.storeBody(e, b);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
+        if (driving && (stepOut.tookOff || stepOut.rolled || stepOut.setDown)) this.onMountFlight?.(e);
         if (stepOut.landSpeed > 0) {
           if (driving) this.onMountLand?.(e, stepOut.landSpeed);
           else this.onLand?.(c, stepOut.landSpeed);
