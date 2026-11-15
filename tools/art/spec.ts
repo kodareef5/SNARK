@@ -5,7 +5,7 @@
 import { ZONE_ARM_L, ZONE_ARM_R, ZONE_FOOT_L, ZONE_FOOT_R, ZONE_HAND_L, ZONE_HAND_R, ZONE_HEAD, ZONE_LEG_L, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
 import type { ClipSpec } from "../pack/anim.ts";
 
-export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset;
+export type AssetSpec = CreatureAsset | PiecesAsset | HumanClipsAsset | HumanBodiesAsset | SkyAsset;
 
 /** The zones a hit can land in. Content multiplies damage by zone (SpeciesDef.zones). */
 export const ZONES = { head: ZONE_HEAD, torso: ZONE_TORSO, armL: ZONE_ARM_L, armR: ZONE_ARM_R, handL: ZONE_HAND_L, handR: ZONE_HAND_R, legL: ZONE_LEG_L, legR: ZONE_LEG_R, footL: ZONE_FOOT_L, footR: ZONE_FOOT_R } as const;
@@ -110,6 +110,11 @@ export interface MaterialSpec {
   /** For a material several assets name: its id in the pack, and the folder its paths are in. Set by `shared`. */
   readonly id?: string;
   readonly dir?: string;
+  /**
+   * Pictures that are data and not a surface, as the sky's are: each is stored as large as it is, the masks' mips are
+   * the plain means of their bytes, and no colour is read off them.
+   */
+  readonly data?: boolean;
 }
 
 /**
@@ -281,4 +286,17 @@ export interface HumanBodiesAsset {
     /** An armor set is an outfit's parts together. `texture` is its base colour. */
     readonly sets: readonly { readonly id: string; readonly parts: readonly string[]; readonly texture: string }[];
   };
+}
+
+/**
+ * The pictures the sky's dome draws over its table (client/core/render/atmosphere.ts): the moon's face, and the low and
+ * high cloud layers, whose red is how much of the sky a cloud hides and green how little sun gets through it, both
+ * linear. They are one material, the moon its base colour and the layers its two masks, on a mesh of one triangle that
+ * is never drawn, so that they stream, and are counted, as any material's pictures are.
+ */
+export interface SkyAsset {
+  readonly kind: "sky";
+  readonly moon: string;
+  readonly low: string;
+  readonly high: string;
 }

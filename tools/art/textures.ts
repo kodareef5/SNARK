@@ -102,6 +102,14 @@ function measure(asset: Asset, m: Material, pack: Pack, deep: boolean, faults: s
   if (!deep || faults.length > before) return out;
 
   const read = (what: string): Picture | undefined => (files[what] === undefined ? undefined : readPicture(files[what]));
+  if (m.spec.data) {
+    // Pictures that are data: the masks are layers of the sky that tile, and nothing else is measured.
+    for (const layer of out.layers.filter((l) => l.what.startsWith("mask"))) {
+      layer.seam = seam(read(layer.what)!);
+      if (Math.max(...layer.seam) > SEAM) faults.push(`${m.id}: its ${layer.what} picture does not wrap: it jumps ${layer.seam.map((v) => v.toFixed(2)).join(" and ")} times as hard across its edge as inside it`);
+    }
+    return out;
+  }
   const [base, normal, height] = [read("base"), read("normal"), read("height")];
   if (base) {
     const tint = m.spec.tint ?? [1, 1, 1];
