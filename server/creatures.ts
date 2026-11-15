@@ -210,6 +210,8 @@ export class Creatures {
 
   /** The caller deletes its record. */
   remove(e: number): void {
+    // Its record goes with it, and may be dying: Survival is not told it left the water.
+    this.wet[e] = 0;
     this.sleep(e);
     this.records.entOf.delete(this.world.ents.pid[e]!);
     this.world.ents.destroy(e);
@@ -256,9 +258,9 @@ export class Creatures {
       const p = (ents.team[e] !== 0 ? world.reg.tamedMove : world.reg.move)[kind]!;
       const swims = ents.mode[e] === MODE_SWIM;
       const cold = (ents.mflags[e]! & MF_OUT) !== 0;
-      // At rest on the ground, or afloat with no input and its head above water or out cold, nothing would change but its
+      // At rest on the ground or afloat with no input, with its head above water or out cold, nothing would change but its
       // stamina, so the step is skipped and the stamina got back as the step would give it.
-      if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0 && (cold || !this.under(e, p))))) {
+      if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0)) && (this.wet[e] === 0 || cold)) {
         const cap = ents.staminaMax[e]! * STAMINA_UNITS;
         const had = ents.stamina[e]!;
         if (had < cap) {
