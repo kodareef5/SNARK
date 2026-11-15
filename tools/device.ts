@@ -2,14 +2,15 @@
 // to open. With --tunnel it also runs a temporary Cloudflare tunnel (cloudflared, no account) and prints the whole link.
 // The page shows which device it takes itself to be on and the tests to tap (client/core/device.ts): a quick look, a
 // load ladder, a soak, and the soak with the governor on. With --terrain the server is on the bench's 8 km map instead,
-// with the far nodes' bench's wood, and the page offers the terrain flight (D253), which ends with far bases (D257) and
-// the wood (D259), and a soak through the wood (`--self soak --terrain`). It posts its report after every step; each
+// with the far nodes' bench's wood and a stand of elder oaks, and the page offers the terrain flight (D253), which ends
+// with far bases (D257) and the wood (D259), the tree order, for which the server stands the body in each wood and
+// counts the page's view with wood.ts in the background, and a soak through the wood (`--self soak --terrain`). It posts its report after every step; each
 // run is kept in .cache/device/ and printed as a table when it is done. The server serves a client of its own, built
 // into a temporary folder as it starts and removed as it stops, so a build in this checkout cannot take files from under
 // a phone; each report says if what it serves changed all the same. With --self the local headless Chrome opens the
 // link and runs a test without a tap, which must finish: `--self` for the quick look, `--self ladder`, `--self soak`
-// or `--self governed` (with --soak-minutes n), or `--self terrain`, the test that the probe works, not part of the
-// check. With `--texfmt astc` the page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a
+// or `--self governed` (with --soak-minutes n), or `--self terrain` or `--self trees`, the test that the probe works,
+// not part of the check. With `--texfmt astc` the page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a
 // made-up link (delay ms, KB/s, % lost), and with `--rebuild` a plain build of client/dist starts once the page has the
 // game, as `bun run build` in another terminal would. With --flock forty dodos stand round the spawn point, hurt and
 // dead (tools/bench/gpu.ts `flock`). --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED
@@ -24,8 +25,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpath
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TIERS } from "../client/core/assets/tiers.ts";
-import { AXES, FAR_CHUNKS, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, deviceScenarios, scenesOf, type DeviceReport, type Mode } from "../client/core/device.ts";
-import { BASE_MOST, WOOD, basePieces, crowdScene } from "../client/core/devicescene.ts";
+import { AXES, FAR_CHUNKS, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, TREE_TIERS, WOODS, deviceScenarios, scenesOf, type DeviceReport, type LayerAnswer, type LayerCount, type Mode } from "../client/core/device.ts";
+import { BASE_MOST, STAND, basePieces, crowdScene, terrainWood } from "../client/core/devicescene.ts";
 import { deviceTable, materialsLacking } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { startServer } from "../server/main.ts";
@@ -35,6 +36,8 @@ import { compileContent } from "../shared/content/registry.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { writeMap } from "../shared/world/mapfile.ts";
+import { groundUnder } from "../shared/world/collide.ts";
+import { placeFree } from "../server/place.ts";
 import { flock } from "./bench/gpu.ts";
 import { benchHills } from "./bench/terrain.ts";
 import { buildClient } from "./build-client.ts";
@@ -71,6 +74,10 @@ export interface DeviceOptions {
   held(): { skipped: number; overflows: number };
   /** What has changed of the files the server serves since it started, or "" for nothing. */
   changed?(): string;
+  /** Stands every body at the tree order's spot `k` and says where, x and z, or null for no such spot. Only on the terrain map. */
+  stand?(k: number): number[] | null;
+  /** Counts the tree order's view of `w` by `h` CSS pixels, `fov` degrees high, or says how its count goes. Only on the terrain map. */
+  layers?(w: number, h: number, fov: number): LayerAnswer;
 }
 
 interface Run {
@@ -195,6 +202,16 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
       const n = Number(base[1]);
       return n > BASE_MOST ? answer("too many pieces", 400) : json({ pieces: o.base(n) });
     }
+    const spot = /^\/__device\/stand\/(\d)$/.exec(path);
+    if (spot && req.method === "POST" && o.stand) {
+      const at = o.stand(Number(spot[1]));
+      return at ? json(at) : answer("no such spot", 400);
+    }
+    const view = /^\/__device\/layers\/(\d{2,4})\/(\d{2,4})\/(\d{2,3})$/.exec(path);
+    if (view && req.method === "POST" && o.layers) {
+      const [w, h, fov] = [Number(view[1]), Number(view[2]), Number(view[3])];
+      return w < 64 || h < 64 || w > 4096 || h > 4096 || fov < 20 || fov > 150 ? answer("not a view", 400) : json(o.layers(w, h, fov));
+    }
     return answer("not found", 404);
   };
   return { routes, unfinished: () => [...runs.values()].filter((r) => !r.told) };
@@ -208,7 +225,7 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   if (r.reloadedDuring) out.push(`the page was reloaded during ${r.reloadedDuring}`);
   for (const e of r.errors) out.push(`error: ${e}`);
   // The picture probes look at the proving ground, which the terrain server's map is not.
-  for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", mode === "terrain" || r.soak?.wood || r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
+  for (const [part, value] of [["device", r.device], ["gpu", r.gpu], ["load", r.load], ["link", r.link.httpMs], ["probes", mode === "terrain" || mode === "trees" || r.soak?.wood || r.probes], ["hashes", r.hashes]] as const) if (!value) out.push(`no ${part}`);
   for (const p of r.probes ?? []) if (!p.ok) out.push(`probe ${p.name} is wrong`);
   for (const h of r.hashes ?? []) if (h.got !== h.want) out.push(`hash ${h.name} differs from the server's`);
   if (r.link.missed > 0) out.push(`${r.link.missed} snapshots missed on this machine's own link`);
@@ -260,6 +277,21 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
       if (g.nodeDraws === 0) out.push(`wood ${g.tier}: no far trees, rocks or bushes were drawn`);
     }
   }
+  if (mode === "trees") {
+    const t = r.trees;
+    if (!t) out.push("no tree order");
+    for (const tier of TREE_TIERS) {
+      for (const wood of WOODS) {
+        const g = t?.rungs.find((x) => x.tier === tier && x.wood === wood);
+        if (t && !g) out.push(`the tree order has no rung for the ${wood} wood on ${tier}`);
+        if (g?.invalid) out.push(`trees ${wood} ${tier}: invalid, ${g.invalid}`);
+        if (g && g.orders.some((o) => (!o.small && o.frames === 0) || o.reads.length < 2)) out.push(`trees ${wood} ${tier}: an order lacks its frames`);
+      }
+    }
+    if (t?.counted) out.push(`trees: ${t.counted}`);
+    if (t && (!t.surface || t.surface.slope === null)) out.push(`trees: no cost of a layer${t.surface?.note ? `, ${t.surface.note}` : ""}`);
+    if (t && !t.verdict) out.push("trees: no verdict");
+  }
   return out;
 }
 
@@ -288,7 +320,7 @@ if (import.meta.main) {
   // Only what a page's address may hold.
   const texfmt = /^[a-z0-9]{1,8}$/.exec(value("--texfmt") ?? "")?.[0];
   const assetnet = /^[\d.]+(,[\d.]+){0,2}$/.exec(value("--assetnet") ?? "")?.[0];
-  const terrain = mode === "terrain" || process.argv.includes("--terrain");
+  const terrain = mode === "terrain" || mode === "trees" || process.argv.includes("--terrain");
   const chrome = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"].find((p) => p && existsSync(p));
   const cloudflared = process.env.CLOUDFLARED ?? Bun.which("cloudflared") ?? "/opt/homebrew/bin/cloudflared";
   if (self && !chrome) {
@@ -343,7 +375,56 @@ if (import.meta.main) {
     }
     return built.length;
   };
-  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,soak,governed" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)) });
+  /** Where the tree order stands the body for each wood (WOODS), x, y and z: open ground nearest the map's middle and the elders' stand's. */
+  let spots: number[][] = [];
+  const stand = (k: number): number[] | null => {
+    const at = spots[k];
+    if (!at) return null;
+    const ents = server!.host.world.ents;
+    for (const c of server!.host.game.clients) {
+      if (!c?.active || c.closed || c.ent < 0) continue;
+      ents.setPosition(c.ent, at[0]!, at[1]!, at[2]!);
+      ents.vx[c.ent] = ents.vy[c.ent] = ents.vz[c.ent] = 0;
+    }
+    return [at[0]!, at[2]!];
+  };
+  // The tree order's views, counted by wood.ts on the map the server stands on, a process for each wood and tier, one at
+  // a time since each holds the whole pack (4.6 GB with the crowns). A page asks once and then how it goes; three views
+  // at most.
+  const views = new Map<string, LayerAnswer>();
+  const counting = new Set<ReturnType<typeof Bun.spawn>>();
+  process.on("exit", () => counting.forEach((c) => c.kill()));
+  const countOne = async (w: number, h: number, fov: number, tier: string, k: number): Promise<LayerCount> => {
+    const at = spots[k]!;
+    const args = ["--json", "--map", join(mapDir, "hills.snmap"), "--at", `${at[0]},${at[2]}`, "--tier", tier, "--size", `${w}x${h}`, "--rows", String(h), "--fov", String(fov)];
+    const child = Bun.spawn([process.execPath, resolve(import.meta.dir, "../assets/source/core/nodes/trees/wood.ts"), ...args], { cwd: resolve(import.meta.dir, ".."), stdout: "pipe", stderr: "pipe" });
+    counting.add(child);
+    const [out, err, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
+    counting.delete(child);
+    if (code !== 0) throw new Error(`wood.ts for the ${WOODS[k]} wood on ${tier} ended with ${code}: ${err.trim().split("\n").at(-1) ?? ""}`);
+    const c = JSON.parse(out.trim().split("\n").at(-1)!) as LayerCount;
+    return { wood: WOODS[k]!, tier, cut: c.cut, front: c.front, old: c.old, first: c.first };
+  };
+  const layers = (w: number, h: number, fov: number): LayerAnswer => {
+    const key = `${w}x${h} at ${fov}`;
+    const known = views.get(key);
+    if (known) return known;
+    if (views.size >= 3) return { state: "failed", why: "the server counts three views at most" };
+    const answer: LayerAnswer = { state: "counting" };
+    views.set(key, answer);
+    const from = Date.now();
+    say(`counting the tree order's view, ${w} by ${h} CSS pixels ${fov} degrees high, with wood.ts`);
+    void (async () => {
+      const counts: LayerCount[] = [];
+      for (const tier of TREE_TIERS) for (let k = 0; k < WOODS.length; k++) counts.push(await countOne(w, h, fov, tier, k));
+      return counts;
+    })().then(
+      (counts) => (Object.assign(answer, { state: "done", counts }), say(`counted the view ${key} in ${Math.round((Date.now() - from) / 1000)} s: ${counts.map((c) => `${c.wood} ${c.tier} ${c.cut} layers, ${c.front} in front`).join("; ")}`)),
+      (e: unknown) => (Object.assign(answer, { state: "failed", why: clean(e instanceof Error ? e.message : String(e)) }), say(`could not count the view ${key}: ${answer.why}`)),
+    );
+    return answer;
+  };
+  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,trees,soak,governed" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)), ...(terrain ? { stand, layers } : {}) });
   // With --rebuild, once a page has the game, another process builds client/dist as a person might in another terminal.
   let builder: ReturnType<typeof Bun.spawn> | null = null;
   let besideDone: Promise<unknown> = Promise.resolve();
@@ -356,11 +437,11 @@ if (import.meta.main) {
     return probe.routes(req, url);
   };
   const { rules } = loadConfig({ gus: `[ServerSettings]\nServerPassword=${password}\n` });
-  // For the terrain flight, the bench's 8 km of hills as a map file, with no water, the far nodes' bench's wood, and one
-  // spawn point in the middle.
+  // For the terrain flight, the bench's 8 km of hills as a map file, with no water, the far nodes' bench's wood with the
+  // elders' stand, and one spawn point in the middle.
   const hills = terrain ? benchHills() : null;
   const mapDir = hills ? mkdtempSync(join(tmpdir(), "snark-device-map-")) : "";
-  if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [WOOD], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
+  if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [terrainWood(hills.dims)], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
   // The fixed scene of the boot probe, where nothing wakes, and behind the spawn point the crowd scene's thatch and bodies.
   server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", clientDir: dist, probeScene: true, config: rules, routes, ...(hills ? { map: join(mapDir, "hills.snmap") } : {}) });
   const running = server;
@@ -369,6 +450,20 @@ if (import.meta.main) {
   const crowd = scene.bodies.filter((s) => running.host.spawnCreature(s.species, s.x, s.z, 1) >= 0).length;
   // With --flock, forty dodos round the spawn point, hurt and dead as the GPU bench has them.
   const flocked = !terrain && process.argv.includes("--flock") ? flock(running) : 0;
+  if (hills) {
+    // The open place nearest each, on rings a metre apart, where a survivor stands clear of every trunk.
+    const move = world.reg.move[world.reg.index.get("core:survivor") ?? 0]!;
+    spots = [[4096, 4096], [STAND.x, STAND.z]].map(([x, z]) => {
+      for (let ring = 0; ring <= 16; ring++) {
+        for (let j = 0; j < (ring === 0 ? 1 : 16); j++) {
+          const [px, pz] = [x! + Math.sin((j * Math.PI) / 8) * ring, z! + Math.cos((j * Math.PI) / 8) * ring];
+          const py = groundUnder(world.hf, px, pz, move.radius);
+          if (placeFree(world, px, py, pz, move.radius, move.height)) return [px, py, pz];
+        }
+      }
+      return [x!, world.hf.heightAt(x!, z!), z!];
+    });
+  }
   const ground = world.hf.heightAt(scene.floor.x, scene.floor.z);
   const pieces = scene.pieces.filter((p) => {
     const kind = world.reg.index.get(p.id) ?? 0;
@@ -381,6 +476,7 @@ if (import.meta.main) {
     for (const run of probe.unfinished()) print(run.last, run.file);
     child?.kill();
     child = null;
+    counting.forEach((c) => c.kill());
     running.stop();
     if (mapDir) rmSync(mapDir, { recursive: true, force: true });
   };
@@ -429,11 +525,11 @@ if (import.meta.main) {
   }
 
   console.log(terrain ? `\nSNARK device probe on the bench's 8 km map, for the terrain flight; reports go to ${dir}` : `\nSNARK device probe: ${crowd} bodies in the crowd${flocked > 0 ? `, ${flocked} hurt and dead dodos round the spawn point` : ""} and ${pieces} pieces of thatch; reports go to ${dir}`);
-  const tests = terrain ? "&tests=terrain,soak,governed" : "";
+  const tests = terrain ? "&tests=terrain,trees,soak,governed" : "";
   console.log(`  open on the device:  ${base0}/d/${code}`);
   console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}${tests}`);
   if (tunnel) console.log(`  on this machine:     http://127.0.0.1:${running.port}/d/${code}`);
-  console.log(terrain ? "  the page offers the terrain flight, and a soak through the wood" : "  the page asks which test to run: a quick look, the load ladder, or a ten-minute soak; `--terrain` serves the terrain flight");
+  console.log(terrain ? "  the page offers the terrain flight, the tree order, and a soak through the wood" : "  the page asks which test to run: a quick look, the load ladder, or a ten-minute soak; `--terrain` serves the terrain flight");
   console.log(`  Ctrl+C stops it; it stops by itself in ${minutes} minutes${tunnel ? ", and takes the tunnel down" : ""}\n`);
 
   if (self) {
@@ -441,7 +537,7 @@ if (import.meta.main) {
     // A phone's shape: a narrow window three device pixels to the CSS pixel. The test starts without a tap.
     const link = `${base0}/?device=${token}&password=${password}${tests}&mode=${mode}&minutes=${soakMinutes}${texfmt ? `&texfmt=${texfmt}` : ""}${assetnet ? `&assetnet=${assetnet}` : ""}`;
     const browser = Bun.spawn([chrome!, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=430,932", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
-    const limit = (mode === "soak" || mode === "governed" ? soakMinutes + 5 : mode === "ladder" ? 20 : mode === "terrain" ? 8 : 6) * 60000;
+    const limit = (mode === "soak" || mode === "governed" ? soakMinutes + 5 : mode === "ladder" ? 20 : mode === "terrain" ? 8 : mode === "trees" ? 12 : 6) * 60000;
     const got = await Promise.race([whole, new Promise<null>((r) => setTimeout(() => r(null), limit))]);
     browser.kill();
     await browser.exited;

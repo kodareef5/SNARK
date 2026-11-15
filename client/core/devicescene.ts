@@ -1,6 +1,7 @@
 // What the device probe stands in front of the camera, and how it adds load a step at a time: bodies, building pieces,
-// rocks near and far, far bases, the terrain map's wood, and texture memory. The probe's server stands the crowd and builds the base
-// (tools/device.ts); the rest is added on the page, so that the link does not limit what is measured.
+// rocks near and far, far bases, the terrain map's wood and elders' stand, and texture memory. The probe's server
+// stands the crowd and builds the base (tools/device.ts); the rest is added on the page, so that the link does not
+// limit what is measured.
 
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
 import type { Registry } from "../../shared/content/registry.ts";
@@ -9,7 +10,7 @@ import { MAX_VIEW } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
-import type { NodeScatter } from "../../shared/world/mapfile.ts";
+import type { NodeScatter, NodeZoned } from "../../shared/world/mapfile.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Summary, bakeChunk, pieceShapes, type FarCells } from "../../shared/world/tactical.ts";
@@ -238,6 +239,21 @@ export function farBases(reg: Registry): FarCells[] {
 
 /** The far nodes' benchmark's wood (tools/bench/far.ts, D259) as a map's layer: 160 slots a chunk, trees, rocks and bushes 3 to 2 to 1. */
 export const WOOD: NodeScatter = { seed: 0xbe7c, perChunk: 160, kinds: [["core:tree", 3], ["core:rock", 2], ["core:bush", 1]], allowCell: 0, allow: null };
+
+/**
+ * The elders' stand on the terrain map, for the tree order: elder oaks in place of WOOD's young trees in the chunks
+ * whose middles are within `reach` of its own, wider than any tier's hand-over band. It is over 4 km from the map's
+ * middle, where the wood's rungs and the soak stand, so no tier's far trees reach it from there.
+ */
+export const STAND = { x: 1024, z: 1024, reach: 384 };
+
+/** The terrain map's wood: WOOD, its slots and kinds, as zones a chunk square, and in the stand's zone elder oaks for its trees. */
+export function terrainWood(dims: MapDims): NodeZoned {
+  const zone = new Uint8Array(dims.chunksX * dims.chunksZ).fill(1);
+  for (let cz = 0; cz < dims.chunksZ; cz++) for (let cx = 0; cx < dims.chunksX; cx++) if (Math.hypot((cx + 0.5) * CHUNK_SIZE - STAND.x, (cz + 0.5) * CHUNK_SIZE - STAND.z) <= STAND.reach) zone[cz * dims.chunksX + cx] = 2;
+  const elders = WOOD.kinds.map(([id, weight]) => [id === "core:tree" ? "core:oak" : id, weight] as const);
+  return { seed: WOOD.seed, perChunk: WOOD.perChunk, zones: [{ bare: 0, kinds: WOOD.kinds }, { bare: 0, kinds: elders }], zoneCell: CHUNK_SIZE, zone };
+}
 
 /** Chunks of `dims` whose middles are within `reach` of (x, z), less those `skip` says, in a shuffled order of their own. */
 export function farSpots(dims: MapDims, x: number, z: number, reach: number, skip: (chunk: number) => boolean): number[] {

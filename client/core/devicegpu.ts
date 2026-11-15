@@ -374,11 +374,12 @@ const MOST_K = 512;
 const GRID = 224;
 const PASS_TRIANGLES = GRID * GRID * 2;
 
-/** The sizes asked about and how long each question may take, in ms. */
+/** The sizes asked about and how long each question may take, in ms; with `only`, the questions of those names alone. */
 export interface GpuPlan {
   depthSizes: readonly number[];
   checkMs: number;
   passMs: number;
+  only?: readonly string[];
 }
 export const GPU_PLAN: GpuPlan = { depthSizes: [1024, 2048], checkMs: 3000, passMs: 10000 };
 
@@ -588,6 +589,11 @@ export class GpuQuestions {
     const draw: PassTime = { name: "draw", per: "draw", timer: null, slope: null, error: null, k: 0, note: "did not finish" };
     r.passes.push(draw);
     this.tasks.push({ name: "draw", run: () => this.drawCost(draw), ms: plan.checkMs, fail: failPass(draw) });
+    if (plan.only) {
+      const asked = new Set(plan.only);
+      this.tasks.splice(0, this.tasks.length, ...this.tasks.filter((t) => asked.has(t.name)));
+      r.passes = r.passes.filter((p) => asked.has(p.name));
+    }
   }
 
   /** The context was lost: the question under way is named, and the rest are not asked. */
