@@ -3,6 +3,7 @@
 // a steep slope is bare rock, feet well above the ground stand on something built, and the rest is grass over soil.
 
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
+import { seaHere } from "../../../shared/world/water.ts";
 
 /** The kinds, in the order of shared/pack/details.ts GROUNDS. */
 export const GROUND_GRASS = 0;
@@ -24,7 +25,7 @@ const FLOOR_DUST = [168, 159, 143] as const;
 
 /** The kind of ground at (x, z) for a body whose feet are at height `y`. */
 export function groundAt(hf: Heightfield, x: number, y: number, z: number): number {
-  if (y < hf.seaLevel - 0.1) return GROUND_WATER;
+  if (y < hf.waterAt(x, z) - 0.1) return GROUND_WATER;
   const h = hf.heightAt(x, z);
   if (y > h + 0.3) return GROUND_BUILT;
   if (PAVED.has(tintAt(hf, x, z))) return GROUND_STONE;
@@ -32,9 +33,12 @@ export function groundAt(hf: Heightfield, x: number, y: number, z: number): numb
   return hf.slopeCosAt(x, z) < ROCK_SLOPE ? GROUND_STONE : GROUND_GRASS;
 }
 
-/** Whether the sea comes within SHORE metres of (x, z), looked for in eight ways. */
+/** Whether the sea comes within SHORE metres of (x, z), looked for in eight ways. A lake's basin is not the sea. */
 function nearSea(hf: Heightfield, x: number, z: number): boolean {
-  for (let k = 0; k < 8; k++) if (hf.heightAt(x + Math.cos(k * 0.785) * SHORE, z + Math.sin(k * 0.785) * SHORE) < hf.seaLevel) return true;
+  for (let k = 0; k < 8; k++) {
+    const [sx, sz] = [x + Math.cos(k * 0.785) * SHORE, z + Math.sin(k * 0.785) * SHORE];
+    if (hf.heightAt(sx, sz) < hf.seaLevel && seaHere(hf.water, sx, sz)) return true;
+  }
   return false;
 }
 

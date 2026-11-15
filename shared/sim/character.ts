@@ -734,7 +734,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
 
   // Deep enough to float, the body swims from the next tick, and a swimmer has no stance.
   // A swimmer is as tall as a standing body, so one held low by a ceiling stays as it is.
-  if (hf.seaLevel - y > p.height * SWIM_ENTER && (standing || capsuleFree(w, x, y, z, r, p.height))) {
+  if (hf.waterAt(x, z) - y > p.height * SWIM_ENTER && (standing || capsuleFree(w, x, y, z, r, p.height))) {
     b.mode = MODE_SWIM;
     stance = STANCE_STAND;
     grounded = false;
@@ -852,7 +852,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
-  const floatY = hf.seaLevel - p.height * SWIM_FLOAT;
+  const sink = p.height * SWIM_FLOAT;
 
   let x = b.x;
   let y = b.y;
@@ -865,7 +865,9 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
     else if (nx > maxX) nx = maxX;
     if (nz < r) nz = r;
     else if (nz > maxZ) nz = maxZ;
-    // A swimmer rises no higher than its float line. One that walked in above the line settles down to it.
+    // A swimmer rises no higher than its float line in the water it is going into. One that walked in above the line
+    // settles down to it.
+    const floatY = hf.waterAt(nx, nz) - sink;
     if (ny > floatY) {
       const settle = y - (SWIM_SETTLE * scale) / n;
       ny = y > floatY ? (settle > floatY ? settle : floatY) : floatY;
@@ -938,7 +940,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
 
   // Too shallow to float, so it stands if there is support and falls if there is none.
   let grounded = false;
-  if (hf.seaLevel - y < p.height * SWIM_EXIT) {
+  if (hf.waterAt(x, z) - y < p.height * SWIM_EXIT) {
     b.mode = MODE_WALK;
     if ((y - groundUnder(hf, x, z, r) <= GROUND_PROBE && groundStands(p.slopeCos)) || !Number.isNaN(restingAt(w, x, y, z, r, p.height, GROUND_PROBE, p.slopeCos))) {
       grounded = true;
@@ -1002,7 +1004,7 @@ function flight(b: Body, moveX: number, moveZ: number, yaw: number, pitch: numbe
 /** Flies as a ghost does, with no gravity, but meets the ground, pieces and nodes (flyThrough). It stands while it flies. */
 function stepFly(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw: number, pitch: number, buttons: number, p: MoveParams, dt: number): void {
   flight(b, moveX, moveZ, yaw, pitch, buttons, dt);
-  flyThrough(w, b, flown[0]!, flown[1]!, flown[2]!, p, dt, -Infinity);
+  flyThrough(w, b, flown[0]!, flown[1]!, flown[2]!, p, dt, Infinity);
   b.grounded = false;
   b.stance = STANCE_STAND;
 }
@@ -1021,7 +1023,7 @@ function takeWing(w: CollisionWorld, b: Body, buttons: number, p: MoveParams): n
     if (!p.flies || (flags & MF_OUT) !== 0 || (flags & (MF_ROOTED | MF_NO_JUMP)) === MF_ROOTED) b.mode = MODE_WALK;
   } else if ((buttons & BTN_JUMP) !== 0 && (b.mode === MODE_WALK || b.mode === MODE_SWIM) && b.stance === STANCE_STAND && (flags & (MF_NO_JUMP | MF_ROOTED | MF_OUT | MF_WINDED)) === 0) {
     // From the ground it springs up, and from the water clear of the surface first. Falling, it flies on from its fall.
-    const sea = w.hf.seaLevel;
+    const sea = w.hf.waterAt(b.x, b.z);
     const rise = TAKEOFF_RISE + (b.mode === MODE_SWIM && b.y < sea ? sea - b.y : 0);
     if (b.grounded || b.mode === MODE_SWIM) b.vy = Math.fround(Math.sqrt(2 * p.accelFly * rise));
     b.mode = MODE_FLYER;
@@ -1099,8 +1101,8 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
   }
   // Flyers do not go under water (ARK's Flying page): it skims the surface, and going down it settles to its float line.
   const hf = w.hf;
-  const afloat = hf.seaLevel - p.height * SWIM_FLOAT;
-  flyThrough(w, b, vx, vy, vz, p, dt, down ? afloat : hf.seaLevel);
+  const sink = p.height * SWIM_FLOAT;
+  flyThrough(w, b, vx, vy, vz, p, dt, down ? sink : 0);
   b.grounded = false;
   b.stance = STANCE_STAND;
   if (b.y >= WORLD_MAX_Y && b.vy > 0) b.vy = 0;
@@ -1114,7 +1116,10 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
     b.grounded = true;
     b.mode = MODE_WALK;
     stepOut.setDown = true;
-  } else if (b.y <= afloat + GROUND_PROBE && hf.seaLevel - under > p.height * SWIM_ENTER) {
+    return;
+  }
+  const sea = hf.waterAt(b.x, b.z);
+  if (b.y <= sea - sink + GROUND_PROBE && sea - under > p.height * SWIM_ENTER) {
     b.mode = MODE_SWIM;
     stepOut.setDown = true;
   }
@@ -1123,9 +1128,10 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
 /**
  * Moves a body by (vx, vy, vz) for dt with no gravity, meeting the ground, pieces and nodes as a swimmer does, half a radius at
  * a time however fast, so it crosses nothing; over the ground it skims up a small rise. Over water deep enough to swim in it
- * goes no lower than `floor`, though it may rise from under it: -Infinity for the admin's fly. Stores its position and velocity.
+ * goes no lower than `sink` under the surface where it is going, though it may rise from under it: Infinity for the admin's
+ * fly. Stores its position and velocity.
  */
-function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: number, p: MoveParams, dt: number, floor: number): void {
+function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: number, p: MoveParams, dt: number, sink: number): void {
   const hf = w.hf;
   const r = p.radius;
   const height = p.height;
@@ -1140,7 +1146,6 @@ function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: numb
   const maxZ = hf.sizeZ - r;
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
-  const sea = hf.seaLevel;
   const deep = height * SWIM_ENTER;
   let x = b.x;
   let y = b.y;
@@ -1180,6 +1185,8 @@ function flyThrough(w: CollisionWorld, b: Body, vx: number, vy: number, vz: numb
         if (vy < 0) vy = 0;
       }
     }
+    const sea = hf.waterAt(nx, nz);
+    const floor = sea - sink;
     if (ny < floor && ny < y && sea - h > deep) {
       ny = y < floor ? y : floor;
       if (vy < 0) vy = 0;

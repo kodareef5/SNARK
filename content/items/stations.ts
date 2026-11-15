@@ -43,6 +43,40 @@ export const STATIONS: readonly Def[] = [
   },
   { type: "engram", id: "core:engram-sparkpowder", label: "Sparkpowder", level: 6, cost: 3, item: "core:sparkpowder" },
 
+  // The refining forge (planning/reference/stations-plan.md, S1). ark.wiki.gg/wiki/Refining_Forge: 2,500 health, 24 slots,
+  // decays in 16 days, damaged as wood; the item weighs 4 and stacks to 100; 125 stone, 5 flint, 65 hide, 20 wood and 40
+  // fiber for 74.4 xp (its seconds are not given: 5, as DEV135 chooses for a station); level 20, 21 engram points, after
+  // the campfire. It burns the campfire's fuels at their own times (thatch 7.5 s, wood 30, sparkpowder 60), so it names
+  // none of its own; it is lit and put out as a campfire is, and cooks nothing. "Gasoline and Metal Ingots can smelt at
+  // the same time, with both timers running simultaneously": each is fired at it, in a lane of its own (the ingot in
+  // content/core.ts, gasoline in content/items/resources.ts). It "cannot be sitting on a foundation submerged in water".
+  // Its size is the box its art was modelled to (Decided 7, D520).
+  { type: "shape", id: "core:shape_forge", role: "thing", boxes: [{ at: [0, 0, 0], half: [0.6, 0.85, 0.6] }] },
+  { type: "structure", class: "station", id: "core:forge", mesh: "shape", shape: "core:shape_forge", half: [0.6, 0.85, 0.6], color: 5, hp: 2500, material: "core:mat_wood", decayDays: 16, slots: 24, lights: "core:forge_lit", cooks: false, dry: true },
+  { type: "structure", class: "station", id: "core:forge_lit", mesh: "shape", shape: "core:shape_forge", half: [0.6, 0.85, 0.6], color: 8, hp: 2500, material: "core:mat_wood", decayDays: 16, slots: 24, lights: "core:forge", lit: true, cooks: false, dry: true },
+  {
+    type: "item",
+    class: "structure",
+    id: "core:piece_forge",
+    stack: 100,
+    weight: 4,
+    label: "refining forge",
+    color: 5,
+    places: ["core:forge"],
+    craft: {
+      needs: [
+        { item: "core:stone", count: 125 },
+        { item: "core:flint", count: 5 },
+        { item: "core:hide", count: 65 },
+        { item: "core:wood", count: 20 },
+        { item: "core:fiber", count: 40 },
+      ],
+      seconds: 5,
+      xp: 74.4,
+    },
+  },
+  { type: "engram", id: "core:engram-piece_forge", label: "Refining forge", level: 20, cost: 21, item: "core:piece_forge", requires: ["core:engram-piece_campfire"] },
+
   // ark.wiki.gg/wiki/Smithy (read 2026-11-15): 1,500 health (232.0), 75 slots, decaytime 1382400 (16 days), damaged as
   // wood (CanDamageWood); the item weighs 4 and stacks to 100; 5 ingots, 50 stone, 30 wood and 20 hide in 5 s, craftingxp
   // 6.25 (our 25, D465's four times); level 20, 18 engram points. It burns nothing: what is made at it is made whenever its
@@ -105,4 +139,35 @@ export const STATIONS: readonly Def[] = [
     craft: { needs: [{ item: "core:ingot", count: 35 }, { item: "core:paste", count: 20 }, { item: "core:sparkpowder", count: 50 }, { item: "core:crystal", count: 15 }, { item: "core:oil", count: 10 }], seconds: 5, xp: 132, at: "core:smithy" },
   },
   { type: "engram", id: "core:engram-piece_fabricator", label: "Fabricator", level: 48, cost: 24, item: "core:piece_fabricator", requires: ["core:engram-piece_smithy"] },
+
+  // The preserving bin (planning/reference/stations-plan.md, S3). ark.wiki.gg/wiki/Preserving_Bin: 48 item slots (303.1),
+  // 600 health, decays in 16 days (decaytime 1382400); the item weighs 4 and stacks to 100; 30 stone, 30 wood, 10 thatch
+  // and 20 fiber in the hand for 6.9 xp, our 27.6 (D465); level 18, 9 engram points, after the storage box. It is "fueled
+  // by Sparkpowder", which it alone burns, and "a single Sparkpowder in the bin will keep it running for 30 minutes";
+  // while it runs "any eligible perishables will have their spoil timer increased by a multiplier of 10" (also Spoilage's
+  // table, 10x), so only its lit kind keeps 10 times as long, and it cooks nothing. Its crafting seconds are chosen (the
+  // page gives no craftingtime), 5 as the other pieces'; its material is chosen as wood; its box is the art's (D520).
+  { type: "shape", id: "core:shape_preserving_bin", role: "thing", boxes: [{ at: [0, 0, 0], half: [0.4, 0.6, 0.35] }] },
+  ...binPair(),
+  {
+    type: "item",
+    class: "structure",
+    id: "core:piece_preserving_bin",
+    stack: 100,
+    weight: 4,
+    label: "preserving bin",
+    color: 3,
+    places: ["core:preserving_bin"],
+    craft: { needs: [{ item: "core:stone", count: 30 }, { item: "core:wood", count: 30 }, { item: "core:thatch", count: 10 }, { item: "core:fiber", count: 20 }], seconds: 5, xp: 27.6 },
+  },
+  { type: "engram", id: "core:engram-piece_preserving_bin", label: "Preserving bin", level: 18, cost: 9, item: "core:piece_preserving_bin", requires: ["core:engram-piece_storage_box"] },
 ];
+
+/** The preserving bin out and lit: one station (D515), alike but for the colour and the lit kind's keeping. */
+function binPair(): Def[] {
+  const both = { type: "structure", class: "station", mesh: "shape", shape: "core:shape_preserving_bin", half: [0.4, 0.6, 0.35], hp: 600, material: "core:mat_wood", decayDays: 16, slots: 48, burns: [{ item: "core:sparkpowder", seconds: 1800 }], cooks: false } as const;
+  return [
+    { ...both, id: "core:preserving_bin", color: 3, lights: "core:preserving_bin_lit" },
+    { ...both, id: "core:preserving_bin_lit", color: 8, lights: "core:preserving_bin", lit: true, keeps: 10 },
+  ];
+}

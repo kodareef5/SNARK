@@ -39,6 +39,8 @@ export interface Site {
   toEngine(e: number, n: number): [number, number];
   /** The ground's height in metres above the sea at engine x and z, between samples. */
   groundAt(x: number, z: number): number;
+  /** The surface of the water nearest the sample at engine x and z, in metres above the sea: a lake's in one, else the sea's. */
+  waterAt(x: number, z: number): number;
   readonly clearPlants: Uint8Array;
   readonly lowPlants: Uint8Array;
 }
@@ -72,6 +74,12 @@ export function siteOf(world: World, ground: Ground, size: number, source: strin
       const u = fc - c;
       const v = fr - r;
       return (at(c, r) * (1 - u) + at(c + 1, r) * u) * (1 - v) + (at(c, r + 1) * (1 - u) + at(c + 1, r + 1) * u) * v;
+    },
+    waterAt(x, z) {
+      const lakes = ground.lakes;
+      if (!lakes) return 0;
+      const b = lakes.body[Math.min(n - 1, Math.max(0, Math.round((size - z) / 2))) * n + Math.min(n - 1, Math.max(0, Math.round((size - x) / 2)))]!;
+      return b === 0 ? 0 : lakes.bodies[b - 1]!.surface;
     },
   };
 }

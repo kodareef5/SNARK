@@ -147,7 +147,10 @@ export interface Registry {
   /** Per species: the colours each region of a wild one may take, and the palette colours a mutation may give a region. Null for everything else. */
   readonly colorSet: readonly (ColorSet | null)[];
   readonly mutationColors: readonly (readonly number[] | null)[];
-  /** Per species: how many times as long things keep in its inventory. 1 for everything else. */
+  /**
+   * Per species and structure: how many times as long things keep in its inventory (a species' or a structure's `keeps`;
+   * for a structure the same as structKeeps). 1 for everything else.
+   */
   readonly keeps: Float32Array;
   /** Per item: the species it is a saddle for (0 if it is no saddle), and the armor it gives. */
   readonly saddleFits: Uint16Array;
@@ -264,13 +267,13 @@ export interface Registry {
   readonly stationBase: Uint16Array;
   /** Per structure that names its own fuel (`burns`): the ticks one of each item burns in it, 0 for what it does not take. Null where it burns every item's own fuel (fuelTicks). */
   readonly stationFuel: readonly (Uint32Array | null)[];
-  /** S1, per structure: 0 for a fire that does not cook (`cooks: false`), else 1. */
+  /** Per structure: 0 for a fire that does not cook (`cooks: false`), else 1. */
   readonly stationCooks: Uint8Array;
-  /** S3, per structure: how many times as long things keep in it, 1 where not given. */
+  /** Per structure: how many times as long things keep in it, 1 where not given (M6). Registry.keeps holds the same. */
   readonly structKeeps: Float32Array;
-  /** S1, per item made by a fire by itself (`craft.fired`): the station's base kind, else 0. */
+  /** Per item made by a fire by itself (`craft.fired`): the station's base kind, else 0. */
   readonly firedAt: Uint16Array;
-  /** S1, per item: what one piece leaves in the fire when it has burnt out (0 for nothing). */
+  /** Per item: what one piece leaves in the fire when it has burnt out (0 for nothing). */
   readonly burnsInto: Uint16Array;
   /** S2 and S1, per structure: 1 if its jobs run only while it burns, and 1 if it is not lit below sea level. */
   readonly powered: Uint8Array;
@@ -785,6 +788,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.bed) isBed[i] = 1;
         if (d.cooks !== false) stationCooks[i] = 1;
         structKeeps[i] = d.keeps ?? 1;
+        keeps[i] = structKeeps[i]!;
         if (d.powered) powered[i] = 1;
         if (d.dry) dry[i] = 1;
       }
@@ -958,7 +962,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       recipeOf[index.get(d.id)!] = Uint16Array.from(d.craft.needs.flatMap((need) => [index.get(need.item)!, need.count]));
       recipeMakes[index.get(d.id)!] = d.craft.count ?? 1;
       if (d.craft.at !== undefined) craftAt[index.get(d.id)!] = index.get(d.craft.at)!;
-      if (d.blueprint !== false) blueprints[index.get(d.id)!] = 1;
+      // What a fire makes by itself is made from no blueprint.
+      if (d.blueprint !== false && !d.craft.fired) blueprints[index.get(d.id)!] = 1;
     }
   }
   // An open door maps back to the closed door's item.

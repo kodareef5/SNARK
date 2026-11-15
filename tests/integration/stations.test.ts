@@ -98,6 +98,10 @@ test("a campfire burns the fuel on it and cooks what lies over it, at the refere
   h.run(Math.max(0, ((lit + 1800 - h.world.tick) / TICK_RATE) * 1000) + 500);
   expect([kindAt(h, fire), again.world!.structs.chunks[Math.floor(fire / 65536)]!.kind[fire & 0xffff], state.fire, h.host.stations.wentOut]).toEqual([id("campfire"), id("campfire"), null, 1]);
   expect([state.inv!.total(id("meat_cooked")), state.inv!.total(id("meat")), state.inv!.total(id("wood"))]).toEqual([3, 0, 0]);
+  // Each piece of wood that burnt out left a charcoal (ark.wiki.gg Charcoal; planning/reference/stations-plan.md, S1): the
+  // first in the slot the last wood emptied when the second piece was taken, the second as the fire went out, after the
+  // restart, from the piece the save said was burning.
+  expect([state.inv!.total(id("charcoal")), state.inv!.item.filter((i) => i !== 0).length]).toEqual([2, 2]);
   // Cooked meat spoils from the tick it was cooked, not from when someone looked. The first was cooked at lit + 600.
   const slot = state.inv!.item.indexOf(id("meat_cooked"));
   expect(state.inv!.spoilAt[slot]! - reg.spoilTicks[id("meat_cooked")]!).toBe(lit + 600);

@@ -1,9 +1,10 @@
 // The sea on a GPU (D270), a check of tools/probe-lit.ts. The sea is drawn calm, its waves' pictures not sent, and each
 // sea pixel is held to water.ts's twin over what the rasterizer draws under it: a plate of sand 2 m down seen from
-// above; the shore, where the sea is 5 to 15 cm deep and mostly see-through; the open sea at a grazing angle, where it
-// is the sky table mirrored; and the sea across the split between the depth ranges, from 50 m up over deep water and
-// over the shallows, and from the art director's camera over the proving ground, where a band blended twice or a row
-// left undrawn would show. Each within 5 steps at 99 points in 100.
+// above, and again under a pond 20 m up on a map with no sea, drawn from its squares (lakes.ts); the shore, where the
+// sea is 5 to 15 cm deep and mostly see-through; the open sea at a grazing angle, where it is the sky table mirrored;
+// and the sea across the split between the depth ranges, from 50 m up over deep water and over the shallows, and from
+// the art director's camera over the proving ground, where a band blended twice or a row left undrawn would show. Each
+// within 5 steps at 99 points in 100.
 //
 // With PROBE_PICTURES naming a folder it also writes what the shell draws with the waves' and the sky's pictures sent:
 // each mood key's two views from the art director's cameras over the proving ground's rim, a beach of an island from
@@ -25,13 +26,16 @@ import { SHORE, WATER_MATERIAL, seaDepth, seaFrame, seaPixel, seaShown } from ".
 import { describePack } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
-import { Heightfield } from "../../shared/world/heightfield.ts";
-import { Found } from "../../shared/world/structures.ts";
-import { farWorld, type FarWorld } from "../../tests/fixtures/farworld.ts";
+import { CHUNK_SIZE } from "../../shared/coords.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import { Found, StructureStore } from "../../shared/world/structures.ts";
+import { MapWater } from "../../shared/world/water.ts";
+import { Scene } from "../../client/core/render/scene.ts";
+import { farRegistry, farWorld, type FarWorld } from "../../tests/fixtures/farworld.ts";
 import { buildCorePack } from "../pack/build.ts";
 import { packedMips, readPicture } from "../pack/image.ts";
 import { EYE, KEYS } from "../sky/base.ts";
-import { PICK_SKY, PICK_TERRAIN } from "../snap/raster.ts";
+import { PICK_SKY, PICK_TERRAIN, Rasterizer } from "../snap/raster.ts";
 import { encodePng } from "../snap/png.ts";
 import { provingView } from "../snap.ts";
 import { Shot, type LitCheck, type Readback } from "./shot.ts";
@@ -90,6 +94,24 @@ function plate(pack: Uint8Array): FarWorld {
   return w;
 }
 
+/** The plate 20 m up, a pond over the whole of it with no sea round it, as Los Angeles has its lakes: drawn from its squares (lakes.ts). */
+function pond(pack: Uint8Array): World {
+  const dims = { chunksX: 8, chunksZ: 8 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, -64, 1 / 64);
+  hf.heights.fill((POND - 2 + 64) * 64);
+  hf.tint.fill(nearestColour(defaultPalette(), 214, 196, 150));
+  hf.water = MapWater.fromGrid(dims, hf.minY, hf.stepY, CHUNK_SIZE, [{ name: "Pond", level: (POND + 64) * 64 }], new Uint16Array(64).fill(1));
+  const reg = farRegistry();
+  const parsed = parsePack(pack);
+  const scene = new Scene({ dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts) }, reg, parsed);
+  scene.assets.tier = tierOf("medium");
+  scene.viewHeight = H;
+  const cam = new Camera();
+  cam.aspect = W / H;
+  return { hf, scene, cam, raster: new Rasterizer(W, H, parsed, hf) };
+}
+const POND = 20;
+
 /** The angle round the island, from x toward z, of the way to the sun or, with `moon`, to the moon, at an hour. */
 function lightWay(hour: number, moon: boolean): number {
   const frame = new Float32Array(FRAME_FLOATS);
@@ -124,6 +146,8 @@ interface Held {
   window: Int32Array;
   cam: { x: number; y: number; z: number; yaw: number; pitch: number; fovY: number; near: number; far: number; split: number };
   world: World;
+  /** The level of the water's surface it is held at: the sea's, or a pond's. */
+  surface: number;
 }
 
 const held: Held[] = [];
@@ -143,14 +167,14 @@ function build(w: World, now: number): FramePacket {
   return p;
 }
 
-/** Proof frames of a world in a shot: three frames a view, the last read back and kept. */
-function prove(shot: Shot, w: World, name: string, kind: Held["kind"]): void {
+/** Proof frames of a world in a shot: three frames a view, the last read back and kept, held at the water's surface `surface`. */
+function prove(shot: Shot, w: World, name: string, kind: Held["kind"], surface = w.hf.seaLevel): void {
   for (let f = 0; f < 3; f++) {
     const p = build(w, (shot.frames.length + 1) * (1000 / 60));
     shot.add(p, f === 2);
     if (f < 2) continue;
     const c = w.cam;
-    held.push({ key: shot.key, frame: shot.frames.length - 1, name, kind, block: p.frame.slice(), color: Uint8Array.from(w.raster.color), pick: w.raster.pickKind.slice(), depth: w.raster.depth.slice(), window: p.groundWindow.slice(), cam: { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch, fovY: c.fovY, near: c.near, far: c.far, split: p.split }, world: w });
+    held.push({ key: shot.key, frame: shot.frames.length - 1, name, kind, block: p.frame.slice(), color: Uint8Array.from(w.raster.color), pick: w.raster.pickKind.slice(), depth: w.raster.depth.slice(), window: p.groundWindow.slice(), cam: { x: c.x, y: c.y, z: c.z, yaw: c.yaw, pitch: c.pitch, fovY: c.fovY, near: c.near, far: c.far, split: p.split }, world: w, surface });
     pictured.push({ key: shot.key, frame: shot.frames.length - 1, name: `proof ${name}` });
   }
 }
@@ -172,6 +196,13 @@ export const waterCheck: LitCheck = {
       prove(p1, flat, `plate 2 m down, ${name}`, "plate");
     }
     shots.push(p1);
+    // The same, a pond's surface 20 m up on a map with no sea: its depth is its own surface's over the ground.
+    const lake = pond(pack);
+    const p0 = new Shot("water-pond", W, H, lake.hf, pack);
+    lake.scene.hour = 12;
+    [lake.cam.x, lake.cam.z, lake.cam.y, lake.cam.yaw, lake.cam.pitch] = [256, 200, POND + 12, 0.3, -0.9];
+    prove(p0, lake, "a pond 20 m up, 2 m deep, no sea", "plate", POND);
+    shots.push(p0);
     const isle = island(pack);
     const p2 = new Shot("water-calm", W, H, isle.hf, pack);
     for (const [hour, name] of [[12, "noon"], [17.6, "sunset"]] as const) {
@@ -275,8 +306,9 @@ export const waterCheck: LitCheck = {
       }
       const cam = Object.assign(new Camera(), { yaw: h.cam.yaw, pitch: h.cam.pitch, fovY: h.cam.fovY, aspect: W / H });
       const forward = [Math.sin(h.cam.yaw) * Math.cos(h.cam.pitch), Math.sin(h.cam.pitch), Math.cos(h.cam.yaw) * Math.cos(h.cam.pitch)];
-      const sea = h.world.hf.seaLevel;
-      const size = groundSize(h.world.hf);
+      const sea = h.surface;
+      const hf = h.world.hf;
+      const size = groundSize(hf);
       const r = [0, 0, 0];
       let [count, over, worst, cover, seen] = [0, 0, 0, 0, 0];
       for (let y = 2; y < H - 2; y++) {
@@ -288,6 +320,9 @@ export const waterCheck: LitCheck = {
           cam.ray((x + 0.5) / W, (y + 0.5) / H, r);
           const t = (sea - h.cam.y) / r[1]!;
           const rel = r.map((c) => c * t);
+          // A pond is drawn on its squares, on the map, and nowhere past them.
+          const [wx, wz] = [h.cam.x + rel[0]!, h.cam.z + rel[2]!];
+          if (hf.water && (wx < 0 || wz < 0 || wx > hf.sizeX || wz > hf.sizeZ || hf.waterAt(wx, wz) !== sea)) continue;
           // What the rasterizer drew under the sea there must be the ground under it or the dome, the same all round.
           let same = true;
           for (let dy = -2; dy <= 2 && same; dy++) for (let dx = -2; dx <= 2 && same; dx++) {
@@ -306,7 +341,7 @@ export const waterCheck: LitCheck = {
             below = hazedShown(below, r.map((c) => c * ground), h.block);
             if (!below) continue;
           }
-          const depth = seaDepth(h.block, h.world.hf, size, h.window, rel[0]!, rel[2]!);
+          const depth = seaDepth(h.block, hf, size, h.window, rel[0]!, rel[2]!, rel[1]!);
           if (depth <= 0) continue;
           const lean = (Math.asin(-r[1]!) * 180) / Math.PI;
           const want = h.kind === "plate" || (h.kind === "shore" && depth > 0.05 && depth < 0.15) || (h.kind === "grazing" && lean < 4 && depth > 20) || (h.kind === "split" && Math.abs((t * (r[0]! * forward[0]! + r[1]! * forward[1]! + r[2]! * forward[2]!)) / h.cam.split - 1) < 0.15);
