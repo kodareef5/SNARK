@@ -169,7 +169,7 @@ export class Behavior {
   private homeZ = new Float32Array(0);
   private until = new Uint32Array(0);
   private rested = new Uint32Array(0);
-  /** The tick a startled creature stops standing and runs, 0 when it is not startled. 1 for a hunt it was ordered on. */
+  /** The tick a startled creature stops standing and runs, 0 when it is not startled; and 1 for a hunt it was ordered on. */
   private calm = new Uint32Array(0);
   private ordered = new Uint8Array(0);
   /** A WAY_ value, and one more than the index in `routes` of the creature's way, or 0 before it has had one. */

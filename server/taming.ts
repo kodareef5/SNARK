@@ -540,8 +540,9 @@ export class Taming {
       return RESULT_OK;
     };
     if (which === ORDER_ALL) {
-      // A whistle cannot give levels, take saddles off or order mating. Each that hears obeys as it can.
-      if (what >= ORDER_LEVEL || what === ORDER_UNSADDLE || mate) return RESULT_INVALID;
+      // A whistle cannot give levels, take saddles off, order mating or wandering (the reference has no whistle for it). Each
+      // that hears obeys as it can.
+      if (what >= ORDER_LEVEL || what === ORDER_UNSADDLE || what === ORDER_WANDER || mate) return RESULT_INVALID;
       for (const e of creatures.mind.owned) {
         const rec = records.byPid.get(ents.pid[e]!);
         if (!rec || !tribes.may(me, rec.team)) continue;

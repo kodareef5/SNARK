@@ -161,7 +161,7 @@ export const ORDER_ATTACK = 9;
 /** Protocol 11. Its stance becomes attacking your target (ARK's "Attack My Target" whistle): neutral, and it goes for what its tribe hurts. */
 export const ORDER_YOURS = 10;
 export const ORDER_LEVEL = 16;
-/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE or ORDER_LEVEL. */
+/** Every tribe creature within WHISTLE_RANGE. It cannot take ORDER_UNSADDLE, ORDER_MATE, ORDER_UNMATE, ORDER_WANDER or ORDER_LEVEL. */
 export const ORDER_ALL = 0xffffffff;
 /** Metres. */
 export const WHISTLE_RANGE = 40;

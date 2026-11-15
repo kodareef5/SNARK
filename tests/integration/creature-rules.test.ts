@@ -312,8 +312,9 @@ test("her creatures wander, go for what she points at and take up her target, as
   const wild = put(h, at.x + 8, at.z + 8);
   h.run(500);
 
-  // Wander: it follows nobody and walks about, untethered. Bob's order and an order to a wild one are refused.
-  expect([order(h, bob, a.e, ORDER_WANDER), order(h, ada, wild, ORDER_WANDER)]).toEqual([RESULT_NOT_YOURS, RESULT_NOT_YOURS]);
+  // Wander, from the menu: it follows nobody and walks about, untethered. Bob's order, an order to a wild one and a
+  // whistle are refused, as the reference has no whistle for it.
+  expect([order(h, bob, a.e, ORDER_WANDER), order(h, ada, wild, ORDER_WANDER), order(h, ada, ORDER_ALL, ORDER_WANDER)]).toEqual([RESULT_NOT_YOURS, RESULT_NOT_YOURS, RESULT_INVALID]);
   expect(order(h, ada, a.e, ORDER_FOLLOW)).toBe(RESULT_OK);
   expect(order(h, ada, a.e, ORDER_WANDER)).toBe(RESULT_OK);
   expect([a.rec.wander, a.rec.follow, mind.wanders[a.e], mind.leader[a.e]]).toEqual([true, 0, 1, -1]);
