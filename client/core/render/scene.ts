@@ -25,7 +25,7 @@ import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
-import { Cascades, reach } from "./shadow.ts";
+import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { SKY_SIZE, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 
@@ -230,6 +230,8 @@ export class Scene {
   private fitted = 0;
   /** The lowest a receiver in any cascade's sphere can be. A caster's shadow reaches as far as its top stands over this. */
   private floor = 0;
+  /** Metres from the camera past which nothing casts into a cascade: as far as a cascade's cube reaches, and MAX_REACH on. */
+  private castRange = 0;
   private readonly sunAt = new Float64Array(3);
   private readonly pairs = new Uint8Array(MAX_CASCADES * 2);
   /** Bodies out of view whose shadows may fall in it: which remote entity each is, and its place (x, y, z, yaw). */
@@ -242,11 +244,14 @@ export class Scene {
    * light as its top stands over the floor, while that shadow can fall in view.
    */
   private readonly castBox: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => {
+    const [dx, dy, dz] = [Math.max(minX, -maxX, 0), Math.max(minY, -maxY, 0), Math.max(minZ, -maxZ, 0)];
+    if (dx * dx + dy * dy + dz * dz > this.castRange * this.castRange) return 0;
     const stretch = this.stretch(minX, minZ, maxX, maxZ, maxY);
     return this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0;
   };
   private readonly bodyShadows: BodyShadows = {
     body: (x, y, z, r) => {
+      if (Math.hypot(x, y, z) - r > this.castRange) return 0;
       const stretch = this.stretch(x - r, z - r, x + r, z + r, y + r);
       return this.inView(x - r, y - r, z - r, x + r, y + r, z + r, stretch) ? this.cascades.sphereMask(x, y, z, r, stretch) : 0;
     },
@@ -403,11 +408,15 @@ export class Scene {
     c.write(p.cascades, p.spheres);
     if (c.drawn === 0) return;
     let floor = Infinity;
+    let range = 0;
     for (let i = 0; i < c.count; i++) {
-      const [x, y, z, r] = [cam.x + c.sphere[i * 4]!, cam.y + c.sphere[i * 4 + 1]!, cam.z + c.sphere[i * 4 + 2]!, c.sphere[i * 4 + 3]!];
-      floor = Math.min(floor, Math.max(y - r, this.terrain.lowest(x - r, z - r, x + r, z + r)));
+      const [x, y, z, r] = [c.sphere[i * 4]!, c.sphere[i * 4 + 1]!, c.sphere[i * 4 + 2]!, c.sphere[i * 4 + 3]!];
+      floor = Math.min(floor, Math.max(cam.y + y - r, this.terrain.lowest(cam.x + x - r, cam.z + z - r, cam.x + x + r, cam.z + z + r)));
+      // The cube is snapped less than a texel from the sphere's middle.
+      range = Math.max(range, Math.hypot(x, y, z) + (c.half[i]! + c.texel[i]!) * Math.sqrt(3));
     }
     this.floor = floor;
+    this.castRange = range + MAX_REACH;
     this.sunY = this.sunAt[1]!;
     this.casting = true;
     this.characters.shadows = this.bodyShadows;
