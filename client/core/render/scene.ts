@@ -289,6 +289,7 @@ export class Scene {
   resetUploads(): void {
     for (const b of this.batches.values()) b.uploaded = false;
     this.assets.residency.reset();
+    this.terrain.reset();
   }
 
   build(cam: Camera, remote: RemoteSample | null): FramePacket {
@@ -324,7 +325,7 @@ export class Scene {
       p.fogEnd = this.viewDistance;
     }
 
-    this.terrain.select(cam, p, this.viewDistance);
+    this.terrain.select(cam, p, this.viewDistance, this.assets.residency);
     // The selection stops at a full list, so a full list has left tiles out.
     if (p.tileCount === MAX_TILES) p.dropped++;
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);

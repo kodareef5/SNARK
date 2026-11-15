@@ -34,6 +34,11 @@ const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
 export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat) => ProgramText>> = {
   flat: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_FRAGMENT : FLAT_FRAGMENT, defines: "", samplers: MESH }),
   terrain: (tier) => ({ vertex: FLAT_TERRAIN_VERTEX, fragment: tier.lit ? LIT_FRAGMENT : FLAT_FRAGMENT, defines: "", samplers: { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint } }),
+  // The same, for the tiles that read the window round the camera (terrain.ts).
+  terrainWindow: (tier, format) => {
+    const t = PROGRAMS.terrain!(tier, format);
+    return { ...t, samplers: { ...t.samplers, uHeight: UNIT.windowHeights, uTint: UNIT.windowTint } };
+  },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
   seeThrough: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_SPLIT_FRAGMENT : FLAT_SPLIT_FRAGMENT, defines: "", samplers: MESH }),

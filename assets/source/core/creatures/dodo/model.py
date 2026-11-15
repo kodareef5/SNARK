@@ -153,10 +153,11 @@ TAIL = [(4.0, 0.0, 0.118, 0.0240), (18.0, 6.0, 0.128, 0.0250), (32.0, -6.0, 0.13
 TAIL_TURN = 30.0  # degrees each leaning feather turns its face from the side towards the back
 
 # The hood's ragged edge (left): small tufts rooted just under the cap along its own edge on the shell, behind the
-# face from the face's lower corner up to the back of the brow, hanging forward over the skin: how far back of the
-# edge they root, how far over the skin they reach, how far their tips stand off, and where the edge goes under the
-# brow (z).
-HOOD_EDGE = {"behind": 0.003, "over": 0.010, "lift": 0.0018, "brow": 0.157, "columns": 9}
+# face from the face's lower corner up to the back of the brow, hanging forward over the skin. They lie on the shell
+# as it curves: their roots `sink` under it `behind` the edge, they come out of it before the edge and stand `rise`
+# off it halfway, `lift` at their tips `over` the skin. `brow` is where the edge goes under the brow (z).
+HOOD_EDGE = {"behind": 0.0055, "over": 0.0080, "sink": 0.0006, "rise": 0.0005, "lift": 0.0006, "brow": 0.157,
+             "columns": 9}
 # The hood comes down the nape as a wedge, as the concept's back view has it: its half width (x) at each height (y),
 # to its point. Higher up the hood's whole piece of the shell is hood. The region map draws it (ref/bakes/draw.py):
 # the rest of the hood's piece down the nape is neck feathers.
@@ -180,7 +181,7 @@ TROUSERS = {"leg": (0.060, 0.006), "rings": [
 # Tufts: clusters of loose feather tips scattered over the body where its outline runs in the side and front views
 # (back, rump, breast, belly, flanks), so the outline is soft and ragged as the concept's is; fewer away from it.
 # Each is rooted under the skin and lies the way the feathers do, its tip standing off the body.
-TUFTS = {"count": 30, "spacing": 0.032, "length": (0.026, 0.036), "width": (0.020, 0.028), "lift": (0.004, 0.011),
+TUFTS = {"count": 30, "spacing": 0.032, "length": (0.026, 0.036), "width": (0.020, 0.028), "lift": (0.003, 0.007),
          "sink": 0.0015}
 # The cards' picture: a rectangle (u0, v0, u1, v1) for each kind of card, shared by every card of that kind.
 ATLAS = {
@@ -1119,7 +1120,7 @@ def along_surface(normals, d):
 def hood_fringe(shell):
     """The ragged edge of the hood round the face (left side): tufts rooted just under the cap along the edge between
     the shell's hood and face pieces, from the face's lower corner up to where the edge goes under the brow, lying
-    forward over the bare skin."""
+    forward over the bare skin and following the shell's curve, so no skin shows between them and the cap."""
     part = Part("hood_edge_l", material="dodo_cards", region=HOOD_R)
     grid = shell.grid
     k = grid.shape[1]
@@ -1138,10 +1139,19 @@ def hood_fringe(shell):
     base = np.stack([np.interp(want, s_, line[:, c]) for c in range(3)], axis=1)
     hang = np.stack([np.interp(want, s_, across[:, c]) for c in range(3)], axis=1)
     base = project(shell_field, base)
-    n = outward(shell_field, base)
-    hang = along_surface(n, hang)
-    fringe(part, base - hang * HOOD_EDGE["behind"], n, hang, HOOD_EDGE["behind"] + HOOD_EDGE["over"],
-           HOOD_EDGE["lift"], "hood")
+    hang = along_surface(outward(shell_field, base), hang)
+    length = HOOD_EDGE["behind"] + HOOD_EDGE["over"]
+    rows = 3
+    outer = np.zeros((rows, cols, 3))
+    inner = np.zeros((rows, cols, 3))
+    for i in range(rows):
+        t = i / (rows - 1)
+        on = project(shell_field, base + hang * (length * t - HOOD_EDGE["behind"]))
+        n = outward(shell_field, on)
+        off = np.interp(t, (0.0, 0.5, 1.0), (-HOOD_EDGE["sink"], HOOD_EDGE["rise"], HOOD_EDGE["lift"]))
+        outer[i] = on + n * off
+        inner[i] = outer[i] - n * 0.0006
+    pillow(part, outer, inner, uv=atlas_uv("hood", rows, cols))
     return part
 
 
@@ -1399,14 +1409,20 @@ def cut_islands(part):
             part.seams.add(e)
 
 
-def transfer_weights(part, shell, extra=None):
-    """Each point of a card takes the weights of the nearest point of the shell, and `extra(point)` on top."""
+def transfer_weights(part, shell, extra=None, near=1):
+    """Each point of a card takes the weights of the nearest point of the shell, or a blend of the `near` nearest by
+    closeness, and `extra(point)` on top."""
     src = np.array(shell.points)
     out = []
     for p in part.points:
         p = np.array(p)
-        i = int(np.argmin(np.einsum("ij,ij->i", src - p, src - p)))
-        w = dict(shell.weights[i])
+        d = np.einsum("ij,ij->i", src - p, src - p)
+        w = {}
+        closest = np.argsort(d)[:near]
+        share = 1.0 / np.maximum(d[closest], 1e-10)
+        for i, x in zip(closest, share / share.sum()):
+            for n, v in shell.weights[int(i)].items():
+                w[n] = w.get(n, 0.0) + v * x
         if extra:
             for n, x in extra(p).items():
                 w[n] = w.get(n, 0.0) + x
@@ -1720,15 +1736,13 @@ def assemble(parts):
         obj.vertex_groups.new(name=n)
     obj["islands"] = names
     if soft:
-        # Cards lying on the body take the body's normal, so they are lit as the plumage they sit in. Each face takes
-        # it turned to its own side: the game turns a face's normal round when its back is seen, so either side of a
-        # card, seen from outside, is lit as the body.
+        # Cards lying on the body take the body's normal on both their sides, so whichever side is seen, from above
+        # or from under a lifted tip, is lit as the plumage they sit in.
         normals = [tuple(c.vector) for c in mesh.corner_normals]
-        for poly in mesh.polygons:
-            for li in poly.loop_indices:
-                n = soft_normals[mesh.loops[li].vertex_index]
-                if n is not None:
-                    normals[li] = n if poly.normal.dot(n) >= 0 else tuple(-x for x in n)
+        for loop in mesh.loops:
+            n = soft_normals[loop.vertex_index]
+            if n is not None:
+                normals[loop.index] = n
         mesh.normals_split_custom_set(normals)
     return obj
 
@@ -1963,11 +1977,13 @@ def build():
         attach(card, shell)
         card.soft = True
     parts += [feathers_tail, head, feathers]
+    # The hood's edge and the tufts lie close on the skin, so they take its weights blended from the points round
+    # them and move as the skin under them does.
     edge = hood_fringe(shell)
-    transfer_weights(edge, shell)
+    transfer_weights(edge, shell, near=4)
     legs = trousers(shell)
     loose = tufts(shell)
-    transfer_weights(loose, shell)
+    transfer_weights(loose, shell, near=4)
     for card in (edge, legs, loose):
         attach(card, shell)
         card.soft = True
