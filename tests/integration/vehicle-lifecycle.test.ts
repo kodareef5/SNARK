@@ -198,6 +198,10 @@ test('a revoked driver cannot deal coast damage or permanently deny the PvE owne
     me.inputs.set(h.world.tick + 1, 0, 127, 0, 0, 0); h.server.tick();
     expect(me.drive).toBe(-1); expect(h.host.urban.riderOf(car)).toBeNull();
     expect(h.host.survival.value(victim, V_HEALTH)).toBe(health);
+    // The revoked driver gets out, moving or not, and the car stops on its handbrake.
+    h.run(3000);
+    expect(h.host.urban.riding(me)).toBe(false);
+    ents.setPosition(me.ent, ents.x[car]! + 6, ground.y, ents.z[car]!);
     ents.setPosition(other.ent, ents.x[car]! + 1.6, ground.y, ents.z[car]! + 0.12);
     expect(h.host.urban.mount(other, car)).toBe(RESULT_OK); h.run(800);
     expect(other.drive).toBe(car); expect(h.host.urban.riding(me)).toBe(false);

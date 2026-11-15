@@ -387,7 +387,8 @@ export class Occupancy {
     if (seat.actor !== expected) return 'occupant-changed';
     const hostState = this.authority.host(action.host);
     if (!hostState?.ready || hostState.handle !== action.hostHandle || !handle(hostState.handle)) return 'host-invalid';
-    if (!Number.isFinite(hostState.speed) || Math.abs(hostState.speed) > this.limits.maxInteractionSpeed) return 'host-moving';
+    // Nobody gets into a moving vehicle or pulls its driver out, but anyone may get out of one, as a rider may always get off.
+    if (action.kind !== 'exit' && (!Number.isFinite(hostState.speed) || Math.abs(hostState.speed) > this.limits.maxInteractionSpeed)) return 'host-moving';
     const actor = this.authority.actor(action.actor);
     if (!actor?.alive || !actor.ready || actor.handle !== action.actorHandle || !handle(actor.handle)) return 'actor-invalid';
     if (action.victim) {

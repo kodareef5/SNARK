@@ -603,7 +603,8 @@ export class Urban {
     const entry = { x: out[0]!, y: Math.max(state.y, groundUnder(world.hf, out[0]!, out[2]!, move.radius)), z: out[2]! };
     const ignored = action.victim ? [action.actor, action.victim] : [action.actor];
     const start = { x: ents.x[ae]!, y: action.kind === 'exit' ? entry.y : ents.y[ae]!, z: ents.z[ae]! };
-    if (action.kind !== 'exit' && Math.hypot(start.x - entry.x, start.z - entry.z) > 2) return { ok: false, reason: 'too-far' };
+    // Within reach of the door: 2 m across the ground, and no more than a step above or below it.
+    if (action.kind !== 'exit' && (Math.hypot(start.x - entry.x, start.z - entry.z) > 2 || Math.abs(start.y - entry.y) > 1.2)) return { ok: false, reason: 'too-far' };
     if (!this.free(entry, action.actor, ignored)) return { ok: false, reason: 'door-blocked' };
     if (!this.corridor(start, entry, action.actor, ignored, action.kind === 'exit' ? action.host : 0)) return { ok: false, reason: 'corridor-blocked' };
     vehiclePoint(state, seat.anchor, out);

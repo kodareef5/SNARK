@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
-import { RESULT_OK } from "../../shared/net/protocol.ts";
+import { RESULT_FAR, RESULT_OK } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
 import { flatGround } from "../fixtures/arena.ts";
 
@@ -98,6 +98,45 @@ test("a survivor whose connection drops in a seat is set down beside the car whe
     expect(h.host.records.entOf.get(pid)).toBeUndefined();
     expect(h.host.urban.occupancy.seatOf(pid)).toBeNull();
     expect(within(h, car, rec.x, rec.y, rec.z, move.radius)).toBe(false);
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("a passenger may get out of a car going at speed, as a rider may always get off", () => {
+  const { h, me, car, x, z } = setup();
+  try {
+    const bob = h.join("bob");
+    h.run(800);
+    h.say(bob, "enablecheats");
+    h.say(bob, `tp ${x - 1.6} ${z + 0.12}`);
+    h.run(500);
+    const other = h.client(bob)!, ents = h.world.ents;
+    expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);
+    expect(h.host.urban.mount(other, car)).toBe(RESULT_OK);
+    h.run(1000);
+    expect(ents.seatSlot[other.ent]).toBe(2);
+    h.pilots[0]!.moveZ = 127;
+    h.run(1500);
+    expect(Math.hypot(ents.vx[car]!, ents.vz[car]!)).toBeGreaterThan(5);
+    h.host.urban.dismount(other);
+    h.run(800);
+    expect(h.host.urban.occupancy.seatOf(other.pid)).toBeNull();
+    expect(ents.seatSlot[other.ent]).toBe(0);
+    expect(Math.hypot(ents.vx[car]!, ents.vz[car]!)).toBeGreaterThan(5);
+    expect(Math.hypot(ents.x[other.ent]! - ents.x[car]!, ents.z[other.ent]! - ents.z[car]!)).toBeGreaterThan(1.2);
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("a door is in reach across the ground and within a step up or down, not from a ledge above it", () => {
+  const { h, me, car } = setup();
+  try {
+    const ents = h.world.ents;
+    // Straight over the driver's door, 2 m up: across the ground it is in reach, and the air between is clear.
+    ents.setPosition(me.ent, ents.x[car]! + 1.4, ents.y[car]! + 2, ents.z[car]! + 0.12);
+    expect(h.host.urban.mount(me, car)).toBe(RESULT_FAR);
   } finally {
     h.host.shutdown();
   }
