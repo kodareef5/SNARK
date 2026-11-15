@@ -1313,7 +1313,8 @@ def fall(r):
                                   sweep=10.0 * math.sin(a + off + 1.0), twist=12.0 * math.sin(2 * a + off + 0.5),
                                   curl=10.0 * math.sin(2 * a + off + 1.2))
             ph = a + (0.0 if s == LEFT else math.pi)
-            p["foot_" + s] = hip(p, s) + turned(rot(*p["body_rot"]), mx(Vector((0.08, -0.30 + 0.08 * math.sin(ph), -0.30 + 0.14 * math.cos(ph))), s))
+            kick = Vector((0.08, -0.30 + 0.10 * math.sin(ph), -0.30 + 0.05 * math.cos(ph)))
+            p["foot_" + s] = hip(p, s) + turned(rot(*p["body_rot"]), mx(kick, s))
             p["foot_rot_" + s] = (60.0 + 25.0 * math.sin(ph), 0.0, 0.0)
             p["knee_" + s] = knee_ahead(p, s, p["foot_" + s])
             p["talons_" + s] = 0.4 + 0.3 * math.sin(ph + 1.0)
