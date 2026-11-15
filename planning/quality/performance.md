@@ -174,6 +174,36 @@ At 480 chunks: 17.7, 56.3, 61.3 and 61.3 far draws by tier (plan: 9 to 17, then
 35 to 70). A castle's blocks are 324 triangles, the 2,000-piece pile 716 (M).
 1.7 MB on the card at 480 chunks (D257).
 
+### The far city
+
+Miami's ruins as built on 2026-11-15: 1,091,202 statics in 6,341 chunks
+(`bun tools/bench/city.ts var/maps/miami.snmap`, M). Held by chunk on the client in
+17 ms and 16.7 MB. A busy chunk (the 200 with most pieces) takes, median and worst:
+every box 0.50, 1.85 ms; the lattice 0.46, 1.01; mass in 4 m cells 0.74, 2.14; in
+8 m cells 0.37, 0.74; the far feed's tops and what they show gone 0.05, 0.10.
+
+The six cameras of `assets/source/maps/miami/reports/farcity/views.json` at 1,920
+by 1,080, the near window held whole; draws and triangles as listed in the packet,
+a run across the split counted in both ranges:
+
+| | Low poly | Medium | High | Ultra |
+| --- | --- | --- | --- | --- |
+| Reach; every box, lattice, mass 4 m to | 1,024 m; 340, 600, none | 2,048 m; 400, 900, none | 3,072 m; 500, 1,300, 2,000 m | 4,096 m; 600, 1,800, 2,800 m |
+| Draws, the most in a view | 65 | 216 | 283 | 338 |
+| Triangles, the most in a view | 204 k | 393 k | 773 k | 1.04 M |
+| On the card, the most in a view | 9.3 MB | 15.6 MB | 29.7 MB | 42.9 MB |
+| Frame build, median in the slowest view | 0.31 ms | 0.23 ms | 0.28 ms | 0.23 ms |
+
+A ghost at 600 m/s 120 to 150 m over downtown on medium, six seconds each way, near
+chunks never held whole: with 2 ms a frame of making, frame build 1.3 to 2.2 ms
+median, 5.4 ms at worst, and no tile in view and reach ever unmade. With 0.5 ms, as
+a phone four times slower would have 2 ms, tiles in view are unmade only past
+2,021 m, inside the last tenth of reach where they fade in anyway, for at most
+133 ms, and up to 13 tiles at a time are drawn a level coarser than wanted. Walking
+through downtown at 6 m/s, a frame in which a chunk changes hands builds in
+0.65 ms median and 1.13 ms at worst: a tile holds every chunk and a draw takes the
+runs drawn far, so nothing is remade.
+
 ### Far trees, rocks and bushes (D353, D354)
 
 The bench map's wood, every slot filled, from its middle (M): `core:tree`,
