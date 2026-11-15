@@ -1298,8 +1298,8 @@ export class Scene {
       p.drawOffset[d * 3 + 2] = oz;
       p.drawFlags[d] = material < 0 ? flags : flags | this.materialFlags[material]!;
       p.drawHand[d] = hand;
+      p.drawLayer[d] = layer > 0 && material >= 0 && this.assets.layered(material) ? layer : 0;
       if (material < 0) continue;
-      if (layer > 0 && this.assets.layered(material)) p.drawLayer[d] = layer;
       p.drawMaterial[d] = material;
       p.drawFirstIndex[d] = runs[k * 3 + 1]!;
       p.drawIndexCount[d] = runs[k * 3 + 2]!;

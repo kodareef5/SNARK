@@ -125,6 +125,11 @@ test("only a hurt or dead body is drawn with its layer, on a lit tier, and a fra
   // The hurt one and the corpse each have a draw of their own at their level.
   expect(hides(some.w, some.p)).toEqual([[0, 1], [2 * STAGE, 1], [4 * STAGE, 1]]);
   expect(some.w.raster.color).not.toEqual(plain.w.raster.color);
+  // A frame whose draws were dropped unread, as a tool that waits for the card does, leaves no layer to the next.
+  some.p.drawCount = 0;
+  some.w.remote.count = 0;
+  const next = some.w.frame();
+  expect([...next.drawLayer.subarray(0, next.drawCount)].every((l) => l === 0)).toBe(true);
   // On low poly nothing is drawn with a layer, and a hurt body is drawn as an unhurt one is.
   const low = scene(true, [0, hurt, rotting], "lowpoly");
   expect([...low.p.drawLayer.subarray(0, low.p.drawCount)].every((l) => l === 0)).toBe(true);
