@@ -24,11 +24,15 @@ export const AMMO: readonly Def[] = [
   // pellets of 64 (Shotgun). Its damage falls off with range ("lacks any sort of long-range capabilities", Shotgun): whole
   // to 10 m, none at 40 m. No page gives a number; ours are DEV142.
   { type: "item", class: "ammo", id: id("round_shotgun"), stack: 100, weight: 0.1, label: "shotgun shell", color: 4, ammo: { damage: 64, type: "bullet", pellets: 10, falloff: { full: 10, none: 40 } } },
-  { type: "item", class: "ammo", id: id("dart_tranq"), stack: 100, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart") } },
-  { type: "item", class: "ammo", id: id("dart_shock"), stack: 100, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart") } },
+  // A dart is fired bare (W7): loaded with one, the Longneck "cannot use any attachments" (Longneck Rifle), so loading it
+  // puts the attachment in the bag (server/items.ts load).
+  { type: "item", class: "ammo", id: id("dart_tranq"), stack: 100, weight: 0.2, label: "tranquilizer dart", color: 9, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 6, over: 2.5, seconds: 5 }, mesh: id("dart"), bare: true } },
+  { type: "item", class: "ammo", id: id("dart_shock"), stack: 100, weight: 0.2, label: "shock dart", color: 6, ammo: { damage: 26, type: "pierce", speed: 120, gravity: 9.81, torpor: { instant: 12, over: 5, seconds: 5 }, buff: id("stunned"), mesh: id("dart"), bare: true } },
 
   // ark.wiki.gg, Scope Attachment, Silencer Attachment, Flashlight Attachment and Laser Attachment, infoboxes, 2026-11-15:
-  // each weighs 0.1.
+  // each weighs 0.1. What each does is W7's (planning/reference/weapons-plan.md, M10; ItemDef.attachment): the scope zooms
+  // "about 3x"; the flashlight and laser are switched with N, and the flashlight spends its weapon's durability, a use a
+  // minute (DEV145).
   { type: "item", class: "attachment", id: id("scope"), stack: 1, weight: 0.1, color: 11, attachment: "scope" },
   { type: "item", class: "attachment", id: id("silencer"), stack: 1, weight: 0.1, color: 11, attachment: "silencer" },
   { type: "item", class: "attachment", id: id("flashlight"), stack: 1, weight: 0.1, color: 6, attachment: "light" },

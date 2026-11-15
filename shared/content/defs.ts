@@ -236,8 +236,11 @@ export interface ItemDef extends Named {
   readonly ammo?: AmmoFacet;
   readonly wear?: WearFacet;
   /**
-   * A weapon lists the attachment items it takes in `fits`. "holo" is the holo-scope, a stub: no item is one until W7 of
-   * planning/reference/weapons-plan.md builds its view.
+   * A weapon lists the attachment items it takes in `fits`. What each does (planning/reference/weapons-plan.md, M10): a
+   * scope zooms about 3 times with a reticle and sways the weapons that sway; a holo-scope zooms about 1.25 times with a
+   * night tint and a crosshair coloured by what it is on (its view is built; no item is one until the fabricator's wave);
+   * a silencer hides the shot's flash and, from a survivor it hits, its side; a light and a laser are switched on and off
+   * (FLAG_ON), the laser drawing a dot where the weapon points and the light waiting for local lights (D436).
    */
   readonly attachment?: "scope" | "silencer" | "light" | "laser" | "holo";
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
@@ -391,6 +394,11 @@ export interface AmmoFacet {
   /** Chance, 0 to 1, that a spent one can be picked up again. */
   readonly recover?: number;
   readonly mesh?: string;
+  /**
+   * A weapon loaded with it takes no attachment: loading it puts the one fitted in the bag, and nothing is fitted while it
+   * is loaded. ARK's darts: loaded with them the Longneck "cannot use any attachments" (Longneck Rifle).
+   */
+  readonly bare?: boolean;
   // Shot (planning/reference/weapons-plan.md, M3, built by W3). Omitted, a round is one ray and keeps its damage at any range.
   /**
    * Rays one round with no speed sends, each inside its gun's cone and tested and landed alone, as a shotgun's pellets
