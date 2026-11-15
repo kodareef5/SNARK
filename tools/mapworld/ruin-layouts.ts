@@ -1,6 +1,7 @@
 import { hash3 } from "./raster.ts";
+import { RUIN_SHAPES } from "../../content/ruins.ts";
 import { inside, Mason, SIDES, tileKey, tilesOf, type Tile } from "./ruin-geometry.ts";
-import type { Composition, Rule } from "./ruin-vocabulary.ts";
+import type { Composition, Rule, Vocabulary } from "./ruin-vocabulary.ts";
 
 export interface LayoutOptions { seed: number; playable: number; detail: number; coreU?: number; }
 const has = (tiles: Set<string>, t: Tile, dx: number, dz: number): boolean => tiles.has(tileKey(t.i + dx, t.j + dz));
@@ -119,9 +120,24 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       if (dir < 0 && bay === 8) assembly(m, rule, form.front, t.u, 0, t.v - bay / 2);
     }
   }
+  if (base === 0) for (const core of cores) for (const row of [-1, 1]) {
+    const gallery = tiles.find((t) => t.i === core.i && t.j === core.j + row); if (!gallery) continue;
+    let lo = core.i; let hi = core.i;
+    while (keys.has(tileKey(lo - 1, gallery.j))) lo--; while (keys.has(tileKey(hi + 1, gallery.j))) hi++;
+    const path = [[gallery.u, gallery.v], [core.u, core.v - 3.25], [core.u - 1.5, core.v - 3.25], [core.u, core.v - 3.25], [gallery.u, gallery.v]].map(([u, v]) => { const [x, z] = m.point(u!, v!); return { x, y: m.base, z }; });
+    for (const [edge, dir] of [[lo, -1], [hi, 1]]) {
+      const tile = tiles.find((t) => t.i === edge && t.j === gallery.j)!;
+      const [x, z] = m.point(tile.u + dir! * bay / 2, tile.v); const [coreX, coreZ] = m.point(gallery.u, gallery.v);
+      m.alternatives.push({ entry: { x, y: m.base, z, yaw: m.frame.yaw + 90, coreX, coreZ, crossing: true }, support: [gallery.u, gallery.v], path });
+    }
+  }
   const cap = tiles.filter((t) => (tops.get(tileKey(t.i, t.j)) ?? 0) === floors && !cores.includes(t) && !escape.includes(t) && !entryLane(t));
   if (cap.length && opts.detail < 2) {
     const t = cap[Math.floor(cap.length / 2)]!;
+    if (form.marker) {
+      const front = [...cap].sort((a, b) => a.v - b.v || Math.abs(a.u) - Math.abs(b.u))[0]!;
+      assembly(m, rule, form.marker, front.u, base + height, front.v);
+    }
     if (form.roof === "service") m.put("zcore", t.u, base + height + 2, t.v, "steel");
     if (form.roof === "hip") for (const r of cap.filter((r) => r.i % 2 === 0)) { m.put("zroof8", r.u, base + height + .5, r.v, "clay"); m.put("zroof8", r.u, base + height + 1.5, r.v, "clay", 90); }
     if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zroof8", r.u, base + height + 4.5, r.v, "rust"); }
@@ -135,7 +151,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   if (mode === "lost-top") for (const t of cap.filter((t) => (t.i + t.j) % 4 === 0).slice(0, 6)) {
     m.put("fin4", t.u, base + height + 2, t.v, "steel"); m.put("rubble4", t.u + 1.5, base + height + .55, t.v, "concrete", 19);
   }
-  for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base);
+  for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay);
 }
 
 function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number): void {
@@ -161,11 +177,10 @@ function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, 
   for (let level = 0; level < floors; level++) {
     const y = base + level * 4;
     // Two doors at either end of a four-metre partition open onto the protected corridor.
-    m.put("wall4", t.u + dir * 4, y + 1.4, t.v, rule.finish, 90);
-    m.put("wall8", t.u, y + 1.4, t.v + 4, rule.finish);
-    if (kind === "rooms" || kind === "wards" || kind === "domestic") m.put("zbed", t.u - dir * 2, y + .25, t.v + 1, "steel");
-    else if (kind === "storage") m.put("zcore", t.u - dir * 2, y + 2, t.v + 1.5, "rust");
-    else m.put("zcounter", t.u - dir * 1.5, y + .5, t.v + 1, rule.finish);
+    const profile: Vocabulary["interiors"][string] = rule.interiors?.[kind] ?? { divider: "wall4", back: "wall8", parts: [["zcounter", 1.5, .5, 1, "finish"]] };
+    if (profile.divider) m.put(profile.divider, t.u + dir * 4, y + RUIN_SHAPES[profile.divider][1] / 2, t.v, rule.finish, 90);
+    if (profile.back) m.put(profile.back, t.u, y + RUIN_SHAPES[profile.back][1] / 2, t.v + 4, rule.finish);
+    for (const [shape, du, dy, dv, finish, turn] of profile.parts) m.put(shape, t.u - dir * du, y + dy, t.v + dv, finish === "finish" ? rule.finish : finish, turn ?? 0);
     if (level === 0 || level === floors - 1) {
       const points = [[t.u + dir * 4.8, t.v - 2.9], [t.u + dir * 2, t.v - 2.9], [t.u + dir * 2, t.v + 2.9], [t.u + dir * 4.8, t.v + 2.9], [t.u + dir * 4.8, t.v - 2.9]].map(([u, v]) => { const [x, z] = m.point(u!, v!); return { x, y: m.base + y, z }; });
       m.rooms.push({ kind, points });
@@ -173,7 +188,7 @@ function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, 
   }
 }
 
-function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number): void {
+function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number, bay: number): void {
   m.falls.push({ mode, u: t.u, v: t.v });
   if (base !== 0 || opts.detail > 1) return;
   if (mode === "facade") { m.put("zpanel8", t.u, 2, t.v + 3.5, rule.finish); if (height >= 8) m.put("zpanel8", t.u, 6, t.v + 3.5, rule.finish); }
@@ -181,7 +196,8 @@ function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, o
   else if (mode === "hanging") { m.put("floor8", t.u + 1, height - .2, t.v, "concrete", 12); m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); }
   else if (mode !== "burnt") {
     m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); m.put("rubble", t.u - 2, .35, t.v - 1, "concrete", 63);
-    if (mode === "shear" && hash3(t.i, t.j, opts.seed) % 3 === 0) {
+    if (mode === "shear" && bay === 8 && !m.rooms.some((r) => r.kind === "rubble") && hash3(t.i, t.j, opts.seed) % 3 === 0) {
+      m.floor([t.u, t.v], 0, 8);
       const points = [[-3, 0, -3], [-2, .7, -1], [0, 1.1, 1], [2.5, 0, -2.5]].map(([u, y, v]) => { const [x, z] = m.point(t.u + u!, t.v + v!); return { x, y: m.base + y!, z }; });
       m.rooms.push({ kind: "rubble", points });
     }
@@ -190,10 +206,19 @@ function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, o
 
 export function tower(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, twins = false): void {
   const bay = 8;
-  const podium = tiles.length > 45 ? 8 : 0;
-  const width = Math.min(40, m.frame.width * .7); const depth = Math.min(40, m.frame.depth * .7);
+  const limit = opts.detail === 3 ? 24 : 40;
+  const podium = tiles.length > 45 && opts.detail < 3 ? 8 : 0;
+  const width = Math.min(limit, m.frame.width * .7); const depth = Math.min(limit, m.frame.depth * .7);
   const offsets = twins && m.frame.width > 64 ? [-m.frame.width * .24, m.frame.width * .24] : [0];
-  const bodies = offsets.map((offset) => { const selected = tiles.filter((t) => Math.abs(t.u - offset) < width / 2 && Math.abs(t.v) < depth / 2); return selected.length >= 3 ? selected : tiles; });
+  const bodies = offsets.map((offset) => {
+    let selected = tiles.filter((t) => Math.abs(t.u - offset) < width / 2 && Math.abs(t.v) < depth / 2);
+    if (selected.length < 3 && opts.detail === 3) {
+      const keys = new Set(tiles.map((t) => tileKey(t.i, t.j)));
+      const anchor = tiles.filter((t) => has(keys, t, 0, -1) && has(keys, t, 0, 1)).sort((a, b) => a.u ** 2 + a.v ** 2 - b.u ** 2 - b.v ** 2)[0];
+      if (anchor) selected = tiles.filter((t) => Math.abs(t.i - anchor.i) <= 1 && Math.abs(t.j - anchor.j) <= 1);
+    }
+    return selected.length >= 3 ? selected : tiles;
+  });
   const shaftTiles = new Set(bodies.flat());
   if (podium) stack(m, tiles.filter((t) => !shaftTiles.has(t)), bay, podium, { ...rule, holes: .12 }, { ...opts, playable: 2 });
   for (const selected of bodies) {
@@ -245,10 +270,11 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
   }
   if (special && rule.compositions?.[special]) { compose(m, tilesOf(m.frame, 8), rule, opts, rule.compositions[special]!); return; }
   if (rule.recipe === "arena") { arena(m, tilesOf(m.frame, 8), rule, opts); return; }
-  if (!special && rule.form?.plan && ["court", "wards"].includes(rule.form.plan) && tiles.length >= 12 && bay === 8 && rule.height <= 36) {
+  if (!special && rule.form?.plan && ["court", "wards"].includes(rule.form.plan) && tiles.length >= 12 && tiles.length * bay * bay <= 6000 && bay === 8 && rule.height <= 36) {
     const lo = Math.min(...tiles.map((t) => t.i)); const hi = Math.max(...tiles.map((t) => t.i));
     const back = Math.max(...tiles.map((t) => t.j)); const front = Math.min(...tiles.map((t) => t.j)); const mid = (front + back) / 2;
-    const left = tiles.filter((t) => t.i < lo + 2); const right = tiles.filter((t) => t.i > hi - 2 && !left.includes(t));
+    const thickness = hi - lo >= 5 ? 2 : 1;
+    const left = tiles.filter((t) => t.i < lo + thickness); const right = tiles.filter((t) => t.i > hi - thickness && !left.includes(t));
     const cross = tiles.filter((t) => !left.includes(t) && !right.includes(t) && (rule.form!.plan === "court" ? t.j >= back - 1 : Math.abs(t.j - mid) <= .5));
     for (const [index, wing] of [left, right, cross].entries()) {
       const height = index === 2 ? Math.min(8, rule.height) : rule.height;
@@ -281,22 +307,26 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
     return;
   }
   if (!special && tiles.length * bay * bay > 6000 && m.frame.width > 64 && m.frame.depth > 48 && !["park", "utility"].includes(rule.recipe)) {
-    const groups = new Map<string, Tile[]>();
-    const loI = Math.min(...tiles.map((t) => t.i)); const hiI = Math.max(...tiles.map((t) => t.i));
-    const loJ = Math.min(...tiles.map((t) => t.j)); const hiJ = Math.max(...tiles.map((t) => t.j));
-    const middle = Math.round((loI + hiI) / 2);
-    for (const t of tiles) {
-      let k = "";
-      if (t.j <= loJ + 2) k = t.i < middle ? "0,0" : "1,0";
-      else if (t.j >= hiJ - 2) k = t.i < middle - 1 ? "0,1" : "1,1";
-      else if (t.i <= loI + 2) k = "2,0";
-      else if (t.i >= hiI - 2) k = "2,1";
-      else if (Math.abs(t.i - middle) <= 1 && t.j < (loJ + hiJ) / 2) k = "3,0";
-      if (!k) continue;
-      if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(t);
+    const keys = new Set(tiles.map((t) => tileKey(t.i, t.j)));
+    const courts: Tile[] = [];
+    for (const t of [...tiles].sort((a, b) => hash3(a.i, a.j, opts.seed) - hash3(b.i, b.j, opts.seed))) {
+      if (courts.some((c) => Math.hypot(t.u - c.u, t.v - c.v) < 64)) continue;
+      if (Array.from({ length: 49 }, (_, n) => keys.has(tileKey(t.i + n % 7 - 3, t.j + Math.floor(n / 7) - 3))).every(Boolean)) courts.push(t);
     }
-    for (const [k, wing] of groups) {
-      const [i, j] = k.split(",").map(Number); const factor = [.5, .75, 1][(i! + j! * 2 + opts.seed) % 3]!;
+    const left = new Map(tiles.filter((t) => !courts.some((c) => Math.abs(t.i - c.i) <= 1 && Math.abs(t.j - c.j) <= 1)).map((t) => [tileKey(t.i, t.j), t]));
+    const groups: Tile[][] = [];
+    // Maximal wings follow the surviving polygon; courts interrupt large solid interiors.
+    for (const t of tiles) {
+      if (!left.has(tileKey(t.i, t.j))) continue;
+      const candidates = [[3, 7], [7, 3], [4, 5], [5, 4], [3, 4], [4, 3], [3, 3], [2, 4], [4, 2], [2, 3], [3, 2], [1, 4], [4, 1], [2, 2], [1, 3], [3, 1], [1, 2], [2, 1], [1, 1]];
+      if (hash3(t.i, t.j, opts.seed) % 2) for (const size of candidates) size.reverse();
+      const [w, d] = candidates.find(([w, d]) => Array.from({ length: w! * d! }, (_, n) => left.has(tileKey(t.i + n % w!, t.j + Math.floor(n / w!)))).every(Boolean))!;
+      const wing: Tile[] = [];
+      for (let j = 0; j < d!; j++) for (let i = 0; i < w!; i++) { const k = tileKey(t.i + i, t.j + j); wing.push(left.get(k)!); left.delete(k); }
+      groups.push(wing);
+    }
+    for (const [index, wing] of groups.entries()) {
+      const factor = [.5, .75, 1][hash3(index, opts.seed, 41) % 3]!;
       const height = Math.max(4, Math.floor(rule.height * factor / 4) * 4);
       stack(m, wing, bay, height, rule, opts, 0, ["shed", "hall"].includes(rule.recipe));
       m.wings.push({ tiles: wing.length, height, u: wing.reduce((n, t) => n + t.u, 0) / wing.length, v: wing.reduce((n, t) => n + t.v, 0) / wing.length });
@@ -315,7 +345,7 @@ function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, compo
   const inRect = (t: Tile, rect: number[]): boolean => t.u >= rect[0]! && t.v >= rect[1]! && t.u <= rect[2]! && t.v <= rect[3]!;
   for (const op of composition.operations) {
     const selected = tiles.filter((t) => (!op.rect || inRect(t, op.rect)) && (!op.exclude || !inRect(t, op.exclude)));
-    if (op.op === "stack") stack(m, selected, 8, Math.max(4, (op.height ?? rule.height) + (op.offset ?? 0)), { ...rule, feature: op.feature ?? rule.feature }, { ...opts, playable: op.playable ?? opts.playable, coreU: op.coreU }, 0, op.hall);
+    if (op.op === "stack") stack(m, selected, 8, Math.max(4, (op.height ?? rule.height) + (op.offset ?? 0)), { ...rule, form: op.form ?? rule.form, feature: op.feature ?? rule.feature }, { ...opts, playable: op.playable ?? opts.playable, coreU: op.coreU }, 0, op.hall);
     if (op.op === "tower") tower(m, tiles, rule, opts);
     if (op.op === "arena") arena(m, tiles, rule, opts);
     if (op.op === "parts" || op.op === "front") {

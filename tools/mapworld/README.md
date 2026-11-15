@@ -12,6 +12,7 @@ bun tools/mapworld/access-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/bridge-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/room-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/server-bench.ts var/maps/<name>.snmap
+bun tools/mapworld/verify.ts var/maps/<name>.snmap
 bun tools/mapworld/proof-views.ts var/maps/<name>.snmap
 lockf -t 7200 /tmp/snark-render.lock bun tools/mapworld/views.ts var/maps/<name>.snmap <views.json> <output-folder> medium
 bun tools/mapworld/ruin-report.ts var/maps/<name>.snmap
@@ -45,9 +46,12 @@ The compatibility content module remains so the core pack needs no new import.
 
 - `categories` and `recipes` settle broad building use and retained height.
 - `forms` give plan, shell, interior, front, roof and window rhythm.
+- `interiors` give divider, back wall and furnishing parts. Hotels use full
+  partitions and beds; offices use low dividers; storage halls stay open.
 - `choices` are ordered rules over kind, recipe, district, height, water
   distance, known construction year, trades and nearby footprint count.
   Each match can change form or the seeded distribution of collapse modes.
+  Names can match a regular expression and floor area can bound a choice.
 - `damage` gives collapse radius, retained top and pancake layer count.
 - `assemblies` list shape, local x/y/z, finish and optional yaw. They carry a
   role and optional clearance note. Fronts, wrecks, signs and street remnants
@@ -65,6 +69,11 @@ use tall panels above a playable lookout level. Rooms have two openings onto
 reserved corridors. Optional caps and fins yield to circulation. The street
 assembly pass checks every certified street approach and bridge corridor.
 Atomic building admission enforces both chunk and city piece budgets.
+
+After admission, circulation removes conflicting overhangs from neighbouring
+buildings. Street grading reserves enough width for its slopes and rejects
+crossings with incompatible levels. Bridge decks constrain the final ground.
+`verify.ts` runs all six proofs in sequence and exits; it opens no server socket.
 
 Large inventories are generated, not committed. Keep counts, test summaries,
 cameras, selection records and the rasterizer images. The report tool makes a

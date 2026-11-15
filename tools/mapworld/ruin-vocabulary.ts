@@ -9,11 +9,12 @@ export interface Recipe {
   bay: number; height: number; retain: number; holes: number; wall: number; accent: RuinFinish; feature: string; play: string;
 }
 interface Modifier { match: string; accent?: RuinFinish; finish?: RuinFinish; feature?: string; retain?: number; holes?: number; meaning: string; }
-export interface Form { plan?: string; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
+export interface Form { plan?: string; marker?: string; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
 export interface Assembly { role: string; clearance?: string; parts: [RuinShape, number, number, number, RuinFinish | "finish", number?][]; }
-interface Choice { id: string; when: { kind?: string[]; recipe?: string[]; district?: string[]; heightAbove?: number; heightBelow?: number; waterBelow?: number; waterAbove?: number; builtBefore?: number; neighboursAbove?: number; trades?: string[] }; form?: string; collapse?: string[]; }
-export interface Composition { operations: { op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number }[]; }
+interface Choice { id: string; when: { kind?: string[]; recipe?: string[]; district?: string[]; name?: string; areaAbove?: number; areaBelow?: number; heightAbove?: number; heightBelow?: number; waterBelow?: number; waterAbove?: number; builtBefore?: number; neighboursAbove?: number; trades?: string[] }; form?: string; finish?: RuinFinish; collapse?: string[]; }
+export interface Composition { operations: { op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number }[]; }
 export interface Vocabulary {
+  interiors: Record<string, { divider: RuinShape | null; back: RuinShape | null; parts: Assembly["parts"] }>;
   damage: Record<string, { radius: number; retain: number; layers: number }>;
   compositions: Record<string, Composition>;
   forms: Record<string, Form>; choices: Choice[]; assemblies: Record<string, Assembly>;
@@ -27,6 +28,7 @@ export interface Vocabulary {
 export interface Rule {
   recipe: string; height: number; finish: RuinFinish; feature: string; holes: number; wall: number; bay: number;
   compositions?: Record<string, Composition>;
+  interiors?: Vocabulary["interiors"];
   damage?: { radius: number; retain: number; layers: number };
   form?: Form; formName?: string; collapse?: string; assemblies?: Record<string, Assembly>;
   infill?: RuinFinish;
@@ -67,14 +69,17 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { w
   for (const choice of v.choices ?? []) {
     const w = choice.when;
     if (w.kind && !w.kind.includes(facts.kind) || w.recipe && !w.recipe.includes(name) || w.district && !w.district.includes(f.district?.name ?? "")) continue;
+    if (w.name && !new RegExp(w.name, "i").test([facts.label.name, ...facts.label.also].join(" "))) continue;
+    if (w.areaAbove !== undefined && f.building.area <= w.areaAbove || w.areaBelow !== undefined && f.building.area > w.areaBelow) continue;
     if (w.heightAbove !== undefined && facts.height <= w.heightAbove || w.heightBelow !== undefined && facts.height > w.heightBelow) continue;
     if (w.waterBelow !== undefined && context.water >= w.waterBelow || w.waterAbove !== undefined && context.water <= w.waterAbove) continue;
     if (w.builtBefore !== undefined && (!p?.built || p.built >= w.builtBefore) || w.neighboursAbove !== undefined && context.neighbours <= w.neighboursAbove) continue;
     if (w.trades && !w.trades.some((trade) => Object.keys(facts.label.uses ?? {}).some((use) => use.includes(trade)))) continue;
     if (choice.form) formName = choice.form;
+    if (choice.finish) finish = choice.finish;
     if (choice.collapse) collapse = choice.collapse[Math.floor(rand3(f.building.id, v.seed, 91) * choice.collapse.length)]!;
     matched.push(choice.id);
   }
-  return { recipe: name, height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
+  return { recipe: name, height, formName, form: v.forms?.[formName], collapse, damage: v.damage?.[collapse], assemblies: v.assemblies, interiors: v.interiors, compositions: v.compositions, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
     provisional: facts.kindFrom !== "label" || !["osm", "usa_structures", "reviewed_source"].includes(facts.heightFrom) || !!p?.estimated?.length };
 }

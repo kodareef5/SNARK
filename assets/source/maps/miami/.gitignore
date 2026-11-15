@@ -37,3 +37,5 @@ reports/ruins3/places.json
 reports/ruins3/bridges.json
 reports/ruins3/bridge-walk.json
 reports/ruins3/room-walk.json
+!reports/ruins3/references/
+!reports/ruins3/references/**

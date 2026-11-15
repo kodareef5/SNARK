@@ -52,12 +52,14 @@ export function tilesOf(f: Frame, bay: number): Tile[] {
 }
 export const tileKey = (i: number, j: number): string => `${i},${j}`;
 export const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
+interface Entry { x: number; y: number; z: number; yaw: number; coreX: number; coreZ: number; crossing?: boolean; }
 
 export class Mason {
   readonly pieces: StaticPiece[] = [];
   readonly clear: { x: number; z: number; radius: number }[] = [];
   readonly routes: { x: number; y: number; z: number; yaw: number; floors: number }[] = [];
-  readonly entries: { x: number; y: number; z: number; yaw: number; coreX: number; coreZ: number }[] = [];
+  readonly entries: Entry[] = [];
+  readonly alternatives: { entry: Entry; support: Point; path: { x: number; y: number; z: number }[] }[] = [];
   readonly escapes: { points: { x: number; y: number; z: number }[] }[] = [];
   readonly rooms: { kind: string; points: { x: number; y: number; z: number }[] }[] = [];
   readonly falls: { mode: string; u: number; v: number }[] = [];
@@ -138,6 +140,7 @@ export function compactWalls(m: Mason): void {
 
 export function reserveRoutes(m: Mason): number {
   const paths = [...m.rooms.filter((r) => r.kind !== "rubble"), ...m.escapes].map((r) => r.points);
+  const entryPaths = m.entries.filter((e) => e.crossing).map((e) => [{ x: e.x, y: e.y, z: e.z }, { x: e.coreX, y: e.y, z: e.coreZ }]);
   for (const r of m.routes) {
     const a = r.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
     const point = (u: number, y: number, v: number): { x: number; y: number; z: number } => ({ x: r.x + u * c + v * s, y: r.y + y, z: r.z - u * s + v * c });
@@ -148,12 +151,14 @@ export function reserveRoutes(m: Mason): number {
     const dir = r.floors % 2 === 0 ? -1 : 1;
     paths.push([point(dir * 1.5, r.floors * 4, dir * 3.25), point(dir * 1.5, r.floors * 4, dir * 5.5)]);
   }
-  const removable = new Set(["fin4", "fin8", "fin16", "crown", "zcore", "zroof8", "zroof16"]);
+  const removable = new Set(["fin4", "fin8", "fin16", "crown", "zcore", "zroof8", "zroof16", "zbalcony", "sill8", "sill4"]);
   const before = m.pieces.length;
   const kept = m.pieces.filter((p) => {
-    const name = p.kind.split("_")[1] as RuinShape; if (!removable.has(name)) return true;
+    const name = p.kind.split("_")[1] as RuinShape;
+    if (["step", "landing", "floor4", "floor8", "floor16"].includes(name)) return true;
+    if (!removable.has(name) && !entryPaths.length) return true;
     const [w, h, d] = RUIN_SHAPES[name]; const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
-    for (const points of paths) for (let i = 1; i < points.length; i++) {
+    for (const points of [...(removable.has(name) ? paths : []), ...entryPaths]) for (let i = 1; i < points.length; i++) {
       const from = points[i - 1]!; const to = points[i]!; const length = Math.hypot(to.x - from.x, to.z - from.z);
       if (Math.min(from.y, to.y) + .4 >= p.y + h / 2 || Math.max(from.y, to.y) + 2.2 <= p.y - h / 2) continue;
       if (Math.min(from.x, to.x) - w - d > p.x || Math.max(from.x, to.x) + w + d < p.x || Math.min(from.z, to.z) - w - d > p.z || Math.max(from.z, to.z) + w + d < p.z) continue;

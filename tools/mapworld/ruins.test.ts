@@ -149,3 +149,60 @@ test("mapped water on both sides removes a wide earth bridge bank but keeps its 
   expect(water[50 * n + 50]).toBe(1);
   expect(height[50 * n + 10]).toBe(2);
 });
+
+test("every assembly refers to an available box and every choice resolves a form and damage rule", () => {
+  const v = vocabulary(source); const reg = flatWorld().reg;
+  for (const a of Object.values(v.assemblies)) for (const [shape, x, y, z, finish, yaw] of a.parts) {
+    expect(reg.index.has(`core:zruin_${shape}_${finish === "finish" ? "concrete" : finish}`)).toBe(true);
+    expect([x, y, z, yaw ?? 0].every(Number.isFinite)).toBe(true);
+  }
+  for (const c of v.choices) {
+    if (c.form) expect(v.forms[c.form]).toBeDefined();
+    for (const mode of c.collapse ?? []) expect(v.damage[mode]).toBeDefined();
+  }
+});
+
+test("a neighbouring facade yields to a room route while its floor and stair support survive", async () => {
+  const { clearCirculation } = await import("./ruin-clearance.ts");
+  const pieces = [
+    { kind: "core:zruin_zpanel8_concrete", x: 128, y: 2, z: 128, yaw: 0 },
+    { kind: "core:zruin_floor8_concrete", x: 128, y: -.2, z: 128, yaw: 0 },
+    { kind: "core:zruin_step_concrete", x: 128, y: .2, z: 128, yaw: 0 },
+  ];
+  const records = [{ firstPiece: 0, blocks: 3, approaches: [], escapes: [], rooms: [{ kind: "rooms", points: [{ x: 128, y: 0, z: 124 }, { x: 128, y: 0, z: 132 }] }] }] as unknown as import("./ruins.ts").RuinRecord[];
+  expect(clearCirculation(pieces, records, 0)).toEqual({ "core:zruin_zpanel8_concrete": 1 });
+  expect(pieces.map((p) => p.kind)).toEqual(["core:zruin_floor8_concrete", "core:zruin_step_concrete"]);
+  expect(records[0]!.blocks).toBe(2);
+});
+
+test("wide school and ward plans leave courts, have several entrances, and reproduce exactly", async () => {
+  const { layout } = await import("./ruin-layouts.ts"); const v = vocabulary(source);
+  for (const form of ["school", "hospital"]) {
+    const f = frame(23); f.width = 64; f.depth = 48; f.rings = [[[-32, -24], [32, -24], [32, 24], [-32, 24]]];
+    const a = new Mason(f, 0); const b = new Mason(f, 0);
+    const r = { ...rule, recipe: form, height: 12, form: v.forms[form], assemblies: v.assemblies };
+    layout(a, r, { seed: 17, playable: 3, detail: 0 }); layout(b, r, { seed: 17, playable: 3, detail: 0 });
+    expect(a.pieces).toEqual(b.pieces); expect(a.wings.length).toBe(3);
+    expect(a.entries.length).toBeGreaterThanOrEqual(4);
+    expect(a.wings.reduce((n, w) => n + w.tiles, 0)).toBeLessThan(48);
+  }
+});
+
+test("large ward campuses keep their footprint fabric instead of selecting only bounding-box edges", async () => {
+  const { layout } = await import("./ruin-layouts.ts"); const v = vocabulary(source);
+  const f = frame(0); f.width = 200; f.depth = 200; f.rings = [[[-100, -100], [100, -100], [100, 100], [-100, 100]]];
+  const m = new Mason(f, 0);
+  layout(m, { ...rule, recipe: "hospital", height: 12, form: v.forms.hospital }, { seed: 51, playable: 3, detail: 0 });
+  expect(m.wings.reduce((n, w) => n + w.tiles, 0)).toBeGreaterThan(tilesOf(f, 8).length * .75);
+  expect(m.routes.length).toBeGreaterThan(4);
+});
+
+test("a crowded tower fallback keeps a reachable stump when its footprint centre is empty", () => {
+  const f = frame(0); f.width = 160; f.depth = 48; f.rings = [[[-80, -24], [-24, -24], [-24, 24], [-80, 24]]];
+  const m = new Mason(f, 0); const tiles = tilesOf(f, 8);
+  tower(m, tiles, { ...rule, height: 8 }, { seed: 17, playable: 1, detail: 3 });
+  expect(m.routes.length).toBe(1);
+  expect(m.entries.length).toBe(2);
+  expect(m.pieces.length).toBeLessThan(150);
+  expect(m.routes[0]!.x).toBeLessThan(104);
+});

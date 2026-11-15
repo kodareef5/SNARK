@@ -42,7 +42,7 @@ if (!path || !list || !folder) {
 }
 const started = performance.now();
 const map = parseMap(new Uint8Array(readFileSync(path)));
-const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => only === undefined || v.name === only);
+const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => only === undefined || only.split(",").includes(v.name));
 const files = await gameFiles(resolve(SOURCE));
 mkdirSync(folder, { recursive: true });
 let farCells: FarStore | null = null;
@@ -121,7 +121,7 @@ for (const v of views) {
   console.log(`${out}  ${frames} frames, ${(performance.now() - t0).toFixed(0)} ms, eye ${cam.x.toFixed(0)}, ${cam.y.toFixed(1)}, ${cam.z.toFixed(0)}, dropped ${scene.packet.dropped}`);
 }
 // Every view at half size, three across, in the order listed.
-if (small.length > 1) {
+if (small.length > 1 && !only) {
   const cw = Math.max(...small.map((s) => s.w));
   const across = 3;
   const rows = Math.ceil(small.length / across);
