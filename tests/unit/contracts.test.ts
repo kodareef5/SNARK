@@ -57,8 +57,8 @@ test("a hurt stage is a quarter of health wide, and never more than a glance sho
 test("the new codes are each one of their kind, and deadlines have kinds of their own", () => {
   const ops = Object.entries(P).filter(([k]) => k.startsWith("CMD_")).map(([, v]) => v);
   expect(new Set(ops).size).toBe(ops.length);
-  // 14 is the cluster's, 15 the beds', 16 the flyers' (below).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 16]);
+  // 14 is the cluster's, 15 the beds', 16 the flyers' (below), 17 the vehicles' (tests/integration/vehicle-contracts.test.ts).
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 17]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
@@ -74,8 +74,8 @@ test("the new columns change nothing for content that does not use them", () => 
     // the ground and in the air.
     const sprints = d.type === "species" ? { ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }), ...(d.fly?.tamedSprintMul === undefined ? {} : { flySprintMul: d.fly.tamedSprintMul }) } : {};
     if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
-    // The pteranodon is carried as 149 of drag weight by what can lift it, and its mass is 190.
-    const dragged = ({ "core:pteranodon": [0, 149, 190, 0, 0] } as Record<string, number[]>)[d.id];
+    // The pteranodon is carried as 149 of drag weight by what can lift it, and its mass is 190. The car's mass is its curb mass.
+    const dragged = ({ "core:pteranodon": [0, 149, 190, 0, 0], "core:compact": [0, 0, 1100, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
@@ -189,7 +189,8 @@ test("a body's flight counters travel with it, 20 bits after the rest, and every
   a.rollWait = FLIGHT_TICKS_MAX;
   const w = new BitWriter(64);
   P.writeBody(w, a);
-  expect(w.pos).toBe(380);
+  // And after them the vehicles' bit for no vehicle and their bit for no seat: 380 without those.
+  expect(w.pos).toBe(382);
   const b = new Body();
   const r = new BitReader(w.bytes());
   P.readBody(r, b);

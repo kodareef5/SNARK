@@ -84,8 +84,9 @@ function writeVehicle(w: BitWriter, b: Body): void {
     w.f32(b.vehiclePayloadMass);
     // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
   }
-  w.varint(b.seat);
-  if (b.seat !== 0) { w.u8(b.seatSlot); w.bits(b.seatGen, 12); }
+  // A seat costs a body one bit when it has none: the entity it sits on, the seat's place in it from 1, and the entity's generation.
+  w.bool(b.seat !== 0);
+  if (b.seat !== 0) { w.varint(b.seat - 1); w.u8(b.seatSlot); w.bits(b.seatGen, 12); }
 }
 function readVehicle(r: BitReader, b: Body): void {
   b.vehicle = r.bool();
@@ -106,7 +107,7 @@ function readVehicle(r: BitReader, b: Body): void {
   b.vehicleRpm = b.vehicle ? r.f32() : 0;
   b.vehicleShiftTime = b.vehicle ? r.f32() : 0;
   b.vehiclePayloadMass = b.vehicle ? r.f32() : 0;
-  b.seat = r.varint();
+  b.seat = r.bool() ? r.varint() + 1 : 0;
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;
   b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
 }

@@ -23,8 +23,9 @@ const reg = compileContent(CORE_CONTENT).registry!;
 const root = join(import.meta.dir, "../..");
 
 test("protocol 13 is the weapons program's, and it took no command, own component, event, button or saved component", () => {
-  // 14 is the cluster's, which took CMD_TRAVEL (31), 15 the beds', and 16 the flyers' (tests/unit/contracts.test.ts).
-  expect(P.PROTOCOL_VERSION).toBe(16);
+  // 14 is the cluster's, which took CMD_TRAVEL (31), 15 the beds', 16 the flyers' (tests/unit/contracts.test.ts), and 17 the
+  // vehicles' (tests/integration/vehicle-contracts.test.ts).
+  expect(P.PROTOCOL_VERSION).toBe(17);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([31, 16, 7, 10]);
@@ -44,8 +45,8 @@ test("a body's bloom and kick travel with it, and every body today has none", ()
   const w = new BitWriter(64);
   w.bits(5, 3);
   P.writeBody(w, a);
-  // 360 bits, and the flyers' two counters (20 bits) after them.
-  expect(w.pos).toBe(3 + 380);
+  // 360 bits, the flyers' two counters (20 bits) after them, and the vehicles' two bits: no vehicle, no seat (380 without).
+  expect(w.pos).toBe(3 + 382);
   const b = new Body();
   const r = new BitReader(w.bytes());
   r.bits(3);
