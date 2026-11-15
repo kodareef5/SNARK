@@ -409,7 +409,8 @@ export class Rasterizer {
     const n = this.cut(src, count, stride, carried, out, outStride, this.nearClip, 1);
     if (this.farClip === Infinity || n < 3) return n;
     const spare = this.cutScratch;
-    spare.set(out.subarray(0, n * outStride));
+    // The whole of `out`, which is never longer than the scratch: a view of its first corners would be made per triangle.
+    spare.set(out);
     return this.cut(spare, n, outStride, carried, out, outStride, this.farClip, -1);
   }
 
@@ -700,7 +701,15 @@ export class Rasterizer {
     const m = this.matrix;
     const poly = this.poly;
     const tri = this.tri;
-    [tri[0], tri[1], tri[2], tri[7], tri[8], tri[9], tri[14], tri[15], tri[16]] = [ax, ay, az, bx, by, bz, cx, cy, cz];
+    tri[0] = ax;
+    tri[1] = ay;
+    tri[2] = az;
+    tri[7] = bx;
+    tri[8] = by;
+    tri[9] = bz;
+    tri[14] = cx;
+    tri[15] = cy;
+    tri[16] = cz;
     const count = this.clip(tri, 3, 7, 3, poly, 7);
     if (count < 3) return;
     const W = this.width;
@@ -797,7 +806,9 @@ export class Rasterizer {
           let cb = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
           if (p.lit) {
             litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz);
-            [cr, cg, cb] = [rgb[0]! * 255, rgb[1]! * 255, rgb[2]! * 255];
+            cr = rgb[0]! * 255;
+            cg = rgb[1]! * 255;
+            cb = rgb[2]! * 255;
           }
           if (blend) {
             this.color[o] = this.color[o]! + (cr - this.color[o]!) * WATER_ALPHA;
