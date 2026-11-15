@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Prepare generated painted feather masters, dye masks, and review sheets.
 
+The default entry point now rebuilds round two. Round-one helpers and the
+historical main_round1() remain available for the retained first-pass masters.
+
 Run in any directory: python3 /path/to/build_feathers.py
 Dependencies: Pillow, NumPy, SciPy. No API calls or generation on rebuild.
 The original painted masters and exact generation prompts are kept locally.
@@ -251,7 +254,7 @@ def validate(name, base, regions):
     return metrics
 
 
-def main():
+def main_round1():
     manifest = json.loads((ROOT / 'generation_prompts.json').read_text())
     assets, dyed, measurements = {}, {}, {}
     for name in NAMES:
@@ -274,4 +277,5 @@ def main():
 
 
 if __name__ == '__main__':
+    from build_round2 import main
     main()

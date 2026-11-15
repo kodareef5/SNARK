@@ -210,6 +210,21 @@ Under a sun 10 degrees up, which stretches casters furthest (M).
 
 The list holds 4,096 entries; no real scene has passed 933.
 
+### Small details (round 9)
+
+`bun tools/bench/details.ts`, three quiet runs, the details' own work (reading what bodies did, making bursts, moving
+particles, writing the packet), after a warm-up run (M).
+
+| | Medium: forty dodos landing 5 to 25 m off | Medium: a hundred going down within 40 m | Low poly: forty | Low poly: a hundred |
+| --- | --- | --- | --- | --- |
+| Median frame | 0.034 to 0.035 ms | 0.022 ms | 0.020 ms | 0.009 to 0.010 ms |
+| Worst of 600 | 0.24 to 0.26 ms | 0.46 to 0.76 ms | 0.15 to 0.16 ms | 0.22 to 0.23 ms |
+| Particles alive at most (pool), drawn at most | 286 (1,536), 235 | 593 (1,536), 480 | 143 (384), 116 | 291 (384), 233 |
+| Bytes sent at most | 11.9 KB | 24.4 KB | 5.9 KB | 11.8 KB |
+| See-through fill at most | 0.02 screens | 0.42 screens | 0.01 | 0.24 |
+
+Two draws a frame at most, two triangles a particle; the atlas is 1.33 MB on every tier.
+
 ## The GPU on this Mac
 
 | Row | Result | Source |
@@ -306,6 +321,8 @@ Reasoned from the rows, in the order a growing world meets them.
 - Whether a phone skips the cut-out pixels an opaque surface drawn before them hides (trees design, decision 5):
   `bun run device -- --tunnel --terrain` and the Tree order, which draws the young wood and the elders' stand with
   their cut-outs last, as made and first, and judges the read-back times against wood.ts's count of the same view.
+- Small details on a phone: the fill of a hundred dust rings near the camera, and the details program's cost a
+  megapixel beside LIT's. `bun run snap -- --details fight` shows the scene; a phone run is to time it.
 - Real network congestion; WebSocket send cost under load; Firefox.
 
 ## Still moving
