@@ -8,6 +8,7 @@ recognition and changes what it says is most likely to read as copied.
 
 | Picture | What it is for |
 |---|---|
+| [concept.png](concept.png) | The design on one page |
 | [concept/top.png](concept/top.png), [underside.png](concept/underside.png), [front.png](concept/front.png) | The spread views, 3200 x 1600, 400 px a metre; the midline at column 1600; top and underside with z = 0 at row 860, front with y = 0 at row 1400. Model the wing from these |
 | [concept/side.png](concept/side.png), [folded_side.png](concept/folded_side.png), [folded_front.png](concept/folded_front.png) | The side spread and the two ground views, 1600 x 1600, 400 px a metre; ground at row 1450; side z = 0 at column 900, beak to the left; front midline at column 800 |
 | [concept/three_quarter.png](concept/three_quarter.png) | The character, in flight |
@@ -266,4 +267,27 @@ On a 1080-row screen with the game's 70 degree field of view the span is about 2
 
 ## How it was made
 
-(Filled in once round 2 is accepted.)
+Two rounds of the image model, one brief each, both in [concept/](concept/), and the block-out between them:
+
+1. [BRIEF_1.md](concept/BRIEF_1.md) set the design in words and numbers, with the dodo's concept as the example of the
+   hand. It gave the character: the colouring, the banded sabre crest and horn cap, the wing in plan, the saddle. Its
+   neck was long and thin, its ground pose tall (a heron, not a pteranodon), its under face too pale to read against
+   the sky, its front view flat, its folded arm a bare stick, its hands raised like paws (the brief placed them wrongly),
+   and one strap girthed the body through the membrane's attachment.
+2. `rig.py`'s block-out was fitted to round 1's silhouettes (from above and below 0.94 overlap), then rebuilt compact
+   and front-heavy after review: the short stout neck, the deep broad chest, the crouch on folded wings, the steeper
+   crest, the seat and harness for the rider's room. Its renders ([concept/blockout_guides/](concept/blockout_guides/))
+   became the shared geometry.
+3. [BRIEF_2.md](concept/BRIEF_2.md) had every view painted onto the guides, with the fixes above, the region maps, the
+   colourways and the read sizes. artist's own paintings overlapped the guides by 0.89 to 0.99 (the folded side the
+   least); it then fitted their outlines to the guide masks and says so in its report, so the delivered views lie on
+   the block-out within 1.3 to 4.5 cm ([blockout_vs_concept.png](blockout_vs_concept.png),
+   `blockout/silhouettes.json`). This round is the design.
+
+Round 1's pictures, originals and scripts are not kept (they are in the history at 5762a553); no accepted picture is
+built from them. `concept/round2_rebuild.py` makes every delivered picture again from `round2_originals/`, byte for
+byte but for 1 to 24 pixels in five region maps and some faint ones in the colourways. artist's two reports are in
+[concept/REPORT.md](concept/REPORT.md), newest first, with its last message of each round (`artist_<round>.last.txt`).
+[blockout/preview.py](blockout/preview.py) renders and measures the block-out, [blockout/compare.py](blockout/compare.py)
+lays it over the views, [blockout/read.py](blockout/read.py) shrinks them to play distances, and
+[blockout/profile.py](blockout/profile.py) reads a silhouette in metres for fitting.
