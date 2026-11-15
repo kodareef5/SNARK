@@ -457,6 +457,23 @@ export class StructureStore {
     this.onChunkChanged?.(chunk, false);
   }
 
+  /** The highest top of what stands in the grid cells over the rectangle, or -Infinity where nothing does. Conservative, as query is. */
+  topIn(minX: number, minZ: number, maxX: number, maxZ: number): number {
+    const cx0 = Math.max(0, Math.floor(minX / GRID_CELL));
+    const cz0 = Math.max(0, Math.floor(minZ / GRID_CELL));
+    const cx1 = Math.min(this.gridX - 1, Math.floor(maxX / GRID_CELL));
+    const cz1 = Math.min(this.gridZ - 1, Math.floor(maxZ / GRID_CELL));
+    let top = -Infinity;
+    for (let cz = cz0; cz <= cz1; cz++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const cells = this.heads[(cz >> 4) * this.dims.chunksX + (cx >> 4)];
+        if (!cells) continue;
+        for (let node = cells[(cz & 15) * CELLS + (cx & 15)]!; node !== 0; node = this.nodeNext[node - 1]!) if (this.nodeTop[node - 1]! > top) top = this.nodeTop[node - 1]!;
+      }
+    }
+    return top;
+  }
+
   /**
    * Writes the refs of structures whose grid cells overlap the rectangle, and whose boxes reach into the height band if one
    * is given, to `out` and returns the count. Conservative, so callers test exactly.

@@ -1,12 +1,15 @@
 // Rows for the minds of the air (planning/reference/flyers-plan.md, FL3): 200 wild pteranodons awake, flying about and
 // landing by turns, over the proving ground and over a coast of frame towers to 192 m, and 200 tames told to stay in the air,
-// which hover at no cost. `bun tools/bench/flyers.ts` runs these alone.
+// which hover at no cost. `bun tools/bench/flyers.ts` runs these alone; `bun tools/bench/flyers.ts --map FILE [--minutes N]`
+// runs FL3's proof on a built map's beaches instead, or with `--at X,Z` round that point.
 
+import { readFileSync } from "node:fs";
 import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { Rng } from "../../shared/rng.ts";
-import { coast } from "../../tests/fixtures/coast.ts";
-import { Harness } from "../../tests/fixtures/net.ts";
+import { parseMap } from "../../shared/world/mapfile.ts";
+import { coast, flock, spread, watch, watched } from "../../tests/fixtures/flyers.ts";
+import type { Harness } from "../../tests/fixtures/net.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
@@ -20,25 +23,8 @@ const at = (times: number[], q: number): number => [...times].sort((a, b) => a -
 
 /** A server with an admin in god mode at each of `corners`, so every chunk stays awake, and FLYERS pteranodons put down by `place`. */
 function field(corners: readonly (readonly [number, number])[], place: (rng: Rng) => [number, number], map?: Uint8Array<ArrayBuffer>) {
-  const h = new Harness({}, 1, 2, { dev: true, ...(map ? { map } : {}) });
-  const admins = corners.map(([x, z], i) => {
-    const s = h.join(`s${i}`);
-    h.run(300);
-    h.say(s, "enablecheats");
-    h.host.survival.gods.add(h.client(s)!.pid);
-    h.say(s, `tp ${x} ${z}`);
-    return s;
-  });
-  h.run(500);
-  const rng = new Rng(5);
-  const list: number[] = [];
-  for (let t = 0; list.length < FLYERS && t < FLYERS * 40; t++) {
-    const [x, z] = place(rng);
-    if (h.world.hf.heightAt(x, z) < h.world.hf.seaLevel + 0.5) continue;
-    const e = h.host.spawnCreature("core:pteranodon", x, z, 1 + rng.int(30));
-    if (e >= 0) list.push(e);
-  }
-  return { h, admins, list };
+  const { h, sessions } = watched(corners, map ? { map } : {});
+  return { h, admins: sessions, list: flock(h, FLYERS, place) };
 }
 
 /** Runs `seconds`, timing each server tick, with the creatures stepped through collision and the share of `list` in flight. */
@@ -98,9 +84,61 @@ export function benchFlyers(section: Section, record: Row): void {
   city.h.host.shutdown();
 }
 
+/**
+ * FL3's proof on a built map (`--map FILE`): 100 wild pteranodons on four of its beach regions, far apart and the largest
+ * first, each with an admin in god mode who keeps the chunks within WAKE of it awake, left `minutes` and watched every tick.
+ */
+export function benchFlyersOn(section: Section, record: Row, path: string, minutes = 20, centre: readonly [number, number] | null = null): void {
+  const file = new Uint8Array(readFileSync(path));
+  const map = parseMap(file);
+  const beaches = (map.regions ?? []).filter((r) => r.spawns === "core:spawns_beach").sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+  const chosen: { at: readonly [number, number]; radius?: number; half?: readonly [number, number] }[] = [];
+  // With `centre`, all of them are put down within 120 m of it instead, among whatever is built there.
+  if (centre) chosen.push({ at: centre, radius: 120 });
+  else for (const r of beaches) if (chosen.length < 4 && chosen.every((c) => Math.hypot(c.at[0] - r.at[0], c.at[1] - r.at[1]) > 2 * WAKE * 64)) chosen.push(r);
+  const where = chosen.map((c) => `(${c.at[0].toFixed(0)}, ${c.at[1].toFixed(0)})`).join(", ");
+  section(`Minds for the air on ${map.id}: 100 wild pteranodons ${centre ? "put down" : `on ${chosen.length} of its ${beaches.length} beach regions,`} at ${where}, left ${minutes} minutes`);
+  const { h } = watched(chosen.map((r) => [r.at[0], r.at[1]] as const), { map: file as Uint8Array<ArrayBuffer>, wakeRadius: WAKE });
+  const each = Math.ceil(100 / chosen.length);
+  const list = chosen.flatMap((r, i) => flock(h, Math.min(each, 100 - i * each), (rng) => {
+    const a = rng.float() * Math.PI * 2;
+    const d = (r.radius ?? r.half?.[0] ?? 30) * Math.sqrt(rng.float());
+    return [r.at[0] + Math.sin(a) * d, r.at[1] + Math.cos(a) * d];
+  }));
+  record("flyers put down on dry ground", list.length, "");
+  const t0 = performance.now();
+  const w = watch(h, list, minutes * 60);
+  const [low, high] = spread(w.aloft);
+  record("seconds the run took", (performance.now() - t0) / 1000, "s");
+  record("ticks one was inside the ground or anything built or growing, by over 1 cm", w.inside, "", 0);
+  record("ticks one grazed something, within the step's rounding past its skin", w.grazed, "");
+  record("30 s windows one in flight got no further than 3 m", w.stuck, "", 0);
+  record("ticks one was in the water", w.wet, "");
+  record("landings not on dry ground it may stand on", w.badLandings, "", 0);
+  record("share of the time aloft, least of them", low, "");
+  record("share of the time aloft, most of them", high, "");
+  record("landings, fewest of them", Math.min(...w.landings), "");
+  record("longest stretch aloft", w.longestUp, "s");
+  record("longest stretch on the ground", w.longestDown, "s");
+  record("highest over the ground under it", w.highest, "m");
+  record("turns round something ahead, a flyer a minute", h.host.creatures.mind.turned / list.length / minutes, "");
+  record("progress checks failed, a flyer an hour", (h.host.creatures.mind.stalled / list.length / minutes) * 60, "");
+  record("tick time, median", at(w.ticks, 0.5), "ms");
+  record("tick time, 99th percentile", at(w.ticks, 0.99), "ms");
+  record("tick time, worst", Math.max(...w.ticks), "ms");
+  h.host.shutdown();
+}
+
+/** Chunks round each admin of benchFlyersOn kept awake, so a flyer's wander of 150 m keeps within them. */
+const WAKE = 5;
+
 if (import.meta.main) {
-  benchFlyers(
-    (title) => console.log(`\n${title}`),
-    (name, value, unit, budget = null) => console.log(`  ${name.padEnd(72)} ${value.toFixed(value < 10 ? 3 : 1).padStart(12)} ${unit}${budget === null ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`}`),
-  );
+  const section = (title: string): void => console.log(`\n${title}`);
+  const record = (name: string, value: number, unit: string, budget: number | null = null): void =>
+    console.log(`  ${name.padEnd(72)} ${value.toFixed(value < 10 ? 3 : 1).padStart(12)} ${unit}${budget === null ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`}`);
+  const mapAt = process.argv.indexOf("--map");
+  const atAt = process.argv.indexOf("--at");
+  const at = atAt >= 0 ? (process.argv[atAt + 1]!.split(",").map(Number) as [number, number]) : null;
+  if (mapAt >= 0) benchFlyersOn(section, record, process.argv[mapAt + 1]!, Number(process.argv[process.argv.indexOf("--minutes") + 1] ?? 20) || 20, at);
+  else benchFlyers(section, record);
 }

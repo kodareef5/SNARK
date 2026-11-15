@@ -6,7 +6,7 @@
 // climbs over or turns round what is in it, and holds its height over the ground and over what is built or grows there.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { TICK_RATE } from "../shared/coords.ts";
+import { CHUNK_SIZE, TICK_RATE, chunkCount } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
 import { DMG_MELEE } from "../shared/sim/damage.ts";
 import { BTN_BRAKE, BTN_JUMP, BTN_PRIMARY, BTN_SPRINT, MF_OUT, MODE_FLY, MODE_FLYER, MODE_SWIM, MODE_WALK, stanceEye, type MoveParams } from "../shared/sim/character.ts";
@@ -109,7 +109,11 @@ const LAND_TRIES = 6;
 const OPEN_SKY = 60;
 /** Metres out it looks for land from the water, ring by ring. */
 const SHORE_RINGS = [20, 40, 60, 80, 120, 160, 240, 320, 480, 640] as const;
-/** It lets its jump go within DROP_NEAR metres of where it lands, slowing from SLOW_NEAR. */
+/**
+ * It makes for where it lands APPROACH_UP metres over it and over what is round it, and lets its jump go within DROP_NEAR
+ * metres of it, slowing from SLOW_NEAR.
+ */
+const APPROACH_UP = 10;
 const DROP_NEAR = 2.5;
 const SLOW_NEAR = 15;
 /** Ticks it gives an approach and a descent before it tries elsewhere. */
@@ -118,10 +122,11 @@ const DESCEND_TICKS = 12 * TICK_RATE;
 /** Ticks a wild flyer flies from harm, and metres higher than it cruises. */
 const FLEE_AIR_TICKS = 10 * TICK_RATE;
 const FLEE_UP = 15;
-/** Radians: the steepest it climbs and dives by its look, and dives at prey. */
+/** Radians: the steepest it climbs and dives by its look, and dives at prey; nearly straight up, out of a courtyard. */
 const CLIMB_MAX = 0.87;
 const DIVE_MAX = 0.61;
 const STOOP_MAX = 1.3;
+const STRAIGHT_UP = 1.45;
 /** Metres short of its prey that a stooping flyer stops looking for what is in its way. */
 const STOOP_SHORT = 1.5;
 /** It looks AHEAD_SECONDS along its course at its speed, and never less than AHEAD_MIN metres. */
@@ -137,10 +142,24 @@ const ASIDE_TICKS = (3 * TICK_RATE) / 2;
 const ASIDE = [0.6, -0.6, 1.2, -1.2, 1.9, -1.9] as const;
 const ASIDE_PITCH = 0.2;
 /** Metres over its head that a flyer looks for a roof, and that it looks for a way out when hemmed in, at these pitches. */
-const ROOF = 4;
-const ESCAPE = 20;
-const ESCAPE_PITCHES = [0, CLIMB_MAX, -0.4] as const;
+const ROOF = 8;
+const ESCAPE = 40;
+const ESCAPE_WAYS = 16;
+const ESCAPE_PITCHES = [0, CLIMB_MAX, STRAIGHT_UP, -0.4] as const;
 const ESCAPE_ROOFED = [0, -0.4] as const;
+/** It counts a stall when it has come no metre nearer where it goes in STALE_TICKS, the goal moving no more than STALE_MOVED. */
+const STALE_TICKS = 10 * TICK_RATE;
+const STALE_MOVED = 2;
+/** Metres a stall lifts the height a flyer keeps, the most it may, and metres a second the lift falls again. */
+const LIFT = 20;
+const LIFT_MOST = 150;
+const LIFT_FALL = 1;
+/** Metres ahead it looks for a roof it would fly in under. */
+const ROOF_AHEAD = 6;
+/** Hemmed in, for CAREFUL_TICKS it flies at CAREFUL_SPEED metres a second, braking down to it, and looks CAREFUL_AHEAD at least. */
+const CAREFUL_TICKS = 3 * TICK_RATE;
+const CAREFUL_SPEED = 2;
+const CAREFUL_AHEAD = 4;
 /** The way out `escape` found, in radians. */
 const escaped = { yaw: 0, pitch: 0 };
 /** Metres a following flyer keeps behind and above a flying leader, sprinting from FOLLOW_AIR_RUN. */
@@ -155,6 +174,67 @@ const LEADER_UP = 3;
 const EDGE = 16;
 const DRY = 0.3;
 
+/** Metres: the side of a square of the skyline, a quarter of a chunk. */
+const SKY_CELL = 16;
+const SKY_SIDE = CHUNK_SIZE / SKY_CELL;
+
+/**
+ * The top of the highest thing built or growing in each SKY_CELL square, by chunk: made when first wanted, and again once the
+ * chunk or one beside it changes shape, since a piece stands in the grid cells it covers, which may be its neighbour's. A
+ * flyer keeps over it, as ARK's do over a city, so that it is not caught among towers.
+ */
+class Skyline {
+  private readonly world: ServerWorld;
+  private readonly tops: (Float32Array | null)[];
+  private readonly stamps: Int32Array;
+
+  constructor(world: ServerWorld) {
+    this.world = world;
+    this.tops = new Array(chunkCount(world.dims)).fill(null);
+    this.stamps = new Int32Array(chunkCount(world.dims));
+  }
+
+  /** The top over (x, z), or -Infinity where nothing stands. */
+  at(x: number, z: number): number {
+    const world = this.world;
+    const dims = world.dims;
+    const cx = Math.min(dims.chunksX - 1, Math.max(0, Math.floor(x / CHUNK_SIZE)));
+    const cz = Math.min(dims.chunksZ - 1, Math.max(0, Math.floor(z / CHUNK_SIZE)));
+    const chunk = cz * dims.chunksX + cx;
+    const stamp = shapeStamp(world, cx * CHUNK_SIZE - SKY_CELL, cz * CHUNK_SIZE - SKY_CELL, (cx + 1) * CHUNK_SIZE + SKY_CELL, (cz + 1) * CHUNK_SIZE + SKY_CELL);
+    let t = this.tops[chunk];
+    if (!t || this.stamps[chunk] !== stamp) {
+      t ??= this.tops[chunk] = new Float32Array(SKY_SIDE * SKY_SIDE);
+      this.stamps[chunk] = stamp;
+      for (let j = 0; j < SKY_SIDE; j++) {
+        for (let i = 0; i < SKY_SIDE; i++) {
+          const x0 = cx * CHUNK_SIZE + i * SKY_CELL;
+          const z0 = cz * CHUNK_SIZE + j * SKY_CELL;
+          const built = world.structs.topIn(x0, z0, x0 + SKY_CELL - 0.01, z0 + SKY_CELL - 0.01);
+          t[j * SKY_SIDE + i] = Math.max(built, world.nodes?.topIn(x0, z0, x0 + SKY_CELL - 0.01, z0 + SKY_CELL - 0.01) ?? -Infinity);
+        }
+      }
+    }
+    const i = Math.min(SKY_SIDE - 1, Math.max(0, Math.floor((x - cx * CHUNK_SIZE) / SKY_CELL)));
+    const j = Math.min(SKY_SIDE - 1, Math.max(0, Math.floor((z - cz * CHUNK_SIZE) / SKY_CELL)));
+    return t[j * SKY_SIDE + i]!;
+  }
+}
+
+/**
+ * Whether nothing built or growing stands over (x, y, z) for OPEN_SKY metres, at the middle and the edge of a body of radius
+ * `r`: where a flyer may come down, and may be put down, since one under a roof cannot take off.
+ */
+export function openSky(world: ServerWorld, r: number, x: number, y: number, z: number): boolean {
+  for (let k = 0; k < 5; k++) {
+    const ox = k === 1 ? r : k === 2 ? -r : 0;
+    const oz = k === 3 ? r : k === 4 ? -r : 0;
+    const hit = castWorld(world, x + ox, y + OPEN_SKY, z + oz, 0, -1, 0, OPEN_SKY + 2);
+    if (hit === HIT_STRUCTURE || hit === HIT_NODE) return false;
+  }
+  return true;
+}
+
 /** What a flyer's mind keeps beyond a walker's. */
 class Flight {
   phase = PHASE_REST;
@@ -166,9 +246,8 @@ class Flight {
   until = 0;
   /** Metres over what is under it that it cruises this leg. */
   cruise = CRUISE_LOW;
-  /** The height of the top of what is under it and ahead, falling at most FLOOR_FALL a second, and whether it is over something built or growing. */
+  /** The height of the top of what is under it and ahead, falling at most FLOOR_FALL a second. */
   floor = -Infinity;
-  over = false;
   /** Where it lives: where it came into the world, or was told to wander, or the land it last made for out of the water. */
   homeX = 0;
   homeZ = 0;
@@ -176,6 +255,15 @@ class Flight {
   dyaw = 0;
   dpitch = 0;
   aside = 0;
+  /** The tick until which it goes carefully, hemmed in. */
+  careful = 0;
+  /** Metres it keeps over its height after getting nowhere, falling at LIFT_FALL a second. */
+  lift = 0;
+  /** Where it was going when it last came nearer, how near, and when. */
+  bx = 0;
+  bz = 0;
+  best = 0;
+  bestAt = 0;
   /** Where it was at tick `at`, and the progress checks in a row it failed. */
   px = 0;
   py = 0;
@@ -279,6 +367,7 @@ export class Behavior {
   /** One more than the index in `flights` of a flyer's own state, or 0 before it has had one. */
   private flightOf = new Int32Array(0);
   private readonly flights: Flight[] = [];
+  private readonly sky: Skyline;
   /** Times a flyer turned round something ahead, and progress checks a flyer failed, for measurement. */
   turned = 0;
   stalled = 0;
@@ -309,6 +398,7 @@ export class Behavior {
     this.finder.budget = SEARCH_CELLS;
     this.finder.doorways = world.reg.doorway;
     this.claimed = new BodyGrid(world.dims);
+    this.sky = new Skyline(world);
     this.wild = new BodyGrid(world.dims);
     this.widen(world.ents.cap);
     world.ents.onGrow.push((cap) => this.widen(cap));
@@ -374,7 +464,7 @@ export class Behavior {
     f.homeX = ents.x[e]!;
     f.homeZ = ents.z[e]!;
     f.floor = -Infinity;
-    f.aside = 0;
+    f.aside = f.careful = f.lift = 0;
     f.at = 0;
     f.stalls = 0;
     f.down = false;
@@ -977,7 +1067,8 @@ export class Behavior {
       if (flat > DROP_NEAR) {
         // Held up on the way, it chooses again.
         if ((tick >= f.until || f.stalls >= 2) && !this.landing(e, f, tick)) return this.cruise(f, tick);
-        if (heading) this.pilot(e, f, tick, f.gx, f.gy + Math.min(f.cruise, 2 + flat * 0.5), f.gz, false, 2, false, flat < SLOW_NEAR);
+        // It comes in over what is round the place, and then straight down through the open sky over it.
+        if (heading) this.pilot(e, f, tick, f.gx, f.gy + APPROACH_UP, f.gz, false, APPROACH_UP, false, flat < SLOW_NEAR);
         return;
       }
       // Over the place it brakes to a stop, so that it goes straight down.
@@ -988,8 +1079,9 @@ export class Behavior {
     }
     if (mode === MODE_FLYER && (this.buttons[e]! & BTN_JUMP) !== 0) {
       if (Math.hypot(ents.vx[e]!, ents.vz[e]!) > 0.3) return;
-      // Stopped, it lets its jump go if what is under it is still open ground, and otherwise chooses again.
-      if (!this.landable(this.reg.move[ents.kind[e]!]!, ents.x[e]!, ents.z[e]!)) {
+      // Stopped, it lets its jump go if what is under it is still open ground, all the way down, and otherwise chooses again.
+      const p = this.reg.move[ents.kind[e]!]!;
+      if (!this.landable(p, ents.x[e]!, ents.z[e]!) || !this.clearBelow(p, ents.x[e]!, ents.y[e]!, ents.z[e]!)) {
         if (!this.landing(e, f, tick)) this.cruise(f, tick);
         return;
       }
@@ -1010,7 +1102,10 @@ export class Behavior {
     }
   }
 
-  /** At rest on the ground it mostly stands, now and then walking a few steps, never into the water. */
+  /**
+   * At rest on the ground it mostly stands, now and then walking a few steps: only where it could have landed, the way there
+   * dry and clear, so it does not wade in, walk in under a roof or press between trunks.
+   */
   private stroll(e: number, tick: number): void {
     if (tick < this.until[e]!) return;
     const ents = this.world.ents;
@@ -1019,9 +1114,14 @@ export class Behavior {
     const look = this.rng.int(65536);
     const ticks = 30 + this.rng.int(150);
     const a = (look / 65536) * Math.PI * 2;
-    const far = (this.reg.move[ents.kind[e]!]!.walkSpeed * ticks) / TICK_RATE;
-    const dry = (d: number): boolean => hf.heightAt(ents.x[e]! + Math.sin(a) * d, ents.z[e]! + Math.cos(a) * d) > hf.seaLevel + DRY;
-    this.move[e] = walks && dry(far / 2) && dry(far) ? 127 : 0;
+    const p = this.reg.move[ents.kind[e]!]!;
+    const far = (p.walkSpeed * ticks) / TICK_RATE;
+    const [x, z] = [ents.x[e]!, ents.z[e]!];
+    const [s, c] = [Math.sin(a), Math.cos(a)];
+    const my = ents.y[e]! + p.height * 0.5;
+    const clear = (side: number): boolean => this.clear(x + c * side, my, z - s * side, a, 0, far + p.radius);
+    const way = walks && hf.heightAt(x + s * (far / 2), z + c * (far / 2)) > hf.seaLevel + DRY && clear(0) && clear(p.radius) && clear(-p.radius);
+    this.move[e] = way && this.landable(p, x + s * far, z + c * far) ? 127 : 0;
     this.look[e] = look;
     this.pitch[e] = 0;
     this.buttons[e] = 0;
@@ -1048,25 +1148,28 @@ export class Behavior {
   }
 
   /**
-   * Picks open ground to land on near its home or, with none there, near the land nearest it, which becomes its home, and
-   * makes for it. False if it found none this time.
+   * Picks open ground to land on near its home, or else near where it is. One whose home is the water makes the land nearest
+   * it its home and lands there. Then it makes for the place. False if it found none this time.
    */
   private landing(e: number, f: Flight, tick: number): boolean {
-    const p = this.reg.move[this.world.ents.kind[e]!]!;
-    if (!this.spot(p, f, LAND_RANGE) && !(this.shore(e, f) && this.spot(p, f, LAND_RANGE / 2))) return false;
+    const ents = this.world.ents;
+    const hf = this.world.hf;
+    const p = this.reg.move[ents.kind[e]!]!;
+    const wet = hf.heightAt(f.homeX, f.homeZ) <= hf.seaLevel + DRY;
+    if (!(!wet && this.spot(p, f, f.homeX, f.homeZ, LAND_RANGE)) && !this.spot(p, f, ents.x[e]!, ents.z[e]!, LAND_RANGE) && !(wet && this.shore(e, f) && this.spot(p, f, f.homeX, f.homeZ, LAND_RANGE / 2))) return false;
     f.phase = PHASE_APPROACH;
     f.until = tick + APPROACH_TICKS;
     f.stalls = 0;
     return true;
   }
 
-  /** A place to land within `range` of its home, into (f.gx, f.gy, f.gz). */
-  private spot(p: MoveParams, f: Flight, range: number): boolean {
+  /** A place to land within `range` of (cx, cz), into (f.gx, f.gy, f.gz). */
+  private spot(p: MoveParams, f: Flight, cx: number, cz: number, range: number): boolean {
     for (let k = 0; k < LAND_TRIES; k++) {
       const a = this.rng.float() * Math.PI * 2;
       const d = range * Math.sqrt(this.rng.float());
-      const x = f.homeX + Math.sin(a) * d;
-      const z = f.homeZ + Math.cos(a) * d;
+      const x = cx + Math.sin(a) * d;
+      const z = cz + Math.cos(a) * d;
       if (!this.landable(p, x, z)) continue;
       f.gx = x;
       f.gy = groundUnder(this.world.hf, x, z, p.radius);
@@ -1086,14 +1189,7 @@ export class Behavior {
     const hf = world.hf;
     if (x < EDGE || z < EDGE || x > hf.sizeX - EDGE || z > hf.sizeZ - EDGE) return false;
     const y = groundUnder(hf, x, z, p.radius);
-    if (y < hf.seaLevel + DRY || groundAt(world, p, x, z) !== GROUND_FREE || world.unloaded?.meets(x, y, z, p.radius, p.height + p.stepUp)) return false;
-    for (let k = 0; k < 5; k++) {
-      const ox = k === 1 ? p.radius : k === 2 ? -p.radius : 0;
-      const oz = k === 3 ? p.radius : k === 4 ? -p.radius : 0;
-      const hit = castWorld(world, x + ox, y + OPEN_SKY, z + oz, 0, -1, 0, OPEN_SKY + 2);
-      if (hit === HIT_STRUCTURE || hit === HIT_NODE) return false;
-    }
-    return true;
+    return y >= hf.seaLevel + DRY && groundAt(world, p, x, z) === GROUND_FREE && !world.unloaded?.meets(x, y, z, p.radius, p.height + p.stepUp) && openSky(world, p.radius, x, y, z);
   }
 
   /** Makes the land nearest `e` its home, looking ring by ring out to the last of SHORE_RINGS. False if there is none in reach. */
@@ -1211,8 +1307,9 @@ export class Behavior {
   /**
    * Flies `e` toward (gx, gz), its feet at `gy` or `over` metres over what is under it and ahead, whichever is higher, holding
    * its jump; sprinting if `sprint`, at half effort if `slow`. With `direct` it aims its eye at (gx, gy, gz) itself, as at prey,
-   * and keeps no height. What is in its way ahead it climbs over, or turns round for ASIDE_TICKS, the nearest way first, or
-   * turns back from. Every STALL_TICKS it checks that it got somewhere, and if it did not, climbs and turns away.
+   * and keeps no height. What is in its way ahead it turns round for ASIDE_TICKS, the nearest way first, or climbs over, or
+   * escapes along the way clear furthest. Roofed, it climbs no higher and makes for the widest way out. One that stops, or
+   * gets no nearer where it is going for STALE_TICKS, escapes too and counts a stall, carefully, slow enough to turn on the spot.
    */
   private pilot(e: number, f: Flight, tick: number, gx: number, gy: number, gz: number, sprint: boolean, over: number, direct = false, slow = false): void {
     const ents = this.world.ents;
@@ -1224,77 +1321,135 @@ export class Behavior {
     const tx = Math.min(hf.sizeX - EDGE, Math.max(EDGE, gx));
     const tz = Math.min(hf.sizeZ - EDGE, Math.max(EDGE, gz));
     const flat = Math.hypot(tx - x, tz - z);
-    let yaw = tick < f.aside ? f.dyaw : flat > 0.3 ? Math.atan2(tx - x, tz - z) : (ents.yaw[e]! / 65536) * Math.PI * 2;
-    const speed = Math.max(p.flySpeed * (sprint ? p.flySprintMul : 1), Math.hypot(ents.vx[e]!, ents.vy[e]!, ents.vz[e]!));
-    const ahead = Math.max(AHEAD_MIN, AHEAD_SECONDS * speed);
-    const floor = this.floorAhead(f, p, x, y, z, yaw, ahead);
-    const ty = direct ? gy - p.eyeHeight : Math.max(gy, floor + over);
+    const aside = tick < f.aside;
+    let yaw = aside ? f.dyaw : flat > 0.3 ? Math.atan2(tx - x, tz - z) : (ents.yaw[e]! / 65536) * Math.PI * 2;
+    const careful = tick < f.careful;
+    const moving = Math.hypot(ents.vx[e]!, ents.vy[e]!, ents.vz[e]!);
+    const speed = careful ? CAREFUL_SPEED : Math.max(p.flySpeed * (sprint ? p.flySprintMul : 1), moving);
+    const ahead = Math.max(careful ? CAREFUL_AHEAD : AHEAD_MIN, AHEAD_SECONDS * speed);
+    const floor = this.floorAhead(f, p, x, z, yaw, ahead);
+    // A flyer that got nowhere keeps higher for a while, so that it climbs out over the walls of a well between towers.
+    f.lift = Math.max(0, f.lift - (LIFT_FALL * STEER_TICKS) / TICK_RATE);
+    const ty = direct ? gy - p.eyeHeight : Math.max(gy, floor + over) + f.lift;
     const lead = direct ? Math.max(flat, 0.5) : Math.min(Math.max(flat, 2), Math.max(6, speed * 1.2));
-    let pitch = tick < f.aside ? f.dpitch : Math.atan2(ty - y, lead);
-    pitch = direct ? Math.min(STOOP_MAX, Math.max(-STOOP_MAX, pitch)) : Math.min(CLIMB_MAX, Math.max(-DIVE_MAX, pitch));
-    // With something built or growing over its head, between a tower's floors or under a canopy, it flies no higher until
-    // it is out from under it.
+    const want = Math.atan2(ty - y, lead);
+    let pitch = aside ? f.dpitch : direct ? Math.min(STOOP_MAX, Math.max(-STOOP_MAX, want)) : Math.min(CLIMB_MAX, Math.max(-DIVE_MAX, want));
     const my = y + p.height * 0.5;
-    const roofed = f.over && !this.clear(x, y + p.height, z, 0, Math.PI / 2, ROOF);
-    if (roofed && pitch > 0) pitch = 0;
-    // What is ahead along its course, no further than where it is going, and short of prey, which stands on the ground.
-    const look = Math.min(ahead, Math.hypot(flat, ty - y) + (direct ? -STOOP_SHORT : 1));
-    if (look > STOOP_SHORT && !this.clear(x, my, z, yaw, pitch, look)) {
-      if (!roofed && this.clear(x, my, z, yaw, CLIMB_MAX, look)) pitch = CLIMB_MAX;
-      else {
-        const was = yaw;
-        const level = Math.min(ASIDE_PITCH, Math.max(-ASIDE_PITCH, pitch));
-        for (const off of ASIDE) {
-          if (!this.clear(x, my, z, was + off, level, look)) continue;
-          yaw = was + off;
-          pitch = level;
-          break;
-        }
-        if (yaw === was) this.escape(x, my, z, was, roofed);
-        else [escaped.yaw, escaped.pitch] = [yaw, pitch];
-        yaw = f.dyaw = escaped.yaw;
-        pitch = f.dpitch = escaped.pitch;
-        f.aside = tick + ASIDE_TICKS;
-        this.turned++;
-      }
+    const roofed = !this.clear(x, y + p.height, z, 0, Math.PI / 2, ROOF);
+    const away = Math.hypot(flat, ty - y);
+    // What is ahead along its course, no further than where it is going, and short of prey, which stands on the ground. Going
+    // in under a roof counts as in its way, so it does not fly into a tower between its floors.
+    const look = Math.min(ahead, away + (direct ? -STOOP_SHORT : 1));
+    const top = y + p.height;
+    const blocked = (a: number, b: number): boolean => !this.clear(x, my, z, a, b, look) || (!direct && this.roofAhead(x, top, z, a, b, Math.min(look, ROOF_AHEAD)));
+    // Whether it got anywhere: every STALL_TICKS it must have moved STALL_METRES, and within STALE_TICKS have come a metre
+    // nearer where it goes, the best so far kept while that stays put. A check missed while it hovered or stood is not counted.
+    let stalled = false;
+    if (Math.hypot(tx - f.bx, tz - f.bz) > STALE_MOVED || tick - f.at > 2 * STALL_TICKS) {
+      f.bx = tx;
+      f.bz = tz;
+      f.best = away;
+      f.bestAt = tick;
+    } else if (away < f.best - 1) {
+      f.best = away;
+      f.bestAt = tick;
+    } else if (tick - f.bestAt > STALE_TICKS) {
+      stalled = true;
+      f.bestAt = tick;
     }
-    // A check missed while it hovered or stood is not counted against it.
     if (tick - f.at >= STALL_TICKS) {
-      if (tick - f.at <= 2 * STALL_TICKS && Math.hypot(x - f.px, y - f.py, z - f.pz) < STALL_METRES) {
-        f.stalls++;
-        this.stalled++;
-        this.escape(x, my, z, yaw, roofed);
-        yaw = f.dyaw = escaped.yaw;
-        pitch = f.dpitch = escaped.pitch;
-        f.aside = tick + 2 * ASIDE_TICKS;
-      } else f.stalls = 0;
+      if (tick - f.at <= 2 * STALL_TICKS && Math.hypot(x - f.px, y - f.py, z - f.pz) < STALL_METRES) stalled = true;
+      else if (!stalled) f.stalls = 0;
       f.px = x;
       f.py = y;
       f.pz = z;
       f.at = tick;
     }
+    if (stalled) {
+      f.stalls++;
+      this.stalled++;
+      f.lift = Math.min(LIFT_MOST, f.lift + LIFT);
+      this.steerOut(f, tick, x, my, z, yaw, roofed, 2 * ASIDE_TICKS);
+      yaw = f.dyaw;
+      pitch = f.dpitch;
+    } else if (roofed && !aside) {
+      // Roofed, between a tower's floors, in a hall or under a canopy: it makes for the widest way out, no higher.
+      this.steerOut(f, tick, x, my, z, yaw + Math.PI, true, ASIDE_TICKS);
+      yaw = f.dyaw;
+      pitch = f.dpitch;
+    } else if (look > STOOP_SHORT && blocked(yaw, pitch)) {
+      // Round it, the nearest way first, near level; else over it; else out along the way clear furthest.
+      const was = yaw;
+      const level = Math.min(ASIDE_PITCH, Math.max(-ASIDE_PITCH, pitch));
+      for (const off of ASIDE) {
+        if (blocked(was + off, level)) continue;
+        yaw = was + off;
+        pitch = level;
+        break;
+      }
+      if (yaw === was && !roofed && !blocked(was, CLIMB_MAX)) pitch = CLIMB_MAX;
+      else if (yaw === was) {
+        this.steerOut(f, tick, x, my, z, was, roofed, ASIDE_TICKS);
+        yaw = f.dyaw;
+        pitch = f.dpitch;
+      }
+      if (yaw !== was || pitch === CLIMB_MAX) {
+        f.dyaw = yaw;
+        f.dpitch = pitch;
+        f.aside = tick + ASIDE_TICKS;
+      }
+      this.turned++;
+    }
+    if (roofed && pitch > 0) pitch = 0;
     this.look[e] = Math.round((yaw / (Math.PI * 2)) * 65536) & 0xffff;
     this.pitch[e] = Math.round((pitch / (Math.PI / 2)) * 16384);
-    this.move[e] = slow ? 64 : 127;
-    this.buttons[e] = BTN_JUMP | (sprint ? BTN_SPRINT : 0);
+    this.move[e] = careful ? Math.round((127 * CAREFUL_SPEED) / p.flySpeed) : slow ? 64 : 127;
+    this.buttons[e] = BTN_JUMP | (sprint && !careful ? BTN_SPRINT : 0) | (careful && moving > CAREFUL_SPEED + 1 ? BTN_BRAKE : 0);
+  }
+
+  /** It steers for `ticks` along the way out `escape` finds from (x, y, z), carefully. */
+  private steerOut(f: Flight, tick: number, x: number, y: number, z: number, yaw: number, roofed: boolean, ticks: number): void {
+    this.escape(x, y, z, yaw, roofed);
+    f.dyaw = escaped.yaw;
+    f.dpitch = escaped.pitch;
+    f.aside = tick + ticks;
+    f.careful = tick + CAREFUL_TICKS;
+  }
+
+  /** Whether something built or growing stands within ROOF over the point `d` metres from (x, y, z) along `yaw` and `pitch`. */
+  private roofAhead(x: number, y: number, z: number, yaw: number, pitch: number, d: number): boolean {
+    const cp = Math.cos(pitch);
+    const hit = castWorld(this.world, x + Math.sin(yaw) * cp * d, y + Math.sin(pitch) * d, z + Math.cos(yaw) * cp * d, 0, 1, 0, ROOF);
+    return hit === HIT_STRUCTURE || hit === HIT_NODE;
   }
 
   /**
-   * The height of the top of what is under a flyer and ahead of it: the ground under it and at three points along its course,
-   * the sea, and what is built or grows under it, by a ray straight down. It rises at once and falls at FLOOR_FALL a second.
+   * The height of the top of what is under a flyer and ahead of it, at where it is and three points along its course: the
+   * ground, the sea, and the skyline of what is built or grows. It rises at once and falls at FLOOR_FALL a second.
    */
-  private floorAhead(f: Flight, p: MoveParams, x: number, y: number, z: number, yaw: number, ahead: number): number {
+  private floorAhead(f: Flight, p: MoveParams, x: number, z: number, yaw: number, ahead: number): number {
     const hf = this.world.hf;
     const s = Math.sin(yaw);
     const c = Math.cos(yaw);
-    let top = Math.max(hf.seaLevel, groundUnder(hf, x, z, p.radius));
-    for (let k = 1; k <= 3; k++) top = Math.max(top, groundUnder(hf, x + (s * ahead * k) / 3, z + (c * ahead * k) / 3, p.radius));
-    const down = Math.min(y - top, CRUISE_HIGH + FLEE_UP);
-    const hit = down > 0.5 ? castWorld(this.world, x, y - 0.05, z, 0, -1, 0, down) : HIT_NONE;
-    f.over = hit === HIT_STRUCTURE || hit === HIT_NODE;
-    if (f.over) top = Math.max(top, y - 0.05 - rayHit.t);
+    let top = hf.seaLevel;
+    for (let k = 0; k <= 3; k++) {
+      const px = x + (s * ahead * k) / 3;
+      const pz = z + (c * ahead * k) / 3;
+      top = Math.max(top, groundUnder(hf, px, pz, p.radius), this.sky.at(px, pz));
+    }
     f.floor = Math.max(top, f.floor - (FLOOR_FALL * STEER_TICKS) / TICK_RATE);
     return f.floor;
+  }
+
+  /** Whether nothing built or growing stands under a flyer at (x, y, z) between it and the ground, at its middle or its edge. */
+  private clearBelow(p: MoveParams, x: number, y: number, z: number): boolean {
+    for (let k = 0; k < 5; k++) {
+      const ox = k === 1 ? p.radius : k === 2 ? -p.radius : 0;
+      const oz = k === 3 ? p.radius : k === 4 ? -p.radius : 0;
+      const hit = castWorld(this.world, x + ox, y, z + oz, 0, -1, 0, y - groundUnder(this.world.hf, x + ox, z + oz, 0) + 1);
+      if (hit === HIT_STRUCTURE || hit === HIT_NODE) return false;
+    }
+    return true;
   }
 
   /** Whether nothing of the world lies within `len` metres of (x, y, z) along `yaw` and `pitch`, in radians. */
@@ -1304,13 +1459,13 @@ export class Behavior {
   }
 
   /**
-   * The way out for a flyer at (x, y, z) hemmed in or getting nowhere, into `escaped`: of eight ways round from behind it,
-   * level, steeply up (not when roofed) and down, the one clear furthest, up to ESCAPE metres.
+   * The way out for a flyer at (x, y, z) hemmed in or getting nowhere, into `escaped`: of ESCAPE_WAYS ways round from behind it,
+   * level, steeply up and nearly straight up (not when roofed) and down, the one clear furthest, up to ESCAPE metres.
    */
   private escape(x: number, y: number, z: number, yaw: number, roofed: boolean): void {
     let best = -1;
-    for (let k = 0; k < 8; k++) {
-      const a = yaw + Math.PI + (k % 2 === 0 ? k / 2 : -(k + 1) / 2) * (Math.PI / 4);
+    for (let k = 0; k < ESCAPE_WAYS; k++) {
+      const a = yaw + Math.PI + (k % 2 === 0 ? k / 2 : -(k + 1) / 2) * ((Math.PI * 2) / ESCAPE_WAYS);
       for (const pitch of roofed ? ESCAPE_ROOFED : ESCAPE_PITCHES) {
         const cp = Math.cos(pitch);
         const free = castWorld(this.world, x, y, z, Math.sin(a) * cp, Math.sin(pitch), Math.cos(a) * cp, ESCAPE) === HIT_NONE ? ESCAPE : rayHit.t;
