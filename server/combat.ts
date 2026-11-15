@@ -4,15 +4,18 @@
 import { HUMAN } from "../shared/anim/human.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
-import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
+import { BODY_REACH, BODY_REACH_Y, rayBody, raySeated } from "../shared/anim/zones.ts";
+import { SEAT_FLOATS, saddleSeat, seatOn } from "../shared/anim/seat.ts";
 import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
+import { rayVehicle } from "../shared/sim/vehicle-frame.ts";
+import { TAU } from "../shared/math/scalar.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
 import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
-import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_HELD, F_PROP, GEAR_WORN } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, QUALITY_MUL } from "../shared/sim/items.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
 import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
@@ -164,6 +167,10 @@ export class Combat {
   private readonly near = new Int32Array(MAX_NEAR);
   private readonly nearT = new Float32Array(MAX_NEAR);
   private readonly past = new Past();
+  /** A rider's mount as it was at the tick a cast is judged at, and the rider's seat on it then. */
+  private readonly mountPast = new Past();
+  private readonly mountSt = new AnimState();
+  private readonly seatAt = new Float64Array(SEAT_FLOATS);
   private readonly rolls: Roll[] = [];
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, silenced: false };
   /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
@@ -282,6 +289,7 @@ export class Combat {
         for (let cx = cx0; cx <= cx1; cx++) {
           for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
             if (i === e || i === spare || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE || r.hit.includes(ents.pid[i]!)) continue;
+            if (ents.seat[i] === e + 1 && ents.seatSlot[i] !== 0 && ents.seatGen[i] === ents.gen[e]) continue;
             const bk = ents.kind[i]!;
             // The nearest the way went to the body's upright middle, then the nearest point of its height to that.
             const bx = ents.x[i]!;
@@ -540,6 +548,9 @@ export class Combat {
     this.sweep = sweep;
     this.span = maxT;
     // Gather every body whose bounding sphere could touch the ray. A body judged in the past may have moved since, so the search is padded.
+    // The car or creature the caster sits on is not in its way, nor, for a mount, are those who sit on it.
+    const parent = self >= 0 ? ents.seat[self]! - 1 : -1;
+    const carrier = parent >= 0 && ents.seatSlot[self] !== 0 && ents.seatGen[self] === ents.gen[parent] ? parent : -1;
     let n = 0;
     const near = this.near;
     const nearT = this.nearT;
@@ -563,14 +574,16 @@ export class Combat {
         const fz = mz - dz * along;
         if (fx * fx + fz * fz > (CHUNK_REACH + pad) * (CHUNK_REACH + pad)) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
-          if (i === self || i === this.spare || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
+          if (i === self || i === this.spare || i === carrier || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
+          if (self >= 0 && ents.seat[i] === self + 1 && ents.seatSlot[i] !== 0 && ents.seatGen[i] === ents.gen[self]) continue;
           const kind = ents.kind[i]!;
           // A sphere that holds the body in any pose. A larger box gets a larger sphere.
           const h = reg.bodyHeight[kind]!;
           const rig = this.anims[kind]?.rig;
-          const r = (rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
+          const car = reg.vehicle[kind]?.spec;
+          const r = (car ? Math.hypot(car.halfWidth, car.halfLength, h * 0.5) : rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
           const px = ents.x[i]! - ox;
-          const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : rig ? rig.mid : h * 0.5) - oy;
+          const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : rig && !car ? rig.mid : h * 0.5) - oy;
           const pz = ents.z[i]! - oz;
           const t = px * dx + py * dy + pz * dz;
           if (t < -r || t > maxT + r || px * px + py * py + pz * pz - t * t > r * r) continue;
@@ -657,6 +670,24 @@ export class Combat {
     return true;
   }
 
+  /**
+   * For body `i` sitting in a saddle's seat, writes its seat's frame on its mount as the mount was at `tick` to `seatAt`
+   * and returns 1 for the seat that steers, 2 for a passenger's; 0 for a body in no saddle.
+   */
+  private saddled(i: number, tick: number): number {
+    const world = this.ctx.world, ents = world.ents;
+    const host = ents.seat[i]! - 1;
+    if (host < 0 || ents.seatSlot[i] === 0 || ents.gen[host] !== ents.seatGen[i] || world.reg.vehicle[ents.kind[host]!]) return 0;
+    const seat = saddleSeat(world.reg, ents.gear[host]?.[GEAR_WORN] ?? 0, ents.seatSlot[i]!);
+    const was = this.mountPast;
+    if (!seat || !this.where(host, tick, was)) return 0;
+    const st = this.mountSt;
+    st.unpack(was.anim, was.cue);
+    st.seed = bodySeed(host);
+    seatOn(this.anims[ents.kind[host]!] ?? null, seat, st, tick, was.x, was.y, was.z, (was.yaw * TAU) / 65536, this.seatAt);
+    return seat.driver ? 1 : 2;
+  }
+
   /** The nearest of the first `n` bodies in `near` that the ray hits nearer than `this.t`, or -1. Updates `this.t` and `this.zone`. */
   private castNear(n: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number): number {
     const world = this.ctx.world;
@@ -700,13 +731,14 @@ export class Combat {
       if (this.human[kind] && world.anim) {
         st.unpack(past.anim);
         st.seed = bodySeed(i);
-        const zone = rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
+        const seat = this.saddled(i, tick);
+        const zone = seat !== 0 ? raySeated(world.anim, st, tick, this.seatAt, seat === 1, rx, ry, rz, ux, uy, uz, reach) : rayBody(world.anim, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach);
         if (zone !== ZONE_NONE && zoneHit.t < reach) {
           this.t = zoneHit.t * scale;
           this.zone = zone;
           best = i;
         }
-      } else if (this.anims[kind]) {
+      } else if (this.anims[kind] && !reg.vehicle[kind]) {
         st.unpack(past.anim, past.cue);
         st.seed = bodySeed(i);
         // A young creature is its kind's shape scaled down about its position. The ray is scaled up about that
@@ -719,6 +751,15 @@ export class Combat {
         if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;
+          best = i;
+        }
+      } else if (reg.vehicle[kind]) {
+        // A vehicle is met by its mechanical hull up to its belt line, whatever its art, turned as it was.
+        const def = reg.vehicle[kind]!;
+        const t = rayVehicle(def, past.x, past.y, past.z, (past.yaw * TAU) / 65536, rx, ry, rz, ux, uy, uz, def.beltline);
+        if (t < reach) {
+          this.t = t * scale;
+          this.zone = ZONE_TORSO;
           best = i;
         }
       } else {

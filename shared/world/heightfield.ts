@@ -2,6 +2,7 @@
 // all use this triangulation, so what is drawn is what is solid. Everything below the surface is solid.
 
 import { CHUNK_SIZE, type MapDims } from "../coords.ts";
+import type { MapWater } from "./water.ts";
 
 export const TERRAIN_CELL = 2;
 
@@ -20,8 +21,10 @@ export class Heightfield {
   readonly heights: Uint16Array;
   /** Palette index per sample, used only for drawing. */
   readonly tint: Uint8Array;
-  /** Height of the water surface, set by the code that builds the map. -Infinity for a map with no water. */
+  /** Height of the sea's surface, set by the code that builds the map. -Infinity for a map with no sea. */
   seaLevel = -Infinity;
+  /** Water standing on its own surfaces, apart from the sea (water.ts), or null for a map with none. */
+  water: MapWater | null = null;
 
   /** Use a power-of-two fraction such as 1/256 for `stepY`, so round heights (sea level, floors) are exact. */
   constructor(dims: MapDims, cell: number, minY: number, stepY: number, heights?: Uint16Array, tint?: Uint8Array) {
@@ -80,6 +83,17 @@ export class Heightfield {
       q = h00 + (h11 - h01) * u + (h01 - h00) * v;
     }
     return this.minY + q * this.stepY;
+  }
+
+  /**
+   * The height of the water's surface over (x, z): the body's whose square holds it, else the sea's, -Infinity for none.
+   * There is water where the ground is under it. Every test of the sea asks this, so a map with no bodies is as it was.
+   */
+  waterAt(x: number, z: number): number {
+    const w = this.water;
+    if (w === null) return this.seaLevel;
+    const b = w.bodyAt(x, z);
+    return b === 0 ? this.seaLevel : w.surface[b]!;
   }
 
   /** Cosine of the slope angle. 1 is flat, 0 is vertical. */

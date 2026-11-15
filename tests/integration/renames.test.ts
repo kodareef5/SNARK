@@ -109,7 +109,9 @@ test("a save from before recipes became part of their items goes on making what 
   const h = new Harness({}, 1, 60, { dbPath: db });
   const id = (name: string): number => h.reg.index.get(`core:${name}`)!;
   const rec = h.host.records.byPid.get(ADA)!;
-  expect(h.host.persistence!.store.missingContent).toEqual([]);
+  // Only the ingot's engram, which the stations wave took out (planning/reference/stations-plan.md, Decided 2), is gone,
+  // and nothing in the save uses it: ada never learned it.
+  expect(h.host.persistence!.store.missingContent).toEqual(["core:engram-ingot"]);
   expect(rec.jobs.map((j) => [h.reg.ids[j.item], j.left])).toEqual([["core:spear", 3], ["core:hide_hat", 1]]);
   expect(h.host.items.audit()).toEqual([]);
   // It knew hide armor and cloth armor as a set each. Each is now five engrams, and it knows all ten.
@@ -119,7 +121,8 @@ test("a save from before recipes became part of their items goes on making what 
   expect(known.length).toBe(13);
   h.run(60000);
   expect(h.host.progression.craft(rec, id("hide_shirt"), 1)).toBe(RESULT_OK);
-  expect(h.host.progression.craft(rec, id("flak_shirt"), 1)).toBe(RESULT_DENIED);
+  // Flak it never knew (flak is made at the smithy since S6, so the hand refuses it whatever is known).
+  expect([h.host.progression.knows(rec, id("engram-flak_shirt")), h.host.progression.craft(rec, id("flak_shirt"), 1)]).toEqual([false, RESULT_DENIED]);
   h.run(10000);
   expect(rec.inv!.total(id("hide_shirt"))).toBe(1);
   expect([rec.inv!.total(id("spear")), rec.inv!.total(id("hide_hat")), rec.jobs.length]).toEqual([3, 1, 0]);

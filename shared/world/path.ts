@@ -38,7 +38,7 @@ export function groundAt(w: CollisionWorld, p: Walker, x: number, z: number, r =
   const hf = w.hf;
   if (x < r || z < r || x > hf.sizeX - r || z > hf.sizeZ - r) return GROUND_OFF;
   const y = groundUnder(hf, x, z, r);
-  if (hf.seaLevel - y > p.height * SWIM_SHARE) return GROUND_WATER;
+  if (hf.waterAt(x, z) - y > p.height * SWIM_SHARE) return GROUND_WATER;
   if (!groundStands(p.slopeCos)) return GROUND_STEEP;
   const top = y + p.stepUp;
   // Where nothing is built, the ground is all there is.

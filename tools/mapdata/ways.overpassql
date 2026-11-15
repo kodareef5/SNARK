@@ -8,5 +8,6 @@
   way["man_made"="groyne"];
   way["man_made"="tower"]["tower:type"="bridge"];
   way["highway"="steps"];
+  way["inscription"~"^[A-Z ]{1,24}$"]["height"];
 );
 out tags geom;

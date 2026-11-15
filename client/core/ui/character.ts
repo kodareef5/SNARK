@@ -27,6 +27,8 @@ export const KEY_CHAR_ENGRAM = 200000;
 export const KEY_CHAR_RECIPE = KEY_CHAR_ENGRAM + LIST_KEYS;
 /** Per item that can be made, in content order: its picture. Past both lists, and as clear of every other key. */
 export const KEY_CHAR_RECIPE_PICTURE = KEY_CHAR_RECIPE + LIST_KEYS;
+/** Per engram, in engramOrder: its picture, its item's where it has none of its own. Past the pictures of the recipes. */
+export const KEY_CHAR_ENGRAM_PICTURE = KEY_CHAR_RECIPE_PICTURE + LIST_KEYS;
 export const TAB_STATS = 0;
 export const TAB_ENGRAMS = 1;
 export const TAB_MAKE = 2;
@@ -92,7 +94,8 @@ export class CharacterScreen {
     });
     y += ROW + 10;
 
-    // `button` is "" for a row without one. A row of the Make tab has the picture of what it makes at its left, where there is one.
+    // `button` is "" for a row without one. A row of the Engrams and Make tabs has the picture of what it makes at its left,
+    // where there is one.
     const rows: { key: number; text: string; button: string; picture?: { key: number; owner: string } }[] = [];
     if (this.tab === TAB_STATS) {
       STAT_NAMES.forEach((name, i) => {
@@ -105,7 +108,7 @@ export class CharacterScreen {
         const def = reg.defs[e] as EngramDef;
         const known = p.engrams.includes(e);
         const can = !known && p.level >= def.level && p.engramPoints >= def.cost;
-        rows.push({ key: KEY_CHAR_ENGRAM + n * 2, text: known ? `${def.label}: known` : `${def.label}: level ${def.level}, ${def.cost} points`, button: can ? "learn" : "" });
+        rows.push({ key: KEY_CHAR_ENGRAM + n * 2, text: known ? `${def.label}: known` : `${def.label}: level ${def.level}, ${def.cost} points`, button: can ? "learn" : "", picture: { key: KEY_CHAR_ENGRAM_PICTURE + n, owner: def.id } });
       });
     } else {
       const known = new Set(p.engrams.map((e) => (reg.defs[e] as EngramDef).item));

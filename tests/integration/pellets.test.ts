@@ -22,7 +22,7 @@ const EYE = 1.62;
 const reg = compileContent(CORE_CONTENT).registry!;
 const at = (id: string): number => reg.index.get(id)!;
 
-test("the shotgun and its shell are ARK's double-barrel and Simple Shotgun Ammo, made in the hand until the smithy", () => {
+test("the shotgun and its shell are ARK's double-barrel and Simple Shotgun Ammo, made at the smithy", () => {
   const gun = CORE_CONTENT.find((d) => d.type === "item" && d.id === "core:shotgun") as ItemDef;
   const shell = CORE_CONTENT.find((d) => d.type === "item" && d.id === "core:round_shotgun") as ItemDef;
   // Shotgun: "64*10", magazine 2, reload 3.33, 2.85 a second, 300 durability at 1 a use, weight 10, no attachments.
@@ -31,7 +31,7 @@ test("the shotgun and its shell are ARK's double-barrel and Simple Shotgun Ammo,
   expect(Math.round(1 / gun.weapon!.interval!)).toBe(3);
   expect(reg.weapon[at("core:shotgun")]!.swingTicks).toBe(11);
   expect(gun.craft).toMatchObject({ needs: [{ item: "core:ingot", count: 80 }, { item: "core:wood", count: 20 }, { item: "core:hide", count: 25 }] });
-  expect(gun.craft!.at).toBeUndefined();
+  expect([gun.craft!.at, shell.craft!.at]).toEqual(["core:smithy", "core:smithy"]);
   // Simple Shotgun Ammo: weight 0.1, stack 100; 3 simple bullets, an ingot and 3 gunpowder, two shells a craft.
   expect(shell).toMatchObject({ stack: 100, weight: 0.1, ammo: { damage: 64, type: "bullet", pellets: 10, falloff: { full: 10, none: 40 } } });
   expect(shell.craft).toMatchObject({ count: 2, needs: [{ item: "core:round_pistol", count: 3 }, { item: "core:ingot", count: 1 }, { item: "core:gunpowder", count: 3 }] });

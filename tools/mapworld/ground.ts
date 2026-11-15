@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { cutBridgeWater, pathsOf, readWays } from "./ways.ts";
 import type { Base } from "./base.ts";
 import { makeHeaps, readBuildings, PART_COURT, PART_FLOOR, PART_HEAP, PART_POOL, PART_SPILL, PART_WALL, type Heaps } from "./heaps.ts";
+import { carveLakes, readLakes, type LakeRules, type Lakes } from "./lakes.ts";
 import { blur, distanceField, fbm, fillPolygon, hash3, regions, share } from "./raster.ts";
 
 /** What a sample's ground is, for its colour and for what lives on it. */
@@ -36,6 +37,10 @@ export const S = {
   WRECK: 23,
   YARD: 24,
   CONTAINER: 25,
+  /** Dry ground that grows no green: desert pavement and scrub, where a city's succession names its land cover dry. */
+  DESERT: 26,
+  /** An airfield's runways, taxiways and aprons (roads.png value 6): paved, and no street. */
+  PAVED: 27,
 } as const;
 
 export interface District {
@@ -51,6 +56,8 @@ export interface World {
   readonly ruins?: { report: string; yardDistricts: string[] };
   readonly id: string;
   readonly label: string;
+  /** False for a frame with no sea: the map file then has no water, and heights are still over seaNavd88. */
+  readonly sea?: boolean;
   readonly seaNavd88: number;
   readonly minY: number;
   readonly stepY: number;
@@ -58,9 +65,15 @@ export interface World {
   readonly spawns: readonly { name: string; at: [number, number]; face: [number, number]; ground: "sand" | "open" }[];
   /** Where survivors leave for another server: each obelisk near a place, its terminal turned toward another (places.ts). */
   readonly obelisks?: readonly { name: string; at: [number, number]; face: [number, number] }[];
+  /** Metres round a spawn point with no beach region in reach within which the jungle's regions take the beach's table. */
+  readonly easyAroundSpawns?: number;
+  /** A dry city: its open ground and courts are tinted gravel and dust, its weeds dry (a desert's). */
+  readonly dryGround?: boolean;
   /** Whether each footprint is raised into a heap of rubble (heaps.ts), the stand-in for block ruins. On unless false. */
   readonly heaps?: boolean;
   readonly containerHeaps?: boolean;
+  /** How the perched lakes are made water standing above the sea (lakes.ts); false leaves them marsh. */
+  readonly lakes?: LakeRules | false;
 }
 
 export interface Ground {
@@ -76,9 +89,12 @@ export interface Ground {
   readonly container: Uint8Array;
   /** Metres from each sample to the nearest real beach. */
   readonly sand: Float32Array;
+  /** The sea's water, 1 a sample. Lakes are in `lakes`. */
   readonly water: Uint8Array;
   readonly gaps: Uint8Array;
   readonly bridges: { standing: number; fords: number; gaps: number; cutSamples: number };
+  /** Water standing above the sea, or null where the map has none. */
+  readonly lakes: Lakes | null;
 }
 
 export function makeGround(base: Base, world: World, log: (line: string) => void): Ground {
@@ -95,7 +111,8 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const gaps = world.bridgeGapLayer ? base.bytes(world.bridgeGapLayer) : new Uint8Array(base.n * base.n);
   const wrecks = base.bytes("wrecks");
   const dem = base.elevation();
-  const bathy = blur(base.bathymetry(), n, n, 2, 3);
+  const model = base.bathymetry();
+  const bathy = model ? blur(model, n, n, 2, 3) : null;
   const height = new Float32Array(N);
   const surface = new Uint8Array(N);
 
@@ -117,7 +134,8 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const weight = new Float32Array(N);
   for (let i = 0; i < N; i++) {
     if (water[i]) continue;
-    raw[i] = Number.isNaN(dem[i]!) ? bathy[i]! : dem[i]!;
+    if (Number.isNaN(dem[i]!) && !bathy) throw new Error(`sample ${i % n}, ${Math.floor(i / n)} has no elevation and the map no coastal model`);
+    raw[i] = Number.isNaN(dem[i]!) ? bathy![i]! : dem[i]!;
     weight[i] = 1;
   }
   const radius = 1;
@@ -138,7 +156,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
       const least = 0.3 + Math.min(d, reach) * (gentle ? 0.035 : 0.1);
       const shallowest = -(d <= reach ? least : Math.max(0.3, least - (d - reach) * 0.02));
       const deepest = -(0.4 + d * (gentle ? 0.08 : 0.6));
-      height[i] = Math.min(shallowest, Math.max(deepest, bathy[i]! - sea));
+      height[i] = bathy ? Math.min(shallowest, Math.max(deepest, bathy[i]! - sea)) : shallowest;
       continue;
     }
     let h = land[i]! - sea;
@@ -153,6 +171,15 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     height[i] = h;
   }
   log(`ground: land and bed, ${pools} samples of marsh pool`);
+
+  // Lakes above the sea, their beds carved under their own surfaces where the lidar has them flat.
+  const built = base.bytes("buildings");
+  const lakes = readLakes(base, world.lakes, sea, world.minY, world.stepY, dem, (i) => built[i]! > 0);
+  if (lakes) {
+    const deepest = carveLakes(lakes, world.lakes, height, n, cell);
+    const left = lakes.made.filter((m) => m.left);
+    log(`ground: ${lakes.made.length - left.length} lakes as ${lakes.bodies.length} bodies of water, to ${deepest.toFixed(1)} m deep; ${left.length} left marsh${left.map((m) => ` (${m.name || m.id}: ${m.left})`).join("")}`);
+  }
 
   const ways = readWays(base.folder);
   let decks = 0; let fords = 0; let gapCount = 0; let cutSamples = 0;
@@ -338,6 +365,12 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
       surface[i] = h < -7 ? S.CHANNEL : sandy ? S.SHALLOW : h < -3 ? S.DEEP : h < -1.2 ? S.FLAT : S.SHALLOW;
       continue;
     }
+    const lake = lakes ? lakes.body[i]! : 0;
+    if (lake !== 0) {
+      const d = h - lakes!.bodies[lake - 1]!.surface;
+      surface[i] = d < -7 ? S.CHANNEL : d < -3 ? S.DEEP : d < -1.2 ? S.FLAT : S.SHALLOW;
+      continue;
+    }
     if (h < 0) {
       surface[i] = S.POOL;
       continue;
@@ -346,11 +379,13 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     const rd = roads[i]!;
     if (rd === 2) surface[i] = S.HIGHWAY;
     else if (rd === 1) surface[i] = S.STREET;
+    else if (rd === 6) surface[i] = S.PAVED;
     else if (b === 6) surface[i] = shore[i]! < 7 ? S.WET_SAND : canopy[i] ? S.DUNE : S.BEACH;
     else if (b === 4) surface[i] = S.MANGROVE;
     else if (b === 5) surface[i] = S.MARSH;
     else if (canopy[i]) surface[i] = S.CANOPY;
     else if (b === 3) surface[i] = S.GREEN;
+    else if (b === 10) surface[i] = S.DESERT;
     else surface[i] = styleOf(i) === "industrial" ? S.YARD : S.OPEN;
   }
   // The port's yards are rows of containers along the island, one or two high, some gone, with lanes between.
@@ -382,5 +417,5 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     }
   }
   log(`ground: ${Math.round(stacks * 4)} square metres of container stacks`);
-  return { n, height, surface, district, heaps, shore, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples } };
+  return { n, height, surface, district, heaps, shore, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
 }

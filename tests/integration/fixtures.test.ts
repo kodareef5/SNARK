@@ -236,8 +236,8 @@ test("a box holds things: looked into with the use button, kept with the world, 
   h.run(300);
   expect([row(h, vault).kind, h.host.fixtures.count, h.host.build.spilled]).toEqual([0, 0, 2]);
   expect([...h.host.records.byPid.values()].filter((r) => r.name === "vault").map((r) => h.host.items.inv(r).total(id("thatch")))).toEqual([30]);
-  // Demolishing refunds half of a vault's cost: 150 ingots and 30 paste.
-  expect([ada.inventory!.total(id("ingot")), ada.inventory!.total(id("paste"))]).toEqual([150, 30]);
+  // Demolishing refunds half of a vault's cost: 250 ingots, 50 paste, 35 oil and 45 polymer (ARK's recipe since stations S6, Vault).
+  expect(["ingot", "paste", "oil", "polymer"].map((n) => ada.inventory!.total(id(n)))).toEqual([250, 50, 35, 45]);
   expect(h.host.items.audit()).toEqual([]);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });

@@ -82,11 +82,15 @@ function piece(tier: Tier, name: string, shapeName = name): StructureDef {
 }
 
 /** Free-standing pieces, set on the ground or on a floor and joined to nothing. Beds are apart, below. */
-const STORES: readonly { name: string; label: string; half: readonly [number, number, number]; color: number; hp: number; material: string; slots?: number; falls?: boolean; fire?: boolean; stack: number; weight: number; level: number; cost: number; needs: Needs }[] = [
+const STORES: readonly { name: string; label: string; half: readonly [number, number, number]; color: number; hp: number; material: string; slots?: number; falls?: boolean; fire?: boolean; decayDays?: number; stack: number; weight: number; level: number; cost: number; xp?: number; at?: string; needs: Needs }[] = [
   { name: "storage_box", label: "Storage box", half: [0.5, 0.3125, 0.375], color: 3, hp: 500, material: "wood", slots: 15, stack: 100, weight: 4, level: 4, cost: 6, needs: [["wood", 25], ["thatch", 20], ["fiber", 10]] },
   { name: "storage_large", label: "Large storage box", half: [0.75, 0.5, 0.4375], color: 3, hp: 2400, material: "wood", slots: 45, stack: 100, weight: 8, level: 16, cost: 9, needs: [["wood", 50], ["thatch", 35], ["fiber", 25]] },
-  { name: "vault", label: "Vault", half: [0.75, 1.25, 0.625], color: 11, hp: 50000, material: "metal", slots: 350, falls: true, stack: 5, weight: 40, level: 52, cost: 60, needs: [["ingot", 300], ["paste", 60]] },
-  { name: "campfire", label: "Campfire", half: [0.5, 0.1875, 0.5], color: 5, hp: 500, material: "stone", slots: 3, fire: true, stack: 3, weight: 4, level: 2, cost: 3, needs: [["thatch", 12], ["flint", 1], ["stone", 16], ["wood", 2]] },
+  // ark.wiki.gg, Vault, infobox, 2026-11-15 (stations S6; Evolved's, D465): at the fabricator, 500 ingots, 100 cementing paste, 70
+  // oil and 90 polymer, craftingxp 82 (our 328, D465's four times); level 75, 30 engram points; weighs 20, stacks to 1. No
+  // page gives a crafting time: 5 s is ours (DEV135).
+  { name: "vault", label: "Vault", half: [0.75, 1.25, 0.625], color: 11, hp: 50000, material: "metal", slots: 350, falls: true, stack: 1, weight: 20, level: 75, cost: 30, xp: 328, at: "core:fabricator", needs: [["ingot", 500], ["paste", 100], ["oil", 70], ["polymer", 90]] },
+  // ark.wiki.gg, Campfire, 2026-11-15: 100 health, decaytime 172800 (2 days).
+  { name: "campfire", label: "Campfire", half: [0.5, 0.1875, 0.5], color: 5, hp: 100, material: "stone", slots: 3, fire: true, decayDays: 2, stack: 3, weight: 4, level: 2, cost: 3, needs: [["thatch", 12], ["flint", 1], ["stone", 16], ["wood", 2]] },
 ];
 
 /**
@@ -124,22 +128,27 @@ function store(s: (typeof STORES)[number]): Def[] {
   const item = `core:piece_${s.name}`;
   return [
     { type: "shape", id: shapeId, role: "thing", boxes: [box(0, 0, 0, s.half[0], s.half[1], s.half[2])] },
-    { type: "structure", class: s.fire ? "station" : "container", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, ...(s.slots ? { slots: s.slots } : {}), ...(s.falls ? { falls: true } : {}), ...(s.fire ? { lights: `core:${s.name}_lit` } : {}) },
-    ...(s.fire ? [{ type: "structure", class: "station", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: 16, slots: s.slots!, lights: `core:${s.name}`, lit: true } as StructureDef] : []),
+    { type: "structure", class: s.fire ? "station" : "container", id: `core:${s.name}`, mesh: "shape", shape: shapeId, half: s.half, color: s.color, hp: s.hp, material: `core:mat_${s.material}`, decayDays: s.decayDays ?? 16, ...(s.slots ? { slots: s.slots } : {}), ...(s.falls ? { falls: true } : {}), ...(s.fire ? { lights: `core:${s.name}_lit` } : {}) },
+    ...(s.fire ? [{ type: "structure", class: "station", id: `core:${s.name}_lit`, mesh: "shape", shape: shapeId, half: s.half, color: 8, hp: s.hp, material: `core:mat_${s.material}`, decayDays: s.decayDays ?? 16, slots: s.slots!, lights: `core:${s.name}`, lit: true } as StructureDef] : []),
     { type: "item", class: "structure", id: item, stack: s.stack, weight: s.weight, label: s.label.toLowerCase(), color: s.color, places: [`core:${s.name}`] },
-    crafting(item, { needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(s.level / 3)) }),
+    crafting(item, { needs: s.needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: s.xp ?? Math.max(1, Math.round(s.level / 3)), ...(s.at ? { at: s.at } : {}) }),
     { type: "engram", id: `core:engram-piece_${s.name}`, label: s.label, level: s.level, cost: s.cost, item: `core:piece_${s.name}` },
   ];
 }
 
 type Needs = readonly (readonly [item: string, count: number])[];
 
-/** One material's recipes. level is the level at which a piece's engram can be learnt, and cost the points it takes. */
+/**
+ * One material's recipes. level is the level at which a piece's engram can be learnt, and cost the points it takes: the
+ * piece's own, else the material's. xp is the piece's crafting experience, else a third of its level. at is the station
+ * its pieces are made at, else the hand.
+ */
 interface Making {
   readonly label: string;
   readonly weight: number;
-  readonly cost: number;
-  readonly pieces: { readonly [piece: string]: { readonly level: number; readonly needs: Needs } };
+  readonly cost?: number;
+  readonly at?: string;
+  readonly pieces: { readonly [piece: string]: { readonly level: number; readonly cost?: number; readonly xp?: number; readonly needs: Needs } };
 }
 
 const MAKING: { readonly [tier: string]: Making } = {
@@ -180,17 +189,21 @@ const MAKING: { readonly [tier: string]: Making } = {
       stairs: { level: 27, needs: [["stone", 60], ["wood", 30], ["thatch", 20]] },
     },
   },
+  // ark.wiki.gg, Metal Foundation, Metal Wall, Metal Ceiling, Metal Door, Metal Pillar and Metal Stairs, infoboxes,
+  // 2026-11-15 (stations S6): made at the smithy; each piece's level, engram points, ingredients and craftingxp, shown
+  // times the global 4 of patches 253.0 and 313.5 (D465); each weighs 4. No page gives a crafting time: 5 s is ours. The
+  // wall also places the doorframe and windowframe, whose own engrams (Metal Doorframe, Metal Windowframe) are not ours.
   metal: {
     label: "Metal",
     weight: 4,
-    cost: 12,
+    at: "core:smithy",
     pieces: {
-      foundation: { level: 45, needs: [["ingot", 50], ["paste", 15]] },
-      wall: { level: 45, needs: [["ingot", 25], ["paste", 7]] },
-      ceiling: { level: 46, needs: [["ingot", 35], ["paste", 10]] },
-      door: { level: 47, needs: [["ingot", 20], ["paste", 4]] },
-      pillar: { level: 46, needs: [["ingot", 25], ["paste", 7]] },
-      stairs: { level: 47, needs: [["ingot", 35], ["paste", 10]] },
+      foundation: { level: 45, cost: 24, xp: 92, needs: [["ingot", 50], ["paste", 15]] },
+      wall: { level: 45, cost: 15, xp: 18.4, needs: [["ingot", 25], ["paste", 7]] },
+      ceiling: { level: 45, cost: 15, xp: 51.2, needs: [["ingot", 35], ["paste", 10]] },
+      door: { level: 45, cost: 12, xp: 11.6, needs: [["ingot", 10], ["paste", 4]] },
+      pillar: { level: 46, cost: 18, xp: 27.2, needs: [["ingot", 25], ["paste", 7]] },
+      stairs: { level: 47, cost: 12, xp: 64, needs: [["ingot", 35], ["paste", 10]] },
     },
   },
 };
@@ -201,11 +214,11 @@ function kit(tier: Tier, name: string): Def[] {
   const forms = name === "wall" ? ["wall", "doorframe", "windowframe"].filter((f) => f in tier.hp) : [name];
   const item = `core:piece_${name}_${tier.name}`;
   const label = `${m.label} ${name}`;
-  const { level, needs } = m.pieces[name]!;
+  const { level, needs, cost, xp } = m.pieces[name]!;
   return [
     { type: "item", class: "structure", id: item, stack: 100, weight: m.weight, label: label.toLowerCase(), color: tier.color, places: forms.map((f) => `core:${f}_${tier.name}`) },
-    crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(level / 3)) }),
-    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: m.cost, item: `core:piece_${name}_${tier.name}` },
+    crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: xp ?? Math.max(1, Math.round(level / 3)), ...(m.at ? { at: m.at } : {}) }),
+    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: cost ?? m.cost!, item: `core:piece_${name}_${tier.name}` },
   ];
 }
 
@@ -219,7 +232,5 @@ export const BUILDING_CONTENT: readonly Def[] = [
   ]),
   ...STORES.flatMap(store),
   ...BEDS.flatMap(bed),
-  { type: "item", class: "resource", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
-  crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 }),
-  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, item: "core:paste" },
+  // Cementing paste, which the metal tier and the vault are made of, is the item program's: content/items/resources.ts.
 ];

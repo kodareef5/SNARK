@@ -24,7 +24,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REGION = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 0, 255), (255, 255, 0), (0, 0, 0)]
 SOFT = [(150, 150, 160), (205, 190, 165), (225, 170, 130), (120, 120, 130), (165, 180, 205), (232, 228, 214), (90, 70, 70)]
 PAD = 8
-SIZE = {"pteranodon": 2048, "pteranodon_wing": 2048}
+SIZE = {"pteranodon": 2048, "pteranodon_wing": 2048, "pteranodon_saddle": 1024}
+# Layouts pinned by file (model.py: layout.json, saddle.py: saddle_layout.json), whose pieces must not move.
+PINNED = ("pteranodon", "pteranodon_saddle")
 
 
 def font(size):
@@ -215,7 +217,7 @@ def main():
             print(f"draw: {name}: faces laid the other way round from their piece:", bad)
         pic, colours = pieces(left, size)
         published = os.path.join(HERE, f"{name}_pieces.png")
-        if name == "pteranodon" and os.path.exists(published) and "--new-layout" not in sys.argv:
+        if name in PINNED and os.path.exists(published) and "--new-layout" not in sys.argv:
             old = np.array(Image.open(published).convert("RGB"))
             gone = moved(old, pic, colours) if old.shape == pic.shape else {"(another size)": 1}
             if gone or (old != pic).any():
@@ -225,9 +227,10 @@ def main():
         Image.fromarray(pic).save(published)
         part = {"size": size}
         maps(left, size, name, part)
-        rename = (lambda n: n.replace("_l", "")) if name == "pteranodon" else (lambda n: n.replace("membrane_", "membrane, ").replace("_l", ""))
-        title = (f"{name}: the animal's left side; the right side is its mirror" if name == "pteranodon" else
-                 f"{name}: the left wing; the right wing is its mirror. Membrane above as seen from above, below it as seen from below")
+        rename = (lambda n: n.replace("membrane_", "membrane, ").replace("_l", "")) if name == "pteranodon_wing" else (lambda n: n.replace("_l", ""))
+        title = {"pteranodon": f"{name}: the animal's left side; the right side is its mirror",
+                 "pteranodon_wing": f"{name}: the left wing; the right wing is its mirror. Membrane above as seen from above, below it as seen from below",
+                 "pteranodon_saddle": f"{name}: the saddle's left side and middle; the right side is its mirror"}[name]
         layout(left, size, title, labels_of(left, rename)).save(os.path.join(HERE, f"{name}_layout.png"))
         part.update({
             f"{name}_layout.png": "the texture's pieces in soft region colours, named",

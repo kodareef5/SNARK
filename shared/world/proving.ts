@@ -1,11 +1,11 @@
 // A graybox test map generated from code, so the same code yields the same map everywhere. Each feature exercises one engine
 // behaviour, and the server, the tests, the headless rasterizer and the browser probe all load it.
 
-import type { MapDims } from "../coords.ts";
+import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import type { Registry } from "../content/registry.ts";
 import { Rng } from "../rng.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
-import { nodeLayers, type NodeLayer } from "./mapfile.ts";
+import { nodeLayers, type NodeLayer, type NodeList } from "./mapfile.ts";
 import type { NodeSource } from "./nodes.ts";
 import { obeliskStatics, type ObeliskPlace } from "./obelisks.ts";
 import type { StructureStore } from "./structures.ts";
@@ -199,7 +199,8 @@ const OTHER_KINDS = 130;
  * scatters trees, rocks and bushes over all of that, as it always has, so a world saved before the second came keeps every node
  * where it was and of its kind. The second grows the other kinds from 130 m out, so the woods nearest the plaza are as they
  * were, by a simple rule: mangroves, palms, palmetto and sea grape by the water, palms, figs, ferns and creeper on the low
- * ground, and figs, banyans, rubble and metal rocks higher up, with an elder oak here and there among the figs.
+ * ground, and figs, banyans, rubble and metal rocks higher up, with an elder oak here and there among the figs. The third
+ * lists the resource nodes of PROVING_RESOURCES.
  */
 export function provingNodeLayers(hf: Heightfield): NodeLayer[] {
   const side = PROVING_DIMS.chunksX * 64;
@@ -233,7 +234,49 @@ export function provingNodeLayers(hf: Heightfield): NodeLayer[] {
       zoneCell: ZONE_CELL,
       zone,
     },
+    resourceNodes(),
   ];
+}
+
+/**
+ * The stations wave's resource nodes, listed one by one just off the plaza so a survivor at the spawn point finds them
+ * within 100 m: where the pool's bowl runs past the plaza's west edge, five clams (silica pearls, "usually found in groups
+ * of around 5") in 2 to 3 m of water and an oil rock at either end in a metre, both of the sea floor as the reference game
+ * has them; and on the hill's flank past the east edge, 9 to 10 m up, the proving ground's nearest high ground, two crystal
+ * outcrops between two obsidian rocks, which it puts on mountains. A third layer, so every slot of the other two keeps its
+ * place, and no slot within 3 m of another layer's node.
+ */
+export const PROVING_RESOURCES: readonly (readonly [id: string, x: number, z: number, yaw: number])[] = [
+  ["core:oil_rock", 154, 245, 9000],
+  ["core:clam", 155, 250, 0],
+  ["core:clam", 154.5, 253, 21000],
+  ["core:clam", 155.5, 256, 43000],
+  ["core:clam", 154, 259, 12000],
+  ["core:clam", 155, 262, 56000],
+  ["core:oil_rock", 154, 267, 30000],
+  ["core:obsidian_rock", 358, 248, 16384],
+  ["core:crystal_rock", 358, 252, 5000],
+  ["core:crystal_rock", 358, 260, 37000],
+  ["core:obsidian_rock", 358, 264, 49152],
+];
+
+function resourceNodes(): NodeList {
+  const units = 65536 / CHUNK_SIZE;
+  const chunks = PROVING_DIMS.chunksX * PROVING_DIMS.chunksZ;
+  const kinds = [...new Set(PROVING_RESOURCES.map(([id]) => id))];
+  // A node's slot is its place among its chunk's rows, in the order listed.
+  const rows = PROVING_RESOURCES.map(([id, x, z, yaw]) => ({ id, x, z, yaw, chunk: chunkAt(PROVING_DIMS, x, z) })).sort((a, b) => a.chunk - b.chunk);
+  const first = new Uint32Array(chunks + 1);
+  for (const r of rows) first[r.chunk + 1]!++;
+  for (let c = 0; c < chunks; c++) first[c + 1]! += first[c]!;
+  return {
+    kinds,
+    first,
+    kind: Uint8Array.from(rows, (r) => kinds.indexOf(r.id)),
+    x: Uint16Array.from(rows, (r) => (r.x - chunkCx(PROVING_DIMS, r.chunk) * CHUNK_SIZE) * units),
+    z: Uint16Array.from(rows, (r) => (r.z - chunkCz(PROVING_DIMS, r.chunk) * CHUNK_SIZE) * units),
+    yaw: Uint16Array.from(rows, (r) => r.yaw),
+  };
 }
 
 /** The proving ground's nodes on `hf`, which is its ground. */

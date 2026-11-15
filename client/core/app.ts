@@ -21,7 +21,7 @@ import { structName } from "./ui/structure.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
 import { Controls } from "./controls.ts";
-import { HudModel, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
+import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
 import { SQUEEZE_MOST } from "./render/budget.ts";
@@ -30,11 +30,12 @@ import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { Falling } from "./rubble.ts";
-import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
+import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
-import { handleIndex } from "../../shared/ids.ts";
+import { handleGen, handleIndex } from "../../shared/ids.ts";
+import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
@@ -113,12 +114,17 @@ export class App {
   readonly ui = new Ui();
   readonly cam = new Camera();
   readonly hud = new HudModel();
+  /** Read-only to the shell: native sound follows this state and never drives simulation. */
+  readonly vehicleTelemetry = new VehicleTelemetry();
   readonly feedback = new Feedback();
   /** Laser dots this frame (client/core/render/laser.ts). */
   readonly lasers = new Lasers();
   /** The frame's view and eye, and whether its own laser is on, for the sights. */
   private readonly sightAt = { yaw: 0, pitch: 0, laser: false, x: 0, y: 0, z: 0 };
   private readonly spot = [0, 0, 0];
+  /** Where a passenger sits, for its camera (Characters.seat), and the pose of the creature it sits on. */
+  private readonly seatSpot = new Float64Array(12);
+  private readonly mountState = new AnimState();
   readonly shots: Shots;
   /** Null until the world arrives. */
   falling: Falling | null = null;
@@ -157,6 +163,7 @@ export class App {
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private readonly aim = [0, 0, 0];
+  private readonly seatAt = [0, 0, 0];
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
 
   /** The session's registry. It is content as written until the welcome, then as the server tuned it. */
@@ -555,6 +562,19 @@ export class App {
     return `${usable ? "E use  " : mine ? "hold E  " : ""}${structName(this.reg, kind)}  ${Math.ceil(t.hp[ref & 0xffff]!)}/${this.reg.maxHp[kind]}`;
   }
 
+  /**
+   * The riding camera of a creature of `kind`, entity `id`: how far above its origin its rider's head is, from its saddle's
+   * steering seat, and its boom: 1.5 m and 1.2 times as big as the creature is (its rig's reach, else its body).
+   */
+  private mountView(kind: number, id: number): { up: number; boom: number } {
+    const r = this.remote;
+    let saddle = 0;
+    for (let i = 0; i < r.count; i++) if (r.id[i] === id) saddle = r.gear[i * GEAR_COUNT + GEAR_WORN]!;
+    const seat = this.reg.saddleSeats[saddle]?.find((s) => s.driver);
+    const size = Math.max(this.scene?.characters.reach(kind) ?? 0, this.reg.bodyHeight[kind]!, 2 * this.reg.bodyRadius[kind]!);
+    return { up: seat ? seat.anchor[1] + 0.75 : this.reg.bodyHeight[kind]! + 0.5, boom: 1.5 + 1.2 * size };
+  }
+
   /** Labels what the use button would act on, with the same ray the server casts. The server's answer is the one that counts. */
   private prompt(world: CollisionWorld, eye: number): string {
     const s = this.session;
@@ -563,6 +583,12 @@ export class App {
     const ox = s.own.x;
     const oy = s.own.y + eye;
     const oz = s.own.z;
+    if (s.driving >= 0) return this.reg.vehicle[s.bodyKind] ? "E  exit vehicle" : "E  get off";
+    // Seats in cars and saddles have a slot; a carried body has none. Who steers is handled above.
+    if (s.own.seatSlot !== 0 && s.own.seat > 0) {
+      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1) return this.reg.vehicle[r.kind[i]!] ? "E  exit passenger seat" : "E  get off";
+      return "E  get off";
+    }
     if (this.holding >= 0) return "E  set down   click  throw";
     lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
     const struck = castWorld(world, ox, oy, oz, d[0]!, d[1]!, d[2]!, REACH);
@@ -581,6 +607,36 @@ export class App {
       }
     }
     if (hit >= 0) {
+      // The server also treats using an occupant as using its vehicle or creature, useful when a person fills the doorway.
+      if (r.seatSlot[hit] !== 0) for (let j = 0; j < r.count; j++) {
+        if (r.id[j] === r.seat[hit]! - 1 && r.gen[j] === r.seatGen[hit]) { hit = j; break; }
+      }
+      const car = this.reg.vehicle[r.kind[hit]!];
+      if (car) {
+        const frame = { x: r.x[hit]!, y: r.y[hit]!, z: r.z[hit]!, yaw: r.yaw[hit]!, pitch: r.vehiclePitch[hit]!, roll: r.vehicleRoll[hit]! };
+        let slot = 0, near = Infinity;
+        for (let j = 0; j < car.seats.length; j++) {
+          vehiclePoint(frame, car.seats[j]!.entry, this.seatAt);
+          const d = Math.hypot(ox - this.seatAt[0]!, oz - this.seatAt[2]!);
+          if (d < near) { near = d; slot = j; }
+        }
+        let occupied = false;
+        for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === slot + 1) occupied = true;
+        return occupied ? car.seats[slot]!.driver ? "E  carjack driver" : "Passenger seat occupied" : car.seats[slot]!.driver ? "E  enter driver seat" : "E  enter passenger seat";
+      }
+      // A saddled creature of the tribe, grown and awake, is ridden: its steering seat if it is free, else a passenger's.
+      const seats = this.reg.saddleSeats[r.gear[hit * GEAR_COUNT + GEAR_WORN]!];
+      if (seats && s.tribe.team !== 0 && r.team[hit] === s.tribe.team && r.grown[hit] === 0 && (r.cue[hit]! & CUE_OUT) === 0) {
+        const taken = (k: number): boolean => {
+          for (let j = 0; j < r.count; j++) if (r.seat[j] === r.id[hit]! + 1 && r.seatGen[j] === r.gen[hit] && r.seatSlot[j] === k + 1) return true;
+          return false;
+        };
+        const id = this.reg.ids[r.kind[hit]!] ?? "";
+        const name = r.name[hit] || `the ${id.slice(id.indexOf(":") + 1)}`;
+        const steer = seats.findIndex((seat) => seat.driver);
+        if (!taken(steer)) return `E  ride ${name}`;
+        return seats.some((seat, k) => !seat.driver && !taken(k)) ? `E  ride ${name} as a passenger` : "Every seat is taken";
+      }
       if ((r.flags[hit]! & VIEW_FLAG_PROP) !== 0) {
         // On a prop, a nonzero grown tick marks a fertilised egg. An egg that is an item is taken up.
         const left = waitWords(Math.max(0, Math.ceil((r.grown[hit]! - s.serverTick) / TICK_RATE)));
@@ -716,9 +772,11 @@ export class App {
     const hud = this.hud;
     const c = this.controls;
     this.nowMs = nowMs;
+    hud.vehicle = null;
 
     this.travel(nowMs);
     if (session.state === "closed") {
+      this.vehicleTelemetry.stop();
       // Only the reasons a player can act on are spelled out.
       hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
@@ -734,6 +792,7 @@ export class App {
     if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
     const world = session.world;
     if (session.state !== "active" || !world) {
+      this.vehicleTelemetry.stop();
       hud.status = "connecting";
       this.ui.build(aspect, hud, session);
       if (this.sound) this.sounds?.hush(this.sound);
@@ -766,6 +825,8 @@ export class App {
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
     hud.status = this.debug ? `${this.scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
+    // Sampled before the camera, which puts a passenger in its seat on the vehicle as it is drawn.
+    session.sampleRemote(this.remote);
 
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
     const cam = this.cam;
@@ -781,6 +842,15 @@ export class App {
     const bx = session.ownPrev.x + (session.own.x - session.ownPrev.x) * a + session.smoothX;
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
+    const car = this.reg.vehicle[session.bodyKind];
+    if (alive && car && session.driving >= 0) {
+      this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
+      hud.vehicle = this.vehicleTelemetry;
+    } else this.vehicleTelemetry.stop();
+    const carYaw = session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
+    const passenger = alive && session.driving < 0 && session.own.seatSlot !== 0 && session.own.seat > 0;
+    // A passenger's chase camera is third person, so it obeys the same server rule.
+    const chase = passenger && session.thirdPerson;
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.
@@ -804,7 +874,47 @@ export class App {
       }
       lookPitch = lookPitch > PI / 2 ? PI / 2 : lookPitch;
     }
-    this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch);
+    // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
+    if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + car.spec.height * 2 / 3, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: car.spec.halfLength * 3 });
+    else if (alive && session.driving >= 0) {
+      // Riding, the camera is behind where the rider looks, which the mount turns to and flies along: at the rider's head,
+      // on a boom as long as the mount is big, and drawn in by whatever is in the way.
+      const view = this.mountView(session.bodyKind, session.driving);
+      const o = session.own;
+      this.view.placeVehicle(cam, world, bx, by + view.up, bz, lookYaw, lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: session.driving, boom: view.boom });
+    } else if (passenger) {
+      let px = bx, py = by + eye, pz = bz, heading = c.yaw, boom: number | undefined;
+      for (let i = 0; i < this.remote.count; i++) {
+        const r = this.remote;
+        const ch = this.scene.characters;
+        if (r.id[i] !== session.own.seat - 1 || r.gen[i] !== session.own.seatGen) continue;
+        heading = r.yaw[i]!;
+        const vehicle = ch.vehicle(r.kind[i]!);
+        if (chase) {
+          const view = vehicle ? null : this.mountView(r.kind[i]!, r.id[i]!);
+          px = r.x[i]!; py = r.y[i]! + (view?.up ?? 1); pz = r.z[i]!;
+          boom = view?.boom;
+        } else if (vehicle) {
+          const pose = { pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, steering: r.steering[i]!, wheelAngle: r.wheelAngle[i]! };
+          if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.seatSpot, session.own.seatSlot, pose) &&
+            ch.seatedOrigin(session.ownKind, session.ownLook, ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading)!, this.seatSpot)) {
+            // Preserve the authority's root + stance-eye contract; an authored seated eye/muzzle must change combat too.
+            px = this.seatSpot[0]!; py = this.seatSpot[1]! + eye; pz = this.seatSpot[2]!;
+          }
+        } else {
+          // On a saddle, the eye is over the seat's origin as the server has it, posed as its creature is drawn.
+          const ms = this.mountState;
+          ms.unpack(r.anim[i]!, r.cue[i]!);
+          ms.seed = bodySeed(r.id[i]!);
+          if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, ms, r.tick, this.seatSpot, session.own.seatSlot, undefined, r.gear[i * GEAR_COUNT + GEAR_WORN]!)) {
+            px = this.seatSpot[0]!; py = this.seatSpot[1]! + eye; pz = this.seatSpot[2]!;
+          }
+        }
+        break;
+      }
+      if (chase) this.view.placeVehicle(cam, world, px, py, pz, lookYaw, lookPitch, heading, 0, dt, false, boom === undefined ? undefined : { vx: 0, vy: 0, vz: 0, id: session.own.seat - 1, boom });
+      else this.view.place(cam, world, px, py, pz, lookYaw, lookPitch, dt);
+    } else this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch, dt);
     this.view.thirdPerson = third;
     cam.aspect = aspect;
     // Aiming narrows the view in proportion to the player's setting; through a sight, by its zoom. The mouse slows to match.
@@ -812,7 +922,8 @@ export class App {
     const base = (settings.fov * Math.PI) / 180;
     const sight = gun && session.driving < 0 ? attachmentKind(this.reg, session.inventory, held) : "";
     const zoom = sight === "scope" ? SCOPE_ZOOM : sight === "holo" ? HOLO_ZOOM : 0;
-    const want = aiming ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
+    let want = aiming ? (zoom > 0 ? zoomed(base, zoom) : base * AIM_FOV) : base;
+    if (hud.vehicle && !aiming) want += Math.min(7 * Math.PI / 180, hud.vehicle.speed / 30 * 7 * Math.PI / 180);
     hud.scope = aiming && sight === "scope";
     hud.holo = alive && sight === "holo";
     hud.tint = hud.holo && aiming ? HOLO_TINT : 0;
@@ -822,7 +933,7 @@ export class App {
     this.sightAt.x = bx;
     this.sightAt.y = by + eye;
     this.sightAt.z = bz;
-    this.fov += (want - this.fov) * Math.min(1, dt / 70);
+    this.fov += (want - this.fov) * (hud.vehicle ? 1 - Math.exp(-Math.max(0, dt) / 260) : Math.min(1, dt / 70));
     cam.fovY = this.fov;
     c.zoom = (this.fov / base) * settings.sensitivity;
     // The crosshair opens with the cone the next shot would leave within.
@@ -834,8 +945,11 @@ export class App {
     body.z = bz;
     body.yaw = c.yaw;
     body.tick = session.tickClock;
-    body.firstPerson = !third;
+    body.firstPerson = !third && !chase;
     body.id = handleIndex(session.ownHandle);
+    body.generation = handleGen(session.ownHandle);
+    body.vehicle = undefined;
+    body.attachment = passenger ? { host: session.own.seat - 1, slot: session.own.seatSlot, generation: session.own.seatGen } : undefined;
     body.look = session.ownLook;
     const inv = session.inventory;
     body.gear.fill(0);
@@ -855,13 +969,24 @@ export class App {
     const riding = alive && session.driving >= 0;
     if (riding) {
       body.kind = session.bodyKind;
-      body.yaw = (session.own.yaw / 65536) * TAU;
+      body.yaw = car ? carYaw : (session.own.yaw / 65536) * TAU;
+      if (car) body.vehicle = {
+        pitch: session.ownPrev.vehiclePitch + (session.own.vehiclePitch - session.ownPrev.vehiclePitch) * a,
+        roll: session.ownPrev.vehicleRoll + (session.own.vehicleRoll - session.ownPrev.vehicleRoll) * a,
+        steering: session.ownPrev.steering + (session.own.steering - session.ownPrev.steering) * a,
+        wheelAngle: session.ownPrev.wheelAngle + Math.atan2(Math.sin(session.own.wheelAngle - session.ownPrev.wheelAngle), Math.cos(session.own.wheelAngle - session.ownPrev.wheelAngle)) * a,
+        groundPitch: session.ownPrev.vehicleGroundPitch + (session.own.vehicleGroundPitch - session.ownPrev.vehicleGroundPitch) * a,
+        groundRoll: session.ownPrev.vehicleGroundRoll + (session.own.vehicleGroundRoll - session.ownPrev.vehicleGroundRoll) * a,
+        rideOffset: session.ownPrev.vehicleRideOffset + (session.own.vehicleRideOffset - session.ownPrev.vehicleRideOffset) * a,
+        grounded: session.own.grounded,
+      };
       body.firstPerson = false;
       body.id = session.driving;
       body.look = null;
       body.gear.fill(0);
       body.state.stance = 0;
-      body.state.setMotion(session.own.vx, session.own.vz, body.yaw, 0);
+      // Posed from what the server poses it from: the look as the input carries it, and a flyer's climb.
+      body.state.setMotion(session.own.vx, session.own.vz, body.yaw, (Math.round((c.pitch / (PI / 2)) * 16384) * (PI / 2)) / 16384, session.own.vy);
       body.state.setAction(session.own.act, 0, session.simTick - session.own.actTicks);
       body.state.seed = bodySeed(body.id);
       // The mount's colours, its saddle and its cues come from its remote copy.
@@ -870,6 +995,8 @@ export class App {
       const r = this.remote;
       for (let i = 0; i < r.count; i++) {
         if (r.id[i] !== session.driving) continue;
+        if (body.vehicle) body.vehicle.doors = r.vehicleDoors[i]!;
+        body.generation = r.gen[i]!;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
         for (let k = 0; k < GEAR_COUNT; k++) body.gear[k] = r.gear[i * GEAR_COUNT + k]!;
         body.state.unpackCue(r.cue[i]!);
@@ -878,7 +1005,6 @@ export class App {
     this.scene.skip = riding ? session.driving : -1;
     this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
-    session.sampleRemote(this.remote);
     // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
     this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
     this.tamedHeard = session.tamed.length;
@@ -915,6 +1041,7 @@ export class App {
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
+    if (alive && car) hud.ammo = "";
     this.listen(hud);
     const vol = this.ui.settings;
     if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));

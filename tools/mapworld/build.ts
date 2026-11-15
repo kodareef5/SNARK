@@ -13,7 +13,8 @@ import { chunkCount } from "../../shared/coords.ts";
 import { mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
-import { readLayers } from "../map/layers.ts";
+import { readLayers, waterLayer } from "../map/layers.ts";
+import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
 import { makeGround, S, type World } from "./ground.ts";
@@ -21,6 +22,8 @@ import { makeNodes, ZONE_CELL } from "./nodes.ts";
 import { placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.ts";
 import { STATIC_LAYERS, siteOf } from "./statics.ts";
 import { makeTint } from "./tint.ts";
+import { vocabulary } from "./ruin-vocabulary.ts";
+import { growRuins } from "./ruin-growth.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
@@ -50,6 +53,9 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     lap(`${pieces.length} static pieces of ${layer.name}`);
     return pieces;
   });
+  // A kind the content does not have would load nowhere: say so here, not when a server or a picture opens the map.
+  const unknown = [...new Set(layered.map((p) => p.kind))].filter((kind) => !reg.index.has(kind));
+  if (unknown.length) throw new Error(`static pieces of kinds the content does not have: ${unknown.join(", ")}`);
   // The obelisks come last, so every other piece keeps its slot in its chunk.
   const obelisks = placeObelisks(ground, world, toSample, size, staticCover(layered, reg, n, size));
   const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 })))];
@@ -57,19 +63,20 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const tint = makeTint(ground, world);
   lap("colour");
   const spawns = placeSpawns(ground, world, toSample, size);
-  const regions = placeRegions(ground, size);
+  const regions = placeRegions(ground, size, spawns, world.easyAroundSpawns ?? 0);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
   // so none stands in it or before its terminal.
   const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const)];
-  const nodes = makeNodes(ground, world, (col, row) => site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1 || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1);
+  const growth = world.heaps === false ? vocabulary(source).growth : undefined;
+  const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
 
   const layers = join(ROOT, "var/maps", name, "layers");
   rmSync(layers, { recursive: true, force: true });
   mkdirSync(layers, { recursive: true });
   const put = (file: string, data: string | Uint8Array): void => writeFileSync(join(layers, file), data);
-  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunks, chunks], minY: world.minY, stepY: world.stepY, seaLevel: 0 }, null, 2)}\n`);
+  put("map.json", `${JSON.stringify({ id: world.id, chunks: [chunks, chunks], minY: world.minY, stepY: world.stepY, seaLevel: world.sea === false ? null : 0 }, null, 2)}\n`);
   const heights = new Uint8Array(n * n * 2);
   const view = new DataView(heights.buffer);
   let deepest = Infinity;
@@ -86,14 +93,27 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   put("tint.u8", tint);
   put("plants.png", writeGrey(nodes.side, nodes.side, nodes.plants));
   put("stones.png", writeGrey(nodes.side, nodes.side, nodes.stones));
+  put("sea.png", writeGrey(nodes.side, nodes.side, nodes.sea));
   put("nodes.json", `${JSON.stringify(nodes.layers, null, 2)}\n`);
   const lines = (rows: readonly unknown[]): string => `[\n${rows.map((r) => `  ${JSON.stringify(r)}`).join(",\n")}\n]\n`;
   put("spawns.json", lines(spawns));
   put("regions.json", lines(regions));
   if (statics.length > 0) put("statics.json", lines(statics));
+  // Lakes above the sea as bodies of water, in squares of a sample.
+  if (ground.lakes) {
+    const water = waterLayer({ chunksX: chunks, chunksZ: chunks }, world.minY, world.stepY, 2, ground.lakes.bodies, lakeSquares(ground.lakes, n, 2));
+    put("water.json", water.json);
+    put("water.png", water.png);
+  }
   lap(`layers in ${layers}`);
 
-  const map = readLayers(layers);
+  let map = readLayers(layers);
+  if (growth) {
+    const grown = growRuins(map, compiled.registry, site, growth);
+    map = { ...map, nodes: [grown.layer] };
+    writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "growth.json"), JSON.stringify(grown.summary, null, 2) + "\n");
+    lap("growth placed around structures and routes");
+  }
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
   writeFileSync(`${file}.tmp`, bytes);
@@ -123,7 +143,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   for (let j = 0; j + 1 < hf.nz; j++) {
     for (let i = 0; i + 1 < hf.nx; i++) {
       const h = hf.sample(i, j);
-      if (h < hf.seaLevel) continue;
+      if (h < hf.waterAt(i * hf.cell + 1, j * hf.cell + 1)) continue;
       land++;
       const gx = (hf.sample(i + 1, j) - h) / hf.cell;
       const gz = (hf.sample(i, j + 1) - h) / hf.cell;
@@ -175,6 +195,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     landShareWalkable: Number((walkable / land).toFixed(4)),
     landSquareMetres: land * 4,
     bridges: ground.bridges,
+    ...(ground.lakes ? { lakes: ground.lakes.made.map((m) => ({ ...m, squareMetres: m.water * 4 })) } : {}),
     nodes: Object.fromEntries([...byKind.entries()].sort((a, b) => b[1] - a[1])),
     nodeTotal: [...byKind.values()].reduce((a, b) => a + b, 0),
     zoneCell: ZONE_CELL,

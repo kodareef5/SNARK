@@ -209,6 +209,12 @@ export interface CreatureAsset {
     readonly reparent?: Readonly<Record<string, string>>;
     /** The most bones the rig may have. The engine takes 127. */
     readonly bones?: number;
+    /**
+     * Every bone, in the order the rig lists them, where something depends on that order (a vehicle's measured
+     * contract). The exporter lists a joint's children by name; without this the rig takes that order. The root is
+     * first and every bone comes after its parent.
+     */
+    readonly order?: readonly string[];
   };
   readonly zones: readonly ZoneSpec[];
   readonly sockets: readonly SocketSpec[];
@@ -296,7 +302,7 @@ export interface PieceSpec {
   readonly errors?: readonly number[];
   readonly hold?: "prop_r" | "prop_l";
   readonly dropped?: "auto" | string;
-  readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number };
+  readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number; readonly shift?: readonly [number, number] };
 }
 
 export interface PiecesAsset {
@@ -318,7 +324,9 @@ export interface PiecesAsset {
    * - `dropped`: the piece as it lies on the ground, `<id>/dropped`. "auto" lays the held piece on its broadest side;
    *   the name of another Blender object gives a lying piece of its own.
    * - `icon`: the view its inventory picture is drawn from, where the usual three-quarter view does not suit it.
-   *   Angles in radians round and above, `roll` about the view, `zoom` past the framing that fits it.
+   *   Angles in radians round and above, `roll` about the view, `zoom` past the framing that fits it, and `shift` the
+   *   middle of the picture moved right and up, as shares of the half side of that framing: with a zoom, it shows the
+   *   part of a long thing that says what it is, as the spear's head.
    */
   readonly pieces: readonly PieceSpec[];
   /**

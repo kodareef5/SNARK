@@ -1,8 +1,10 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
+// --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
+// --flight draws the block-out pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -15,7 +17,7 @@ import { DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, F
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
-import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
+import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
 import { AnimState, CUE_DEAD, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
 import { sizeSpan } from "../shared/anim/corpse.ts";
@@ -24,9 +26,11 @@ import type { Rig } from "../shared/anim/rigs.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
-import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, CMD_SELECT, KEY_BYTES } from "../shared/net/protocol.ts";
 import { dress } from "../server/commands/combat.ts";
 import { Inventory } from "../shared/sim/items.ts";
+import { stationRecipes } from "../client/core/ui/station.ts";
+import { TICK_RATE } from "../shared/coords.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
@@ -60,7 +64,10 @@ import { drawUi } from "./snap/ui.ts";
 import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
 import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
+import { RIDE_MOMENTS, rideGame, rideScene, type Game, type RideMoment } from "./snap/ride.ts";
 import { saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
+import { flyerPackBytes, flyerRegistry } from "../tests/fixtures/flyer/flyer.ts";
+import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
 import { frozenPack } from "../tests/fixtures/pack.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
@@ -268,10 +275,11 @@ export interface ProvingView {
 /**
  * The proving ground with a camera at the spawn point and two bodies standing in view. With `net`, the scene has only
  * the boot pack at start and fetches other levels over that network, and the rasterizer draws only what was uploaded.
- * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them.
+ * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them. `game` is content and a pack
+ * of its own in place of the core's.
  */
-export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile): ProvingView {
-  const reg = compileContent(CORE_CONTENT).registry!;
+export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile, game?: { reg: Registry; pack: Uint8Array }): ProvingView {
+  const reg = game?.reg ?? compileContent(CORE_CONTENT).registry!;
   const dims = map?.dims ?? PROVING_DIMS;
   const hf = map ? mapHeightfield(map) : buildProvingHeightfield();
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -279,7 +287,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   else populateProving(structs, hf, reg);
   const split = !net ? null : files ? { files: files.files.map((bytes) => ({ bytes })), manifest: files.manifest } : splitPack(corePackBytes(), "core");
   const port = split ? new FakeNet(split.files.map((f) => f.bytes), net) : null;
-  const pack = parsePack(split ? split.files[0]!.bytes : corePackBytes());
+  const pack = parsePack(split ? split.files[0]!.bytes : (game?.pack ?? corePackBytes()));
   // Fills every chunk's nodes, as a client near each would have them. A map's are filled round the camera, and drawn far past that as a client draws them.
   const nodes = new NodeField(dims, reg, map ? (mapNodes(map, hf, reg) ?? { perChunk: 0, at: (_c, _i, out) => void (out.kind = 0) }) : provingNodes(hf, reg));
   if (!map) nodes.retain(0, 64, 1, () => false);
@@ -696,10 +704,13 @@ export function looksScene(view: ProvingView, facing: number): void {
   cam.fovY = 0.27;
 }
 
-/** A whole client against a whole server in this process, drawn with its interface. `setup` steers it before the picture is taken. */
-export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void, h: Harness) => void): Uint8ClampedArray {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const pack = parsePack(corePackBytes());
+/**
+ * A whole client against a whole server in this process, drawn with its interface. `setup` steers it before the picture is
+ * taken. `game` is content, a pack and the server's clips and rigs of its own in place of the core's.
+ */
+export function clientPicture(width: number, height: number, look: Uint8Array | null, setup: (app: App, run: (ms: number) => void, h: Harness) => void, game?: Game): Uint8ClampedArray {
+  const h = new Harness({}, 1, 60, { dev: true, ...(game?.host ?? {}) }, game?.reg);
+  const pack = parsePack(game?.pack ?? corePackBytes());
   const app = new App(h.join("ada", {}, { manual: true, look }), h.reg, pack);
   let packet = app.frame(0, width, height);
   const run = (ms: number): void => h.run(ms, (now) => (packet = app.frame(now, width, height)));
@@ -714,6 +725,9 @@ export function clientPicture(width: number, height: number, look: Uint8Array | 
   drawUi(raster.color, width, height, app.ui.frame);
   return raster.color;
 }
+
+/** The view a model is drawn with: narrow, so that near and far parts are drawn nearly the same size. */
+const MODEL_FOV = 0.2;
 
 export interface ModelShot {
   /** Index of the mesh in the pack, and the level of it to draw. */
@@ -735,6 +749,8 @@ export interface ModelShot {
   floor?: number;
   /** Lit as the lit tiers light, which is the default, or as low poly. */
   lit?: boolean;
+  /** How many times nearer the picture is than the ball: the view narrowed from where the ball puts the camera, so near and far parts keep their sizes. */
+  zoom?: number;
   /** The level of the hurt and decay layer of each material that has one, in LAYER_LEVELS (client/core/render/surface.ts); 0 for none. Its texture must be on the card. */
   layer?: number;
 }
@@ -759,8 +775,7 @@ export class ModelView {
     this.pack = pack;
     this.background = background;
     this.cam.aspect = width / height;
-    // Narrow, so that near and far parts are drawn nearly the same size.
-    this.cam.fovY = 0.2;
+    this.cam.fovY = MODEL_FOV;
     this.packet.sky.set(background);
     this.packet.fogStart = 1e8;
     this.packet.fogEnd = 2e8;
@@ -777,6 +792,7 @@ export class ModelView {
     const a = (shot.around * Math.PI) / 180;
     const e = (shot.above * Math.PI) / 180;
     // Far enough off that the ball fits the narrower way.
+    cam.fovY = MODEL_FOV;
     const half = Math.min(cam.fovY / 2, Math.atan(Math.tan(cam.fovY / 2) * cam.aspect));
     const far = shot.radius / Math.sin(half);
     cam.x = shot.centre[0] + far * Math.sin(a) * Math.cos(e);
@@ -786,6 +802,7 @@ export class ModelView {
     cam.pitch = -e;
     cam.near = Math.max(0.05, far - shot.radius * 1.5);
     cam.far = far + shot.radius * 1.5;
+    if (shot.zoom !== undefined) cam.fovY = 2 * Math.atan(Math.tan(MODEL_FOV / 2) / shot.zoom);
     cam.update();
     p.beginFrame();
     p.viewProj.set(cam.viewProj);
@@ -877,6 +894,18 @@ export class ModelView {
   }
 }
 
+/**
+ * A session for the interface to be drawn from without a server: a real one on a connection that goes nowhere, so a
+ * screen finds every field it reads (an object made by hand once lacked `tamed`, and `--ui --inventory` crashed), at
+ * server tick 1000, in the tribe `tribe`.
+ */
+export function standInSession(reg: Registry, tribe = ""): ClientSession {
+  const s = new ClientSession({ open: false, send: () => {}, close: () => {}, onMessage: null, onClose: null }, { name: "snap", key: new Uint8Array(KEY_BYTES), registry: reg, resolveMap: () => null });
+  s.renderClock = 1000;
+  s.tribe.name = tribe;
+  return s;
+}
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (name: string): string | undefined => {
@@ -895,6 +924,51 @@ if (import.meta.main) {
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--flight")) {
+    // The block-out pteranodon ridden through a flight (tools/snap/flight.ts), a picture at each moment, four across.
+    const t0 = performance.now();
+    const f = recordFlight();
+    const shots = moments(f);
+    const [fw, fh] = (arg("size") ?? "400x260").split("x").map(Number) as [number, number];
+    const across = 4;
+    const [W, H] = [across * fw, Math.ceil(shots.length / across) * fh];
+    const pixels = new Uint8ClampedArray(W * H * 4);
+    const view = provingView(fw, fh, undefined, undefined, undefined, { reg: flyerRegistry(), pack: flyerPackBytes() });
+    let next = 0;
+    for (let i = 0; i < f.ticks.length && next < shots.length; i++) {
+      stage(f, i, view.remote);
+      // Every tick is drawn, as a client draws it, so each body's gait goes on from the last; only the moments are kept.
+      for (const half of [0.5, 0]) {
+        view.remote.tick = f.ticks[i]!.tick - half;
+        if (half > 0 || shots[next]!.at !== i) {
+          view.scene.build(view.cam, view.remote);
+          continue;
+        }
+        frameFlight(f, shots[next]!, view.cam, (x, z) => view.hf.heightAt(x, z));
+        // The rasterizer saw none of the uploads the frames before carried.
+        view.scene.resetUploads();
+        view.render();
+        const [ox, oy] = [(next % across) * fw, Math.floor(next / across) * fh];
+        for (let y = 0; y < fh; y++) pixels.set(view.raster.color.subarray(y * fw * 4, (y + 1) * fw * 4), ((oy + y) * W + ox) * 4);
+        label(pixels, W, shots[next]!.label, ox + 6, oy + 6);
+        // --each DIR: each moment as a picture of its own as well.
+        const each = arg("each");
+        if (each) {
+          const one = view.raster.color.slice();
+          label(one, fw, shots[next]!.label, 6, 6);
+          mkdirSync(resolve(each), { recursive: true });
+          writeFileSync(resolve(each, `${String(next + 1).padStart(2, "0")}-${shots[next]!.label.replace(/[^a-z0-9]+/g, "-").replace(/-$/, "")}.png`), encodePng(fw, fh, one));
+        }
+        next++;
+      }
+    }
+    label(pixels, W, "the block-out pteranodon ridden, as a client draws it from what the server sends", 6, H - 22);
+    const out = resolve(arg("out") ?? "artifacts/flight.png");
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(W, H, pixels));
+    console.log(`${out}\n${W}x${H}  ${shots.length} moments of ${f.ticks.length} ticks  ${(performance.now() - t0).toFixed(0)} ms`);
     process.exit(0);
   }
   if (args.includes("--fight")) {
@@ -950,6 +1024,18 @@ if (import.meta.main) {
       }
     });
     const out = resolve(arg("out") ?? `artifacts/fight-${what}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(w!, h!, pixels));
+    console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--ride")) {
+    const species = arg("ride") ?? "pteranodon";
+    const moment = (arg("moment") ?? "air") as RideMoment;
+    if (!RIDE_MOMENTS.includes(moment)) throw new Error(`--moment takes ${RIDE_MOMENTS.join(", ")}, not "${moment}"`);
+    const [watch, passenger] = [args.includes("--watch"), args.includes("--passenger")];
+    const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => rideScene(app, run, hh, species, moment, watch, passenger), rideGame(species, passenger));
+    const out = resolve(arg("out") ?? `artifacts/ride-${species}-${moment}${watch ? "-watched" : passenger ? "-passenger" : ""}.png`);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);
@@ -1273,6 +1359,7 @@ if (import.meta.main) {
       ui.console.edit(typed);
     }
     let session: ClientSession | null = null;
+    const standIn = (tribe: string): ClientSession => standInSession(view.reg, tribe);
     if (args.includes("--inventory")) {
       // A stand-in inventory, to look at the screen without a server.
       const inv = new Inventory(40);
@@ -1283,16 +1370,39 @@ if (import.meta.main) {
       inv.set(3, item("core:fiber"), 180, 0, 0, 0);
       inv.set(12, item("core:meat"), 3, 0, 0, 4000);
       inv.set(13, item("core:waterskin"), 1, 0, 0, 0);
-      session = { inventory: inv, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" } } as unknown as ClientSession;
+      session = standIn("");
+      session.inventory = inv;
       ui.registry = view.reg;
       ui.palette = view.pack.palette;
       ui.inventory.open = true;
       ui.inventory.held = 1;
       ui.inventory.hover = 2;
     }
+    const stationId = arg("station");
+    if (stationId !== undefined) {
+      // --station ID: a station of that structure kind open beside the bag (its panel, planning/reference/stations-plan.md,
+      // S4), holding three units' ingredients of each thing it makes and every engram known. A lit kind burns for 15 minutes.
+      const kind = view.reg.index.get(stationId);
+      if (kind === undefined || view.reg.defs[kind]?.type !== "structure") throw new Error(`--station: ${stationId} is not a structure`);
+      session ??= standIn("");
+      session.inventory ??= new Inventory(40);
+      const slots = new Inventory(Math.max(1, view.reg.structSlots[kind]!));
+      let free = 0;
+      for (const item of stationRecipes(view.reg, kind)) {
+        const needs = view.reg.recipeOf[item]!;
+        for (let k = 0; k + 1 < needs.length && free < slots.cap; k += 2) if (slots.total(needs[k]!) === 0) slots.set(free++, needs[k]!, Math.min(view.reg.stack[needs[k]!]!, needs[k + 1]! * 3), 0, 0, 0);
+      }
+      session.open = { name: stationId.slice(stationId.indexOf(":") + 1).replace(/_/g, " "), inventory: slots };
+      session.station = { kind, ref: 0, out: view.reg.burning[kind] === 1 ? session.serverTick + 900 * TICK_RATE : 0, lanes: [], jobs: [] };
+      session.progress.engrams.push(...view.reg.defs.flatMap((d, k) => (d?.type === "engram" ? [k] : [])));
+      session.progress.level = 100;
+      ui.registry = view.reg;
+      ui.palette = view.pack.palette;
+      ui.inventory.open = true;
+    }
     if (args.includes("--chat")) {
       // Lines on each channel, and the chat box open on the tribe channel with a line being typed.
-      session ??= { inventory: null, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "Night Shift" } } as unknown as ClientSession;
+      session ??= standIn("Night Shift");
       const said: [number, string][] = [
         [TEXT_NOTICE, "bob joined Night Shift."],
         [TEXT_GLOBAL, "cy: anyone trading hide for narcotics? I am at the pool with far more than I can carry"],

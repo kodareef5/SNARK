@@ -6,4 +6,8 @@ export const MAPS: readonly Def[] = [
   { type: "map", id: "core:miami", label: "Miami", chunks: [127, 127], seaLevel: 0 },
   { type: "map", id: "core:tampa", label: "Tampa", chunks: [127, 127], seaLevel: 0 },
   { type: "map", id: "core:san-francisco", label: "San Francisco", chunks: [127, 127], seaLevel: 0 },
+  // No sea in its frame: its ground stands 47 to 555 m over the sea, which is the map's zero.
+  { type: "map", id: "core:los-angeles", label: "Los Angeles", chunks: [127, 127] },
+  // No sea in its frame either: its ground stands 586 to 713 m over NAVD88.
+  { type: "map", id: "core:las-vegas", label: "Las Vegas", chunks: [127, 127] },
 ];

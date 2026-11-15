@@ -11,12 +11,110 @@ const SIDE = 0.55;
 const RISE = 0.25;
 /** Gap kept between the camera and the obstacle, so the near plane does not cut into a wall. */
 const CLEAR = 0.3;
+/** Milliseconds the camera takes to go from one view to the next, and the furthest (metres) it eases rather than cuts. */
+const EASE_MS = 350;
+const EASE_REACH = 15;
+/** The vehicle's own motion, and how far back (metres) the boom holds the camera at rest: its size's, not one number for all. */
+export interface VehicleCameraMotion { vx: number; vy: number; vz: number; id?: number; boom?: number }
 
 export class Viewpoint {
   thirdPerson = false;
+  private vehicleLook = false;
+  private lastYaw = 0;
+  private lastPitch = 0;
+  private lookIdle = 0;
+  private vehicleId = -1;
+  private readonly target = new Float64Array(3);
+  private readonly targetVelocity = new Float64Array(3);
+  private boom = 6;
+  /** Where the camera was last placed, and while easing, where the ease began and the milliseconds it has left. */
+  private placed = false;
+  private readonly last = new Float64Array(3);
+  private readonly easeFrom = new Float64Array(3);
+  private easing = 0;
 
-  /** The eye is at (ex, ey, ez). `yaw` and `pitch` are radians. */
-  place(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number): void {
+  /** A centred chase view. Mouse look wins; only a moving driver's idle view gently follows the car. Returns look yaw. */
+  placeVehicle(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, heading: number, speed: number, dt: number, follow = true, motion?: VehicleCameraMotion): number {
+    const elapsed = Math.max(0, Math.min(100, dt));
+    const switched = !this.vehicleLook || (motion?.id ?? -1) !== this.vehicleId;
+    const reset = switched || Math.hypot(ex - this.target[0]!, ey - this.target[1]!, ez - this.target[2]!) > 10;
+    if (reset || Math.abs(angle(yaw - this.lastYaw)) > 0.00001 || Math.abs(pitch - this.lastPitch) > 0.00001) this.lookIdle = 0;
+    else this.lookIdle += elapsed;
+    if (follow && speed > 1 && this.lookIdle > 1200) yaw += angle(heading - yaw) * (1 - Math.exp(-elapsed / 1800));
+    this.lastYaw = yaw;
+    this.lastPitch = pitch;
+    this.vehicleLook = true;
+    this.vehicleId = motion?.id ?? -1;
+    const wanted = [ex + Math.max(-1.8, Math.min(1.8, (motion?.vx ?? 0) * .1)), ey + Math.max(-.25, Math.min(.25, (motion?.vy ?? 0) * .035)), ez + Math.max(-1.8, Math.min(1.8, (motion?.vz ?? 0) * .1))];
+    const seconds = elapsed / 1000;
+    for (let i = 0; i < 3; i++) {
+      if (reset) { this.target[i] = wanted[i]!; this.targetVelocity[i] = 0; continue; }
+      // Exact critically damped spring: stable through variable frame times, with softer vertical suspension response.
+      const omega = i === 1 ? 12 : 22, decay = Math.exp(-omega * seconds);
+      const offset = this.target[i]! - wanted[i]!, change = (this.targetVelocity[i]! + omega * offset) * seconds;
+      this.target[i] = wanted[i]! + (offset + change) * decay;
+      this.targetVelocity[i] = (this.targetVelocity[i]! - omega * change) * decay;
+    }
+    const rest = motion?.boom ?? 6, back = rest + Math.min(rest / 3, Math.abs(speed) * .06);
+    this.boom = reset ? back : this.boom + (back - this.boom) * (1 - Math.exp(-seconds * 4));
+    const viewPitch = Math.max(-1.35, Math.min(1.15, pitch - 0.12));
+    cam.yaw = yaw;
+    cam.pitch = viewPitch;
+    const dx = this.target[0]! - ex - Math.sin(yaw) * Math.cos(viewPitch) * this.boom;
+    const dy = this.target[1]! - ey - Math.sin(viewPitch) * this.boom + 0.65;
+    const dz = this.target[2]! - ez - Math.cos(yaw) * Math.cos(viewPitch) * this.boom;
+    const length = Math.hypot(dx, dy, dz);
+    let reach = length;
+    if (world && castWorld(world, ex, ey, ez, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) reach = Math.max(0, rayHit.t - CLEAR);
+    const k = reach / length;
+    cam.x = ex + dx * k;
+    cam.y = ey + dy * k;
+    cam.z = ez + dz * k;
+    this.ease(cam, world, ex, ey, ez, switched, elapsed);
+    return yaw;
+  }
+
+  /**
+   * The eye is at (ex, ey, ez). `yaw` and `pitch` are radians. Coming from a chase view (getting off or out), the camera
+   * eases over `dt` ms from where it was.
+   */
+  place(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number, dt = 0): void {
+    const switched = this.vehicleLook;
+    this.vehicleLook = false;
+    this.put(cam, world, ex, ey, ez, yaw, pitch);
+    this.ease(cam, world, ex, ey, ez, switched, Math.max(0, Math.min(100, dt)));
+  }
+
+  /**
+   * After a change between the eye's view and a chase view, or between hosts, the camera goes from where it was to where
+   * it is placed over EASE_MS rather than at once, and is kept on the near side of anything solid on the way.
+   */
+  private ease(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, switched: boolean, dt: number): void {
+    const from = this.easeFrom;
+    if (switched && this.placed && Math.hypot(cam.x - this.last[0]!, cam.y - this.last[1]!, cam.z - this.last[2]!) < EASE_REACH) {
+      this.easing = EASE_MS;
+      from.set(this.last);
+    }
+    if (this.easing > 0) {
+      this.easing = Math.max(0, this.easing - dt);
+      const t = 1 - this.easing / EASE_MS, s = t * t * (3 - 2 * t);
+      let dx = from[0]! + (cam.x - from[0]!) * s - ex, dy = from[1]! + (cam.y - from[1]!) * s - ey, dz = from[2]! + (cam.z - from[2]!) * s - ez;
+      const length = Math.hypot(dx, dy, dz);
+      if (world && length > 1e-6 && castWorld(world, ex, ey, ez, dx / length, dy / length, dz / length, length + CLEAR) !== HIT_NONE) {
+        const k = Math.max(0, rayHit.t - CLEAR) / length;
+        dx *= k; dy *= k; dz *= k;
+      }
+      cam.x = ex + dx;
+      cam.y = ey + dy;
+      cam.z = ez + dz;
+    }
+    this.last[0] = cam.x;
+    this.last[1] = cam.y;
+    this.last[2] = cam.z;
+    this.placed = true;
+  }
+
+  private put(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number): void {
     cam.yaw = yaw;
     cam.pitch = pitch;
     cam.x = ex;
@@ -40,3 +138,5 @@ export class Viewpoint {
     cam.z = ez + dz * k;
   }
 }
+
+function angle(n: number): number { return Math.atan2(Math.sin(n), Math.cos(n)); }

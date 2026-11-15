@@ -3,6 +3,8 @@
 // `type` is a definition's family. A family with several classes also says which: shared/content/classes.ts has what
 // each class must and may declare.
 
+import type { Seat } from "../sim/seats.ts";
+import type { VehicleDefinition, VehicleSurface } from "../sim/vehicle.ts";
 import type { Feature } from "../features.ts";
 import type { StatCurve, StatName } from "../sim/genome.ts";
 import { hullPoint, type HullDef } from "../world/convex.ts";
@@ -14,7 +16,9 @@ interface Named {
 
 export interface SpeciesDef extends Named {
   readonly type: "species";
-  readonly class: "survivor" | "creature" | "target";
+  readonly class: "survivor" | "creature" | "target" | "vehicle" | "civilian";
+  /** Wheeled movement and named seats; independent of the replaceable body mesh. */
+  readonly vehicle?: VehicleDefinition;
   readonly id: string;
   /** Mesh id in an asset pack, or "box" for a generated graybox. */
   readonly mesh: string;
@@ -228,15 +232,20 @@ export interface ShapeLook {
 }
 
 export interface StructureDef extends Named {
+  /** Grip/resistance of its supporting faces; shared vehicle prediction reads this independently of artwork. */
+  readonly vehicleSurface?: VehicleSurface;
   readonly type: "structure";
   readonly class: "piece" | "container" | "station" | "bed" | "static" | "defence";
   readonly id: string;
-  /** "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. */
+  /**
+   * "box" for one made from its half extents, "shape" for one made from its shape's boxes, or a mesh of the pack. A mesh of
+   * the pack with a shape is drawn at the shape's origin and walked as its boxes, so its origin may be on the ground under it.
+   */
   readonly mesh: string;
   readonly color: number;
   /** Half extents in metres of the box that holds all of it, centred on the structure's position. Without a shape, this box is its collider. */
   readonly half: readonly [number, number, number];
-  /** A shape id, if it is more than one box. `half` must equal the box that holds the shape. */
+  /** A shape id, if it is more than one box or not centred on its origin. `half` must equal the box that holds the shape. */
   readonly shape?: string;
   readonly hp: number;
   /** A material id. The material says what each type of damage does to it. Omitted, nothing harms it. */
@@ -265,6 +274,27 @@ export interface StructureDef extends Named {
   readonly floor?: boolean;
   /** Where a survivor rises from a bed, from its middle and turned with it. On top of it unless given. */
   readonly rise?: readonly [number, number, number];
+  // A station's fuel, fire and power (planning/reference/stations-plan.md). Both kinds of a lit pair say the same.
+  /**
+   * The only fuel this station burns, and the seconds one piece lasts in it (the fabricator's gasoline, the preserving bin's
+   * sparkpowder). Omitted, it burns every item by the item's own `fuel`, as a campfire does.
+   */
+  readonly burns?: readonly { readonly item: string; readonly seconds: number }[];
+  /** False for a fire that does not cook what has `cooks` (M1), as the forge and the preserving bin do not. Omitted, it cooks. */
+  readonly cooks?: boolean;
+  /**
+   * How many times as long things keep in it, as a species' `keeps` (M6): a feeding trough's 4 always, a preserving bin's
+   * 10 on its lit kind only. A station whose two kinds keep differently has every spoil clock rescaled at the tick it swaps
+   * (server/preserve.ts).
+   */
+  readonly keeps?: number;
+  /**
+   * Its jobs run only while it burns (M5): no job is taken while it is out, and a unit under way when it goes out waits with
+   * its ticks left (Job.rest) until it is lit again. Both kinds of a lit pair say it.
+   */
+  readonly powered?: boolean;
+  /** It is not lit while its foot is below the map's sea level (M8). */
+  readonly dry?: boolean;
 }
 
 /** Multiplier on each type of damage a structure of this material takes. A type not given does no damage. */
@@ -294,8 +324,14 @@ export interface ItemDef extends Named {
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** Seconds one of it keeps a fire going. */
   readonly fuel?: number;
-  /** The species it fits and the armor it gives the creature that wears it (the reference's rating). */
-  readonly saddle?: { readonly fits: string; readonly armor: number };
+  /** When one piece of it has burnt out in a fire, the fire gets one of this, as wood leaves charcoal (M4); with no room it is lost. */
+  readonly burnsInto?: string;
+  /**
+   * The species it fits, the armor it gives the creature that wears it (the reference's rating), and the seats it puts on
+   * that creature (shared/sim/seats.ts): the rider's, who steers, and any passengers'. Each names the socket of the
+   * creature's rig it moves with, and its anchor is that socket at rest.
+   */
+  readonly saddle?: { readonly fits: string; readonly armor: number; readonly seats: readonly Seat[] };
   /** Fed to an unconscious creature, it adds this much torpor over this many seconds. */
   readonly dose?: { readonly torpor: number; readonly seconds: number };
   /** Over a fire it becomes `into` after `seconds`. */
@@ -378,6 +414,11 @@ export interface CraftFacet {
   readonly at?: string;
   /** The level below which it cannot be made, engram or no. */
   readonly level?: number;
+  /**
+   * Made by the fire it is `at` while that burns and its ingredients lie in it, with no job, engram or experience
+   * (planning/reference/stations-plan.md, M3). Only at a station that `lights`.
+   */
+  readonly fired?: boolean;
 }
 
 /** Species and structure materials each give a multiplier per type. */
@@ -551,8 +592,12 @@ export interface NodeDef extends Named {
   readonly respawnHours: number;
   /** Matched against a tool's `on`. Omitted for things picked by hand with the use key. */
   readonly material?: string;
-  /** What each hit gives. `tool` true means only with the right tool. */
-  readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean }[];
+  /**
+   * What each hit gives. `tool` true means only with the right tool. A right tool multiplies every yield by its power but
+   * one marked `flat`, whose range is what a hit gives whatever the tool: where the reference game's page says what its
+   * stone pick gets a hit (oil), or that it gets very little (crystal).
+   */
+  readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean; readonly flat?: boolean }[];
   /** Experience per hit. */
   readonly xp: number;
   /** The individuals it grows as. Each node is one of them, chosen by its place. Without them it is its own mesh and `half`. */
@@ -567,6 +612,12 @@ export interface NodeDef extends Named {
    * its place, as it is, or nothing.
    */
   readonly footing?: { readonly reach: number; readonly fall: number; readonly else?: string };
+  /**
+   * Where a scattered slot grows it against the sea: "under", only where the ground is under the sea (a clam, an oil rock);
+   * "either", there or on dry ground (crystal). Without it, only where the ground is 0.3 m above the sea or more. A listed
+   * node stands where it is listed.
+   */
+  readonly sea?: "under" | "either";
 }
 
 export interface EngramDef extends Named {

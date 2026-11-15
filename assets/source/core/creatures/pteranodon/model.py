@@ -111,11 +111,11 @@ FINGER = [(-0.030, 0.020, 0.024), (0.000, 0.026, 0.030), (0.150, 0.023, 0.027), 
           (1.300, 0.014, 0.018), (1.800, 0.009, 0.012), (2.060, 0.0045, 0.006), (2.160, 0.0008, 0.001)]
 # The three small fingers of the hand, lying forward along the leading edge: heading from the fingers bone (degrees
 # out, degrees down), length, half width, claw length.
-HAND = [(-14.0, 6.0, 0.070, 0.0085, 0.030), (2.0, 8.0, 0.080, 0.0090, 0.032), (18.0, 10.0, 0.066, 0.0082, 0.028)]
+HAND = [(-16.0, 0.0, 0.066, 0.0085, 0.030), (0.0, 2.0, 0.076, 0.0090, 0.032), (16.0, 4.0, 0.062, 0.0082, 0.028)]
 # The leg: radii along it from the hip joint (distance along the bones, radius across, radius front to back).
 LEG = [(-0.040, 0.050, 0.055), (0.000, 0.058, 0.064), (0.120, 0.050, 0.056), (0.240, 0.037, 0.041),
        (0.275, 0.033, 0.035), (0.400, 0.027, 0.029), (0.530, 0.022, 0.024), (0.565, 0.023, 0.023),
-       (0.620, 0.021, 0.016), (0.664, 0.019, 0.013)]
+       (0.620, 0.027, 0.015), (0.664, 0.032, 0.012)]
 # Four toes from the ball of the foot: heading (degrees, + to the animal's left for the left foot), length, root half
 # width, claw length.
 TOES = [(-20.0, 0.095, 0.0095, 0.040), (-6.0, 0.112, 0.0100, 0.044), (8.0, 0.106, 0.0098, 0.042),
@@ -129,6 +129,12 @@ SPAN_COLUMNS = [(0.150, 0.200, 6), (0.454, 0.450, 8), (0.966, 0.970, 8), (1.524,
 CHORD_ROWS = 14
 MEMBRANE_HALF = 0.004
 ROOT_IN = 0.030
+# How the membrane's weights are laid out (membrane_weights): where the battens take over going back across the chord
+# (v0 to v1, as fractions of the chord, nearer the body and further out), how much at most (rib_max), how far out
+# the body's own bones reach before the first batten (root_reach, a fraction of the span), how the change between two
+# battens is eased across the span, and how many rounds of smoothing. Searched with rig.py's fold (ref/wing/).
+MEMBRANE_FIT = {"v0": 0.0, "v1_inner": 0.153, "v1_outer": 0.852, "rib_max": 0.895, "root_reach": 0.0913,
+                "span_ease": 0.0, "smooth": 5}
 # The front membrane: columns from the shoulder to the wrist, rows from the arm to its free edge.
 FRONT_COLUMNS, FRONT_ROWS = 10, 3
 
@@ -141,7 +147,6 @@ WING_UV = {"scale": 0.2930, "upper": (0.0100, 0.6342), "under": (0.0100, 0.2584)
 # The published layout of the body material. Paint goes onto it, so no piece's outline may move: a build whose faces
 # it does not fit stops. PTERANODON_LAYOUT=new lays it out afresh and writes the file again.
 LAYOUT_FILE = os.path.join(os.path.dirname(os.path.realpath(__file__)), "layout.json")
-FRESH = os.environ.get("PTERANODON_LAYOUT") == "new" or not os.path.exists(LAYOUT_FILE)
 # How much texture each piece gets for its size, against the body's: the face and beak most, from the saddle.
 DENSITY = [("head", 2.0), ("beak", 1.5), ("crest", 1.6), ("jaw", 1.4), ("eye", 3.0), ("neck", 1.25), ("torso", 1.0),
            ("leg", 1.1), ("toe", 1.8), ("hand", 1.8)]
@@ -394,13 +399,13 @@ def shell_grid(field):
     planes = slicing_planes()
     sections, centres = ring_points(field, planes)
     rings = [resample(r, half) for r in sections]
-    pick = None if FRESH else published().get("shell_rings")
+    pick = None if BODY_LAYOUT.fresh else BODY_LAYOUT.published().get("shell_rings")
     if pick is None:
         gap = np.array([np.mean(np.linalg.norm(b - a, axis=1)) for a, b in zip(rings, rings[1:])])
         weight = np.array([ring_weight(c) for c in centres])
         s = np.concatenate([[0], np.cumsum(gap * 0.5 * (weight[1:] + weight[:-1]))])
         pick = sorted(set(int(np.argmin(np.abs(s - t))) for t in np.linspace(0, s[-1], RINGS)))
-    SHELL_RINGS[:] = pick
+    BODY_LAYOUT.extra["shell_rings"] = [int(i) for i in pick]
     rows = np.array([rings[i] for i in pick])
     back = cast(field, centres[pick[0]][None], -planes[pick[0]][2][None])[0]
     front = cast(field, centres[pick[-1]][None], planes[pick[-1]][2][None])[0]
@@ -520,6 +525,21 @@ def _face(part, idx, region=None, uv=None, island=None, normals=None):
         part.face(out, region, None if uv is None else uvs, island, None if normals is None else ns)
 
 
+def pillow(part, outer, inner, island=None):
+    """A closed thin solid from two grids of points (rows, cols, 3) with the same rim: outer's. Each side is a piece
+    of the texture of its own."""
+    rows, cols = outer.shape[:2]
+    io = [[part.point(outer[i, j]) for j in range(cols)] for i in range(rows)]
+    rim = lambda i, j: i in (0, rows - 1) or j in (0, cols - 1)
+    ii = [[io[i][j] if rim(i, j) else part.point(inner[i, j]) for j in range(cols)] for i in range(rows)]
+    for grid, flip, side in ((io, False, "_out"), (ii, True, "_in")):
+        for i in range(rows - 1):
+            for j in range(cols - 1):
+                quad = (grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1])
+                _face(part, quad[::-1] if flip else quad, island=(island or part.name) + side)
+    return io, ii
+
+
 def frame_along(points):
     """Unit tangents along a polyline, and a side vector at each point carried along it without twist."""
     pts = np.asarray(points, float)
@@ -551,9 +571,6 @@ def rings_along(points, radii, around, up_hint, phase=0.0):
 # =====================================================================================================================
 # The shell
 # =====================================================================================================================
-
-SHELL_RINGS = []
-
 
 def shell_part():
     rows, back, front, centres, pieces = shell_grid(shell_field)
@@ -853,10 +870,10 @@ def hand_part():
         d /= np.linalg.norm(d)
         steps = 7
         claw_at = length / (length + claw)
-        line, radii = [root + up * 0.026 - d * 0.012 + side * (0.011 * (n - 1))], []
+        line, radii = [root + up * 0.030 - d * 0.012 + side * (0.012 * (n - 1))], []
         for k in range(steps + 1):
             t = k / steps
-            bend = math.radians(70) * max(0.0, (t - claw_at * 0.5) / (1 - claw_at * 0.5)) ** 1.6
+            bend = math.radians(55) * max(0.0, (t - claw_at * 0.6) / (1 - claw_at * 0.6)) ** 1.8
             dd = d * math.cos(bend) - up * math.sin(bend)
             if k:
                 line.append(line[-1] + dd * (length + claw) / steps)
@@ -923,7 +940,7 @@ def toes_part():
         d = d0 * math.cos(a) + side * math.sin(a)
         steps = 8
         claw_at = length / (length + claw)
-        line, radii = [root + side * (0.006 * (n - 1.5)) - d * 0.006], []
+        line, radii = [root + side * (0.013 * (n - 1.5)) - d * 0.010], []
         for k in range(steps + 1):
             t = k / steps
             bend = math.radians(18) * t + math.radians(80) * max(0.0, (t - claw_at) / (1 - claw_at)) ** 1.3
@@ -1029,11 +1046,12 @@ def wing_uv(p, face):
     return (o[0] + (x - x0) * s, o[1] + (z - z0) * s)
 
 
-def slab(part, grid, weights, island, thick_at):
+def slab(part, grid, weights, island, thick_at, mark_cells=True):
     """A thin closed slab over a grid of middle points (columns, rows, 3): an upper face, an under face, and a rim they
     share (the first and last column and row). A column whose points are all one place is one point. Each face's
     corners carry the middle surface's normal, up or down, so each side is shaded as one side of the skin, and the
-    texture each side has on the wing's picture."""
+    texture each side has on the wing's picture. With `mark_cells` each face notes its grid cell (column * 256 + row)
+    in the mesh's "cell" attribute, for ref/wing/check.py."""
     nu, nv = grid.shape[:2]
     n = grid_normals(grid)
     up, dn = [], []
@@ -1056,23 +1074,26 @@ def slab(part, grid, weights, island, thick_at):
         up.append(ru)
         dn.append(rd)
     part.slab = (up, dn)
+    part.cells = []
     for i in range(nu - 1):
         for j in range(nv - 1):
             cells = [(i, j), (i + 1, j), (i + 1, j + 1), (i, j + 1)]
-            _face(part, [up[a][b] for a, b in cells], uv=[wing_uv(grid[a, b], "upper") for a, b in cells],
-                  island=island + "_upper", normals=[tuple(n[a, b]) for a, b in cells])
-            cells = cells[::-1]
-            _face(part, [dn[a][b] for a, b in cells], uv=[wing_uv(grid[a, b], "under") for a, b in cells],
-                  island=island + "_under", normals=[tuple(-n[a, b]) for a, b in cells])
+            for face, side, sign in ((up, "_upper", 1.0), (dn, "_under", -1.0)):
+                before = len(part.faces)
+                _face(part, [face[a][b] for a, b in cells], uv=[wing_uv(grid[a, b], side[1:]) for a, b in cells],
+                      island=island + side, normals=[tuple(sign * n[a, b]) for a, b in cells])
+                part.cells += [i * 256 + j if mark_cells else -1] * (len(part.faces) - before)
+                cells = cells[::-1]
     return up, dn
 
 
-def membrane_part(field=None):
-    """The left wing's membrane, a closed slab from the arm and finger to the trailing edge and the flank and leg."""
+def membrane_part(skin=()):
+    """The left wing's membrane, a closed slab from the arm and finger to the trailing edge and the flank and leg.
+    `skin` is the parts its root is grown into (the shell and the leg), whose weights the root takes."""
     part = Part("membrane_l", WING_MAT, SKIN_R)
-    grid, fracs = membrane_grid(field)
+    grid, fracs = membrane_grid()
     nu, nv = grid.shape[:2]
-    weights = [[membrane_weight(i, j, fracs[i], j / (nv - 1)) for j in range(nv)] for i in range(nu)]
+    weights = membrane_weights(grid, fracs, skin)
 
     def thick(i, j):
         k = min(i, nu - 1 - i, j, nv - 1 - j)
@@ -1097,10 +1118,124 @@ def membrane_region(c):
     return SKIN_R
 
 
-def membrane_weight(i, j, u, v):
-    """Starting weights: rig.py's, the leading edge on the arm and finger and the rest on the battens either side or
-    the body and leg at the root."""
-    return rig._membrane_weight(u, v)
+def _knots(knots, t):
+    """Weights {bone: w} from knots [(t, bone)], the two knots either side of t shared linearly."""
+    if t <= knots[0][0]:
+        return {knots[0][1]: 1.0}
+    for (t0, a), (t1, b) in zip(knots, knots[1:]):
+        if t <= t1:
+            k = (t - t0) / max(t1 - t0, 1e-9)
+            return {a: 1.0 - k, b: k} if a != b else {a: 1.0}
+    return {knots[-1][1]: 1.0}
+
+
+def _smooth(v):
+    v = min(max(v, 0.0), 1.0)
+    return v * v * (3 - 2 * v)
+
+
+def _add(out, w, k):
+    for b, x in w.items():
+        out[b] = out.get(b, 0.0) + x * k
+
+
+def lead_weights(p):
+    """A point of the leading edge follows the arm or the wing finger exactly as their tubes' rings there do, so it
+    stays inside them."""
+    for names, blends, before in ((ARM_BONES, [0.035, 0.03], ("chest", 0.07)), (FINGER_BONES, [0.025, 0.025, 0.02], None)):
+        at = _joints_along(names)
+        joints = [np.array(rig._JOINT[n]) for n in names] + [np.array(rig._TAIL[names[-1]])]
+        if p[0] > joints[-1][0] - 1e-6 and names is ARM_BONES:
+            continue
+        best, d = 1e9, 0.0
+        for k in range(len(names)):
+            a, b = joints[k], joints[k + 1]
+            t = float(np.clip(np.dot(p - a, b - a) / np.dot(b - a, b - a), 0, 1))
+            dd = np.linalg.norm(p - (a + (b - a) * t))
+            if dd < best:
+                best, d = dd, at[k] + t * np.linalg.norm(b - a)
+        w = chain_weights([d], names, at, blends, before=before)[0]
+        total = sum(w.values())
+        return {n: x / total for n, x in w.items()}
+
+
+def skin_weights_at(p, parts, most=4):
+    """The weights of the skin of `parts` nearest p, the four nearest points blended by closeness."""
+    pts = np.concatenate([np.array(q.points) for q in parts])
+    ws = [w for q in parts for w in q.weights]
+    d = np.linalg.norm(pts - p, axis=1)
+    idx = np.argsort(d)[:most]
+    share = 1.0 / np.maximum(d[idx], 1e-4)
+    out = {}
+    for i, x in zip(idx, share / share.sum()):
+        _add(out, ws[int(i)], x)
+    return out
+
+
+def membrane_weights(grid, fracs, skin):
+    """The membrane's weights, column by column (its span) and row by row (its chord), as MEMBRANE_FIT has them.
+
+    The leading edge follows the arm and the wing finger as their tubes do, and the root the body and leg skin it is
+    grown into. In between, each point blends the bone of the leading edge in front of it with the battens either side
+    of it across the span (rig.py: web_1 at the elbow, web_2 at the wrist, web_3 on the wing finger, the finger's last
+    bone at the tip; and nearest the body, the body's own bones). The battens take over going back across the chord,
+    and the result is smoothed over the grid. MEMBRANE_FIT's numbers were searched together with rig.py's FOLD, TUCK
+    and FINGER_ROLL so the folded skin lies in layers that do not cross one another or the body, with no fold tighter
+    than the skin is thick (ref/wing/)."""
+    F = MEMBRANE_FIT
+    nu, nv = grid.shape[:2]
+    left = rig._JOINT["upper_arm_l"][0]
+    span = rig._TAIL["wing_4_l"][0] - left
+    along = lambda name: (rig._JOINT[name][0] - left) / span
+    reach = F["root_reach"]
+    ribs = [(0.0, "root"), (reach, "web_1_l")] + ([(along("forearm_l"), "web_1_l")] if reach < along("forearm_l") else []) + \
+           [(along("hand_l"), "web_2_l"), (along("wing_2_l"), "web_3_l"), (1.0, "wing_4_l")]
+    lead = [lead_weights(grid[i, 0]) for i in range(nu)]
+    root = [skin_weights_at(grid[0, j], skin) if skin else {"chest": 1.0} for j in range(nv)]
+    body = [_knots([(0.0, "chest"), (0.35, "spine"), (0.7, "pelvis")], j / (nv - 1)) for j in range(nv)]
+    W = {}
+    for i in range(nu):
+        u = fracs[i]
+        for j in range(nv):
+            v = j / (nv - 1)
+            if i == nu - 1:
+                W[i, j] = {"wing_4_l": 1.0}
+            elif j == 0:
+                W[i, j] = dict(lead[i])
+            elif i == 0:
+                W[i, j] = dict(root[j])
+            else:
+                knots = _knots(ribs, u)
+                if F["span_ease"] and len(knots) == 2:
+                    (a, wa), (b, wb) = knots.items()
+                    wb = wb + F["span_ease"] * (_smooth(wb) - wb)
+                    knots = {a: 1 - wb, b: wb}
+                rib = {}
+                for name, w in knots.items():
+                    _add(rib, body[j] if name == "root" else {name: 1.0}, w)
+                v1 = F["v1_inner"] if u < along("hand_l") + 0.17 else F["v1_outer"]
+                v0 = F["v0"] * v1
+                s = _smooth((v - v0) / max(v1 - v0, 1e-3)) * F["rib_max"]
+                w = {}
+                _add(w, lead[i], 1 - s)
+                _add(w, rib, s)
+                W[i, j] = w
+    for _ in range(F["smooth"]):
+        new = {}
+        for (i, j), w in W.items():
+            if j == 0 or i == 0 or i == nu - 1:
+                new[i, j] = w
+                continue
+            near = [c for c in ((i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)) if c in W]
+            acc = {}
+            for c in near:
+                _add(acc, W[c], 1.0 / len(near))
+            o = {}
+            _add(o, w, 0.5)
+            _add(o, acc, 0.5)
+            new[i, j] = o
+        W = new
+    return [[finish_weights([W[i, j]])[0] for j in range(nv)] for i in range(nu)]
 
 
 FRONT_EDGE = [(0.140, 0.760, 0.060), (0.300, 0.792, 0.112), (0.500, 0.836, 0.122), (0.700, 0.866, 0.112),
@@ -1130,7 +1265,7 @@ def front_part():
             t = sum(w.values())
             row.append({k: x / t for k, x in w.items()})
         weights.append(row)
-    slab(part, grid, weights, "membrane", lambda i, j: MEMBRANE_HALF * 0.8)
+    slab(part, grid, weights, "membrane", lambda i, j: MEMBRANE_HALF * 0.8, mark_cells=False)
     for f in range(len(part.faces)):
         part.regions[f] = WASH_R
     part.grid = grid
@@ -1268,6 +1403,8 @@ def mirrored(part, name):
     out.sharp = set(part.sharp)
     out.seams = set(part.seams)
     out.oriented = getattr(part, "oriented", False)
+    if hasattr(part, "cells"):
+        out.cells = list(part.cells)
     return out
 
 
@@ -1326,58 +1463,229 @@ def shape(part):
     return hashlib.sha1(repr(part.faces).encode()).hexdigest()[:16]
 
 
-_PUBLISHED = {}
+class Layout:
+    """The published texture layout of one material: for every face of the animal's left side, the piece of the texture
+    it is on and its corners' texture coordinates, by part, pinned in a file. Paint goes onto it, so no piece's outline
+    may move: a build whose faces it does not fit stops. Setting the environment variable `env` to "new" lays it out
+    afresh and writes the file again, which means painting it again."""
+
+    def __init__(self, path, material, env, what, density=()):
+        self.path = path
+        self.material = material
+        self.env = env
+        self.what = what
+        self.density = density
+        self.fresh = os.environ.get(env) == "new" or not os.path.exists(path)
+        self.extra = {}
+        self._published = None
+
+    def published(self):
+        if self._published is None:
+            with open(self.path) as fh:
+                self._published = json.load(fh)
+        return self._published
+
+    def pinned(self, part):
+        """A part's faces in the published layout: {"shape", "faces": {face: (piece, [uv of each corner])}}, its left
+        side only. None when the layout is being made afresh or the part is not in it."""
+        if self.fresh:
+            return None
+        p = self.published()["parts"].get(part.name)
+        if p is None:
+            return None
+        uv = np.frombuffer(base64.b64decode(p["uv"]), "<f4").reshape(-1, 2)
+        faces, at = {}, 0
+        for f, k in zip(p["face"], p["piece"]):
+            n = len(part.faces[f])
+            faces[f] = (p["pieces"][k], [(float(a), float(b)) for a, b in uv[at:at + n]])
+            at += n
+        return {"shape": p["shape"], "faces": faces}
+
+    def refuse(self, why):
+        raise RuntimeError(f"{why} the published texture layout ({self.path}), and paint is on it. Agree a new layout "
+                           f"with the texture maker, then build with {self.env}=new to lay it out afresh.")
+
+    def density_of(self, name):
+        for key, d in self.density:
+            if name.startswith(key):
+                return d
+        return 1.0
+
+    def lay_out(self, obj):
+        """Lays out the material's texture. Once published it is pinned: assemble has put every face of the left side
+        where the file has it, and a face it has no place for stops the build. Laid out afresh, the left side is
+        unwrapped with least stretch, each piece scaled to the texture it deserves (`density`), stood upright so the
+        animal's up runs up the picture, and packed, and the layout is written. The right side takes the left side's
+        texture, mirrored."""
+        mesh = obj.data
+        names = list(obj["islands"])
+        mat = [m.name for m in mesh.materials].index(self.material)
+        bpy.context.view_layer.objects.active = obj
+        obj.select_set(True)
+        bpy.context.scene.tool_settings.use_uv_select_sync = True
+        bpy.ops.object.mode_set(mode="EDIT")
+        bpy.ops.mesh.select_mode(type="FACE")
+        bm = bmesh.from_edit_mesh(mesh)
+        given = bm.faces.layers.int["given"]
+        isl = bm.faces.layers.int["island"]
+        if not self.fresh:
+            loose = sorted({names[f[isl]] for f in bm.faces
+                            if f.material_index == mat and f.calc_center_median().x > 0 and not f[given]})
+            if loose:
+                self.refuse(f"model: faces of {', '.join(loose)} have no place in")
+        else:
+            self.unwrap(mesh, names, mat)
+        bm = bmesh.from_edit_mesh(mesh)
+        uv = bm.loops.layers.uv.active
+
+        def where(v, sign=1):
+            return (round(sign * v.co.x, 6), round(v.co.y, 6), round(v.co.z, 6))
+
+        lefts = {}
+        for f in bm.faces:
+            if f.material_index == mat and f.calc_center_median().x > 0:
+                lefts[frozenset(where(v) for v in f.verts)] = f
+        for f in bm.faces:
+            if f.material_index != mat or f.calc_center_median().x >= 0:
+                continue
+            g = lefts.get(frozenset(where(v, -1) for v in f.verts))
+            if g is None:
+                raise RuntimeError(f"model: a face on the right has no mirror on the left, at {tuple(f.calc_center_median())}")
+            at = {where(l.vert): tuple(l[uv].uv) for l in g.loops}
+            for l in f.loops:
+                l[uv].uv = at[where(l.vert, -1)]
+        bmesh.update_edit_mesh(mesh)
+        bpy.ops.object.mode_set(mode="OBJECT")
+        if self.fresh:
+            self.write(obj, mat)
+
+    def unwrap(self, mesh, names, mat):
+        """The left side's texture laid out afresh (lay_out)."""
+        bm = bmesh.from_edit_mesh(mesh)
+        isl = bm.faces.layers.int["island"]
+        # cut the texture where two pieces meet
+        for e in bm.edges:
+            if len({f[isl] for f in e.link_faces}) > 1:
+                e.seam = True
+
+        def lefts(bm):
+            given = bm.faces.layers.int["given"]
+            return [f for f in bm.faces if f.material_index == mat and f.calc_center_median().x > 0 and not f[given]]
+
+        chosen = set(lefts(bm))
+        for f in bm.faces:
+            f.select = f in chosen
+        bm.select_flush_mode()
+        bmesh.update_edit_mesh(mesh)
+        bpy.ops.uv.unwrap(method="MINIMUM_STRETCH", margin=0.002, fill_holes=True, correct_aspect=True)
+        bm = bmesh.from_edit_mesh(mesh)
+        uv = bm.loops.layers.uv.active
+        isl = bm.faces.layers.int["island"]
+        left = lefts(bm)
+        by_island = {}
+        for f in left:
+            by_island.setdefault(f[isl], []).append(f)
+        ratios = {}
+        for k, faces in by_island.items():
+            area = sum(f.calc_area() for f in faces)
+            uv_area = 0.0
+            for f in faces:
+                q = [np.array(tuple(l[uv].uv)) for l in f.loops]
+                for a, b in zip(q[1:-1], q[2:]):
+                    d1, d2 = a - q[0], b - q[0]
+                    uv_area += abs(d1[0] * d2[1] - d1[1] * d2[0]) / 2
+            ratios[k] = math.sqrt(uv_area / max(area, 1e-12))
+        common = float(np.median(list(ratios.values())))
+        for k, faces in by_island.items():
+            loops = [l for f in faces for l in f.loops]
+            weight, total = np.zeros(2), 0.0
+            for f in faces:
+                q = [np.array(tuple(l[uv].uv)) for l in f.loops]
+                a = sum(abs((b - q[0])[0] * (c - q[0])[1] - (b - q[0])[1] * (c - q[0])[0]) / 2 for b, c in zip(q[1:-1], q[2:]))
+                weight += np.mean(q, axis=0) * a
+                total += a
+            mid = weight / max(total, 1e-12)
+            up = np.zeros(2)
+            for f in faces:
+                tri = f.loops[:3]
+                p = [np.array(l.vert.co) for l in tri]
+                q = [np.array(tuple(l[uv].uv)) for l in tri]
+                m = np.array([q[1] - q[0], q[2] - q[0]])
+                dz = np.array([p[1][2] - p[0][2], p[2][2] - p[0][2]])
+                if abs(np.linalg.det(m)) > 1e-14:
+                    up += np.linalg.solve(m, dz) * f.calc_area()
+            angle = math.atan2(up[1], up[0]) - math.pi / 2 if np.linalg.norm(up) > 1e-12 else 0.0
+            c, s = math.cos(-angle), math.sin(-angle)
+            scale = common / max(ratios[k], 1e-12) * self.density_of(names[k])
+            for l in loops:
+                x, y = np.array(tuple(l[uv].uv)) - mid
+                l[uv].uv = (mid[0] + scale * (c * x - s * y), mid[1] + scale * (s * x + c * y))
+        chosen = set(left)
+        for f in bm.faces:
+            f.select = f in chosen
+        bm.select_flush_mode()
+        bmesh.update_edit_mesh(mesh)
+        bpy.ops.uv.pack_islands(rotate=False, scale=True, margin_method="FRACTION", margin=0.006, shape_method="CONCAVE")
+
+    def write(self, obj, mat):
+        """Writes the layout: anything kept in `extra`, and the left side's faces by part: its fingerprint, the pieces,
+        and for each face its piece and its corners' texture coordinates (32-bit floats in base64, the faces in
+        order)."""
+        mesh = obj.data
+        names = list(obj["islands"])
+        uv = mesh.uv_layers.active.data
+        isl = mesh.attributes["island"].data
+        got = {}
+        for poly, (part, f, corners, mark) in zip(mesh.polygons, MADE[obj.name]):
+            if poly.material_index != mat or poly.center.x <= 0:
+                continue
+            faces = got.setdefault(part, (mark, {}))[1]
+            at = faces.setdefault(f, (names[isl[poly.index].value], {}))[1]
+            for loop, k in zip(poly.loop_indices, corners):
+                at[k] = tuple(uv[loop].uv)
+        parts = {}
+        for part, (mark, faces) in sorted(got.items()):
+            order = sorted(faces)
+            pieces = sorted({faces[f][0] for f in order})
+            flat = [faces[f][1][k] for f in order for k in range(len(faces[f][1]))]
+            parts[part] = {"shape": mark, "pieces": pieces, "face": order,
+                           "piece": [pieces.index(faces[f][0]) for f in order],
+                           "uv": base64.b64encode(np.array(flat, "<f4").tobytes()).decode()}
+        with open(self.path, "w") as fh:
+            json.dump(dict({"about": f"The pteranodon's published {self.what} texture layout, written by its script "
+                                     "(Layout.lay_out) and read on every build. Paint goes onto it, so it is written "
+                                     "again only when the texture maker agrees to a new layout."},
+                           **self.extra, parts=parts), fh, separators=(",", ":"))
+        print("model: wrote the texture layout to", self.path)
 
 
-def published():
-    if not _PUBLISHED:
-        with open(LAYOUT_FILE) as fh:
-            _PUBLISHED.update(json.load(fh))
-    return _PUBLISHED
+BODY_LAYOUT = Layout(LAYOUT_FILE, BODY_MAT, "PTERANODON_LAYOUT", "body", DENSITY)
+# Each triangle assemble made, by object, in order: (part, face, its corners, the part's fingerprint).
+MADE = {}
 
 
-def pinned(part):
-    """A part's faces in the published layout: {"shape", "faces": {face: (piece, [uv of each corner])}}, its left side
-    only. None when the layout is being made afresh or the part is not in it."""
-    if FRESH:
-        return None
-    p = published()["parts"].get(part.name)
-    if p is None:
-        return None
-    uv = np.frombuffer(base64.b64decode(p["uv"]), "<f4").reshape(-1, 2)
-    faces, at = {}, 0
-    for f, k in zip(p["face"], p["piece"]):
-        n = len(part.faces[f])
-        faces[f] = (p["pieces"][k], [(float(a), float(b)) for a, b in uv[at:at + n]])
-        at += n
-    return {"shape": p["shape"], "faces": faces}
-
-
-# Each triangle assemble made, in order: (part, face, its corners, the part's fingerprint); write_layout reads it.
-MADE = []
-
-
-def assemble(parts):
+def assemble(parts, materials=(BODY_MAT, WING_MAT), name="pteranodon_model", layouts=(BODY_LAYOUT,)):
     """One mesh object from the parts, in triangles: regions and pieces as attributes, the texture coordinates the
-    parts give and those of the published layout, and the normals the slabs give their corners."""
-    MADE.clear()
+    parts give and those of the published layouts, and the normals the slabs give their corners."""
+    made = MADE[name] = []
     bm = bmesh.new()
     region = bm.faces.layers.int.new("region")
     island = bm.faces.layers.int.new("island")
     given = bm.faces.layers.int.new("given")
+    cell = bm.faces.layers.int.new("cell")
     uv_layer = bm.loops.layers.uv.new("UVMap")
-    mats = [BODY_MAT, WING_MAT]
+    mats = list(materials)
+    by_material = {lay.material: lay for lay in layouts}
     deform = bm.verts.layers.deform.verify()
     groups, names, corner_normals = {}, [], []
     for part in parts:
         if not getattr(part, "oriented", False):
             face_outward(part)
         mark = shape(part)
-        pin = pinned(part) if part.material == BODY_MAT else None
+        lay = by_material.get(part.material)
+        pin = lay.pinned(part) if lay is not None else None
         if pin is not None and pin["shape"] != mark:
-            raise RuntimeError(f"model: the faces of {part.name} are not those the published texture layout "
-                               f"({LAYOUT_FILE}) was made for, and paint is on it. Agree a new layout with the texture "
-                               "maker, then build with PTERANODON_LAYOUT=new to lay it out afresh.")
+            lay.refuse(f"model: the faces of {part.name} are not those of")
         seen = set()
         verts = [bm.verts.new(rig.to_blender(p)) for p in part.points]
         for v, w in zip(verts, finish_weights(part.weights)):
@@ -1390,9 +1698,10 @@ def assemble(parts):
             if isl not in names:
                 names.append(isl)
             for corners in split(part, f, seen):
-                MADE.append((part.name, fi, corners, mark))
+                made.append((part.name, fi, corners, mark))
                 face = bm.faces.new([verts[f[k]] for k in corners])
                 face[region] = r
+                face[cell] = part.cells[fi] if hasattr(part, "cells") else -1
                 face[island] = names.index(isl)
                 face.material_index = mats.index(part.material)
                 face.smooth = True
@@ -1406,13 +1715,13 @@ def assemble(parts):
             e = bm.edges.get((verts[a], verts[b]))
             if e is not None:
                 e.seam = True
-    mesh = bpy.data.meshes.new("pteranodon")
+    mesh = bpy.data.meshes.new(name)
     bm.to_mesh(mesh)
     bm.free()
-    for name in mats:
-        m = bpy.data.materials.get(name) or bpy.data.materials.new(name)
+    for m_name in mats:
+        m = bpy.data.materials.get(m_name) or bpy.data.materials.new(m_name)
         mesh.materials.append(m)
-    obj = bpy.data.objects.new("pteranodon_model", mesh)
+    obj = bpy.data.objects.new(name, mesh)
     bpy.context.scene.collection.objects.link(obj)
     for n, g in sorted(groups.items(), key=lambda kv: kv[1]):
         obj.vertex_groups.new(name=n)
@@ -1425,165 +1734,6 @@ def assemble(parts):
                 normals[loop] = tuple(n.normalized())
     mesh.normals_split_custom_set(normals)
     return obj
-
-
-def _island_density(name):
-    for key, d in DENSITY:
-        if name.startswith(key):
-            return d
-    return 1.0
-
-
-def lay_out(obj):
-    """Lays out the body material's texture. Once published it is pinned: assemble has put every face of the left
-    side where layout.json has it, and a face it has no place for stops the build. Laid out afresh, the left side is
-    unwrapped with least stretch, each piece scaled to the texture it deserves (DENSITY), stood upright so the animal's
-    up runs up the picture, and packed, and the layout is written to layout.json. The right side takes the left side's
-    texture, mirrored."""
-    mesh = obj.data
-    names = list(obj["islands"])
-    bpy.context.view_layer.objects.active = obj
-    obj.select_set(True)
-    bpy.context.scene.tool_settings.use_uv_select_sync = True
-    bpy.ops.object.mode_set(mode="EDIT")
-    bpy.ops.mesh.select_mode(type="FACE")
-    bm = bmesh.from_edit_mesh(mesh)
-    body = 0
-    given = bm.faces.layers.int["given"]
-    isl = bm.faces.layers.int["island"]
-    if not FRESH:
-        loose = sorted({names[f[isl]] for f in bm.faces
-                        if f.material_index == body and f.calc_center_median().x > 0 and not f[given]})
-        if loose:
-            raise RuntimeError(f"model: the published texture layout ({LAYOUT_FILE}) has no place for faces of "
-                               f"{', '.join(loose)}, and paint is on it. Agree a new layout with the texture maker, "
-                               "then build with PTERANODON_LAYOUT=new to lay it out afresh.")
-    else:
-        _unwrap(mesh, names, body)
-    bm = bmesh.from_edit_mesh(mesh)
-    uv = bm.loops.layers.uv.active
-
-    def where(v, sign=1):
-        return (round(sign * v.co.x, 6), round(v.co.y, 6), round(v.co.z, 6))
-
-    lefts = {}
-    for f in bm.faces:
-        if f.material_index == body and f.calc_center_median().x > 0:
-            lefts[frozenset(where(v) for v in f.verts)] = f
-    for f in bm.faces:
-        if f.material_index != body or f.calc_center_median().x >= 0:
-            continue
-        g = lefts.get(frozenset(where(v, -1) for v in f.verts))
-        if g is None:
-            raise RuntimeError(f"model: a face on the right has no mirror on the left, at {tuple(f.calc_center_median())}")
-        at = {where(l.vert): tuple(l[uv].uv) for l in g.loops}
-        for l in f.loops:
-            l[uv].uv = at[where(l.vert, -1)]
-    bmesh.update_edit_mesh(mesh)
-    bpy.ops.object.mode_set(mode="OBJECT")
-    if FRESH:
-        write_layout(obj)
-
-
-def _unwrap(mesh, names, body):
-    """The left side's body texture laid out afresh (lay_out)."""
-    bm = bmesh.from_edit_mesh(mesh)
-    given = bm.faces.layers.int["given"]
-    isl = bm.faces.layers.int["island"]
-    # cut the texture where two pieces meet
-    for e in bm.edges:
-        if len({f[isl] for f in e.link_faces}) > 1:
-            e.seam = True
-    def lefts(bm):
-        given = bm.faces.layers.int["given"]
-        return [f for f in bm.faces if f.material_index == body and f.calc_center_median().x > 0 and not f[given]]
-
-    chosen = set(lefts(bm))
-    for f in bm.faces:
-        f.select = f in chosen
-    bm.select_flush_mode()
-    bmesh.update_edit_mesh(mesh)
-    bpy.ops.uv.unwrap(method="MINIMUM_STRETCH", margin=0.002, fill_holes=True, correct_aspect=True)
-    bm = bmesh.from_edit_mesh(mesh)
-    uv = bm.loops.layers.uv.active
-    isl = bm.faces.layers.int["island"]
-    left = lefts(bm)
-    by_island = {}
-    for f in left:
-        by_island.setdefault(f[isl], []).append(f)
-    ratios = {}
-    for k, faces in by_island.items():
-        area = sum(f.calc_area() for f in faces)
-        uv_area = 0.0
-        for f in faces:
-            q = [np.array(tuple(l[uv].uv)) for l in f.loops]
-            for a, b in zip(q[1:-1], q[2:]):
-                d1, d2 = a - q[0], b - q[0]
-                uv_area += abs(d1[0] * d2[1] - d1[1] * d2[0]) / 2
-        ratios[k] = math.sqrt(uv_area / max(area, 1e-12))
-    common = float(np.median(list(ratios.values())))
-    for k, faces in by_island.items():
-        loops = [l for f in faces for l in f.loops]
-        weight, total = np.zeros(2), 0.0
-        for f in faces:
-            q = [np.array(tuple(l[uv].uv)) for l in f.loops]
-            a = sum(abs((b - q[0])[0] * (c - q[0])[1] - (b - q[0])[1] * (c - q[0])[0]) / 2 for b, c in zip(q[1:-1], q[2:]))
-            weight += np.mean(q, axis=0) * a
-            total += a
-        mid = weight / max(total, 1e-12)
-        up = np.zeros(2)
-        for f in faces:
-            tri = f.loops[:3]
-            p = [np.array(l.vert.co) for l in tri]
-            q = [np.array(tuple(l[uv].uv)) for l in tri]
-            m = np.array([q[1] - q[0], q[2] - q[0]])
-            dz = np.array([p[1][2] - p[0][2], p[2][2] - p[0][2]])
-            if abs(np.linalg.det(m)) > 1e-14:
-                up += np.linalg.solve(m, dz) * f.calc_area()
-        angle = math.atan2(up[1], up[0]) - math.pi / 2 if np.linalg.norm(up) > 1e-12 else 0.0
-        c, s = math.cos(-angle), math.sin(-angle)
-        scale = common / max(ratios[k], 1e-12) * _island_density(names[k])
-        for l in loops:
-            x, y = np.array(tuple(l[uv].uv)) - mid
-            l[uv].uv = (mid[0] + scale * (c * x - s * y), mid[1] + scale * (s * x + c * y))
-    chosen = set(left)
-    for f in bm.faces:
-        f.select = f in chosen
-    bm.select_flush_mode()
-    bmesh.update_edit_mesh(mesh)
-    bpy.ops.uv.pack_islands(rotate=False, scale=True, margin_method="FRACTION", margin=0.006, shape_method="CONCAVE")
-
-
-def write_layout(obj):
-    """Writes the layout to LAYOUT_FILE: the planes of the shell's rings, and the left side's body faces by part: its
-    fingerprint, the pieces, and for each face its piece and its corners' texture coordinates (32-bit floats in
-    base64, the faces in order)."""
-    mesh = obj.data
-    names = list(obj["islands"])
-    uv = mesh.uv_layers.active.data
-    isl = mesh.attributes["island"].data
-    got = {}
-    for poly, (part, f, corners, mark) in zip(mesh.polygons, MADE):
-        if poly.material_index != 0 or poly.center.x <= 0:
-            continue
-        faces = got.setdefault(part, (mark, {}))[1]
-        at = faces.setdefault(f, (names[isl[poly.index].value], {}))[1]
-        for loop, k in zip(poly.loop_indices, corners):
-            at[k] = tuple(uv[loop].uv)
-    parts = {}
-    for part, (mark, faces) in sorted(got.items()):
-        order = sorted(faces)
-        pieces = sorted({faces[f][0] for f in order})
-        flat = [faces[f][1][k] for f in order for k in range(len(faces[f][1]))]
-        parts[part] = {"shape": mark, "pieces": pieces, "face": order,
-                       "piece": [pieces.index(faces[f][0]) for f in order],
-                       "uv": base64.b64encode(np.array(flat, "<f4").tobytes()).decode()}
-    with open(LAYOUT_FILE, "w") as fh:
-        json.dump({"about": "The pteranodon's published body texture layout, written by model.py (lay_out) and read by "
-                            "it on every build. Paint goes onto it, so it is written again only when the texture maker "
-                            "agrees to a new layout.", "shell_rings": list(SHELL_RINGS), "parts": parts}, fh,
-                  separators=(",", ":"))
-    print("model: wrote the texture layout to", LAYOUT_FILE)
 
 
 def attach(child, parent, at=None, midline=False):
@@ -1671,7 +1821,7 @@ def build():
     attach(leg, shell, at=leg.anchor)
     toes = toes_part()
     attach(toes, leg)
-    membrane = membrane_part(shell_field)
+    membrane = membrane_part((shell, leg))
     front = front_part()
     for part in (membrane, front):
         part.oriented = True
@@ -1680,8 +1830,10 @@ def build():
         parts += [part, mirrored(part, rig._mirror_name(part.name))]
     each = ", ".join(f"{p.name} {sum(len(f) - 2 for f in p.faces)}" for p in parts if not p.name.endswith("_r"))
     obj = assemble(parts)
-    lay_out(obj)
+    BODY_LAYOUT.lay_out(obj)
     r.bind(obj)
+    # saddle.py fits the saddle to the shell, whose points come first
+    obj["shell_points"] = len(shell.points)
     tris = sum(len(p.vertices) - 2 for p in obj.data.polygons)
     print(f"model: {len(parts)} parts, {len(obj.data.vertices)} points, {tris} triangles ({each}; the right side as the left)")
     return obj

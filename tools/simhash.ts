@@ -7,8 +7,8 @@ import { join } from "node:path";
 import { CORE_CONTENT } from "../content/core.ts";
 import { authoredClips } from "../shared/anim/authored.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
-import { creatureAnims, type CreatureAnim } from "../shared/anim/creature.ts";
-import { buildRigs, type Rig } from "../shared/anim/rigs.ts";
+import { CreatureAnim, creatureAnims } from "../shared/anim/creature.ts";
+import { buildRig, buildRigs, type Rig } from "../shared/anim/rigs.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
@@ -53,10 +53,17 @@ export function sourceRigs(): Map<string, Rig> {
   return buildRigs(pack.header.rigs, pack.clips);
 }
 
-/** What each modelled species plays on those rigs, and the bird of the tests (tests/fixtures/bird.ts) on its own. */
+/**
+ * What each modelled species plays on those rigs, the bird of the tests (tests/fixtures/bird.ts) on its own, and the
+ * pteranodon on its block-out (tests/fixtures/flyer), which flies.
+ */
 export function sourceAnims(): CreatureAnim[] {
   const rigs = sourceRigs();
-  return [...creatureAnims(core(), (d) => rigs.get(d.mesh)).filter((a) => a !== null), birdAnim()];
+  const reg = core();
+  const ptera = reg.index.get("core:pteranodon")!;
+  const blockout = parsePack(new Uint8Array(readFileSync(new URL("../tests/fixtures/flyer/pteranodon.snpk", import.meta.url))));
+  const flyer = new CreatureAnim(buildRig(blockout.header.rigs[0]!, blockout.clips)!, reg.runAt[ptera]!, reg.move[ptera]?.swimSpeed ?? 0);
+  return [...creatureAnims(reg, (d) => rigs.get(d.mesh)).filter((a) => a !== null), birdAnim(), flyer];
 }
 
 export function creatureHash(): string {
@@ -71,4 +78,8 @@ export function nodeHash(): string {
   return scenarios.nodeHash(core());
 }
 
-if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash());
+export function waterHash(ticks = 3000): string {
+  return scenarios.waterHash(core(), ticks);
+}
+
+if (import.meta.main) console.log(simHash() + " " + poseHash() + " " + snapHash() + " " + creatureHash() + " " + tunedHash() + " " + hullHash() + " " + nodeHash() + " " + waterHash());
