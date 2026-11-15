@@ -371,8 +371,12 @@ export class ClientSession {
   looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
   open: { name: string; inventory: Inventory } | null = null;
-  /** The queue of the open container when it is a crafting station (OWN_STATION), or null. `kind` is the station's structure kind. */
-  station: { kind: number; jobs: { item: number; left: number; doneAt: number }[] } | null = null;
+  /**
+   * The open container when it is a crafting station (OWN_STATION), or null. `kind` is the station's structure kind and `ref`
+   * the structure; `out` the tick its fire is due to go out (0 when it does not burn); `lanes` what its fire makes by itself,
+   * each unit done at `doneAt` (0 while it waits); `jobs` its queue, a unit paused for want of fuel with `rest` ticks left.
+   */
+  station: { kind: number; ref: number; out: number; lanes: { item: number; doneAt: number }[]; jobs: { item: number; left: number; doneAt: number; rest: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /**
@@ -944,9 +948,13 @@ export class ClientSession {
       }
     } else if (component === OWN_STATION) {
       const kind = r.u16();
-      const jobs: { item: number; left: number; doneAt: number }[] = [];
-      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32() });
-      if (!r.overflow) this.station = kind === 0 ? null : { kind, jobs };
+      const ref = r.u32();
+      const out = r.u32();
+      const lanes: { item: number; doneAt: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) lanes.push({ item: r.u16(), doneAt: r.u32() });
+      const jobs: { item: number; left: number; doneAt: number; rest: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32(), rest: r.u32() });
+      if (!r.overflow) this.station = kind === 0 ? null : { kind, ref, out, lanes, jobs };
     } else if (component === OWN_OPEN) {
       // A station's queue comes after it is opened.
       this.station = null;

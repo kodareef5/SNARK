@@ -38,8 +38,11 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-/** 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. 16: the flyers'. */
-export const PROTOCOL_VERSION = 16;
+/**
+ * 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. 16: the flyers'.
+ * 17: the stations wave's (planning/reference/stations-plan.md, S0), OWN_STATION's layout.
+ */
+export const PROTOCOL_VERSION = 17;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -363,8 +366,11 @@ export const OWN_SUBJECT = 14;
  */
 export const OWN_OVERHEAD = 15;
 /**
- * Protocol 12. The open station's queue, sent when it changes: the station's kind u16 (0 when what is open is no longer a
- * station, and nothing follows but a count of 0), count u8, then per job: item u16, units left u8, done tick u32.
+ * Protocol 12, laid out again in 17. The open station, sent when it changes: the station's kind u16 (0 when what is open is
+ * no longer a station, and all that follows 0), its structure ref u32, the tick its fire is due to go out u32 (0 when it does
+ * not burn), a count u8 of what its fire makes by itself and per lane: item u16, the tick its unit is done u32 (0 while it
+ * waits); then a count u8 of jobs and per job: item u16, units left u8, done tick u32, and the ticks left of a unit paused for
+ * want of fuel u32 (0 for one that is not).
  */
 export const OWN_STATION = 16;
 

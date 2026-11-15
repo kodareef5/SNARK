@@ -265,6 +265,20 @@ export interface StructureDef extends Named {
   readonly floor?: boolean;
   /** Where a survivor rises from a bed, from its middle and turned with it. On top of it unless given. */
   readonly rise?: readonly [number, number, number];
+  // A station's fuel, fire and power (planning/reference/stations-plan.md). Both kinds of a lit pair say the same.
+  /**
+   * The only fuel this station burns, and the seconds one piece lasts in it (the fabricator's gasoline, the preserving bin's
+   * sparkpowder). Omitted, it burns every item by the item's own `fuel`, as a campfire does.
+   */
+  readonly burns?: readonly { readonly item: string; readonly seconds: number }[];
+  /** False for a fire that does not cook what has `cooks` (M1). Omitted, it cooks. A stub until S1. */
+  readonly cooks?: boolean;
+  /** How many times as long things keep in it, as a species' `keeps` (M6). A stub until S3. */
+  readonly keeps?: number;
+  /** Its jobs run only while it burns (M5). A stub until S2. */
+  readonly powered?: boolean;
+  /** It is not lit below the map's sea level (M8). A stub until S1. */
+  readonly dry?: boolean;
 }
 
 /** Multiplier on each type of damage a structure of this material takes. A type not given does no damage. */
@@ -294,6 +308,8 @@ export interface ItemDef extends Named {
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** Seconds one of it keeps a fire going. */
   readonly fuel?: number;
+  /** When one piece of it has burnt out in a fire, the fire gets one of this, as wood leaves charcoal (M4). A stub until S1. */
+  readonly burnsInto?: string;
   /** The species it fits and the armor it gives the creature that wears it (the reference's rating). */
   readonly saddle?: { readonly fits: string; readonly armor: number };
   /** Fed to an unconscious creature, it adds this much torpor over this many seconds. */
@@ -378,6 +394,11 @@ export interface CraftFacet {
   readonly at?: string;
   /** The level below which it cannot be made, engram or no. */
   readonly level?: number;
+  /**
+   * Made by the fire it is `at` while that burns and its ingredients lie in it, with no job, engram or experience
+   * (planning/reference/stations-plan.md, M3). Only at a station that `lights`. A stub until S1.
+   */
+  readonly fired?: boolean;
 }
 
 /** Species and structure materials each give a multiplier per type. */

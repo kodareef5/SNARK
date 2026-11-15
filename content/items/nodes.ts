@@ -1,4 +1,4 @@
-import type { Def, NodeDef } from "../../shared/content/defs.ts";
+import type { NodeDef } from "../../shared/content/defs.ts";
 
 // The nodes the stations wave's resources come from (planning/reference/stations-plan.md, "What waits on map nodes"): oil
 // rocks, crystal, obsidian rocks and clams, as the reference game has them at 1x (ark.wiki.gg, read 2026-11-15: Oil,
@@ -32,14 +32,4 @@ export const RESOURCE_NODES: readonly NodeDef[] = [
   // Pearls"; "There is no tool needed to harvest them, they are picked up by hand"; "in the deepest areas of the ocean". So
   // a clam is picked once, by hand, for 2 to 4, and grows under the sea; a swing does nothing to it. Its size is chosen.
   { type: "node", id: "core:clam", mesh: "box", color: 81, half: [0.25, 0.1, 0.2], soft: true, hits: 1, respawnHours: REGROW, yields: [{ item: "core:silica_pearls", min: 2, max: 4 }], xp: 0.5, size: [0.8, 1.25], sea: "under" },
-];
-
-// Until the stations wave's contracts (S0) land with content/items/resources.ts, which defines these four with the rest of
-// the wave's resources, the nodes need their items to compile. Each is a plain resource with its page's weight and stack.
-// When S0 merges, delete this list and its line in content/items/index.ts: the ids are the same, so nothing else changes.
-export const NODE_RESOURCES_UNTIL_S0: readonly Def[] = [
-  { type: "item", class: "resource", id: "core:oil", stack: 100, weight: 0.2, color: 11 },
-  { type: "item", class: "resource", id: "core:crystal", stack: 100, weight: 1, color: 10 },
-  { type: "item", class: "resource", id: "core:obsidian", stack: 100, weight: 1, color: 11 },
-  { type: "item", class: "resource", id: "core:silica_pearls", stack: 100, weight: 0.02, label: "silica pearls", color: 10 },
 ];

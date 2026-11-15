@@ -657,7 +657,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
         // The registry as the save had it, for the spoil and fuel timings.
         const old = deriveRegistry(content, { ...tuned.tuning, spoil: spoilWas, fuel: fuelWas });
         items.table = old;
-        stations.refuel(old.fuelTicks, fuelWas, now.FuelConsumptionIntervalMultiplier!);
+        stations.refuel(old, fuelWas, now.FuelConsumptionIntervalMultiplier!);
         items.respoil(old, spoilWas, now.GlobalSpoilingTimeMultiplier!);
         items.table = reg;
       }
