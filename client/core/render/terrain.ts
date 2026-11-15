@@ -61,6 +61,44 @@ export function coarseGround(hf: Heightfield): { heights: Uint16Array; tint: Uin
   return { heights, tint };
 }
 
+/**
+ * Steps of the depth buffer by which a tile's skirt is drawn behind the ground. A skirt meets the ground along the
+ * tile's border, and where the buffer could not tell them apart, as on low poly far off, it showed through the ground
+ * there as a dark dotted line.
+ */
+export const SKIRT_BEHIND = 4;
+
+/**
+ * The mesh drawn once per tile: its grid of TILE_QUADS a side, then a skirt that repeats the border vertices and drops
+ * them, which hides gaps between tiles of different detail. A vertex is its grid column and row and 1 if dropped, then
+ * 0. The grid's indices come first, `ground` of them, so that the skirt can be drawn apart, SKIRT_BEHIND steps back.
+ */
+export function tileMesh(): { vertices: Uint8Array; indices: Uint16Array; ground: number } {
+  const row = TILE_QUADS + 1;
+  const verts: number[] = [];
+  const index: number[] = [];
+  for (let z = 0; z < row; z++) for (let x = 0; x < row; x++) verts.push(x, z, 0, 0);
+  for (let z = 0; z < TILE_QUADS; z++) {
+    for (let x = 0; x < TILE_QUADS; x++) {
+      const a = z * row + x;
+      // Same split and colour corner as the collision surface and the reference rasterizer.
+      index.push(a + row + 1, a + 1, a, a + row, a + row + 1, a);
+    }
+  }
+  const ground = index.length;
+  const edge = (x: number, z: number): number => (verts.push(x, z, 1, 0), verts.length / 4 - 1);
+  for (let i = 0; i < TILE_QUADS; i++) {
+    for (const [x0, z0, x1, z1] of [[i, 0, i + 1, 0], [i, TILE_QUADS, i + 1, TILE_QUADS], [0, i, 0, i + 1], [TILE_QUADS, i, TILE_QUADS, i + 1]] as const) {
+      const a = z0 * row + x0;
+      const b = z1 * row + x1;
+      const c = edge(x0, z0);
+      const d = edge(x1, z1);
+      index.push(a, b, c, b, d, c);
+    }
+  }
+  return { vertices: Uint8Array.from(verts), indices: Uint16Array.from(index), ground };
+}
+
 export class TerrainLod {
   /** Distance, in tile widths, beyond which a tile is detailed enough. */
   detail = 2.5;
