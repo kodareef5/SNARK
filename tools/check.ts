@@ -172,7 +172,9 @@ async function run(cmd: string[], quiet: boolean, env: Record<string, string | u
 async function checkTypes(): Promise<void> {
   const tsc = join(ROOT, "node_modules/.bin/tsc");
   const zones = ZONES.filter((z) => walk(join(ROOT, z.dir)).some((f) => f.endsWith(".ts")));
-  const results = await Promise.all(zones.map((z) => run([tsc, "-p", join(z.dir, "tsconfig.json")], true)));
+  // Each zone keeps what it last found in .cache, and checks again only the files a change can reach.
+  const kept = (z: Zone): string => join(ROOT, ".cache/tsc", `${z.dir.replaceAll("/", "-")}.tsbuildinfo`);
+  const results = await Promise.all(zones.map((z) => run([tsc, "-p", join(z.dir, "tsconfig.json"), "--incremental", "--tsBuildInfoFile", kept(z)], true)));
   results.forEach((r, i) => {
     if (!r.ok) fail(`type check failed in ${zones[i]!.dir}:\n${r.out.trim()}`);
   });
