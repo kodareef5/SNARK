@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
+import { underLoad } from "../tests/fixtures/load.ts";
 import { dynamicLoads, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
@@ -229,7 +230,7 @@ async function checkTests(dir: string, env: Record<string, string>): Promise<voi
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
   // A busy machine can make a one-second test take five, so a test is called hung at 20 s, and later in step with the load
   // when more work waits than there are cores, up to two minutes.
-  const hung = Math.round(20000 * Math.min(6, Math.max(1, loadavg()[0]! / cpus().length)));
+  const hung = Math.round(underLoad(20000));
   const report = join(dir, "junit.xml");
   // The slowest files start first, by their times in the last check, or the last of them may start when the rest are done.
   const timed = existsSync(TEST_TIMES) ? ["--timings", TEST_TIMES] : [];
