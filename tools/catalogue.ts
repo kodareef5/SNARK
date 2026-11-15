@@ -115,7 +115,12 @@ export function cataloguePage(): string {
   out.push("built.", "");
   for (const feature of Object.keys(FEATURES) as Feature[]) {
     const waiting = leaves.filter((r) => r.waits === feature).map((r) => `\`${r.id}\`${r.status === "partial" ? " (partly built)" : ""}`);
-    for (const [type, fields] of Object.entries(FIELDS)) for (const [name, f] of Object.entries(fields)) if ((f as { waits?: string }).waits === feature) waiting.push(`\`${type}.${name}\``);
+    for (const [type, fields] of Object.entries(FIELDS)) {
+      for (const [name, f] of Object.entries(fields) as [string, Field][]) {
+        if (f.waits === feature) waiting.push(`\`${type}.${name}\``);
+        for (const [part, waits] of Object.entries(f.stubs ?? {})) if (waits === feature) waiting.push(`\`${type}.${name}.${part}\``);
+      }
+    }
     if (waiting.length === 0) continue;
     out.push(`- **${FEATURES[feature]}.** ${waiting.join(", ")}.`);
   }
