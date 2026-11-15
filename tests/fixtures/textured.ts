@@ -172,8 +172,12 @@ export function writeGlb(gltf: Record<string, unknown>, data: readonly [Data, st
   return out;
 }
 
-/** The tube's finest level as a modelling program would export it: a primitive for each material, on a skin of the rig's two bones. */
-export function tubeGlb(): Uint8Array {
+/**
+ * The tube's finest level as a modelling program would export it: a primitive for each material, on a skin of the rig's
+ * two bones. With `far`, a level of its own follows it, tube_LOD1: a tetrahedron in one flat colour of a material of no
+ * pictures, rgb 32, 64, 96.
+ */
+export function tubeGlb(far = false): Uint8Array {
   const source = tubeMesh();
   const lod = source.lods[0]!;
   const data: [Data, string][] = [];
@@ -201,15 +205,19 @@ export function tubeGlb(): Uint8Array {
   return writeGlb(
     {
       scene: 0,
-      scenes: [{ nodes: [0, 1] }],
+      scenes: [{ nodes: far ? [0, 1, 3] : [0, 1] }],
       nodes: [
         { name: "tube", mesh: 0, skin: 0 },
         { name: "lower", children: [2] },
         { name: "upper", translation: [rest[3]! - rest[0]!, rest[4]! - rest[1]!, rest[5]! - rest[2]!] },
+        ...(far ? [{ name: "tube_LOD1", mesh: 1 }] : []),
       ],
-      meshes: [{ primitives }],
+      meshes: [{ primitives }, ...(far ? [{ primitives: [{ material: source.materials!.length, indices: add(Uint16Array.from([0, 2, 1, 0, 1, 3, 1, 2, 3, 0, 3, 2]), "SCALAR"), attributes: { POSITION: add(Float32Array.from([0, 0, 0, 0.2, 0, 0, 0, 0, 0.2, 0, 0.6, 0]), "VEC3") } }] }] : [])],
       skins: [{ joints: [1, 2], inverseBindMatrices: inverse }],
-      materials: source.materials!.map((m) => ({ name: m.id.slice(TUBE.length + 1), doubleSided: (m.flags & MATERIAL_TWO_SIDED) !== 0, pbrMetallicRoughness: { baseColorFactor: [...m.tint, 1] } })),
+      materials: [
+        ...source.materials!.map((m) => ({ name: m.id.slice(TUBE.length + 1), doubleSided: (m.flags & MATERIAL_TWO_SIDED) !== 0, pbrMetallicRoughness: { baseColorFactor: [...m.tint, 1] } })),
+        ...(far ? [{ name: "f204060", pbrMetallicRoughness: { baseColorFactor: [32, 64, 96].map((c) => Math.pow(c / 255, 2.2)).concat(1) } }] : []),
+      ],
     },
     data,
   );

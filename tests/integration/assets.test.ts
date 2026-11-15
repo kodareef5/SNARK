@@ -98,6 +98,8 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // two changes: far nodes were drawn as rows of an atlas, every mesh of a tile in one draw (DRAW_PULLED; alone, with the
   // hand-over band past the near field, c446a790), and the near store handed its nodes to the far store over a band of
   // 152 to 184 m (hand.ts), drawing none past it and fading those in it, which the far store draws from the band on to a
-  // reach cut to keep the ring it covers as large (farnodes.ts farReach).
-  expect(hash.toString(16)).toBe("c56e26fc");
+  // reach cut to keep the ring it covers as large (farnodes.ts farReach). It was c56e26fc until the common tree grew at 0.85
+  // to 1.15 of its models, not 0.4 to 0.75: 98 more instances a frame and 3,136 more triangles, in the same 122 draws. The
+  // sizes alone give it, and its four young variants and the elders' boxes alone leave it c56e26fc.
+  expect(hash.toString(16)).toBe("9a45f2b0");
 });

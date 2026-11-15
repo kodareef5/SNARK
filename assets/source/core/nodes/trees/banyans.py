@@ -36,19 +36,19 @@ def azimuth(deg):
 # length, radius). dome: the crown's outline, as figs.py has it.
 BANYANS = [
     # B1, the colonnade: nine pillars under a long, nearly level roof.
-    {"name": "banyan_b1", "stem": 1.2, "fork": 4.6, "ribbons": 12, "lobe": (4.3, 1.35, 4.1), "curtains": (9, 12),
-     "dome": ((0.0, 10.0, 0.0), (15.0, 3.0, 13.0), 7.2, [(300, 30, 10)]),
+    {"name": "banyan_b1", "stem": 1.2, "fork": 4.6, "ribbons": 12, "lobe": (4.3, 2.2, 4.1), "curtains": (9, 12),
+     "dome": ((0.0, 10.6, 0.0), (15.0, 3.6, 13.0), 7.8, [(300, 30, 10)]),
      "beams": [[(9.0, 270, 0.70, 6.1)], [(5.2, 225, 0.40, 5.0), (7.0, 247.5, 0.55, 5.4)], [(4.5, 157.5, 0.35, 4.8), (6.8, 135, 0.45, 5.3)],
                [(8.0, 112.5, 0.60, 5.7)], [(9.5, 67.5, 0.65, 6.3)], [(6.5, 337.5, 0.50, 6.4)], [(6.8, 22.5, 0.42, 6.6)]],
      "beyond": 3.0, "fans": [(190, [(0, 50), (0.4, 20), (1, 26)], 8.0, 0.42)]},
     # B2, the young banyan: its first three pillars near the trunk, a rounder crown, many curtains not yet rooted.
-    {"name": "banyan_b2", "stem": 1.0, "fork": 4.2, "ribbons": 11, "lobe": (3.6, 1.8, 3.4), "curtains": (16, 22),
-     "dome": ((0.0, 9.4, 0.0), (9.5, 4.8, 9.0), 6.0, []),
+    {"name": "banyan_b2", "stem": 1.0, "fork": 4.2, "ribbons": 11, "lobe": (3.6, 2.2, 3.4), "curtains": (16, 22),
+     "dome": ((0.0, 9.8, 0.0), (9.5, 4.6, 9.0), 6.6, []),
      "beams": [[(3.2, 247.5, 0.42, 4.7)], [(3.4, 112.5, 0.35, 4.9)], [(4.0, 67.5, 0.30, 5.4)]],
      "beyond": 4.5, "fans": [(0, [(0, 48), (0.4, 24), (1, 30)], 7.5, 0.45), (180, [(0, 52), (0.4, 26), (1, 32)], 7.0, 0.42)]},
     # B3, the swallower: a rusted car lifted between two eastern pillars, a broken western scaffold, the east fuller.
-    {"name": "banyan_b3", "stem": 1.25, "fork": 5.0, "ribbons": 13, "lobe": (4.2, 1.45, 4.0), "curtains": (8, 11), "car": True,
-     "dome": ((2.0, 11.0, 0.0), (13.5, 4.0, 11.5), 7.6, [(270, 25, 28)]),
+    {"name": "banyan_b3", "stem": 1.25, "fork": 5.0, "ribbons": 13, "lobe": (4.2, 2.3, 4.0), "curtains": (8, 11), "car": True,
+     "dome": ((2.0, 11.4, 0.0), (13.5, 4.2, 11.5), 8.2, [(270, 25, 28)]),
      "beams": [[(8.5, 292.5, 0.70, 6.0)], [(4.8, 225, 0.40, 5.0), (7.0, 247.5, 0.55, 5.3)], [(5.5, 0, 0.45, 7.0)],
                [(4.8, 90, 0.60, 6.1), (8.0, 90, 0.65, 6.8)], [(11.0, 112.5, 0.35, 7.3)]],
      "beyond": 2.5, "fans": [(150, [(0, 50), (0.4, 26), (1, 34)], 7.0, 0.48)], "stub": (270, 9.0)},
@@ -153,8 +153,8 @@ def skeleton(spec):
                          [0.55, 0.52, 0.48, 0.44, 0.41, 0.38, 0.36, 0.34, 0.33], 0)
     centre, radii, rim, notches = spec["dome"]
     # A roof: lobes along the beams themselves, held just above them, as well as on their branches.
-    lobes = bl.foliage(beams, spec["lobe"], rng, gap=1.0, along={0: (0.2, 1.0, 6), 1: (0.4, 1.0, 3)}, fill=1.5, rise=1.0,
-                       dome=bl.Dome(centre, radii, rim, notches, wobble=0.1, seed=spec["name"], spacing=0.85))
+    lobes = bl.foliage(beams, spec["lobe"], rng, gap=1.0, along={0: (0.2, 1.0, 6), 1: (0.4, 1.0, 3)}, fill=1.2, rise=1.0,
+                       dome=bl.Dome(centre, radii, rim, notches, wobble=0.1, seed=spec["name"], spacing=0.85, under=0.65))
     return beams, pillars, stub, lobes
 
 
@@ -195,7 +195,7 @@ def car(m, lod):
         a, b = rings[len(rings) // 2][k - 1], rings[len(rings) // 2][k % n]
         per.append(per[-1] + length(sub(b, a)))
     us = [p / per[-1] for p in per]
-    mat = "ruins" if m.textured else RUST
+    mat = figs.CROWN if m.textured else RUST
     mid = lambda i: add(centre, ((stations[i][0] + stations[min(i + 1, len(stations) - 1)][0]) / 2, base + 0.6, 0.0))
     idx = [[m.point(p) for p in ring + [ring[0]]] for ring in rings]
     # One winding for the whole loft, so neighbouring faces agree: the one that has the roof look up.
@@ -235,12 +235,12 @@ def car(m, lod):
 def banyan(name, lod):
     spec = SPECS[name]
     if lod == far.LEVEL:
-        beams, pillars, stub, lobes = skeleton(spec)
+        pillars = skeleton(spec)[1]
         # The largest of the pillars the flat levels draw, if they draw any.
         drawn = [p for p in pillars if p.r >= FAR_PILLAR]
         big = max(drawn, key=lambda p: p.r) if drawn else None
         post = ((big.foot[0], big.foot[2]), big.r * 2.0, big.under()) if big else None
-        return far.banyan(banyan(name, lod - 1), lobes, (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, post)
+        return far.crown(banyan(name, 3), (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name, posts=[post] if post else ())
     m = Mesh(lod <= 2)
     rng = rng_for(name, "level", lod)
     beams, pillars, stub, lobes = skeleton(spec)
@@ -273,11 +273,11 @@ def banyan(name, lod):
     if spec.get("car") and lod <= 2:
         car(m, lod)
     if lod <= 2:
-        bl.crown(m, lobes, lod, rng, ATLAS, 1.2, shade=shade, closed=True)
+        bl.crown(m, lobes, lod, rng, ATLAS, 1.2, figs.MASS, shade=shade, grain=1.35)
         if lod <= 1:
             figs.curtains(m, spec["name"], beams, lobes, lod, count=spec["curtains"], reach=(2.0, 5.0))
     else:
-        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 12 if lod == 3 else 6)
+        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 14 if lod == 3 else 7)
     return m
 
 

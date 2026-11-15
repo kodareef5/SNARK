@@ -13,6 +13,7 @@ import figs
 import mangroves
 import oaks
 import palms
+import young
 
 MEDIUM = 3505
 SIZE = 1.25
@@ -56,7 +57,7 @@ def cost(module, pieces):
 
 
 if __name__ == "__main__":
-    for label, module in (("palms", palms), ("live oaks", oaks), ("strangler figs", figs), ("banyans", banyans), ("mangroves", mangroves)):
+    for label, module in (("palms", palms), ("young oaks", young), ("elder oaks", oaks), ("strangler figs", figs), ("banyans", banyans), ("mangroves", mangroves)):
         pieces = [n for n, _ in module.PIECES if not n.endswith("_depleted")]
         total, by_level = cost(module, pieces)
         print(f"{label:16} {total / 1e6:.2f} M triangles a frame; by level " + ", ".join(f"{t / 1e6:.2f}" for t in by_level))

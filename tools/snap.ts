@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -144,6 +144,16 @@ function growAt(view: ProvingView, id: string, x: number, z: number): void {
   if (kind === undefined || reg.defs[kind]?.type !== "node") throw new Error(`--grow takes a node kind, not "${id}"`);
   const h = mix(Math.round(x * 64), Math.round(z * 64), kind);
   nodes.store.add(formOf(nodes.forms, kind, h), x, hf.heightAt(x, z), z, (h >>> 8) & 0xffff, 0, 1);
+}
+
+/** Puts the view's survivor at (x, z) facing `degrees`, `ticks` into a swing of a hatchet. */
+function chopAt(view: ProvingView, x: number, z: number, degrees: number, ticks: number): void {
+  const r = view.remote;
+  const st = new AnimState();
+  r.tick = 100;
+  st.setAction(ACT_SWING, HOLD_TOOL, r.tick - ticks);
+  [r.x[0], r.y[0], r.z[0], r.yaw[0], r.flags[0], r.anim[0]] = [x, view.hf.heightAt(x, z), z, (degrees * Math.PI) / 180, 1, st.pack()];
+  r.gear[GEAR_HELD] = view.reg.index.get("core:hatchet")!;
 }
 
 /** Removes houseScene's house and shows it falling as a client would, `ms` after the removal, from the south-west foundation. */
@@ -991,6 +1001,8 @@ if (import.meta.main) {
     if (used) useUp(view, used[0]!, used[1]!);
     const grow = arg("grow")?.split(",") ?? [];
     for (let i = 0; i + 2 < grow.length; i += 3) growAt(view, grow[i]!, Number(grow[i + 1]), Number(grow[i + 2]));
+    const chop = arg("chop")?.split(",").map(Number);
+    if (chop) chopAt(view, chop[0]!, chop[1]!, chop[2]!, chop[3] ?? 8);
   };
   const graphics = arg("graphics");
   if (graphics !== undefined) {

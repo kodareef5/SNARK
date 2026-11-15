@@ -3,7 +3,7 @@
 // bytes and the client inflates them (shared/pack/stored.ts). The boot file is fetched whole and is left as it is.
 
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
@@ -165,7 +165,8 @@ export async function storeParts(files: readonly SplitFile[], manifest: Manifest
     report.made++;
     if (path) {
       mkdirSync(join(cache!, key.slice(0, 2)), { recursive: true });
-      writeFileSync(path, out);
+      writeFileSync(`${path}.${process.pid}.tmp`, out);
+      renameSync(`${path}.${process.pid}.tmp`, path);
     }
     return out;
   };

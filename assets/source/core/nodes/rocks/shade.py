@@ -155,6 +155,26 @@ def emit(ob, which=None):
     links.new(nodes[which or "bsdf"].outputs[0], nodes["out"].inputs["Surface"])
 
 
+def seated(t, colour, z, height, coords, reach, dark):
+    """
+    A stone sits in the ground: up to a ragged line about `reach` high it is damp and stained with the soil and the
+    green the ground grows, a hand higher in its hollows, darkest along the ground, where its colour is `dark` of
+    itself and half soil. What lies below the ground, which a slope shows on its downhill side, is so too.
+    """
+    ragged = t.math("MULTIPLY", t.math("SUBTRACT", t.noise(coords, 2.2, 3), 0.5), reach * 0.9)
+    low = t.math("ADD", t.math("SUBTRACT", z, ragged), t.math("MULTIPLY", t.math("SUBTRACT", height, 0.5), reach * 0.6))
+    wet = t.ramp(low, reach, 0.0)
+    # A few splashes of soil above the line.
+    splash = t.math("MULTIPLY", t.ramp(t.noise(coords, 14, 2), 0.62, 0.7), t.ramp(z, reach * 2.2, reach))
+    wet = t.math("MAXIMUM", wet, t.math("MULTIPLY", splash, 0.45))
+    shade = 255 * (dark ** (1 / 2.2))
+    colour = t.mix(colour, t.rgb(shade, shade, shade), wet, blend="MULTIPLY")
+    # Soil, olive where algae has taken it, and a darker line where the stone meets the ground.
+    soil = t.mix(t.rgb(104, 94, 72), t.rgb(84, 92, 64), t.ramp(t.noise(coords, 3.0, 2), 0.42, 0.62))
+    colour = t.mix(colour, soil, t.math("MULTIPLY", wet, 0.5))
+    return t.mix(colour, t.rgb(66, 62, 48), t.math("MULTIPLY", t.ramp(z, 0.08, -0.02), 0.45))
+
+
 def limestone(name, span=1.5):
     """The pale limestone: clean skin on the sides, grey-black crust on the tops and in the cups, sand low down."""
     i = Inputs(name, span)
@@ -210,10 +230,7 @@ def limestone(name, span=1.5):
     colour = t.mix(colour, t.rgb(112, 100, 82), t.math("MULTIPLY", groove, 0.5))
     # Deep pits go nearly black; shallow ones stay the stone's colour, their shadow is in the relief.
     colour = t.mix(colour, t.rgb(52, 46, 38), t.math("MULTIPLY", t.ramp(sunk, 0.25, 0.85), 0.8))
-    # A little darker at the foot, with sand caught in its hollows.
-    colour = t.mix(colour, t.rgb(186, 168, 136), t.math("MULTIPLY", t.ramp(z, 0.22, 0.0), 0.2))
-    sandy = t.math("MULTIPLY", t.ramp(z, 0.3, 0.02), t.ramp(t.math("ADD", t.noise(coords, 5, 3), t.math("MULTIPLY", t.math("SUBTRACT", 0.5, height), 0.8)), 0.45, 0.62))
-    colour = t.mix(colour, t.rgb(222, 205, 170), t.math("MULTIPLY", sandy, 0.8))
+    colour = seated(t, colour, z, height, coords, reach=0.42, dark=0.4)
     # A fresh break: new pale stone, with a little dust settled in its hollows.
     fresh_c = t.picture(os.path.join(tex, "fresh_base.png"), uvw)
     fresh_h = t.picture(os.path.join(tex, "fresh_height.png"), uvw, data=True)
@@ -250,7 +267,7 @@ def ore(name, span=1.5):
     # Blue-black and grey-green in broad patches, a little dust low down.
     colour = t.mix(colour, t.rgb(40, 48, 44), t.math("MULTIPLY", t.ramp(tone, 0.45, 0.1), 0.4))
     colour = t.mix(colour, t.rgb(80, 92, 74), t.math("MULTIPLY", t.ramp(tone, 0.55, 0.95), 0.5))
-    colour = t.mix(colour, t.rgb(150, 136, 110), t.math("MULTIPLY", t.ramp(z, 0.25, 0.0), t.ramp(t.noise(coords, 4, 3), 0.48, 0.66)))
+    colour = seated(t, colour, z, height, coords, reach=0.25, dark=0.72)
     # Rust from the seams, in its own streaks.
     rc = t.mix(t.picture(os.path.join(tex, "rust_base.png"), uvw), t.rgb(158, 86, 40), 0.45)
     cover = t.picture(os.path.join(tex, "rust_cover.png"), uvw, data=True)
@@ -314,10 +331,9 @@ def rubble(name, span=1.5):
     t.set(painted_c.inputs[6], t.mix(hue, t.rgb(242, 234, 222), 0.22))
     t.set(painted_c.inputs[7], t.math("MULTIPLY", fade, 2.0))
     colour = t.mix(s[0], painted_c.outputs[2], t.math("MULTIPLY", face, left))
-    # Rain-dark grime low down and in the hollows between pieces; sand blown in at the foot.
+    # Rain-dark grime low down and in the hollows between pieces, and a foot sat in the ground.
     colour = t.mix(colour, t.rgb(96, 90, 78), t.math("MULTIPLY", t.ramp(z, 0.35, 0.0), 0.25))
-    sandy = t.math("MULTIPLY", t.ramp(z, 0.22, 0.02), t.ramp(t.math("ADD", t.noise(coords, 4, 3), t.math("MULTIPLY", t.math("SUBTRACT", 0.5, s[1]), 0.8)), 0.5, 0.65))
-    colour = t.mix(colour, t.rgb(214, 196, 160), t.math("MULTIPLY", sandy, 0.6))
+    colour = seated(t, colour, z, s[1], coords, reach=0.32, dark=0.55)
     # Rebar: rusted iron.
     r = layer("rust", 0.25)
     colour = t.mix(colour, r[0], rust)

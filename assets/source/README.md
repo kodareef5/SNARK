@@ -156,8 +156,10 @@ with texture coordinates are drawn with materials, and the rest flat, each
 material in one colour. With `flat` in `asset.ts` its levels are made from its
 finest instead, as a creature's are, to `budgets.triangles`, and the flat ones
 take their colours triangle by triangle from its pictures: a thatch wall's
-first flat level then has two tones of straw where it had one. The script's own
-coarse levels are not used then.
+first flat level then has two tones of straw where it had one. A piece whose
+script brings levels of its own (`..._LOD1` and on, flat) has them after the made
+ones, as its last, each taking one of the last budgets: a far level made by hand
+for the far layer, as the rocks' is (`core/nodes/rocks/far.ts`).
 
 A level is drawn once the tier lets its error pass: how far its surface lies
 from the finest's, against a fraction of a pixel. That is measured on its

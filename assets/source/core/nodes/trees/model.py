@@ -1,4 +1,4 @@
-# The trees: builds every piece of every kind (palms.py, oaks.py, figs.py, banyans.py, mangroves.py), each tree and
+# The trees: builds every piece of every kind (palms.py, young.py, oaks.py, figs.py, banyans.py, mangroves.py), each tree and
 # its stump, with their coarser levels.
 #
 # Geometry is worked out in kit.py's engine axes and turned into Blender's (x, -z, y) as each object is made. A level
@@ -17,8 +17,9 @@ import figs  # noqa: E402
 import mangroves  # noqa: E402
 import oaks  # noqa: E402
 import palms  # noqa: E402
+import young  # noqa: E402
 
-KINDS = [palms, oaks, figs, banyans, mangroves]
+KINDS = [palms, young, oaks, figs, banyans, mangroves]
 
 
 def linear(c):

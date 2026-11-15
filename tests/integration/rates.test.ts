@@ -105,7 +105,7 @@ test("a node does not grow back while a survivor is near it: how near is the ser
     const field = h.host.harvest!.field;
     while (field.standing(tree.chunk, tree.index) !== 0) h.host.harvest!.strike(h.client(ada)!, tree.chunk, tree.index);
     // She stands 4 m from its middle for the two game hours a regrow takes, plus a little. The rule's 12 m are counted from
-    // as far as the live oak's trunk reaches, under 2 m.
+    // as far as the young tree's trunk reaches, under 1.2 m.
     h.run(((2 * 140 + 5) * 1000));
     expect([radius, field.standing(tree.chunk, tree.index) !== 0]).toEqual([radius, grows]);
     void me;
