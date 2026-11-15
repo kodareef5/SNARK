@@ -9,6 +9,7 @@ import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { ACT_SWING, HOLD_TOOL } from "../../shared/sim/weapon.ts";
 import { GROUNDS } from "../../shared/pack/details.ts";
 import { groundAt } from "../../client/core/details/ground.ts";
+import type { FramePacket } from "../../client/core/render/packet.ts";
 import type { ProvingView } from "../snap.ts";
 
 export const DETAIL_SEQUENCES = ["land", "thrown", "struck", "down", "death", "up", "splash", "flock", "fight"] as const;
@@ -41,7 +42,20 @@ export interface Sequence {
  * Plays `which` in `view`, which the caller has filled and settled. The bird stands at (x, z) facing `yaw`; the camera
  * stands `near` metres off and then 20 m, at a phone's pixels a metre, frames `w` by `h`.
  */
-export function playDetails(view: ProvingView, which: string, w: number, h: number, settle: (v: ProvingView) => void, zoom = 1, moments: readonly number[] = MOMENTS, rows = 2): Sequence {
+export interface Playing {
+  /** Runs frames until the view's card holds what it wants, before the occasion. */
+  settle?: (v: ProvingView) => void;
+  /** Times a phone's pixels a metre. */
+  zoom?: number;
+  moments?: readonly number[];
+  /** The near row alone, or both. */
+  rows?: number;
+  /** Told of every frame built, after the rasterizer has drawn it where it is one of the moments. */
+  each?: (p: FramePacket, moment: boolean) => void;
+}
+
+export function playDetails(view: ProvingView, which: string, w: number, h: number, opts: Playing = {}): Sequence {
+  const { settle = () => {}, zoom = 1, moments = MOMENTS, rows = 2, each } = opts;
   const { reg, hf, remote: r, scene, cam, raster } = view;
   const kind = reg.index.get("core:dodo")!;
   const survivor = reg.index.get("core:survivor")!;
@@ -163,8 +177,10 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
         }
       }
       const p = scene.build(cam, r);
-      if (t >= moments[next]! || p.assetUploads.length + p.texUploads.length > 0) raster.render(p);
-      if (t < moments[next]!) continue;
+      const moment = t >= moments[next]!;
+      if (moment || p.uploads.length + p.drops.length + p.assetUploads.length + p.assetDrops.length + p.texUploads.length + p.texDrops.length > 0) raster.render(p);
+      each?.(p, moment);
+      if (!moment) continue;
       frames[row]!.push(raster.color.slice());
       if (row === 0) counts.push(`${scene.details.pool.count} alive, ${p.detailCount} drawn, fill ${p.detailFill.toFixed(3)}`);
       next++;

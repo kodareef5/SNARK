@@ -1109,7 +1109,7 @@ if (import.meta.main) {
     view.scene.assets.tier = tierOf(tier);
     view.scene.viewHeight = fh;
     const t0 = performance.now();
-    const seq = playDetails(view, sequence, fw, fh, (v) => void settle(v), Number(arg("zoom") ?? 1));
+    const seq = playDetails(view, sequence, fw, fh, { settle: (v) => void settle(v), zoom: Number(arg("zoom") ?? 1) });
     // A sheet for each distance, four frames across.
     const cols = 4;
     const rows = Math.ceil(MOMENTS.length / cols);

@@ -215,7 +215,7 @@ test("the rasterizer draws a landing on low poly and on medium from the same num
     const view = provingView(160, 120);
     view.scene.assets.tier = tierOf(tier);
     view.scene.viewHeight = 120;
-    const seq = playDetails(view, "land", 160, 120, () => {}, 1, [0.4], 1);
+    const seq = playDetails(view, "land", 160, 120, { moments: [0.4], rows: 1 });
     const p = view.scene.packet;
     const frame = seq.frames[0]![0]!;
     // The same frame without its details draws: what they changed.
