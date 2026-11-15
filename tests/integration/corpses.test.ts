@@ -838,3 +838,34 @@ test("a ridden stand-in bola'd 100 m up comes down where it was caught with its 
   expect([Math.hypot(ents.x[e]! - x, ents.z[e]! - z) > 1, (ents.mflags[e]! & MF_ROOTED) !== 0]).toEqual([true, false]);
   expect([rider.length, sv.value(me, V_HEALTH) >= hers]).toEqual([0, true]);
 });
+
+test("a body saved while it fell falls on after a restart, from where it was saved, and lies on the ground; one saved lying stays as it lay", () => {
+  const db = join(dir, "falling.db");
+  const { h, at, me } = camp({ dbPath: db });
+  const ents = h.world.ents;
+  const lying = killed(h, "core:raptor", at.x + 4, at.z + 4, me);
+  const pose = Array.from(lying.pose!.pos);
+  const e = h.host.spawnCreature("core:raptor", at.x - 4, at.z + 4, 1);
+  h.host.creatures.mind.stay(e, 0xffffffff);
+  const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  h.run(500);
+  const ground = aloft(h, e, 100);
+  const before = new Set(h.host.corpses.bodies.keys());
+  h.host.survival.hurt(rec, 1e6, me.pid);
+  const [b] = since(h, before);
+  h.run(1000);
+  expect([b!.drop !== null, b!.y < ground + 95, b!.y > ground + 50]).toEqual([true, true, true]);
+  h.host.shutdown();
+  const h2 = new Harness({}, 1, 60, { dbPath: db });
+  const b2 = h2.host.corpses.bodies.get(b!.rec.pid)!;
+  const l2 = h2.host.corpses.bodies.get(lying.rec.pid)!;
+  // The store keeps where its entity was when the record was last written, in the air.
+  expect([b2.y > ground + 50, b2.drop]).toEqual([true, null]);
+  h2.run(100);
+  expect([h2.host.corpses.falling, b2.drop !== null, b2.fall, h2.world.ents.anim[b2.e], l2.drop]).toEqual([1, true, null, FALLING, null]);
+  h2.run(8000);
+  expect([h2.host.corpses.falling, Math.abs(b2.y - ground) < 0.01, b2.fall!.still, h2.world.ents.anim[b2.e]]).toEqual([0, true, true, 0]);
+  expect(Array.from(l2.pose!.pos)).toEqual(pose);
+  expect(h2.host.items.audit()).toEqual([]);
+  h2.host.shutdown();
+});
