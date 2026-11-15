@@ -29,7 +29,7 @@ def main():
     assert inputs_before==json.loads((HERE/'checks/manifest.json').read_text())['inputs'],'Inputs changed during verification'
     result={'identical_rebuild':True,'outputs':after,'png':{},'overlap':{},'unhurt':{},'membrane':{}}
     result['render_inputs']={}
-    for folder, count in [('close',30),('marks',15),('20m',6),('60m',6),('storage512',30)]:
+    for folder, count in [('close',30),('marks',24),('20m',6),('60m',6),('storage512',30)]:
         rendered=HERE/'look'/folder
         record=json.loads((rendered/'render.json').read_text())
         for name, digest in record['texture_sha256'].items():
@@ -65,13 +65,25 @@ def main():
         delta=np.abs(np.array(Image.open(p))[:,8:308].astype(int)-np.array(Image.open(q))[:,8:308].astype(int))
         assert not delta.any(),f'512 budget changes unhurt: {p.name}'
         result['unhurt_512'][p.stem]={'changed_pixels':0,'max_channel_difference':0}
-    result['progression_20m']={}
-    for p in sorted((HERE/'look/20m').glob('stages_*.png')):
-        sheet=np.array(Image.open(p)).astype(int)
-        cells=[sheet[:,8+k*288:288+k*288,:3] for k in range(7)]
-        changed=[int(np.any(np.abs(b-a)>2,axis=-1).sum()) for a,b in zip(cells,cells[1:])]
-        assert min(changed)>0,f'A stage has no visible change: {p.name}'
-        result['progression_20m'][p.stem]={'pixels_changed_by_more_than_2_per_step':changed}
+    for distance,side in [('20m',280),('60m',93)]:
+        progression={}
+        for p in sorted((HERE/'look'/distance).glob('stages_*.png')):
+            sheet=np.array(Image.open(p)).astype(int)
+            cells=[sheet[8:8+side,8+k*(side+8):8+k*(side+8)+side,:3] for k in range(7)]
+            changed=[int(np.any(np.abs(b-a)>2,axis=-1).sum()) for a,b in zip(cells,cells[1:])]
+            assert min(changed)>0,f'A stage has no visible change: {distance}/{p.name}'
+            # Report, rather than equate a pixel count with visual readability.
+            # Restrict blood measurements to the wings, excluding the body.
+            yy,xx=np.mgrid[:side,:side]
+            wing=(np.abs(xx-side/2)>side*.06)&(yy>side*.36)&(yy<side*.68)
+            red=[]
+            for cell in cells[:4]:
+                r,g,b=cell.transpose(2,0,1)
+                blood=(r>g*1.4)&(r>b*1.6)&(r>55)&wing
+                red.append(int(blood.sum()))
+            progression[p.stem]={'pixels_changed_by_more_than_2_per_step':changed,
+                                 'red_wing_pixels_unhurt_to_hurt3':red}
+        result[f'progression_{distance}']=progression
     meta=json.loads((TEX/'paint/pteranodon_wing_pieces.json').read_text())
     box=meta['position_box']
     ids=np.array(Image.open(TEX/'paint/pteranodon_wing_pieces.png').resize((1024,1024),Image.Resampling.NEAREST))[...,0]

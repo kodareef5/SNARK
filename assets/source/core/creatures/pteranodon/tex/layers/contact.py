@@ -80,13 +80,22 @@ def marks():
     names=['tear_upper','tear_under','puncture_upper','puncture_under','leather_upper']
     for dye in ['design','loud','dark']:
         out=Image.new('RGB',(2164,55+len(names)*344),(34,38,43));d=ImageDraw.Draw(out)
-        d.text((12,7),f'{dye.upper()} / ROUND 2 MARK DETAILS / stored at 256',font=font(22),fill='white')
+        d.text((12,7),f'{dye.upper()} / ROUND 3 MARK DETAILS / stored at 256',font=font(22),fill='white')
         for i,label in enumerate(LABELS):d.text((16+308*i,33),label,font=font(16),fill='white')
         for row,name in enumerate(names):
             y=55+row*344
             d.text((12,y),name.replace('_',' '),font=font(18),fill='white')
             out.paste(Image.open(HERE/f'look/marks/stages_{name}_{dye}.png').convert('RGB'),(0,y+24))
         out.save(HERE/f'look/marks/audit_marks_{dye}.jpg',quality=95)
+        names_late=['long_rip_upper','long_rip_under','outer_puncture_under']
+        out=Image.new('RGB',(2164,55+len(names_late)*344),(34,38,43));d=ImageDraw.Draw(out)
+        d.text((12,7),f'{dye.upper()} / SECOND RIP AND OUTER PUNCTURE / stored at 256',font=font(22),fill='white')
+        for i,label in enumerate(LABELS):d.text((16+308*i,33),label,font=font(16),fill='white')
+        for row,name in enumerate(names_late):
+            y=55+row*344
+            d.text((12,y),name.replace('_',' '),font=font(18),fill='white')
+            out.paste(Image.open(HERE/f'look/marks/stages_{name}_{dye}.png').convert('RGB'),(0,y+24))
+        out.save(HERE/f'look/marks/audit_added_{dye}.jpg',quality=95)
 
 if __name__=='__main__':
     close();distance();all_stages();storage();marks()

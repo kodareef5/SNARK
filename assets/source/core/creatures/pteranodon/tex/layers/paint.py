@@ -13,6 +13,7 @@ site.addsitedir(site.getusersitepackages())
 import numpy as np
 from PIL import Image, PngImagePlugin
 from scipy.ndimage import distance_transform_edt, gaussian_filter
+from scipy.interpolate import CubicSpline, PchipInterpolator
 from scipy.spatial import cKDTree
 
 HERE = Path(__file__).resolve().parent
@@ -109,6 +110,22 @@ def membrane_wound(mark, u, v, palette):
     r = bruise.copy()
     arrival = first+(last-first)*np.clip(bruise,0,1)**1.65
 
+    # Later contusions spread well beyond the accepted aperture drawing.
+    # Their clock is independent, so a larger stage-three bruise does not
+    # enlarge the stage-one hole or turn the runoff into a continuous stripe.
+    spread = np.full_like(u, 100)
+    for x, y, length, width in drawing.get('spread_bruises_mm', []):
+        d = np.hypot((u-x/1000)/(length/2000), (v-y/1000)/(width/2000))
+        spread = np.minimum(spread, d)
+    spread *= 1+.17*noise+.04*fine
+    spread_first = drawing.get('spread_start', 2.02)
+    spread_clock = spread_first+(2.995-spread_first)*np.clip(spread,0,1)**2.5
+    spread_col = mix(pal['contusion_deep'],pal['contusion_skin'],smooth(.12,.92,spread))
+    spread_col += noise[:,None]*np.array([5,3,4])+fine[:,None]*2
+    col = np.where((bruise>=1)[:,None],spread_col,col)
+    r = np.minimum(r,spread)
+    arrival = np.minimum(arrival,spread_clock)
+
     if mark['shape'] == 'tear':
         lips = np.asarray(drawing['lips_mm'])/1000
         low = np.interp(u, lips[:,0], lips[:,1])+.0018*fine
@@ -119,8 +136,8 @@ def membrane_wound(mark, u, v, palette):
         ends = smooth(lips[0,0]-.008,lips[0,0]+.003,u)*(1-smooth(lips[-1,0]-.006,lips[-1,0]+.002,u))
         opening = (1-smooth(.72,1.10,gap))*ends
         # Advance inward from the trailing edge; the short split arrives last.
-        progress = smooth(-.14,.16,u)
-        gap_arrival = first+.92*progress+.32*np.clip(gap,0,1)
+        progress = smooth(*drawing.get('opening_progress_m',[-.14,.16]),u)
+        gap_arrival = first+drawing.get('opening_advance',.92)*progress+.32*np.clip(gap,0,1)
         arrival = np.minimum(arrival, np.where(opening>.01,gap_arrival,4))
         # The peeled-back lip is a dark flap with short pucker folds. It is
         # deliberately longer and farther from the gap than the other lip.
@@ -138,17 +155,19 @@ def membrane_wound(mark, u, v, palette):
 
     # Individually drawn clots, smears and detached drops with changing width.
     # A thin blood lip has holes; neither bank is generated from gap distance.
-    for item in drawing['blood_strokes']:
+    for item in drawing.get('thin_blood_strokes', []) + drawing['blood_strokes']:
         d = stroke(u,v,item['path_mm'])*(1+.18*noise+.05*fine)
         r = np.minimum(r,d)
         pigment = 1-smooth(.42,1,d)
-        blood = pal[item['pigment']]+fine[:,None]*np.array([9,2,1])
+        pigment_name = 'fresh_crimson' if item['pigment']=='blood' else item['pigment']
+        blood = pal[pigment_name]+fine[:,None]*np.array([9,2,2])+noise[:,None]*np.array([12,2,3])
         col = mix(col,blood,pigment*item.get('strength',1))
-        clock = first+item['delay']+(last-first-item['delay'])*np.clip(d,0,1)**1.5
-        arrival = np.minimum(arrival,clock)
+        start = item.get('start',first+item.get('delay',0))
+        clock = start+(item.get('end',last)-start)*np.clip(d,0,1)**1.5
+        arrival = np.minimum(arrival,np.where(d<1,clock,4))
     col = mix(col,pal['wound_core']+fine[:,None]*1.5,opening)
     # Leave a soft, irregular final fringe rather than an opaque decal edge.
-    fringe = 2.75*smooth(.35,.65,r)+.245*smooth(.65,1,r)
+    fringe = 2.75*smooth(.58,.82,r)+.245*smooth(.82,1,r)
     arrival = np.maximum(arrival,fringe)
     return r, col, arrival
 
@@ -252,6 +271,33 @@ class Atlas:
             r *= 1+.085*comb+.035*fine
         elif kind == 'membrane':
             r, wound_col, wound_arrival = membrane_wound(mark,u,v,palette)
+        elif kind == 'leather':
+            # Narrow, branching shrinkage fields derive from the real vascular
+            # paths. No round stamp supplies the drying field's silhouette.
+            r = np.full_like(u,100)
+            drying_arrival = np.full_like(u,4)
+            x,z = -self.pos[:,0],self.pos[:,2]
+            for item in mark['drying_network']:
+                path = self.network_paths[item['path']]
+                guides = np.asarray(path['guides'])*1000
+                arc = np.r_[0,np.cumsum(np.linalg.norm(np.diff(guides,axis=0),axis=1))]
+                samples = np.linspace(0,arc[-1],max(4,int(arc[-1]/30)))
+                curve = CubicSpline(arc,guides,bc_type='natural')(samples)
+                radii = PchipInterpolator(arc,item['radii_mm'])(samples)
+                points = np.column_stack([curve,radii])
+                d = stroke(x,z,points)*(1+.13*macro+.035*fine)
+                r = np.minimum(r,d)
+                begin = mark['reveal'][0]+item.get('delay',0)
+                clock = begin+(2.995-begin)*np.clip(d,0,1)**1.7
+                drying_arrival = np.minimum(drying_arrival,np.where(d<1,clock,4))
+            # Keep the accepted inter-vessel splits inside the drying field,
+            # including the short branches that lie away from a vessel.
+            for path in mark['creases_xz_mm']:
+                support = [[px,pz,18+radius*5] for px,pz,radius in path]
+                d = stroke(x,z,support)*(1+.13*macro+.035*fine)
+                r = np.minimum(r,d)
+                clock = 1.18+1.815*np.clip(d,0,1)**1.7
+                drying_arrival = np.minimum(drying_arrival,np.where(d<1,clock,4))
         mask &= r < 1
         layer = mark.get('layer', 'hurt')
         first, last = mark['reveal']
@@ -259,6 +305,9 @@ class Atlas:
         # The last narrow fringe is still partially mixed at stage three. This
         # avoids a fully opaque sticker border without using alpha as opacity.
         arrival += (2.995-last)*smooth(.64,1,r)
+        if kind == 'leather':
+            fringe = 2.75*smooth(.38,.70,r)+.245*smooth(.70,1,r)
+            arrival = np.maximum(drying_arrival,fringe)
         if not membrane and layer == 'hurt':
             # Fade before the mirrored midline rather than cutting a straight
             # alpha edge into the saddle view of the back of the neck.
@@ -334,7 +383,8 @@ class Atlas:
             col = mix(col,pal['bloom'],smooth(.45,.8,macro)*smooth(.55,.95,r)*.55)
 
         elif kind == 'leather':
-            col = np.broadcast_to(pal['leather'], (len(a),3)).copy()+macro[:,None]*13+fine[:,None]*4
+            col = mix(pal['dry_vein'],pal['dry_skin'],smooth(.04,.82,r))
+            col += macro[:,None]*5+fine[:,None]*2
             # Fine open creases follow supply paths and the span's stretch.
             # No loops, light rims or cutouts exposing pale original vessels.
             split = np.zeros_like(a)
@@ -362,6 +412,7 @@ class Atlas:
                            'reveal_start':mark['reveal'], 'painted_texels':int(take.sum())})
 
     def vessels(self, network):
+        self.network_paths = {path['id']:path for path in network['paths']}
         x, z = -self.pos[:,0], self.pos[:,2]
         d = np.full(len(x),10,np.float32)
         for path in network['paths']:

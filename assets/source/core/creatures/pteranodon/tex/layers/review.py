@@ -49,13 +49,16 @@ def main():
             code=code.replace(original,'["three_quarter", "above", "below", "side", "head", "rider", "inner_wing", "under_wing", "feet", "carcass"]')
             code=code.replace('const SHOTS: Record<string, Shot> = {','const SHOTS: Record<string, Shot> = {\n  carcass: [[0, 0.70, -0.25], 0.67, 95, -65, false],')
         elif args.mode=='marks':
-            code=code.replace(original,'["tear_upper", "tear_under", "puncture_upper", "puncture_under", "leather_upper"]')
+            code=code.replace(original,'["tear_upper", "tear_under", "puncture_upper", "puncture_under", "leather_upper", "long_rip_upper", "long_rip_under", "outer_puncture_under"]')
             code=code.replace('const SHOTS: Record<string, Shot> = {','''const SHOTS: Record<string, Shot> = {
   tear_upper: [[0.61, 0.80, -0.67], 0.34, 180, 75, false],
   tear_under: [[0.61, 0.80, -0.67], 0.34, 0, -75, true],
   puncture_upper: [[1.07, 0.85, -0.36], 0.21, 180, 75, false],
   puncture_under: [[1.07, 0.85, -0.36], 0.21, 0, -75, true],
-  leather_upper: [[1.47, 0.85, -0.32], 0.51, 180, 75, false],''')
+  leather_upper: [[1.47, 0.85, -0.32], 0.51, 180, 75, false],
+  long_rip_upper: [[1.37, 0.85, -0.32], 0.48, 180, 75, false],
+  long_rip_under: [[1.37, 0.85, -0.32], 0.48, 0, -75, true],
+  outer_puncture_under: [[2.15, 0.85, -0.36], 0.28, 0, -75, true],''')
         else:
             side=280 if args.mode=='20m' else 93
             code=code.replace('const side = 300;',f'const side = {side};')

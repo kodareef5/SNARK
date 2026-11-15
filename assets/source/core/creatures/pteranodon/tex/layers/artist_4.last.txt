@@ -1,0 +1,5 @@
+Round 3 is rebuilt: stronger crimson blood, wider bruising, an earlier outer puncture, a new 55 cm rip, and vessel-following decay. Accepted wound drawings and body textures are preserved.
+
+Reviewed every stage in all three dyes at 270- and 90-pixel spans. Deterministic rebuild, zero overlap, and unchanged unhurt checks pass.
+
+[Report](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/REPORT.md) · [20 m](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/DISTANCE_20M.png) · [60 m](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/DISTANCE_60M.png)
