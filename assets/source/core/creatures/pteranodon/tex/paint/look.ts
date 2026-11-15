@@ -1,0 +1,126 @@
+// The painted pteranodon drawn by the game's own renderer from a pack look.sh built: whole from below against the sky
+// at the distances it is seen, from above and three quarters, and close where a rider looks (the head, the neck, the
+// inner wing), in the design's dyes and in loud and dark ones. The renderer reads the rgba variant, so maps are at most
+// 1,024 across here. It stands in its rest pose, the glide.
+//
+//   bun tex/paint/look.ts --source DIR --out DIR
+
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { buildRig } from "../../../../../../../shared/anim/rigs.ts";
+import { parsePack } from "../../../../../../../shared/pack/pack.ts";
+import { nearestColour } from "../../../../../../../shared/pack/palette.ts";
+import { findAssets } from "../../../../../../../tools/art/assets.ts";
+import { Poser } from "../../../../../../../tools/art/check.ts";
+import { materialsOf } from "../../../../../../../tools/art/materials.ts";
+import { ModelView } from "../../../../../../../tools/snap.ts";
+import { rgbaOf } from "../../../../../../../tools/snap/files.ts";
+import { encodePng } from "../../../../../../../tools/snap/png.ts";
+
+const args = process.argv.slice(2);
+const arg = (name: string): string | undefined => (args.includes(`--${name}`) ? args[args.indexOf(`--${name}`) + 1] : undefined);
+const out = arg("out");
+if (!out) throw new Error("--out DIR");
+mkdirSync(out, { recursive: true });
+
+const asset = (await findAssets(arg("source"))).find((a) => a.id === "core:pteranodon");
+if (!asset) throw new Error("no core:pteranodon there");
+const pack = parsePack(new Uint8Array(readFileSync(asset.file)));
+const index = pack.meshIndex.get("core:pteranodon")!;
+const rig = buildRig(pack.header.rigs[pack.header.meshes[index]!.rig!]!, pack.clips);
+if (!rig) throw new Error("the pack has no rig");
+new Poser(rig).set(null, 0);
+const materials = materialsOf(asset);
+const textures = (pack.header.textures ?? []).map((t) => rgbaOf(materials.find((m) => t.id === `${m.id}/${t.role}`)!, t.role, t.top, null));
+
+const hex = (h: string): number => nearestColour(pack.palette, parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16));
+const DYES: Record<string, readonly number[]> = {
+  design: ["2E3134", "9C8B78", "C8662E", "2A2C2F", "56677A", "E9E4D8"].map(hex),
+  loud: ["2030C0", "FFE020", "9FE01F", "FF3EA5", "FF3EA5", "9FE01F"].map(hex),
+  dark: ["E6E3DC", "4A3A2E", "E0C07E", "6E2E2A", "24282A", "3C3A38"].map(hex),
+};
+const GROUND = [0.84, 0.83, 0.81] as const;
+const SKY = [0.74, 0.82, 0.92] as const;
+// Point looked at (animal frame: x left, y up, z forward), radius held, degrees around from the front and above.
+type Shot = [centre: readonly [number, number, number], radius: number, around: number, above: number, sky: boolean];
+const SHOTS: Record<string, Shot> = {
+  below: [[0, 0.8, -0.2], 3.6, 0, -82, true],
+  above: [[0, 0.8, -0.2], 3.6, 180, 82, false],
+  three_quarter: [[0, 0.85, 0], 2.2, 35, -12, true],
+  side: [[0, 0.95, 0.1], 1.6, 90, 4, false],
+  head: [[0, 1.45, 0.85], 0.75, 80, 6, false],
+  head_front: [[0, 1.4, 0.9], 0.55, 15, 8, false],
+  rider: [[0, 1.15, 0.35], 0.75, 185, 32, false],
+  inner_wing: [[1.1, 0.85, -0.35], 1.1, 160, 45, false],
+  under_wing: [[1.2, 0.8, -0.35], 1.1, 10, -65, true],
+  feet: [[0, 0.45, -1.05], 0.35, 60, -20, false],
+};
+const W = 1200;
+const H = 900;
+const SS = 2;
+
+function draw(view: ModelView, shot: Shot, colors: readonly number[]): void {
+  const [centre, radius, around, above] = shot;
+  view.draw({ mesh: index, level: 0, around, above, centre, radius, rig, colors, textured: true });
+}
+
+function viewOf(w: number, h: number, sky: boolean): ModelView {
+  const v = new ModelView(pack, w, h, sky ? SKY : GROUND);
+  textures.forEach((t, slot) => v.texture(slot, t.role, t.pictures));
+  return v;
+}
+
+// From below against the sky at the distances it is seen: its span (6.96 m) about 270, 90, 36 and 13 pixels across on
+// the game's 1,080-row screen, each drawn at that size so the renderer reads the mips and levels it would, then set
+// side by side at that size and enlarged four times. Levels are chosen by the size of the picture, as the game does.
+function sizes(colors: readonly number[]): { w: number; h: number; img: Uint8Array } {
+  const pad = 12;
+  const spans = [270, 90, 36, 13];
+  const pieces = spans.map((span) => {
+    const sw = Math.round((span * 7.2) / 6.96);
+    const sh = Math.max(4, Math.round(sw / 2));
+    const v = viewOf(sw, sh, true);
+    const [centre, , around, above] = SHOTS.below!;
+    v.draw({ mesh: index, level: 0, around, above, centre, radius: 3.6, rig, colors, textured: true });
+    return { small: v.raster.color.slice(), sw, sh };
+  });
+  const w = pieces.reduce((s, p) => s + p.sw * 5 + pad * 2, pad);
+  const h = pieces[0]!.sh * 4 + pad * 2;
+  const img = new Uint8Array(w * h * 4).fill(214);
+  let x = pad;
+  for (const { small, sw, sh } of pieces) {
+    for (let y = 0; y < sh; y++) for (let k = 0; k < sw * 4; k++) img[((pad + y) * w) * 4 + x * 4 + k] = small[y * sw * 4 + k]!;
+    x += sw + pad;
+  }
+  for (const { small, sw, sh } of pieces) {
+    for (let y = 0; y < sh * 4; y++) for (let xx = 0; xx < sw * 4; xx++) for (let c = 0; c < 4; c++) img[((pad + y) * w + x + xx) * 4 + c] = small[(Math.floor(y / 4) * sw + Math.floor(xx / 4)) * 4 + c]!;
+    x += sw * 4 + pad;
+  }
+  return { w, h, img };
+}
+
+for (const [dyes, colors] of Object.entries(DYES)) {
+  const s = sizes(colors);
+  const file = join(out, `sizes_${dyes}.png`);
+  writeFileSync(file, encodePng(s.w, s.h, s.img));
+  console.log(file);
+  for (const [name, shot] of Object.entries(SHOTS)) {
+    if (dyes !== "design" && !["below", "three_quarter", "head", "rider"].includes(name)) continue;
+    const view = viewOf(W * SS, H * SS, shot[4]);
+    draw(view, shot, colors);
+    const src = view.raster.color;
+    const img = new Uint8Array(W * H * 4);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        for (let c = 0; c < 4; c++) {
+          let sum = 0;
+          for (let dy = 0; dy < SS; dy++) for (let dx = 0; dx < SS; dx++) sum += src[((y * SS + dy) * W * SS + x * SS + dx) * 4 + c]!;
+          img[(y * W + x) * 4 + c] = Math.round(sum / (SS * SS));
+        }
+      }
+    }
+    const path = join(out, `${name}_${dyes}.png`);
+    writeFileSync(path, encodePng(W, H, img));
+    console.log(path);
+  }
+}
