@@ -1,0 +1,5 @@
+Created all four maps, source originals, build scripts, checks, and `REPORT.md` inside `mangrove_heads/`.
+
+**195 checks pass. The offline rebuild reproduces all four PNGs byte for byte.** No git commands were run.
+
+[Atlas preview](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/mangrove_heads/checks/atlas_preview.png) · [35/20/9px checks](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/mangrove_heads/checks/purpose_distance.png) · [Report and limitations](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/mangrove_heads/REPORT.md)
