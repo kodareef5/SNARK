@@ -357,19 +357,11 @@ def within_neck(p, head, lo=0.82, hi=0.975):
 
 
 def carried(p, point):
-    """Where a point that holds still against the chest in STANCE lies in pose p, and the chest's turn since STANCE."""
+    """Where a point that holds still against the chest in STANCE lies in pose p, and the chest's turn since STANCE:
+    a planted arm's elbow pole carried so, while the hand follows free_hand, bends the arm as the free arm is bent."""
     cs, cp = chain(ground()), chain(p)
     d = cp["turn"] @ cs["turn"].inverted()
     return cp["chest"] + turned(d, Vector(point) - cs["chest"]), d
-
-
-def hand_on_chest(p, side):
-    """Where the hand is in pose p when the folded arm rides with the chest as it does in STANCE: a planted hand put
-    here, with its elbow pole carried too, is exactly the free arm folded, so a hand can be lifted from the ground or
-    set down on it with no jump (the hand's target moves between the two; the reach switches only here)."""
-    pos, d = carried(p, STANCE_HAND[side])
-    e = d.to_euler("YXZ")
-    return (pos, (-math.degrees(e.x), math.degrees(e.z), math.degrees(e.y))), carried(p, STANCE_ELBOW[side])[0]
 
 
 def between_hands(a, b, s):
@@ -1055,27 +1047,31 @@ def look_head(p, yaw, pitch=0.0, roll=0.0, lean=None, ext=None):
 
 
 def idle(r):
-    """Sitting up on its folded wings, breathing slowly, the weight shifting from side to side; it turns its head a
-    little one way, holds, glances the other, clacks its beak once, and settles its folded wings with a shrug."""
+    """Sitting up on its folded wings, breathing slowly, the weight shifting from side to side, and watchful as a
+    seabird is: the head flicks to look one way, holds still, flicks to the other and holds, tipped to look with one
+    eye, comes back and looks up; it clacks its beak twice, and settles its folded wings with a shiver and a shrug."""
     name = "idle"
     N = rig.CLIPS[name]["frames"]
     sway = Keys([(0, 0.0), (30, 1.0), (90, -1.0)], period=N)
-    yaw = Keys([(0, 0.0), (14, 0.0), (26, 16.0), (48, 18.0), (58, 17.0), (66, -9.0), (84, -11.0), (98, 0.0), (119, 0.0)],
-               period=N)
-    tilt = Keys([(0, 0.0), (14, 0.0), (28, 5.0), (50, 4.0), (66, -3.0), (84, -2.0), (98, 0.0)], period=N)
-    nod = Keys([(0, 0.0), (20, 0.0), (26, 2.5), (34, 0.0), (66, 0.0), (70, 3.0), (78, 0.0)], period=N)
-    clack = Keys([(0, 0.0), (86, 0.0), (88, 0.12), (90, 0.0), (92, 0.08), (94, 0.0)], period=N)
-    shrug = Keys([(0, 0.0), (102, 0.0), (106, 1.0), (110, -0.3), (114, 0.1), (118, 0.0)], period=N)
+    # Quick turns of a few frames and still holds between, as a bird's head moves.
+    yaw = Keys([(0, 0.0), (10, 0.0), (14, 30.0), (32, 32.0), (36, -24.0), (54, -26.0), (58, 2.0), (66, 0.0),
+                (119, 0.0)], period=N)
+    tilt = Keys([(0, 0.0), (10, 0.0), (14, 10.0), (32, 10.0), (36, -8.0), (54, -9.0), (58, 0.0)], period=N)
+    nod = Keys([(0, 0.0), (58, 0.0), (61, 7.0), (72, 7.0), (76, 0.0)], period=N)
+    clack = Keys([(0, 0.0), (64, 0.0), (66, 0.16), (68, 0.0), (70, 0.12), (72, 0.0)], period=N)
+    shrug = Keys([(0, 0.0), (92, 0.0), (96, 1.0), (102, 0.8), (106, -0.3), (110, 0.1), (114, 0.0)], period=N)
+    shiver = Keys([(0, 0.0), (94, 0.0), (96, 1.0), (104, 0.0)], period=N)
     lw = lagging(lambda t: 0.6 * shrug(t), N, True, 3.0, 0.3)
 
     def at(t):
         f = int(round(t)) % N
         w = sway(t)
+        sv = shiver(t) * math.sin(2.0 * math.pi * t / 3.0)
         p = ground()
-        p["body"] = STANCE_BODY + Vector((0.010 * w, 0.003 * shrug(t), 0.0))
-        p["body_rot"] = (S["body"]["pitch"], 0.6 * w, 1.2 * w)
+        p["body"] = STANCE_BODY + Vector((0.010 * w, 0.004 * shrug(t), 0.0))
+        p["body_rot"] = (S["body"]["pitch"], 0.6 * w + 0.03 * yaw(t), 1.2 * w + 1.2 * sv)
         p["spine"] = (S["spine"]["pitch"], 0.0, -0.4 * w)
-        p["chest"] = (S["chest"]["pitch"] + 1.2 * shrug(t), 0.0, -0.6 * w)
+        p["chest"] = (S["chest"]["pitch"] + 1.5 * shrug(t), 0.04 * yaw(t), -0.6 * w - 1.5 * sv)
         breathe(p, breath(t, N / 2.0))
         look_head(p, yaw(t), pitch=nod(t), roll=tilt(t))
         p["beak"] = clack(t)

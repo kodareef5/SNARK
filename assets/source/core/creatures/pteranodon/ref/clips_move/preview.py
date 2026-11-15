@@ -125,9 +125,9 @@ def stage(rig, cm):
     scene.world.color = BACKGROUND
     shading.background_type = "WORLD"
     verts, faces = [], []
-    for i in range(-60, 61):
+    for i in range(-20, 21):
         z, k = i * 0.25, len(verts)
-        verts += [(-4, -z - 0.008, 0.0), (4, -z - 0.008, 0.0), (4, -z + 0.008, 0.0), (-4, -z + 0.008, 0.0)]
+        verts += [(-2.5, -z - 0.008, 0.0), (2.5, -z - 0.008, 0.0), (2.5, -z + 0.008, 0.0), (-2.5, -z + 0.008, 0.0)]
         faces.append((k, k + 1, k + 2, k + 3))
     lines = plane("lines", verts, faces, material("lines", (0.55, 0.54, 0.52)))
     h = cm.WATERLINE
@@ -230,7 +230,7 @@ def sheet(r, rig, cm, clip, out, tmp, lines, water, cams, body):
     small_px = [small_size(cams["small"], t, 7.0 if in_air else rig.STANDING_HEIGHT) for t in SMALL]
     gap = 6
     band = CELL * len(views) + sum(SMALL) + 3 * gap + 2 * 8
-    cols = min(len(frames), 16)
+    cols = min(len(frames), 20)
     blocks = (len(frames) + cols - 1) // cols
     canvas = np.ones((blocks * (band + gap), cols * CELL, 3), dtype=np.float32) * np.array(BACKGROUND, dtype=np.float32)
     lift_cams = clip == "take_off"
