@@ -1,7 +1,8 @@
 import type { StructureDef } from "../shared/content/defs.ts";
 
-// Dimensions are full metres. Every entry is a reusable collider and a generated box mesh.
+// Dimensions are full metres. Plants reuse the game's own meshes; other entries generate a box mesh.
 export const RUIN_SHAPES = {
+  zshrub: [2.2, 1.24, 1.22], zrooftree: [.8, 3.4, .8],
   zbalcony: [8, .4, 2],
   zpanel8: [8, 4, .6], zpanel16: [16, 4, .6], zshaft8: [8, 16, .8], zshaft16: [16, 16, .8],
   zpartition: [6, 2.8, .3], zdoorpost: [2, 2.8, .3], zheader: [8, 1, .3],
@@ -42,9 +43,11 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 // Keep structural meshes shared across districts. Only the facade and salvage pieces vary in finish.
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
 export const RUIN_BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
-  (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finish === "concrete" || (PAINTED.has(name as RuinShape) || name.startsWith("z"))).map((finish) => ({
-    type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: "box",
+  (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finish === "concrete" || (name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name as RuinShape) || name.startsWith("z")))).map((finish) => ({
+    type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: name === "zshrub" ? "core:creeper_3" : name === "zrooftree" ? "core:tree_1" : "box",
     half: [size[0] / 2, size[1] / 2, size[2] / 2] as const,
     ...RUIN_FINISHES[finish],
+    // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
+    ...(name === "zshrub" || name === "zrooftree" ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
   })),
 );
