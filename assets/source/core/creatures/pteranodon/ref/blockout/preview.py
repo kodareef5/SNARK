@@ -56,7 +56,7 @@ POSES = {
     "carry": {"feet": dict(pos=(0.08, 0.30, -0.30), pitch=95), "talons": 1.0},
     "stance": {"stance": True},
     "stance_open": {"stance": True, "wings": dict(fold=0.55, flap=25), "unplant": True},
-    "call": {"stance": True, "head": dict(pos=(0, 1.90, 0.27), pitch=28), "beak": 1.0},
+    "call": {"stance": True, "head": dict(pos=(0, 1.95, 0.38), pitch=25), "beak": 1.0},
 }
 
 # What --checks measures: the folded wing in STANCE and in the air, and the seated rider's room through the flap,
@@ -77,7 +77,7 @@ CHECKS = {
     "head_right": {"head": dict(pos=(-0.05, 1.32, 0.61), yaw=-80)},
     "head_up": {"head": dict(pos=(0, 1.38, 0.61), pitch=20)},
     "head_up_10": {"head": dict(pos=(0, 1.32, 0.63), pitch=10)},
-    "call_stance": {"stance": True, "head": dict(pos=(0, 1.90, 0.27), pitch=28), "beak": 1.0},
+    "call_stance": {"stance": True, "head": dict(pos=(0, 1.95, 0.38), pitch=25), "beak": 1.0},
     "head_down": {"head": dict(pos=(0, 1.18, 0.69), pitch=-35)},
     "bite": {"head": dict(pos=(0, 1.06, 0.79), pitch=-45), "beak": 1.0},
 }

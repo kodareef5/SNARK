@@ -247,8 +247,8 @@ TALONS_SHUT = 75.0  # degrees the toes curl under at close = 1
 # legs fold under the hips with the feet flat. Positions in the animal's frame; the right side mirrors the left.
 STANCE = {
     "body": {"pos": (0.000, 0.500, -0.420), "pitch": 52.0},
-    "spine": {"pitch": -8.0},
-    "chest": {"pitch": -14.0},
+    "spine": {"pitch": -12.0},
+    "chest": {"pitch": -24.0},
     "head": {"pos": (0.000, 1.773, 0.172), "pitch": 0.0},
     "foot": {"pos": (0.150, 0.030, -0.430), "pitch": 158.0, "yaw": 0.0, "roll": 0.0},
     "knee": (0.200, 0.700, 0.200),
