@@ -6,6 +6,8 @@ import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, shotDir } from "../shared/sim/aim.ts";
 import { Body, stanceEye } from "../shared/sim/character.ts";
+import { shotRays } from "../shared/content/registry.ts";
+import { falloff } from "../shared/sim/damage.ts";
 import { FISTS } from "../shared/sim/weapon.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { QUALITY_MUL } from "../shared/sim/items.ts";
@@ -108,6 +110,12 @@ export class Projectiles {
   private readonly dir = [0, 0, 0];
   private readonly body = new Body();
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  /** A round's own, filled by `bring`, so the share its distance leaves it never reaches a blast. */
+  private readonly round: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: 0, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, far: 1 };
+  /** Where the last ray `cast` ended: the point, metres from its origin, the body it hit (-1 for none), its zone, the structure it met (-1 for none) and `on` as lastEnd's. */
+  private readonly at = { x: 0, y: 0, z: 0, t: 0, target: -1, zone: 0, built: -1, on: -1 };
+  /** Rays the last shot sent, and how many of them hit a body: for tests and measurement. */
+  readonly lastShot = { rays: 0, hits: 0 };
 
   constructor(ctx: ProjectilesContext, seed: number) {
     this.ctx = ctx;
@@ -145,13 +153,17 @@ export class Projectiles {
     const e = c.ent;
     if (e < 0 || ammo === 0) return;
     const d = this.dir;
-    this.aim(c, rec, weapon, 0, d);
+    const rays = shotRays(reg, weapon, ammo);
+    this.aim(c, rec, weapon, 0, d, rays);
     const ox = ents.x[e]!;
     const oy = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
     const oz = ents.z[e]!;
     const view = combat.viewTick(c);
     this.fired++;
-    if (reg.ammoSpeed[ammo]! <= 0) this.ray(c, rec, weapon, quality, ammo, ox, oy, oz, d, view);
+    this.lastShot.rays = rays;
+    this.lastShot.hits = 0;
+    if (rays > 1) this.pellets(c, rec, weapon, quality, ammo, rays, ox, oy, oz, view);
+    else if (reg.ammoSpeed[ammo]! <= 0) this.ray(c, rec, weapon, quality, ammo, ox, oy, oz, d, view);
     else this.flight(c, rec, weapon, quality, ammo, draw, ox, oy, oz, d, view);
   }
 
@@ -159,9 +171,10 @@ export class Projectiles {
    * The direction ray `k` of a shot from `weapon` leaves `c`'s body in, into `out`: the look as the input gave it, with the
    * body's kick and, through a scope, its sway, within the weapon's cone, at the place the seed of the body's handle and
    * this tick gives (shared/sim/aim.ts). The body is as this tick's step left it, as the shooter's client predicted it, so
-   * its own tracer is this ray. The rays of a shot of many (W3) are more `k`.
+   * its own tracer is this ray. The rays of a shot of many (W3) are more `k`: for one of `rays` above 1, the aim and cone
+   * are kept as the 32-bit floats EVENT_SHOT carries them in, so every client lays the same rays (`shotSeed` keeps the seed).
    */
-  private aim(c: Client, rec: EntityRecord, weapon: number, k: number, out: number[]): void {
+  private aim(c: Client, rec: EntityRecord, weapon: number, k: number, out: number[], rays = 1): void {
     const { world, items } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
@@ -172,13 +185,45 @@ export class Projectiles {
     const slot = inv.hotbar >= 0 && rec.held >= 0 ? inv.hotbar + rec.held : -1;
     const handle = ents.handleOf(e);
     aimShot(b, c.heldButtons, reg.weapon[weapon] ?? FISTS, reg.tamedMove[b.kind]!, ents.yaw[e]!, ents.pitch[e]!, scopeFitted(reg, inv, slot), handle, world.tick);
-    shotDir(aimSeed(handle, world.tick), k, shotAim.yaw, shotAim.pitch, shotAim.cone, out);
+    if (rays > 1) {
+      shotAim.yaw = Math.fround(shotAim.yaw);
+      shotAim.pitch = Math.fround(shotAim.pitch);
+      shotAim.cone = Math.fround(shotAim.cone);
+    }
+    this.shotSeed = aimSeed(handle, world.tick);
+    shotDir(this.shotSeed, k, shotAim.yaw, shotAim.pitch, shotAim.cone, out);
+  }
+
+  /** The seed of the shot `aim` last aimed. */
+  private shotSeed = 0;
+
+  /**
+   * A round of `rays` pellets (M3): each is its own ray of the cone from the seed, tested against the bodies of the view
+   * tick and landed alone, as one round of one ray is. The shot is told once, by its aim, cone and seed in place of where it
+   * ended, and each client lays the same rays (client/core/shots.ts). One shell and one use were spent for all of them.
+   */
+  private pellets(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, rays: number, ox: number, oy: number, oz: number, view: number): void {
+    const d = this.dir;
+    const { yaw, pitch, cone } = shotAim;
+    const seed = this.shotSeed;
+    this.tell(c, ox, oy, oz, ammo, false, yaw, pitch, cone, 0, rays, seed);
+    for (let k = 0; k < rays; k++) {
+      shotDir(seed, k, yaw, pitch, cone, d);
+      this.cast(c.ent, ox, oy, oz, d, view);
+      this.strike(rec, weapon, quality, ammo, ox, oy, oz);
+    }
   }
 
   /** A round with no speed is not flown. It is one piece along `d` from the origin, tested at the shooter's view tick. */
   private ray(c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, ox: number, oy: number, oz: number, d: readonly number[], view: number): void {
+    const a = this.cast(c.ent, ox, oy, oz, d, view);
+    this.tell(c, ox, oy, oz, ammo, false, a.x, a.y, a.z, 0);
+    this.strike(rec, weapon, quality, ammo, ox, oy, oz);
+  }
+
+  /** Where one ray along `d` from the origin ends, against the world, water and the bodies of the view tick, into `at`. `self` is skipped. */
+  private cast(self: number, ox: number, oy: number, oz: number, d: readonly number[], view: number): typeof this.at {
     const { world, combat } = this.ctx;
-    const e = c.ent;
     const sea = world.hf.seaLevel;
     let reach = HITSCAN_RANGE;
     let on = -1;
@@ -194,17 +239,30 @@ export class Projectiles {
       on = -1;
       if (what === HIT_STRUCTURE) built = rayHit.ref;
     }
-    const target = combat.castBodies(e, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach, 0, view);
+    const target = combat.castBodies(self, ox, oy, oz, d[0]!, d[1]!, d[2]!, reach, 0, view);
     const t = target >= 0 ? combat.t : reach;
-    const x = ox + d[0]! * t;
-    const y = oy + d[1]! * t;
-    const z = oz + d[2]! * t;
-    this.tell(c, ox, oy, oz, ammo, false, x, y, z, 0);
-    if (target >= 0) this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, target, combat.zone, x, y, z);
-    else {
-      this.ended(x, y, z, on);
-      if (built >= 0) combat.hitStructure(this.bring(rec, weapon, quality, ammo, 1, ox, oz), built, x, y, z);
+    const a = this.at;
+    a.x = ox + d[0]! * t;
+    a.y = oy + d[1]! * t;
+    a.z = oz + d[2]! * t;
+    a.t = t;
+    a.target = target;
+    a.zone = combat.zone;
+    a.built = built;
+    a.on = on;
+    return a;
+  }
+
+  /** Lands the round the last `cast` ended: on the body it hit, or on the structure it met, at the share its distance leaves it. */
+  private strike(rec: EntityRecord, weapon: number, quality: number, ammo: number, ox: number, oy: number, oz: number): void {
+    const a = this.at;
+    if (a.target >= 0) {
+      this.lastShot.hits++;
+      this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, a.target, a.zone, a.x, a.y, a.z);
+      return;
     }
+    this.ended(a.x, a.y, a.z, a.on);
+    if (a.built >= 0) this.ctx.combat.hitStructure(this.bring(rec, weapon, quality, ammo, 1, ox, oz, a.t), a.built, a.x, a.y, a.z);
   }
 
   /** A round that flies leaves along `d`, and is flown from the view tick up to now before it joins the others. */
@@ -324,17 +382,19 @@ export class Projectiles {
   }
 
   private hit(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oy: number, oz: number, target: number, zone: number, x: number, y: number, z: number): void {
-    const src = this.bring(by, weapon, quality, ammo, draw, ox, oz);
+    const far = Math.sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy) + (z - oz) * (z - oz));
+    const src = this.bring(by, weapon, quality, ammo, draw, ox, oz, far);
     this.struck++;
     this.ended(x, y, z, target);
     this.ctx.bus.after(PROJECTILE_HIT, { byPid: by ? by.pid : 0, ammo: this.ctx.world.reg.ids[ammo]!, target: this.ctx.world.ents.pid[target]! });
-    this.ctx.combat.land(src, target, zone, x, y, z, Math.sqrt((x - ox) * (x - ox) + (y - oy) * (y - oy) + (z - oz) * (z - oz)));
+    this.ctx.combat.land(src, target, zone, x, y, z, far);
   }
 
-  /** Returns the shared Source, filled for a round of `ammo` from `weapon`. */
-  private bring(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oz: number): Source {
+  /** Returns the round's shared Source, filled for a round of `ammo` from `weapon` that came `far` metres (none given: no falloff). */
+  private bring(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oz: number, far = 0): Source {
     const reg = this.ctx.world.reg;
-    const src = this.src;
+    const src = this.round;
+    src.far = falloff(far, reg.ammoFalloffFull[ammo]!, reg.ammoFalloffNone[ammo]!);
     src.by = by;
     src.x = ox;
     src.z = oz;

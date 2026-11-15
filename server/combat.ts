@@ -101,6 +101,8 @@ export interface Source {
   /** Seconds torporOver is spread over, and a buff the hit gives (a content index, or 0). */
   torporSeconds: number;
   buff: number;
+  /** The share of its damage a round keeps at the distance it hit from (`falloff`, shared/sim/damage.ts). 1 where not given. */
+  far?: number;
 }
 
 /** One resolved blow, for tests, the console and measurement. */
@@ -637,6 +639,7 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
+    hit.far = src.far ?? 1;
     hit.attack = src.attack * (by ? buffs.dealtOf(by) : 1);
     hit.resist = buffs.takenOf(victim);
     hit.torporInstant = src.torporInstant;
@@ -755,6 +758,7 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
+    hit.far = src.far ?? 1;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
     // A structure is spared as its owning tribe would be.

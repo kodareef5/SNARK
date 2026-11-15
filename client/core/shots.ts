@@ -10,6 +10,7 @@ import { TICK_DT } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { shotDir } from "../../shared/sim/aim.ts";
+import { shotRays } from "../../shared/content/registry.ts";
 import type { Camera } from "./render/camera.ts";
 import type { Characters } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
@@ -19,7 +20,8 @@ import type { ClientSession, RemoteSample } from "./session.ts";
 export const TRACER_MS = 90;
 export const BLAST_MS = 220;
 const MAX_FLYING = 256;
-const MAX_TRACERS = 32;
+/** Two shotguns' worth of pellets and a few more. */
+const MAX_TRACERS = 48;
 /** Its own shot is drawn from ahead of the eye and a little below, so it is seen to leave. Metres. */
 const AHEAD = 0.7;
 const BELOW = 0.1;
@@ -77,8 +79,14 @@ export class Shots {
     const d = this.dir;
     for (const s of session.fired) {
       // Its own shot leaves along the server's ray: the same aim, cone and seed (shared/sim/aim.ts).
-      shotDir(s.seed, 0, s.yaw, s.pitch, s.cone, d);
       const full = reg.ammoSpeed[s.ammo]!;
+      const rays = shotRays(reg, s.weapon, s.ammo);
+      if (rays > 1) {
+        // A shot of many rays is laid from its aim and cone as 32-bit floats, as the server lays and sends it.
+        this.pellets(world, s.x, s.y, s.z, Math.fround(s.yaw), Math.fround(s.pitch), Math.fround(s.cone), s.seed, rays, true, nowMs);
+        continue;
+      }
+      shotDir(s.seed, 0, s.yaw, s.pitch, s.cone, d);
       if (full <= 0) {
         const reach = castWorld(world, s.x, s.y, s.z, d[0]!, d[1]!, d[2]!, HITSCAN_RANGE) === HIT_NONE ? HITSCAN_RANGE : rayHit.t;
         this.line(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, s.x + d[0]! * reach, s.y + d[1]! * reach, s.z + d[2]! * reach, nowMs);
@@ -102,9 +110,24 @@ export class Shots {
         continue;
       }
       if (ev.flies) this.fly(ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.item);
+      else if (ev.rays > 1) this.pellets(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.seed, ev.rays, false, nowMs);
       else this.line(ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, nowMs);
     }
     events.length = kept;
+  }
+
+  /**
+   * A tracer for each of a shot's `rays` from (x, y, z), each shotDir(seed, k, ...) about the aim `yaw`, `pitch` within
+   * `cone`, as the server cast them, to the world it meets. `own`: drawn from ahead of the eye, as its own shot is.
+   */
+  private pellets(world: CollisionWorld, x: number, y: number, z: number, yaw: number, pitch: number, cone: number, seed: number, rays: number, own: boolean, nowMs: number): void {
+    const d = this.dir;
+    for (let k = 0; k < rays; k++) {
+      shotDir(seed, k, yaw, pitch, cone, d);
+      const reach = castWorld(world, x, y, z, d[0]!, d[1]!, d[2]!, HITSCAN_RANGE) === HIT_NONE ? HITSCAN_RANGE : rayHit.t;
+      const ahead = own ? AHEAD : 0;
+      this.line(x + d[0]! * ahead, y - (own ? BELOW : 0) + d[1]! * ahead, z + d[2]! * ahead, x + d[0]! * reach, y + d[1]! * reach, z + d[2]! * reach, nowMs);
+    }
   }
 
   private fly(x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number): void {

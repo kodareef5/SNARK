@@ -386,7 +386,7 @@ test("a swing takes the upper body and leaves the legs walking", () => {
 });
 
 test("what the server reports is shown and fades: a mark, a number over the place, the side harm came from, red edges, a line", () => {
-  const event = (kind: number, more: Partial<CombatEvent>): CombatEvent => ({ kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, ...more });
+  const event = (kind: number, more: Partial<CombatEvent>): CombatEvent => ({ kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0, ...more });
   const session = { events: [] as CombatEvent[] } as unknown as ClientSession;
   const fb = new Feedback();
   const m = new CombatModel();

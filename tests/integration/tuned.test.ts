@@ -312,7 +312,7 @@ test("what a client shows by the server's leave: the body from behind, the cross
   };
   /** Fakes a hit event and a death marker on the client. */
   const stir = (): void => {
-    s.events.push({ kind: EVENT_HIT, x: s.own.x, y: s.own.y + 1, z: s.own.z + 3, zone: 2, damage: 9, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0 });
+    s.events.push({ kind: EVENT_HIT, x: s.own.x, y: s.own.y + 1, z: s.own.z + 3, zone: 2, damage: 9, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0 });
     if (s.markers.length === 0) s.markers.push({ kind: MARKER_DEATH, x: s.own.x + 20, y: s.own.y, z: s.own.z, tick: 1 });
     run(34);
   };

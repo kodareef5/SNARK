@@ -202,8 +202,12 @@ export interface Registry {
   readonly cloudProp: Uint16Array;
   readonly cloudTicks: Uint32Array;
   readonly cloudBuff: Uint16Array;
-  /** W3, per ammunition: rays a round sends (1 for everything), and the metres its damage falls off from and to (0 and 0 for none). */
+  /**
+   * W3, per ammunition: rays a round sends (1 for everything but shot), and the metres its damage falls off from and to (0
+   * and 0 for none). `weaponPellets` is a gun's own count in place of its round's, 0 where it has none (shotRays).
+   */
   readonly ammoPellets: Uint8Array;
+  readonly weaponPellets: Uint8Array;
   readonly ammoFalloffFull: Float32Array;
   readonly ammoFalloffNone: Float32Array;
   /** W6, per ammunition: the reach of the blast where it ends (0 for none), and the share of armor it goes through. */
@@ -450,6 +454,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (w.recoil && !(w.recoil.kick >= 0 && w.recoil.kick <= 90 && w.recoil.recover >= 0)) errors.push(`${d.id}: weapon.recoil.kick is in degrees from 0 to 90, and its recovery not negative`);
         if (w.recoil && w.recoil.kick > 0 && !(w.recoil.recover > 0)) errors.push(`${d.id}: weapon.recoil that kicks must recover`);
         if (w.structures !== undefined && !(w.structures >= 0)) errors.push(`${d.id}: weapon.structures must not be negative`);
+        if (w.pellets !== undefined && !(w.kind === "gun" && Number.isInteger(w.pellets) && w.pellets >= 1 && w.pellets <= 255)) errors.push(`${d.id}: weapon.pellets is a gun's, a whole number from 1 to 255`);
         if (w.cloud) {
           if (w.kind !== "thrown") errors.push(`${d.id}: only a thrown weapon bursts into a cloud`);
           positive(d, "weapon.cloud.seconds", w.cloud.seconds, MAX_BURN_SECONDS);
@@ -460,6 +465,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.ammo?.recover !== undefined && !(d.ammo.recover >= 0 && d.ammo.recover <= 1)) errors.push(`${d.id}: ammo.recover must be from 0 to 1`);
       const am = d.ammo;
       if (am?.pellets !== undefined && !(Number.isInteger(am.pellets) && am.pellets >= 1 && am.pellets <= 255)) errors.push(`${d.id}: ammo.pellets must be a whole number from 1 to 255`);
+      if ((am?.pellets ?? 1) > 1 && am?.speed !== undefined) errors.push(`${d.id}: ammo.pellets above 1 is for a round with no speed`);
       if (am?.falloff && !(am.falloff.full >= 0 && am.falloff.none > am.falloff.full)) errors.push(`${d.id}: ammo.falloff is full from 0 metres or more, and none further than that`);
       if (am?.blast !== undefined) positive(d, "ammo.blast", am.blast, 100);
       if (am?.pierce !== undefined && !(am.pierce >= 0 && am.pierce <= 1)) errors.push(`${d.id}: ammo.pierce must be from 0 to 1`);
@@ -628,6 +634,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const cloudTicks = new Uint32Array(n);
   const cloudBuff = new Uint16Array(n);
   const ammoPellets = new Uint8Array(n).fill(1);
+  const weaponPellets = new Uint8Array(n);
   const ammoFalloffFull = new Float32Array(n);
   const ammoFalloffNone = new Float32Array(n);
   const ammoBlast = new Float32Array(n);
@@ -712,6 +719,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
           blowReach[i] = d.weapon.melee.reach ?? MELEE_REACH;
         }
         structureMul[i] = d.weapon.structures ?? 1;
+        weaponPellets[i] = d.weapon.pellets ?? 0;
         if (d.weapon.cloud) cloudTicks[i] = Math.max(1, Math.round(d.weapon.cloud.seconds * TICK_RATE));
       }
       if (d.ammo) {
@@ -821,7 +829,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
@@ -847,6 +855,16 @@ const WILD_SET = compileColors(new Array(COLOR_REGIONS).fill(WILD_COLORS.map((c)
 
 /** The ZONE_* ids (shared/anim/human.ts) each body part named in content covers. */
 const ZONE_GROUPS: Readonly<Record<string, readonly number[]>> = { head: [1], torso: [2], arms: [3, 4], hands: [5, 6], legs: [7, 8], feet: [9, 10] };
+
+/**
+ * The rays a shot of `ammo` from `weapon` sends, each tested and landed alone (W3): the gun's own count if it gives one, as
+ * ARK's pump-action fires the double-barrel's shells as 14 pellets in place of 10, else its round's. A round that flies is
+ * always one.
+ */
+export function shotRays(reg: Registry, weapon: number, ammo: number): number {
+  if (reg.ammoSpeed[ammo]! > 0) return 1;
+  return reg.weaponPellets[weapon] || reg.ammoPellets[ammo] || 1;
+}
 
 const HOLDS: Readonly<Record<WeaponFacet["hold"], number>> = { tool: HOLD_TOOL, spear: HOLD_SPEAR, bow: HOLD_BOW, rifle: HOLD_RIFLE, pistol: HOLD_PISTOL };
 

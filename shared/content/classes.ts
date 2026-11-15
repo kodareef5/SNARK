@@ -89,7 +89,7 @@ const ITEM = {
     open: true,
     stubs: { structures: "polish", cloud: "polish" },
   }),
-  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" } }),
+  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { blast: "polish", pierce: "polish", light: "polish" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),

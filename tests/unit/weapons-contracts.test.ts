@@ -65,8 +65,8 @@ test("a body's bloom and kick travel with it, and every body today has none", ()
 
 test("the ranged gear lives in content/items, each piece once, and is in the core pack", () => {
   const ids = (defs: readonly Def[]): string[] => defs.filter((d) => d.type === "item").map((d) => d.id.slice(5));
-  expect(ids(WEAPONS)).toEqual(["bow", "crossbow", "rifle", "pistol"]);
-  expect(ids(AMMO)).toEqual(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "dart_tranq", "dart_shock", "scope", "silencer", "flashlight", "laser"]);
+  expect(ids(WEAPONS)).toEqual(["bow", "crossbow", "rifle", "pistol", "shotgun"]);
+  expect(ids(AMMO)).toEqual(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "round_shotgun", "dart_tranq", "dart_shock", "scope", "silencer", "flashlight", "laser"]);
   expect(ids(EXPLOSIVES)).toEqual(["grenade"]);
   const all = new Set(CORE_CONTENT.map((d) => `${d.type} ${d.id}`));
   for (const d of [...WEAPONS, ...AMMO, ...EXPLOSIVES]) {
@@ -74,17 +74,17 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
     expect(all.has(`${d.type} ${d.id}`)).toBe(true);
     expect(CORE_CONTENT.filter((o) => o.type === d.type && o.id === d.id).length).toBe(1);
   }
-  // Each moved item brought its engram and the rename of its old recipe id, and is made as before.
-  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(16);
+  // Each moved item brought its engram (W3 added the shotgun's and its shell's) and the rename of its old recipe id, and is made as before.
+  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(18);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
   expect(pistol).toMatchObject({ weight: 3, weapon: { clip: 6, reload: 2.2, interval: 0.35, uses: 60 }, craft: { seconds: 12, xp: 11, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
 });
 
 test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud class wait, as the plan has them", () => {
   // W2 built auto, reloadEach and melee (M4), and W1 spread and recoil (M1, M2): their pins are in the test below,
-  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts.
+  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts; W3 pellets and falloff (M3), pinned in tests/integration/pellets.test.ts.
   expect(FIELDS.item.weapon!.stubs).toEqual({ structures: "polish", cloud: "polish" });
-  expect(FIELDS.item.ammo!.stubs).toEqual({ pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" });
+  expect(FIELDS.item.ammo!.stubs).toEqual({ blast: "polish", pierce: "polish", light: "polish" });
   expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual(["polish", "polish", "polish"]);
   expect(classRow("prop/cloud")).toMatchObject({ status: "stub", waits: "polish", parent: "prop" });
   expect(CLASSES.filter((r) => r.id === "prop/cloud").length).toBe(1);
@@ -95,7 +95,9 @@ test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud cl
 
 test("every weapon and round today compiles as it did: no stub in its timings, and each stub column at what it means now", () => {
   // W2's: the four ranged weapons strike with ARK's blow (Base Damage); none fires automatically or loads a round at a time.
-  const blows = new Set(["core:bow", "core:crossbow", "core:rifle", "core:pistol"]);
+  const blows = new Set(["core:bow", "core:crossbow", "core:rifle", "core:pistol", "core:shotgun"]);
+  // W3's: only the shotgun's shell is shot, and falls off.
+  const shot = new Set(["core:round_shotgun"]);
   for (let i = 1; i < reg.defs.length; i++) {
     const w = reg.weapon[i];
     if (w) expect([reg.ids[i], "auto" in w || "reloadEach" in w]).toEqual([reg.ids[i], false]);
@@ -103,7 +105,8 @@ test("every weapon and round today compiles as it did: no stub in its timings, a
     if (w) expect([reg.ids[i], w.meleeTicks, w.meleeStrikeTick]).toEqual(blow ? [reg.ids[i], 15, 5] : [reg.ids[i], undefined, undefined]);
     expect([reg.ids[i], reg.blowDamage[i], Math.round(reg.blowTorpor[i]! * 100) / 100, Math.round(reg.blowReach[i]! * 100) / 100]).toEqual(blow ? [reg.ids[i], 10, 1.4, 2.6] : [reg.ids[i], 0, 0, 0]);
     expect([reg.ids[i], reg.structureMul[i], reg.cloudProp[i], reg.cloudTicks[i], reg.cloudBuff[i]]).toEqual([reg.ids[i], 1, 0, 0, 0]);
-    expect([reg.ids[i], reg.ammoPellets[i], reg.ammoFalloffFull[i], reg.ammoFalloffNone[i], reg.ammoBlast[i], reg.ammoPierce[i], reg.ammoLight[i], reg.ammoLightColor[i]]).toEqual([reg.ids[i], 1, 0, 0, 0, 0, 0, 0]);
+    expect([reg.ids[i], reg.ammoPellets[i], reg.weaponPellets[i], reg.ammoFalloffFull[i], reg.ammoFalloffNone[i]]).toEqual(shot.has(reg.ids[i]!) ? [reg.ids[i], 10, 0, 10, 40] : [reg.ids[i], 1, 0, 0, 0]);
+    expect([reg.ids[i], reg.ammoBlast[i], reg.ammoPierce[i], reg.ammoLight[i], reg.ammoLightColor[i]]).toEqual([reg.ids[i], 0, 0, 0, 0]);
   }
 });
 

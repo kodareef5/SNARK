@@ -48,9 +48,11 @@ test("today's ranged weapons have a cone and a kick, chosen (DEV128 to DEV130), 
   expect(aim("crossbow")).toEqual([1, 0, 2.5, 0, 0, 0, 1.5, 4]);
   expect(aim("rifle")).toEqual([2.5, 0, 3, 0, 0, 0.35, 5, 5]);
   expect(aim("pistol")).toEqual([1.5, 0.4, 2, 1, 1.5, 0, 2, 6]);
+  // W3's double-barrel (DEV131).
+  expect(aim("shotgun")).toEqual([5, 3.75, 3, 0, 0, 0, 6, 8]);
   for (let i = 1; i < reg.defs.length; i++) {
     const w = reg.weapon[i];
-    if (!w || ["core:bow", "core:crossbow", "core:rifle", "core:pistol"].includes(reg.ids[i]!)) continue;
+    if (!w || ["core:bow", "core:crossbow", "core:rifle", "core:pistol", "core:shotgun"].includes(reg.ids[i]!)) continue;
     expect([reg.ids[i], w.coneHip, w.recoilKick]).toEqual([reg.ids[i], undefined, undefined]);
   }
   // A cone that blooms must close again, and a kick must come back.
