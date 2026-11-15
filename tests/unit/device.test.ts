@@ -4,7 +4,7 @@
 
 import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
-import { AXES, LadderPlan, RUNGS, failedHow, featuresOf, formatsOf, gpuOf, judgeRung, newReport, orderVerdict, soakLoad, spread, treesVerdict, type LayerCount, type OrderRung, type OrderTime, type PhaseReport, type RungReport, type TreesReport, type Within } from "../../client/core/device.ts";
+import { AXES, LadderPlan, RUNGS, budgetVerdict, failedHow, featuresOf, formatsOf, gpuOf, judgeRung, newReport, orderVerdict, soakLoad, spread, treesVerdict, type LayerCount, type OrderRung, type OrderTime, type PhaseReport, type RungReport, type TreesReport, type Within } from "../../client/core/device.ts";
 import { BASE_MOST, STAND, TextureMemory, WOOD, basePieces, bodySpots, crowdScene, farBases, farSpots, terrainWood } from "../../client/core/devicescene.ts";
 import { fakeGl } from "../fixtures/gl.ts";
 import { farRegistry } from "../fixtures/farworld.ts";
@@ -229,7 +229,7 @@ test("a tier that has materials and drew none of them is said to lack them, plai
 test("the tree order prices a counted cut-out layer by its shading alone, and judges drawn last against drawn first by it", () => {
   /** A rung whose orders read back in these ms, drawn first and none again at a quarter of the pixels, each order's two windows `apart` ms apart. */
   const rung = (ms: { last: number; made: number; first: number; none: number; firstQ: number; noneQ: number }, apart = 0, invalid = "", mat = 600): OrderRung => ({
-    wood: "elder", tier: "medium", at: [1024, 1024], canvas: [1000, 590], settleMs: 3, settled: true, invalid, calls: 900, tris: 4e6, mat, verdict: "",
+    wood: "elder", tier: "medium", at: [1024, 1024], canvas: [1000, 590], settleMs: 3, settled: true, invalid, calls: 900, tris: 4e6, mat, verdict: "", budget: null,
     orders: ([["last", ms.last, false], ["made", ms.made, false], ["first", ms.first, false], ["none", ms.none, false], ["first", ms.firstQ, true], ["none", ms.noneQ, true]] as const).map(([order, at, small]): OrderTime => ({ order, small, canvas: small ? [500, 295] : [1000, 590], frames: small ? 0 : 60, frameMs: spread(small ? [] : [at]), meanMs: small ? 0 : at, means: small ? [] : [at, at], readMs: at, reads: [at - apart / 2, at + apart / 2], gpuMs: null })),
   });
   const elders: LayerCount = { wood: "elder", tier: "medium", cut: 23, front: 0.2, old: 2, first: 22.9 };
@@ -263,6 +263,15 @@ test("the tree order prices a counted cut-out layer by its shading alone, and ju
   expect(table).toContain(`verdict   ${t.verdict}`);
   expect(table.some((line) => /^elder +medium +none +60 +17 /.test(line))).toBe(true);
   expect(table.some((line) => /^elder +medium +first¼ +0 /.test(line))).toBe(true);
+
+  // The elder stand as the frame's budget draws it, against drawn whole.
+  const budget = { frames: 110, frameMs: spread([17]), meanMs: 17.2, means: [17.1, 17.3], gpuMs: null, tris: 1.9e6, crowns: 0.8e6, draws: 330, squeeze: 3.3, most: 3.4, allowed: 2e6 };
+  const both: TreesReport = { ...t, rungs: [young, { ...rung(times), budget }] };
+  both.budget = budgetVerdict(both);
+  expect(both.budget).toBe("the budget: the elder wood on medium 17.2 ms a frame at 1.9 M triangles of 2.0 M, crowns near 0.8 M, squeeze 3.3 (most 3.4), against 18 ms at 4.0 M drawn whole");
+  r.trees = both;
+  expect(deviceTable(r)).toContain(`budget    ${both.budget}`);
+  expect(deviceTable(r).some((line) => /^elder +medium +budget +110 +17 /.test(line))).toBe(true);
 });
 
 test("the terrain map's wood is the far nodes' bench's but in the elders' stand, whose trees are elder oaks", () => {
