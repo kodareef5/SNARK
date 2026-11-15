@@ -1,10 +1,11 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { NEUTRAL, skinMode, skyLight } from "../core/render/surface.ts";
+import { coarseGround, groundSize, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -86,6 +87,9 @@ export class GlRenderer {
   private readonly sky = new Float32Array(3);
   private readonly pack: Pack;
   private readonly hf: Heightfield;
+  /** The terrain's pictures (terrain.ts), and the two copies of the window's pair, heights then tints. */
+  private readonly ground: GroundSize;
+  private windows: WebGLTexture[] = [];
   private readonly materials: readonly PackMaterial[];
   /** What each mesh's stored texture coordinates span, four numbers a mesh. */
   private readonly uv: Float32Array;
@@ -97,6 +101,7 @@ export class GlRenderer {
     this.gl = gl;
     this.pack = pack;
     this.hf = hf;
+    this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
     this.uv = Float32Array.from(manifest.meshes.flatMap((m) => m.uv ?? [0, 0, 1, 1]));
     this.forced = forced;
@@ -126,17 +131,20 @@ export class GlRenderer {
     // A level without skin entries leaves the SURFACE program's four bones at this, which must be whole numbers.
     gl.vertexAttribI4ui(10, 0, 0, 0, 0);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    const texture = (unit: number, internal: number, w: number, h: number, format: number, type: number, data: ArrayBufferView | null): void => {
+    const texture = (unit: number, internal: number, w: number, h: number, format: number, type: number, data: ArrayBufferView | null): WebGLTexture => {
+      const t = gl.createTexture()!;
       gl.activeTexture(gl.TEXTURE0 + unit);
-      gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+      gl.bindTexture(gl.TEXTURE_2D, t);
       gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, type, data);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      return t;
     };
-    const hf = this.hf;
+    const [g, coarse] = [this.ground, coarseGround(this.hf)];
     texture(UNIT.palette, gl.RGBA8, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, this.pack.palette);
-    texture(UNIT.heights, gl.R16UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_SHORT, hf.heights);
-    texture(UNIT.tint, gl.R8UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_BYTE, hf.tint);
+    texture(UNIT.heights, gl.R16UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_SHORT, coarse.heights);
+    texture(UNIT.tint, gl.R8UI, g.width[SOURCE_MAP]!, g.height[SOURCE_MAP]!, gl.RED_INTEGER, gl.UNSIGNED_BYTE, coarse.tint);
+    this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
     // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit.
     texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
 
@@ -393,6 +401,18 @@ export class GlRenderer {
         this.failedTextures.push(u.slot);
       }
     } else if (error !== gl.NO_ERROR) this.errors++;
+    // Rows of a copy of the terrain window, from the heightfield as it lies, and the copy drawn with on its units.
+    const [drawn, , , copy, i, j, row, rows] = p.groundWindow;
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, this.hf.nx);
+    for (let k = 0; k < 2; k++) {
+      gl.activeTexture(gl.TEXTURE0 + UNIT.windowHeights + k);
+      if (copy >= 0) {
+        gl.bindTexture(gl.TEXTURE_2D, this.windows[copy * 2 + k]!);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, row, this.ground.width[SOURCE_WINDOW]!, rows, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, k ? this.hf.tint : this.hf.heights, (j + row) * this.hf.nx + i);
+      }
+      gl.bindTexture(gl.TEXTURE_2D, this.windows[drawn * 2 + k] ?? null);
+    }
+    gl.pixelStorei(gl.UNPACK_ROW_LENGTH, 0);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -489,27 +509,30 @@ export class GlRenderer {
       gl.clear(gl.DEPTH_BUFFER_BIT);
     }
     if (s > STEP_FAR) return;
-    const data = this.tileData;
-    let n = 0;
-    for (let t = 0; t < p.tileCount; t++) {
-      if ((p.tilePass[t]! & (1 << s)) === 0) continue;
-      data.set(p.tiles.subarray(t * 4, t * 4 + 4), n * 6);
-      data[n * 6 + 4] = p.tileOrigin[t * 2]!;
-      data[n * 6 + 5] = p.tileOrigin[t * 2 + 1]!;
-      n++;
+    // A draw for the tiles that read each pair of pictures: corner and stride in its samples, and its spacing and size.
+    const [data, g] = [this.tileData, this.ground];
+    for (let source = SOURCE_MAP; source <= SOURCE_WINDOW; source++) {
+      let n = 0;
+      for (let t = 0; t < p.tileCount; t++) {
+        if ((p.tilePass[t]! & (1 << s)) === 0 || p.tileSource[t * 4 + 3] !== source) continue;
+        data.set(p.tiles.subarray(t * 4, t * 4 + 3), n * 6);
+        data[n * 6 + 3] = p.tileSource[t * 4 + 2]!;
+        data[n * 6 + 4] = p.tileSource[t * 4]!;
+        data[n * 6 + 5] = p.tileSource[t * 4 + 1]!;
+        n++;
+      }
+      if (n === 0) continue;
+      const prog = this.use(source === SOURCE_MAP ? "terrain" : "terrainWindow", p);
+      gl.uniform1f(prog.uniform("uSolid"), 0);
+      gl.uniform4f(prog.uniform("uField"), this.hf.minY, this.hf.stepY, g.cell[source]!, p.camY);
+      gl.uniform2f(prog.uniform("uLast"), g.width[source]! - 1, g.height[source]! - 1);
+      this.set(false, false, false);
+      gl.bindVertexArray(this.tileVao);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, n * 6), gl.DYNAMIC_DRAW);
+      gl.drawElementsInstanced(gl.TRIANGLES, this.tileIndexCount, gl.UNSIGNED_SHORT, 0, n);
+      this.drawCalls++;
     }
-    if (n === 0) return;
-    const hf = this.hf;
-    const prog = this.use("terrain", p);
-    gl.uniform1f(prog.uniform("uSolid"), 0);
-    gl.uniform4f(prog.uniform("uField"), hf.minY, hf.stepY, hf.cell, p.camY);
-    gl.uniform2f(prog.uniform("uLast"), hf.nx - 1, hf.nz - 1);
-    this.set(false, false, false);
-    gl.bindVertexArray(this.tileVao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.tileBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, data.subarray(0, n * 6), gl.DYNAMIC_DRAW);
-    gl.drawElementsInstanced(gl.TRIANGLES, this.tileIndexCount, gl.UNSIGNED_SHORT, 0, n);
-    this.drawCalls++;
   }
 
   /** `sx` and `sy` are 0..1, origin top-left. */
