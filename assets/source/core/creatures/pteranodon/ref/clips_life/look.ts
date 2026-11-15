@@ -15,5 +15,5 @@ const dir = join(tree, "core/creatures/pteranodon");
 rmSync(tree, { recursive: true, force: true });
 mkdirSync(dir, { recursive: true });
 writeFileSync(join(dir, "asset.ts"), `export { default } from ${JSON.stringify(join(here, "look_asset.ts"))};\n`);
-for (const script of ["rig.py", "clips_move.py", "clips_life.py"]) symlinkSync(join(folder, script), join(dir, script));
+for (const script of ["rig.py", "clips_move.py", "clips_act.py", "clips_life.py"]) symlinkSync(join(folder, script), join(dir, script));
 await main(["core:pteranodon", "--source", tree, "--out", resolve(process.argv[2] ?? "artifacts/art")]);
