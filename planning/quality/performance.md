@@ -220,6 +220,8 @@ The list holds 4,096 entries; no real scene has passed 933.
 | Sun shadows at 1080p, a frame | 0.7 to 1.4 ms | D268 |
 | Shadows on the device page's crowd | 0.8 ms on medium and high, 1.2 on ultra | D329 |
 | The far fade's kept share, 1,950 m off | 50.0% (rasterizer 49.9%) | D258 |
+| SURFACE and surfaceLayer, a megapixel, by slope (the device page, headless) | 0.30 ± 0.04, 0.34 ± 0.03 ms | P10 |
+| Forty hurt and dead dodos round the camera (the GPU bench's flock, 750 by 873, a GPU shared with other jobs): the frame on medium, ultra; what the layers add, each run | 4.7, 21.2 ms; -0.6 to +0.6 ms on medium, -1.0 to -0.3 on ultra | P10 |
 | Node pixels changed stepping over a chunk border, medium | 0 of 39,171 | D355 |
 | On the card on any device: terrain on 8 km; sky table; shadow maps by lit tier | 9.5 MB; 256 KB; 16, 24, 32 MB | M; computed; D268 |
 
@@ -297,6 +299,10 @@ Reasoned from the rows, in the order a growing world meets them.
 - GPU time per pass in a real frame; the iPhone has no timer queries.
 - The wood with D353's pulled draws, far stones and the broadleaf trees on a phone.
 - A soak on medium, the default tier.
+- Hurt and dead creatures on a phone: `bun run device -- --tunnel --flock` stands forty round the spawn point, and the
+  quick look times `surface layered` beside `surface`. On this Mac the layer adds about 13% to a pixel of SURFACE; at
+  the iPhone's 0.85 ms a megapixel that is 0.11 ms for each megapixel of hurt bodies, under 0.1 ms with the whole of
+  medium's screen covered.
 - Real network congestion; WebSocket send cost under load; Firefox.
 
 ## Still moving
