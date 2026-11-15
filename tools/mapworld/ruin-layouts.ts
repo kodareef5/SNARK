@@ -1,18 +1,18 @@
-import type { RuinShape } from "../../content/miami-ruins.ts";
-import { hash3, rand3 } from "./raster.ts";
+import { hash3 } from "./raster.ts";
+import { RUIN_SHAPES } from "../../content/ruins.ts";
 import { inside, Mason, SIDES, tileKey, tilesOf, type Tile } from "./ruin-geometry.ts";
-import type { Rule } from "./ruin-vocabulary.ts";
+import type { Composition, Rule, Vocabulary } from "./ruin-vocabulary.ts";
 
 export interface LayoutOptions { seed: number; playable: number; detail: number; coreU?: number; }
 const has = (tiles: Set<string>, t: Tile, dx: number, dz: number): boolean => tiles.has(tileKey(t.i + dx, t.j + dz));
 
 // A layout composes an intact circulation path, structural frame, then the remnants around it.
 export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule: Rule, opts: LayoutOptions, base = 0, openHall = false): void {
-  if (tiles.length === 0 || height < 4) return;
+  if (!tiles.length || height < 4) return;
   const keys = new Set(tiles.map((t) => tileKey(t.i, t.j)));
-  const floors = Math.round(height / 4);
-  const playable = Math.min(floors, opts.playable);
-  const candidates = bay === 8 ? [...tiles].filter((t) => has(keys, t, 0, 1) && has(keys, t, 0, -1)).sort((a, b) => (a.u - (opts.coreU ?? 0)) ** 2 + a.v ** 2 - (b.u - (opts.coreU ?? 0)) ** 2 - b.v ** 2) : [];
+  if (rule.collapse === "lost-top") height = Math.max(16, Math.floor(height * (rule.damage?.retain ?? .72) / 4) * 4);
+  const floors = Math.round(height / 4); const playable = Math.min(floors, opts.playable);
+  const candidates = bay === 8 ? tiles.filter((t) => has(keys, t, 0, 1) && has(keys, t, 0, -1)).sort((a, b) => (a.u - (opts.coreU ?? 0)) ** 2 + a.v ** 2 - (b.u - (opts.coreU ?? 0)) ** 2 - b.v ** 2) : [];
   const cores: Tile[] = candidates.length ? [candidates[0]!] : [];
   const wanted = Math.min(8, Math.max(1, Math.ceil(tiles.length * bay * bay / 3500)));
   while (cores.length < wanted) {
@@ -20,105 +20,205 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     if (!next) break; cores.push(next);
   }
   const escape = cores.map((c) => tiles.find((t) => Math.abs(t.u - c.u) === bay && t.v === c.v && has(keys, t, 0, 1) && has(keys, t, 0, -1) && !cores.includes(t))).filter((t): t is Tile => !!t);
-  const safe = (t: Tile): boolean => cores.some((c) => Math.abs(t.u - c.u) <= bay && Math.abs(t.v - c.v) <= bay);
-  const entryLane = (t: Tile): boolean => cores.some((c) => t.i === c.i);
-  const edge = (t: Tile): boolean => SIDES.some(([dx, dz]) => !has(keys, t, dx, dz));
-  const court = rule.recipe === "mall" || rule.recipe === "school" || rule.recipe === "theatre";
-  const xs = tiles.map((t) => t.u); const zs = tiles.map((t) => t.v);
-  const minU = Math.min(...xs); const maxU = Math.max(...xs); const minV = Math.min(...zs); const maxV = Math.max(...zs);
-  const midU = (minU + maxU) / 2; const midV = (minV + maxV) / 2;
-  const rx = Math.max(bay, (maxU - minU) / 3); const rz = Math.max(bay, (maxV - minV) / 3);
-  const corner = hash3(opts.seed, 7, 0) % 4;
-  const tops = new Map<string, number>();
+  const entryCores = cores.length ? cores : [[...tiles].sort((a, b) => Math.abs(a.u) - Math.abs(b.u) || Math.abs(a.v) - Math.abs(b.v))[0]!];
+  const entryLane = (t: Tile): boolean => entryCores.some((c) => t.i === c.i);
+  const safe = (t: Tile): boolean => cores.some((c) => Math.abs(t.u - c.u) <= bay && Math.abs(t.v - c.v) <= bay) || entryLane(t);
+  const form = rule.form ?? { shell: "masonry", inside: "suites", roof: "flat", front: "porch", windowEvery: 3 };
+  const mode = rule.collapse ?? "shear";
+  const minU = Math.min(...tiles.map((t) => t.u)); const maxU = Math.max(...tiles.map((t) => t.u));
+  const minV = Math.min(...tiles.map((t) => t.v)); const maxV = Math.max(...tiles.map((t) => t.v));
+  const cornerU = hash3(opts.seed, 7, 0) % 2 === 0 ? maxU : minU;
+  const cornerV = hash3(opts.seed, 7, 1) % 2 === 0 ? maxV : minV;
+  const radius = Math.max(bay * 1.1, Math.min(maxU - minU + bay, maxV - minV + bay) * (rule.damage?.radius ?? .44));
+  const tops = new Map<string, number>(); const damaged = new Set<Tile>();
   for (const t of tiles) {
-    const outerCourt = court && tiles.length > 24 && Math.abs(t.u - midU) < rx && Math.abs(t.v - midV) < rz && !safe(t);
-    const cornerU = corner % 2 === 0 ? maxU : minU; const cornerV = corner < 2 ? maxV : minV;
-    const crushed = !safe(t) && Math.hypot(t.u - cornerU, t.v - cornerV) < Math.min(maxU - minU, maxV - minV) * .38;
-    const top = outerCourt ? 0 : crushed ? Math.max(1, Math.floor(floors * .35)) : floors;
-    tops.set(tileKey(t.i, t.j), top);
-    if (top === 0) continue;
-    m.cover(t.u, t.v, bay * .75);
-    for (let level = 1; level <= top; level++) {
-      if ((cores.includes(t) || escape.includes(t)) && level <= playable) continue;
-      const isSafe = safe(t) && level <= playable;
-      const roof = level === top;
-      const hallGap = openHall && !edge(t) && !isSafe && !roof;
-      if (hallGap) continue;
-      if (level > playable && !roof) continue;
-      if (!isSafe && rand3(opts.seed, t.i * 313 + t.j, level) < rule.holes) continue;
-      m.floor([t.u, t.v], base + level * 4, bay);
+    const distance = Math.hypot(t.u - cornerU, t.v - cornerV);
+    const broken = !safe(t) && distance < radius;
+    let top = floors;
+    if (broken) {
+      damaged.add(t);
+      if (mode === "shear") top = Math.max(0, Math.floor(floors * distance / radius));
+      if (mode === "pancake" || mode === "facade") top = 0;
+      if (mode === "lost-top") top = Math.max(1, Math.floor(floors * .55));
     }
-    if (base === 0 && !safe(t) && !entryLane(t) && rand3(opts.seed, t.i, t.j) < rule.holes * .65) {
-      m.put("rubble4", t.u - 1, .55, t.v, "concrete", (hash3(t.i, t.j, opts.seed) % 7) * 13);
-      if (opts.detail === 0) m.put("rubble", t.u + 1.5, .35, t.v + 1.5, "concrete", 27);
-    }
+    if (mode === "lost-top" && !safe(t)) top = Math.min(top, Math.max(playable, Math.floor(floors * .7)));
+    tops.set(tileKey(t.i, t.j), top); m.cover(t.u, t.v, bay * .75);
   }
-  const posts = new Map<string, { u: number; v: number; top: number }>();
+  // Merge only complete rectangles at the same level. Stair, escape and collapse holes remain holes.
+  const plates = new Map<number, Tile[]>();
   for (const t of tiles) {
     const top = tops.get(tileKey(t.i, t.j))!;
-    if (top === 0) continue;
-    for (const du of [-.5, .5]) for (const dv of [-.5, .5]) {
-      const k = tileKey(t.i + du, t.j + dv); const existing = posts.get(k);
-      if (!existing || existing.top < top) posts.set(k, { u: t.u + du * bay, v: t.v + dv * bay, top });
+    for (let level = 1; level <= top; level++) {
+      if ((cores.includes(t) || escape.includes(t)) && level <= playable) continue;
+      const roof = level === top; const supported = level <= playable || roof;
+      if (!supported || openHall && !safe(t) && !roof) continue;
+      if (damaged.has(t) && ["burnt", "hanging"].includes(mode) && !roof) continue;
+      if (!plates.has(level)) plates.set(level, []); plates.get(level)!.push(t);
     }
+  }
+  for (const [level, row] of plates) mergeFloors(m, row, bay, base + level * 4);
+  const posts = new Map<string, { u: number; v: number; top: number }>();
+  for (const t of tiles) {
+    const top = tops.get(tileKey(t.i, t.j))!; if (!top) continue;
+    const burnt = damaged.has(t) && mode === "burnt";
+    const edge = SIDES.some(([dx, dz]) => (tops.get(tileKey(t.i + dx, t.j + dz)) ?? 0) < top);
+    // Walls carry the perimeter. Interior supports occur at 16 m, never every 4 m.
+    if (burnt || !edge && t.i % 2 === 0 && t.j % 2 === 0) posts.set(tileKey(t.i, t.j), { u: t.u + bay / 2, v: t.v + bay / 2, top: Math.min(top, playable) });
     for (let side = 0; side < SIDES.length; side++) {
-      const [dx, dz] = SIDES[side]!;
-      const adjacent = tops.get(tileKey(t.i + dx, t.j + dz)) ?? 0;
-      if (adjacent >= top) continue;
-      const u = t.u + dx * bay / 2; const z = t.v + dz * bay / 2;
-      const turn = dx === 0 ? 0 : 90;
-      const beam: RuinShape = bay === 8 ? "beam8" : "beam4";
-      const sill: RuinShape = bay === 8 ? "sill8" : "sill4";
-      const wall: RuinShape = bay === 8 ? "wall8" : "wall4";
-      const trim: RuinShape = bay === 8 ? "trim8" : "trim4";
-      for (let level = adjacent; level < top; level++) {
+      const [dx, dz] = SIDES[side]!; const adjacent = tops.get(tileKey(t.i + dx, t.j + dz)) ?? 0;
+      if (adjacent >= top || damaged.has(t) && mode === "hanging") continue;
+      const u = t.u + dx * bay / 2; const v = t.v + dz * bay / 2; const turn = dx === 0 ? 0 : 90;
+      for (let level = adjacent; level < top;) {
         const h = base + level * 4;
-        const rnd = rand3(opts.seed + side, t.i * 313 + t.j, level);
-        // The ground has a door at least every second bay; remaining bays have real window gaps.
-        const entry = level === 0 && (hash3(t.i, t.j, side) % 2 === 0 || safe(t) || entryLane(t));
-        if (level > playable && level % (opts.detail > 0 ? 4 : 2) !== 0 && level !== top - 1) continue;
-        m.put(beam, u, h + 3.7, z, "concrete", turn);
-        if (!entry && rnd > rule.holes) {
-          if (rand3(opts.seed + 73, t.i * 313 + t.j + side, level) < rule.wall && opts.detail < 2) m.put(wall, u, h + 1.4, z, rule.infill && (t.i + t.j + level) % 3 === 0 ? rule.infill : rule.finish, turn);
-          else m.put(sill, u, h + .45, z, rule.finish, turn);
+        const entry = level === 0 && (entryLane(t) || ["loading", "shopfront", "clock"].includes(form.front) && (t.i + t.j) % 2 === 0);
+        const upper = level >= playable; const lookout = top > playable && level === playable;
+        if (upper && bay === 8 && top - level >= 4 && !burnt && !lookout) {
+          m.put("zshaft8", u, h + 8, v, form.shell === "curtain" ? (rule.infill ?? "blue") : rule.finish, turn); level += 4; continue;
         }
-        if ((rule.feature === "deco" || rule.feature === "balconies") && level <= playable && opts.detail < 2) m.put(trim, u + dx * .35, h + 3.15, z + dz * .35, rule.finish, turn);
+        const opening = lookout || form.shell === "open" || (t.i + t.j + side + level) % form.windowEvery === 0;
+        if (burnt) {
+          m.put(bay === 8 ? "beam8" : "beam4", u, h + 3.7, v, "concrete", turn);
+          if (level === 0) m.put("fin4", u - dz * (bay / 2 - .4), h + 2, v + dx * (bay / 2 - .4), "steel");
+        } else if (!entry && !opening && bay === 8) {
+          m.put("zpanel8", u, h + 2, v, form.shell === "curtain" && level > 0 ? (rule.infill ?? "blue") : rule.finish, turn);
+        } else {
+          m.put(bay === 8 ? "beam8" : "beam4", u, h + 3.7, v, "concrete", turn);
+          if (!entry) {
+            m.put(bay === 8 ? "sill8" : "sill4", u, h + .45, v, rule.finish, turn);
+            if (!opening) m.put("wall4", u, h + 1.4, v, rule.finish, turn);
+          }
+          if ((t.i + t.j + side) % 2 === 0 || entry) m.put("fin4", u - dz * (bay / 2 - .4), h + 2, v + dx * (bay / 2 - .4), rule.finish, turn);
+        }
+        if (!upper && !burnt && (form.front === "balconies" || form.front === "deco") && bay === 8 && level % 2 === 1) m.put("trim8", u + dx * .6, h + 3.2, v + dz * .6, rule.finish, turn);
+        if (!upper && !burnt && bay === 8 && level > 0 && form.front === "balconies") {
+          m.put("zbalcony", u + dx * 1, h - .2, v + dz * 1, rule.finish, turn);
+          m.put("sill8", u + dx * 1.8, h + .45, v + dz * 1.8, rule.finish, turn);
+        }
+        if (side === 0 && level === 0 && form.front === "shopfront") assembly(m, rule, "shopfront", u, 0, v);
+        level++;
       }
     }
-    if ((rule.feature === "rooms" || rule.recipe === "hotel" || rule.recipe === "hospital") && opts.detail === 0 && !safe(t) && !entryLane(t) && !edge(t) && hash3(t.i, t.j, opts.seed) % 3 === 0) {
-      for (let level = 0; level < Math.min(top, playable); level++) m.put("wall4", t.u - 1.6, base + level * 4 + 1.4, t.v + bay / 2, rule.finish);
+    if (opts.detail < 2 && !cores.includes(t) && !escape.includes(t) && !entryLane(t) && !damaged.has(t)) {
+      const neighbour = entryCores.find((c) => Math.abs(c.i - t.i) === 1 && c.j !== t.j && !cores.concat(escape).some((other) => other.i === c.i && other.j === t.j) && Array.from({ length: Math.abs(c.j - t.j) + 1 }, (_, i) => keys.has(tileKey(c.i, Math.min(c.j, t.j) + i))).every(Boolean));
+      if (neighbour && bay === 8) interior(m, t, neighbour.u < t.u ? -1 : 1, openHall ? 1 : Math.min(top, playable), base, form.inside, rule);
+      else if (base === 0 && (t.i + t.j) % 3 === 0 && !safe(t)) {
+        const cover = form.inside === "storage" ? "zcore" : "zcover";
+        m.put(cover, t.u, cover === "zcore" ? 2 : .55, t.v, form.inside === "storage" ? "rust" : rule.finish);
+      }
     }
   }
   for (const p of posts.values()) m.post(p.u, base, p.v, p.top * 4);
-  if (base === 0) for (const core of cores) {
-    m.stairs(core, playable);
-    const drop = escape.find((t) => Math.abs(t.u - core.u) === bay && t.v === core.v);
-    if (drop) m.escape(drop, playable, core);
+  if (base === 0) for (const core of cores) { m.stairs(core, playable); const drop = escape.find((t) => Math.abs(t.u - core.u) === bay && t.v === core.v); if (drop) m.escape(drop, playable, core); }
+  if (base === 0) for (const core of entryCores) {
     let lo = core.j; let hi = core.j;
-    while (keys.has(tileKey(core.i, lo - 1))) lo--;
-    while (keys.has(tileKey(core.i, hi + 1))) hi++;
-    const column = tiles.filter((t) => t.i === core.i && t.j >= lo && t.j <= hi && (tops.get(tileKey(t.i, t.j)) ?? 0) > 0).sort((a, b) => a.v - b.v);
+    while (keys.has(tileKey(core.i, lo - 1))) lo--; while (keys.has(tileKey(core.i, hi + 1))) hi++;
+    const column = tiles.filter((t) => t.i === core.i && t.j >= lo && t.j <= hi).sort((a, b) => a.v - b.v);
     for (const t of column) m.cover(t.u, t.v, 9);
     for (const [t, dir] of [[column[0]!, -1], [column.at(-1)!, 1]] as const) {
-      const [x, z] = m.point(t.u, t.v + dir * bay / 2);
-      m.entries.push({ x, y: m.base, z, yaw: m.frame.yaw, coreX: m.point(core.u, core.v)[0], coreZ: m.point(core.u, core.v)[1] });
-      m.cover(t.u, t.v + dir * bay / 2, 16);
+      const [x, z] = m.point(t.u, t.v + dir * bay / 2); const [coreX, coreZ] = m.point(core.u, core.v);
+      m.entries.push({ x, y: m.base, z, yaw: m.frame.yaw, coreX, coreZ }); m.cover(t.u, t.v + dir * bay / 2, 16);
+      if (dir < 0 && bay === 8) assembly(m, rule, form.front, t.u, 0, t.v - bay / 2);
     }
   }
-  if (rule.feature === "deco" && opts.detail === 0) {
+  if (base === 0) for (const core of cores) for (const row of [-1, 1]) {
+    const gallery = tiles.find((t) => t.i === core.i && t.j === core.j + row); if (!gallery) continue;
+    let lo = core.i; let hi = core.i;
+    while (keys.has(tileKey(lo - 1, gallery.j))) lo--; while (keys.has(tileKey(hi + 1, gallery.j))) hi++;
+    const path = [[gallery.u, gallery.v], [core.u, core.v - 3.25], [core.u - 1.5, core.v - 3.25], [core.u, core.v - 3.25], [gallery.u, gallery.v]].map(([u, v]) => { const [x, z] = m.point(u!, v!); return { x, y: m.base, z }; });
+    for (const [edge, dir] of [[lo, -1], [hi, 1]]) {
+      const tile = tiles.find((t) => t.i === edge && t.j === gallery.j)!;
+      const [x, z] = m.point(tile.u + dir! * bay / 2, tile.v); const [coreX, coreZ] = m.point(gallery.u, gallery.v);
+      m.alternatives.push({ entry: { x, y: m.base, z, yaw: m.frame.yaw + 90, coreX, coreZ, crossing: true }, support: [gallery.u, gallery.v], path });
+    }
+  }
+  const cap = tiles.filter((t) => (tops.get(tileKey(t.i, t.j)) ?? 0) === floors && !cores.includes(t) && !escape.includes(t) && !entryLane(t));
+  if (cap.length && opts.detail < 2) {
+    const t = cap[Math.floor(cap.length / 2)]!;
+    if (form.marker) {
+      const front = [...cap].sort((a, b) => a.v - b.v || Math.abs(a.u) - Math.abs(b.u))[0]!;
+      assembly(m, rule, form.marker, front.u, base + height, front.v);
+    }
+    if (form.roof === "service") m.put("zcore", t.u, base + height + 2, t.v, "steel");
+    if (form.roof === "hip") for (const r of cap.filter((r) => r.i % 2 === 0)) { m.put("zroof8", r.u, base + height + .5, r.v, "clay"); m.put("zroof8", r.u, base + height + 1.5, r.v, "clay", 90); }
+    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zroof8", r.u, base + height + 4.5, r.v, "rust"); }
+    if (form.front === "belfry") { m.put("zcore", t.u, base + height + 2, t.v, rule.finish); m.put("fin8", t.u, base + height + 8, t.v, rule.finish); m.put("trim4", t.u, base + height + 10, t.v, rule.finish); }
+  }
+  if ((rule.feature === "deco" || form.front === "deco") && opts.detail === 0) {
     const t = [...tiles].sort((a, b) => a.v - b.v || Math.abs(a.u) - Math.abs(b.u))[0]!;
-    const fin = height >= 8 ? 8 : 4;
-    m.put(fin === 8 ? "fin8" : "fin4", t.u, base + fin / 2, t.v - bay / 2, rule.finish);
-    if (height >= 12) m.put("crown", t.u, base + height - 2, t.v - bay / 2 + 1.5, rule.finish);
+    m.put(height >= 8 ? "fin8" : "fin4", t.u, base + Math.min(8, height) / 2, t.v - bay / 2, rule.finish);
+    if (height >= 12) m.put("crown", t.u, base + height - 2, t.v - bay / 2 - 2.5, rule.finish);
+  }
+  if (mode === "lost-top") for (const t of cap.filter((t) => (t.i + t.j) % 4 === 0).slice(0, 6)) {
+    m.put("fin4", t.u, base + height + 2, t.v, "steel"); m.put("rubble4", t.u + 1.5, base + height + .55, t.v, "concrete", 19);
+  }
+  for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay);
+}
+
+function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number): void {
+  const left = new Map(tiles.map((t) => [tileKey(t.i, t.j), t]));
+  for (const t of tiles) {
+    if (!left.has(tileKey(t.i, t.j))) continue;
+    let cells = 1;
+    for (const n of bay === 4 ? [4, 2] : [2]) if (Array.from({ length: n * n }, (_, k) => left.has(tileKey(t.i + k % n, t.j + Math.floor(k / n)))).every(Boolean)) { cells = n; break; }
+    m.floor([t.u + (cells - 1) * bay / 2, t.v + (cells - 1) * bay / 2], y, bay * cells);
+    for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) left.delete(tileKey(t.i + i, t.j + j));
+  }
+}
+
+export function assembly(m: Mason, rule: Rule, name: string, u: number, y: number, v: number): void {
+  for (const [shape, du, dy, dv, finish, turn] of rule.assemblies?.[name]?.parts ?? []) m.put(shape, u + du, y + dy, v + dv, finish === "finish" ? rule.finish : finish, turn ?? 0);
+}
+
+function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, kind: string, rule: Rule): void {
+  if (["parking", "nave", "concourse"].includes(kind)) {
+    m.put("zcover", t.u, base + .55, t.v + 1.5, kind === "parking" ? "concrete" : rule.finish); return;
+  }
+  m.floor([t.u, t.v], base, 8); m.floor([t.u + dir * 8, t.v], base, 8);
+  for (let level = 0; level < floors; level++) {
+    const y = base + level * 4;
+    // Two doors at either end of a four-metre partition open onto the protected corridor.
+    const profile: Vocabulary["interiors"][string] = rule.interiors?.[kind] ?? { divider: "wall4", back: "wall8", parts: [["zcounter", 1.5, .5, 1, "finish"]] };
+    if (profile.divider) m.put(profile.divider, t.u + dir * 4, y + RUIN_SHAPES[profile.divider][1] / 2, t.v, rule.finish, 90);
+    if (profile.back) m.put(profile.back, t.u, y + RUIN_SHAPES[profile.back][1] / 2, t.v + 4, rule.finish);
+    for (const [shape, du, dy, dv, finish, turn] of profile.parts) m.put(shape, t.u - dir * du, y + dy, t.v + dv, finish === "finish" ? rule.finish : finish, turn ?? 0);
+    if (level === 0 || level === floors - 1) {
+      const points = [[t.u + dir * 4.8, t.v - 2.9], [t.u + dir * 2, t.v - 2.9], [t.u + dir * 2, t.v + 2.9], [t.u + dir * 4.8, t.v + 2.9], [t.u + dir * 4.8, t.v - 2.9]].map(([u, v]) => { const [x, z] = m.point(u!, v!); return { x, y: m.base + y, z }; });
+      m.rooms.push({ kind, points });
+    }
+  }
+}
+
+function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, opts: LayoutOptions, base: number, bay: number): void {
+  m.falls.push({ mode, u: t.u, v: t.v });
+  if (base !== 0 || opts.detail > 1) return;
+  if (mode === "facade") { m.put("zpanel8", t.u, 2, t.v + 3.5, rule.finish); if (height >= 8) m.put("zpanel8", t.u, 6, t.v + 3.5, rule.finish); }
+  if (mode === "pancake") for (let n = 0; n < (rule.damage?.layers ?? 3); n++) m.put("floor8", t.u + (n % 2) * .5, .3 + n * .6, t.v, "concrete", n * 7);
+  else if (mode === "hanging") { m.put("floor8", t.u + 1, height - .2, t.v, "concrete", 12); m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); }
+  else if (mode !== "burnt") {
+    m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); m.put("rubble", t.u - 2, .35, t.v - 1, "concrete", 63);
+    if (mode === "shear" && bay === 8 && !m.rooms.some((r) => r.kind === "rubble") && hash3(t.i, t.j, opts.seed) % 3 === 0) {
+      m.floor([t.u, t.v], 0, 8);
+      const points = [[-3, 0, -3], [-2, .7, -1], [0, 1.1, 1], [2.5, 0, -2.5]].map(([u, y, v]) => { const [x, z] = m.point(t.u + u!, t.v + v!); return { x, y: m.base + y!, z }; });
+      m.rooms.push({ kind: "rubble", points });
+    }
   }
 }
 
 export function tower(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, twins = false): void {
   const bay = 8;
-  const podium = tiles.length > 45 ? 8 : 0;
-  const width = Math.min(40, m.frame.width * .7); const depth = Math.min(40, m.frame.depth * .7);
+  const limit = opts.detail === 3 ? 24 : 40;
+  const podium = tiles.length > 45 && opts.detail < 3 ? 8 : 0;
+  const width = Math.min(limit, m.frame.width * .7); const depth = Math.min(limit, m.frame.depth * .7);
   const offsets = twins && m.frame.width > 64 ? [-m.frame.width * .24, m.frame.width * .24] : [0];
-  const bodies = offsets.map((offset) => tiles.filter((t) => Math.abs(t.u - offset) < width / 2 && Math.abs(t.v) < depth / 2));
+  const bodies = offsets.map((offset) => {
+    let selected = tiles.filter((t) => Math.abs(t.u - offset) < width / 2 && Math.abs(t.v) < depth / 2);
+    if (selected.length < 3 && opts.detail === 3) {
+      const keys = new Set(tiles.map((t) => tileKey(t.i, t.j)));
+      const anchor = tiles.filter((t) => has(keys, t, 0, -1) && has(keys, t, 0, 1)).sort((a, b) => a.u ** 2 + a.v ** 2 - b.u ** 2 - b.v ** 2)[0];
+      if (anchor) selected = tiles.filter((t) => Math.abs(t.i - anchor.i) <= 1 && Math.abs(t.j - anchor.j) <= 1);
+    }
+    return selected.length >= 3 ? selected : tiles;
+  });
   const shaftTiles = new Set(bodies.flat());
   if (podium) stack(m, tiles.filter((t) => !shaftTiles.has(t)), bay, podium, { ...rule, holes: .12 }, { ...opts, playable: 2 });
   for (const selected of bodies) {
@@ -168,48 +268,26 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
     } else if (m.frame.width >= 2 && m.frame.depth >= 1.5 && [-.99, .99].every((u) => [-.74, .74].every((v) => inside(m.frame, u, v)))) m.put("rubble", 0, .35, 0);
     return;
   }
-  if (special === "freedom") {
-    const baseTiles = tilesOf(m.frame, 8);
-    const shaft = baseTiles.filter((t) => Math.abs(t.u) <= 8 && Math.abs(t.v) <= 12);
-    stack(m, baseTiles.filter((t) => !shaft.includes(t)), 8, 8, { ...rule, finish: "limestone", holes: .15 }, { ...opts, playable: 2 });
-    const shaftHeight = Math.max(8, rule.height - 20);
-    stack(m, shaft, 8, shaftHeight, { ...rule, finish: "limestone", holes: .08, wall: .55 }, { ...opts, playable: Math.max(8, opts.playable) });
-    m.put("floor16", 0, shaftHeight, 0);
-    for (const u of [-6, 6]) for (const v of [-6, 6]) m.put("crown", u, shaftHeight + 2, v, "limestone");
-    for (const v of [-6, 6]) for (const u of [-4, 4]) m.put("trim8", u, shaftHeight + 4, v, "limestone");
-    for (const u of [-4, 4]) for (const v of [-4, 4]) m.put("crown", u, shaftHeight + 6, v, "limestone");
-    for (const u of [-2, 2]) for (const v of [-2, 2]) m.put("crown", u, shaftHeight + 10, v, "limestone");
-    m.put("crown", 0, shaftHeight + 14, 0, "mint"); m.put("fin4", 0, shaftHeight + 18, 0, "limestone");
-    return;
-  }
-  if (special === "arena" || rule.recipe === "arena") { arena(m, tilesOf(m.frame, 8), rule, opts); return; }
-  if (special === "dupont") {
-    const all = tilesOf(m.frame, 8);
-    const shaft = all.filter((t) => Math.abs(t.u) < 32 && Math.abs(t.v) < 16);
-    stack(m, all.filter((t) => !shaft.includes(t)), 8, 8, rule, { ...opts, playable: 2 });
-    stack(m, shaft, 8, rule.height, { ...rule, wall: .6 }, opts);
-    for (const t of shaft.filter((t) => t.j === Math.min(...shaft.map((a) => a.j)))) {
-      for (let y = 0; y < rule.height; y += 16) m.put("fin16", t.u - 4, y + 8, t.v - 4, "limestone");
-      m.put("trim8", t.u, rule.height, t.v - 4, "limestone");
+  if (special && rule.compositions?.[special]) { compose(m, tilesOf(m.frame, 8), rule, opts, rule.compositions[special]!); return; }
+  if (rule.recipe === "arena") { arena(m, tilesOf(m.frame, 8), rule, opts); return; }
+  if (!special && rule.form?.plan && ["court", "wards"].includes(rule.form.plan) && tiles.length >= 12 && tiles.length * bay * bay <= 6000 && bay === 8 && rule.height <= 36) {
+    const lo = Math.min(...tiles.map((t) => t.i)); const hi = Math.max(...tiles.map((t) => t.i));
+    const back = Math.max(...tiles.map((t) => t.j)); const front = Math.min(...tiles.map((t) => t.j)); const mid = (front + back) / 2;
+    const thickness = hi - lo >= 5 ? 2 : 1;
+    const left = tiles.filter((t) => t.i < lo + thickness); const right = tiles.filter((t) => t.i > hi - thickness && !left.includes(t));
+    const cross = tiles.filter((t) => !left.includes(t) && !right.includes(t) && (rule.form!.plan === "court" ? t.j >= back - 1 : Math.abs(t.j - mid) <= .5));
+    for (const [index, wing] of [left, right, cross].entries()) {
+      const height = index === 2 ? Math.min(8, rule.height) : rule.height;
+      stack(m, wing, bay, height, rule, opts); if (wing.length) m.wings.push({ tiles: wing.length, height, u: wing[0]!.u, v: wing[0]!.v });
     }
     return;
   }
-  if (special === "loft") {
-    const body = tilesOf(m.frame, 8).filter((t) => Math.abs(t.u) <= 20 && Math.abs(t.v) <= 20);
-    stack(m, body, 8, rule.height, { ...rule, feature: "balconies" }, { ...opts, coreU: -16 });
-    for (let i = m.pieces.length - 1; i >= 0; i--) {
-      const p = m.pieces[i]!; const u = (p.x - m.frame.x) * m.frame.c - (p.z - m.frame.z) * m.frame.s;
-      if (Math.abs(u) < 6 && p.y - m.base < 15.5) m.pieces.splice(i, 1);
-    }
-    for (const u of [-8, 8]) m.put("fin16", u, 8, -20, "clay");
-    m.put("trim8", -4, 16, -20, "clay"); m.put("trim8", 4, 16, -20, "clay"); return;
-  }
-  if (special === "twins") { tower(m, tilesOf(m.frame, 8), rule, opts, true); return; }
-  if (special === "ritz") {
-    const all = tilesOf(m.frame, 8); const shaft = all.filter((t) => Math.abs(t.u) <= 12 && Math.abs(t.v) <= 12);
-    stack(m, all.filter((t) => !shaft.includes(t)), 8, 8, rule, { ...opts, playable: 2 });
-    stack(m, shaft, 8, Math.max(8, rule.height - 4), { ...rule, feature: "deco", wall: .6 }, opts);
-    m.put("crown", 0, rule.height - 2, -8, "rose"); m.put("fin4", 0, rule.height - 2, -10, "limestone"); return;
+  if (!special && rule.form?.plan === "platform" && rule.height <= 36) {
+    const middle = (Math.min(...tiles.map((t) => t.j)) + Math.max(...tiles.map((t) => t.j))) / 2;
+    const concourse = tiles.filter((t) => Math.abs(t.j - middle) <= 1);
+    stack(m, concourse, bay, Math.min(8, rule.height), { ...rule, form: { ...rule.form, shell: "open" } }, opts, 0, true);
+    for (const t of concourse.filter((t) => t.i % 2 === 0 && t.j === Math.floor(middle))) m.put("zroof16", t.u, Math.min(8, rule.height) + .5, t.v, "steel");
+    return;
   }
   if (rule.recipe === "tower" || (rule.recipe === "hotel" && rule.height > 32)) {
     tower(m, tilesOf(m.frame, 8), rule, opts);
@@ -229,14 +307,26 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
     return;
   }
   if (!special && tiles.length * bay * bay > 6000 && m.frame.width > 64 && m.frame.depth > 48 && !["park", "utility"].includes(rule.recipe)) {
-    const groups = new Map<string, Tile[]>();
-    for (const t of tiles) {
-      if (t.i % 7 === 6 || t.j % 7 === 6) continue;
-      const k = `${Math.floor(t.i / 7)},${Math.floor(t.j / 7)}`;
-      if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(t);
+    const keys = new Set(tiles.map((t) => tileKey(t.i, t.j)));
+    const courts: Tile[] = [];
+    for (const t of [...tiles].sort((a, b) => hash3(a.i, a.j, opts.seed) - hash3(b.i, b.j, opts.seed))) {
+      if (courts.some((c) => Math.hypot(t.u - c.u, t.v - c.v) < 64)) continue;
+      if (Array.from({ length: 49 }, (_, n) => keys.has(tileKey(t.i + n % 7 - 3, t.j + Math.floor(n / 7) - 3))).every(Boolean)) courts.push(t);
     }
-    for (const [k, wing] of groups) {
-      const [i, j] = k.split(",").map(Number); const factor = [.5, .75, 1][hash3(i!, j!, opts.seed) % 3]!;
+    const left = new Map(tiles.filter((t) => !courts.some((c) => Math.abs(t.i - c.i) <= 1 && Math.abs(t.j - c.j) <= 1)).map((t) => [tileKey(t.i, t.j), t]));
+    const groups: Tile[][] = [];
+    // Maximal wings follow the surviving polygon; courts interrupt large solid interiors.
+    for (const t of tiles) {
+      if (!left.has(tileKey(t.i, t.j))) continue;
+      const candidates = [[3, 7], [7, 3], [4, 5], [5, 4], [3, 4], [4, 3], [3, 3], [2, 4], [4, 2], [2, 3], [3, 2], [1, 4], [4, 1], [2, 2], [1, 3], [3, 1], [1, 2], [2, 1], [1, 1]];
+      if (hash3(t.i, t.j, opts.seed) % 2) for (const size of candidates) size.reverse();
+      const [w, d] = candidates.find(([w, d]) => Array.from({ length: w! * d! }, (_, n) => left.has(tileKey(t.i + n % w!, t.j + Math.floor(n / w!)))).every(Boolean))!;
+      const wing: Tile[] = [];
+      for (let j = 0; j < d!; j++) for (let i = 0; i < w!; i++) { const k = tileKey(t.i + i, t.j + j); wing.push(left.get(k)!); left.delete(k); }
+      groups.push(wing);
+    }
+    for (const [index, wing] of groups.entries()) {
+      const factor = [.5, .75, 1][hash3(index, opts.seed, 41) % 3]!;
       const height = Math.max(4, Math.floor(rule.height * factor / 4) * 4);
       stack(m, wing, bay, height, rule, opts, 0, ["shed", "hall"].includes(rule.recipe));
       m.wings.push({ tiles: wing.length, height, u: wing.reduce((n, t) => n + t.u, 0) / wing.length, v: wing.reduce((n, t) => n + t.v, 0) / wing.length });
@@ -245,21 +335,33 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
   }
   const hall = ["shed", "hall", "theatre", "service", "marina"].includes(rule.recipe);
   stack(m, tiles, bay, rule.height, rule, opts, 0, hall);
-  if (special === "convention") {
-    for (const t of tiles.filter((t) => t.j === Math.max(...tiles.map((a) => a.j)))) {
-      for (let y = 0; y < rule.height; y += 4) m.put("fin4", t.u, y + 2, t.v + 4, "limestone");
-      m.put("trim8", t.u, rule.height, t.v + 4, "blue");
-    }
-  }
-  if (rule.recipe === "house") {
-    for (const t of tiles.filter((t) => t.j % 2 === 0)) {
-      if (rand3(opts.seed, t.i, t.j) > .65) continue;
-      m.put("trim4", t.u, rule.height + .15, t.v, "clay");
-      m.put("beam4", t.u, rule.height + .7, t.v + 1);
-    }
-  }
   if (["service", "civic", "school", "hospital", "shop"].includes(rule.recipe)) {
     const front = tiles.filter((t) => t.j === Math.min(...tiles.map((a) => a.j)));
     for (const t of front) m.put(bay === 8 ? "trim8" : "trim4", t.u, 3.2, t.v - bay / 2, rule.finish);
+  }
+}
+
+function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, composition: Composition): void {
+  const inRect = (t: Tile, rect: number[]): boolean => t.u >= rect[0]! && t.v >= rect[1]! && t.u <= rect[2]! && t.v <= rect[3]!;
+  for (const op of composition.operations) {
+    const selected = tiles.filter((t) => (!op.rect || inRect(t, op.rect)) && (!op.exclude || !inRect(t, op.exclude)));
+    if (op.op === "stack") stack(m, selected, 8, Math.max(4, (op.height ?? rule.height) + (op.offset ?? 0)), { ...rule, form: op.form ?? rule.form, feature: op.feature ?? rule.feature }, { ...opts, playable: op.playable ?? opts.playable, coreU: op.coreU }, 0, op.hall);
+    if (op.op === "tower") tower(m, tiles, rule, opts);
+    if (op.op === "arena") arena(m, tiles, rule, opts);
+    if (op.op === "parts" || op.op === "front") {
+      const front = op.op === "front" ? Math.min(...tiles.map((t) => t.v)) - 4 : 0;
+      for (const [shape, u, y, v, finish, turn] of op.parts ?? []) m.put(shape, u, y + (op.fromTop ? rule.height : 0), v + front, finish === "finish" ? rule.finish : finish, turn ?? 0);
+    }
+    if (op.op === "ribs") {
+      const edge = (op.rear ? Math.max : Math.min)(...selected.map((t) => t.j));
+      for (const t of selected.filter((t) => t.j === edge)) {
+        for (let y = 0; y < rule.height; y += 16) m.put("fin16", t.u - 4, y + 8, t.v + (op.rear ? 4 : -4), op.finish ?? rule.finish);
+        m.put("trim8", t.u, rule.height, t.v + (op.rear ? 4 : -4), op.finish ?? rule.finish);
+      }
+    }
+    if (op.op === "portal") for (let i = m.pieces.length - 1; i >= 0; i--) {
+      const p = m.pieces[i]!; const u = (p.x - m.frame.x) * m.frame.c - (p.z - m.frame.z) * m.frame.s;
+      if (Math.abs(u) < (op.width ?? 12) / 2 && p.y - m.base < (op.height ?? 16) - .5) m.pieces.splice(i, 1);
+    }
   }
 }

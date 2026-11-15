@@ -1,9 +1,10 @@
-import { RUIN_SHAPES, type RuinShape } from "../../content/miami-ruins.ts";
+import { RUIN_SHAPES, type RuinShape } from "../../content/ruins.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Mason, type Frame, type Point } from "./ruin-geometry.ts";
 import type { Site } from "./statics.ts";
 import { pathsOf, readWays, type Path } from "./ways.ts";
+import { makeSuspension, SUSPENDED } from "./suspension.ts";
 
 export interface DeckPoint { x: number; y: number; z: number; yaw: number; gap: boolean; }
 export interface BridgeRecord {
@@ -22,7 +23,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
   const at = (x: number, z: number): number => Math.max(0, Math.min(site.ground.n - 1, Math.round((size - z) / 2))) * site.ground.n + Math.max(0, Math.min(site.ground.n - 1, Math.round((size - x) / 2)));
   const wet = (p: Point): boolean => site.ground.water[at(p[0], p[1])] === 1;
   const nodes = new Map<string, { height: number; degree: number; p: Point; terminal: boolean }>();
-  const edges: { a: string; b: string; length: number }[] = [];
+  const edges: { a: string; b: string; length: number; grade: number }[] = [];
   const nominal = (p: Path, point: Point): number => {
     const ground = site.groundAt(...point);
     if (p.way.kind === "breakwater") return Math.max(1.2, ground + .2);
@@ -37,14 +38,15 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     const degree = i === 0 || i === p.points.length - 1 ? 1 : 2;
     if (node) { node.height = Math.max(node.height, nominal(p, point)); node.degree += degree; }
     else nodes.set(k, { height: nominal(p, point), degree, p: point, terminal: p.way.kind !== "rail_bridge" && p.way.kind !== "breakwater" });
-    if (i > 0) edges.push({ a: key(p.points[i - 1]!, p.way.kind), b: k, length: Math.hypot(point[0] - p.points[i - 1]![0], point[1] - p.points[i - 1]![1]) });
+    // A deck hung from cables keeps the height it left the land at; others may fall at a tenth toward their class.
+    if (i > 0) edges.push({ a: key(p.points[i - 1]!, p.way.kind), b: k, length: Math.hypot(point[0] - p.points[i - 1]![0], point[1] - p.points[i - 1]![1]), grade: SUSPENDED.has(p.way.structure ?? "") ? .005 : .10 });
   }
   for (const n of nodes.values()) if (n.degree === 1 && n.terminal && !wet(n.p)) n.height = Math.max(.25, site.groundAt(...n.p) + .1);
   // A shared graph gives adjoining ways the same deck elevation. Raise low nodes only enough to keep steps walkable.
   for (let pass = 0; pass < 40; pass++) {
     let changed = false;
     for (const edge of edges) {
-      const a = nodes.get(edge.a)!; const b = nodes.get(edge.b)!; const delta = edge.length * .10;
+      const a = nodes.get(edge.a)!; const b = nodes.get(edge.b)!; const delta = edge.length * edge.grade;
       if (a.height < b.height - delta) { a.height = b.height - delta; changed = true; }
       if (b.height < a.height - delta) { b.height = a.height - delta; changed = true; }
     }
@@ -218,7 +220,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
       } else if (i % 3 === 0 && i > 1 && i < deck.length - 2) {
         for (const side of [-1, 1]) if ((i + side + p.way.id) % 11 !== 0) m.put("sill4", d.x - dz * (p.width / 2 + .15) * side, d.y + .45, d.z + dx * (p.width / 2 + .15) * side, p.way.kind === "rail_bridge" ? "rust" : "limestone", d.yaw);
       }
-      if (i % 9 === 4 && p.way.kind !== "breakwater") {
+      if (i % 9 === 4 && p.way.kind !== "breakwater" && !(SUSPENDED.has(p.way.structure ?? "") && site.ground.water[at(d.x, d.z)] === 1)) {
         for (const side of p.width > 4 ? [-p.width / 2 + .7, p.width / 2 - .7] : [0]) {
           const x = d.x - dz * side; const z = d.z + dx * side; const bed = site.groundAt(x, z);
           for (let top = d.y - .4; top > bed; top -= 4) m.put("pier4", x, top - 2, z);
@@ -245,7 +247,8 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     const record: BridgeRecord = { id: p.way.id, name: p.way.name, kind: p.way.kind, class: p.way.class, layer: p.way.layer, width: p.width,
       length: Number(length.toFixed(1)), blocks: m.pieces.length, status: "built", heightRule: "class clearance, layer +5 m; shared vertices; dry terminal at ground; target grade 10% before 1/16 m quantization; deck steps <=0.3125 m; close overlapping levels joined",
       low: Math.min(...deck.map((d) => d.y)), high: Math.max(...deck.map((d) => d.y)), deck, swim: [], access: [], approaches: approaches.get(p) ?? 0 };
-    if (!m.pieces.length || !accept(m)) record.status = "budget rejected";
+    if (!m.pieces.length) record.status = "no pieces";
+    else if (!accept(m)) record.status = "budget rejected";
     else {
       for (let k = 1; k < deck.length; k++) {
         const a = deck[k - 1]!; const b = deck[k]!; if (a.gap || b.gap) continue;
@@ -260,6 +263,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     }
     records.push(record);
   }
+  outlines.push(...makeSuspension(site, planned, accept));
   return { records, corridors, outlines };
 }
 

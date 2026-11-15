@@ -87,9 +87,9 @@ const ITEM = {
   weapon: f("facet", "WeaponTemplate", {
     refs: { "ammo[]": "item", "fits[]": "item/attachment", "cloud.prop": "prop/cloud", "cloud.buff": "buff" },
     open: true,
-    stubs: { auto: "polish", reloadEach: "polish", melee: "polish", spread: "polish", recoil: "polish", structures: "polish", cloud: "polish" },
+    stubs: { structures: "polish" },
   }),
-  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" } }),
+  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { blast: "polish", pierce: "polish", light: "polish" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
@@ -236,9 +236,10 @@ const BUFF = {
   root: f("switch"),
   immune: f("switch"),
   good: stub("polish", "switch"),
-  only: stub("polish", "list", "the species a bola takes (Bola)", { refs: { "[]": "species" } }),
-  survivorSeconds: stub("polish", "number", "a bola's time on a survivor"),
-  after: stub("polish", "text", "", { refs: { "": "buff" } }),
+  // Built by W4 of planning/reference/weapons-plan.md (server/entangle.ts gives a buff that names them).
+  only: f("list", "the species a bola takes (Bola)", { refs: { "[]": "species" } }),
+  survivorSeconds: f("number", "a bola's time on a survivor"),
+  after: f("text", "", { refs: { "": "buff" } }),
 } satisfies Fields<BuffDef>;
 
 const MATERIAL = {
@@ -355,7 +356,7 @@ const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
 row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto", "youngFor", "ammo"], slots: { shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "A material: gathered, stacked, and spent in crafting. One a weapon fires, as a slingshot fires stone, has an ammo facet." });
 row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "spoilsInto", "cooks", "fuel", "youngFor", "use"], any: ["eat", "dose", "use"], slots: ITEM_SLOTS, doc: "Something eaten, drunk or fed for what it does to a body." });
-row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool"], slots: { held: mesh("must", "{weapon.mesh}", "none"), ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool." });
+row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool", "ammo"], slots: { held: mesh("must", "{weapon.mesh}", "none"), shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool. A thrown one with an ammo facet of its own flies and hits as an arrow does (the bola)." });
 row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: ANY_ITEM, slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
 row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
 row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item type Equipment", shelf: "items/equipment", doc: "Worn by a body, in a slot." });
@@ -422,7 +423,7 @@ row("prop", "prop", PROP, { abstract: true, ark: "an actor that is not alive", s
 row("prop/container", "prop", PROP, { parent: "prop", ark: "a death cache, a dropped bag", shelf: "props/containers", must: [...PROP_BODY, "slots"], slots: PROP_SLOTS, doc: "Holds what was dropped or left by the dead." });
 row("prop/projectile", "prop", PROP, { parent: "prop", ark: "a projectile actor", status: "partial", shelf: "props/projectiles", must: PROP_BODY, may: ["pitched"], slots: PROP_SLOTS, doc: "Something loosed or thrown, where it lies. How it flies is on the ammunition." });
 row("prop/egg", "prop", PROP, { parent: "prop", ark: "a laid or dropped egg, fertilised or not", shelf: "props/eggs", must: PROP_BODY, may: ["size", "item", "fertile"], slots: PROP_SLOTS, doc: "An egg where it lies: taken up as its item, and hatching where it lies if fertilised." });
-row("prop/cloud", "prop", PROP, { parent: "prop", ark: "the gas and smoke actors of grenades", status: "stub", waits: "polish", shelf: "props/clouds", must: PROP_BODY, slots: PROP_SLOTS, doc: "Smoke or gas that stays where a grenade burst, as far as its radius, for its grenade's seconds, giving its buff to the bodies inside it (planning/reference/weapons-plan.md, W5)." });
+row("prop/cloud", "prop", PROP, { parent: "prop", ark: "the gas and smoke actors of grenades", shelf: "props/clouds", must: PROP_BODY, slots: PROP_SLOTS, doc: "Smoke or gas that stays where a grenade burst, as far as its radius and as high as its height, for its grenade's seconds, giving its buff to the survivors inside it every half second (server/clouds.ts). It has no body, and is drawn as puffs over that reach (client/core/render/clouds.ts); its mesh is not drawn." });
 row("prop/crate", "prop", PROP, { parent: "prop", ark: "SupplyCrate_", status: "stub", waits: "loot", shelf: "props/crates", must: PROP_BODY, may: ["slots"], slots: PROP_SLOTS, doc: "Comes down with loot and goes when it is emptied." });
 
 row("buff", "buff", BUFF, { ark: "Buff_", shelf: "buffs", must: ["label", "color"], may: ["seconds", "again", "health", "torpor", "damage", "speed", "dealt", "taken", "root", "immune", "good", "only", "survivorSeconds", "after"], slots: { icon, effect: { asset: "effect", need: "may", from: "{id}/effect", fallback: ["none"] } }, doc: "Acts on a body for a time." });

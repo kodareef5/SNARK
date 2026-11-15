@@ -1,12 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/miami-ruins.ts";
+import { RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { readLabels, resolveLabels, type Facts, type PublicPlace } from "./labels.ts";
 import { bridgeHoles, corridorIndex, makeBridges } from "./bridges.ts";
 import { accessPlanner, gradeApproaches, type Approach } from "./ruin-access.ts";
+import { clearCirculation } from "./ruin-clearance.ts";
 import { S } from "./ground.ts";
-import { frameOf, inRing, Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
-import { layout } from "./ruin-layouts.ts";
+import { compactWalls, reserveRoutes, frameOf, inRing, Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
+import { assembly, layout } from "./ruin-layouts.ts";
 import { ruleFor, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { hash3 } from "./raster.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
@@ -15,8 +16,10 @@ import type { Footprint, Site, StaticLayer, StaticPiece } from "./statics.ts";
 interface NamedPlace { id: string; name: string; footprint: number; layout: string; recipe: string; retain: number; finish: RuinFinish; note: string; source: string; }
 interface Planned { f: Footprint; frame: Frame; rule: Rule; named?: NamedPlace; square: string; facts: Facts; }
 export interface RuinRecord {
+  firstPiece: number;
   footprint: number; part: number; name: string | null; district: string; square: string; recipe: string; special: string | null;
   x: number; y: number; z: number; yaw: number; width: number; depth: number; height: number; blocks: number; detail: number;
+  form: string; collapse: string; rooms: Mason["rooms"]; falls: Mason["falls"];
   approaches: Approach[]; entries: Mason["entries"]; escapes: Mason["escapes"]; wings: Mason["wings"];
   kind: string; sourceHeight: number; heightFrom: string; kindFrom: string; researchFrom: string | null; routes: Mason["routes"]; provisional: boolean; modifiers: string[]; lore: string | null;
 }
@@ -40,12 +43,18 @@ export function makeRuins(site: Site): StaticPiece[] {
     if ((primary.get(id)?.building.area ?? 0) < f.building.area) primary.set(id, f);
   }
   const facts = resolveLabels(primary, data, v);
+  const neighbours = new Map<string, Footprint[]>();
+  for (const f of site.footprints) { const k = `${Math.floor(f.building.e / 64)},${Math.floor(f.building.n / 64)}`; if (!neighbours.has(k)) neighbours.set(k, []); neighbours.get(k)!.push(f); }
+
   const planned: Planned[] = site.footprints.map((f) => {
     const id = Math.floor(f.building.id / 4); const b = f.building;
     const square = `r${String(Math.min(31, Math.max(0, Math.floor((size / 2 - b.n) / 254)))).padStart(2, "0")}c${String(Math.min(31, Math.max(0, Math.floor((b.e + size / 2) / 254)))).padStart(2, "0")}`;
     const n = primary.get(id) === f ? named.find((p) => p.footprint === id) : undefined;
     const resolved = facts.get(id)!;
-    let rule = ruleFor(f, v, resolved);
+    const cx = Math.floor(b.e / 64); const cz = Math.floor(b.n / 64); let count = 0;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) for (const other of neighbours.get(`${cx + dx},${cz + dz}`) ?? []) if (other !== f && Math.hypot(other.building.e - b.e, other.building.n - b.n) < 64) count++;
+    const [x, z] = site.toEngine(b.e, b.n); const index = Math.max(0, Math.min(site.ground.shore.length - 1, Math.round((size - z) / 2) * site.ground.n + Math.round((size - x) / 2)));
+    let rule = ruleFor(f, v, resolved, { water: site.ground.shore[index]!, neighbours: count });
     if (n) rule = { ...rule, recipe: n.recipe, height: Math.min(v.budgets.maxHeight, Math.max(4, Math.floor(resolved.height * n.retain / 4) * 4)), finish: n.finish, bay: 8 };
     return { f, frame: frames.get(b.id)!, rule, named: n, square, facts: resolved };
   }).sort((a, b) => Number(!!b.named) - Number(!!a.named) || Number(!!b.facts.label.name) - Number(!!a.facts.label.name) || b.rule.height - a.rule.height || a.f.building.id - b.f.building.id);
@@ -74,6 +83,7 @@ export function makeRuins(site: Site): StaticPiece[] {
     return true;
   };
   const bridges = makeBridges(site, accept);
+  const infrastructureCount = pieces.length;
   const corridors = corridorIndex(bridges.corridors);
   const planAccess = accessPlanner(site, pieces);
   for (const p of planned) {
@@ -88,11 +98,26 @@ export function makeRuins(site: Site): StaticPiece[] {
       const playable = Math.max(1, Math.floor(v.budgets.maxPlayableFloors / 2 ** detail));
       const r = detail === 3 ? { ...rule, height: Math.min(rule.height, 8), holes: .4, wall: 0 } : rule;
       layout(m, r, { seed: f.building.id ^ v.seed, playable, detail }, detail === 3 ? undefined : p.named?.layout);
+      reserveRoutes(m); compactWalls(m);
       approaches = planAccess(m, ownerIndex.get(f.building.id)!);
+      if (!approaches.length && m.alternatives.length) {
+        const originalPieces = m.pieces.slice(); const entryCount = m.entries.length; const roomCount = m.rooms.length; const clearCount = m.clear.length;
+        const supports = new Set<string>();
+        for (const a of m.alternatives) {
+          m.entries.push(a.entry);
+          const key = a.support.join(","); if (!supports.has(key)) { supports.add(key); m.floor(a.support, 0, 8); m.rooms.push({ kind: "lobby", points: a.path }); }
+          m.clear.push({ x: a.entry.x, z: a.entry.z, radius: 16 });
+        }
+        reserveRoutes(m); compactWalls(m); approaches = planAccess(m, ownerIndex.get(f.building.id)!);
+        if (!approaches.length) {
+          m.pieces.length = 0; m.pieces.push(...originalPieces); m.entries.length = entryCount; m.rooms.length = roomCount; m.clear.length = clearCount;
+        }
+      }
       if (m.pieces.length > 0 && accept(m)) { built = m; break; }
       if (m.pieces.length === 0) break;
     }
     if (!built) { rejected.push({ part: f.building.id, reason: samples.length === 0 ? "no 4 m tile fits" : "budget or bounds" }); continue; }
+    planAccess.reserve(approaches);
     levelFloor(site, frame, ownerIndex.get(f.building.id)!, base);
     gradeApproaches(site, approaches, ownerIndex.get(f.building.id)!);
     if (rule.height <= 20) {
@@ -102,11 +127,28 @@ export function makeRuins(site: Site): StaticPiece[] {
         if (Math.abs(dx * frame.c - dz * frame.s) <= frame.width / 2 + 16 && Math.abs(dx * frame.s + dz * frame.c) <= frame.depth / 2 + 16) site.lowPlants[row * side + col] = 1;
       }
     }
-    records.push({ footprint: Math.floor(f.building.id / 4), part: f.building.id, name: p.named?.name ?? p.facts.label.name ?? null,
+    records.push({ firstPiece: pieces.length - built.pieces.length, footprint: Math.floor(f.building.id / 4), part: f.building.id, name: p.named?.name ?? p.facts.label.name ?? null,
       district: f.district?.name ?? "Unzoned", square: p.square, recipe: rule.recipe, special: p.named?.layout ?? null,
       x: frame.x, y: base, z: frame.z, yaw: frame.yaw, width: frame.width, depth: frame.depth,
       height: Math.max(...built.pieces.map((s) => s.y + RUIN_SHAPES[s.kind.split("_")[1] as RuinShape][1] / 2)) - base,
+      form: rule.formName ?? rule.recipe, collapse: rule.collapse ?? "shear", rooms: built.rooms, falls: built.falls,
       blocks: built.pieces.length, detail, approaches, entries: built.entries, escapes: built.escapes, wings: built.wings, routes: built.routes, provisional: rule.provisional, modifiers: rule.matched, lore: p.facts.research?.lore ?? null, kind: p.facts.kind, sourceHeight: p.facts.height, heightFrom: p.facts.heightFrom, kindFrom: p.facts.kindFrom, researchFrom: p.facts.researchFrom ?? null });
+  }
+  const clearance = clearCirculation(pieces, records, infrastructureCount);
+  for (const r of records) gradeApproaches(site, r.approaches, -1);
+  for (const r of records) for (const room of r.rooms) if (room.kind !== "rubble" && room.points[0]!.y === r.y) {
+    for (const p of room.points) for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) {
+      const i = (Math.round((size - p.z) / 2) + dz) * site.ground.n + Math.round((size - p.x) / 2) + dx;
+      site.ground.height[i] = Math.min(r.y, site.ground.height[i]!);
+    }
+  }
+  counts.fill(0); for (const key of Object.keys(usedKinds)) delete usedKinds[key];
+  for (const p of pieces) { counts[ckey(p)]!++; usedKinds[p.kind] = (usedKinds[p.kind] ?? 0) + 1; }
+  for (const r of bridges.records) for (const d of r.deck) if (!d.gap) {
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const i = (Math.round((size - d.z) / 2) + dz) * site.ground.n + Math.round((size - d.x) / 2) + dx;
+      site.ground.height[i] = Math.min(d.y - .4, site.ground.height[i]!);
+    }
   }
   for (const r of bridges.records) for (const d of r.swim) {
     for (let s = -d.distance - 2; s <= d.distance + 2; s++) for (let side = -3; side <= 3; side++) {
@@ -115,24 +157,31 @@ export function makeRuins(site: Site): StaticPiece[] {
       site.ground.height[i] = Math.min(-3, site.ground.height[i]!); site.ground.water[i] = 1;
     }
   }
-  const propCorridors = corridorIndex([...bridges.corridors, ...records.flatMap((r) => r.approaches.flatMap((a) => [[a.street, a.door], [a.door, a.core]].map(([start, end]) => ({ a: [start!.x, start!.z] as const, b: [end!.x, end!.z] as const, width: 3, low: Math.min(start!.y, end!.y) - .5, high: Math.max(start!.y, end!.y) + 2.5 }))))]);
+  const propCorridors = corridorIndex([...bridges.corridors, ...records.flatMap((r) => r.approaches.flatMap((a) => [[a.street, a.door], [a.door, a.core]].map(([start, end]) => ({ a: [start!.x, start!.z] as const, b: [end!.x, end!.z] as const, width: 1.2, low: Math.min(start!.y, end!.y) - .5, high: Math.max(start!.y, end!.y) + 2.5 }))))]);
   const acceptProp = (m: Mason): boolean => {
     for (const p of m.pieces) {
       const [w, h, d] = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape];
-      const radius = Math.hypot(w, d) / 2;
       const nearby = propCorridors({ ...m.frame, x: p.x, z: p.z, width: w, depth: d });
       if (nearby.some((c) => {
         if (p.y + h / 2 < c.low || p.y - h / 2 > c.high) return false;
-        const dx = c.b[0] - c.a[0]; const dz = c.b[1] - c.a[1];
-        const t = Math.max(0, Math.min(1, ((p.x - c.a[0]) * dx + (p.z - c.a[1]) * dz) / (dx * dx + dz * dz)));
-        return Math.hypot(p.x - c.a[0] - dx * t, p.z - c.a[1] - dz * t) < radius + c.width / 2;
+        const angle = p.yaw * Math.PI / 180; const co = Math.cos(angle); const si = Math.sin(angle);
+        const local = (q: readonly number[]): number[] => [(q[0]! - p.x) * co - (q[1]! - p.z) * si, (q[0]! - p.x) * si + (q[1]! - p.z) * co];
+        const a = local(c.a); const b = local(c.b); const half = [w / 2 + c.width / 2, d / 2 + c.width / 2];
+        let enter = 0; let leave = 1;
+        for (let axis = 0; axis < 2; axis++) {
+          const delta = b[axis]! - a[axis]!;
+          if (Math.abs(delta) < 1e-8) { if (Math.abs(a[axis]!) >= half[axis]!) return false; }
+          else { const t0 = (-half[axis]! - a[axis]!) / delta; const t1 = (half[axis]! - a[axis]!) / delta; enter = Math.max(enter, Math.min(t0, t1)); leave = Math.min(leave, Math.max(t0, t1)); }
+        }
+        return enter <= leave;
       })) return false;
     }
     return accept(m);
   };
   const infrastructure = makeInfrastructure(site, acceptProp);
+  const streets = makeStreetPieces(site, v, acceptProp);
   const publicPlaces = makePublicPlaces(site, data.places, acceptProp);
-  const folder = join(site.source, "reports/ruins2"); mkdirSync(folder, { recursive: true });
+  const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
   const put = (name: string, value: unknown): void => writeFileSync(join(folder, name), `${JSON.stringify(value, null, 2)}\n`);
   put("bridges.json", bridges.records);
   put("bridge-summary.json", { roadApproaches: bridges.records.reduce((n, r) => n + r.approaches, 0), railAccess: bridges.records.reduce((n, r) => n + r.access.length, 0), byKind: tally(bridges.records.map((r) => r.kind)), brokenWays: bridges.records.filter((r) => r.deck.some((d) => d.gap)).map((r) => ({ id: r.id, name: r.name, skippedDecks: r.deck.filter((d) => d.gap).length })), ways: bridges.records.length, built: bridges.records.filter((r) => r.status === "built").length, blocks: bridges.records.filter((r) => r.status === "built").reduce((n, r) => n + r.blocks, 0), outlines: bridges.outlines });
@@ -161,6 +210,8 @@ export function makeRuins(site: Site): StaticPiece[] {
   put("buildings.json", records);
   put("generation.json", { version: v.version, seed: v.seed, labelsFingerprint: data.fingerprint, staticFingerprint: digest(pieces),
     blocks: pieces.length, buildings: records.length, footprints: site.footprints.length, rejected, kinds: usedKinds, topChunks,
+    clearance, streets, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
+    piecesByKind: Object.fromEntries([...new Set(records.map((r) => r.kind))].sort().map((kind) => { const rows = records.filter((r) => r.kind === kind); return [kind, { buildings: rows.length, pieces: rows.reduce((n, r) => n + r.blocks, 0), max: Math.max(...rows.map((r) => r.blocks)) }]; })),
     byRecipe: tally(records.map((r) => r.recipe)), byDistrict: tally(records.map((r) => r.district)),
     reduced: records.filter((r) => r.detail > 0).map((r) => ({ part: r.part, name: r.name, detail: r.detail })),
     compounds: records.filter((r) => r.wings.length).map((r) => ({ part: r.part, name: r.name, wings: r.wings.length, cores: r.routes.length, entrances: r.entries.length })), approaches: records.reduce((n, r) => n + r.approaches.length, 0), escapes: records.reduce((n, r) => n + r.escapes.length, 0),
@@ -177,7 +228,7 @@ function makeInfrastructure(site: Site, accept: (m: Mason) => boolean): Record<s
   const at = (x: number, z: number): number => Math.max(0, Math.min(ground.n - 1, Math.round((size - z) / 2))) * ground.n + Math.max(0, Math.min(ground.n - 1, Math.round((size - x) / 2)));
   const f: Frame = { x: 0, z: 0, yaw: 0, c: 1, s: 0, rings: [], width: size, depth: size };
   let containers = 0; let parapets = 0;
-  const port = site.world.districts.findIndex((d) => d.name === "The Port") + 1;
+  const port = site.world.districts.findIndex((d) => site.world.ruins?.yardDistricts.includes(d.name)) + 1;
   for (let z = 16; z < size - 16; z += 16) for (let x = 16; x < size - 16; x += 16) {
     const i = at(x, z); const h = hash3(x, z, 7731);
     if (ground.surface[i] === S.DECK && h % 3 === 0) {
@@ -200,7 +251,7 @@ function makeInfrastructure(site: Site, accept: (m: Mason) => boolean): Record<s
   return { containerStacks: containers, causewayParapets: parapets };
 }
 
-export const RUINS: StaticLayer = { name: "Miami ruins", make: makeRuins };
+export const RUINS: StaticLayer = { name: "ruins", make: makeRuins };
 
 function levelFloor(site: Site, frame: Frame, owner: number, base: number): void {
   const { n, height, heaps } = site.ground; const size = (n - 1) * 2;
@@ -257,6 +308,31 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
     m.cover(0, 0, 6);
     if (accept(m)) { record.status = "built"; record.blocks = m.pieces.length; }
     else record.status = "budget or bounds";
+  }
+  return out;
+}
+
+function makeStreetPieces(site: Site, v: ReturnType<typeof vocabulary>, accept: (m: Mason) => boolean): Record<string, number> {
+  const out: Record<string, number> = {}; const size = (site.ground.n - 1) * 2; const spacing = v.street.spacing;
+  const at = (x: number, z: number): number => Math.round((size - z) / 2) * site.ground.n + Math.round((size - x) / 2);
+  const road = (surface: number | undefined): boolean => surface === S.STREET || surface === S.HIGHWAY;
+  for (let z = 24; z < size - 24; z += spacing) for (let x = 24; x < size - 24; x += spacing) {
+    const i = at(x, z); const surface = site.ground.surface[i]; const h = hash3(x, z, v.seed + 8);
+    if (h / 4294967296 > v.street.chance || site.groundAt(x, z) < .3) continue;
+    const yard = surface === S.YARD;
+    const verge = (surface === S.OPEN || surface === S.GREEN) && [[-4, 0], [4, 0], [0, -4], [0, 4]].some(([dx, dz]) => road(site.ground.surface[at(x + dx!, z + dz!)]));
+    if (!yard && !road(surface) && !verge) continue;
+    // The middle of the street remains a continuous lane; wrecks occupy its edge.
+    const vertical = site.ground.surface[at(x, z - 6)] === surface && site.ground.surface[at(x, z + 6)] === surface;
+    const edge = vertical ? site.ground.surface[at(x + 4, z)] !== surface || site.ground.surface[at(x - 4, z)] !== surface : site.ground.surface[at(x, z + 4)] !== surface || site.ground.surface[at(x, z - 4)] !== surface;
+    if (!yard && !edge) continue;
+    const names = yard ? v.street.yardAssemblies : v.street.assemblies; const name = names[h % names.length]!;
+    const yaw = vertical ? 90 : 0; const angle = yaw * Math.PI / 180;
+    const frame: Frame = { x, z, yaw, c: Math.cos(angle), s: Math.sin(angle), width: 16, depth: 8, rings: [] };
+    const m = new Mason(frame, site.groundAt(x, z));
+    assembly(m, { recipe: "street", height: 0, finish: "rust", feature: "", holes: 0, wall: 0, bay: 8, matched: [], provisional: false, assemblies: v.assemblies }, name, 0, 0, 0);
+    if (m.pieces.some((p) => { const j = at(p.x, p.z); return site.ground.surface[j] === S.FLOOR || site.groundAt(p.x, p.z) < .1; })) continue;
+    m.cover(0, 0, 9); if (accept(m)) out[name] = (out[name] ?? 0) + 1;
   }
   return out;
 }

@@ -236,8 +236,11 @@ export interface ItemDef extends Named {
   readonly ammo?: AmmoFacet;
   readonly wear?: WearFacet;
   /**
-   * A weapon lists the attachment items it takes in `fits`. "holo" is the holo-scope, a stub: no item is one until W7 of
-   * planning/reference/weapons-plan.md builds its view.
+   * A weapon lists the attachment items it takes in `fits`. What each does (planning/reference/weapons-plan.md, M10): a
+   * scope zooms about 3 times with a reticle and sways the weapons that sway; a holo-scope zooms about 1.25 times with a
+   * night tint and a crosshair coloured by what it is on (its view is built; no item is one until the fabricator's wave);
+   * a silencer hides the shot's flash and, from a survivor it hits, its side; a light and a laser are switched on and off
+   * (FLAG_ON), the laser drawing a dot where the weapon points and the light waiting for local lights (D436).
    */
   readonly attachment?: "scope" | "silencer" | "light" | "laser" | "holo";
   /** The structures it may be set down as. The first is the usual form. The rest are other forms (a wall as a doorframe), chosen as it is placed. */
@@ -319,7 +322,10 @@ export interface WeaponFacet {
   readonly power?: number;
   /** Rounds it holds. Defaults to 1. */
   readonly clip?: number;
-  /** Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. */
+  /**
+   * Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. A thrown
+   * weapon with a draw is a charged throw: held as a bow is drawn, it leaves on release, its draw how long it was held.
+   */
   readonly reload?: number;
   readonly draw?: number;
   readonly interval?: number;
@@ -336,24 +342,36 @@ export interface WeaponFacet {
   /** Mesh held in the hand, and how the body holds it. */
   readonly mesh?: string;
   readonly hold: "tool" | "bow" | "rifle" | "pistol" | "spear";
-  // Stubs of planning/reference/weapons-plan.md: declared, checked and compiled, and read by nothing until the project
-  // named builds them (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
-  /** W2: holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
+  // Fire modes and the blow (planning/reference/weapons-plan.md, M4, built by W2). Omitted, a weapon fires once a press,
+  // reloads its whole clip in one go and strikes with bare hands.
+  /** Holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
   readonly auto?: boolean;
-  /** W2: a reload loads one round each `reload` seconds until full, and the primary button ends it after the round under way. */
+  /**
+   * A reload loads one round each `reload` seconds (at most 4) until full, and a press of the primary button ends it after
+   * the round under way, firing then if the button is still down.
+   */
   readonly reloadEach?: boolean;
   /**
-   * W2: a bow's or gun's blow with the melee button: damage at primitive quality, torpor as a multiple of it, reach in metres
+   * A bow's or gun's blow with the melee button: damage at primitive quality, torpor as a multiple of it, reach in metres
    * (2.6 where not given), and the seconds a blow takes (a swing's where not given). ARK's is 10 and 14 torpor (Base Damage).
    */
   readonly melee?: { readonly damage: number; readonly torpor?: number; readonly reach?: number; readonly interval?: number };
+  // Where a shot goes (planning/reference/weapons-plan.md, M1 and M2, built by W1). Omitted, a shot goes along the look.
   /**
-   * W1: the cone a shot leaves within, as half angles in degrees: from the hip and aimed at rest, what full speed adds, what
-   * each shot adds, and the degrees a second it narrows back. Our own numbers (ARK publishes none).
+   * The cone a shot leaves within (shared/sim/aim.ts), as half angles in degrees: from the hip and aimed at rest, what a
+   * sprint adds, what each shot adds, and the degrees a second it narrows back; and the degrees the aim sways through a
+   * scope, standing. Our own numbers, as ARK publishes none (DEV128, DEV130).
    */
-  readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number };
-  /** W1: the degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick. */
+  readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number; readonly sway?: number };
+  /** The degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick (DEV129). */
   readonly recoil?: { readonly kick: number; readonly recover: number };
+  /**
+   * A gun's rays a shot, in place of its round's `ammo.pellets` (W3): ARK's pump-action fires the same shells as the
+   * double-barrel, 14 pellets to its 10 (Pump-Action Shotgun). Omitted, a shot sends its round's.
+   */
+  readonly pellets?: number;
+  // Stubs of the same plan: declared, checked and compiled, and read by nothing until the project named builds them
+  // (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
   /** W6: what its damage is multiplied by against a structure. 1 where not given. ARK's grenade is 4.5 (Table of explosives). */
   readonly structures?: number;
   /**
@@ -376,11 +394,21 @@ export interface AmmoFacet {
   /** Chance, 0 to 1, that a spent one can be picked up again. */
   readonly recover?: number;
   readonly mesh?: string;
-  // Stubs of planning/reference/weapons-plan.md, as the weapon facet's are. Omitted, a round does what all do today.
-  /** W3: rays one round sends, each tested and landed alone, as a shotgun's pellets. 1 where not given. */
+  /**
+   * A weapon loaded with it takes no attachment: loading it puts the one fitted in the bag, and nothing is fitted while it
+   * is loaded. ARK's darts: loaded with them the Longneck "cannot use any attachments" (Longneck Rifle).
+   */
+  readonly bare?: boolean;
+  // Shot (planning/reference/weapons-plan.md, M3, built by W3). Omitted, a round is one ray and keeps its damage at any range.
+  /**
+   * Rays one round with no speed sends, each inside its gun's cone and tested and landed alone, as a shotgun's pellets
+   * ("Each pellet fired from a Shotgun has an individual collision check", Shotgun). The round's damage is a pellet's.
+   * 1 where not given; a gun's `weapon.pellets` takes its place.
+   */
   readonly pellets?: number;
-  /** W3: its damage falls from all of it at `full` metres to none at `none`. Omitted, it does not fall off. */
+  /** Its damage falls evenly from all of it at `full` metres to none at `none` (shared/sim/damage.ts `falloff`). */
   readonly falloff?: { readonly full: number; readonly none: number };
+  // Stubs of the same plan, as the weapon facet's are. Omitted, a round does what all do today.
   /** W6: where it ends it goes off as a grenade does, reaching this many metres. The blast is the whole of its damage. */
   readonly blast?: number;
   /** W6: the share of armor, 0 to 1, it goes through (the metal arrow's "-90% armor bypass" is 0.9). */
@@ -539,12 +567,15 @@ export interface BuffDef extends Named {
   readonly immune?: boolean;
   /** A beneficial buff, shown apart from harmful ones. */
   readonly good?: boolean;
-  // Stubs of planning/reference/weapons-plan.md (W4, the bola), read by nothing yet.
-  /** The creatures it takes, by species; omitted, any. A survivor is always taken. ARK's bola names its list (Bola). */
+  // The bola's fields (planning/reference/weapons-plan.md, M6), read where a hit gives the buff (server/entangle.ts).
+  /** The species it takes, the survivor's among them if it takes survivors; omitted, any. ARK's bola names its list (Bola). */
   readonly only?: readonly string[];
   /** Seconds it lasts on a survivor, in place of `seconds` (the bola's 25 against a creature's 30). */
   readonly survivorSeconds?: number;
-  /** A buff given as it ends, such as a time it cannot be given again (the bola's 10 s, patch 240.5). */
+  /**
+   * A buff given as it ends, if the body is one that buff takes, and while that one lasts this one is not given again:
+   * the bola's 10 s of grace (patch 240.5).
+   */
   readonly after?: string;
 }
 
