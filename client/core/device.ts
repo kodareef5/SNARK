@@ -90,6 +90,12 @@ const FAR_TURN_MS = 2000;
 const EYE_UP = 1.7;
 /** Frames in a row with nothing on its way and nothing waiting to go on the graphics card: settled then. */
 const STILL = 30;
+/**
+ * A step whose assets came within ARRIVING_MS waits up to ARRIVING times settleMs to settle: over a phone's link a
+ * tier's first pieces rung fetches 25 to 100 MB of textures, which do not all come in 10 s.
+ */
+const ARRIVING = 6;
+const ARRIVING_MS = 2000;
 /** A quick phase this slow, in ms a frame, and the tiers above it are not tried. */
 const TOO_SLOW = 100;
 /** Frames stopped this long while the page is shown, and the run ends. */
@@ -659,6 +665,9 @@ export class DeviceRun {
   private settled = false;
   private still = 0;
   private stillSince = 0;
+  /** Bytes of assets that had arrived, and when the last came. */
+  private got = 0;
+  private gotAt = 0;
   private last = 0;
   private lastFrameAt = 0;
   private shownAt = 0;
@@ -745,6 +754,7 @@ export class DeviceRun {
     const quiet = r.flying === 0 && r.waiting === 0 && p.assetUploads.length === 0 && p.texUploads.length === 0 && p.skipped === 0 && !this.asking && this.structsStill >= STILL;
     if (quiet && this.still === 0) this.stillSince = now;
     this.still = quiet ? this.still + 1 : 0;
+    if (r.stats.fetched + r.stats.cached !== this.got) [this.got, this.gotAt] = [r.stats.fetched + r.stats.cached, now];
     this.listen(now);
     let news = false;
     if (this.stage === "load") news = this.load(now);
@@ -931,7 +941,7 @@ export class DeviceRun {
     const step = this.step!;
     const measureMs = step.kind === "rung" ? this.timing.rungMs : this.timing.measureMs;
     if (!this.measuring) {
-      if (this.still < STILL && now - this.at < this.timing.settleMs) return false;
+      if (this.still < STILL && now - this.at < this.settleFor(now)) return false;
       this.measuring = true;
       this.settleMs = tenth(now - this.at);
       this.settled = this.still >= STILL;
@@ -1101,7 +1111,7 @@ export class DeviceRun {
     this.side.frames?.tick(rows);
     if (this.at < 0) this.at = now;
     if (!this.measuring) {
-      if (this.still < STILL && now - this.at < this.timing.settleMs) return false;
+      if (this.still < STILL && now - this.at < this.settleFor(now)) return false;
       this.measuring = true;
       for (const list of Object.values(this.samples)) list.length = 0;
       this.side.frames?.take();
@@ -1216,7 +1226,7 @@ export class DeviceRun {
     if (this.at < 0) this.at = now;
     this.fly!.yaw = (this.fly!.yaw + (2 * Math.PI * gap) / FAR_TURN_MS) % (2 * Math.PI);
     if (!this.measuring) {
-      if (this.still < STILL && now - this.at < this.timing.settleMs) return false;
+      if (this.still < STILL && now - this.at < this.settleFor(now)) return false;
       this.measuring = true;
       this.settleMs = tenth(now - this.at);
       this.settled = this.still >= STILL;
@@ -1372,6 +1382,11 @@ export class DeviceRun {
     const wrong = new Set(["stress:bad_hash", "stress:bad_range", "stress:bad_short"].map((id) => assets.table.find(id)));
     const made = stressThings(assets, hf, PROVING_SPAWN, hf.heightAt(PROVING_SPAWN.x, PROVING_SPAWN.z) + 1.62);
     return (this.stress = made.things.filter((t) => !wrong.has(t.mesh)));
+  }
+
+  /** How long a step may wait to settle: longer while what it asked for is still arriving. */
+  private settleFor(now: number): number {
+    return now - this.gotAt < ARRIVING_MS ? this.timing.settleMs * ARRIVING : this.timing.settleMs;
   }
 
   /** Asset requests that failed, to be asked again or given up, by kind, and uploads the card refused, since the game began. */
