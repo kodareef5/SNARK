@@ -277,16 +277,18 @@ export function bridgeHoles(frame: Frame, corridors: readonly Corridor[], base: 
   return { ...frame, rings };
 }
 
-export function corridorIndex(corridors: readonly Corridor[]): (frame: Frame) => Corridor[] {
+export function corridorIndex(corridors: readonly Corridor[]): ((frame: Frame) => Corridor[]) & { add: (c: Corridor) => void } {
   const bins = new Map<string, Corridor[]>();
-  for (const c of corridors) {
+  const add = (c: Corridor): void => {
     for (let x = Math.floor((Math.min(c.a[0], c.b[0]) - c.width) / 128); x <= Math.floor((Math.max(c.a[0], c.b[0]) + c.width) / 128); x++) for (let z = Math.floor((Math.min(c.a[1], c.b[1]) - c.width) / 128); z <= Math.floor((Math.max(c.a[1], c.b[1]) + c.width) / 128); z++) {
       const k = `${x},${z}`; if (!bins.has(k)) bins.set(k, []); bins.get(k)!.push(c);
     }
-  }
-  return (frame) => {
+  };
+  for (const c of corridors) add(c);
+  const lookup = (frame: Frame): Corridor[] => {
     const found = new Set<Corridor>(); const radius = Math.hypot(frame.width, frame.depth) / 2;
     for (let x = Math.floor((frame.x - radius) / 128); x <= Math.floor((frame.x + radius) / 128); x++) for (let z = Math.floor((frame.z - radius) / 128); z <= Math.floor((frame.z + radius) / 128); z++) for (const c of bins.get(`${x},${z}`) ?? []) found.add(c);
     return [...found];
   };
+  return Object.assign(lookup, { add });
 }
