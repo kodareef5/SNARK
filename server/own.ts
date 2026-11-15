@@ -3,7 +3,7 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -100,8 +100,8 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
     if (inv.item[s] !== 0) {
       w.u16(inv.count[s]!);
       w.u8(inv.quality[s]!);
-      // Flags (SLOT_ bits): none is set until blueprints are built.
-      w.u8(0);
+      // Flags (SLOT_ bits): a blueprint.
+      w.u8(inv.flags[s]!);
       w.u16(inv.dur[s]!);
       w.u32(inv.spoilAt[s]!);
       const holds = inv.ammo[s] !== 0 || inv.attach[s] !== 0;
@@ -416,6 +416,16 @@ export function addOwnCommands(ctx: OwnContext): void {
     const station = ctx.openOf(c);
     return r.overflow ? RESULT_INVALID : rec && station ? ctx.progression.craftAt(rec, station, item, count) : RESULT_DENIED;
   });
+  // Made from a blueprint in the session's own bag, or in the station it has open, whichever the item is made from.
+  ctx.game.handle(CMD_CRAFT_BLUEPRINT, (c: Client, r: BitReader) => {
+    const which = r.bits(1);
+    const slot = r.varint();
+    const count = r.u8();
+    if (r.overflow) return RESULT_INVALID;
+    const rec = mine(c);
+    const on = rec ? box(ctx, c, which) : null;
+    return rec && on ? ctx.progression.craftBlueprint(rec, on, slot, count) : RESULT_DENIED;
+  });
 
   const reg = ctx.world.reg;
   const itemDef = (kind: number): ItemDef | null => {
@@ -447,7 +457,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (r.overflow) return RESULT_INVALID;
     if (!own) return RESULT_DENIED;
     const { rec, inv } = own;
-    const weapon = slot < inv.cap ? itemDef(inv.item[slot]!)?.weapon : undefined;
+    const weapon = slot < inv.cap && inv.flags[slot] === 0 ? itemDef(inv.item[slot]!)?.weapon : undefined;
     if (!weapon?.ammo || !weapon.ammo.includes(reg.ids[ammo] ?? "")) return RESULT_INVALID;
     if (inv.ammo[slot] === ammo) return RESULT_OK;
     // Rounds of the other kind come out first. The new kind goes in at the next reload.
@@ -494,7 +504,8 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (r.overflow) return RESULT_INVALID;
     if (!own) return RESULT_DENIED;
     const { rec, inv } = own;
-    if (slot >= inv.cap || inv.item[slot] === 0) return RESULT_INVALID;
+    // A blueprint does not wear.
+    if (slot >= inv.cap || inv.item[slot] === 0 || inv.flags[slot] !== 0) return RESULT_INVALID;
     const item = inv.item[slot]!;
     const max = ctx.items.maxDur(item, inv.quality[slot]!);
     const craft = (reg.defs[item] as ItemDef).craft;
@@ -531,6 +542,8 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (slot >= inv.cap) return RESULT_INVALID;
     const item = inv.item[slot]!;
     if (item !== expect || item === 0) return RESULT_STALE;
+    // A blueprint is crafted from (CMD_CRAFT_BLUEPRINT), never eaten, used or worn.
+    if (inv.flags[slot] !== 0) return RESULT_INVALID;
     // Using a wearable item puts it on, or takes it off.
     const worn = reg.wearSlot[item]!;
     if (worn >= 0 && inv.armor >= 0) {

@@ -5,7 +5,7 @@ import { RemoteSample, type ClientSession, type TextLine } from "../client/core/
 import type { ItemDef, PropDef } from "../shared/content/defs.ts";
 import { find } from "../shared/content/find.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_USE, MAX_CHAT_CHARS, RESULT_OK, SESSION_ALIVE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CARRY_DROP, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_CRAFT, CMD_LEARN, CMD_MOVE, CMD_ORDER, CMD_TAKE, CMD_USE, MAX_CHAT_CHARS, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_WANDER, ORDER_YOURS, RESULT_BUSY, RESULT_OK, SESSION_ALIVE, TEXT_GLOBAL, TEXT_LOCAL, TEXT_NOTICE, TEXT_TRIBE } from "../shared/net/protocol.ts";
 import { STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { Inventory } from "../shared/sim/items.ts";
 import { V_FOOD, V_HEALTH, V_OXYGEN, V_WATER } from "../shared/sim/vitals.ts";
@@ -13,18 +13,21 @@ import { NO_PIN } from "../shared/world/upkeep.ts";
 import { Commands, resultWords } from "./commands.ts";
 import { Controller, type Target } from "./controller.ts";
 import type { Answer, ToolDef, ToolHost } from "./mcp.ts";
+import { CUE_DEAD } from "../shared/anim/pose.ts";
 import { VIEW_PROP, compass, observe, shortName, type FarLayer } from "./observe.ts";
 
 export const INSTRUCTIONS =
   "You play one survivor in SNARK, a survival game, through these tools. You can do what a player can and no more. " +
-  "Positions are x and z in metres: north is +z and east is -x. Things have ids: n12.3 is a tree, rock or bush, s65539 is something built, e7 is a creature, a player or a bag. " +
+  "Positions are x and z in metres: north is +z and east is -x. Things have ids: n12.3 is a tree, rock or bush, s65539 is something built, e7 is a creature, a player, a dead creature, an egg or a bag. " +
   "Every answer has a state: done, running (still going; ask status), blocked (it stopped short, and reason says why), danger (it stopped because you are in danger) or refused (nothing was done). " +
-  "walk_to, harvest and open take time and only one of them runs at once. An answer lists dangers while there are any: a hunter near, health falling, breath running out.";
+  "walk_to, harvest, attack, open and pick_up take time and only one of them runs at once. An answer lists dangers while there are any: a hunter near, health falling, breath running out.";
 
 /** Chat lines a survivor may say at once, and the milliseconds that earn another, as server/chat.ts counts them. */
 const CHAT_BURST = 5;
 const CHAT_EARN_MS = 2000;
-const CONSOLE_GAP_MS = 200;
+const CONSOLE_GAP_MS = 250;
+/** What an order is called, and its code. The three stances follow ORDER_STANCE. */
+const ORDERS: Record<string, number> = { stay: ORDER_STAY, follow: ORDER_FOLLOW, wander: ORDER_WANDER, passive: ORDER_STANCE, neutral: ORDER_STANCE + 1, aggressive: ORDER_STANCE + 2, attack_my_target: ORDER_YOURS, attack: ORDER_ATTACK, mate: ORDER_MATE, no_mating: ORDER_UNMATE };
 /** A command the server has not answered after this long is given up on. */
 const ANSWER_MS = 3000;
 const CHANNELS: Record<string, number> = { global: TEXT_GLOBAL, local: TEXT_LOCAL, tribe: TEXT_TRIBE };
@@ -37,6 +40,10 @@ const DEFS: ToolDef[] = [
   { name: "walk_to", description: "Walk to a place, or up to a thing, round whatever is in between. Give x and z, or an id. Ground floor only: it climbs no stairs, and it swims only to get out of water.", inputSchema: { type: "object", properties: { x: { type: "number" }, z: { type: "number" }, id: thing, within: { type: "number", description: "How near to come, in metres: to the place, or to the thing's side. Default 0.6." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } } } },
   { name: "harvest", description: "Gather from a tree, a rock or a bush: walk to it, then strike it, or pick it, until it is used up or you have enough. It stops after a minute.", inputSchema: { type: "object", properties: { id: thing, until: { type: "object", description: "Stop once this many more of an item are carried. Left out: when the node is used up.", properties: { item: { type: "string" }, count: { type: "integer" } }, required: ["item", "count"] }, tool: { type: "string", description: "An item you carry to take in hand first, such as hatchet for wood or pick for stone." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["id"] } },
   { name: "open", description: "Open a box or a bag, or swing a door: walk to it and use it. What a box holds is in the answer and in status, and move_item moves things in and out of it. It shuts when you walk away.", inputSchema: { type: "object", properties: { id: thing, pin: { type: "integer", description: "The PIN of a locked thing that is not your tribe's, 0 to 9999." }, wait_s: { ...wait, description: `${wait.description} Default 25.` } }, required: ["id"] } },
+  { name: "attack", description: "Strike a creature or a player with what you hold, or bare hands: walk up to it, keep after it, and hit it until it is gone from sight (dead, most often), or with until out until it is knocked out, ready to tame. A dead creature is harvested the same way, or with harvest. It stops after a minute, for a new danger, or when your health is under two thirds and still falling.", inputSchema: { type: "object", properties: { id: { type: "string", description: "A creature, a player or a dead creature, as observe lists them." }, with: { type: "string", description: "An item you carry to take in hand first, such as club. Left out: what you hold, or bare hands." }, until: { description: "\"out\" for knocked out, \"dead\" (the default), or an item and a count to gather from a dead creature.", oneOf: [{ type: "string", enum: ["out", "dead"] }, { type: "object", properties: { item: { type: "string" }, count: { type: "integer" } }, required: ["item", "count"] }] }, wait_s: { type: "number", description: "Seconds to wait for it before answering running. 25 if left out." } }, required: ["id"] } },
+  { name: "pick_up", description: "Walk to a small tamed creature of your tribe and take it in your arms, or to an egg and take it into your inventory. While you hold a creature your hands are full.", inputSchema: { type: "object", properties: { id: { type: "string", description: "A creature or an egg, as observe lists them." }, wait_s: { type: "number", description: "Seconds to wait for the walk before answering running. 25 if left out." } }, required: ["id"] } },
+  { name: "put_down", description: "Set down the creature you hold, or throw it where you look.", inputSchema: { type: "object", properties: { throw: { type: "boolean", description: "True to throw it." } } } },
+  { name: "order", description: "Order a tamed creature of your tribe, or with no id every one within earshot, as a whistle does.", inputSchema: { type: "object", properties: { id: { type: "string", description: "A creature. Left out, or all: every tribe creature in earshot." }, order: { type: "string", enum: ["follow", "stay", "wander", "passive", "neutral", "aggressive", "attack_my_target", "attack", "mate", "no_mating"], description: "attack needs a target. wander, mate and no_mating need an id." }, target: { type: "string", description: "For attack: the creature or player to go for." } }, required: ["order"] } },
   { name: "move_item", description: "Move a stack between slots of your inventory (self) and the box you have open (box). Slots are numbered as status lists them.", inputSchema: { type: "object", properties: { from: { type: "string", enum: ["self", "box"] }, slot: { type: "integer" }, to: { type: "string", enum: ["self", "box"] }, to_slot: { type: "integer", description: "Left out: onto a stack of the same item, else the first empty slot." }, count: { type: "integer", description: "Left out: the whole stack." } }, required: ["from", "slot", "to"] } },
   { name: "craft", description: "Make an item you know the engram for, from what you carry.", inputSchema: { type: "object", properties: { recipe: { type: "string", description: "The item, such as hatchet." }, count: { type: "integer", description: "1 to 100. Default 1." }, learn: { type: "boolean", description: "Spend engram points to learn it first if you do not know it." }, wait_s: { ...wait, description: `${wait.description} Default 20.` } }, required: ["recipe"] } },
   { name: "eat", description: "Eat or drink something you carry.", inputSchema: { type: "object", properties: { item: { type: "string", description: "Left out: the first thing you carry that can be eaten." } } } },
@@ -117,6 +124,10 @@ export class Agent implements ToolHost {
       walk_to: (a) => this.walkTo(a),
       harvest: (a) => this.harvest(a),
       open: (a) => this.open(a),
+      attack: (a) => this.attack(a),
+      pick_up: (a) => this.pickUp(a),
+      put_down: (a) => this.putDown(a),
+      order: (a) => this.order(a),
       move_item: (a) => this.moveItem(a),
       craft: (a) => this.craft(a),
       eat: (a) => this.eat(a),
@@ -312,9 +323,75 @@ export class Agent implements ToolHost {
     const tool = a.tool === undefined ? 0 : this.item(text(a, "tool"));
     if (tool !== 0 && (s.inventory?.total(tool) ?? 0) === 0) return Promise.resolve(refused(`you carry no ${this.nameOf(tool)}`));
     const target = this.target(a);
-    if (target.chunk < 0) throw new Bad("only a tree, a rock or a bush can be harvested");
-    this.controller.harvest(this.now, target, item, count, tool);
+    if (target.entity >= 0 && this.dead(target)) this.controller.attack(this.now, target, item, count, tool, false);
+    else if (target.chunk < 0) throw new Bad("only a tree, a rock, a bush or a dead creature can be harvested: attack is for a living one");
+    else this.controller.harvest(this.now, target, item, count, tool);
     return this.finish(seconds);
+  }
+
+  /** Whether a body is a dead creature's. */
+  private dead(target: Target): boolean {
+    const r = this.remote;
+    for (let i = 0; i < r.count; i++) if (r.id[i] === target.entity) return (r.cue[i]! & CUE_DEAD) !== 0;
+    return false;
+  }
+
+  private attack(a: Record<string, unknown>): Promise<Answer> {
+    const s = this.session;
+    const seconds = amount(a, "wait_s", 0, 50, 25);
+    let item = 0;
+    let count = 0;
+    if (typeof a.until === "object" && a.until !== null) {
+      item = this.item(text(a.until as Record<string, unknown>, "item"));
+      count = whole(a.until as Record<string, unknown>, "count", 1, 10000);
+    } else if (a.until !== undefined && a.until !== "out" && a.until !== "dead") throw new Bad("until is out, dead, or an item and a count");
+    const tool = a.with === undefined ? 0 : this.item(text(a, "with"));
+    if (tool !== 0 && (s.inventory?.total(tool) ?? 0) === 0) return Promise.resolve(refused(`you carry no ${this.nameOf(tool)}`));
+    const target = this.target(a);
+    const lying = (target.flags & VIEW_PROP) !== 0 && !this.dead(target);
+    if (target.entity < 0 || lying) throw new Bad("only a creature, a player or a dead creature can be attacked: harvest is for a tree, a rock or a bush");
+    this.controller.attack(this.now, target, item, count, tool, a.until === "out");
+    return this.finish(seconds);
+  }
+
+  private async pickUp(a: Record<string, unknown>): Promise<Answer> {
+    const reg = this.session.registry;
+    const seconds = amount(a, "wait_s", 0, 50, 25);
+    const target = this.target(a);
+    const egg = (target.flags & VIEW_PROP) !== 0 && (reg.defs[target.kind] as PropDef).class === "egg";
+    if (target.entity < 0 || ((target.flags & VIEW_PROP) !== 0 && !egg)) throw new Bad("only a small tamed creature or an egg can be picked up: open is for a bag");
+    this.controller.walkTo(this.now, target, 0.9);
+    const walked = await this.finish(seconds);
+    if (walked.state !== "done") return walked;
+    const seq = egg ? this.commands.send(CMD_TAKE, (w) => w.u32(target.entity)) : this.commands.send(CMD_CARRY, (w) => (w.u8(CARRY_PICK_UP), w.u32(target.entity)));
+    return this.outcome(seq, seq === 0 ? 0 : await this.result(seq), egg ? { took: this.nameOf(target.kind) } : { holding: this.nameOf(target.kind) });
+  }
+
+  private async putDown(a: Record<string, unknown>): Promise<Answer> {
+    const thrown = a.throw === true;
+    const seq = this.commands.send(CMD_CARRY, (w) => w.u8(thrown ? CARRY_THROW : CARRY_DROP));
+    return this.outcome(seq, seq === 0 ? 0 : await this.result(seq), thrown ? { threw: true } : { set_down: true });
+  }
+
+  private async order(a: Record<string, unknown>): Promise<Answer> {
+    const what = text(a, "order");
+    const code = ORDERS[what];
+    if (code === undefined) throw new Bad(`order is one of ${Object.keys(ORDERS).join(", ")}`);
+    const body = (id: string): number => {
+      const found = this.controller.locate(id);
+      if (typeof found === "string") throw new Bad(found);
+      if (found.entity < 0 || (found.flags & VIEW_PROP) !== 0) throw new Bad(`${id} is not a creature or a player`);
+      return found.entity;
+    };
+    const all = a.id === undefined || a.id === "all";
+    const who = all ? ORDER_ALL : body(text(a, "id"));
+    const at = code === ORDER_ATTACK ? body(text(a, "target")) : -1;
+    const seq = this.commands.send(CMD_ORDER, (w) => {
+      w.u32(who >>> 0);
+      w.u8(code);
+      if (at >= 0) w.u32(at >>> 0);
+    });
+    return this.outcome(seq, seq === 0 ? 0 : await this.result(seq), { ordered: what, who: all ? "every tribe creature in earshot" : a.id });
   }
 
   private async open(a: Record<string, unknown>): Promise<Answer> {
@@ -384,14 +461,19 @@ export class Agent implements ToolHost {
 
   private async typed(a: Record<string, unknown>): Promise<Answer> {
     const line = text(a, "line");
-    if (this.now - this.consoleAt < CONSOLE_GAP_MS) return refused("one console line every 200 ms");
-    if (!this.commands.allow()) return this.outcome(0, 0, {});
-    this.consoleAt = this.now;
-    const before = this.session.logVersion;
-    const seq = this.session.text(line);
-    const code = await this.result(seq);
-    // What a command prints arrives before its result.
-    return this.outcome(seq, code, { lines: this.since(before).map((l) => l.text) });
+    for (let tries = 0; ; tries++) {
+      // The server takes a line every 200 ms by its own clock. A line asked sooner waits its turn, in the order asked, and one
+      // that still arrives too soon is sent again.
+      const at = Math.max(this.now, this.consoleAt + CONSOLE_GAP_MS);
+      this.consoleAt = at;
+      if (at > this.now) await this.pause(at - this.now);
+      if (!this.commands.allow()) return this.outcome(0, 0, {});
+      const before = this.session.logVersion;
+      const seq = this.session.text(line);
+      const code = await this.result(seq);
+      // What a command prints arrives before its result.
+      if (code !== RESULT_BUSY || tries === 2) return this.outcome(seq, code, { lines: this.since(before).map((l) => l.text) });
+    }
   }
 
   private async eat(a: Record<string, unknown>): Promise<Answer> {
@@ -422,6 +504,8 @@ export class Agent implements ToolHost {
     const waitMs = amount(a, "wait_s", 0, 50, 20) * 1000;
     const needs = reg.recipeOf[item];
     if (!needs) return refused(`${this.nameOf(item)} cannot be made`);
+    // What is made at a station is made from what lies in it, never in the hands.
+    if (reg.craftAt[item] !== 0) return refused(`${this.nameOf(item)} is made at a ${this.nameOf(reg.craftAt[item]!)}, from what lies in it, not in the hands`);
     const recipe: Record<string, number> = {};
     for (let k = 0; k + 1 < needs.length; k += 2) recipe[this.nameOf(needs[k]!)] = needs[k + 1]!;
     const engram = reg.defs.findIndex((d) => d?.type === "engram" && d.item === reg.ids[item]);
@@ -476,7 +560,7 @@ export class Agent implements ToolHost {
       // Onto a stack of the same item with room, else into the first empty slot.
       const stack = s.registry.stack[item]!;
       to = -1;
-      for (let k = 0; k < dst.bag && to < 0; k++) if (dst.item[k] === item && dst.quality[k] === src.quality[slot] && dst.count[k]! < stack) to = k;
+      for (let k = 0; k < dst.bag && to < 0; k++) if (dst.item[k] === item && dst.quality[k] === src.quality[slot] && dst.flags[k] === src.flags[slot] && dst.flags[k] === 0 && dst.count[k]! < stack) to = k;
       if (to < 0) to = dst.free();
       if (to < 0) return refused("there is no room there");
     }

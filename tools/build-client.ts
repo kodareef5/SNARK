@@ -9,6 +9,7 @@ import { brotliCompressSync, constants } from "node:zlib";
 import { gameTextures } from "./art/materials.ts";
 import { buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
+import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
 import { splitPack } from "./pack/split.ts";
@@ -43,7 +44,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   const result = await Bun.build({ entrypoints, outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
   if (!result.success) throw new Error(result.logs.map(String).join("\n"));
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));
-  const split = splitPack(orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])])), "core");
+  const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));
+  const split = splitPack(core, "core");
   const manifest = split.manifest;
   // The game's own textures, from its asset folders, and the cards.
   const sources: TextureSource[] = [...(await gameTextures()), ...(opts.stress ? stressCards() : [])];
@@ -56,6 +58,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   t0 = performance.now();
   const { files, report } = await storeParts([...split.files, ...textures.files], manifest);
   console.log(`parts        ${report.parts} in ${files.length - 1} files, ${report.raw} bytes stored in ${report.stored}: ${report.deflated} deflated, ${report.made} of them anew, ${(performance.now() - t0).toFixed(0)} ms`);
+  // The inventory pictures, drawn from the meshes and the textures as stored, in sheets after the other files.
+  files.push(...(await gameIcons(core, manifest, files)));
   if (opts.stress) spoilStress(files, manifest);
   files.forEach((f, i) => {
     manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);

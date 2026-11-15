@@ -25,8 +25,10 @@ const CHUNK_FORMAT = 1;
  * 3 saves buffs. A build without them would keep the part unread and leave a buff's rates in the vitals with no end.
  * 4 saves what a one of a kind in a slot stands for (a fertilised egg's record). A build without it would keep the part
  * unread, and an egg taken up would never hatch.
+ * 5 saves slots as COMP_SLOTS3, with each slot's flags (a blueprint), and a job's blueprint quality. A build without them
+ * would keep the slots unread and the record empty-handed.
  */
-const RECORD_FORMAT = 4;
+const RECORD_FORMAT = 5;
 /** The first revision whose vitals hold, beyond a body's own rates, only what its saved buffs give. */
 const FORMAT_BUFFS = 3;
 // A record is a list of components, each an id and a length-prefixed blob. A build that does not know a
@@ -43,8 +45,10 @@ const COMP_MARKERS = 5;
 const COMP_STATE = 9;
 /** The bytes of shared/anim/look.ts. */
 const COMP_LOOK = 10;
-/** COMP_SLOTS plus the bag's size and, for weapons, what each holds. */
+/** COMP_SLOTS plus the bag's size and, for weapons, what each holds. Read and no longer written. */
 const COMP_SLOTS2 = 11;
+/** COMP_SLOTS2 with each slot's flags (FLAG_ bits, shared/sim/items.ts) at its end. */
+const COMP_SLOTS3 = 22;
 /** Eight vitals and whether the body is unconscious. COMP_VITALS4 held four. Both are read and no longer written. */
 const COMP_VITALS8 = 12;
 /** The same with 53-bit values and tick. COMP_VITALS8 wrote a value in 32 bits of millionths, which cut off anything above 4,294 points. */
@@ -455,6 +459,10 @@ export class WorldStore {
       const queued = rec.jobs.some((j) => j.by !== undefined);
       c.bool(queued);
       if (queued) for (const j of rec.jobs) c.uint53(j.by ?? 0);
+      // Then, as a bit and a byte each, the quality plus one of the blueprint each job is made from, 0 for the engram.
+      const fromBlueprint = rec.jobs.some((j) => j.bp !== undefined);
+      c.bool(fromBlueprint);
+      if (fromBlueprint) for (const j of rec.jobs) c.u8(j.bp === undefined ? 0 : j.bp + 1);
       this.part(COMP_PROGRESSION);
     }
     if (rec.markers.length > 0) {
@@ -503,8 +511,9 @@ export class WorldStore {
           c.u8(inv.loaded[slot]!);
           c.varint(inv.attach[slot] === 0 ? 0 : this.toSaved[inv.attach[slot]!]!);
         }
+        c.u8(inv.flags[slot]!);
       }
-      this.part(COMP_SLOTS2);
+      this.part(COMP_SLOTS3);
     }
     if (inv && refs > 0) {
       c.reset();
@@ -631,7 +640,8 @@ export class WorldStore {
             const spoilAt = c.varint();
             if (item !== 0 && slot < inv.cap) inv.set(slot, item, count, quality, dur, spoilAt);
           }
-        } else if (component === COMP_SLOTS2) {
+        } else if (component === COMP_SLOTS2 || component === COMP_SLOTS3) {
+          const flagged = component === COMP_SLOTS3;
           const cap = c.varint();
           const inv = (rec.inv = new Inventory(cap, c.varint()));
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
@@ -649,6 +659,7 @@ export class WorldStore {
             const savedAttach = holds ? c.varint() : 0;
             const ammo = savedAmmo === 0 ? 0 : this.item(savedAmmo, row.pid, loaded);
             const attach = savedAttach === 0 ? 0 : this.item(savedAttach, row.pid, 1);
+            const flags = flagged ? c.u8() : 0;
             if (item === 0) {
               // The rounds in a weapon that is gone, and what was fixed to it, go with it.
               if (ammo !== 0 && loaded > 0) this.burn(ammo, loaded);
@@ -656,7 +667,7 @@ export class WorldStore {
               continue;
             }
             if (slot >= inv.cap) continue;
-            inv.set(slot, item, count, quality, dur, spoilAt);
+            inv.set(slot, item, count, quality, dur, spoilAt, flags);
             if (holds) inv.setGear(slot, ammo, ammo === 0 ? 0 : loaded, attach);
           }
         } else if (component === COMP_VITALS) {
@@ -713,6 +724,13 @@ export class WorldStore {
             for (const j of jobs) {
               const by = c.uint53();
               if (by !== 0) j.by = by;
+            }
+          }
+          // Then a 1 bit says which are made from a blueprint, and of what quality. Older saves end before it.
+          if (c.pos + 1 <= blob.length * 8 && c.bool()) {
+            for (const j of jobs) {
+              const bp = c.u8();
+              if (bp !== 0) j.bp = bp - 1;
             }
           }
           for (const j of jobs) if (j.item !== 0) rec.jobs.push(j);

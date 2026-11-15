@@ -11,7 +11,7 @@ import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_CRAFT_AT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_RESPAWN, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, RESULT_WAIT, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { ON_TOP } from "../../shared/world/snap.ts";
-import { NO_PIN, STRUCT_LIGHT, STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
 import { KEY_STATION_JOB, KEY_STATION_RECIPE, StationPanel, stationRecipes } from "../../client/core/ui/station.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -124,6 +124,38 @@ test("a campfire burns the fuel on it and cooks what lies over it, at the refere
   expect(h.host.items.audit()).toEqual([]);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
+});
+
+for (const how of ["demolished", "destroyed"] as const) test(`a ${how} fire spills the same cooked contents whether anyone observed it or not`, () => {
+  const results: number[][] = [];
+  for (const observe of [false, true]) {
+    const h = new Harness({}, 1, 60, { dev: true, startingCreatures: 0 });
+    try {
+      const s = h.join("ada");
+      h.run(300);
+      const me = h.host.records.byPid.get(h.client(s)!.pid)!;
+      const at = flatGround(h, 30, 30);
+      h.say(s, "enablecheats");
+      h.say(s, `tp ${at.x + 10} ${at.z + 10}`);
+      const fire = h.world.structs.add(id("campfire"), at.x + 11, at.y + reg.halfY[id("campfire")]!, at.z + 10, 0, me.team, 100);
+      const rec = h.host.fixtures.ensure(fire);
+      h.host.items.mint(rec, id("wood"), 10);
+      h.host.items.mint(rec, id("meat"), 3);
+      expect(act(h, s, fire, STRUCT_LIGHT)).toBe(RESULT_OK);
+      h.run(45000);
+      if (observe) h.host.items.inv(rec);
+      if (how === "demolished") expect(act(h, s, fire, STRUCT_DEMOLISH)).toBe(RESULT_OK);
+      else expect(h.world.structs.damage(fire, 1000, h.world.tick)).toBe(0);
+      const cache = [...h.host.records.byPid.values()].find((r) => r.kind === id("cache"))!;
+      results.push([cache.inv!.total(id("wood")), cache.inv!.total(id("meat")), cache.inv!.total(id("meat_cooked"))]);
+      expect(h.host.records.byPid.has(rec.pid)).toBe(false);
+      expect(h.host.fixtures.find(fire)).toBeNull();
+      expect(h.host.items.audit()).toEqual([]);
+    } finally {
+      h.host.shutdown();
+    }
+  }
+  expect(results).toEqual([[8, 1, 2], [8, 1, 2]]);
 });
 
 test("every bed of the tribe is offered to its dead, thirty as surely as two, and the last of them is one to rise at", () => {

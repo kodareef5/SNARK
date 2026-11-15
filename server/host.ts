@@ -332,6 +332,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   survival.bus = bus;
   const items = new Items(world, records);
   items.bus = bus;
+  // Inventory transactions finish before their derived movement and equipment state is refreshed.
+  const inventoryChanged = new Set<EntityRecord>();
+  items.onChange = (rec) => {
+    if (reg.defs[rec.kind]?.type === "species") inventoryChanged.add(rec);
+  };
   if (persistence) {
     const ledger = loaded!.fresh ? "{}" : (persistence.store.meta("ledger") as string | null);
     items.restore(ledger);
@@ -609,7 +614,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       if (reg.defs[rec.kind]?.type === "prop") death.place(rec);
       else {
         const e = creatures.adopt(rec);
-        if (e >= 0) persistence!.attach(rec, e);
+        if (e >= 0) {
+          persistence!.attach(rec, e);
+          inventoryChanged.add(rec);
+        }
       }
       if (!records.entOf.has(rec.pid)) bodiless++;
     }
@@ -759,6 +767,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     moved(focus.get(c.id) ?? -1, -1);
     focus.delete(c.id);
   };
+  game.onBeforeStep = refreshInventories;
   game.onStep = (tick) => {
     for (const c of game.clients) {
       if (!c?.active) continue;
@@ -785,6 +794,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       else if (kind === DEADLINE_CORPSE) corpses.due(pid, stamp);
       else if (kind === DEADLINE_FECES) feces.due(pid, stamp);
     });
+    refreshInventories();
     death.step();
     // Riders move with their mounts before combat aims at either.
     riding.step();
@@ -841,6 +851,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     if (persistence && opts.backups && tick % liveEvery === 0) bus.after(SERVER_SAVE, { tick, folder: `${persistence.store.path}.backups` });
     modules.step(tick);
     bus.flush();
+    refreshInventories();
     if (persistence && opts.backups && tick % liveEvery === 0) persistence.keeper.backup();
     if (persistence && !persistence.tryCommit(commitEvery)) {
       const late = tick - persistence.failing!.since;
@@ -932,6 +943,13 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   progression.onChange = (rec) => refreshBody(rec);
   addOwnCommands(own);
 
+  function refreshInventories(): void {
+    for (const rec of inventoryChanged) {
+      inventoryChanged.delete(rec);
+      if (records.byPid.get(rec.pid) === rec) refreshBody(rec);
+    }
+  }
+
   function refreshBody(rec: EntityRecord): void {
     survival.init(rec);
     const e = records.entOf.get(rec.pid);
@@ -943,6 +961,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
+    // Changing a rider's pack also changes the mount's load.
+    const seat = world.ents.seat[e]! - 1;
+    const mount = seat >= 0 && riding.riderOf(seat) === rec ? records.byPid.get(world.ents.pid[seat]!) : undefined;
+    if (mount && mount !== rec) refreshBody(mount);
     // A young creature carries a share of a grown one's capacity, so its load is scaled up.
     const strength = youngShare(growthStep(rec.span, rec.grown, world.tick));
     refreshMods(reg, world.ents, e, rec.genome, load / strength, buffs.speedOf(rec), buffs.rooted(rec), rec.out, creatures.swimGain);
@@ -985,6 +1007,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   const gear = new Uint16Array(GEAR_COUNT);
   /** The held slot of each record at its last refresh. */
   const inHand = new Map<number, number>();
+  refreshInventories();
 
   const con = new Console();
   con.bus = bus;

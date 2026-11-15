@@ -838,8 +838,8 @@ export class ClientSession {
         const item = r.u16();
         const n = item === 0 ? 0 : r.u16();
         const quality = item === 0 ? 0 : r.u8();
-        // Flags (SLOT_ bits), read past until a slot keeps them.
-        if (item !== 0) r.u8();
+        // Flags (SLOT_ bits): a blueprint.
+        const flags = item === 0 ? 0 : r.u8();
         const dur = item === 0 ? 0 : r.u16();
         const spoilAt = item === 0 ? 0 : r.u32();
         const holds = item !== 0 && r.bool();
@@ -847,7 +847,7 @@ export class ClientSession {
         const loaded = holds ? r.u8() : 0;
         const attach = holds ? r.u16() : 0;
         if (r.overflow || slot >= cap) return;
-        inv.set(slot, item, n, quality, dur, spoilAt);
+        inv.set(slot, item, n, quality, dur, spoilAt, flags);
         if (holds) inv.setGear(slot, ammo, loaded, attach);
       }
     } else if (component === OWN_SUBJECT) {

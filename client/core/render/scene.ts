@@ -29,7 +29,7 @@ import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { FarNodes, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
@@ -103,6 +103,10 @@ const FAR = 1 << PASS_FAR;
 /** What of a draw's flags a caster keeps: how its vertices are placed. */
 const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED;
 
+/** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
+export type Cutouts = "last" | "made" | "first" | "none";
+export const CUTOUTS: readonly Cutouts[] = ["last", "made", "first", "none"];
+
 /** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
 export interface Thing {
   mesh: number;
@@ -160,6 +164,13 @@ export class Scene {
   plainSky = false;
   /** Loose meshes to draw: the stress scene's. */
   things: Thing[] = [];
+  /**
+   * Where an opaque step's cut-out draws go among its other draws: "last", after them all, so that a tiled GPU can
+   * reject the cut-out pixels an opaque surface hides before it shades them; "made", as they were made; "first", before
+   * them all, where it can reject none but those the ground hides; "none", left out. The device page sets them side by
+   * side, and prices the cut-outs by the last two.
+   */
+  cutouts: Cutouts = "last";
 
   /** Pack mesh index per content index. */
   readonly meshOfKind: Uint16Array;
@@ -211,12 +222,13 @@ export class Scene {
   private doubled = 0;
   /**
    * For putting the draws in order: the packet's columns of draws, room for one of them as made and as ordered, each
-   * draw's step in each range, where each step begins, and the draw and range each place in the order takes.
+   * draw's place in each range (its step, an opaque step's cut-outs a place after its other draws), where each place
+   * begins, and the draw and range each place in the order takes.
    */
   private readonly columns: (Uint8Array | Uint16Array | Uint32Array | Float32Array)[];
   private readonly scratch = [new Float64Array(MAX_DRAWS * 3), new Float64Array(MAX_DRAWS * 3)] as const;
   private readonly steps = new Int8Array(MAX_DRAWS * 2);
-  private readonly starts = new Int32Array(STEP_BODY + 2);
+  private readonly starts = new Int32Array(STEP_BODY + 4);
   private readonly source = new Uint16Array(MAX_DRAWS);
   private readonly sourcePass = new Uint8Array(MAX_DRAWS);
   /** The farthest any body's posed vertex gets from where its first bone puts its origin, short of its own mesh and offset. */
@@ -576,31 +588,41 @@ export class Scene {
 
   /**
    * Puts the draws in the order of the steps they are drawn in (packet.ts), each in the ranges `passOf` gives it, so a
-   * draw in both is listed twice. With one range they stay as they were made, all in the near range.
+   * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says. With one range they are all
+   * in the near range, and stay as they were made unless a cut-out is to move.
    */
   private order(): void {
     const p = this.packet;
     const n = p.drawCount;
-    if (p.split <= 0) {
+    const one = p.split <= 0;
+    // A cut-out's place and the rest's within the step, -1 for left out.
+    const [cutAt, restAt] = this.cutouts === "last" ? [1, 0] : this.cutouts === "first" ? [0, 1] : this.cutouts === "none" ? [-1, 0] : [0, 0];
+    if (one) {
       p.drawPass.fill(PASS_NEAR, 0, n);
       p.skyAt = n;
-      return;
+      let cut = false;
+      for (let d = 0; d < n && !cut; d++) cut = cutAt !== restAt && (p.drawFlags[d]! & (DRAW_CUTOUT | DRAW_BLEND | DRAW_NEAR)) === DRAW_CUTOUT;
+      if (!cut) return;
     }
-    // Each draw's step in each range, -1 where it is not drawn in that range, as stepOf will find it.
+    // Each draw's place in each range, -1 where it is not drawn in that range: its step as stepOf will find it, and in
+    // an opaque step the cut-outs a place after the rest, or before it, or none.
     const steps = this.steps;
     const starts = this.starts.fill(0);
     for (let d = 0; d < n; d++) {
       const flags = p.drawFlags[d]!;
       for (let range = PASS_NEAR; range <= PASS_FAR; range++) {
-        let s = (this.passOf[d]! & (1 << range)) === 0 ? -1 : (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - range : range;
+        const drawn = one ? range === PASS_NEAR : (this.passOf[d]! & (1 << range)) !== 0;
+        let s = !drawn ? -1 : (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - range : range;
         if ((flags & DRAW_NEAR) !== 0) s = range === PASS_NEAR ? STEP_BODY : -1;
-        steps[d * 2 + range] = s;
-        if (s >= 0) starts[s + 1]!++;
+        const at = s <= STEP_FAR && (flags & DRAW_CUTOUT) !== 0 ? cutAt : restAt;
+        const place = s < 0 || at < 0 ? -1 : s <= STEP_FAR ? s * 2 + at : s + 2;
+        steps[d * 2 + range] = place;
+        if (place >= 0) starts[place + 1]!++;
       }
     }
     for (let s = 1; s < starts.length; s++) starts[s]! += starts[s - 1]!;
-    const total = starts[STEP_BODY + 1]!;
-    p.skyAt = starts[STEP_FAR_SEE]!;
+    const total = starts[STEP_BODY + 3]!;
+    p.skyAt = one ? total : starts[STEP_FAR_SEE + 2]!;
     const source = this.source;
     const pass = this.sourcePass;
     let moved = total !== n;

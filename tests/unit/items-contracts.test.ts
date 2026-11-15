@@ -3,18 +3,29 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { ITEMS } from "../../content/items/index.ts";
-import { defFaults } from "../../shared/content/classes.ts";
+import { CLASSES, FIELDS, defFaults } from "../../shared/content/classes.ts";
 import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { MANIFEST_VERSION } from "../../shared/pack/manifest.ts";
 import * as P from "../../shared/net/protocol.ts";
+import { FLAG_BLUEPRINT, QUALITY_COST, QUALITY_CRAFT_XP, QUALITY_NAMES, QUALITY_RATING } from "../../shared/sim/items.ts";
+
+test("task E built quality and blueprints: the flag is the wire's bit, slots save as component 22 in record format 5, ARK's tier table, and loot is rolled", async () => {
+  expect(FLAG_BLUEPRINT).toBe(P.SLOT_BLUEPRINT);
+  const store = await Bun.file(new URL("../../server/persist/store.ts", import.meta.url)).text();
+  expect([/const COMP_SLOTS3 = (\d+);/.exec(store)?.[1], /const RECORD_FORMAT = (\d+);/.exec(store)?.[1]]).toEqual(["22", "5"]);
+  expect(QUALITY_NAMES).toEqual(["primitive", "ramshackle", "apprentice", "journeyman", "mastercraft", "ascendant"]);
+  expect([QUALITY_RATING, QUALITY_CRAFT_XP, QUALITY_COST]).toEqual([[1, 1.25, 2.5, 4.5, 7, 10], [1, 2, 3, 4, 5, 6], [1, 1.33, 1.67, 2, 2.5, 3.5]]);
+  expect(CLASSES.find((r) => r.id === "loot")).toMatchObject({ status: "partial", waits: "loot" });
+  expect(FIELDS.item.blueprint!.waits).toBeUndefined();
+});
 
 test("the numbers the item program reserved are its own and still free of anything else", () => {
   expect([P.PROTOCOL_VERSION, P.CMD_CRAFT_AT, P.CMD_CRAFT_BLUEPRINT, P.OWN_STATION, P.SLOT_BLUEPRINT]).toEqual([12, 29, 30, 16, 1]);
   const own = Object.entries(P).filter(([k]) => k.startsWith("OWN_")).map(([, v]) => v);
   expect(new Set(own).size).toBe(own.length);
-  // Task B moves the manifest to 4 for icon sheets.
-  expect(MANIFEST_VERSION).toBe(3);
+  // Task B moved the manifest to 4 for icon sheets.
+  expect(MANIFEST_VERSION).toBe(4);
 });
 
 test("the item program's content is in the core pack, and a consumable may be one only for what using it does", () => {
