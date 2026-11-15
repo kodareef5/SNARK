@@ -45,8 +45,9 @@ test("protocol 17 and record format 7 are the stations wave's, and it took no co
 
 test("the fields: a station's own fuel is built, the forge's (S1) are built, and the rest are stubs that wait for stations, each its project's", () => {
   expect(FIELDS.structure.burns.waits).toBeUndefined();
-  // S1 built cooks, dry, burnsInto and craft.fired (the refining forge, planning/reference/stations-plan.md).
-  expect([FIELDS.structure.cooks.waits, FIELDS.structure.keeps.waits, FIELDS.structure.powered.waits, FIELDS.structure.dry.waits]).toEqual([undefined, "stations", "stations", undefined]);
+  // S1 built cooks, dry, burnsInto and craft.fired (the refining forge); S2 built `powered` (server/power.ts,
+  // tests/integration/fabricator.test.ts).
+  expect([FIELDS.structure.cooks.waits, FIELDS.structure.keeps.waits, FIELDS.structure.powered.waits, FIELDS.structure.dry.waits]).toEqual([undefined, "stations", undefined, undefined]);
   expect([FIELDS.item.burnsInto.waits, FIELDS.item.craft.stubs]).toEqual([undefined, undefined]);
   for (const f of ["burns", "cooks", "keeps", "powered", "dry"]) expect([f, classRow("structure/station")!.may.includes(f)]).toEqual([f, true]);
   // A container may keep things longer too, as the feeding trough will.
@@ -57,13 +58,14 @@ test("the fields: a station's own fuel is built, the forge's (S1) are built, and
 test("the eight resources are plain items at their pages' weights and stacks, and cementing paste moved here unchanged; the ingot has no engram and is not made in the hand", () => {
   const def = (name: string): ItemDef => RESOURCES.find((d) => d.id === `core:${name}` && d.type === "item") as ItemDef;
   const plain = ["charcoal", "gasoline", "oil", "crystal", "obsidian", "silica_pearls", "polymer", "electronics"];
-  expect(plain.map((n) => [n, def(n).weight, def(n).stack, def(n).class, n === "gasoline" ? undefined : def(n).craft, def(n).fuel])).toEqual(
-    [0.25, 0.1, 0.2, 1, 1, 0.02, 0.25, 0.01].map((w, k) => [plain[k], w, 100, "resource", undefined, undefined]),
+  expect(plain.map((n) => [n, def(n).weight, def(n).stack, def(n).class, def(n).fuel])).toEqual(
+    [0.25, 0.1, 0.2, 1, 1, 0.02, 0.25, 0.01].map((w, k) => [plain[k], w, 100, "resource", undefined]),
   );
-  // Only gasoline is made yet, and only by the forge itself (S1); charcoal is what wood leaves. The four found in the
-  // world come from the resource nodes' project's nodes (content/items/nodes.ts).
+  // Gasoline is made by the forge itself since S1 (charcoal is what wood leaves), polymer and electronics at the fabricator
+  // since S2; the rest are not made yet. The four found in the world come from the resource nodes' project's nodes
+  // (content/items/nodes.ts).
   const yielded = new Set(CORE_CONTENT.flatMap((d) => (d.type === "node" ? d.yields.map((y) => y.item) : [])));
-  expect([plain.filter((n) => reg.recipeOf[id(reg, n)] !== null), plain.filter((n) => yielded.has(`core:${n}`))]).toEqual([["gasoline"], ["oil", "crystal", "obsidian", "silica_pearls"]]);
+  expect([plain.filter((n) => reg.recipeOf[id(reg, n)] !== null), plain.filter((n) => yielded.has(`core:${n}`))]).toEqual([["gasoline", "polymer", "electronics"], ["oil", "crystal", "obsidian", "silica_pearls"]]);
   const paste = CORE_CONTENT.find((d) => d.id === "core:paste" && d.type === "item") as ItemDef;
   expect(paste).toMatchObject({ class: "resource", stack: 100, weight: 0.01, label: "cementing paste", color: 15, craft: { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 } });
   expect(RESOURCES.filter((d) => d.id === "core:paste" || d.id === "core:engram-paste" || d.id === "core:make-paste").map((d) => d.type).sort()).toEqual(["engram", "item", "rename"]);
@@ -73,15 +75,21 @@ test("the eight resources are plain items at their pages' weights and stacks, an
   expect(CORE_CONTENT.some((d) => d.type === "engram" && d.item === "core:ingot")).toBe(false);
 });
 
-test("the core pack compiles to the columns: each station is its own base, a fire lit and out is one, nothing names its own fuel, and only the forge (S1) uses what S1 built", () => {
+test("the core pack compiles to the columns: each station is its own base, a fire lit and out is one, only the fabricator names its own fuel and is powered, and the forge and fabricator are dry and do not cook", () => {
   const structures = reg.defs.flatMap((d, k) => (d?.type === "structure" ? [k] : []));
-  const forges = [id(reg, "forge"), id(reg, "forge_lit")];
+  const forge = [id(reg, "forge"), id(reg, "forge_lit")];
+  const fabricator = [id(reg, "fabricator"), id(reg, "fabricator_lit")];
+  const both = [...forge, ...fabricator].sort((a, b) => a - b);
   expect([reg.stationBase[id(reg, "campfire")], reg.stationBase[id(reg, "campfire_lit")], reg.stationBase[id(reg, "mortar")], reg.stationBase[id(reg, "stone")]]).toEqual([id(reg, "campfire"), id(reg, "campfire"), id(reg, "mortar"), 0]);
-  expect(structures.filter((k) => k !== id(reg, "campfire_lit") && k !== id(reg, "forge_lit") && reg.stationBase[k] !== k)).toEqual([]);
-  expect(reg.stationFuel.every((t) => t === null)).toBe(true);
-  expect(structures.filter((k) => reg.structKeeps[k] !== 1 || reg.powered[k] !== 0)).toEqual([]);
-  expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([forges, forges]);
-  expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [reg.ids[k]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([["core:gasoline", "core:ingot"], [["core:wood", "core:charcoal"]]]);
+  expect(structures.filter((k) => k !== id(reg, "campfire_lit") && k !== forge[1] && k !== fabricator[1] && reg.stationBase[k] !== k)).toEqual([]);
+  // S2's fabricator: gasoline alone, powered, not lit under water, and it cooks nothing (stations-plan.md, S2).
+  expect(reg.stationFuel.flatMap((t, k) => (t === null ? [] : [k]))).toEqual(fabricator);
+  expect(structures.filter((k) => reg.structKeeps[k] !== 1 || reg.powered[k] !== 0)).toEqual(fabricator);
+  expect(fabricator.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.powered[k], reg.dry[k]])).toEqual(fabricator.map(() => [fabricator[0], 0, 1, 1]));
+  // S1's forge: it burns every item's own fuel, is not powered, is dry and does not cook; the ingot and gasoline are fired
+  // at it, and wood leaves charcoal.
+  expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([both, both]);
+  expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"]], [["core:wood", "core:charcoal"]]]);
   // Sparkpowder is made at the mortar, as before.
   expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar"))]).toEqual([id(reg, "mortar"), [id(reg, "sparkpowder")]]);
 });

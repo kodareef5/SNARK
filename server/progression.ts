@@ -45,6 +45,8 @@ export class Progression {
   bus: Bus = NO_BUS;
   /** Called after anything that changes a record's stat points or level. */
   onChange: ((rec: EntityRecord) => void) | null = null;
+  /** Tells a survivor why what it asked for was refused (a powered station that is out). */
+  onNotice: ((pid: number, text: string) => void) | null = null;
   private readonly world: ServerWorld;
   private readonly records: Records;
   private readonly items: Items;
@@ -227,6 +229,11 @@ export class Progression {
   private queue(on: EntityRecord, by: EntityRecord, craft: CraftFacet, item: number, count: number, bp = -1): number {
     if (bp < 0 && !this.knows(by, this.engramOf[item]!)) return RESULT_DENIED;
     if (bp < 0 && craft.level !== undefined && this.level(by) < craft.level) return RESULT_SHORT;
+    // A powered station takes no job while it is out, from the engram or a blueprint (planning/reference/stations-plan.md, M5).
+    if (on !== by && this.unpowered(on)) {
+      this.onNotice?.(by.pid, "It needs fuel and must be on.");
+      return RESULT_SHORT;
+    }
     if (on.jobs.length >= MAX_JOBS) return RESULT_FULL;
     if (on.jobs.length === 0 && !this.canStart(on, craft, item, bp)) return RESULT_SHORT;
     // A module may refuse the job, or change how many are made.
@@ -254,8 +261,12 @@ export class Progression {
   /** A DEADLINE_CRAFT entry came due. */
   due(pid: number, stamp: number): void {
     const rec = this.records.byPid.get(pid);
-    const job = rec?.jobs[0];
-    if (!rec || !job || job.doneAt !== stamp) return;
+    if (!rec) return;
+    // A powered station's fire is advanced first (Items.inv tends it): if its fuel ran out before this tick, it went out
+    // then, and pause() has stopped the unit under way, so no unit finishes past the tick its station went out.
+    if (this.world.reg.powered[rec.kind] === 1) this.items.inv(rec);
+    const job = rec.jobs[0];
+    if (!job || job.doneAt !== stamp) return;
     const product = job.item;
     const def = this.world.reg.defs[product] as ItemDef;
     const craft = def.craft!;
@@ -291,7 +302,25 @@ export class Progression {
     return def?.type === "species" ? statOf(def, rec!.genome, STAT_CRAFTING, 1) : 1;
   }
 
-  /** Restores the craft deadline of a loaded record. */
+  /**
+   * A powered station went out at tick `t` (server/power.ts, on Stations.onSwap): the unit under way waits with the ticks it
+   * had left then (Job.rest), its ingredients spent, and its queue is kept. A unit that was done by `t` is left for due().
+   * Whether ARK keeps the progress is not on its pages; keeping it is the owner's (stations-plan.md, Decided 3).
+   */
+  pause(rec: EntityRecord, t: number): void {
+    const job = rec.jobs[0];
+    if (!job || job.doneAt === 0 || job.doneAt <= t) return;
+    job.rest = job.doneAt - t;
+    // The deadline already pushed finds its stamp gone and does nothing.
+    job.doneAt = 0;
+    rec.progVersion++;
+    this.records.dirty.add(rec.pid);
+  }
+
+  /**
+   * Restores the craft deadline of a loaded record, and starts a powered station's queue when it is lit (server/power.ts):
+   * a paused unit goes on from its ticks left and spends nothing more.
+   */
   resume(rec: EntityRecord): void {
     // A job of something no longer made at all is dropped, as a job whose content is gone is when read: the metal ingot
     // in the hand, since the stations wave (planning/reference/stations-plan.md, Decided 2).
@@ -324,10 +353,28 @@ export class Progression {
     return craft.needs.every((n) => inv.total(this.world.reg.index.get(n.item)!) >= (bp >= 0 ? blueprintCost(n.count, bp) : n.count));
   }
 
-  /** Starts the next unit of the first job. Drops jobs that cannot start. */
+  /** A powered station that is out: it starts nothing and takes no job (M5). */
+  private unpowered(rec: EntityRecord): boolean {
+    const reg = this.world.reg;
+    return reg.powered[rec.kind] === 1 && (reg.burning[rec.kind] !== 1 || !rec.fire);
+  }
+
+  /**
+   * Starts the next unit of the first job. Drops jobs that cannot start. A powered station that is out starts nothing and
+   * keeps its queue; lit, a unit it paused goes on from its ticks left, its ingredients already spent.
+   */
   private start(rec: EntityRecord): void {
+    if (this.unpowered(rec)) return;
     while (rec.jobs.length > 0) {
       const job = rec.jobs[0]!;
+      if (job.rest !== undefined) {
+        job.doneAt = this.world.tick + Math.max(1, job.rest);
+        delete job.rest;
+        this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
+        rec.progVersion++;
+        this.records.dirty.add(rec.pid);
+        return;
+      }
       const craft = this.craftOf(job.item);
       const bp = job.bp ?? -1;
       if (craft && this.canStart(rec, craft, job.item, bp)) {

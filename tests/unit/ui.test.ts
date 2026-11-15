@@ -597,7 +597,7 @@ test("with more places to rise at than fit the window, the list is paged, and ev
 test("the character screen fits every window shape on every tab and page, and its buttons send what they say", () => {
   const engram = (name: string) => reg.index.get(name)!;
   const engrams = engramOrder(reg);
-  // What is made in the hands, as the making tab lists it: what is made at a station (the forge's ingot, S1) is not.
+  // The making tab lists what is made in the hands, so a row is a hand recipe's place among them.
   const recipes = reg.defs.flatMap((d, k) => (d?.type === "item" && d.craft && reg.craftAt[k] === 0 ? [k] : []));
   for (const [name, aspect] of ASPECTS) {
     const { session, sent } = fakeSession(new Inventory(40));

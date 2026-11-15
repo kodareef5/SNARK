@@ -37,8 +37,14 @@ export const RESOURCES: readonly Def[] = [
   { type: "item", class: "resource", id: "core:obsidian", stack: 100, weight: 1, label: "obsidian", color: 11 },
   // Silica Pearls: seabed clams.
   { type: "item", class: "resource", id: "core:silica_pearls", stack: 100, weight: 0.02, label: "silica pearls", color: 10 },
-  // Polymer: 2 obsidian and 2 cementing paste at the fabricator.
+  // Polymer: 2 obsidian and 2 cementing paste at the fabricator, one a craft in 2 s, craftingxp 0.56 (our 2.24, D465's
+  // four times); level 48, 6 engram points (Polymer, S2).
   { type: "item", class: "resource", id: "core:polymer", stack: 100, weight: 0.25, label: "polymer", color: 5 },
-  // Electronics: 3 silica pearls and 1 metal ingot at the fabricator.
+  crafting("core:polymer", { needs: [{ item: "core:obsidian", count: 2 }, { item: "core:paste", count: 2 }], seconds: 2, xp: 2.24, at: "core:fabricator" }),
+  { type: "engram", id: "core:engram-polymer", label: "Polymer", level: 48, cost: 6, item: "core:polymer" },
+  // Electronics: 3 silica pearls and 1 metal ingot at the fabricator, one a craft in 2 s, craftingxp 0.76 (our 3.04);
+  // level 48, 6 engram points (Electronics, S2).
   { type: "item", class: "resource", id: "core:electronics", stack: 100, weight: 0.01, label: "electronics", color: 9 },
+  crafting("core:electronics", { needs: [{ item: "core:silica_pearls", count: 3 }, { item: "core:ingot", count: 1 }], seconds: 2, xp: 3.04, at: "core:fabricator" }),
+  { type: "engram", id: "core:engram-electronics", label: "Electronics", level: 48, cost: 6, item: "core:electronics" },
 ];

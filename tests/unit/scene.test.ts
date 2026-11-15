@@ -413,9 +413,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1901866876 until the sign letters' grey boxes (content/lettering.ts) and the oil rock's, crystal's, obsidian
   // rock's and clam's (content/items/nodes.ts) took mesh numbers: 1076386992 with the letters alone, 2385450423 with the
   // nodes alone (the eleven the proving ground lists do not move it).
-  // It was 1918661154 until the refining forge's grey boxes (content/items/stations.ts, S1) took mesh numbers; without the
+  // It was 1918661154 until the smithy's and the fabricator's grey boxes (content/items/stations.ts, S2) took mesh numbers;
+  // without the two stations, their pieces and polymer's and electronics' recipes it is that again.
+  // It was 11868317 until the refining forge's grey boxes (content/items/stations.ts, S1) took mesh numbers; without the
   // forge, its item and engram and the two recipes fired at it it is that again.
-  expect(hash).toBe(1423524946);
+  expect(hash).toBe(1525959981);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -426,9 +428,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(saddled.log).toEqual(log);
   expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 97, 1, 0, 0, 273]);
   // It was 1277817829 until the sign letters' and the four resource nodes' grey boxes took mesh numbers, as above:
-  // 1675711496 with the letters alone, 3184345957 with the nodes alone. It was 295710133 until the refining forge's grey
-  // boxes, as above; without the forge it is that again.
-  expect(saddled.hash).toBe(2299142109);
+  // 1675711496 with the letters alone, 3184345957 with the nodes alone.
+  // It was 295710133 until the smithy's and the fabricator's grey boxes (S2), as above; without them it is that again.
+  // It was 738198866 until the refining forge's grey boxes (S1), as above; without the forge it is that again.
+  expect(saddled.hash).toBe(3614159166);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
