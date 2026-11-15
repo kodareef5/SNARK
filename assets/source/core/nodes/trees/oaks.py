@@ -60,7 +60,7 @@ SPECS = {o["name"]: o for o in OAKS}
 # How far apart the heads of leaves stand over the crown (heads.py), each 1.6 to 2.4 m across; on the coarser levels
 # they are gathered into so many against the finest's count, or so many in all.
 SPACING = 2.3
-GATHERED = {2: 0.62, 3: 34, 4: 12}
+GATHERED = {2: 0.45, 3: 34, 4: 12}
 
 
 def skeleton(spec):

@@ -69,22 +69,31 @@ def crown_mass(name):
     return (name, rects, width)
 
 
-# A crown of heads of leaves (heads.py) wears a picture of sixteen cells, four rows of four. Rows 1 to 3 are heads'
-# tops by tier (sun, middle, shade), four different heads a row; each a disc, the head's top at its middle. Row 4 holds
-# two heads' undersides, and across its right half the crown's dark core as a tiling rectangle `metres` across.
+# A crown of heads of leaves (heads.py) wears cells of its crown picture, a quarter of it across and down, each a disc
+# with a head's top at its middle, or a head's underside; and a tiling rectangle of the crown's dark interior, `metres`
+# across. The oak's picture is all heads: rows 1 to 3 the tops by tier (sun, middle, shade), four heads a row; row 4 two
+# undersides and the interior. The fig's keeps what the figs swallowed in its lower half (RUINS): its upper half holds
+# two heads a tier, one underside and the interior. Cells are (column, row).
 HEAD_CELLS = {
-    "oak_crown": {"core": (0.5, 0.75, 1.0, 1.0), "metres": 4.8},
+    "oak_crown": {"tops": [[(v, t) for v in range(4)] for t in range(3)], "under": [(0, 3), (1, 3)], "core": (0.5, 0.75, 1.0, 1.0), "metres": 4.8},
+    "fig_crown": {"tops": [[(0, 0), (1, 0)], [(2, 0), (3, 0)], [(0, 1), (1, 1)]], "under": [(2, 1)], "core": (0.75, 0.25, 1.0, 0.5), "metres": 2.4},
 }
+
+
+def _cell(c, r):
+    return (c * 0.25, r * 0.25, (c + 1) * 0.25, (r + 1) * 0.25)
 
 
 def head_cell(name, tier, variant):
     """The rectangle of a crown picture whose disc is the top of a head of `tier` and `variant`."""
-    return (variant * 0.25, tier * 0.25, (variant + 1) * 0.25, (tier + 1) * 0.25)
+    cells = HEAD_CELLS[name]["tops"][tier]
+    return _cell(*cells[variant % len(cells)])
 
 
 def under_cell(name, k):
-    """The rectangle of a crown picture whose disc is the underside of a head, the `k`th of two."""
-    return (k * 0.25, 0.75, (k + 1) * 0.25, 1.0)
+    """The rectangle of a crown picture whose disc is the underside of a head, its `k`th."""
+    cells = HEAD_CELLS[name]["under"]
+    return _cell(*cells[k % len(cells)])
 
 
 def leaf_cell(k):

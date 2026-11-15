@@ -566,7 +566,13 @@ def outline(atlas, cell, coarse=False, cut=None):
     if key in OUTLINES:
         return OUTLINES[key]
     got = OUTLINES[atlas].get(cell)
-    if got:
+    if got and coarse == "quad":
+        # Four corners tight round the leaves, for a card too small on screen for its outline to matter.
+        g = got["coarse"]["ring"]
+        x0, x1 = min(p[0] for p in g), max(p[0] for p in g)
+        y0, y1 = min(p[1] for p in g), max(p[1] for p in g)
+        ring, tris = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], [(0, 1, 2), (0, 2, 3)]
+    elif got:
         g = got["coarse" if coarse else "fine"]
         ring, tris = [tuple(p) for p in g["ring"]], [tuple(t) for t in g["triangles"]]
     else:
@@ -778,8 +784,9 @@ def crown(m, lobes, lod, rng, atlas, size, mass, shade=None, grain=1.0):
 
 # Behind the heads, deeper in the crown, a layer of smaller shade heads over the billows drawn in to this share of their
 # size, sparser by INNER_GAP: what is seen in the folds between heads is leaves deeper in, in shade.
-INNER = 0.68
-INNER_GAP = 1.5
+INNER = 0.7
+INNER_GAP = 1.15
+INNER_SIZE = (0.6, 0.85)
 
 
 def heads_of(name, trunks, lobes, shade, spacing, **kw):
@@ -795,7 +802,7 @@ def heads_of(name, trunks, lobes, shade, spacing, **kw):
         if length(sub(parent.at(t)[0], target)) > 0.3:
             twig_to(parent, t, add(target, mul(c.axis, c.under * 0.6)), rng, thick=max(0.02, min(0.05, c.r * 0.03)))
     small = [canopy.Ball(b.centre, b.r * INNER, b.squash, b.floor, b.lobe) for b in balls]
-    deeper = hd.place(small, shade, f"{name} inner", spacing * INNER_GAP, tiers=(99.0, 99.0), **kw)
+    deeper = hd.place(small, shade, f"{name} inner", spacing * INNER_GAP, tiers=(99.0, 99.0), size=INNER_SIZE, **kw)
     for c in deeper:
         c.inner = True
     return got + deeper, balls
@@ -821,10 +828,10 @@ LEAVES_UP = 0.4
 # A head is lit as leaves are, from above more than from the side: its own normals are pressed toward its axis by this.
 LEAFY = 0.55
 HEAD_LEVELS = {
-    0: {"own": 0.6, "inner": 1, "core": 0.74, "sprays": 18, "spray": 1.05, "cut": 0.66, "coarse": False},
-    1: {"own": 0.6, "inner": 2, "core": 0.74, "sprays": 12, "spray": 1.1, "cut": 0.66, "coarse": True},
-    2: {"own": 0.6, "inner": 4, "core": 1.0, "sprays": 0, "spray": 1.1, "cut": 0.66, "coarse": True},
-    3: {"own": 0.6, "inner": 4, "core": 1.0, "sprays": 0, "spray": 1.1, "cut": 0.66, "coarse": True},
+    0: {"own": 0.6, "inner": 1, "core": 0.68, "jag": 1.0, "puff": 1.0, "sprays": 18, "spray": 1.12, "cut": 0.58, "coarse": False},
+    1: {"own": 0.6, "inner": 2, "core": 0.68, "jag": 1.0, "puff": 1.0, "sprays": 12, "spray": 1.15, "cut": 0.58, "coarse": True},
+    2: {"own": 0.6, "inner": 4, "core": 0.72, "jag": 1.0, "puff": 1.15, "sprays": 8, "spray": 1.0, "cut": 0.58, "coarse": "quad"},
+    3: {"own": 0.6, "inner": 4, "core": 1.0, "jag": 1.2, "puff": 1.4, "sprays": 0, "spray": 1.0, "cut": 0.58, "coarse": True},
 }
 
 
@@ -846,11 +853,12 @@ def head_light(shade, own):
     return lit_for
 
 
-def sprays(m, c, at, atlas, lit, rng):
-    """The cut-out sprays of a head, radiating from its core all round as the twigs' ends of a clump of leaves do, the
-    lower ones drooping, each lit as the head is where it leaves it: from any side the head's outline is leaves, and a
-    spray seen end on, in front of the core or behind it, costs little."""
-    count = at["sprays"]
+def sprays(m, c, at, atlas, lit, rng, share=1.0):
+    """The cut-out sprays of a head, `share` of the level's count, radiating from its core all round as the twigs' ends
+    of a clump of leaves do, the lower ones drooping, each lit as the head is where it leaves it: from any side the
+    head's outline is leaves, and a spray seen end on, in front of the core or behind it, costs little."""
+    want = at["sprays"] * share
+    count = int(want) + (rng.random() < want - int(want))
     golden = math.pi * (3 - math.sqrt(5))
     turn = rng.uniform(0, 2 * math.pi)
     for k in range(count):
@@ -864,7 +872,7 @@ def sprays(m, c, at, atlas, lit, rng):
         # Out from the middle, toward the way the head faces there, the lower ones bending down.
         along = unit(add(add(mul(radial, 0.6), mul(c.own(theta, phi), 0.4)), (0.0, -0.25 * smooth((theta - 1.2) / 1.2), 0.0)))
         s = c.r * at["spray"] * rng.uniform(0.85, 1.12)
-        root = sub(at_surface, mul(along, s * 0.14))
+        root = sub(at_surface, mul(along, s * 0.04))
         flat = sub(c.axis, mul(along, dot(c.axis, along)))
         flat = unit(flat) if length(flat) > 1e-3 else unit(cross(along, c.e1))
         normal = rotate(flat, along, rng.uniform(-math.pi / 2, math.pi / 2))
@@ -873,20 +881,21 @@ def sprays(m, c, at, atlas, lit, rng):
         card(m, atlas, cell, root, along, normal, s, lambda x, own=own: lit(x, own), coarse=at["coarse"], cut=at["cut"])
 
 
-def head_crown(m, heads, lod, rng, atlas, material, shade):
+def head_crown(m, heads, lod, rng, atlas, material, shade, share=1.0):
     """A crown on the levels with pictures: its heads of leaves (heads.py), each wearing its cell of `material`, the
-    inner ones more coarsely, the outer ones as cores with sprays of cut-out leaves from `atlas` radiating from them."""
+    inner ones more coarsely, the outer ones as cores with sprays of cut-out leaves from `atlas` radiating from them,
+    `share` of the level's count."""
     at = HEAD_LEVELS[lod]
     lit_for = head_light(shade, at["own"])
     for c in heads:
-        c.core = 1.0 if c.inner else at["core"]
+        c.core, c.jag, c.puff = (1.0 if c.inner else at["core"]), at["jag"], at["puff"]
         hd.mesh(m, c, at["inner"] if c.inner else lod, material, head_cell(material, c.tier, c.variant), under_cell(material, c.below), lit_for(c))
     if at["sprays"]:
         for c in heads:
             if not c.inner:
-                sprays(m, c, at, atlas, lit_for(c), rng)
+                sprays(m, c, at, atlas, lit_for(c), rng, share)
     for c in heads:
-        c.core = 1.0
+        c.core, c.jag, c.puff = 1.0, 1.0, 1.0
 
 
 def flat_heads(m, heads, lod, colours, count, seed):
@@ -902,7 +911,9 @@ def flat_heads(m, heads, lod, colours, count, seed):
                 k = 0
             return colours[k]
 
+        c.puff = HEAD_LEVELS[3]["puff"]
         hd.mesh(m, c, lod, None, None, None, lambda p, n: n, paint=paint)
+        c.puff = 1.0
 
 
 def masses(lobes, count):

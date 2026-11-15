@@ -28,7 +28,7 @@ LUMPS = 0.3
 # seam is always a ring.
 RINGS = {
     0: (3, (0.36, 0.72, 1.08, 1.42, SEAM, 2.15, 2.6)),
-    1: (2, (0.55, 1.08, 1.45, SEAM, 2.2, 2.65)),
+    1: (2, (0.6, 1.2, SEAM, 2.4)),
     2: (1, (0.8, SEAM)),
     3: (1, (0.95, SEAM)),
     4: (1, (SEAM,)),
@@ -50,8 +50,13 @@ class Head:
         self.site, self.normal, self.lobe = site, normal, lobe
         # One of the layer of shade heads deeper in the crown.
         self.inner = False
-        # How large it is drawn against its reach: less where sprays radiate from it (broadleaf.py).
+        # How large it is drawn against its reach, less where sprays radiate from it, and how deep its scallops are cut
+        # against its own: deeper on the coarser levels, where they stand for sprays (broadleaf.py).
         self.core = 1.0
+        self.jag = 1.0
+        # How much taller than its own it is drawn: rounder on the coarser levels, where a head without sprays stands
+        # for a clump and not a pad.
+        self.puff = 1.0
         self.turn = rng.uniform(0, 2 * math.pi)
         self.below = rng.randrange(2)
         k = rng.choice((5, 6, 6, 7))
@@ -75,7 +80,7 @@ class Head:
         """How far the head reaches at (theta, phi) against its smooth shape."""
         k, ph, amp, ph2 = self.scallops
         s = math.sin(theta)
-        rim = amp * (0.72 * math.cos(k * phi + ph) + 0.28 * math.cos((k + 2) * phi + ph2)) * s ** 3
+        rim = amp * self.jag * (0.72 * math.cos(k * phi + ph) + 0.28 * math.cos((k + 2) * phi + ph2)) * s ** 3
         d = (s * math.cos(phi), math.cos(theta), s * math.sin(phi))
         bumps = 0.0
         for c, a, w in self.clumps:
@@ -86,7 +91,7 @@ class Head:
     def local(self, theta, phi, lumpy=True):
         """A point of the head in its own frame: across e1, up its axis, across e2; without its lumps if not `lumpy`."""
         c = math.cos(theta)
-        tall = mix(self.under, self.top, smooth((c + 0.3) / 0.6))
+        tall = mix(self.under, self.top, smooth((c + 0.3) / 0.6)) * self.puff
         k = (self.swell(theta, phi) if lumpy else 1.0) * self.core
         s = math.sin(theta)
         return (self.r * s * math.cos(phi) * k, tall * c * k, self.r * s * math.sin(phi) * k)
@@ -273,8 +278,8 @@ def merged(heads, count, seed):
             return mul(tuple(sum(f(heads[i])[k] * w[i] for i in g) for k in range(3)), 1 / total)
 
         centre, site = mean(lambda c: c.centre), mean(lambda c: c.site)
-        spread = math.sqrt(sum(length(sub(heads[i].centre, centre)) ** 2 * w[i] for i in g) / total)
-        r = max(math.sqrt(total), spread + big.r) * 1.04
+        # As much of the crown's face as its members had, a little more, never less than the largest.
+        r = max(math.sqrt(total) * 1.12, big.r)
         k = r / big.r
         tier = round(sum(heads[i].tier * w[i] for i in g) / total)
         axis = unit(mean(lambda c: c.axis))
