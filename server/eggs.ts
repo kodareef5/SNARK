@@ -107,7 +107,14 @@ export class Eggs {
     if (d > REACH + LATE) return RESULT_FAR;
     const clear = d - reg.bodyRadius[egg.kind]!;
     if (clear > 0 && castWorld(world, ox, oy, oz, dx / d, dy / d, dz / d, clear) !== HIT_NONE) return RESULT_FAR;
-    return fertile(egg) ? this.takeFertile(me, egg, e) : this.takeLaid(me, egg, e, c.ent);
+    return this.takeUp(me, egg, c.ent);
+  }
+
+  /** `me` takes up the egg lying as `egg`, by the entity `by` (-1 for none). Returns a RESULT code. Reach is the caller's. */
+  takeUp(me: EntityRecord, egg: EntityRecord, by = -1): number {
+    const e = this.ctx.records.entOf.get(egg.pid);
+    if (e === undefined || egg.egg === null || held(egg)) return RESULT_INVALID;
+    return fertile(egg) ? this.takeFertile(me, egg, e) : this.takeLaid(me, egg, e, by);
   }
 
   /** An unfertilised egg, or a stack set down, goes whole into the bag. */
@@ -254,7 +261,7 @@ export class Eggs {
   /** The wild of `species` within ANGER_RANGE of (x, z) go for `by`, unless the species flees. */
   private anger(species: number, x: number, z: number, by: number): void {
     const { world, creatures } = this.ctx;
-    if (world.reg.temper[species] === TEMPER_FLEES) return;
+    if (by < 0 || world.reg.temper[species] === TEMPER_FLEES) return;
     const ents = world.ents;
     this.each(x, z, ANGER_RANGE, (e) => {
       if (ents.kind[e] !== species || ents.team[e] !== 0 || (ents.flags[e]! & (F_PROP | F_AWAKE)) !== F_AWAKE) return;
