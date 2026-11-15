@@ -1,10 +1,11 @@
 // A WebGL 2 context made of numbers, for the device probe's tests. It keeps the state the probe saves and puts back,
 // hands out objects, and answers readPixels as a test says. A call it does not know does nothing. A draw by a program
 // whose texts declare the frame block, with no buffer on the binding that block was given, is invalid in WebGL: it
-// draws nothing, and the fake lists it in `invalid`.
+// draws nothing, and the fake lists it in `invalid`. It compiles and links as far as glsl.ts can tell without types.
 
 import type { GlLike } from "../../client/core/device.ts";
 import { GL, type Gl2 } from "../../client/core/devicegpu.ts";
+import { compileErrors, linkErrors } from "./glsl.ts";
 
 export type FakeGl = Gl2 & GlLike & { canvas: unknown; drawingBufferWidth: number; drawingBufferHeight: number };
 
@@ -35,6 +36,9 @@ export function fakeGl(o: FakeOptions = {}): FakeGl & { units: Map<number, Map<n
   const blocks = new Map<unknown, number>();
   const uniformBuffers = new Map<number, unknown>();
   const invalid: string[] = [];
+  const stages = new Map<unknown, number>();
+  const shaders = new Map<unknown, { vertex?: string; fragment?: string }>();
+  const errors = new Map<unknown, string[]>();
   const draw = (elements: boolean): void => {
     const program = state.get(GL.CURRENT_PROGRAM);
     const binding = blocks.get(program);
@@ -56,9 +60,21 @@ export function fakeGl(o: FakeOptions = {}): FakeGl & { units: Map<number, Map<n
     getContextAttributes: () => ({ antialias: true }),
     getError: () => GL.NO_ERROR,
     isContextLost: () => lost,
-    createShader: make, createProgram: make, createFramebuffer: make, createRenderbuffer: make, createTexture: make, createBuffer: make, createVertexArray: make, createQuery: make,
-    getShaderParameter: () => true,
-    getProgramParameter: () => true,
+    createShader: (type: number) => {
+      const s = make();
+      stages.set(s, type);
+      return s;
+    },
+    createProgram: make, createFramebuffer: make, createRenderbuffer: make, createTexture: make, createBuffer: make, createVertexArray: make, createQuery: make,
+    compileShader: (s: unknown) => void errors.set(s, compileErrors(texts.get(s) ?? "")),
+    getShaderParameter: (s: unknown, name: number) => name !== GL.COMPILE_STATUS || (errors.get(s) ?? []).length === 0,
+    getShaderInfoLog: (s: unknown) => (errors.get(s) ?? []).join("\n"),
+    linkProgram: (p: unknown) => {
+      const { vertex, fragment } = shaders.get(p) ?? {};
+      errors.set(p, vertex !== undefined && fragment !== undefined ? linkErrors(vertex, fragment) : []);
+    },
+    getProgramParameter: (p: unknown, name: number) => name !== GL.LINK_STATUS || (errors.get(p) ?? []).length === 0,
+    getProgramInfoLog: (p: unknown) => (errors.get(p) ?? []).join("\n"),
     getUniformLocation: () => ({}),
     checkFramebufferStatus: () => GL.FRAMEBUFFER_COMPLETE,
     getQueryParameter: () => 0,
@@ -76,7 +92,10 @@ export function fakeGl(o: FakeOptions = {}): FakeGl & { units: Map<number, Map<n
     bindBufferBase: (target: number, index: number, b: unknown) => void (target === GL.UNIFORM_BUFFER && (uniformBuffers.set(index, b), state.set(GL.UNIFORM_BUFFER_BINDING, b))),
     getIndexedParameter: (name: number, index: number) => (name === GL.UNIFORM_BUFFER_BINDING ? (uniformBuffers.get(index) ?? null) : null),
     shaderSource: (shader: unknown, text: string) => void texts.set(shader, text),
-    attachShader: (program: unknown, shader: unknown) => void texts.set(program, (texts.get(program) ?? "") + (texts.get(shader) ?? "")),
+    attachShader: (program: unknown, shader: unknown) => {
+      texts.set(program, (texts.get(program) ?? "") + (texts.get(shader) ?? ""));
+      shaders.set(program, { ...shaders.get(program), [stages.get(shader) === GL.VERTEX_SHADER ? "vertex" : "fragment"]: texts.get(shader) ?? "" });
+    },
     getUniformBlockIndex: (program: unknown, name: string) => (new RegExp(`uniform ${name}\\b`).test(texts.get(program) ?? "") ? 0 : GL.INVALID_INDEX),
     uniformBlockBinding: (program: unknown, _: number, binding: number) => void blocks.set(program, binding),
     drawArrays: () => draw(false),

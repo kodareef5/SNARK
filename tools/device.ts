@@ -182,7 +182,10 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
     // A desktop answers every GPU question. An answer a phone may give, such as "ignored" or "hard", is not a lack.
     const q = r.gpuTests;
     if (!q) out.push("no gpu questions");
-    for (const [name, answer] of Object.entries({ depthRange: q?.depthRange, seam: typeof q?.seam === "string" ? q.seam : "", depthArray: q?.depthArray, compareArray: q?.compareArray, compare2d: q?.compare2d, texture3d: q?.texture3d })) if (q && /^(did not finish|failed|not asked|lost)/.test(answer ?? "")) out.push(`gpu ${name}: ${answer}`);
+    for (const [name, answer] of Object.entries({ depthRange: q?.depthRange, seam: typeof q?.seam === "string" ? q.seam : "", depthArray: q?.depthArray, compareArray: q?.compareArray, compare2d: q?.compare2d, texture3d: q?.texture3d, farEdge: typeof q?.farEdge === "string" ? q.farEdge : "" })) if (q && /^(did not finish|failed|not asked|lost)/.test(answer ?? "")) out.push(`gpu ${name}: ${answer}`);
+    // D258: a GPU more than 5% off the rule's share of the far blocks' edge.
+    const edge = q?.farEdge;
+    if (edge && typeof edge !== "string" && Math.abs(edge.kept - edge.rule) > 0.05) out.push(`gpu far edge: kept ${(edge.kept * 100).toFixed(1)}% where the rule keeps ${(edge.rule * 100).toFixed(1)}%`);
     for (const p of q?.passes ?? []) if (p.note !== "" || p.slope === null) out.push(`gpu ${p.name}: ${p.note || "no slope"}`);
     if (q?.lostDuring) out.push(`gpu: the context was lost during ${q.lostDuring}`);
   }

@@ -24,6 +24,9 @@ export interface ProgramText {
   readonly samplers: Readonly<Record<string, number>>;
 }
 
+/** A text as a shell compiles it: with the defines after its first line, the #version line. */
+export const withDefines = (source: string, defines: string): string => source.replace("\n", "\n" + defines);
+
 const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
 /** A lit tier's flat programs read the sky table as well, for the haze. */
 const lit = (tier: Tier, samplers: Record<string, number>): Record<string, number> => (tier.lit ? { ...samplers, uSkyTable: UNIT.sky } : samplers);

@@ -12,6 +12,7 @@ const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
 const secs = (ms: number): string => (ms / 1000).toFixed(1);
 const tenth = (x: number): number => Math.round(x * 10) / 10;
 const count = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${Math.round(n / 1000)}k` : String(Math.round(n)));
+const pct = (share: number): string => `${(share * 100).toFixed(1)}%`;
 
 /** Text made safe to put in HTML. */
 export function escape(text: string): string {
@@ -113,6 +114,8 @@ function gpuLines(r: DeviceReport): string[] {
   const s = q.seam;
   out.push(`seam      ${typeof s === "string" ? s : `D1's slope over 60 turning frames, the seam crossing ${s.crossing} pixels: ${s.overlap} left the clear colour with the far range from ${FAR_FROM * 100}% of the split, as the game draws, and ${s.flush} with it from the split itself`}`);
   out.push(`shadows   a 16-bit depth array ${q.depthArray}; compared lookups in it ${q.compareArray}, in a plain depth texture ${q.compare2d}; an RGBA8 3D texture ${q.texture3d}`);
+  const e = q.farEdge;
+  out.push(`far edge  ${typeof e === "string" ? e : `the far blocks' dithered edge keeps ${pct(e.kept)} of a wall halfway through the fade, where the rule keeps ${pct(e.rule)}`}`);
   if (g) {
     const units = Math.max(...Object.values(UNIT)) + 1;
     out.push(`units     ${g.textureUnits} textures a draw in fragments, ${g.vertexTextures} in vertices, ${g.combinedUnits} in all; the renderer uses units 0 to ${units - 1}, the terrain window 11 and 12, so ${g.textureUnits >= units ? "they fit" : "they do not fit"}`);
@@ -123,7 +126,10 @@ function gpuLines(r: DeviceReport): string[] {
   out.push(row(["pass", "per", "timer", "slope", "+-", "k"], widths));
   const n = (x: number | null): string => (x === null ? "-" : String(x));
   for (const p of q.passes) out.push(row([p.name, p.per === "draw" ? "µs a draw" : `ms a ${p.per === "megapixel" ? "megapixel" : "100k tris"}`, n(p.timer), n(p.slope), n(p.error), String(p.k)], widths) + (p.note ? `  ${p.note}` : ""));
-  out.push(`full screen at ${q.screen.join("x")}; depth into a 16-bit depth array; a draw is a uniform, a vertex array, a buffer, two pointers and the draw`);
+  out.push(`full screen at ${q.screen.join("x")}, blended, the game's programs under noon's frame block: flat, lit and far on a wall 12 m off, lit hazed`);
+  out.push("on one 500 m and 3.5 km off, surface with five maps 512 square; the sky looking 14 degrees up toward the sun, its table alone,");
+  out.push("then with the sun, moon and stars and 0, 1 and 2 cloud layers 1,024 square. depth into a 16-bit depth array; a draw is a");
+  out.push("uniform, a vertex array, a buffer, two pointers and the draw");
   if (q.lostDuring) out.push(`lost      the graphics context was lost during ${q.lostDuring}`);
   return out;
 }

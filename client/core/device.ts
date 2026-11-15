@@ -21,7 +21,7 @@ import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
 import { FrameTimer, GpuQuestions, type Gl2, type GpuReport } from "./devicegpu.ts";
 import { BodyCopies, LOOK, TextureMemory, rocks } from "./devicescene.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
-import { DRAW_TEXTURED, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
+import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
 import { groundSize } from "./render/terrain.ts";
 import type { Thing } from "./render/scene.ts";
 import { probePasses, provingProbes } from "./selfcheck.ts";
@@ -85,6 +85,8 @@ const HOLD_P95 = 1.5;
 export const LONG = 3;
 /** Texture memory taken a frame, in megabytes, so that frames keep coming while it grows. */
 const MEMORY_STEP = 16;
+/** Frames the picture probes wait for one drawn with a plain sky. */
+const PLAIN_FRAMES = 30;
 
 export interface Spread {
   median: number;
@@ -569,6 +571,7 @@ export class DeviceRun {
   private shownAt = 0;
   private canvas: number[] = [0, 0];
   private stress: Thing[] | null = null;
+  private plainWait = 0;
   private lostCount = 0;
   private lostAt = 0;
   private fetchedAt = 0;
@@ -646,7 +649,7 @@ export class DeviceRun {
     this.listen(now);
     let news = false;
     if (this.stage === "load") news = this.load(now);
-    else if (this.stage === "probes") news = this.probes(read);
+    else if (this.stage === "probes") news = this.probes(p, read);
     else if (this.stage === "hashes") news = this.hashes();
     else if (this.stage === "gpu") news = this.gpu();
     else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
@@ -729,13 +732,23 @@ export class DeviceRun {
     return true;
   }
 
-  /** The self-check's probes that are on this screen, read off the picture of the default tier once it has settled. A narrow screen leaves the slope out. */
-  private probes(read: (sx: number, sy: number) => [number, number, number]): boolean {
+  /**
+   * The self-check's probes that are on this screen, read off the picture of the default tier once it has settled. A
+   * narrow screen leaves the slope out. The picture is drawn with a plain sky, as the self-check draws it (no haze,
+   * nothing over the table), so its colours are the twins'; the frame after the sky is made plain is read, or after
+   * PLAIN_FRAMES whatever was drawn.
+   */
+  private probes(p: FramePacket, read: (sx: number, sy: number) => [number, number, number]): boolean {
     const { app, reg, pack, hf } = this.side;
-    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, app.scene!.packet).filter((p) => p.sx >= 0 && p.sx < 1 && p.sy >= 0 && p.sy < 1);
-    this.report.probes = shown.map((p) => {
-      const got = read(p.sx, p.sy);
-      return { name: p.name, ok: probePasses(p, got[0], got[1], got[2]), expected: p.rgb, got };
+    const scene = app.scene!;
+    const plain = !p.lit || (p.frame[FRAME.haze] === 0 && p.frame[FRAME.skyDetail] === 0);
+    scene.plainSky = true;
+    if (!plain && ++this.plainWait < PLAIN_FRAMES) return false;
+    scene.plainSky = app.plainSky;
+    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, scene.packet).filter((q) => q.sx >= 0 && q.sx < 1 && q.sy >= 0 && q.sy < 1);
+    this.report.probes = shown.map((q) => {
+      const got = read(q.sx, q.sy);
+      return { name: q.name, ok: probePasses(q, got[0], got[1], got[2]), expected: q.rgb, got };
     });
     this.stage = "hashes";
     this.report.stage = "hashes";

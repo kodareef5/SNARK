@@ -1,9 +1,16 @@
 // The device probe's GPU questions on a context made of numbers: what they read off a readback, the blocks the memory
-// step fills its tiles with, the slope fit, the context's state put back, and deadlines and a lost context.
+// step fills its tiles with, the slope fit, the context's state put back, deadlines and a lost context, and what the
+// context's compiler refuses, which every program the probe draws with goes through.
 
 import { expect, test } from "bun:test";
+import { TIERS } from "../../client/core/assets/tiers.ts";
 import { GL, GpuQuestions, PROBE_UNITS, compareKind, filterKind, fitLine, lookFrom, saveState, seamCount, solidBlock, type GpuPlan } from "../../client/core/devicegpu.ts";
+import { AIR, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import { FLAT_MESH_VERTEX, LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
+import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
+import { SKY_GLSL } from "../../client/core/render/sky.ts";
+import { SURFACE_VERTEX, surfaceFragment } from "../../client/core/render/surface.ts";
 import { TextureMemory } from "../../client/core/devicescene.ts";
 import { decodeAstcBlock } from "../../tools/pack/astc.ts";
 import { decodeBc7 } from "../../tools/pack/bc.ts";
@@ -93,6 +100,48 @@ test("what the probe changes of a context is put back as it was", () => {
   expect([gl.units.get(GL.TEXTURE0 + 3)!.get(GL.TEXTURE_BINDING_2D), gl.units.get(GL.TEXTURE0 + 9)!.get(GL.TEXTURE_BINDING_2D_ARRAY)]).toEqual(["bones", "shadows"]);
 });
 
+/** Compiles and links two texts on the fake context: what it says, empty if it took them. */
+function link(vertex: string, fragment: string): string {
+  const gl = fakeGl();
+  const program = gl.createProgram();
+  const said: string[] = [];
+  for (const [type, text] of [[GL.VERTEX_SHADER, vertex], [GL.FRAGMENT_SHADER, fragment]] as const) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, text);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, GL.COMPILE_STATUS)) said.push(gl.getShaderInfoLog(shader) ?? "");
+    gl.attachShader(program, shader);
+  }
+  if (said.length > 0) return said.join("\n");
+  gl.linkProgram(program);
+  return gl.getProgramParameter(program, GL.LINK_STATUS) ? "" : (gl.getProgramInfoLog(program) ?? "");
+}
+
+test("the fake context refuses the probe's SURFACE pass as the dome left it, and what else a GPU would refuse that it can see", () => {
+  // The sky table's lookup where the air now goes: what Chrome said at line 100, and a prototype with no body.
+  expect(link(SURFACE_VERTEX, surfaceFragment("astc", SKY_GLSL))).toBe("ERROR: 0:100: 'skyFrom' : no matching overloaded function found\nERROR: 'hazed' : function is called but never defined");
+  expect(link(SURFACE_VERTEX, surfaceFragment("astc", AIR))).toBe("");
+  // A name the frame block does not have, a call with an argument too many, and a line before the version.
+  expect(link(SKY_VERTEX.replace("fCloudSun.rgb", "fCloudLight.rgb"), LIT_FRAGMENT)).toMatch(/^ERROR: 0:\d+: 'fCloudLight' : undeclared identifier$/);
+  expect(link(FLAT_MESH_VERTEX, LIT_FRAGMENT.replace("vec3(0.0)), vRel)", "vec3(0.0), 1.0), vRel)"))).toMatch(/'lit' : no matching overloaded function found$/);
+  expect(link(FLAT_MESH_VERTEX, withDefines(LIT_FRAGMENT, "#define SHADOWS 1\n"))).toBe("");
+  expect(link(FLAT_MESH_VERTEX, "#define SHADOWS 1\n" + LIT_FRAGMENT)).toMatch(/'#version' : must be the text's first line/);
+  // Linking: SURFACE's fragment behind FLAT's vertex text, which writes vRel but not the rest, and vColor flat where LIT reads it smooth.
+  expect(link(FLAT_MESH_VERTEX, surfaceFragment("rgba", AIR)).split("\n")[0]).toBe("ERROR: 'vNormal' : the fragment reads it as vec3, and the vertex text does not write it");
+  expect(link(FLAT_MESH_VERTEX, LIT_FRAGMENT.replace("flat in vec3 vColor;", "in vec3 vColor;"))).toBe("ERROR: 'vColor' : the fragment reads it as vec3, and the vertex text writes it as flat vec3");
+});
+
+test("every program of the game's table compiles and links on the fake context, on every tier and texture variant", () => {
+  for (const tier of TIERS) {
+    for (const format of ["rgba", "bc", "astc"] as const) {
+      for (const [name, make] of Object.entries(PROGRAMS)) {
+        const t = make(tier, format);
+        expect(`${tier.name} ${format} ${name}: ${link(withDefines(t.vertex, t.defines), withDefines(t.fragment, t.defines))}`).toBe(`${tier.name} ${format} ${name}: `);
+      }
+    }
+  }
+});
+
 const PLAN: GpuPlan = { depthSizes: [1024, 2048], checkMs: 3000, passMs: 10000 };
 
 /** A context whose clock moves as the GPU works: a depth pass's draw costs 0.2 ms and any other draw 0.01. Its timer queries read that clock. */
@@ -133,6 +182,8 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect(r.depthRange).toBe("neither (read 128,128,128)");
   expect(r.seam).toEqual({ crossing: 0, overlap: 0, flush: 0 });
   expect([r.depthArray, r.compareArray, r.texture3d]).toEqual(["did not render (read 128 and 128 at texel centres, not 0 and 255)", "not known", "wrong (128,128,128, not 64,128,191)"]);
+  // Every pixel opaque: the far blocks' edge kept whole, where the rule keeps half.
+  expect(r.farEdge).toEqual({ kept: 1, rule: 0.5 });
   const per = (name: string) => r.passes.find((p) => p.name === name)!;
   for (const p of r.passes) expect(p.note).toBe("");
   // A 100k-triangle pass costs what its draw does, scaled from the field's 100,352 triangles; a full-screen one 0.01 ms over 390 by 844.
@@ -140,8 +191,9 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect(per("depth skinned 2048").slope).toBe(0.199);
   expect(per("flat")).toMatchObject({ slope: 0.03, timer: 0.03, k: 512 });
   expect(per("9 taps").slope).toBe(0.03);
-  // LIT and SURFACE read noon's frame block: every draw of theirs had its buffer, or the fake would have drawn nothing.
-  expect([per("lit").slope, per("surface").slope, card.gl.invalid]).toEqual([0.03, 0.03, []]);
+  // The game's lit programs read noon's frame block: every draw of theirs had its buffer, or the fake would have drawn nothing.
+  expect(["lit", "lit haze 3.5 km", "far", "surface", "sky table", "sky 2 layers"].map((n) => per(n).slope)).toEqual(Array(6).fill(0.03));
+  expect(card.gl.invalid).toEqual([]);
   // A draw's 0.01 ms on the clock: 1,000 of them are enough to time.
   expect(per("draw")).toMatchObject({ slope: 10, error: 0, k: 1000 });
   // Only the probe's own units were bound on.
@@ -153,26 +205,26 @@ test("a question past its deadline says it did not finish, and a lost context na
   const late = new GpuQuestions(slow.gl, () => slow.gl.createTexture(), slow.now, "bc", [390, 844], PLAN);
   ask(late, () => slow.tick(4000));
   expect([late.report.depthRange, late.report.seam]).toEqual(["neither (read 128,128,128)", "did not finish"]);
-  expect(late.report.passes.map((p) => p.note)).toEqual(Array(11).fill("did not finish"));
+  expect(late.report.passes.map((p) => p.note)).toEqual(Array(18).fill("did not finish"));
 
   const card = timedCard();
   const q = new GpuQuestions(card.gl, () => card.gl.createTexture(), card.now, "rgba", [390, 844], PLAN);
   // On to the first pass, and one frame into it.
-  while (q.stage !== "depth rigid 1024") q.frame();
+  while (q.stage !== "flat") q.frame();
   q.frame();
   card.gl.lose();
   q.lost();
   expect(q.frame()).toBe(true);
   const r = q.report;
-  expect(r.lostDuring).toBe("depth rigid 1024");
+  expect(r.lostDuring).toBe("flat");
   expect(r.passes[0]!.note).toBe("lost the context");
-  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(10).fill("not asked: the context was lost during depth rigid 1024"));
+  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(17).fill("not asked: the context was lost during flat"));
 
   // Lost in the middle of a question's step: what it read is not its answer.
   const dying: ReturnType<typeof fakeGl> = fakeGl({ read: () => dying.lose() });
   const cut = new GpuQuestions(dying, () => dying.createTexture(), () => 0, "astc", [390, 844], PLAN);
   ask(cut);
-  expect([cut.report.lostDuring, cut.report.depthRange, cut.report.nearGap, cut.report.texture3d]).toEqual(["depth", "lost the context", null, "not asked: the context was lost during depth"]);
+  expect([cut.report.lostDuring, cut.report.depthRange, cut.report.nearGap, cut.report.texture3d, cut.report.farEdge]).toEqual(["depth", "lost the context", null, "not asked: the context was lost during depth", "not asked: the context was lost during depth"]);
 });
 
 test("the memory step samples every tile and reads back the colour its blocks hold, or says what it read", () => {

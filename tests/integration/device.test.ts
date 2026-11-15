@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { DeviceProbe, MEMORY_MB, deviceScenarios, newReport, type DeviceBrowser, type DeviceReport, type RendererLike, type Timing } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
 import { MAX_RUNS, MAX_WRONG, REPORT_BYTES, deviceRoutes, lacking } from "../../tools/device.ts";
 import { fakeGl } from "../fixtures/gl.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -129,6 +129,9 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(await going).toBe(true);
   const gpu = card.r;
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
+  // The picture probes read a frame drawn with a plain sky, as the self-check's: no haze and nothing over the table.
+  const air: number[][] = [];
+  gpu.readPixel = () => (air.push([app.scene!.packet.frame[FRAME.haze]!, app.scene!.packet.frame[FRAME.skyDetail]!]), [0, 0, 0]);
   const yaw = new Map<string, number>();
   const split = new Map<string, number>();
   const each = (): void => void (yaw.set(probe.report.stage, app.controls.yaw), split.set(probe.report.stage, app.scene!.packet.split));
@@ -157,8 +160,10 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(page.text.startsWith("<div")).toBe(true);
   expect(page.text).toContain("Done.</b> Sent.");
   expect(page.text).toContain("tiers run lowpoly, medium, high");
-  expect(lacking(r).filter((line) => !line.startsWith("probe "))).toEqual(["tier ultra did not run every scene"]);
+  // The fake draws nothing, so the pictures and the far blocks' edge read wrong.
+  expect(lacking(r).filter((line) => !/^(probe |gpu far edge)/.test(line))).toEqual(["tier ultra did not run every scene"]);
   expect(card.gl.invalid).toEqual([]);
+  expect([air.length > 0, air.every(([haze, detail]) => haze === 0 && detail === 0), app.scene!.plainSky]).toEqual([true, true, false]);
 
   // Another test on the same page begins at once, with the game as it is, under a run of its own.
   probe.start("soak");
