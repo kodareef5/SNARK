@@ -23,7 +23,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | S | three quiet runs, ranges | 2026-11-14 | `95a19af` |
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
 | Dnnn | the measurement its decision records | | |
-| iPhone | the device page's reports (D349), kept uncommitted in `.cache/device` on the development machine, named by UTC time | 2026-11-15 | |
+| iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
 
 Counts, bytes and frames from M stand: load does not move them. Times from M are
 high and are given only where no quiet run has the row, marked "busy".
@@ -218,10 +218,8 @@ colour and ANGLE drops the stacked opaque draws; it is still to be corrected
 
 ## The iPhone
 
-`bun run device` through a tunnel, 2026-11-15 (D349). The quick look is
-`.cache/device/2026-11-15T07-35-24-622Z-78dfa8651efed6c3.json`; the ladders,
-soaks and terrain flight are in the `w-phone` and `w-phone2` worktrees'
-`.cache/device`.
+`bun run device` through a tunnel, 2026-11-15 (D349). The reports are in
+`planning/reference/device-reports`; the quick look is `2026-11-15T07-35`.
 
 **GPU questions** (D271). `depthRange` is honoured; a 16-bit depth array renders
 and compared lookups filter; an RGBA8 3D texture filters. D1's seam leaves no
