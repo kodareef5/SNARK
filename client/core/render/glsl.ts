@@ -7,6 +7,7 @@ import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
 import { FADE_ORDER } from "./far.ts";
 import { BONES_PER_ROW, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
+import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
 
 const f = (n: number): string => n.toFixed(4);
@@ -38,7 +39,8 @@ void main() {
 
 /**
  * LIT, what the lit tiers draw flat with in FLAT's place, from FLAT's vertex texts: its normal and checker, the checker
- * darkening the palette colour as FLAT's does, then lit as SURFACE lights a fully rough surface that is not metal.
+ * darkening the palette colour as FLAT's does, then lit as SURFACE lights a fully rough surface that is not metal, in
+ * the sun's shadow where it falls.
  */
 export const LIT_FRAGMENT = `#version 300 es
 precision highp float;
@@ -47,7 +49,7 @@ flat in vec3 vColor;
 uniform vec3 uCamMod;
 uniform float uSolid, uAlpha;
 out vec4 o;
-${LIGHT}void main() {
+${LIGHT}${SHADOW_GLSL}void main() {
   vec3 n = normalize(cross(dFdx(vRel), dFdy(vRel)));
   vec3 w = vRel + uCamMod - n * ${f(CHECK_INSET)};
   if (uSolid < 0.5) w.y = 0.0;
@@ -61,7 +63,7 @@ ${LIGHT}void main() {
   }
   vec3 c = vColor * shade;
   vec3 albedo = mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
-  o = vec4(shown(lit(albedo, vec3(1.0, 1.0, 0.0), n, -vRel / d, vec3(0.0)), d), uAlpha);
+  o = vec4(shown(lit(albedo, vec3(1.0, 1.0, 0.0), n, -vRel / d, vec3(0.0), sunShadow(vRel, n)), d), uAlpha);
 }`;
 
 export const FLAT_MESH_VERTEX = `#version 300 es

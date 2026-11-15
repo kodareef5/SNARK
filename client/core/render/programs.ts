@@ -1,9 +1,11 @@
-// The programs a renderer draws with, by name: for a tier and a texture variant, each one's texts, the defines put
-// before them, and the texture unit each of its samplers reads. A WebGL2 shell compiles what is listed here, as given.
+// The programs a renderer draws with, by name: for a tier, a texture variant and whether the device's compared lookups
+// come back hard, each one's texts, the defines put before them, and the texture unit each of its samplers reads. A
+// WebGL2 shell compiles what is listed here, as given.
 
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT } from "./glsl.ts";
+import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SKY_GLSL } from "./sky.ts";
 import { DOME_VERTEX, SURFACE_VERTEX, domeFragment, surfaceFragment } from "./surface.ts";
 
@@ -24,26 +26,44 @@ export interface ProgramText {
 }
 
 const MESH = { uPalette: UNIT.palette, uBones: UNIT.bones };
+const GROUND = { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint };
+const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
+
+/** A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which looks the sun's shadow up. */
+function flatOr(tier: Tier, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>): ProgramText {
+  if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
+  return { vertex, fragment: lit, defines: shadowDefines(tier.shadows, hard), samplers: { ...samplers, uShadow: UNIT.shadow } };
+}
 
 /**
  * The programs by name. A lit tier draws flat with LIT where low poly has FLAT, and draws the dome, "sky", where low
  * poly clears to its sky colour. The surface program is made the first time a frame draws with materials, which low
  * poly never does, so it is lit alone, and the see-through one the first time a frame with a split draws something
- * see-through, which low poly does not either.
+ * see-through, which low poly does not either. The depth programs draw the sun's shadow maps.
  */
-export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat) => ProgramText>> = {
-  flat: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_FRAGMENT : FLAT_FRAGMENT, defines: "", samplers: MESH }),
-  terrain: (tier) => ({ vertex: FLAT_TERRAIN_VERTEX, fragment: tier.lit ? LIT_FRAGMENT : FLAT_FRAGMENT, defines: "", samplers: { uPalette: UNIT.palette, uHeight: UNIT.heights, uTint: UNIT.tint } }),
+export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText>> = {
+  flat: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, MESH),
+  terrain: (tier, _, hard = false) => flatOr(tier, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, GROUND),
   // The same, for the tiles that read the window round the camera (terrain.ts).
-  terrainWindow: (tier, format) => {
-    const t = PROGRAMS.terrain!(tier, format);
-    return { ...t, samplers: { ...t.samplers, uHeight: UNIT.windowHeights, uTint: UNIT.windowTint } };
+  terrainWindow: (tier, format, hard) => {
+    const t = PROGRAMS.terrain!(tier, format, hard);
+    return { ...t, samplers: { ...t.samplers, ...WINDOW } };
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
-  seeThrough: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_SPLIT_FRAGMENT : FLAT_SPLIT_FRAGMENT, defines: "", samplers: MESH }),
+  seeThrough: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH),
   // Far blocks (far.ts), which fade out over the last of their reach. A program of their own keeps the discard out of the rest.
-  far: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_FAR_FRAGMENT : FLAT_FAR_FRAGMENT, defines: "", samplers: MESH }),
-  surface: (_, format) => ({ vertex: SURFACE_VERTEX, fragment: surfaceFragment(format, SKY_GLSL), defines: "", samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4, uSkyTable: UNIT.sky } }),
+  far: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
+  surface: (tier, format, hard = false) => ({
+    vertex: SURFACE_VERTEX,
+    fragment: surfaceFragment(format, SKY_GLSL),
+    defines: shadowDefines(tier.shadows, hard),
+    samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4, uSkyTable: UNIT.sky, uShadow: UNIT.shadow },
+  }),
   sky: () => ({ vertex: DOME_VERTEX, fragment: domeFragment(SKY_GLSL), defines: "", samplers: { uSkyTable: UNIT.sky } }),
+  // A caster, a cut-out caster, and the ground, each drawn from the sun into a cascade's layer.
+  depth: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones } }),
+  depthCutout: () => ({ vertex: DEPTH_VERTEX, fragment: DEPTH_CUTOUT_FRAGMENT, defines: "", samplers: { uBones: UNIT.bones, uBase: UNIT.maps } }),
+  depthTerrain: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: GROUND }),
+  depthTerrainWindow: () => ({ vertex: clampDepth(FLAT_TERRAIN_VERTEX), fragment: DEPTH_FRAGMENT, defines: "", samplers: { ...GROUND, ...WINDOW } }),
 };

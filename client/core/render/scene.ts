@@ -27,6 +27,7 @@ import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./f
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
+import { shadowBytes } from "./shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 
@@ -354,6 +355,7 @@ export class Scene {
     this.assets.residency.reset();
     this.terrain.reset();
     this.far?.reset();
+    this.cascades.clear();
   }
 
   build(cam: Camera, remote: RemoteSample | null): FramePacket {
@@ -419,6 +421,7 @@ export class Scene {
     const p = this.packet;
     const c = this.cascades;
     const setup = p.tier.shadows;
+    this.assets.residency.reserve("shadow maps", p.lit ? shadowBytes(setup) : 0);
     this.casting = false;
     this.characters.shadows = null;
     if (!p.lit || setup.cascades <= 0 || p.frame[FRAME.casting]! <= 0) {
