@@ -1,0 +1,44 @@
+{
+  "track": "deep",
+  "layer": "calm",
+  "candidate": 1,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Ambient, Genre: Cinematic, Genre: Orchestral. For a dark survival game, swimming in the deep sea, vast and cold: deep slow drones, distant whale-like synth calls, a faint far-away choir, slow swelling low strings, continuous and immersive. 60 BPM, D minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 60,
+  "key": "D minor",
+  "seed": 18001,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": null,
+  "init_noise_level": null,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 2.7,
+  "gpu_peak_gb": 5.47,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "0654b3ca1dea542523074dd618b166d5c038155785ecc5f53bfd48407a3890d0",
+  "chosen": "calm@1.wav",
+  "measures": {
+    "loudness_db": -21.6,
+    "dropouts": 0.017,
+    "stray_db": 1.72,
+    "clipped": 0,
+    "brightness": 0.0,
+    "score": -1.698
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}

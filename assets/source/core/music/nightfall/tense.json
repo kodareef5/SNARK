@@ -1,0 +1,47 @@
+{
+  "track": "nightfall",
+  "layer": "tense",
+  "candidate": 1,
+  "model": "Stable Audio 3 medium",
+  "repo": "stabilityai/stable-audio-3-medium",
+  "revision": "d4d3579395a8ac0df4ab13b5b1d7138ce7290f81",
+  "code": {
+    "repo": "github.com/Stability-AI/stable-audio-3",
+    "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57"
+  },
+  "licence": {
+    "name": "Stability AI Community License",
+    "terms": "free under US$1M annual revenue, commercial users register with Stability AI; outputs are ours; not for training other foundation models"
+  },
+  "prompt": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. For a dark survival game among dinosaurs on a wild island, night falls on the island, night terrors: the choir darkens, dissonant strings, a slow heavy heartbeat drum, low brass growls. 80 BPM, D minor.",
+  "negative_prompt": "fade out, ending, silence, gaps, dropouts, lo-fi, pop, happy, major key, vocals with lyrics, singing words",
+  "seconds": 120,
+  "bpm": 80,
+  "key": "D minor",
+  "seed": 13101,
+  "steps": 8,
+  "cfg": 1.0,
+  "init_from": "nightfall/calm.wav",
+  "init_noise_level": 0.6,
+  "rate": 44100,
+  "channels": 2,
+  "seconds_to_make": 4.8,
+  "gpu_peak_gb": 5.43,
+  "torch": "2.7.1+cu128",
+  "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+  "date": "2026-11-15",
+  "sha256": "5d7e8001b89dcb408d9d0a153b4cbd52865a8d14f03b40ca368b1c8f089cc2d2",
+  "chosen": "tense@1.wav",
+  "measures": {
+    "loudness_db": -23.0,
+    "dropouts": 0.025,
+    "stray_db": 3.92,
+    "clipped": 0,
+    "brightness": 0.017,
+    "beat_with_base": 0.143,
+    "louder_db": 0.3,
+    "brighter": 0.006,
+    "score": -2.255
+  },
+  "stored_as": "Opus 96 kb/s stereo (ffmpeg libopus); the master is made again from this recipe"
+}
