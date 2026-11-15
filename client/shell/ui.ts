@@ -2,13 +2,8 @@
 // Text is always set as text, never as markup, so nothing a player types or is named can become HTML.
 
 import { K_BAR, K_IMAGE, K_INPUT, type UiFrame, type UiNode } from "../core/ui/nodes.ts";
+import { bindTextInput, type UiEvents } from "../core/ui/events.ts";
 import { STYLES } from "../core/ui/style.ts";
-
-export interface UiEvents {
-  text(key: number, value: string): void;
-  /** `kind` is 0 for down, 1 for up, 2 for move. The position is in canvas units. */
-  pointer(kind: number, key: number, x: number, y: number, button: number): void;
-}
 
 interface Bound {
   el: HTMLElement;
@@ -167,7 +162,7 @@ export class UiView {
       const field = el as HTMLInputElement;
       field.spellcheck = false;
       field.autocomplete = "off";
-      field.addEventListener("input", () => this.events.text(n.key, field.value));
+      field.addEventListener("input", bindTextInput(n, field, this.events));
     } else if (n.kind === K_IMAGE) el.style.imageRendering = "pixelated";
     el.dataset.k = String(n.key);
     el.style.pointerEvents = "none";
