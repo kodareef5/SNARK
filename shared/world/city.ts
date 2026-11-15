@@ -632,34 +632,45 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
     // A face of a cell is coloured as that side of the pieces in it shows: first how far out the outermost reaches, then
     // the colour of the box showing most area that way among those within FACE_DEPTH of it, so a wall gives a front its
     // colour over the slab edge before it.
+    const [ox, oy, oz] = [o[0]!, o[1]!, o[2]!];
     for (let pass = 0; pass < 2; pass++) {
       for (let b = 0; b < nb; b++) {
         const B = b * 7;
+        const [lx, ly, lz, hx, hy, hz] = [framed[B]!, framed[B + 1]!, framed[B + 2]!, framed[B + 3]!, framed[B + 4]!, framed[B + 5]!];
+        const colour = framed[B + 6]!;
         for (let k = spans[b * 6 + 2]!; k <= spans[b * 6 + 5]!; k++) {
+          const z0 = oz + k * size;
+          const sz = Math.max(0, Math.min(hz, z0 + size) - Math.max(lz, z0));
           for (let j = spans[b * 6 + 1]!; j <= spans[b * 6 + 4]!; j++) {
+            const y0 = oy + j * tall;
+            const sy = Math.max(0, Math.min(hy, y0 + tall) - Math.max(ly, y0));
             for (let i = spans[b * 6]!; i <= spans[b * 6 + 3]!; i++) {
               const cell = (k * ny + j) * nx + i;
-              cellColour[cell] = 1;
-              const at = [i, j, k];
-              for (let d = 0; d < 6; d++) {
-                const ax = d >> 1;
-                const reach = d & 1 ? -framed[B + ax]! : framed[B + 3 + ax]!;
-                const e = cell * 6 + d;
-                if (pass === 0) {
-                  if (reach > faceReach[e]!) faceReach[e] = reach;
-                  continue;
-                }
-                if (reach < faceReach[e]! - FACE_DEPTH) continue;
-                let area = 1;
-                for (const w of [(ax + 1) % 3, (ax + 2) % 3]) {
-                  const c0 = o[w]! + at[w]! * step[w]!;
-                  area *= Math.max(0, Math.min(framed[B + 3 + w]!, c0 + step[w]!) - Math.max(framed[B + w]!, c0));
-                }
-                if (area > faceArea[e]!) {
-                  faceArea[e] = area;
-                  faceColour[e] = framed[B + 6]!;
-                }
+              const e = cell * 6;
+              if (pass === 0) {
+                cellColour[cell] = 1;
+                if (hx > faceReach[e]!) faceReach[e] = hx;
+                if (-lx > faceReach[e + 1]!) faceReach[e + 1] = -lx;
+                if (hy > faceReach[e + 2]!) faceReach[e + 2] = hy;
+                if (-ly > faceReach[e + 3]!) faceReach[e + 3] = -ly;
+                if (hz > faceReach[e + 4]!) faceReach[e + 4] = hz;
+                if (-lz > faceReach[e + 5]!) faceReach[e + 5] = -lz;
+                continue;
               }
+              const x0 = ox + i * size;
+              const sx = Math.max(0, Math.min(hx, x0 + size) - Math.max(lx, x0));
+              // What each face of the cell sees of the box: its extent across that face within the cell.
+              const show = (d: number, reach: number, area: number): void => {
+                if (reach < faceReach[e + d]! - FACE_DEPTH || area <= faceArea[e + d]!) return;
+                faceArea[e + d] = area;
+                faceColour[e + d] = colour;
+              };
+              show(0, hx, sy * sz);
+              show(1, -lx, sy * sz);
+              show(2, hy, sx * sz);
+              show(3, -ly, sx * sz);
+              show(4, hz, sx * sy);
+              show(5, -lz, sx * sy);
             }
           }
         }
