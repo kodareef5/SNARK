@@ -118,6 +118,24 @@ export function rec(s: Server, name: string): EntityRecord | undefined {
   return pid === undefined ? undefined : s.h.host.records.byPid.get(pid);
 }
 
+/** Sets `session`'s body down `dx`, `dz` metres from where it stands, and says where it stands then. */
+export function shift(s: Server, session: ClientSession, dx: number, dz: number): [number, number] {
+  const ents = s.h.world.ents;
+  const e = s.h.ent(session);
+  const x = ents.x[e]! + dx;
+  const z = ents.z[e]! + dz;
+  ents.setPosition(e, x, s.h.world.hf.heightAt(x, z), z);
+  s.h.run(200);
+  const now = s.h.ent(session);
+  return [ents.x[now]!, ents.z[now]!];
+}
+
+/** How far `session`'s body stands from `at`, on the ground's plane. */
+export function from(s: Server, session: ClientSession, at: readonly number[]): number {
+  const e = s.h.ent(session);
+  return Math.hypot(s.h.world.ents.x[e]! - at[0]!, s.h.world.ents.z[e]! - at[1]!);
+}
+
 /** Asks to travel to world `to`. Returns the ticket the server sent, or the code it refused with. */
 export function travel(s: Server, session: ClientSession, to: number): Uint8Array | number {
   let code = -1;

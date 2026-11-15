@@ -14,7 +14,7 @@ import { Rng } from "../../shared/rng.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
-import { TestCluster, beat, commit, crash, keyAt, places, rec, travel } from "../fixtures/cluster.ts";
+import { TestCluster, beat, commit, crash, from, keyAt, places, rec, shift, travel } from "../fixtures/cluster.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
 const t = new TestCluster();
@@ -67,7 +67,9 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   a.h.run(300);
   const carried = new Map(items.held(me));
   const pid = me.pid;
-  const stood = [a.h.world.ents.x[a.h.ent(ada)]!, a.h.world.ents.z[a.h.ent(ada)]!];
+  // It leaves from a dozen metres off the spawn point.
+  const stood = shift(a, ada, 10, 7);
+  expect(Math.hypot(stood[0] - a.h.world.spawn.x, stood[1] - a.h.world.spawn.z)).toBeGreaterThan(10);
   const hunger = -me.vitals!.rate[V_FOOD]!;
   const fed = me.vitals!.at(V_FOOD, a.h.world.tick);
   expect(hunger).toBeGreaterThan(0);
@@ -106,7 +108,7 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   expect(b.h.host.items.audit()).toEqual([]);
   expect(audit(a, b)).toEqual([]);
 
-  // And back, with the egg and all, to where it stood when it left.
+  // And back, with the egg and all, to the island's spawn point as any arrival: not to where it stood when it left.
   b.h.run(1000);
   beat(a, b);
   const back = travel(b, there, a.world);
@@ -118,7 +120,7 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   const again = rec(a, "ada")!;
   expect([again.pid, again.xp, again.team, again.rank]).toEqual([pid, 12345, team, 2]);
   expect(new Map(items.held(again))).toEqual(carried);
-  expect(Math.hypot(a.h.world.ents.x[a.h.ent(home)]! - stood[0]!, a.h.world.ents.z[a.h.ent(home)]! - stood[1]!)).toBeLessThan(2);
+  expect([from(a, home, [a.h.world.spawn.x, a.h.world.spawn.z]) < 8, from(a, home, stood) > 10]).toEqual([true, true]);
   expect(tribes.of(again)).toMatchObject({ id: team, name: "Raptors", owner: pid });
   expect(a.h.host.tribes.may(again, a.h.world.structs.chunks[Math.floor(wall / 65536)]!.owner[wall & 0xffff]!)).toBe(true);
   expect(a.h.host.tribes.may(again, pet.team)).toBe(true);
@@ -178,6 +180,7 @@ test("the source killed after it sealed a survivor and before it saved gives it 
   const { session, me } = survivor(a, "ada");
   const pid = me.pid;
   const carried = new Map(a.h.host.items.held(me));
+  const stood = shift(a, session, -9, 6);
   expect(audit(a, b)).toEqual([]);
   beat(a, b);
   // Sealed and out of the world, and the server dies before the commit after which the page would have had its ticket.
@@ -193,6 +196,8 @@ test("the source killed after it sealed a survivor and before it saved gives it 
   a2.h.run(400);
   expect(again.state).toBe("active");
   expect(new Map(a2.h.host.items.held(rec(a2, "ada")!))).toEqual(carried);
+  // It never went anywhere, so it stands where it stood, as after a logout.
+  expect(from(a2, again, stood)).toBeLessThan(1);
   expect(places(pid, folder, a2, b)).toEqual(["world 1"]);
   expect(audit(a2, b)).toEqual([]);
   // Once more, and nobody comes: past its ticket's time the island takes it back by itself.

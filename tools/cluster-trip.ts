@@ -5,7 +5,8 @@
 //   bun run cluster-trip -- --url ws://localhost:8798/ws [--to Tampa] [--name Courier]
 // It holds: the agent lists the other server; a server that is not there is refused; the survivor arrives with what it carries,
 // slot for slot, and its level; it cannot be played meanwhile on the server it left; the cluster's ledgers balance; and it
-// comes back with the same things to where it stood. It exits 1 if any of that fails. `--dev` servers only: it types cheats.
+// comes back with the same things, at the map's spawn point as every arrival is and not where it left from. It exits 1 if any
+// of that fails. `--dev` servers only: it types cheats, and again after each arrival, since an arrival is a new session.
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -135,6 +136,8 @@ try {
   hold("the agent offers servers and travel", tools.includes("servers") && tools.includes("travel"));
   let s = await joined(a);
   hold("the survivor is in the world on the first server", s.self !== undefined, brief(s.self ?? s));
+  // A survivor new on a throwaway server stands at the spawn point, where every arrival is put.
+  const spawned = value("--url") === undefined ? s.self : null;
 
   for (const line of ["enablecheats", "kit tools"]) console.log(`  ${line}:`, brief(await a.tool("console", { line }), 120));
   const tree = ((await a.tool("observe", { radius: 48 })).tree ?? [])[0];
@@ -171,8 +174,10 @@ try {
   const back = await a.tool("travel", { to: String(list.world ?? list.here) });
   hold(`it comes back to ${list.here}`, back.state === "done" && back.self !== undefined, brief({ state: back.state, arrived: back.arrived, reason: back.reason }));
   hold("with the same things and level", carried(back) === before, carried(back) === before ? "" : `now ${carried(back).slice(0, 240)}`);
-  const moved = back.self && stood ? Math.hypot(back.self.x - stood.x, back.self.z - stood.z) : Infinity;
-  hold("to where it stood when it left", moved <= 2, `${moved.toFixed(1)} m from where it left`);
+  // Every arrival is at the map's spawn point, home included: coming back where it left could put it inside a base.
+  const off = (p: any, q: any): number => (p && q ? Math.hypot(p.x - q.x, p.z - q.z) : Infinity);
+  hold("not to where it stood when it left", off(back.self, stood) > 5, `${off(back.self, stood).toFixed(1)} m from where it left`);
+  if (spawned) hold("but to the spawn point, where it first stood", off(back.self, spawned) <= 4, `${off(back.self, spawned).toFixed(1)} m from it`);
   // A new session on the first server: cheats are asked for again.
   await a.tool("console", { line: "enablecheats" });
   const home2 = await a.tool("console", { line: "cluster audit" });

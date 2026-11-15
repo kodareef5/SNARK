@@ -213,6 +213,8 @@ async function main(): Promise<void> {
         continue;
       }
       if (agent && agent !== leaving && agent.session.state === "active") {
+        // What it carries is told just after the welcome; the answer waits for it, a few seconds at most.
+        for (let i = 0; i < 30 && !agent.session.inventory; i++) await Bun.sleep(100);
         const turned = going.refused;
         trip = null;
         const now = (await agent.call("status", {})) ?? {};

@@ -452,7 +452,9 @@ export class Cluster {
     for (const r of recs) rebaseTicks(r, delta);
     const rec = recs[0]!;
     if (key.length > 0) rec.keyHash = key.slice();
-    // One that comes back where it left stands where it was. One new here comes in at the map's spawn point.
+    // Every arrival, home included, is at the map's spawn point, as ARK's is at a spawn and never where the survivor last stood:
+    // that would let one leave from inside a base it broke into and come back inside it. One taken back from a ticket never
+    // used never left, as one that logs out and in, so it stands where it was.
     if (head.from !== this.world) {
       rec.x = world.spawn.x;
       rec.z = world.spawn.z;
