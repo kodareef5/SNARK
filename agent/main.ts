@@ -206,7 +206,9 @@ async function main(): Promise<void> {
     const me = leaving.session;
     const at = me.world ? nearestTerminal(me.world.structs, me.registry, me.own.x, me.own.z) : null;
     if (!at) return refused("no obelisk's terminal is in sight: walk toward an obelisk, which stands taller than anything near it");
-    if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5) await leaving.call("walk_to", { x: at.x, z: at.z, wait_s: 90 });
+    // A walk answers within 50 s at most and goes on after, so a longer one is waited for here.
+    if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5) await leaving.call("walk_to", { x: at.x, z: at.z, wait_s: 50 });
+    for (let i = 0; i < 200 && Math.hypot(me.own.x - at.x, me.own.z - at.z) > 1.5 && agent === leaving; i++) await Bun.sleep(500);
     if (Math.hypot(me.own.x - at.x, me.own.z - at.z) > 3) return { ...((await leaving.call("status", {})) ?? {}), state: "blocked", reason: "could not reach the obelisk's terminal" };
     cluster = list;
     trip = null;
