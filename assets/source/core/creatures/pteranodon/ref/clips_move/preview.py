@@ -12,6 +12,10 @@ For each clip, into DIR (default: this folder):
   the ground's lines 25 cm apart moving under a gait so a planted hand or foot holds still against them; a loop
   plays four times.
 
+game_clips_<n>.png beside them are the clip pages of the game's own renderer: the review sheet that
+`bun tests/fixtures/flyer/build.ts` draws of the block-out flyer with these clips (artifacts/art/core/pteranodon), before
+the asset has its own asset.ts. They show each clip in its own frame, without the engine's lift or turn.
+
 The engine's own motion is drawn: the take-off rises as the engine lifts it (rig.take_off_lift) from ground lines
 that stay put, the camera framed a metre higher, so its hands and feet are seen to hold the ground for the push; the
 turn turns. A clip

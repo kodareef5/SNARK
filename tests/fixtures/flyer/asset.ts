@@ -1,8 +1,8 @@
-// The pteranodon's block-out with its blocked movement clips, built through the art pipeline as an asset of its own so
-// that flight in the pose can be tested and drawn before the model lands (planning/reference/flyers-plan.md, FL4). It is
-// not under assets/source, so the game has none of it: the content's pteranodon stays a grey box. `bun
-// tests/fixtures/flyer/build.ts` builds pteranodon.snpk beside this from rig.py and clips_move.py in the pteranodon's
-// own folder. The zones and sockets are given outright from rig.py's joints, the zones as capsules along the wing's
+// The pteranodon's block-out with its movement and action clips, built through the art pipeline as an asset of its own
+// so that flight in the pose can be tested and drawn before the model lands (planning/reference/flyers-plan.md, FL4).
+// It is not under assets/source, so the game has none of it: the content's pteranodon stays a grey box. `bun
+// tests/fixtures/flyer/build.ts` builds pteranodon.snpk beside this from rig.py, clips_move.py and clips_act.py in the
+// pteranodon's own folder. The zones and sockets are given outright from rig.py's joints, the zones as capsules along the wing's
 // bones only, the membrane between them uncovered.
 
 import type { CreatureAsset, ZoneSpec } from "../../../tools/art/spec.ts";
@@ -17,7 +17,7 @@ function pair(zone: "arm" | "hand" | "leg" | "foot", bone: string, x: number, y:
 
 export default {
   kind: "creature",
-  source: { scripts: ["rig.py", "clips_move.py"] },
+  source: { scripts: ["rig.py", "clips_move.py", "clips_act.py"] },
   scale: 1,
   skeleton: { id: "pteranodon", root: "pelvis", drop: /^ctl_/, bones: 42 },
   zones: [
@@ -71,6 +71,17 @@ export default {
     { name: "swim_idle", source: "swim_idle", loop: true },
     { name: "swim", source: "swim", loop: true },
     { name: "fall", source: "fall", loop: true },
+    // And every clip clips_act.py makes.
+    { name: "call", source: "call", loop: false },
+    { name: "startled", source: "startled", loop: false },
+    { name: "attack", source: "attack", loop: false },
+    { name: "attack_air", source: "attack_air", loop: false },
+    { name: "barrel_roll", source: "barrel_roll", loop: false },
+    { name: "grab", source: "grab", loop: false },
+    { name: "carry", source: "carry", loop: true },
+    { name: "release", source: "release", loop: false },
+    { name: "flinch", source: "flinch", loop: false },
+    { name: "carried", source: "carried", loop: true },
   ],
   // It walks on its feet and on the hands of its folded wings.
   feet: ["toes_l", "toes_r", "fingers_l", "fingers_r"],

@@ -1,0 +1,15 @@
+Frames are zero-based. Excluding membrane gathering and paint:
+
+- **fly — at the bar.** Shoulder effort now reads; the steady head and elbow-led recovery survived.
+- **fly_fast — close.** Forward reach is better; **f0–2 and f15–17** still resemble cruising more than a distinct sprint pose.
+- **hover — at the bar.** **f18–24** retains readable wing area, and the body response now sells effort.
+- **glide — at the bar.** Still the strongest; leave it alone.
+- **dive — at the bar.** Head and swept wings now share the same streamlined intention.
+- **take_off — close.** Supported push and deployment are substantially fixed; **f16–24** still needs clearer shoulder effort in that first powerful downstroke, without more whole-body rise.
+- **land — short.** **f18–20** already looks parked; **f22–28** reads as a separate dip and rebound rather than arms catching arriving weight. Carry the chest continuously into hand contact, then yield and arrest.
+- **walk — at the bar for the animation.** No defensible new contact fault; the remaining blade-like impression belongs to the membrane.
+- **idle — at the bar.** The shrug now involves the body; the look holds remain useful. Enough for quiet rest.
+
+**Regressions:** No clear new break. The successful recovery paths, steady heads and launch contact order remain intact. Landing’s delayed settlement is still unresolved.
+
+**Rider:** No definite wing or neck penetration visible, and the added shoulder drive does not look like excessive seat lurching. The closest-looking wing passes are **take_off f10–16** and **land f6–14**; frontal views show lateral separation despite side-view overlap. These sampled sheets cannot establish clearance between frames.

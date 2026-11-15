@@ -29,6 +29,11 @@ export interface Lane {
 export interface Hearth {
   /** Spoils the contents up to tick `t`. `t` never goes back. */
   settle(t: number): void;
+  /**
+   * The tick the next thing in it spoils, after the last settle, or 0 if nothing will. A spoil can free room for what waits
+   * or take a lane's ingredient, so the fire steps to it. Without it, nothing spoils between events.
+   */
+  spoils?(): number;
   /** Takes one piece of fuel. Returns the ticks it burns, or 0 if there is none. */
   feed(): number;
   /** The item the last feed() took, a content index. Without it, nothing burnt leaves anything. */
@@ -103,11 +108,16 @@ export function burn(fire: Fire, h: Hearth, now: number): number {
       if (needs[k] === 0) lanes[k]!.ticks = 0;
     }
     if (t >= now) break;
-    // Step to the next event: the fuel ends, the item is cooked, a lane's unit is done, or `now`. A cooked item or a unit
-    // with no room waits.
+    // Step to the next event: the fuel ends, the item is cooked, a lane's unit is done, something spoils, or `now`. A cooked
+    // item or a unit with no room waits. What spoils matters only to cooking and lanes: it may free room for what waits
+    // or take what a lane needs, and the fire must see that at its tick, as one read every tick would.
     const toCook = need > 0 && fire.cook < need ? need - fire.cook : Infinity;
     let step = Math.min(fire.fuel, toCook, now - t);
     for (let k = 0; k < lanes.length; k++) if (needs[k]! > 0 && lanes[k]!.ticks < needs[k]!) step = Math.min(step, needs[k]! - lanes[k]!.ticks);
+    if (need > 0 || lanes.length > 0) {
+      const spoil = h.spoils?.() ?? 0;
+      if (spoil > t) step = Math.min(step, spoil - t);
+    }
     t += step;
     fire.fuel -= step;
     if (need > 0 && fire.cook < need) fire.cook += step;
