@@ -9,6 +9,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
 import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
+import { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchJson, fetchText } from "../core/fetched.ts";
@@ -79,6 +80,7 @@ async function boot(): Promise<void> {
     ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
+    city: (content) => new CityStatics(map.dims, map.statics, content),
   });
   const app = new App(session, reg, pack, { manifest, port });
   app.stress = params.has("stress");

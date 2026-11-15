@@ -150,13 +150,14 @@ export const LIT_SPLIT_FRAGMENT = LIT_FRAGMENT.replace("void main() {\n", `${SEE
 /**
  * The far fade, whose twin is far.ts `fadeKeeps`: a far draw is gone at `vGone` metres, and over the last share of that,
  * fView.w, a fragment is dropped where its pixel's place in a 4 by 4 ordered pattern says, so its coverage falls evenly
- * to none. A node's draw also drops what the hand-over between the stores says (hand.ts). A program calls fadeOut()
- * first, before anything is lit.
+ * to none. A draw at -`vGone` fades in over the same distances, keeping what the other drops (farcity.ts). A node's draw
+ * also drops what the hand-over between the stores says (hand.ts). A program calls fadeOut() first, before anything is lit.
  */
 export const FAR_FADE = `${HAND_GLSL}flat in float vGone;
 void fadeOut() {
   ivec2 q = ivec2(gl_FragCoord.xy) & 3;
-  if (vGone > 0.0 && (vGone - length(vRel)) * 16.0 <= (FADE_ORDER[q.y * 4 + q.x] + 0.5) * vGone * fView.w) discard;
+  float g = abs(vGone);
+  if (vGone != 0.0 && ((g - length(vRel)) * 16.0 <= (FADE_ORDER[q.y * 4 + q.x] + 0.5) * g * fView.w) == (vGone > 0.0)) discard;
   if (handDrops()) discard;
 }
 `;

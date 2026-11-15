@@ -60,6 +60,8 @@ export const DRAW_WATER = 512;
  * reach. The level the draw names is only a run of indices from 0, as many as the longest of its rows.
  */
 export const DRAW_PULLED = 1024;
+/** A flat draw of `drawIndexCount` of its level's indices from `drawFirstIndex`, as a textured draw's run is: a run of a far city tile's chunks (farcity.ts). */
+export const DRAW_RANGED = 2048;
 export const ATLAS_REGION = 4;
 /**
  * The far nodes' meshes as a float texture ATLAS_WIDTH texels wide, a row a mesh: in its first texel its reach and its
