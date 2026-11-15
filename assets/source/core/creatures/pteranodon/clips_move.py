@@ -816,6 +816,125 @@ def land(r):
 
 
 # =====================================================================================================================
+# On the ground
+# =====================================================================================================================
+
+# The foot from the ankle to the ball, lying flat as STANCE has it.
+FOOT_BALL = Vector((0.010, 0.0, 0.108))
+
+
+def ankle_for_ball(ball, roll):
+    """Where the ankle goes for the ball of the foot to stay at `ball` with the heel lifted `roll` degrees (the foot's
+    pitch is STANCE's less roll)."""
+    a = math.radians(-roll)
+    return Vector(ball) - Vector((FOOT_BALL.x, FOOT_BALL.z * math.sin(a), FOOT_BALL.z * math.cos(a)))
+
+
+def gait_foot(phase, n, stance, contact_z, x, lift, roll_end, hang):
+    """One foot through a gait of n frames: (ankle, foot pitch, talons). It sets down at phase 0, farthest forward,
+    with the ball of the foot at `contact_z`; the ball holds the ground, moving back with it, for `stance` frames, the
+    heel rising `roll_end` degrees over the last part while the toes stay flat; then the foot swings forward `lift`
+    high with the toes hanging `hang` degrees, and reaches out flat to set down again."""
+    step = rig.STRIDE["walk"] / n
+    if phase <= stance:
+        ball = Vector((x, 0.0, contact_z - step * phase)) + Vector((0.0, STANCE_FOOT["l"].y, 0.0))
+        roll = roll_end * smooth((phase - 0.45 * stance) / (0.55 * stance)) ** 1.3
+        return ankle_for_ball(ball, roll), STANCE_FOOT_PITCH - roll, -roll / rig.TALONS_SHUT
+    a0 = ankle_for_ball(Vector((x, STANCE_FOOT["l"].y, contact_z - step * stance)), roll_end)
+    a1 = ankle_for_ball(Vector((x, STANCE_FOOT["l"].y, contact_z)), 0.0)
+    span = n - stance
+    s = (phase - stance) / span
+    z = Keys([(0.0, a0.z, -step * span * 0.6), (0.55, lerp(a0.z, a1.z, 0.62)), (1.0, a1.z, -step * span * 0.4)])(s)
+    # Off the ground in a frame, and down in one.
+    y = Keys([(0.0, a0.y, 0.07 * span), (0.4, a1.y + lift), (0.8, a1.y + lift * 0.45), (1.0, a1.y, -0.06 * span)])(s)
+    pitch = Keys([(0.0, STANCE_FOOT_PITCH - roll_end), (0.35, STANCE_FOOT_PITCH - hang), (0.85, STANCE_FOOT_PITCH + 4.0),
+                  (1.0, STANCE_FOOT_PITCH)])(s)
+    talons = Keys([(0.0, -roll_end / rig.TALONS_SHUT), (0.4, 0.1), (0.85, -0.05), (1.0, 0.0)])(s)
+    return Vector((x, y, z)), pitch, talons
+
+
+def gait_hand(phase, n, stance, contact_z, x, lift, side):
+    """One hand through a gait: (knuckle, (pitch, yaw, roll) of the long hand bone). It sets down at phase 0,
+    farthest forward, and holds the ground moving back with it for `stance` frames, then lifts and swings forward,
+    the knuckle tipped up and a little out."""
+    step = rig.STRIDE["walk"] / n
+    y0 = STANCE_HAND[side].y
+    if phase <= stance:
+        return Vector((x, y0, contact_z - step * phase)), (0.0, 0.0, 0.0)
+    span = n - stance
+    s = (phase - stance) / span
+    z0 = contact_z - step * stance
+    z = Keys([(0.0, z0, -step * span * 0.5), (0.5, lerp(z0, contact_z, 0.55)), (1.0, contact_z, -step * span * 0.5)])(s)
+    y = Keys([(0.0, y0, 0.08 * span), (0.45, y0 + lift), (0.85, y0 + lift * 0.4), (1.0, y0, -0.06 * span)])(s)
+    out = 0.04 * math.sin(math.pi * s) * (1.0 if side == LEFT else -1.0)
+    # The folded finger rides on the hand, so the hand barely tips or its tip would sweep about behind.
+    tip = 4.0 * math.sin(math.pi * s)
+    return Vector((x + out, y, z)), (tip, 0.0, 0.0)
+
+
+WALK_BODY = Vector((0.0, 0.43, -0.40))
+
+
+def walk(r):
+    """On all fours at 2.6 m/s, wings folded: a lateral-sequence walk, left hand, right foot, right hand, left foot.
+    The long arms reach well forward and the short legs take quick steps, rolling up onto the toes before they lift;
+    the body rolls over each hind foot and the shoulders swing to each reaching hand; the head is carried level and
+    steady on the neck while the body bobs under it."""
+    name = "walk"
+    N = rig.CLIPS[name]["frames"]
+    hand_stance, foot_stance = 11.0, 10.0
+    step = rig.STRIDE[name] / N
+    td = {"hand_l": 0.0, "foot_r": N / 4.0, "hand_r": N / 2.0, "foot_l": 3.0 * N / 4.0}
+    hand_mid, foot_mid = STANCE_HAND["l"].z - 0.06, -0.40
+    hand_z = hand_mid + step * hand_stance / 2.0
+    foot_z = foot_mid + step * foot_stance / 2.0
+
+    def bob(t):
+        # Lowest just after each hind foot takes the weight.
+        return Keys([(td["foot_r"] + 2.0, -1.0), (td["foot_r"] + 6.5, 1.0), (td["foot_l"] + 2.0, -1.0),
+                     (td["foot_l"] + 6.5 - N, 1.0)], period=N)(t)
+
+    def roll(t):
+        return 2.5 * math.cos(2.0 * math.pi * (t - 1.0) / N)
+
+    def yaw(t):
+        return -3.0 * math.cos(2.0 * math.pi * (t - 1.5) / N)
+
+    ly = lagging(lambda t: 0.012 * bob(t), N, True, 2.5, 0.35)
+
+    def at(t):
+        f = int(round(t)) % N
+        p = ground()
+        b = bob(t)
+        p["body"] = WALK_BODY + Vector((-0.012 * roll(t) / 2.5, 0.012 * b, 0.0))
+        p["body_rot"] = (S["body"]["pitch"] - 3.0 + 1.2 * b, yaw(t), roll(t))
+        p["spine"] = (S["spine"]["pitch"], -0.3 * yaw(t), -0.3 * roll(t))
+        p["chest"] = (S["chest"]["pitch"] + 2.0 + 60.0 * ly[f], -0.4 * yaw(t), -0.5 * roll(t))
+        for side in "lr":
+            sign = 1.0 if side == LEFT else -1.0
+            ph = (t - td["hand_" + side]) % N
+            knuckle, hrot = gait_hand(ph, N, hand_stance, hand_z, STANCE_HAND[side].x + 0.02 * sign, 0.15, side)
+            p["hand_" + side] = (knuckle, mrot(hrot, side))
+            ph = (t - td["foot_" + side]) % N
+            ankle, pitch, talons = gait_foot(ph, N, foot_stance, foot_z, STANCE_FOOT[side].x, 0.12, 55.0, 25.0)
+            p["foot_" + side] = ankle
+            p["foot_rot_" + side] = (pitch, 0.0, 0.0)
+            p["talons_" + side] = talons
+            p["knee_" + side] = STANCE_KNEE[side] + (hip(p, side) - hip(ground(), side)) + Vector((0.0, 0.0, 0.5 * (ankle.z - STANCE_FOOT[side].z)))
+            shoulder = chest_point(p, _J["upper_arm_" + side]) - chest_point(ground(), _J["upper_arm_" + side])
+            p["elbow_" + side] = STANCE_ELBOW[side] + shoulder + Vector((0.0, 0.0, 0.3 * (knuckle.z - STANCE_HAND[side].z)))
+        # The head rides level and steady, a little forward of the stance, swaying less than the shoulders.
+        base = chain(p)["neck"]
+        p["head"] = within_neck(p, Vector((0.35 * base.x, STANCE_HEAD.y - 0.02 + 0.25 * 0.012 * b, STANCE_HEAD.z + 0.05)))
+        p["head_rot"] = (-2.0 + 30.0 * ly[f], 0.0, -0.3 * roll(t))
+        p["neck"] = [(0.0, -0.2 * yaw(t), 0.0)] * 4
+        p["tail"] = (2.0 + 200.0 * ly[f], -0.8 * yaw(t))
+        return p
+
+    return make(r, name, N, at)
+
+
+# =====================================================================================================================
 
 def setup(r):
     global _r
@@ -828,6 +947,6 @@ def setup(r):
 if __name__ == "__main__":
     r = rig.find()
     setup(r)
-    for clip in (glide, fly, fly_fast, hover, dive, take_off, land):
+    for clip in (glide, fly, fly_fast, hover, dive, take_off, land, walk):
         clip(r)
     r.finish("move")
