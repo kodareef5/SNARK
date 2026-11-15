@@ -301,6 +301,8 @@ export interface DeviceInfo {
   cores: number;
   memoryGB: number | null;
   touch: number;
+  /** Whether the page took the device for touch-first, which draws each tier as its touch rule says (tiers.ts forTouch). */
+  touchFirst?: boolean;
   features: Record<string, boolean | string | number>;
 }
 
@@ -448,7 +450,7 @@ export function deviceOf(g: Record<string, unknown>, features: Record<string, bo
   const nav = (g.navigator ?? {}) as Record<string, unknown>;
   const screen = (g.screen ?? {}) as Record<string, unknown>;
   const n = (v: unknown): number => (typeof v === "number" ? v : 0);
-  return { userAgent: String(nav.userAgent ?? ""), screen: [n(screen.width), n(screen.height)], window: [n(g.innerWidth), n(g.innerHeight)], pixelRatio: n(g.devicePixelRatio), cores: n(nav.hardwareConcurrency), memoryGB: typeof nav.deviceMemory === "number" ? nav.deviceMemory : null, touch: n(nav.maxTouchPoints), features };
+  return { userAgent: String(nav.userAgent ?? ""), screen: [n(screen.width), n(screen.height)], window: [n(g.innerWidth), n(g.innerHeight)], pixelRatio: n(g.devicePixelRatio), cores: n(nav.hardwareConcurrency), memoryGB: typeof nav.deviceMemory === "number" ? nav.deviceMemory : null, touch: n(nav.maxTouchPoints), touchFirst: typeof g.matchMedia === "function" && (g.matchMedia as (q: string) => { matches: boolean })("(pointer: coarse)").matches, features };
 }
 
 /** What gpuOf asks of a WebGL 2 context. GL holds WebGL's own numbers for what it is asked. */

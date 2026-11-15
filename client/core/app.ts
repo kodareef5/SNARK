@@ -2,7 +2,7 @@
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import type { AssetPort } from "./assets/port.ts";
-import { tierOf } from "./assets/tiers.ts";
+import { forTouch, tierOf } from "./assets/tiers.ts";
 import { keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -570,7 +570,7 @@ export class App {
     if (this.ui.settings.download) this.scene.assets.residency.download();
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
-    this.scene.assets.tier = tierOf(this.ui.settings.tier);
+    this.scene.assets.tier = forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst);
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
     session.askFar(this.scene.assets.tier.reach.bases);
     session.holdNodes(this.scene.assets.tier.nodes.chunks);

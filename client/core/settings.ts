@@ -1,11 +1,13 @@
 // Player settings. They change nothing on the server and last only while the page is open.
 
 import { TICK_RATE } from "../../shared/coords.ts";
-import { DEFAULT_TIER, TIERS, type Tier } from "./assets/tiers.ts";
+import { DEFAULT_TIER, offeredTiers, type Tier } from "./assets/tiers.ts";
 
 export class Settings {
   /** How much detail is drawn (client/core/assets/tiers.ts). */
   tier: Tier["name"] = DEFAULT_TIER;
+  /** A touch-first device, which draws a tier as its touch rule says and is offered the tiers it allows (tiers.ts). The shell sets it. */
+  touchFirst = false;
   /** The byte budget of a snapshot the server is asked for, one of SNAPSHOT_BYTES. A server may allow less. */
   snapshotBytes = 1100;
   /** What is kept of the assets between visits, in words. The app writes it each frame. */
@@ -50,7 +52,11 @@ export const SETTING_ROWS: readonly SettingRow[] = [
   { label: "Voice volume", value: (s) => `${Math.round(s.voiceVolume * 100)}%`, step: (s, by) => void (s.voiceVolume = clamp(Math.round((s.voiceVolume + by * 0.1) * 10) / 10, 0, VOLUME_MAX)) },
   { label: "Talk key (B)", value: (s) => (s.toggleTalk ? "on and off" : "hold"), step: (s) => void (s.toggleTalk = !s.toggleTalk) },
   { label: "Keep all assets", value: (s) => s.kept, step: (s) => void (s.download = true) },
-  { label: "Graphics", value: (s) => TIER_LABEL[s.tier], step: (s, by) => void (s.tier = TIERS[clamp(TIERS.findIndex((t) => t.name === s.tier) + by, 0, TIERS.length - 1)]!.name) },
+  { label: "Graphics", value: (s) => TIER_LABEL[s.tier], step: (s, by) => {
+      // A tier not offered here is above those that are.
+      const [list, at] = [offeredTiers(s.touchFirst), offeredTiers(s.touchFirst).findIndex((t) => t.name === s.tier)];
+      s.tier = (at < 0 ? list.at(-1)! : list[clamp(at + by, 0, list.length - 1)]!).name;
+    } },
   { label: "Connection", value: (s) => `${Math.round((s.snapshotBytes * TICK_RATE) / 1000)} KB/s`, step: (s, by) => void (s.snapshotBytes = SNAPSHOT_BYTES[clamp(SNAPSHOT_BYTES.indexOf(s.snapshotBytes) + by, 0, SNAPSHOT_BYTES.length - 1)]!) },
 ];
 

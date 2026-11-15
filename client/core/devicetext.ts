@@ -234,7 +234,7 @@ export function deviceTable(r: DeviceReport): string[] {
     const f = d.features;
     out.push(`device    ${identify(d.userAgent, d.touch)}`);
     out.push(`agent     ${d.userAgent}`);
-    out.push(`screen    ${d.screen.join("x")} CSS pixels, the page ${d.window.join("x")}, ${d.pixelRatio} device pixels to one; ${d.cores} cores${d.memoryGB ? `, ${d.memoryGB} GB` : ""}; ${d.touch} touch points`);
+    out.push(`screen    ${d.screen.join("x")} CSS pixels, the page ${d.window.join("x")}, ${d.pixelRatio} device pixels to one; ${d.cores} cores${d.memoryGB ? `, ${d.memoryGB} GB` : ""}; ${d.touch} touch points${d.touchFirst ? ", touch-first: each tier drawn by its touch rule" : ""}`);
     out.push(`features  workers ${yes(f.workers)}, file storage ${yes(f.opfs)}, decompression ${f.decompress || "none"}, audio worklet ${yes(f.audioWorklet)}, storage quota ${f.quotaMB ?? "?"} MB`);
     out.push(`          opus encode ${yes(f.opusEncode)}, opus decode ${yes(f.opusDecode)}, webtransport ${yes(f.webTransport)}, webgpu ${yes(f.webgpu)}`);
   }

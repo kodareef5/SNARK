@@ -85,6 +85,7 @@ async function boot(): Promise<void> {
   app.debug = app.stress || params.has("debug");
   app.steer = !selfcheck && !device;
   app.plainSky = selfcheck;
+  app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
   const intervals: number[] = [];
   let previous = 0;
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
