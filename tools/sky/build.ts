@@ -1,19 +1,20 @@
-// Makes the sky table: for each of the table's sun heights, the dome as the mood keys paint it (keys.ts), blended
-// between keys by the sun's height (grade.ts), as the game is to show it; and beside it the light, the physical sky's
-// (atmosphere.ts) with the sun and the moon opposite it, scaled to the anchors, tinted per key and white-balanced to
-// noon while the sun is high, and the exposure that makes a grey card facing up read as low poly's at that hour. Writes
-// client/core/render/skytable.ts, which the game reads, and the table as a strip of its 32 slices,
-// assets/source/core/sky/table.png, the zenith at the top of each.
+// Makes the sky table: for each of the table's slices, a sun height in the morning or the evening, the dome as the
+// mood keys paint it (keys.ts), blended between the keys of that half of the day by the sun's height (grade.ts), as
+// the game is to show it; and beside it the light, the physical sky's (atmosphere.ts) with the sun and the moon
+// opposite it, scaled to the anchors, tinted per key and white-balanced to noon while the sun is high, and the
+// exposure that makes a grey card facing up read as low poly's at that hour. Writes client/core/render/skytable.ts,
+// which the game reads, and the table as a strip of its slices, assets/source/core/sky/table.png, midnight to noon to
+// midnight, the zenith at the top of each.
 // Run: bun tools/sky/build.ts
 
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { CARD, LIGHT_FLOATS, MOON_RADIUS, SKY_SIZE, aroundCoord, aroundOf, cardExposure, cardTakes, decodeTexel, discUp, elevationOf, encodeTexel, heightOf, luminance, skyFrame, slotHeight, sunCoord, sunHeight, texelAt, upCoord } from "../../client/core/render/sky.ts";
+import { CARD, LIGHT_FLOATS, MOON_RADIUS, SKY_SIZE, SKY_SLICES, SUN_TOP, aroundCoord, aroundOf, cardExposure, cardTakes, decodeTexel, discUp, elevationOf, encodeTexel, hourOfSun, luminance, skyFrame, sliceCoord, sliceHeight, slotHeight, sunHeight, texelAt, upCoord } from "../../client/core/render/sky.ts";
 import { srgbToLinear } from "../../client/core/render/surface.ts";
 import { encodePng } from "../snap/png.ts";
 import { Atmosphere, EARTH, type Air } from "./atmosphere.ts";
-import { GRADES, bracket, carried, gradeAt, type Grade } from "./grade.ts";
+import { EVENING, GRADES, MORNING, bracket, carried, gradeAt, type Grade } from "./grade.ts";
 import { fill, keySkies, untone, type KeySky } from "./keys.ts";
 
 /**
@@ -38,7 +39,7 @@ const RINGS = 32;
 const ROUND = 32;
 const TEXELS = SKY_SIZE * SKY_SIZE;
 const DEG = Math.PI / 180;
-const NOON = heightOf(1);
+const NOON = SUN_TOP;
 
 type Rgb = [number, number, number];
 
@@ -90,9 +91,9 @@ export class SkyBuilder {
   /** What the card's exposure is at noon, which every exposure is divided by. */
   private noon = 1;
   private readonly skies = new Map<number, Float64Array>();
-  /** Each grade's key, if it has one, and its clear sky as the game is to show it, light before the tone curve: per texel of its slice, three powers of e. */
-  private readonly keys: (KeySky | undefined)[];
-  private readonly painted: Float64Array[];
+  /** Each key by name, and its clear sky as the game is to show it, light before the tone curve: per texel of its slice, three powers of e. */
+  private readonly keys = new Map<string, KeySky>();
+  private readonly painted = new Map<string, Float64Array>();
   /** Per slice either side of a key's hour, what is added to its texels, as powers of e, so the table read at that hour shows the key. */
   private readonly extra = new Map<number, Float64Array>();
   private readonly c = new Float64Array(3);
@@ -103,40 +104,49 @@ export class SkyBuilder {
   constructor(air: Air = AIR, grades: readonly Grade[] = GRADES, keys: readonly KeySky[] = keySkies()) {
     this.atm = new Atmosphere(air);
     this.grades = grades;
-    this.keys = grades.map((g) => keys.find((k) => k.name === g.name));
     const t = [0, 0, 0];
-    this.painted = this.keys.map((key) => {
+    for (const key of keys) {
       const field = new Float64Array(TEXELS * 3);
-      if (!key) return field;
       const known = Uint8Array.from(key.count, (c) => (c < 1 ? 0 : 1));
       for (let n = 0; n < TEXELS; n++) {
         untone(key.rgb.subarray(n * 3, n * 3 + 3), t);
         for (let k = 0; k < 3; k++) field[n * 3 + k] = Math.log(Math.max(t[k]!, 1e-6));
       }
       fill(field, known);
-      return field;
-    });
+      this.keys.set(key.name, key);
+      this.painted.set(key.name, field);
+    }
     this.anchor();
     this.meet();
   }
 
+  /** The grades a half of the sun's path passes through, in order of height. */
+  path(evening: boolean): Grade[] {
+    const names: readonly string[] = evening ? EVENING : MORNING;
+    return this.grades.filter((g) => names.includes(g.name));
+  }
+
   /**
-   * The table is read between its slices: at a key's own hour, between the slices either side, and the frame there
-   * turns a unit of it into what is shown by a factor that is 1 only at a slice. Both slices get the same addition to
-   * their texels, found over a few rounds, so that what is shown at the key's hour is the key.
+   * The table is read between its slices: at a key's hour, between the slices either side, and the frame there turns a
+   * unit of it into what is shown by a factor that is 1 only at a slice. Both slices get the same addition to their
+   * texels, found over a few rounds, so that what is shown at the key's hour is the key: at its own hour, and in the
+   * other half too where that half passes through it.
    */
   private meet(): void {
     const t = [0, 0, 0], got = [0, 0, 0];
-    const lights = new Float32Array(SKY_SIZE * LIGHT_FLOATS);
-    for (let z = 0; z < SKY_SIZE; z++) lights.set(this.lightOf(z).lights, z * LIGHT_FLOATS);
+    const lights = new Float32Array(SKY_SLICES * LIGHT_FLOATS);
+    for (let z = 0; z < SKY_SLICES; z++) lights.set(this.lightOf(z).lights, z * LIGHT_FLOATS);
     const frame = new Float32Array(FRAME_FLOATS);
-    for (const key of this.keys) {
+    for (const evening of [false, true]) for (const g of this.path(evening)) {
+      const key = this.keys.get(g.name);
       if (!key) continue;
-      skyFrame(key.hour, { table: new Uint8Array(0), lights }, frame);
+      const hour = hourOfSun(key.height, evening);
+      skyFrame(hour, { table: new Uint8Array(0), lights }, frame);
       const shown = frame[FRAME.skyScale]! * frame[FRAME.exposure]!;
-      const z = sunCoord(sunHeight(key.hour)) * (SKY_SIZE - 1);
-      const a = Math.min(SKY_SIZE - 2, Math.floor(z)), f = Math.round((z - a) * 256) / 256;
+      const z = sliceCoord(sunHeight(hour), evening) * (SKY_SLICES - 1);
+      const a = Math.min(SKY_SLICES - 2, Math.floor(z)), f = Math.round((z - a) * 256) / 256;
       if (f === 0 || f === 1) continue;
+      if (this.extra.has(a) || this.extra.has(a + 1)) throw new Error(`the ${key.name} key shares a slice with another`);
       const extra = new Float64Array(TEXELS * 3);
       const known = Uint8Array.from(key.count, (c) => (c < 1 ? 0 : 1));
       for (let round = 0; round < 4; round++) {
@@ -156,24 +166,25 @@ export class SkyBuilder {
   }
 
   /**
-   * The dome as shown at a sun height for a view, light before the tone curve: the keys either side blended as light
-   * by the sun's height, each carried along with the sun.
+   * The dome as shown at a sun height in the morning or the evening for a view, light before the tone curve: the keys
+   * either side on that half's path blended as light by the sun's height, each carried along with the sun.
    */
-  shown(height: number, elevation: number, around: number, out: Float64Array | number[]): void {
-    const { a, b, f } = bracket(height, this.grades);
+  shown(height: number, evening: boolean, elevation: number, around: number, out: Float64Array | number[]): void {
+    const path = this.path(evening);
+    const { a, b, f } = bracket(height, path);
     out.fill(0);
     for (const [i, w] of [[a, 1 - f], [b, f]] as const) {
-      const key = this.keys[i];
+      const key = this.keys.get(path[i]!.name);
       if (w === 0 || !key) continue;
       carried(height, key.height, elevation, around, this.at);
-      lookup(this.painted[i]!, this.at[0]!, this.at[1]!, this.v);
+      lookup(this.painted.get(key.name)!, this.at[0]!, this.at[1]!, this.v);
       for (let k = 0; k < 3; k++) out[k]! += w * Math.exp(this.v[k]!);
     }
   }
 
-  /** The exposure at a sun height, as its slice has it. */
-  exposureAt(height: number, g: Grade = gradeAt(height, this.grades)): number {
-    return this.cardExposure(height, this.light(height, g)) / this.noon;
+  /** The exposure at a sun height in the morning or the evening, as its slice has it. */
+  exposureAt(height: number, evening: boolean, g: Grade = gradeAt(height, this.path(evening))): number {
+    return this.cardExposure(height, this.light(height, evening, g)) / this.noon;
   }
 
   private cardExposure(height: number, l: Light): number {
@@ -202,9 +213,9 @@ export class SkyBuilder {
   }
 
   /** The dome before exposure at `elevation` and `around` degrees, for tools that look at it between texels. */
-  domeAt(height: number, elevation: number, around: number, out: Float64Array): void {
-    this.shown(height, elevation, around, out);
-    const e = this.exposureAt(height);
+  domeAt(height: number, evening: boolean, elevation: number, around: number, out: Float64Array): void {
+    this.shown(height, evening, elevation, around, out);
+    const e = this.exposureAt(height, evening);
     for (let k = 0; k < 3; k++) out[k]! /= e;
   }
 
@@ -229,10 +240,10 @@ export class SkyBuilder {
    * The afterglow the sun's slot carries through twilight: the dome's colour 3 degrees up toward the sun, as
    * strong as `afterglow` of the sky's light above, coming in as the sun's disc sets and gone by GLOW_GONE below.
    */
-  private afterglow(height: number, g: Grade, above: Rgb, balance: Rgb): Rgb {
+  private afterglow(height: number, evening: boolean, g: Grade, above: Rgb, balance: Rgb): Rgb {
     const share = g.afterglow * (1 - discUp(height)) * smooth((height + GLOW_GONE) / (GLOW_GONE - GLOW_FULL));
     if (share <= 0) return [0, 0, 0];
-    this.shown(height, 3, 0, this.c);
+    this.shown(height, evening, 3, 0, this.c);
     const c = [0, 1, 2].map((k) => this.c[k]! * balance[k]!);
     const k = (share * luminance(above)) / Math.max(luminance(c), 1e-30);
     return c.map((v) => v * k) as Rgb;
@@ -244,7 +255,7 @@ export class SkyBuilder {
    * strength the physical sky's, so a key that paints the dome brighter makes it brighter against the land and does
    * not light the land more. A surface facing down sees the ground, which sends back GROUND of all the light on it.
    */
-  light(height: number, g: Grade = gradeAt(height, this.grades)): Light {
+  light(height: number, evening: boolean, g: Grade = gradeAt(height, this.path(evening))): Light {
     const s = this.skyFor(height);
     const above: Rgb = [0, 0, 0];
     let plain = 0;
@@ -255,14 +266,14 @@ export class SkyBuilder {
       const w = 2 * Math.sin(e * DEG) * Math.cos(e * DEG) * (Math.PI / 2 / RINGS) * (Math.PI / ROUND);
       for (let q = 0; q < ROUND; q++, i += 6) {
         plain += luminance(s.subarray(i, i + 3)) * w;
-        this.shown(height, e, ((q + 0.5) / ROUND) * 180, this.c);
+        this.shown(height, evening, e, ((q + 0.5) / ROUND) * 180, this.c);
         for (let k = 0; k < 3; k++) above[k] += this.c[k]! * w;
       }
     }
     const strength = (plain / Math.max(luminance(above), 1e-30)) * this.sky * g.sky;
     const balance = this.balanceAt(height);
     for (let k = 0; k < 3; k++) above[k] *= strength * balance[k]!;
-    const glow = this.afterglow(height, g, above, balance);
+    const glow = this.afterglow(height, evening, g, above, balance);
     const sun = this.sunlight(height, g, false, balance).map((v, k) => v + glow[k]!) as Rgb;
     const moon = this.sunlight(-height, g, true, balance);
     const up = Math.max(0, Math.sin(slotHeight(height) * DEG));
@@ -278,7 +289,7 @@ export class SkyBuilder {
    * colours the keys give it, as the haze over the land does.
    */
   anchor(): void {
-    const g = gradeAt(NOON, this.grades);
+    const g = gradeAt(NOON, this.path(false));
     this.balance.fill(1);
     const s = Math.sin(NOON * DEG);
     const l = [Math.cos(NOON * DEG), s, 0];
@@ -290,7 +301,7 @@ export class SkyBuilder {
     for (let pass = 0; pass < 8; pass++) {
       this.sun = 1;
       this.sky = 1;
-      const one = this.light(NOON, g);
+      const one = this.light(NOON, false, g);
       const A = luminance(one.above);
       const S = luminance(one.sun);
       // The sky on a surface is above and below mixed by its normal's height, below being GROUND (sun s + above).
@@ -300,25 +311,25 @@ export class SkyBuilder {
       const a2 = head.sky * A * (facing + k1), b2 = S * (head.light + head.sky * k1 * s);
       this.sun = (CARD - (a2 * SHADED) / a1) / (b2 - (a2 * b1) / a1);
       this.sky = (SHADED - b1 * this.sun) / a1;
-      const lit = this.light(NOON, g);
+      const lit = this.light(NOON, false, g);
       const on = [0, 1, 2].map((k) => lit.sun[k]! * head.light + (facing * lit.above[k]! + (1 - facing) * lit.below[k]!) * head.sky);
       const y = luminance(on);
       for (let k = 0; k < 3; k++) this.balance[k]! *= y / on[k]!;
     }
-    this.noon = this.cardExposure(NOON, this.light(NOON, g));
+    this.noon = this.cardExposure(NOON, this.light(NOON, false, g));
   }
 
   /** Slice `z`'s light, as the table holds it, and its exposure. */
   lightOf(z: number): { lights: number[]; exposure: number } {
-    const height = heightOf(z / (SKY_SIZE - 1));
-    const l = this.light(height, gradeAt(height, this.grades));
+    const { height, evening } = sliceHeight(z);
+    const l = this.light(height, evening);
     const exposure = this.cardExposure(height, l) / this.noon;
     return { lights: [...l.sun, ...l.moon, ...l.above, ...l.below].map((v) => v * exposure).concat(1 / exposure), exposure };
   }
 
   /** Slice `z` of the table: its texels, its light and its exposure. */
   slice(z: number): Slice {
-    const height = heightOf(z / (SKY_SIZE - 1));
+    const { height, evening } = sliceHeight(z);
     const { lights, exposure } = this.lightOf(z);
     const bytes = new Uint8Array(TEXELS * 4);
     const extra = this.extra.get(z);
@@ -326,7 +337,7 @@ export class SkyBuilder {
     for (let y = 0; y < SKY_SIZE; y++) {
       for (let x = 0; x < SKY_SIZE; x++) {
         const n = y * SKY_SIZE + x;
-        this.shown(height, elevationOf(y / (SKY_SIZE - 1)), aroundOf(x / (SKY_SIZE - 1)), c);
+        this.shown(height, evening, elevationOf(y / (SKY_SIZE - 1)), aroundOf(x / (SKY_SIZE - 1)), c);
         if (extra) for (let k = 0; k < 3; k++) c[k]! *= Math.exp(extra[n * 3 + k]!);
         encodeTexel(c, bytes, texelAt(x, y, 0));
       }
@@ -335,10 +346,10 @@ export class SkyBuilder {
   }
 
   build(): { table: Uint8Array; lights: Float32Array; exposures: number[] } {
-    const table = new Uint8Array(SKY_SIZE ** 3 * 4);
-    const lights = new Float32Array(SKY_SIZE * LIGHT_FLOATS);
+    const table = new Uint8Array(SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
+    const lights = new Float32Array(SKY_SLICES * LIGHT_FLOATS);
     const exposures: number[] = [];
-    for (let z = 0; z < SKY_SIZE; z++) {
+    for (let z = 0; z < SKY_SLICES; z++) {
       const s = this.slice(z);
       table.set(s.bytes, texelAt(0, 0, z));
       lights.set(s.lights, z * LIGHT_FLOATS);
@@ -348,11 +359,11 @@ export class SkyBuilder {
   }
 }
 
-/** The table as a strip of its slices side by side, lowest sun first, the zenith at the top of each. */
+/** The table as a strip of its slices side by side, midnight to noon to midnight, the zenith at the top of each. */
 export function tableStrip(table: Uint8Array): Uint8Array {
-  const n = SKY_SIZE;
-  const out = new Uint8Array(n * n * n * 4);
-  for (let z = 0; z < n; z++) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) out.set(table.subarray(texelAt(x, y, z), texelAt(x, y, z) + 4), ((n - 1 - y) * n * n + z * n + x) * 4);
+  const n = SKY_SIZE, w = n * SKY_SLICES;
+  const out = new Uint8Array(w * n * 4);
+  for (let z = 0; z < SKY_SLICES; z++) for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) out.set(table.subarray(texelAt(x, y, z), texelAt(x, y, z) + 4), ((n - 1 - y) * w + z * n + x) * 4);
   return out;
 }
 
@@ -377,7 +388,7 @@ if (import.meta.main) {
   const { table, lights, exposures } = b.build();
   const t2 = performance.now();
   writeFileSync(resolve(import.meta.dir, "../../client/core/render/skytable.ts"), tableModule(table, lights));
-  writeFileSync(resolve(import.meta.dir, "../../assets/source/core/sky/table.png"), encodePng(SKY_SIZE * SKY_SIZE, SKY_SIZE, tableStrip(table)));
+  writeFileSync(resolve(import.meta.dir, "../../assets/source/core/sky/table.png"), encodePng(SKY_SIZE * SKY_SLICES, SKY_SIZE, tableStrip(table)));
   console.log(`anchors: sun ${b.sun.toFixed(4)}, sky ${b.sky.toFixed(4)}, white balance ${b.balance.map((v) => v.toFixed(4)).join(" ")}`);
   console.log(`exposure by slice: ${exposures.map((e) => e.toPrecision(3)).join(" ")}`);
   console.log(`atmosphere and anchors ${(t1 - t0).toFixed(0)} ms, table ${(t2 - t1).toFixed(0)} ms`);

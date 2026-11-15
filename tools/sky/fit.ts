@@ -7,7 +7,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { cardTakes, domeLight, shownSky, skyFrame, slotHeight, sunDirection, sunHeight, type Sky } from "../../client/core/render/sky.ts";
+import { cardTakes, domeLight, isEvening, shownSky, skyFrame, slotHeight, sunDirection, sunHeight, type Sky } from "../../client/core/render/sky.ts";
 import { readPng } from "../pack/png-read.ts";
 import { SkyBuilder } from "./build.ts";
 import { GRADES, type Grade } from "./grade.ts";
@@ -154,8 +154,10 @@ export function cardColours(sky: Sky, hour: number, moon: boolean): { lit: numbe
 /** What the builder makes of a key's three cards at its own height, on screen. */
 export function cardsOf(b: SkyBuilder, key: BaseKey, g: Grade): Record<string, number[]> {
   const height = sunHeight(key.hour);
-  const e = b.exposureAt(height, g);
-  const l = b.light(height, g);
+  const sun = [0, 0, 0];
+  sunDirection(key.hour, sun);
+  const e = b.exposureAt(height, isEvening(sun), g);
+  const l = b.light(height, isEvening(sun), g);
   const moon = key.lightBy === "moon";
   const light = moon ? l.moon : l.sun;
   const lift = (slotHeight(height) * Math.PI) / 180;

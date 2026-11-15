@@ -1,8 +1,8 @@
 // The grade: what the table shows of the sky, and the light the sky and the sun give. At each mood key's hour the dome
-// is the key's own clear sky (keys.ts), over the whole dome. Between keys it is the two either side blended by the
-// sun's height, each carried along with the sun near it, so a glow moves with the sun rather than staying where its key
-// had it. The physical sky (atmosphere.ts) sets how strong the light is; a few numbers per key tint it, fitted by
-// tools/sky/fit.ts to the key's grey cards.
+// is the key's own clear sky (keys.ts), over the whole dome. The morning and the evening each pass through keys of
+// their own; between two keys the dome is the two blended by the sun's height, each carried along with the sun near
+// it, so a glow moves with the sun rather than staying where its key had it. The physical sky (atmosphere.ts) sets how
+// strong the light is; a few numbers per key tint it, fitted by tools/sky/fit.ts to the key's grey cards.
 
 export interface Grade {
   name: string;
@@ -21,8 +21,8 @@ export const TWILIGHT = -18;
 
 /**
  * The keys of the plan's A2, by height, their light fitted by tools/sky/fit.ts to the accepted keys' cards
- * (assets/source/core/sky/keys, round five). Dawn and sunset share heights with the evening and the morning, as the
- * table does. The night key holds from the end of twilight. Noon's light is the anchors' and stays white.
+ * (assets/source/core/sky/keys, round five). The night key holds from the end of twilight. Noon's light is the
+ * anchors' and stays white.
  */
 export const GRADES: readonly Grade[] = [
   { name: "night", height: TWILIGHT, sun: [0.948, 0.96, 0.805], sky: 1.366, afterglow: 0.554 },
@@ -34,6 +34,14 @@ export const GRADES: readonly Grade[] = [
   { name: "afternoon", height: 35.01, sun: [0.893, 0.945, 1.241], sky: 0.955, afterglow: 0.217 },
   { name: "noon", height: 66.73, sun: [1, 1, 1], sky: 1, afterglow: 0.5 },
 ];
+
+/**
+ * The keys the morning and the evening pass through, by name, in order of height. The low sun's keys are each half's
+ * own, dawn's the morning's and golden hour's and sunset's the evening's, and dusk's stands for the twilight before
+ * dawn too. The day's keys, and night and noon, are both's, so the two halves meet at the ends of the sun's path.
+ */
+export const MORNING = ["night", "dusk", "dawn", "morning", "afternoon", "noon"] as const;
+export const EVENING = ["night", "dusk", "sunset", "golden", "morning", "afternoon", "noon"] as const;
 
 /** The keys either side of a sun height and how far it lies from the first to the second, 0 to 1. Past the ends, the end twice. */
 export function bracket(height: number, grades: readonly Grade[] = GRADES): { a: number; b: number; f: number } {

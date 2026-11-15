@@ -2,9 +2,11 @@
 // as high as low poly's sun at noon, and sets in the west (+X). The moon stands opposite it.
 //
 // The dome's colour, the haze's and the light on every surface come from one table made at build time (tools/sky):
-// the sky by the sun's height, the view's elevation and how far round the view is from the sun, in a 32-sided RGBA8 3D
-// texture sampled with linear filtering. Beside it, per sun height, the light of the sun, the moon and the sky above
-// and below. Low poly keeps its own light, `flatLight`, and its own sky colour.
+// the sky by the sun's height, the view's elevation and how far round the view is from the sun, in an RGBA8 3D texture
+// sampled with linear filtering, SKY_SIZE by SKY_SIZE by SKY_SLICES. The sun's axis holds the morning, from midnight to
+// noon, then the evening, from noon to midnight, told apart by whether the sun is east or west. Beside it, per slice,
+// the light of the sun, the moon and the sky above and below. Low poly keeps its own light, `flatLight`, and its own
+// sky colour.
 
 import { FRAME, FRAME_FLOATS } from "./packet.ts";
 import { AMBIENT, DIFFUSE, NIGHT_LIGHT } from "./shading.ts";
@@ -17,10 +19,12 @@ const TILT = Math.atan(0.43);
 export const SUN_STEP = 0.05;
 /** The highest the sun climbs, in degrees: the table's slices run from this far below the horizon to this far above. */
 export const SUN_TOP = (Math.asin(Math.cos(TILT)) * 180) / Math.PI;
-/** Texels along each side of the table. */
+/** Texels along the table's two sides across the sky: round from the sun, and up from the horizon. */
 export const SKY_SIZE = 32;
+/** Slices along the sun's axis: SKY_SIZE for the morning, from midnight to noon, then as many for the evening. */
+export const SKY_SLICES = 2 * SKY_SIZE;
 /**
- * Numbers per sun height beside the table: the light of the sun, of the moon, of the sky above and below, three each,
+ * Numbers per slice beside the table: the light of the sun, of the moon, of the sky above and below, three each,
  * in the table's units, so that between heights land and dome blend alike; then the light one unit stands for.
  */
 export const LIGHT_FLOATS = 13;
@@ -107,8 +111,10 @@ export function cardTarget(height: number): number {
 }
 
 // The table's three axes, each 0 to 1 across its texel centres: how far round from the sun's azimuth (x), the view's
-// elevation (y), the sun's height (z). Each is sampled more finely where the sky changes fastest: near the sun's
-// azimuth, near the horizon, and with the sun near the horizon.
+// elevation (y), the sun's height in the morning and then in the evening (z). Each is sampled more finely where the
+// sky changes fastest: near the sun's azimuth, near the horizon, and with the sun near the horizon; and the sun's
+// height also where low poly's light leaps (`cardTarget`), so that between slices the exposure carries the dome as
+// it is at the slices and does not brighten it with the land.
 
 export function aroundCoord(degrees: number): number {
   return Math.sqrt(Math.max(0, Math.min(1, degrees / 180)));
@@ -126,14 +132,42 @@ export function elevationOf(t: number): number {
   return t * t * 90;
 }
 
+/** The sun's heights, degrees, over which slices gather, and the share of a half's slices added there. */
+export const GATHER = [5, 8.5] as const;
+export const GATHERED = 0.24;
+
+/** Where a sun height lies along one half of the sun's axis, 0 at midnight to 1 at noon. */
 export function sunCoord(height: number): number {
   const s = Math.max(-1, Math.min(1, height / SUN_TOP));
-  return 0.5 + 0.5 * Math.sign(s) * Math.sqrt(Math.abs(s));
+  const gathered = Math.max(0, Math.min(1, (height - GATHER[0]) / (GATHER[1] - GATHER[0])));
+  return (0.5 + 0.5 * Math.sign(s) * Math.sqrt(Math.abs(s)) + GATHERED * gathered) / (1 + GATHERED);
 }
 
 export function heightOf(t: number): number {
-  const s = 2 * t - 1;
-  return Math.sign(s) * s * s * SUN_TOP;
+  let lo = -SUN_TOP, hi = SUN_TOP;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (sunCoord(mid) < t) lo = mid;
+    else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** The sun's axis, 0 to 1 across all SKY_SLICES' centres, at a sun height in the morning or the evening. */
+export function sliceCoord(height: number, evening: boolean): number {
+  const z = sunCoord(height) * (SKY_SIZE - 1);
+  return (evening ? SKY_SLICES - 1 - z : z) / (SKY_SLICES - 1);
+}
+
+/** Slice `z`'s sun height and half. */
+export function sliceHeight(z: number): { height: number; evening: boolean } {
+  const evening = z >= SKY_SIZE;
+  return { height: heightOf((evening ? SKY_SLICES - 1 - z : z) / (SKY_SIZE - 1)), evening };
+}
+
+/** Whether a sun direction is the evening's: in the west, +X. */
+export function isEvening(sun: ArrayLike<number>): boolean {
+  return sun[0]! > 0;
 }
 
 /**
@@ -174,10 +208,11 @@ const mixed = new Float64Array(4);
  * linear filtering and edges clamped: the bytes are blended by weights held to 1/256, and the blend decoded after.
  */
 export function sampleSky(table: Uint8Array, x: number, y: number, z: number, out: Float32Array | Float64Array | number[]): void {
-  const n = SKY_SIZE - 1;
-  const at = [x * n, y * n, z * n];
+  const ends = [SKY_SIZE - 1, SKY_SIZE - 1, SKY_SLICES - 1];
+  const at = [x * ends[0]!, y * ends[1]!, z * ends[2]!];
   let i0 = 0, j0 = 0, k0 = 0;
   for (let a = 0; a < 3; a++) {
+    const n = ends[a]!;
     const v = Math.max(0, Math.min(n, at[a]!));
     const base = Math.min(n - 1, Math.floor(v));
     corner[a] = Math.round((v - base) * 256) / 256;
@@ -207,7 +242,7 @@ export function skyCoords(sun: Vec, view: Vec, out: Float64Array | number[]): vo
   const cos = lx > 1e-9 ? (view[0]! * sun[0]! + view[2]! * sun[2]!) / lx : 1;
   out[0] = aroundCoord(Math.acos(Math.max(-1, Math.min(1, cos))) / DEG);
   out[1] = upCoord(Math.asin(Math.max(-1, Math.min(1, view[1]!))) / DEG);
-  out[2] = sunCoord(Math.asin(Math.max(-1, Math.min(1, sun[1]!))) / DEG);
+  out[2] = sliceCoord(Math.asin(Math.max(-1, Math.min(1, sun[1]!))) / DEG, isEvening(sun));
 }
 
 const coords = [0, 0, 0];
@@ -230,9 +265,9 @@ export function hazeColor(table: Uint8Array, sun: Vec, ray: Vec, skyScale: numbe
 }
 
 export interface Sky {
-  /** The table, SKY_SIZE cubed RGBA8 texels laid out as `texelAt` says. */
+  /** The table, SKY_SIZE by SKY_SIZE by SKY_SLICES RGBA8 texels laid out as `texelAt` says. */
   table: Uint8Array;
-  /** LIGHT_FLOATS per slice of the table, by sun height. */
+  /** LIGHT_FLOATS per slice of the table. */
   lights: Float32Array;
 }
 
@@ -281,12 +316,13 @@ export function slotHeight(height: number): number {
 }
 
 /**
- * The light at a sun height, blended between the slices either side as the table blends them: the light of the sun,
- * the moon, and the sky above and below in the table's units, then the light a unit stands for, by its logarithm.
+ * The light at a sun height in the morning or the evening, blended between the slices either side as the table blends
+ * them: the light of the sun, the moon, and the sky above and below in the table's units, then the light a unit
+ * stands for, by its logarithm.
  */
-function lightsAt(lights: Float32Array, height: number, out: Float64Array): void {
-  const v = sunCoord(height) * (SKY_SIZE - 1);
-  const k = Math.min(SKY_SIZE - 2, Math.floor(v));
+function lightsAt(lights: Float32Array, height: number, evening: boolean, out: Float64Array): void {
+  const v = sliceCoord(height, evening) * (SKY_SLICES - 1);
+  const k = Math.min(SKY_SLICES - 2, Math.floor(v));
   const f = v - k;
   const a = k * LIGHT_FLOATS, b = a + LIGHT_FLOATS;
   for (let i = 0; i < LIGHT_FLOATS - 1; i++) out[i] = lights[a + i]! * (1 - f) + lights[b + i]! * f;
@@ -335,16 +371,17 @@ export function cardExposure(height: number, sun: number, moon: number, above: n
   return srgbToLinear(cardTarget(height) / 255) / (sun * bySun.light + moon * byMoon.light + above * bySun.sky);
 }
 
-/** The light at a sun height into `light`, and the exposure there before noon's divides it. */
-function lightAt(lights: Float32Array, height: number): number {
-  lightsAt(lights, height, blend);
+/** The light at a sun height in the morning or the evening into `light`, and the exposure there before noon's divides it. */
+function lightAt(lights: Float32Array, height: number, evening: boolean): number {
+  lightsAt(lights, height, evening, blend);
   for (let i = 0; i < 12; i++) light[i] = blend[i]! * blend[LIGHT_FLOATS - 1]!;
   return cardExposure(height, luminance([light[0]!, light[1]!, light[2]!]), luminance([light[3]!, light[4]!, light[5]!]), luminance([light[6]!, light[7]!, light[8]!]));
 }
 
 /** The exposure at an hour. */
 export function exposureFor(hour: number, lights: Float32Array): number {
-  return lightAt(lights, sunHeight(hour)) / lightAt(lights, SUN_TOP);
+  sunDirection(hour, sunAt);
+  return lightAt(lights, sunHeight(hour), isEvening(sunAt)) / lightAt(lights, SUN_TOP, false);
 }
 
 /** Where the sun is, for a frame block: fTrueSun, the moon's direction turned round. The sun's slot is its light. */
@@ -364,8 +401,8 @@ export function skyFrame(hour: number, sky: Sky, frame: Float32Array): void {
   const f = FRAME;
   sunDirection(hour, sunAt);
   const h = sunHeight(hour);
-  const noon = lightAt(sky.lights, SUN_TOP);
-  frame[f.exposure] = lightAt(sky.lights, h) / noon;
+  const noon = lightAt(sky.lights, SUN_TOP, false);
+  frame[f.exposure] = lightAt(sky.lights, h, isEvening(sunAt)) / noon;
   const flat = Math.hypot(sunAt[0]!, sunAt[2]!);
   const held = slotHeight(h) * DEG;
   const slot = h >= GLOW_HOLD ? sunAt : [(sunAt[0]! / flat) * Math.cos(held), Math.sin(held), (sunAt[2]! / flat) * Math.cos(held)];
@@ -391,8 +428,11 @@ vec3 skyLook(highp sampler3D table, vec3 view, vec3 sun) {
   float lx = length(view.xz) * length(sun.xz);
   float around = lx > 1e-9 ? sqrt(acos(clamp(dot(view.xz, sun.xz) / lx, -1.0, 1.0)) / 3.14159265) : 0.0;
   float up = sqrt(clamp(asin(clamp(view.y, -1.0, 1.0)) / 1.57079633, 0.0, 1.0));
-  float s = clamp(degrees(asin(clamp(sun.y, -1.0, 1.0))) / ${g(SUN_TOP)}, -1.0, 1.0);
-  float height = 0.5 + 0.5 * sign(s) * sqrt(abs(s));
-  vec3 t = (vec3(around, up, height) * ${g(SKY_SIZE - 1)} + 0.5) / ${g(SKY_SIZE)};
+  float height = degrees(asin(clamp(sun.y, -1.0, 1.0)));
+  float s = clamp(height / ${g(SUN_TOP)}, -1.0, 1.0);
+  float gathered = clamp((height - ${g(GATHER[0])}) / ${g(GATHER[1] - GATHER[0])}, 0.0, 1.0);
+  float along = (0.5 + 0.5 * sign(s) * sqrt(abs(s)) + ${g(GATHERED)} * gathered) / ${g(1 + GATHERED)} * ${g(SKY_SIZE - 1)};
+  float slice = sun.x > 0.0 ? ${g(SKY_SLICES - 1)} - along : along;
+  vec3 t = (vec3(vec2(around, up) * ${g(SKY_SIZE - 1)}, slice) + 0.5) / vec3(${g(SKY_SIZE)}, ${g(SKY_SIZE)}, ${g(SKY_SLICES)});
   return skyDecode(texture(table, t));
 }`;

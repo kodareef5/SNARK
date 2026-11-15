@@ -3,8 +3,9 @@
 // from it, and lying face up. With --sheet, the eight halved and laid out two across in one picture; with --pairs,
 // each key halved beside the table's; with --views, the player's views of named keys (100 degrees across, 10 up,
 // toward the light and away), the key's beside the table's. With --strips, the dome toward the sun at every quarter
-// hour from an hour before sunset to an hour after, and from an hour before sunrise to an hour after. With --points,
-// the colours at every key's points as the game shows them, for the art director's measure.
+// hour from an hour before sunset to an hour after, and from an hour before sunrise to an hour after, and every three
+// minutes through golden hour, each with the factor the frame shows the table's units by. With --points, the colours
+// at every key's points as the game shows them, for the art director's measure.
 // Run: bun tools/sky/preview.ts [--out DIR] [--sheet FILE] [--pairs FILE] [--views FILE --keys a,b] [--strips FILE] [--points FILE]
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -138,18 +139,21 @@ if (import.meta.main) {
   }
   if (strips) {
     const [w, h, rows] = [320, 180, 9];
-    const px = new Uint8ClampedArray(w * 2 * h * rows * 4);
-    [18, 6].forEach((middle, col) => {
+    const px = new Uint8ClampedArray(w * 3 * h * rows * 4);
+    // Each column's first hour and its step: the evening's quarter hours, the morning's, and golden hour's three minutes.
+    [[17, 0.25], [5, 0.25], [17.2, 0.05]].forEach(([first, step], col) => {
       for (let q = 0; q < rows; q++) {
-        const hour = middle - 1 + q / 4;
+        const hour = first! + q * step!;
         const sun = [0, 0, 0];
         sunDirection(hour, sun);
-        viewOf(dome(sky, hour), headingOf(sun[0]!, sun[1]!, sun[2]!).heading, 10, 100, w, h, px, col * w, q * h, w * 2);
+        viewOf(dome(sky, hour), headingOf(sun[0]!, sun[1]!, sun[2]!).heading, 10, 100, w, h, px, col * w, q * h, w * 3);
+        const frame = new Float32Array(FRAME_FLOATS);
+        skyFrame(hour, sky, frame);
         const hh = Math.floor(hour), mm = Math.round((hour - hh) * 60);
-        label(px, w * 2, `${hh}:${String(mm).padStart(2, "0")} sun ${sunHeight(hour).toFixed(1)}`, col * w + 6, q * h + 6);
+        label(px, w * 3, `${hh}:${String(mm).padStart(2, "0")} sun ${sunHeight(hour).toFixed(1)} shown x${(frame[F.skyScale]! * frame[F.exposure]!).toFixed(3)}`, col * w + 6, q * h + 6);
       }
     });
-    writeFileSync(resolve(strips), encodePng(w * 2, h * rows, px));
+    writeFileSync(resolve(strips), encodePng(w * 3, h * rows, px));
   }
   const pointsFile = arg("points");
   if (pointsFile) {

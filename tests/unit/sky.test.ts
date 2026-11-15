@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { SKY_SIZE, aroundOf, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, heightOf, hourOfSun, luminance, sampleSky, shownSky, skyFrame, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
+import { SKY_SIZE, SKY_SLICES, aroundOf, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, hourOfSun, luminance, sampleSky, shownSky, skyFrame, sliceHeight, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { linearToSrgb } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
 import { apart, basePoints, cardColours, domeApart, keyCards } from "../../tools/sky/fit.ts";
@@ -105,27 +105,81 @@ test("a grey card facing up in the open, lit as surfaces are, shows within 3 ste
 
 test("the committed table is what the tool makes, and its bytes hold the sky to within a step on screen", () => {
   const b = new SkyBuilder();
-  const z = 12;
-  const s = b.slice(z);
-  let most = 0;
-  for (let i = 0; i < SKY_SIZE * SKY_SIZE * 4; i++) most = Math.max(most, Math.abs(s.bytes[i]! - sky.table[texelAt(0, 0, z) + i]!));
-  expect(most).toBeLessThanOrEqual(1);
-  for (let i = 0; i < s.lights.length; i++) expect(Math.abs(s.lights[i]! - sky.lights[z * s.lights.length + i]!)).toBeLessThanOrEqual(Math.abs(s.lights[i]!) * 1e-5 + 1e-12);
-  // Each texel, decoded as a graphics card samples it at its middle, against the sky the tool made there, both on screen.
-  const height = heightOf(z / (SKY_SIZE - 1));
-  const exact = new Float64Array(3);
-  const got = [0, 0, 0], a = [0, 0, 0], c = [0, 0, 0];
-  let step = 0;
-  for (let y = 0; y < SKY_SIZE; y++) {
-    for (let x = 0; x < SKY_SIZE; x++) {
-      b.domeAt(height, elevationOf(y / (SKY_SIZE - 1)), aroundOf(x / (SKY_SIZE - 1)), exact);
-      shownSky(Array.from(exact, (v) => v * s.exposure), a);
-      sampleSky(sky.table, x / (SKY_SIZE - 1), y / (SKY_SIZE - 1), z / (SKY_SIZE - 1), got);
-      shownSky(got, c);
-      for (let k = 0; k < 3; k++) step = Math.max(step, Math.abs(a[k]! - c[k]!));
+  // A morning slice and an evening one.
+  for (const z of [12, 43]) {
+    const s = b.slice(z);
+    let most = 0;
+    for (let i = 0; i < SKY_SIZE * SKY_SIZE * 4; i++) most = Math.max(most, Math.abs(s.bytes[i]! - sky.table[texelAt(0, 0, z) + i]!));
+    expect(most).toBeLessThanOrEqual(1);
+    for (let i = 0; i < s.lights.length; i++) expect(Math.abs(s.lights[i]! - sky.lights[z * s.lights.length + i]!)).toBeLessThanOrEqual(Math.abs(s.lights[i]!) * 1e-5 + 1e-12);
+    // Each texel, decoded as a graphics card samples it at its middle, against the sky the tool made there, both on screen.
+    const { height, evening } = sliceHeight(z);
+    const exact = new Float64Array(3);
+    const got = [0, 0, 0], a = [0, 0, 0], c = [0, 0, 0];
+    let step = 0;
+    for (let y = 0; y < SKY_SIZE; y++) {
+      for (let x = 0; x < SKY_SIZE; x++) {
+        b.domeAt(height, evening, elevationOf(y / (SKY_SIZE - 1)), aroundOf(x / (SKY_SIZE - 1)), exact);
+        shownSky(Array.from(exact, (v) => v * s.exposure), a);
+        sampleSky(sky.table, x / (SKY_SIZE - 1), y / (SKY_SIZE - 1), z / (SKY_SLICES - 1), got);
+        shownSky(got, c);
+        for (let k = 0; k < 3; k++) step = Math.max(step, Math.abs(a[k]! - c[k]!));
+      }
+    }
+    expect(step).toBeLessThanOrEqual(1);
+  }
+});
+
+test("the morning and the evening have skies of their own: with the sun 2 degrees up the morning shows dawn's key and the evening the way from golden hour to sunset", () => {
+  const dawn = basePoints().find((k) => k.name === "dawn")!;
+  const evening = hourOfSun(sunHeight(dawn.hour), true);
+  expect(apart(dome(dawn.hour, 89, 0), dome(evening, 89, 0))).toBeGreaterThan(15);
+  expect(apart(dome(dawn.hour, 3, 0), dome(evening, 3, 0))).toBeGreaterThan(10);
+});
+
+test("the two halves meet at noon and at midnight without a seam", () => {
+  for (const hour of [12, 24]) {
+    for (const [elevation, around] of [[3, 0], [3, 180], [30, 90], [89, 0]] as const) {
+      expect(apart(dome(hour - 0.05, elevation, around), dome(hour + 0.05, elevation, around))).toBeLessThan(1);
     }
   }
-  expect(step).toBeLessThanOrEqual(1);
+});
+
+test("the table's slices gather where low poly's light leaps, so between slices the frame shows the dome as the slices hold it: skyScale times exposure stays within 4 in 100 of 1", () => {
+  let worst = 0;
+  for (const evening of [false, true]) {
+    for (let h = -66; h <= 66.5; h += 0.1) {
+      const f = frameAt(hourOfSun(h, evening));
+      worst = Math.max(worst, Math.abs(Math.log(f[F.skyScale]! * f[F.exposure]!)));
+    }
+  }
+  expect(worst).toBeLessThan(Math.log(1.04));
+});
+
+test("nothing pumps: three game minutes apart, through the whole day, no part of the dome moves by more than 6 OKLab times 100", () => {
+  let worst = 0;
+  const at = (hour: number): number[][] => {
+    const s = [0, 0, 0];
+    sunDirection(hour, s);
+    const f = frameAt(hour);
+    const scale = f[F.skyScale]! * f[F.exposure]!;
+    return [1, 3, 6, 10, 20, 35, 60, 85].flatMap((e) =>
+      [0, 30, 60, 90, 120, 150, 180].map((a) => {
+        const r = Math.atan2(s[2]!, s[0]!) + (a * Math.PI) / 180, u = (e * Math.PI) / 180;
+        const c = [0, 0, 0], out = [0, 0, 0];
+        domeLight(sky.table, s, [Math.cos(u) * Math.cos(r), Math.sin(u), Math.cos(u) * Math.sin(r)], c);
+        shownSky(c.map((v) => v * scale), out);
+        return out;
+      }),
+    );
+  };
+  let before = at(0);
+  for (let step = 1; step <= 480; step++) {
+    const now = at(step * 0.05);
+    for (let i = 0; i < now.length; i++) worst = Math.max(worst, apart(now[i]!, before[i]!));
+    before = now;
+  }
+  expect(worst).toBeLessThan(6);
 });
 
 test("a texel's bytes hold a colour to within a step on screen, from the dark to a hundred times the knee", () => {
@@ -158,7 +212,7 @@ test("on a lit tier the scene fills the frame block's sky for its hour, and on l
   expect(low.frame(100, false).frame[F.exposure]).toBe(0);
 });
 
-test("through twilight the sun's slot carries the afterglow from 2 degrees up toward the sunken sun, never brighter than the sky above, gone 12 degrees down, casting nothing", () => {
+test("through twilight the sun's slot carries the afterglow from 2 degrees up toward the sunken sun, never brighter than the sky above, gone by the slice past 12 degrees down, casting nothing", () => {
   const lum = (f: Float32Array, at: number): number => luminance([f[at]!, f[at + 1]!, f[at + 2]!]);
   const dusk = frameAt(hourOfSun(-8, true));
   const sun = [-dusk[F.moon]!, -dusk[F.moon + 1]!, -dusk[F.moon + 2]!];
@@ -169,7 +223,7 @@ test("through twilight the sun's slot carries the afterglow from 2 degrees up to
   expect(dusk[F.casting]).toBe(0);
   // The glow is the dome's colour low toward the sun: warm.
   expect(dusk[F.sunColor]!).toBeGreaterThan(dusk[F.sunColor + 2]!);
-  const late = frameAt(hourOfSun(-12.5, true));
+  const late = frameAt(hourOfSun(-13, true));
   expect(lum(late, F.sunColor)).toBeLessThan(0.01 * lum(late, F.skyAbove));
   // By day the slot is the sun itself.
   const day = frameAt(10);

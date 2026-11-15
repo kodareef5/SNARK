@@ -118,7 +118,7 @@ const PAGE = `<!doctype html><meta charset="utf-8"><title>lit programs full scre
 const load = (name) => import("/m/" + name + ".js");
 const { PROGRAMS, UNIT } = await load("programs");
 const { tierOf } = await load("tiers");
-const { theSky, SKY_SIZE } = await load("sky");
+const { theSky, SKY_SIZE, SKY_SLICES } = await load("sky");
 const post = (path, body) => fetch(path, { method: "POST", body });
 // A full-screen triangle, a wall 5 m ahead, with what each fragment text takes from its vertex text.
 const AT = "vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;\\n  vRel = vec3(at.x * 3.0, at.y * 2.0 - 0.5, 5.0);\\n  gl_Position = vec4(at, 0.5, 1.0);\\n";
@@ -167,7 +167,7 @@ try {
   }
   gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
   gl.bindTexture(gl.TEXTURE_3D, gl.createTexture());
-  gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, theSky().table);
+  gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SLICES, 0, gl.RGBA, gl.UNSIGNED_BYTE, theSky().table);
   gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.disable(gl.DEPTH_TEST);
   gl.viewport(0, 0, 1024, 1024);

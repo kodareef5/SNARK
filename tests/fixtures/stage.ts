@@ -5,7 +5,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { writeBones } from "../../client/core/render/characters.ts";
 import { BONE_FLOATS, DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { AMBIENT, DIFFUSE } from "../../client/core/render/shading.ts";
-import { SKY_SIZE, decodeTexel, encodeTexel } from "../../client/core/render/sky.ts";
+import { SKY_SIZE, SKY_SLICES, decodeTexel, encodeTexel } from "../../client/core/render/sky.ts";
 import { DIELECTRIC, skyShare, srgbToLinear } from "../../client/core/render/surface.ts";
 import type { Rig } from "../../shared/anim/rigs.ts";
 import { solve } from "../../shared/anim/skeleton.ts";
@@ -49,7 +49,7 @@ export function evenSky(frame: Float32Array, sun: ArrayLike<number>): void {
 }
 
 /** A sky table that is one white everywhere, and how bright that white decodes. */
-export const EVEN_TABLE = new Uint8Array(SKY_SIZE ** 3 * 4);
+export const EVEN_TABLE = new Uint8Array(SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
 encodeTexel([1, 1, 1], EVEN_TABLE, 0);
 for (let at = 4; at < EVEN_TABLE.length; at += 4) EVEN_TABLE.copyWithin(at, 0, 4);
 const decoded = [0, 0, 0];

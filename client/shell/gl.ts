@@ -4,7 +4,7 @@
 import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
-import { SKY_SIZE, theSky } from "../core/render/sky.ts";
+import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
 import { NEUTRAL, skinMode } from "../core/render/surface.ts";
 import { coarseGround, groundSize, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
@@ -152,7 +152,7 @@ export class GlRenderer {
     // The sky table, filtered between its texels and held at its edges, stays bound on its unit too.
     gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
     gl.bindTexture(gl.TEXTURE_3D, gl.createTexture());
-    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, theSky().table);
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SLICES, 0, gl.RGBA, gl.UNSIGNED_BYTE, theSky().table);
     for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_3D, name, value);
 
     // A lost context took every level with it. Core sends them again.
