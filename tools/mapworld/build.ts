@@ -10,7 +10,7 @@ import { join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { chunkCount } from "../../shared/coords.ts";
-import { mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
+import { MapStatics, mapHeightfield, mapNodes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers } from "../map/layers.ts";
@@ -53,8 +53,28 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     return pieces;
   });
   // The obelisks come last, so every other piece keeps its slot in its chunk.
-  const obelisks = placeObelisks(ground, world, toSample, size, staticCover(layered, reg, n, size));
+  const occupied = staticCover(layered, reg, n, size);
+  const budget = world.heaps === false ? vocabulary(source).budgets.maxChunk : Infinity;
+  const pieceCounts = new Uint32Array(chunks * chunks);
+  for (const p of layered) pieceCounts[Math.floor(p.z / 64) * chunks + Math.floor(p.x / 64)]!++;
+  for (let k = 0; k < pieceCounts.length; k++) if (pieceCounts[k]! > budget - 4) {
+    const x = k % chunks; const z = Math.floor(k / chunks);
+    for (let row = Math.max(0, n - 1 - (z + 1) * 32); row <= Math.min(n - 1, n - 1 - z * 32); row++) for (let col = Math.max(0, n - 1 - (x + 1) * 32); col <= Math.min(n - 1, n - 1 - x * 32); col++) occupied[row * n + col] = 1;
+  }
+  for (const route of site.growthRoutes) for (let i = 1; i < route.points.length; i++) {
+    const a = route.points[i - 1]!; const b = route.points[i]!; const length = Math.hypot(b.x - a.x, b.z - a.z);
+    for (let d = 0; d <= length; d += 1) {
+      const t = length ? d / length : 0; const x = a.x + (b.x - a.x) * t; const z = a.z + (b.z - a.z) * t;
+      const row = Math.round((size - z) / 2); const col = Math.round((size - x) / 2);
+      if (row >= 0 && col >= 0 && row < n && col < n) occupied[row * n + col] = 1;
+    }
+  }
+  const obelisks = placeObelisks(ground, world, toSample, size, occupied);
   const statics = [...layered, ...obelisks.flatMap((o) => obeliskStatics(reg, o, site.groundAt).map((p) => ({ ...p, yaw: (p.yaw * 360) / 65536 })))];
+  pieceCounts.fill(0);
+  for (const p of statics) pieceCounts[Math.floor(p.z / 64) * chunks + Math.floor(p.x / 64)]!++;
+  const maxChunk = Math.max(...pieceCounts);
+  if (maxChunk > budget) throw new Error(`Static chunk budget ${budget} exceeded after obelisks: ${maxChunk}`);
   lap(`${obelisks.length} obelisks`);
   const tint = makeTint(ground, world);
   lap("colour");
@@ -97,6 +117,8 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   lap(`layers in ${layers}`);
 
   let map = readLayers(layers);
+  map = { ...map, statics: MapStatics.of(map.dims, map.statics) };
+  Bun.gc(true);
   if (growth) {
     const grown = growRuins(map, compiled.registry, site, growth);
     map = { ...map, nodes: [grown.layer] };
@@ -113,6 +135,8 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
 
   // The numbers: nodes by kind, how much land is walkable, the deepest water and the tallest heap.
   const parsed = parseMap(bytes);
+  const packedMax = Math.max(...parsed.statics.first.slice(1).map((end, i) => end - parsed.statics.first[i]!));
+  if (packedMax > budget) throw new Error(`Packed static chunk budget ${budget} exceeded: ${packedMax}`);
   const hf = mapHeightfield(parsed);
   const placed = mapNodes(parsed, hf, reg)!;
   const byKind = new Map<string, number>();
@@ -177,6 +201,8 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     totalSeconds: Number(((performance.now() - t0) / 1000).toFixed(2)),
     peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)),
     staticTotal: statics.length,
+    staticMaxChunk: packedMax,
+    staticMaxChunkBeforePacking: maxChunk,
     deepestWater: Number(deepest.toFixed(2)),
     highestGround: Number(highest.toFixed(2)),
     landmarks: statics.length === 0 ? landmarks : [],

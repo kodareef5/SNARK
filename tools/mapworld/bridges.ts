@@ -150,15 +150,18 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
       for (const side of [-1, 1]) {
         const nx = Math.sin(angle) * side; const nz = Math.cos(angle) * side;
         const edge = p.width / 2 + .75;
-        const length = Math.max(8, Math.min(60, (d.y - site.groundAt(d.x + nx * 24, d.z + nz * 24)) * 2 + 4));
+        const length = Math.round(Math.max(8, Math.min(60, (d.y - site.groundAt(d.x + nx * 24, d.z + nz * 24)) * 2 + 4)) / 4) * 4;
         const x = d.x + nx * (edge + length); const z = d.z + nz * (edge + length);
-        const base = Math.ceil((site.groundAt(x, z) + .05) * 16) / 16;
+        const base = d.y - Math.floor((d.y - site.groundAt(x, z) - .05) * 4) / 4;
         if (base < .5 || d.y - base < 3 || d.y - base > 24) continue;
-        const count = Math.max(Math.ceil(length / .45), Math.ceil((d.y - base) / .3));
+        const modules = length / 4; const count = modules * 10;
+        const heights = Array.from({ length: modules + 1 }, (_, i) => base + Math.round((d.y - base) * i / modules * 4) / 4);
+        if (heights.slice(1).some((y, i) => y - heights[i]! < .25 || y - heights[i]! > 3)) continue;
         const points: DeckPoint[] = [];
         for (let i = 0; i <= count; i++) {
           const t = i / count; const px = x - nx * length * t; const pz = z - nz * length * t;
-          const y = Math.round((base + (d.y - base) * t) * 16) / 16;
+          const module = Math.min(modules - 1, Math.floor(i / 10)); const along = (i - module * 10) / 10;
+          const y = heights[module]! + (heights[module + 1]! - heights[module]!) * along;
           if (px < 8 || pz < 8 || px > size - 8 || pz > size - 8 || site.groundAt(px, pz) > y + .08 || [-1, 0, 1].some((s) => site.ground.heaps.owner[at(px + nz * s, pz - nx * s)]! >= 0 || site.ground.water[at(px + nz * s, pz - nx * s)])) break;
           let overhead = false;
           for (let bx = Math.floor(px / 16) - 2; bx <= Math.floor(px / 16) + 2; bx++) for (let bz = Math.floor(pz / 16) - 2; bz <= Math.floor(pz / 16) + 2; bz++) for (const other of deckBins.get(`${bx},${bz}`) ?? []) {
@@ -202,10 +205,12 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
   for (const { p, deck, length } of planned) {
     const m = new Mason(worldFrame(size), 0);
     for (const a of access.get(p) ?? []) {
-      for (let i = 0; i < a.points.length; i++) {
-        const d = a.points[i]!;
-        m.put("step", d.x, d.y - .2, d.z, "concrete", d.yaw); m.cover(d.x, d.z, 16);
-        if (i % 8 === 4) for (let top = d.y - .4; top > site.groundAt(d.x, d.z); top -= 4) m.put("pier4", d.x, top - 2, d.z);
+      const start = a.points[0]!; m.put("step", start.x, start.y - .2, start.z, "concrete", start.yaw);
+      for (let i = 0; i < a.points.length - 1; i += 10) {
+        const d = a.points[i]!; const end = a.points[i + 10]!;
+        m.put(`ramp${Math.round((end.y - d.y) * 4)}` as RuinShape, (d.x + end.x) / 2, (d.y + end.y) / 2 - .2, (d.z + end.z) / 2, "concrete", d.yaw);
+        m.cover(d.x, d.z, 16);
+        for (let top = end.y - .4; top > site.groundAt(end.x, end.z); top -= 4) m.put("pier4", end.x, top - 2, end.z);
       }
       const end = a.points.at(-1)!; const turn = end.yaw * Math.PI / 180;
       m.put("floor4", end.x + Math.sin(turn) * 2, end.y - .2, end.z + Math.cos(turn) * 2, "concrete", end.yaw);
@@ -230,7 +235,7 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
     // Side furniture from one branch must not cross another branch's walking line.
     for (let i = m.pieces.length - 1; i >= 0; i--) {
       const p = m.pieces[i]!; const shape = p.kind.split("_")[1] as RuinShape;
-      if (shape.startsWith("floor") || shape.startsWith("rubble") || shape === "step") continue;
+      if (shape.startsWith("floor") || shape.startsWith("rubble") || shape.startsWith("ramp") || shape === "step") continue;
       const [w, h, d] = RUIN_SHAPES[shape]; const angle = p.yaw * Math.PI / 180;
       const blocked = (laneIndex.get(`${Math.floor(p.x / 16)},${Math.floor(p.z / 16)}`) ?? []).some(({ a, b }) => {
         const dx = b.x - a.x; const dz = b.z - a.z; const den = dx * dx + dz * dz;

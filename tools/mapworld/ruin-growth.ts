@@ -1,6 +1,6 @@
 import type { Registry } from "../../shared/content/registry.ts";
 import { chunkCount, chunkCx, chunkCz } from "../../shared/coords.ts";
-import { mapHeightfield, mapNodes, type MapData, type NodeList } from "../../shared/world/mapfile.ts";
+import { MapStatics, mapHeightfield, mapNodes, type MapData, type NodeList } from "../../shared/world/mapfile.ts";
 import { formOf, mix, nodeForms } from "../../shared/world/nodes.ts";
 import { corridorIndex } from "./bridges.ts";
 import { S } from "./ground.ts";
@@ -10,12 +10,15 @@ import type { Vocabulary } from "./ruin-vocabulary.ts";
 /** Freeze only safe scatter candidates. Their listed form is tested, since changing layer changes the form hash. */
 export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocabulary["growth"]): { layer: NodeList; summary: Record<string, unknown> } {
   const hf = mapHeightfield(map); const source = mapNodes(map, hf, reg)!; const forms = nodeForms(reg);
-  const statics = [...map.statics];
+  const statics = MapStatics.of(map.dims, map.statics);
+  const kindsOf = Uint16Array.from(statics.kinds, (id) => reg.index.get(id)!);
+  const cosines = new Float64Array(65536); const sines = new Float64Array(65536);
+  for (let i = 0; i < 65536; i++) { const a = i * Math.PI * 2 / 65536; cosines[i] = Math.cos(a); sines[i] = Math.sin(a); }
   const grid = new Map<number, number[]>();
   const key = (x: number, z: number): number => Math.floor(x / 64) + Math.floor(z / 64) * 1024;
-  for (const [i, p] of statics.entries()) {
-    const k = reg.index.get(p.kind)!; const r = Math.hypot(reg.halfX[k]!, reg.halfZ[k]!);
-    for (let z = Math.floor((p.z - r) / 64); z <= Math.floor((p.z + r) / 64); z++) for (let x = Math.floor((p.x - r) / 64); x <= Math.floor((p.x + r) / 64); x++) {
+  for (let i = 0; i < statics.length; i++) {
+    const k = kindsOf[statics.kind[i]!]!; const r = Math.hypot(reg.halfX[k]!, reg.halfZ[k]!);
+    for (let z = Math.floor((statics.z[i]! - r) / 64); z <= Math.floor((statics.z[i]! + r) / 64); z++) for (let x = Math.floor((statics.x[i]! - r) / 64); x <= Math.floor((statics.x[i]! + r) / 64); x++) {
       const k = x + z * 1024; if (!grid.has(k)) grid.set(k, []); grid.get(k)!.push(i);
     }
   }
@@ -24,7 +27,7 @@ export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocab
   const kinds: string[] = []; const kindIds = new Map<number, number>();
   const list: { k: number; x: number; z: number; yaw: number }[] = [];
   const first = new Uint32Array(chunkCount(map.dims) + 1);
-  const rejected = { structure: 0, route: 0, sight: 0, spawn: 0 }; const byDistrict: Record<string, number> = {}; const bySurface: Record<string, number> = {};
+  const rejected = { structure: 0, route: 0, sight: 0, canopyStructure: 0, spawn: 0 }; const byDistrict: Record<string, number> = {}; const bySurface: Record<string, number> = {};
   const woodChunks = new Set<number>(); let candidates = 0;
   for (let chunk = 0; chunk < chunkCount(map.dims); chunk++) {
     first[chunk] = list.length; const cx = chunkCx(map.dims, chunk) * 64; const cz = chunkCz(map.dims, chunk) * 64;
@@ -37,10 +40,10 @@ export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocab
       if (map.spawns.some((s) => Math.hypot(px - s.x, pz - s.z) < 8 + radius)) { rejected.spawn++; continue; }
       let blocked = false;
       for (let zz = pz - radius; zz <= pz + radius + 64 && !blocked; zz += 64) for (let xx = px - radius; xx <= px + radius + 64 && !blocked; xx += 64) for (const i of grid.get(key(xx, zz)) ?? []) {
-        const p = statics[i]!; const k = reg.index.get(p.kind)!;
-        if (py + .15 >= p.y + reg.halfY[k]! || top <= p.y - reg.halfY[k]!) continue;
-        const angle = p.yaw * Math.PI * 2 / 65536; const c = Math.cos(angle); const s = Math.sin(angle);
-        const dx = px - p.x; const dz = pz - p.z;
+        const k = kindsOf[statics.kind[i]!]!;
+        if (py + .15 >= statics.y[i]! + reg.halfY[k]! || top <= statics.y[i]! - reg.halfY[k]!) continue;
+        const c = cosines[statics.yaw[i]!]!; const s = sines[statics.yaw[i]!]!;
+        const dx = px - statics.x[i]!; const dz = pz - statics.z[i]!;
         if (Math.abs(dx * c - dz * s) < reg.halfX[k]! + radius + .2 && Math.abs(dx * s + dz * c) < reg.halfZ[k]! + radius + .2) { blocked = true; break; }
       }
       if (blocked) { rejected.structure++; continue; }
@@ -54,6 +57,17 @@ export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocab
       const canopy = growth.canopy[id];
       if (canopy) {
         const reach = canopy[0] * forms.size[form]! / 64; const height = canopy[1] * forms.size[form]! / 64;
+        const bottom = py + height * (growth.canopyBase[id] ?? .2);
+        for (let zz = pz - reach; zz <= pz + reach + 64 && !blocked; zz += 64) for (let xx = px - reach; xx <= px + reach + 64 && !blocked; xx += 64) for (const i of grid.get(key(xx, zz)) ?? []) {
+          const k = kindsOf[statics.kind[i]!]!;
+          if (bottom >= statics.y[i]! + reg.halfY[k]! || py + height <= statics.y[i]! - reg.halfY[k]!) continue;
+          const c = cosines[statics.yaw[i]!]!; const s = sines[statics.yaw[i]!]!;
+          const dx = px - statics.x[i]!; const dz = pz - statics.z[i]!;
+          const u = Math.max(0, Math.abs(dx * c - dz * s) - reg.halfX[k]!);
+          const v = Math.max(0, Math.abs(dx * s + dz * c) - reg.halfZ[k]!);
+          if (u * u + v * v < (reach + .5) ** 2) { blocked = true; break; }
+        }
+        if (blocked) { rejected.canopyStructure++; continue; }
         if (routes({ x: px, z: pz, width: reach * 2, depth: reach * 2, c: 1, s: 0, yaw: 0, rings: [] }).some((r) => {
           if (py + height < r.low || py > r.high) return false;
           const dx = r.b[0] - r.a[0]; const dz = r.b[1] - r.a[1]; const t = Math.max(0, Math.min(1, ((px - r.a[0]) * dx + (pz - r.a[1]) * dz) / (dx * dx + dz * dz || 1)));
@@ -75,5 +89,5 @@ export function growRuins(map: MapData, reg: Registry, site: Site, growth: Vocab
     const x = k % 1024; const z = Math.floor(k / 1024);
     return [-1, 0, 1].some((dz) => [-1, 0, 1].some((dx) => x + dx >= 0 && x + dx < map.dims.chunksX && z + dz >= 0 && z + dz < map.dims.chunksZ && woodChunks.has((z + dz) * map.dims.chunksX + x + dx)));
   }).length;
-  return { layer: { kinds, first, kind: Uint8Array.from(list, (r) => r.k), x: Uint16Array.from(list, (r) => r.x), z: Uint16Array.from(list, (r) => r.z), yaw: Uint16Array.from(list, (r) => r.yaw) }, summary: { candidates, admitted: list.length, rejected, byDistrict, bySurface, woodChunks: woodChunks.size, developedChunks: urban.length, developedChunksWithWoodWithinOneChunk: urbanWood, roofResources: 0, roofPlants: { shrubs: statics.filter((p) => p.kind.includes("_zshrub_")).length, trees: statics.filter((p) => p.kind.includes("_zrooftree_")).length }, roofLimitation: "Listed resource nodes have no elevation; roof shrubs and trees are statics until the map format supports raised nodes." } };
+  return { layer: { kinds, first, kind: Uint8Array.from(list, (r) => r.k), x: Uint16Array.from(list, (r) => r.x), z: Uint16Array.from(list, (r) => r.z), yaw: Uint16Array.from(list, (r) => r.yaw) }, summary: { candidates, admitted: list.length, rejected, byDistrict, bySurface, woodChunks: woodChunks.size, developedChunks: urban.length, developedChunksWithWoodWithinOneChunk: urbanWood, roofResources: 0, roofPlants: { shrubs: statics.filter((p) => p.kind.includes("_zshrub_")).length, trees: statics.filter((p) => p.kind.includes("_zrooftree_")).length }, roofLimitation: "Listed resource nodes have no elevation; roof shrubs are statics until the map format supports raised nodes." } };
 }

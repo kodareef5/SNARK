@@ -1,7 +1,29 @@
-import type { StructureDef } from "../shared/content/defs.ts";
+import { shapeHalf, type Def, type StructureDef } from "../shared/content/defs.ts";
+import { leaning, pitchedRoof, slopeShape, slopedSlab, stairFlight, staticOf, wedge } from "../shared/content/slopes.ts";
 
-// Dimensions are full metres. Plants reuse the game's own meshes; other entries generate a box mesh.
+const shaped = (name: string): string => `core:zruinshape_${name}`;
+const fallenFrame = [[0, -3.5, 4, .5], [0, 3.5, 4, .5], [-3.5, 0, .5, 3], [3.5, 0, .5, 3]].map(([x, z, w, d]) => ({
+  corners: leaning([w!, .25, d!], 60).corners.map(([u, y, v]) => [u + x!, y + z! * Math.sin(Math.PI / 3), v + z! * .5] as const),
+}));
+export const RUIN_SLOPES = {
+  flight: stairFlight(shaped("flight"), 2, 5.5, 4, { steps: 11, slab: .8 }),
+  zpitch8: slopeShape(shaped("pitch8"), "ceiling", pitchedRoof(8, 8, 2.5, .3)),
+  zpitch16: slopeShape(shaped("pitch16"), "ceiling", pitchedRoof(16, 16, 4, .3)),
+  zpitch4: slopeShape(shaped("pitch4"), "ceiling", pitchedRoof(4, 4, 1.25, .3)),
+  plate15: slopeShape(shaped("plate15"), "thing", [leaning([4, .2, 4], 15)]),
+  plate30: slopeShape(shaped("plate30"), "thing", [leaning([4, .2, 4], 30)]),
+  plate4: slopeShape(shaped("plate4"), "thing", [leaning([2, .25, 2], 24)]),
+  front60: slopeShape(shaped("front60"), "thing", fallenFrame),
+  mound: slopeShape(shaped("mound"), "thing", [wedge(4, 6, 2)]),
+  ...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`ramp${i + 1}`, slopeShape(shaped(`ramp${i + 1}`), "stairs", [slopedSlab(2, 4, (i + 1) / 4, .4)])])) as Record<`ramp${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12}`, ReturnType<typeof slopeShape>>,
+};
+const slopeSizes = Object.fromEntries(Object.entries(RUIN_SLOPES).map(([name, shape]) => {
+  const [x, y, z] = shapeHalf(shape.boxes, shape.hulls, shape.look); return [name, [x * 2, y * 2, z * 2] as const];
+})) as Record<keyof typeof RUIN_SLOPES, readonly [number, number, number]>;
+
+// Dimensions are full metres. Plants reuse the game's meshes; shaped entries use their convex parts, the rest are boxes.
 export const RUIN_SHAPES = {
+  ...slopeSizes,
   zshrub: [2.2, 1.24, 1.22], zrooftree: [.8, 3.4, .8],
   zbalcony: [8, .4, 2],
   zpanel8: [8, 4, .6], zpanel16: [16, 4, .6], zshaft8: [8, 16, .8], zshaft16: [16, 16, .8],
@@ -42,12 +64,15 @@ export const ruinKind = (shape: RuinShape, finish: RuinFinish = "concrete"): str
 
 // Keep structural meshes shared across districts. Only the facade and salvage pieces vary in finish.
 const PAINTED = new Set<RuinShape>(["wall4", "wall8", "sill4", "sill8", "fin4", "fin8", "fin16", "trim4", "trim8", "container", "crown"]);
-export const RUIN_BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
-  (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => finish === "concrete" || (name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name as RuinShape) || name.startsWith("z")))).map((finish) => ({
+const ROOF_FINISHES: Partial<Record<RuinShape, readonly RuinFinish[]>> = { zpitch4: ["clay"], zpitch8: ["clay", "rust"], zpitch16: ["clay"] };
+const BLOCKS: readonly StructureDef[] = Object.entries(RUIN_SHAPES).flatMap(([name, size]) =>
+  (Object.keys(RUIN_FINISHES) as RuinFinish[]).filter((finish) => ROOF_FINISHES[name as RuinShape]?.includes(finish) ?? (finish === "concrete" || (name !== "zshrub" && name !== "zrooftree" && (PAINTED.has(name as RuinShape) || name.startsWith("z"))))).map((finish) => ({
     type: "structure", class: "static", id: ruinKind(name as RuinShape, finish), mesh: name === "zshrub" ? "core:creeper_3" : name === "zrooftree" ? "core:tree_1" : "box",
     half: [size[0] / 2, size[1] / 2, size[2] / 2] as const,
     ...RUIN_FINISHES[finish],
+    ...(name in RUIN_SLOPES ? staticOf(ruinKind(name as RuinShape, finish), RUIN_SLOPES[name as keyof typeof RUIN_SLOPES], RUIN_FINISHES[finish]) : {}),
     // Far-feed colours average every static sharing a palette entry. Keep foliage separate from built wood.
     ...(name === "zshrub" || name === "zrooftree" ? { color: 196, material: "core:mat_wood", hp: 500 } : {}),
   })),
 );
+export const RUIN_BLOCKS: readonly Def[] = [...BLOCKS, ...Object.values(RUIN_SLOPES)];

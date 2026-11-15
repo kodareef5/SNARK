@@ -1,0 +1,162 @@
+chunk-report
+{"mapHash":3108874508,"total":1235962,"maximum":999,"cap":999,"passed":true}
+
+ruin-walk
+{
+  "mapHash": 3108874508,
+  "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
+  "sampledBuildings": 1216,
+  "stairRoutes": 3431,
+  "passed": 3431,
+  "failed": 0,
+  "escapeRoutes": 2656,
+  "escapePassed": 2656,
+  "escapeFailed": 0,
+  "results": [],
+  "escapeResults": []
+}
+
+room-walk
+{
+  "mapHash": 3108874508,
+  "routes": 14165,
+  "kinds": {
+    "suites": 3936,
+    "refuge": 57,
+    "rooms": 4114,
+    "lobby": 70,
+    "rubble": 360,
+    "classrooms": 594,
+    "storage": 917,
+    "shops": 1019,
+    "wards": 111,
+    "domestic": 166,
+    "street-gap": 2821
+  },
+  "passed": 14165,
+  "failed": 0,
+  "failures": []
+}
+
+access-walk
+{
+  "mapHash": 3108874508,
+  "routes": 13604,
+  "buildingsWithApproach": 7667,
+  "coresWithoutStreetApproach": [
+    {
+      "part": 110424220,
+      "name": null
+    },
+    {
+      "part": 128847536,
+      "name": null
+    },
+    {
+      "part": 108804096,
+      "name": null
+    },
+    {
+      "part": 98130784,
+      "name": null
+    },
+    {
+      "part": 102391884,
+      "name": null
+    },
+    {
+      "part": 122136416,
+      "name": null
+    },
+    {
+      "part": 106693104,
+      "name": null
+    },
+    {
+      "part": 111581688,
+      "name": null
+    },
+    {
+      "part": 115724800,
+      "name": null
+    },
+    {
+      "part": 117847872,
+      "name": null
+    },
+    {
+      "part": 119108572,
+      "name": null
+    },
+    {
+      "part": 123872164,
+      "name": null
+    },
+    {
+      "part": 125222820,
+      "name": null
+    },
+    {
+      "part": 107265896,
+      "name": null
+    },
+    {
+      "part": 111450212,
+      "name": null
+    }
+  ],
+  "passed": 13604,
+  "failed": 0,
+  "failures": []
+}
+
+bridge-walk
+{
+  "mapHash": 3108874508,
+  "ways": 809,
+  "built": 809,
+  "deckRuns": 793,
+  "accessRuns": 44,
+  "swimCrossings": 466,
+  "gapAudit": {
+    "authored": 4,
+    "intersectedByWays": 4,
+    "floorCentresInGap": 0
+  },
+  "passed": 1303,
+  "failed": 0,
+  "steps": 991334,
+  "failures": []
+}
+
+walk
+host on core:miami in 1370 ms, 333 spawn regions; 982 MB resident, 494 MB of heap
+ok   South Beach    arrived 0.0 m from its point at y 2.4; walked 27 m to y 1.5, 27 m to y 1.8, 27 m to y 2.8, 27 m to y 2.4
+ok   South Pointe   arrived 0.0 m from its point at y 1.8; walked 27 m to y 1.3, 27 m to y 1.6, 27 m to y 1.4, 27 m to y 1.8
+ok   Bayfront Park  arrived 0.0 m from its point at y 1.3; walked 27 m to y 1.4, 27 m to y 1.5, 24 m to y 1.5, 27 m to y 1.3
+ok   Watson Island  arrived 0.0 m from its point at y 1.6; walked 17 m to y 2.1, 2 m to y 1.8, 26 m to y 1.8, 27 m to y 1.8
+ok   Edgewater      arrived 0.0 m from its point at y 0.6; walked 27 m to y 0.5, 27 m to y -1.2, 24 m to y 0.4, 26 m to y 0.5
+ok   Virginia Key   arrived 0.0 m from its point at y 0.6; walked 27 m to y 0.2, 27 m to y 0.9, 27 m to y 0.7, 27 m to y 0.6
+ok   Belle Isle     arrived 0.0 m from its point at y 0.8; walked 27 m to y 0.5, 26 m to y 0.6, 27 m to y 0.5, 27 m to y 0.8
+ok   Brickell Key   arrived 0.0 m from its point at y 3.2; walked 14 m to y 4.2, 6 m to y 4.2, 27 m to y 3.3, 27 m to y 3.2
+ok   Wynwood        arrived 0.0 m from its point at y 4.2; walked 27 m to y 4.1, 6 m to y 4.0, 26 m to y 4.1, 25 m to y 4.3
+ok   Fisher Island  arrived 0.0 m from its point at y 1.3; walked 27 m to y 0.7, 27 m to y 2.1, 27 m to y 1.9, 27 m to y 1.3
+1222 wild creatures after 391 s of virtual time; 1009 MB resident, 494 MB of heap, server and client in one process
+
+obelisk-walk
+core:miami: 1235962 static pieces and 192644 standing nodes in the way, 71.2% of samples closed, in 0.8 s
+ok   Wynwood                terminal at 7375.6, 6723.5 facing 161 degrees: from Wynwood, 349 m of way, walked in 73 s to 0.13 m of its front at y 4.5
+ok   Miami Beach Golf Club  terminal at 947.7, 6615.2 facing 184 degrees: from South Beach, 3218 m of way, walked in 680 s to 0.06 m of its front at y 0.5
+ok   Virginia Key           terminal at 2468.4, 1280.9 facing 229 degrees: from Virginia Key, 1647 m of way, walked in 355 s to 0.10 m of its front at y 11.8
+3 of 3 reached in 1.0 s
+
+server-bench
+{
+  "milliseconds": 1232.4,
+  "residentMiB": 966.3,
+  "heapMiB": 528.3,
+  "peakResidentMiB": 969.6,
+  "mapBytes": 71923825,
+  "spawnRegions": 333,
+  "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
+}

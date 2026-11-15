@@ -1,0 +1,533 @@
+chunk-report
+{"mapHash":2872150786,"total":2906801,"maximum":942,"cap":999,"passed":true}
+
+ruin-walk
+{
+  "mapHash": 2872150786,
+  "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
+  "sampledBuildings": 1992,
+  "stairRoutes": 3632,
+  "passed": 3632,
+  "failed": 0,
+  "escapeRoutes": 2524,
+  "escapePassed": 2524,
+  "escapeFailed": 0,
+  "results": [],
+  "escapeResults": []
+}
+
+room-walk
+{
+  "mapHash": 2872150786,
+  "routes": 13842,
+  "kinds": {
+    "suites": 3253,
+    "refuge": 8,
+    "rooms": 4073,
+    "classrooms": 566,
+    "lobby": 368,
+    "shops": 2229,
+    "storage": 1113,
+    "domestic": 818,
+    "wards": 115,
+    "street-gap": 1299
+  },
+  "passed": 13842,
+  "failed": 0,
+  "failures": []
+}
+
+access-walk
+{
+  "mapHash": 2872150786,
+  "routes": 34729,
+  "buildingsWithApproach": 22915,
+  "coresWithoutStreetApproach": [
+    {
+      "part": 53679924,
+      "name": "Harry Potter and the Forbidden Journey"
+    },
+    {
+      "part": 52347448,
+      "name": "Zukor"
+    },
+    {
+      "part": 59715208,
+      "name": "Block 7"
+    },
+    {
+      "part": 2000017616,
+      "name": "Jack Foley Stage 12"
+    },
+    {
+      "part": 2000017628,
+      "name": "Henry Mancini Building"
+    },
+    {
+      "part": 50067084,
+      "name": "Roddenberry"
+    },
+    {
+      "part": 2000001296,
+      "name": "Wood Moulding and Millwork"
+    },
+    {
+      "part": 2000001300,
+      "name": "Paint and Sign Shop"
+    },
+    {
+      "part": 2000001304,
+      "name": "Editorial"
+    },
+    {
+      "part": 2000001308,
+      "name": "Stage 15"
+    },
+    {
+      "part": 2000001312,
+      "name": "Balaban"
+    },
+    {
+      "part": 2000001316,
+      "name": "Stage 14"
+    },
+    {
+      "part": 2000019028,
+      "name": "B-213"
+    },
+    {
+      "part": 2000019032,
+      "name": "Stage 18"
+    },
+    {
+      "part": 2000019036,
+      "name": "Stage 4"
+    },
+    {
+      "part": 55673408,
+      "name": "Formosa Group Post Production"
+    },
+    {
+      "part": 62035704,
+      "name": "Block C"
+    },
+    {
+      "part": 62901492,
+      "name": "Universal Studios Costume and Property Departments"
+    },
+    {
+      "part": 67911276,
+      "name": "Stage 46 & 47"
+    },
+    {
+      "part": 78459128,
+      "name": "Block 8"
+    },
+    {
+      "part": 2000002908,
+      "name": "Stage 4-5"
+    },
+    {
+      "part": 2000011748,
+      "name": "Stage 8"
+    },
+    {
+      "part": 2000011752,
+      "name": "Stage 9"
+    },
+    {
+      "part": 2000017164,
+      "name": "Stage 31"
+    },
+    {
+      "part": 2000017176,
+      "name": "Stage 30"
+    },
+    {
+      "part": 2000022028,
+      "name": "Walter Lantz Building"
+    },
+    {
+      "part": 32951804,
+      "name": "Block 11"
+    },
+    {
+      "part": 57501812,
+      "name": "Block 12"
+    },
+    {
+      "part": 58685952,
+      "name": "The Lot Plaza Building"
+    },
+    {
+      "part": 64085456,
+      "name": "Wallis"
+    },
+    {
+      "part": 64762108,
+      "name": "Grip Store"
+    },
+    {
+      "part": 65862652,
+      "name": "Bud Westmore Building"
+    },
+    {
+      "part": 68647416,
+      "name": "6217"
+    },
+    {
+      "part": 70969088,
+      "name": "Block D"
+    },
+    {
+      "part": 79226948,
+      "name": "Block 10"
+    },
+    {
+      "part": 2000000176,
+      "name": "Stage 27"
+    },
+    {
+      "part": 2000002864,
+      "name": "Stage 25"
+    },
+    {
+      "part": 2000003248,
+      "name": "Building 21"
+    },
+    {
+      "part": 2000003988,
+      "name": "Stage 3 & 4"
+    },
+    {
+      "part": 2000003992,
+      "name": "Stage 7 & 8"
+    },
+    {
+      "part": 2000016636,
+      "name": "West"
+    },
+    {
+      "part": 2000017084,
+      "name": "Studio Supply Center"
+    },
+    {
+      "part": 2000018524,
+      "name": "Building 34"
+    },
+    {
+      "part": 2000036176,
+      "name": "Parking Lot W"
+    },
+    {
+      "part": 2000036580,
+      "name": "Stage 32 & 33"
+    },
+    {
+      "part": 35707332,
+      "name": "The Dining Room and Cafe"
+    },
+    {
+      "part": 41351084,
+      "name": "The Commons"
+    },
+    {
+      "part": 41609880,
+      "name": "Stage 50 - Earthquake"
+    },
+    {
+      "part": 45839556,
+      "name": "Revenge of the Mummy - The Ride"
+    },
+    {
+      "part": 48291848,
+      "name": "Stage 7 & 8"
+    },
+    {
+      "part": 53360388,
+      "name": "Stage 34"
+    },
+    {
+      "part": 55571276,
+      "name": "King Kong 360 3D"
+    },
+    {
+      "part": 63476140,
+      "name": "The Secret Life of Pets: Off The Leash"
+    },
+    {
+      "part": 68740240,
+      "name": "6511 (SC30)"
+    },
+    {
+      "part": 69660808,
+      "name": "Tram Garage"
+    },
+    {
+      "part": 77074932,
+      "name": "Mario Kart: Bowser’s Challenge"
+    },
+    {
+      "part": 79914036,
+      "name": "Bow"
+    },
+    {
+      "part": 2000003996,
+      "name": "Stage 5 & 6"
+    },
+    {
+      "part": 2000013620,
+      "name": "Gower Mill South"
+    },
+    {
+      "part": 2000014084,
+      "name": "Transformers: The Ride-3D"
+    },
+    {
+      "part": 2000014088,
+      "name": "Stage 15"
+    },
+    {
+      "part": 2000014336,
+      "name": "Stage 6"
+    },
+    {
+      "part": 2000016568,
+      "name": "Rehearsal Hall"
+    },
+    {
+      "part": 2000016572,
+      "name": "Stage 18"
+    },
+    {
+      "part": 2000016576,
+      "name": "Stage 24"
+    },
+    {
+      "part": 2000016584,
+      "name": "Stage 19"
+    },
+    {
+      "part": 2000016792,
+      "name": "AMC Universal CityWalk 19"
+    },
+    {
+      "part": 2000018432,
+      "name": "Warehouse 8413"
+    },
+    {
+      "part": 55573144,
+      "name": "Jurassic World Show Building"
+    },
+    {
+      "part": 2000002316,
+      "name": "Stage 25 & 26"
+    },
+    {
+      "part": 2000005040,
+      "name": "DreamWorks Theatre"
+    },
+    {
+      "part": 2000014328,
+      "name": "Stage 5"
+    },
+    {
+      "part": 2000020756,
+      "name": "The Simpsons Ride"
+    },
+    {
+      "part": 2000037072,
+      "name": "Central Hub Security Screening"
+    },
+    {
+      "part": 38379568,
+      "name": null
+    },
+    {
+      "part": 36123916,
+      "name": null
+    },
+    {
+      "part": 2000022040,
+      "name": null
+    },
+    {
+      "part": 52461896,
+      "name": null
+    },
+    {
+      "part": 64025976,
+      "name": null
+    },
+    {
+      "part": 66713724,
+      "name": null
+    },
+    {
+      "part": 70773700,
+      "name": null
+    },
+    {
+      "part": 2000012588,
+      "name": null
+    },
+    {
+      "part": 34304177,
+      "name": null
+    },
+    {
+      "part": 34486096,
+      "name": null
+    },
+    {
+      "part": 41191404,
+      "name": null
+    },
+    {
+      "part": 47652800,
+      "name": null
+    },
+    {
+      "part": 50950580,
+      "name": null
+    },
+    {
+      "part": 55068084,
+      "name": null
+    },
+    {
+      "part": 2000015572,
+      "name": null
+    },
+    {
+      "part": 2000021436,
+      "name": null
+    },
+    {
+      "part": 2000036636,
+      "name": null
+    },
+    {
+      "part": 35288520,
+      "name": null
+    },
+    {
+      "part": 35301004,
+      "name": null
+    },
+    {
+      "part": 36887612,
+      "name": null
+    },
+    {
+      "part": 41195432,
+      "name": null
+    },
+    {
+      "part": 46322012,
+      "name": null
+    },
+    {
+      "part": 50181380,
+      "name": null
+    },
+    {
+      "part": 50267916,
+      "name": null
+    },
+    {
+      "part": 52599724,
+      "name": null
+    },
+    {
+      "part": 59074944,
+      "name": null
+    },
+    {
+      "part": 64318964,
+      "name": null
+    },
+    {
+      "part": 64867168,
+      "name": null
+    },
+    {
+      "part": 66292584,
+      "name": null
+    },
+    {
+      "part": 66348068,
+      "name": null
+    },
+    {
+      "part": 74537216,
+      "name": null
+    },
+    {
+      "part": 76133428,
+      "name": null
+    },
+    {
+      "part": 2000003924,
+      "name": null
+    },
+    {
+      "part": 2000036016,
+      "name": null
+    }
+  ],
+  "passed": 34729,
+  "failed": 0,
+  "failures": []
+}
+
+bridge-walk
+{
+  "mapHash": 2872150786,
+  "ways": 217,
+  "built": 217,
+  "deckRuns": 217,
+  "accessRuns": 0,
+  "swimCrossings": 0,
+  "gapAudit": {
+    "authored": 0,
+    "intersectedByWays": 0,
+    "floorCentresInGap": 0
+  },
+  "passed": 217,
+  "failed": 0,
+  "steps": 89812,
+  "failures": []
+}
+
+walk
+host on core:los-angeles in 1821 ms, 382 spawn regions; 1511 MB resident, 1074 MB of heap
+ok   Hollywood/Highland arrived 1.5 m from its point at y 115.6; walked 27 m to y 115.8, 27 m to y 115.4, 27 m to y 115.2, 27 m to y 115.5
+ok   Lake Hollywood Park arrived 0.0 m from its point at y 275.7; walked 25 m to y 276.3, 27 m to y 275.6, 26 m to y 274.7, 27 m to y 275.7
+ok   Astronomers' Monument arrived 0.0 m from its point at y 345.1; walked 27 m to y 344.8, 27 m to y 339.6, 13 m to y 339.6, 1 m to y 339.6
+ok   Hollywood Bowl Overlook arrived 0.0 m from its point at y 299.4; walked 27 m to y 291.9, 27 m to y 303.2, 18 m to y 305.4, 27 m to y 299.8
+ok   Runyon Canyon  arrived 0.0 m from its point at y 177.5; walked 27 m to y 179.9, 25 m to y 181.5, 25 m to y 178.6, 27 m to y 177.6
+ok   Barnsdall Art Park arrived 0.0 m from its point at y 149.3; walked 26 m to y 148.8, 27 m to y 148.0, 27 m to y 149.2, 27 m to y 149.2
+ok   Pan Pacific Park arrived 0.0 m from its point at y 62.5; walked 27 m to y 62.5, 27 m to y 61.0, 27 m to y 59.5, 27 m to y 62.5
+ok   Paramount Pictures Studio Tour arrived 0.0 m from its point at y 86.9; walked 27 m to y 87.4, 27 m to y 88.0, 27 m to y 88.0, 25 m to y 87.1
+ok   Universal CityWalk Hollywood arrived 0.0 m from its point at y 239.3; walked 27 m to y 239.4, 27 m to y 237.8, 25 m to y 237.8, 27 m to y 239.4
+ok   Dante's View   arrived 0.0 m from its point at y 475.5; walked 26 m to y 473.0, 27 m to y 454.1, 26 m to y 462.0, 27 m to y 475.5
+1954 wild creatures after 391 s of virtual time; 1533 MB resident, 1074 MB of heap, server and client in one process
+
+obelisk-walk
+core:los-angeles: 2906801 static pieces and 265469 standing nodes in the way, 32.3% of samples closed, in 1.1 s
+ok   Griffith Observatory   terminal at 1796.0, 5695.2 facing 180 degrees: from Astronomers' Monument, 144 m of way, walked in 32 s to 0.09 m of its front at y 344.0
+ok   Hollywood and Highland terminal at 5282.8, 3630.4 facing 85 degrees: from Hollywood/Highland, 113 m of way, walked in 25 s to 0.12 m of its front at y 115.0
+ok   Lake Hollywood Park    terminal at 4171.9, 6378.3 facing 334 degrees: from Lake Hollywood Park, 69 m of way, walked in 16 s to 0.11 m of its front at y 275.8
+3 of 3 reached in 1.1 s
+
+server-bench
+{
+  "milliseconds": 1452.5,
+  "residentMiB": 1228.3,
+  "heapMiB": 487.9,
+  "peakResidentMiB": 1228.3,
+  "mapBytes": 101525129,
+  "spawnRegions": 382,
+  "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
+}
