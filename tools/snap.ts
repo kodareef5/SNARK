@@ -14,7 +14,7 @@ import { DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, F
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
 import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
-import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
+import { ClientSession, RemoteSample, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
 import { AnimState, CUE_DEAD, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH } from "../shared/anim/pose.ts";
 import { sizeSpan } from "../shared/anim/corpse.ts";
@@ -23,7 +23,7 @@ import type { Rig } from "../shared/anim/rigs.ts";
 import { EYE_COLORS, HAIR_COLORS, SKIN_TONES } from "../shared/pack/palette.ts";
 import { Rng } from "../shared/rng.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
-import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, CMD_SELECT, KEY_BYTES } from "../shared/net/protocol.ts";
 import { dress } from "../server/commands/combat.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import { V_TORPOR } from "../shared/sim/vitals.ts";
@@ -879,6 +879,18 @@ export class ModelView {
   }
 }
 
+/**
+ * A session for the interface to be drawn from without a server: a real one on a connection that goes nowhere, so a
+ * screen finds every field it reads (an object made by hand once lacked `tamed`, and `--ui --inventory` crashed), at
+ * server tick 1000, in the tribe `tribe`.
+ */
+export function standInSession(reg: Registry, tribe = ""): ClientSession {
+  const s = new ClientSession({ open: false, send: () => {}, close: () => {}, onMessage: null, onClose: null }, { name: "snap", key: new Uint8Array(KEY_BYTES), registry: reg, resolveMap: () => null });
+  s.renderClock = 1000;
+  s.tribe.name = tribe;
+  return s;
+}
+
 if (import.meta.main) {
   const args = process.argv.slice(2);
   const arg = (name: string): string | undefined => {
@@ -1231,6 +1243,7 @@ if (import.meta.main) {
       ui.console.edit(typed);
     }
     let session: ClientSession | null = null;
+    const standIn = (tribe: string): ClientSession => standInSession(view.reg, tribe);
     if (args.includes("--inventory")) {
       // A stand-in inventory, to look at the screen without a server.
       const inv = new Inventory(40);
@@ -1241,7 +1254,8 @@ if (import.meta.main) {
       inv.set(3, item("core:fiber"), 180, 0, 0, 0);
       inv.set(12, item("core:meat"), 3, 0, 0, 4000);
       inv.set(13, item("core:waterskin"), 1, 0, 0, 0);
-      session = { inventory: inv, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "" } } as unknown as ClientSession;
+      session = standIn("");
+      session.inventory = inv;
       ui.registry = view.reg;
       ui.palette = view.pack.palette;
       ui.inventory.open = true;
@@ -1250,7 +1264,7 @@ if (import.meta.main) {
     }
     if (args.includes("--chat")) {
       // Lines on each channel, and the chat box open on the tribe channel with a line being typed.
-      session ??= { inventory: null, serverTick: 1000, logVersion: 0, log: [], globalChat: true, tribe: { name: "Night Shift" } } as unknown as ClientSession;
+      session ??= standIn("Night Shift");
       const said: [number, string][] = [
         [TEXT_NOTICE, "bob joined Night Shift."],
         [TEXT_GLOBAL, "cy: anyone trading hide for narcotics? I am at the pool with far more than I can carry"],

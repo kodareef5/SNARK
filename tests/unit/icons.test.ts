@@ -8,7 +8,7 @@ import { Binding } from "../../client/core/assets/bind.ts";
 import { AssetTable } from "../../client/core/assets/table.ts";
 import { HudModel, fillHotbar } from "../../client/core/hud.ts";
 import type { ClientSession } from "../../client/core/session.ts";
-import { KEY_CHAR_ENGRAM_PICTURE, KEY_CHAR_RECIPE_PICTURE, TAB_ENGRAMS, TAB_MAKE, engramOrder } from "../../client/core/ui/character.ts";
+import { KEY_CHAR_ENGRAM_PICTURE, KEY_CHAR_RECIPE_PICTURE, KEY_CHAR_TAB, TAB_ENGRAMS, TAB_MAKE, engramOrder } from "../../client/core/ui/character.ts";
 import { KEY_HOTBAR } from "../../client/core/ui/hud.ts";
 import { KEY_INV_SLOT } from "../../client/core/ui/inventory.ts";
 import { K_IMAGE, K_PANEL } from "../../client/core/ui/nodes.ts";
@@ -18,10 +18,12 @@ import { ICONS_A_SHEET, ICON_SIZE } from "../../shared/pack/icons.ts";
 import { MANIFEST_VERSION, describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { TEXT_TRIBE } from "../../shared/net/protocol.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
 import { IconPainter, buildIcons, framingOf, iconSubjects, type IconFraming } from "../../tools/pack/icons.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
 import { boxMesh, buildPack } from "../../tools/pack/write.ts";
+import { standInSession } from "../../tools/snap.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -162,4 +164,24 @@ test("the bag, the hotbar and the crafting list show an item's picture where it 
   const shows = learned.find((f) => f.find(KEY_CHAR_ENGRAM_PICTURE + pickEngram) !== null)!.find(KEY_CHAR_ENGRAM_PICTURE + pickEngram)!;
   expect([shows.kind, shows.image, shows.sx, shows.sy]).toEqual([K_IMAGE, IMAGE_ICONS, 0, 0]);
   expect(learned.flatMap((f) => f.nodes.slice(0, f.count)).filter((n) => n.kind === K_IMAGE && n.key >= KEY_CHAR_ENGRAM_PICTURE).length).toBe(1);
+});
+
+test("the session bun run snap -- --ui draws the interface from builds the bag, the chat and every tab of the character sheet", () => {
+  // Its stand-in was once an object made by hand without `tamed`, and building the bag threw.
+  const session = standInSession(reg, "Night Shift");
+  session.inventory = new Inventory(40);
+  session.inventory.set(0, reg.index.get("core:berry")!, 24, 0, 0, 9000);
+  const built = (bag: boolean, tab: number): Ui => {
+    const ui = new Ui();
+    [ui.registry, ui.palette, ui.inventory.open, ui.character, ui.sheet.tab] = [reg, pack.palette, bag, !bag, tab];
+    ui.build(16 / 9, new HudModel(), session);
+    return ui;
+  };
+  expect(built(true, 0).frame.find(KEY_INV_SLOT + 1)?.text).toBe("berr");
+  for (const tab of [0, TAB_ENGRAMS, TAB_MAKE]) expect(built(false, tab).frame.find(KEY_CHAR_TAB + tab)?.text).toBe(["Stats", "Engrams", "Make"][tab]);
+  const chat = new Ui();
+  chat.chat.begin(TEXT_TRIBE, session);
+  chat.chat.edit("on my way");
+  chat.build(16 / 9, new HudModel(), session);
+  expect(chat.frame.count).toBeGreaterThan(0);
 });
