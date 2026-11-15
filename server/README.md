@@ -5,6 +5,7 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | File | Contents |
 | --- | --- |
 | `main.ts` | Process entry: static files, WebSocket adapter for the game and for voice, wall-clock tick loop |
+| `sound-board.ts` | The sound board, an admin's page, and the sound folders' briefs and recipes behind it |
 | `host.ts` | Assembles world, records, every system below, persistence, and the game loop |
 | `game.ts` | Connections, input buffering and validation, the body each session drives, snapshots by class, structure sync |
 | `world.ts` | The world container, made from a map file; the proving ground as one |
@@ -53,7 +54,10 @@ run in the [operator's guide](../planning/reference/operators.md).
 
 `--dev` enables the self-check report endpoint and cheats without a password, and
 reads `config/dev` when no other folder is named. It must not be used on a
-public server. `--cert` and `--key` serve over TLS, which a browser asks for
+public server. `/sounds.html` is the sound board (`sound-board.ts`), every sound by
+owner and occasion with the briefs and recipes behind them: open on a `--dev`
+server, and on any other only to a browser that gives `ServerAdminPassword` at
+its sign-in (any name). `--cert` and `--key` serve over TLS, which a browser asks for
 before it gives a page a microphone anywhere but `localhost`. A login name is not authentication; accounts do not exist yet.
 
 ## A cluster

@@ -22,7 +22,7 @@ const live = liveFileOf(folder);
 const host = args.indexOf("--host");
 const hostname = host >= 0 ? args[host + 1] : undefined;
 const server = startServer({ dev: true, port: Number(process.env.PORT ?? 8787), config: rules, ...(hostname ? { hostname } : {}), ...(live ? { live } : {}) });
-console.log(`SNARK dev: http://localhost:${server.port}   (self-check: http://localhost:${server.port}/?selfcheck=1)`);
+console.log(`SNARK dev: http://localhost:${server.port}   (self-check: http://localhost:${server.port}/?selfcheck=1, sound board: http://localhost:${server.port}/sounds.html)`);
 if (!hostname) console.log("  this machine only; --host 0.0.0.0 lets others on the network in, and they need no password to cheat");
 
 let pending: ReturnType<typeof setTimeout> | undefined;

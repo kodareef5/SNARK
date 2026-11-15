@@ -5,7 +5,7 @@ Zones with hard lines between them.
 | Zone | May use | Contents |
 | --- | --- | --- |
 | `core/` | ECMAScript, `shared`, `content` | `session.ts` (handshake, input, prediction, reconciliation, interpolation), `render/` (camera, terrain selection, structure batches, frame packet), `hud.ts` (HUD model, minimap), `selfcheck.ts` |
-| `sound/` | DOM, Web Audio, and `core` | `sound.ts` (the page's audio context, and each frame's sound packet played), `board.ts` and `sounds.html` (the listening page) |
+| `sound/` | DOM, Web Audio, and `core` | `sound.ts` (the page's audio context, and each frame's sound packet played), `board.ts` and `sounds.html` (the sound board, an admin's page that `server/sound-board.ts` serves) |
 | `voice/` | DOM, Web Audio, WebCodecs, and `core` | `voice.ts` (the microphone, on the page's audio context), `voice-worker.ts` (the voice socket, Opus encode and decode), `voice-capture.ts` and `voice-playback.ts` (audio worklets) |
 | `shell/` | DOM, WebGL2, WebSocket, `core`, `voice` and `sound` | `gl.ts` (executes frame packets), `input.ts`, `socket.ts`, `hud.ts` (DOM binding), `main.ts` |
 
