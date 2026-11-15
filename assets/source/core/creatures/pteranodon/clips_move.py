@@ -828,8 +828,9 @@ def take_off(r):
     # The feet leave the ground first, at feet_off; the arms push on until hands_off, then the hands follow the free
     # arms, which take over at `free`. The wings open from hands_off up over the back (OPEN), spread by stroke0.
     feet_off, hands_off, free, stroke0 = 3.0, 6.0, 10.0, 16.0
-    fold = Keys([(0, 1.0), (hands_off, 1.0), (11, 0.5), (stroke0, 0.04)])
-    open_flap = Keys([(0, 0.0), (hands_off, 2.0), (11, 22.0), (stroke0, 38.0)])
+    fold = Keys([(0, 1.0), (hands_off, 1.0), (10, 0.6), (13, 0.25), (stroke0, 0.04)])
+    # The wings spread out first and rise after, so they widen all the way open.
+    open_flap = Keys([(0, 0.0), (hands_off, 0.0), (11, 6.0), (14, 22.0), (stroke0, 38.0)])
     lean0, ext0 = lean_of(ground(), STANCE_HEAD)
     hv0 = hover_at(0.0)
     lean1, ext1 = lean_of(hv0, hv0["head"])
