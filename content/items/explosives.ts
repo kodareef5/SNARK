@@ -20,9 +20,10 @@ export const EXPLOSIVES: readonly Def[] = [
   },
 
   // From the same infobox on 2026-11-15: requiredlevel 38, engrampoints 20, the ingredients and the Crafting XP shown (its
-  // craftingxp 11.4 times the global 4 of patches 253.0 and 313.5). Its 4 oil wait for oil (DEV140); it is made at the smithy,
-  // not built (DEV136); the page gives no craftingtime (DEV135). The level, points and oil were in its revision of 2018 too.
-  ...making("grenade", "Grenade", 38, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2]], 45.6),
+  // craftingxp 11.4 times the global 4 of patches 253.0 and 313.5); made at the smithy, with its 4 oil now that oil exists
+  // (stations S6); the page gives no craftingtime (DEV135). The level, points and oil were in its
+  // revision of 2018 too.
+  ...making("grenade", "Grenade", 38, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2], ["oil", 4]], 45.6, "smithy"),
 
   // The bola (W4; ark.wiki.gg Bola, read 2026-11-15): thrown, not lobbed. Its ammo facet is its own, so it flies as an arrow
   // does and hits the first body or the world (M5). No harm, but a hit provokes as any does; stack 10, weight 0.5, single
@@ -58,10 +59,10 @@ export const EXPLOSIVES: readonly Def[] = [
   // from wild creatures; a 5 s fuse; weighs 0.5, stacks to 10; level 24 for 18 points; craftingxp 11.35, shown times the
   // global 4 as the grenade's is (45.4); made in the inventory of 1 metal ingot, 10 charcoal, 2 wood, 6 hide, 3 flint, 15
   // fiber, 5 thatch and 5 sparkpowder, after Sparkpowder. Its height and its making time are on no page: 5 m, so it stands
-  // over a survivor, and the grenade's 8 s. Charcoal waits for its item (items-ark.md), so the recipe leaves it out (DEV143).
+  // over a survivor, and the grenade's 8 s. Its 10 charcoal went in with stations S6, once fires left charcoal (S1).
   { type: "item", class: "weapon", id: id("grenade_smoke"), label: "smoke grenade", stack: 10, weight: 0.5, color: 2, weapon: { kind: "thrown", speed: 18, fuse: 5, uses: 1, mesh: id("grenade"), hold: "tool", cloud: { prop: id("cloud_smoke"), seconds: 40 } } },
   { type: "prop", class: "cloud", id: id("cloud_smoke"), mesh: "box", color: 2, radius: 9, height: 5 },
-  crafting(id("grenade_smoke"), { needs: needs([["ingot", 1], ["wood", 2], ["hide", 6], ["flint", 3], ["fiber", 15], ["thatch", 5], ["sparkpowder", 5]]), seconds: 8, xp: 45.4 }),
+  crafting(id("grenade_smoke"), { needs: needs([["ingot", 1], ["charcoal", 10], ["wood", 2], ["hide", 6], ["flint", 3], ["fiber", 15], ["thatch", 5], ["sparkpowder", 5]]), seconds: 8, xp: 45.4 }),
   { type: "engram", id: id("engram-grenade_smoke"), label: "Smoke grenade", level: 24, cost: 18, item: id("grenade_smoke"), requires: [id("engram-sparkpowder")] },
 
   // ark.wiki.gg/wiki/Poison_Grenade (2026-11-15): narcotic gas that "rapidly increases the Torpor of enemy survivors";
@@ -70,11 +71,13 @@ export const EXPLOSIVES: readonly Def[] = [
   // metal ingot, 18 sparkpowder, 12 gunpowder, 5 crystal, 20 fiber and 5 flint, after the smoke grenade and the tripwire
   // narcotic trap. Its torpor, harm, time and reach are on no page (217.2 made it last 15% longer, 218.3 gave 25% more
   // torpor and 20% more reach): 25 torpor a second and no harm, 20 s, 6 m and 4 m high, chosen (DEV144). The gas mask that
-  // stops it (Gas Mask) is not built. The fabricator is not built, so it is made in the hand; charcoal and crystal wait for their items (DEV143).
+  // stops it (Gas Mask) is not built. It is made at the fabricator of the page's eight ingredients, charcoal and crystal now
+  // items (stations S6); the tripwire narcotic trap its engram also needs is not built (DEV143). No page gives its making
+  // time: the grenade's 8 s.
   { type: "item", class: "weapon", id: id("grenade_poison"), label: "poison grenade", stack: 10, weight: 1.5, color: 17, weapon: { kind: "thrown", speed: 18, fuse: 2.5, uses: 1, mesh: id("grenade"), hold: "tool", cloud: { prop: id("cloud_poison"), seconds: 20, buff: id("poisoned") } } },
   { type: "prop", class: "cloud", id: id("cloud_poison"), mesh: "box", color: 17, radius: 6, height: 4 },
   // Given for a little over half a second at a time by the cloud a survivor stands in (server/clouds.ts CLOUD_HOLD).
   { type: "buff", id: id("poisoned"), label: "Poisoned", color: 17, seconds: 0.7, torpor: 25 },
-  crafting(id("grenade_poison"), { needs: needs([["narcotic", 10], ["ingot", 5], ["sparkpowder", 18], ["gunpowder", 12], ["fiber", 20], ["flint", 5]]), seconds: 8, xp: 33 }),
+  crafting(id("grenade_poison"), { needs: needs([["narcotic", 10], ["charcoal", 14], ["ingot", 5], ["sparkpowder", 18], ["gunpowder", 12], ["crystal", 5], ["fiber", 20], ["flint", 5]]), seconds: 8, xp: 33, at: id("fabricator") }),
   { type: "engram", id: id("engram-grenade_poison"), label: "Poison grenade", level: 40, cost: 18, item: id("grenade_poison"), requires: [id("engram-grenade_smoke")] },
 ];

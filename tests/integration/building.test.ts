@@ -434,7 +434,8 @@ test("pieces are made as anything is: an engram at the reference's level, at its
     else stores.push([item.id.slice(11), engram.level]);
     expect(item.places![0]).toBe(`core:${item.id.slice(11)}`);
   }
-  expect(stores).toEqual([["storage_box", 4], ["storage_large", 16], ["vault", 52], ["campfire", 2], ["sleeping_bag", 4], ["bed", 7]]);
+  // The vault at ARK's level 75 since stations S6 (Vault).
+  expect(stores).toEqual([["storage_box", 4], ["storage_large", 16], ["vault", 75], ["campfire", 2], ["sleeping_bag", 4], ["bed", 7]]);
   expect(Object.fromEntries(Object.entries(levels).map(([tier, l]) => [tier, [Math.min(...l), Math.max(...l)]]))).toEqual({ thatch: [4, 4], wood: [11, 14], stone: [24, 27], metal: [45, 47] });
   const needs = (name: string): [string, number][] => items.find((d) => d.id === `core:piece_${name}`)!.craft!.needs.map((n) => [n.item.slice(5), n.count]);
   expect(needs("wall_wood")).toEqual([["wood", 40], ["thatch", 10], ["fiber", 7]]);

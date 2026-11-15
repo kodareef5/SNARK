@@ -694,7 +694,8 @@ test("the character screen fits every window shape on every tab and page, and it
     expect(f.find(KEY_CHAR_RECIPE + pickRow * 2)!.text.startsWith("pick: 1 stone, 1 wood")).toBe(true);
     ui.pointer(0, KEY_CHAR_RECIPE + pickRow * 2 + 1, 0, 0, 0, session);
     expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:waterskin")!) * 2)).toBe(false);
-    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:flak_shirt")!) * 2)).toBe(true);
+    // And one far down the list (it was the flak shirt until S6 moved that to the smithy).
+    expect(seek(KEY_CHAR_RECIPE + recipes.indexOf(reg.index.get("core:spear")!) * 2)).toBe(true);
 
     expect(sent.map((c) => c.op)).toEqual([CMD_SPEND, CMD_LEARN, CMD_CRAFT]);
     expect(sent[0]!.bytes[0]).toBe(speed);
