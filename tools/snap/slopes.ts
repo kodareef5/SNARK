@@ -27,6 +27,47 @@ type Label = { text: string; at: [number, number, number] };
 /** On the lattice, as a piece is set. */
 const snapped = (v: number): number => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
 
+/** A piece of the ruin: its kind, its middle from the ruin's origin on the ground, its turn in degrees, and words for it. */
+export interface RuinPiece {
+  readonly kind: string;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly deg: number;
+  readonly text?: string;
+}
+
+/**
+ * A small ruin of the sloped statics, 40 m by 30: a deck a storey up on piers with a flight to it, its west bay fallen and
+ * leaning on the ground; a ramp up to a low deck; west of the fallen bay, a house whose roof stands, rubble against its wall.
+ */
+export function slopeRuin(reg: Registry): RuinPiece[] {
+  const out: RuinPiece[] = [];
+  const put = (kind: string, x: number, y: number, z: number, deg = 0, text?: string): void => void out.push({ kind, x, y, z, deg, ...(text ? { text } : {}) });
+  const floor = ruinKind("floor8");
+  const pier = ruinKind("pier4");
+  for (const [x, z] of [[-4, 4], [4, 4], [-4, 12], [4, 12]] as const) put(floor, x, 3.8, z);
+  for (const [x, z] of [[-7.5, 0.5], [7.5, 0.5], [-7.5, 15.5], [7.5, 15.5], [0, 8]] as const) put(pier, x, 2, z);
+  // The fallen bay: an 8 m slab at 30 degrees rises 4 m, from the ground to the deck's west edge.
+  put(slopeKind("slab30"), -11.5, 2.17, 8, 90, "fallen floor");
+  // The flight rises 4 m over 5.5 m toward +Z, its top at the deck's south edge.
+  put(slopeKind("stairs"), 2, 2, -2.75, 0, "stair flight");
+  // A ramp rising 2 m over 6 m to a low deck, east of the high one.
+  put(slopeKind("ramp"), 14, 1 - 0.2, 0, 0, "ramp");
+  put(floor, 14, 1.8, 7);
+  for (const [x, z] of [[10.5, 3.5], [17.5, 3.5], [10.5, 10.5], [17.5, 10.5]] as const) put(pier, x, -0.2, z);
+  // A house 8 m square with walls 2.8 m high, its pitched roof's eaves on them.
+  const wall = ruinKind("wall8", "rose");
+  const [hx, hz] = [-22, 18];
+  put(wall, hx, 1.4, hz - 3.75);
+  put(wall, hx, 1.4, hz + 3.75);
+  put(wall, hx - 3.75, 1.4, hz, 90);
+  put(wall, hx + 3.75, 1.4, hz, 90);
+  put(slopeKind("roof"), hx, 2.8 + reg.halfY[reg.index.get(slopeKind("roof"))!]!, hz, 90, "pitched roof");
+  put(slopeKind("rubble"), hx, 0.75, hz - 6, 0, "rubble");
+  return out;
+}
+
 /**
  * Sets the scene `which` (a kind's short name or "scene") and puts the camera on it, "near" or "far" (where the coarser level
  * is drawn). Returns words to write by the pieces.
@@ -64,31 +105,7 @@ export function slopesScene(view: View, which: string, look: "near" | "far"): La
     camAt([0.6 * d, 0.45 * d + 1, -0.75 * d], [0, reg.halfY[k]!, 0]);
     return labels;
   }
-  // A ruin: a deck a storey up on piers with a flight to it, its west bay fallen and leaning on the ground; a ramp up to a
-  // low deck; west of the fallen bay, a house whose roof stands, rubble heaped against its wall.
-  const floor = ruinKind("floor8");
-  const pier = ruinKind("pier4");
-  for (const [x, z] of [[-4, 4], [4, 4], [-4, 12], [4, 12]] as const) put(floor, x, 3.8, z);
-  for (const [x, z] of [[-7.5, 0.5], [7.5, 0.5], [-7.5, 15.5], [7.5, 15.5], [0, 8]] as const) put(pier, x, 2, z);
-  // The fallen bay: an 8 m slab at 30 degrees rises 4 m, from the ground to the deck's west edge.
-  put(slopeKind("slab30"), -11.5, 2.17, 8, 90, "fallen floor");
-  // The flight rises 4 m over 5.5 m toward +Z, its top at the deck's south edge.
-  put(slopeKind("stairs"), 2, 2, -2.75, 0, "stair flight");
-  // A ramp rising 2 m over 6 m to a low deck, east of the high one.
-  put(slopeKind("ramp"), 14, 1 - 0.2, 0, 0, "ramp");
-  put(floor, 14, 1.8, 7);
-  for (const [x, z] of [[10.5, 3.5], [17.5, 3.5], [10.5, 10.5], [17.5, 10.5]] as const) put(ruinKind("pier4", "concrete"), x, 2 - 0.2 - 2, z);
-  // A house 8 m square with walls 2.8 m high, its pitched roof's eaves on them.
-  const wall = ruinKind("wall8", "rose");
-  const hx = -22;
-  const hz = 18;
-  put(wall, hx, 1.4, hz - 3.75);
-  put(wall, hx, 1.4, hz + 3.75);
-  put(wall, hx - 3.75, 1.4, hz, 90);
-  put(wall, hx + 3.75, 1.4, hz, 90);
-  const roof = kind(slopeKind("roof"));
-  put(slopeKind("roof"), hx, 2.8 + reg.halfY[roof]!, hz, 90, "pitched roof");
-  put(slopeKind("rubble"), hx, 0.75, hz - 6, 0, "rubble");
+  for (const r of slopeRuin(reg)) put(r.kind, r.x, r.y, r.z, r.deg, r.text);
   // From the south, so the flight faces the camera, the ramp's side is on the left and the fallen bay on the right.
   if (look === "near") camAt([-6, 10, -18], [-7, 2, 8]);
   else camAt([10, 60, -150], [-4, 2, 9]);
