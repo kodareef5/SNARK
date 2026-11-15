@@ -1,9 +1,10 @@
 // The compact as an asset: its built pack keeps the measured contract the simulation and seats depend on
-// (assets/source/core/vehicles/compact/contract.ts), and it reaches the core pack as every asset does.
+// (content/vehicles/compact-art.ts), and it reaches the core pack as every asset does.
 import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { COMPACT } from "../../assets/source/core/vehicles/compact/contract.ts";
+import { COMPACT_ART as COMPACT } from "../../content/vehicles/compact-art.ts";
+import { COMPACT_VEHICLE } from "../../content/vehicles/compact.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { readPacks } from "../../tools/art/source.ts";
@@ -87,4 +88,16 @@ test("it is drawn with three materials of four maps and a hurt and decay layer, 
   }
   const core = readPacks();
   expect([core.meshes.some((m) => m.id === COMPACT.id), core.rigs.some((r) => r.id === COMPACT.id)]).toEqual([true, true]);
+});
+
+test("the content's car is the art's: its hull, wheels, seats, doors and steering wheel are the contract's", () => {
+  const def = COMPACT_VEHICLE, spec = def.spec, at = (name: keyof typeof COMPACT.anchors): readonly number[] => COMPACT.anchors[name];
+  expect([spec.halfWidth, spec.height, spec.halfLength]).toEqual([COMPACT.envelope.max[0], COMPACT.envelope.max[1], COMPACT.envelope.max[2]]);
+  const pivot = (bone: (typeof COMPACT.bones)[number]): readonly number[] => COMPACT.pivots[COMPACT.bones.indexOf(bone)]!;
+  expect(spec.wheelRadius).toBe(COMPACT.wheelRadius);
+  expect(spec.wheelbase).toBeCloseTo(pivot("wheel_front_left")[2]! - pivot("wheel_rear_left")[2]!, 6);
+  expect(spec.track).toBeCloseTo(pivot("wheel_front_left")[0]! - pivot("wheel_front_right")[0]!, 6);
+  expect(def.seats.map((s) => [[...s.anchor], [...s.entry]])).toEqual([[[...at("seat_driver")], [...at("approach_left")]], [[...at("seat_front_passenger")], [...at("approach_right")]]]);
+  const bones = new Set<string>(COMPACT.bones);
+  expect([...def.wheels.map((w) => w.bone), ...def.doors.map((d) => d.bone), def.steeringWheel!.bone].every((b) => bones.has(b))).toBe(true);
 });

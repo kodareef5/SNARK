@@ -1,8 +1,8 @@
 // The compact: an original two-door coupe, the first of the vehicles. Its measured contract (bones, pivots, sockets,
-// the closed envelope) is contract.ts, described in ref/DESIGN.md; tests/unit/vehicle-asset.test.ts holds the built
+// the closed envelope) is content/vehicles/compact-art.ts, described in ref/DESIGN.md; tests/unit/vehicle-asset.test.ts holds the built
 // pack to it. `bun run art -- core:compact` builds it.
 
-import { COMPACT } from "./contract.ts";
+import { COMPACT_ART as COMPACT } from "../../../../../content/vehicles/compact-art.ts";
 import type { CreatureAsset, MaterialSpec } from "../../../../../tools/art/spec.ts";
 
 /** A material's pictures, painted by tex/paint.py onto the layout model.py lays out. */
@@ -19,7 +19,7 @@ const painted = (name: string, extra: Partial<MaterialSpec> = {}): MaterialSpec 
 
 export default {
   kind: "creature",
-  // rig.py makes the armature "compact" on contract.ts's pivots; model.py builds the car on it, every part closed and
+  // rig.py makes the armature "compact" on content/vehicles/compact-art.ts's pivots; model.py builds the car on it, every part closed and
   // rigid on its one bone, and checks the layout is the one tex/ was painted for.
   source: { scripts: ["rig.py", "model.py"] },
   scale: 1,

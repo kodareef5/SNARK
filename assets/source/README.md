@@ -155,7 +155,7 @@ poses the bones by name (`client/core/render/characters.ts`): the wheels turn
 and steer, the doors swing on their hinges, the steering wheel spins. Its
 content (`content/vehicles/`) gives the hull it is driven, hit and parked by,
 so it needs no hit capsules. Its rig, sockets and closed size are a measured
-contract the seats depend on, kept beside the asset (`contract.ts`) and held to
+contract the seats depend on, kept beside the asset (`content/vehicles/compact-art.ts` for the compact) and held to
 the built pack by a test. Its paint is colour region 0, which the species'
 colours dye as they dye a creature's hide, and its materials carry a hurt
 picture (dents, scrapes, cracked glass) and a decay picture (burnt, rusted)

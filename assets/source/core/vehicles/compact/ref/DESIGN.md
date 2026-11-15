@@ -11,7 +11,7 @@ It is an asset like every other (`../asset.ts`, `bun run art -- core:compact`),
 a creature asset with no clips whose parts are rigid on their bones; how it is
 built is `assets/source/README.md`, "A vehicle". The numbers below are the
 measured contract the simulation and the seats depend on, kept in
-`../contract.ts` and held to the built pack by `tests/unit/vehicle-asset.test.ts`.
+`content/vehicles/compact-art.ts` and held to the built pack by `tests/unit/vehicle-asset.test.ts`.
 
 ## Stable measured contract
 

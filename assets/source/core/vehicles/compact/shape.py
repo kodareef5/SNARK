@@ -1,10 +1,10 @@
 # The compact's numbers and the curves of its body, in the engine's frame: metres, +Y up, +Z forward, +X the driver's
 # side (the car's left). model.py builds the meshes from them and turns them into Blender's frame at the end. The rig's
-# numbers are contract.ts's, checked against the built pack by tests/unit/vehicle-asset.test.ts.
+# numbers are content/vehicles/compact-art.ts's, checked against the built pack by tests/unit/vehicle-asset.test.ts.
 
 import math
 
-# The eight bones in the order the game names them, each with its rest pivot (contract.ts `bones`, `pivots`).
+# The eight bones in the order the game names them, each with its rest pivot (content/vehicles/compact-art.ts `bones`, `pivots`).
 BONES = [
     ("chassis", (0.0, 0.0, 0.0)),
     ("wheel_front_left", (0.78, 0.30, 1.25)),

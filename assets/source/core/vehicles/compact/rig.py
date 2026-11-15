@@ -1,4 +1,4 @@
-# The compact's skeleton: one armature named "compact", a bone at each of contract.ts's pivots, all on the chassis.
+# The compact's skeleton: one armature named "compact", a bone at each of content/vehicles/compact-art.ts's pivots, all on the chassis.
 # Blender's frame is the engine's turned: the car faces -Y with +Z up, its driver's side at +X.
 
 import bpy

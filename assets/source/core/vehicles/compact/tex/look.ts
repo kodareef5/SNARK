@@ -19,7 +19,7 @@ import { ModelView } from "../../../../../../tools/snap.ts";
 import { rgbaOf } from "../../../../../../tools/snap/files.ts";
 import { encodePng } from "../../../../../../tools/snap/png.ts";
 import { Stage } from "../../../../../../tests/fixtures/stage.ts";
-import { COMPACT } from "../contract.ts";
+import { COMPACT_ART as COMPACT } from "../../../../../../content/vehicles/compact-art.ts";
 
 const args = process.argv.slice(2);
 const out = args.includes("--out") ? args[args.indexOf("--out") + 1] : undefined;
