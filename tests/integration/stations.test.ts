@@ -11,7 +11,7 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_CRAFT_AT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { ON_TOP } from "../../shared/world/snap.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { KEY_STATION_JOB, KEY_STATION_RECIPE, StationPanel, stationRecipes } from "../../client/core/ui/station.ts";
+import { KEY_STATION_JOB, KEY_STATION_RECIPE, RECIPE_MAKE, RECIPE_STATUS, StationPanel, stationRecipes } from "../../client/core/ui/station.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { builder } from "../fixtures/build.ts";
@@ -195,9 +195,10 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   expect(at_(ada, spark, 1)).toBe(RESULT_INVALID);
   use(ada, box);
 
-  // Opened, the mortar is a station with 24 slots and an empty queue.
+  // Opened, the mortar is a station with 24 slots and an empty queue. It names its structure, and burns nothing and makes
+  // nothing by itself (protocol 17's OWN_STATION, planning/reference/stations-plan.md, S0).
   expect(use(ada, mortar)).toBe(RESULT_OK);
-  expect([ada.open?.inventory.cap, ada.station]).toEqual([24, { kind: id("mortar"), jobs: [] }]);
+  expect([ada.open?.inventory.cap, ada.station]).toEqual([24, { kind: id("mortar"), ref: mortar, out: 0, lanes: [], jobs: [] }]);
   // Without the engram it is refused. The engram is ARK's: level 6 and 3 points.
   expect(at_(ada, spark, 1)).toBe(RESULT_DENIED);
   h.say(ada, "addxp 1000");
@@ -227,18 +228,20 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   expect([inv.total(spark), inv.total(id("flint")), state.jobs.length, ada.station!.jobs]).toEqual([4, 1, 0, []]);
   expect([ada.inventory!.total(spark), ada.inventory!.total(id("flint")), state.xp]).toEqual([0, bag, 0]);
   expect(me.xp - xp).toBeCloseTo(0.48, 9);
-  // The panel beside the open mortar lists sparkpowder with a button for the engram ada knows, and the button asks the
-  // mortar for one grind, which one flint cannot make.
+  // The panel beside the open mortar lists sparkpowder for the engram ada knows, greyed with what one grind lacks, which one
+  // flint and no stone cannot make; its make button asks the mortar for nothing (S4, the station panel).
   const f = new UiFrame();
   f.begin(16 / 9);
   const panel = new StationPanel();
-  panel.build(f, ada, reg, 400, 100, 474);
-  expect([f.find(KEY_STATION_RECIPE)?.text, f.find(KEY_STATION_RECIPE + 1)?.text, f.find(KEY_STATION_JOB)?.text]).toEqual(["sparkpowder x2: 2 flint, 1 stone", "make", "nothing being made"]);
+  panel.build(f, ada, reg, 883, 100);
+  expect([f.find(KEY_STATION_RECIPE)?.text, f.find(KEY_STATION_RECIPE + RECIPE_STATUS)?.text, f.find(KEY_STATION_RECIPE + RECIPE_MAKE)?.interactive, f.find(KEY_STATION_JOB)?.text]).toEqual(["sparkpowder x2: 2 flint, 1 stone", "lacks 1 flint, 1 stone", false, "nothing being made"]);
   let clicked = -1;
   ada.onResult = (seq, c) => void (seq !== 0 && (clicked = c));
-  expect(panel.click(KEY_STATION_RECIPE + 1, ada, reg)).toBe(true);
+  expect(panel.click(KEY_STATION_RECIPE + RECIPE_MAKE, ada, reg)).toBe(true);
   h.run(150);
-  expect(clicked).toBe(RESULT_SHORT);
+  expect(clicked).toBe(-1);
+  // Asked anyway, the mortar refuses it.
+  expect(at_(ada, spark, 1)).toBe(RESULT_SHORT);
 
   // Bob may open ada's unlocked mortar, and is refused for not knowing the engram.
   use(ada, mortar);

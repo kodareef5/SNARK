@@ -168,6 +168,16 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset, palett
     }
   }
   if (names.length !== kept.length) throw new Error(`${g.path}: ${kept.length - names.length} joints could not be placed under "${skeleton.root}"`);
+  if (skeleton.order) {
+    // The order the asset gives, which must be the same bones with every parent before its children.
+    const order = skeleton.order;
+    if (order.length !== names.length || names.some((n) => !order.includes(n))) throw new Error(`${id}: skeleton.order lists ${order.join(", ")}, and the bones are ${names.join(", ")}`);
+    order.forEach((name, i) => {
+      const p = parentName(kept.find((n) => nameOf(n) === name)!);
+      if (i === 0 ? name !== skeleton.root : p !== null && order.indexOf(p) > i) throw new Error(`${id}: skeleton.order puts "${name}" before its parent or does not start at the root`);
+    });
+    names.splice(0, names.length, ...order);
+  }
   const nodeOfBone = names.map((name) => kept.find((n) => nameOf(n) === name)!);
   if (nodeOfBone[0] === undefined) throw new Error(`${g.path}: no joint named "${skeleton.root}"`);
   const most = Math.min(skeleton.bones ?? MOST_BONES, MOST_BONES);

@@ -2,8 +2,8 @@
 // Creatures in sleeping chunks are not stepped or iterated. Slow quantities such as hunger are lazy and belong to server/survival.ts.
 
 import { AnimState, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
-import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { BTN_JUMP, BTN_SPRINT, Body, MF_OUT, MF_WINDED, MODE_FLYER, MODE_SWIM, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
+import { TICK_DT, chunkAt, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
+import { BTN_JUMP, BTN_SPRINT, Body, MF_NO_JUMP, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
 import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { Behavior } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
@@ -11,7 +11,9 @@ import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, F_PROP, wider } from ".
 import { rollWild } from "../shared/sim/genome.ts";
 import { Rng } from "../shared/rng.ts";
 import { groundUnder } from "../shared/world/collide.ts";
-import { placeFree } from "./place.ts";
+import { GROUND_FREE, GROUND_WATER, groundAt } from "../shared/world/path.ts";
+import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../shared/world/ray.ts";
+import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
@@ -22,6 +24,16 @@ const CREATURE_SPAWN = event("creature.spawn");
 export const CUE_TICKS = 240;
 /** Metres a second at which a creature falling lands for its landing to show: a drop of about half a metre. Chosen. */
 const LAND_SPEED = 3;
+/** The share of its height a body floats with under water, as SWIM_FLOAT in shared/sim/character.ts. */
+const FLOAT_SHARE = 0.75;
+
+/**
+ * What a flyer nobody rides moves by: its numbers with flight costing no stamina, since ARK's wild creatures spend none and
+ * its unridden tames none "sprinting to keep up with a player" (FUNCTIONS.md section 4). Null for a kind that does not fly.
+ */
+function unridden(p: MoveParams | null): MoveParams | null {
+  return p?.flies ? { ...p, staminaFly: 0, staminaFlySprint: 0 } : null;
+}
 
 export class Creatures {
   bus: Bus = NO_BUS;
@@ -32,6 +44,12 @@ export class Creatures {
   stepped = 0;
   /** The OxygenSwimSpeedStatMultiplier rule. The host sets it. */
   swimGain = 1;
+  /** Flyers that took off, set down from their own flight and rolled since the server started, ridden or not. */
+  tookOff = 0;
+  setDown = 0;
+  rolled = 0;
+  /** Wild flyers set down on what was under them as their chunk went to sleep. */
+  grounded = 0;
 
   private readonly world: ServerWorld;
   private readonly records: Records;
@@ -49,6 +67,9 @@ export class Creatures {
   onStrike: ((e: number) => void) | null = null;
   /** 1 for kinds that stand where they are put. */
   private readonly still: Uint8Array;
+  /** By kind, what a wild and a tamed flyer nobody rides move by (`unridden`), or null for a kind that does not fly. */
+  private readonly wildFlight: (MoveParams | null)[];
+  private readonly tameFlight: (MoveParams | null)[];
   private readonly body = new Body();
   /** Creatures with a cue still to clear (EntityStore.cue). */
   private readonly cued = new Set<number>();
@@ -78,6 +99,8 @@ export class Creatures {
     game.onMountLand = (e, speed) => this.landed(e, speed);
     game.onMountFlight = (e) => this.flew(e);
     this.still = Uint8Array.from(world.reg.defs, (d) => (d?.type === "species" && d.still ? 1 : 0));
+    this.wildFlight = world.reg.move.map(unridden);
+    this.tameFlight = world.reg.tamedMove.map(unridden);
   }
 
   /** Something at (x, z) hurt `e`. `by` is the entity that did it, or -1. */
@@ -105,11 +128,21 @@ export class Creatures {
     this.cue(e, CUE_TORPOR, false);
   }
 
-  /** Just after `e`'s step: the barrel roll, take-off or setting down from flight that stepOut says it began now (FL2). */
+  /**
+   * Just after `e`'s step, ridden or not: the barrel roll, take-off or setting down from flight that stepOut says it began now
+   * (FL2, FL3). A flight set down has no landing speed, so the landing cue of a fall does not show it.
+   */
   flew(e: number): void {
-    if (stepOut.rolled) this.cue(e, CUE_ROLL, false);
-    else if (stepOut.tookOff) this.cue(e, CUE_TAKEOFF, false);
-    else if (stepOut.setDown) this.cue(e, CUE_LAND, false);
+    if (stepOut.rolled) {
+      this.rolled++;
+      this.cue(e, CUE_ROLL, false);
+    } else if (stepOut.tookOff) {
+      this.tookOff++;
+      this.cue(e, CUE_TAKEOFF, false);
+    } else if (stepOut.setDown) {
+      this.setDown++;
+      this.cue(e, CUE_LAND, false);
+    }
   }
 
   /** `e`, knocked out, ate a piece it was fed. */
@@ -260,6 +293,8 @@ export class Creatures {
     let stepped = 0;
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
+      // A vehicle's wheels move it (server/urban.ts), and nothing breathes in it.
+      if (world.reg.vehicle[ents.kind[e]!]) continue;
       // A driven creature is stepped with its session's body, and breathes as it goes. A held one moves with whoever holds it.
       if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0) {
         if (ents.driven[e] !== 0) this.breathe(e, world.reg.tamedMove[ents.kind[e]!]!);
@@ -275,13 +310,19 @@ export class Creatures {
       const flags = ents.flags[e]!;
       const move = mind.move[e]!;
       const pressed = mind.pressed[e]!;
-      // A tame runs at its tamed speed.
-      const p = (ents.team[e] !== 0 ? world.reg.tamedMove : world.reg.move)[kind]!;
+      // A tame runs at its tamed speed. A flyer nobody rides spends no stamina in the air.
+      const p = (ents.team[e] !== 0 ? (this.tameFlight[kind] ?? world.reg.tamedMove[kind]) : (this.wildFlight[kind] ?? world.reg.move[kind]))!;
       const swims = ents.mode[e] === MODE_SWIM;
       const cold = (ents.mflags[e]! & MF_OUT) !== 0;
+      // Hovering still, with flight costing it nothing, its step would change only its flight counters.
+      if (ents.mode[e] === MODE_FLYER && mind.buttons[e] === BTN_JUMP && move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vy[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && p.staminaFly === 0 && (ents.mflags[e]! & (MF_OUT | MF_ROOTED | MF_NO_JUMP | MF_WINDED)) === 0 && ents.stamina[e]! > 0 && ents.stamina[e]! <= ents.staminaMax[e]! * STAMINA_UNITS && this.wet[e] === 0) {
+        if (ents.rollWait[e]! > 0) ents.rollWait[e] = ents.rollWait[e]! - 1;
+        ents.regenWait[e] = p.regenWaitTicks;
+        continue;
+      }
       // At rest on the ground or afloat with no input, with its head above water or out cold, nothing would change but its
-      // stamina, so the step is skipped and the stamina got back as the step would give it.
-      if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0)) && (this.wet[e] === 0 || cold)) {
+      // stamina, so the step is skipped and the stamina got back as the step would give it. A flyer holding its jump takes off.
+      if (move === 0 && pressed === 0 && (mind.buttons[e]! & BTN_JUMP) === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0)) && (this.wet[e] === 0 || cold)) {
         const cap = ents.staminaMax[e]! * STAMINA_UNITS;
         const had = ents.stamina[e]!;
         // As the step counts them: a flyer's roll, and its wait after flying before any stamina comes back.
@@ -303,6 +344,7 @@ export class Creatures {
       stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT);
       const landing = stepOut.landSpeed;
       if (landing >= LAND_SPEED && (b.mflags & MF_OUT) === 0 && world.anims[kind]?.land) this.cue(e, CUE_LAND, false);
+      if (p.flies) this.flew(e);
       mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
       // A bite goes through the same action step as any blow.
       const jaws = world.reg.weapon[kind];
@@ -402,11 +444,46 @@ export class Creatures {
     if (p) this.breathe(e, p);
   }
 
+  /**
+   * A wild flyer whose chunk goes to sleep is put down unhurt on what is under it, as its flight would set it down, so that
+   * nothing wild sleeps in the air (planning/reference/flyers-plan.md, wild flyers 4): on the first thing built or grown under
+   * it, else ground it can stand on, else afloat on water deep enough to swim in. Moved aside to a free place if it would be
+   * inside something there, within its chunk; with none, or over a slide, it sleeps where it is.
+   */
+  private setDownUnder(e: number): void {
+    const world = this.world;
+    const ents = world.ents;
+    const p = world.reg.move[ents.kind[e]!]!;
+    const x = ents.x[e]!;
+    const y = ents.y[e]!;
+    const z = ents.z[e]!;
+    const ground = groundUnder(world.hf, x, z, p.radius);
+    const hit = y > ground ? castWorld(world, x, y, z, 0, -1, 0, y - ground) : HIT_NONE;
+    const top = hit === HIT_STRUCTURE || hit === HIT_NODE ? y - rayHit.t : NaN;
+    const under = Number.isNaN(top) ? groundAt(world, p, x, z) : GROUND_FREE;
+    if (under !== GROUND_FREE && under !== GROUND_WATER) return;
+    const mode = under === GROUND_WATER ? MODE_SWIM : MODE_WALK;
+    let to = !Number.isNaN(top) ? top : mode === MODE_SWIM ? world.hf.waterAt(x, z) - p.height * FLOAT_SHARE : ground;
+    let tx = x;
+    let tz = z;
+    if (!placeFree(world, x, to, z, p.radius, p.height)) {
+      if (!freePlace(world, x, to, z, p.radius, p.height, 0, p.stepUp, p.slopeCos) || chunkAt(world.dims, freeAt.x, freeAt.z) !== ents.chunk[e]) return;
+      tx = freeAt.x;
+      to = freeAt.y;
+      tz = freeAt.z;
+    }
+    ents.mode[e] = mode;
+    ents.flags[e] = mode === MODE_WALK ? ents.flags[e]! | F_GROUNDED : ents.flags[e]! & ~F_GROUNDED;
+    ents.setPosition(e, tx, Math.fround(to), tz);
+    this.grounded++;
+  }
+
   private sleep(e: number): void {
     let slot = this.awakeSlot[e]!;
     if (slot < 0) return;
     this.mind.owned.delete(e);
     const ents = this.world.ents;
+    if (ents.mode[e] === MODE_FLYER && ents.team[e] === 0) this.setDownUnder(e);
     // Asleep it is no longer saved a slice at a time, so where it stopped is saved now.
     const rec = this.records.byPid.get(ents.pid[e]!);
     if (rec && (rec.x !== ents.x[e] || rec.y !== ents.y[e] || rec.z !== ents.z[e])) this.records.dirty.add(rec.pid);

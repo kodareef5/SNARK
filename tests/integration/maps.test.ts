@@ -4,11 +4,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CORE_PACK } from "../../content/core.ts";
-import { createHost } from "../../server/host.ts";
+import { createHost, type Host } from "../../server/host.ts";
 import { mapRoutes } from "../../server/main.ts";
 import { createMapWorld, provingFile } from "../../server/world.ts";
 import { compilePacks } from "../../shared/content/packs.ts";
+import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { chunkCount } from "../../shared/coords.ts";
+import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { parseMap, writeMap } from "../../shared/world/mapfile.ts";
 import type { NodeSpot } from "../../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_ID, PROVING_SPAWNS, buildProvingHeightfield, populateProving, provingNodes } from "../../shared/world/proving.ts";
@@ -73,6 +75,53 @@ test("a map's definition says where a new world's creatures start, and must agre
   expect(createHost(coreRegistry(), { map: file, startingCreatures: 9, startingHunters: 4 }).world.ents.count).toBe(0);
   expect(() => createHost(withDef({ chunks: [8, 4] }).registry!, { map: file })).toThrow('map "test:flat": its file is 4 by 4 chunks with the sea at -Infinity, and its definition says 8 by 4');
   expect(() => createHost(withDef({ seaLevel: 3 }).registry!, { map: file })).toThrow("and its definition says 4 by 4 with the sea at 3");
+});
+
+test("a map's parked vehicles are set down once, in a new world, owned by nobody, and its save keeps them as it keeps any record", () => {
+  const db = join(dir, "parked.db");
+  const reg = coreRegistry();
+  const file = writeMap(flatMap(4, { vehicles: [
+    { kind: "core:compact", x: 100, z: 120, yaw: 0 },
+    { kind: "core:compact", x: 160, z: 90, yaw: 16384 },
+    { kind: "test:hauler", x: 60, z: 60, yaw: 0 },
+  ] }));
+  const cars = (host: Host): number[][] => [...host.records.byPid.values()].filter((r) => reg.vehicle[r.kind]).map((r) => {
+    const e = host.records.entOf.get(r.pid)!;
+    return [r.team, Math.round(host.world.ents.x[e]!), Math.round(host.world.ents.z[e]!), host.world.ents.yaw[e]!];
+  }).sort((a, b) => a[1]! - b[1]!);
+  const said: string[] = [];
+  const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath: db, map: file, log: (line) => said.push(line) });
+  try {
+    expect(cars(h.host)).toEqual([[0, 100, 120, 0], [0, 160, 90, 16384]]);
+    expect(said).toContain("not parked, for want of the content or of room: 1 of the map's test:hauler");
+    // Anyone may take one and drive it off.
+    const ada = h.join("ada");
+    h.run(400);
+    h.say(ada, "enablecheats");
+    h.say(ada, "tp 101.6 120.12");
+    h.run(200);
+    const car = h.host.records.entOf.get([...h.host.records.byPid.values()].find((r) => reg.vehicle[r.kind] && r.x === 100)!.pid)!;
+    expect(h.host.urban.mount(h.client(ada)!, car)).toBe(RESULT_OK);
+    h.run(1200);
+    expect(ada.driving).toBe(car);
+    h.pilots[0]!.moveZ = 1;
+    h.run(1500);
+    h.pilots[0]!.moveZ = 0;
+    h.run(3000);
+  } finally {
+    h.host.shutdown();
+  }
+  // The next start loads the cars where they were left, and parks none again.
+  const again = createHost(reg, { dbPath: db, map: file, clips: NO_CLIPS, rigs: [] });
+  try {
+    const left = cars(again);
+    expect([again.loaded!.fresh, left.length]).toEqual([false, 2]);
+    expect(left[0]!.slice(0, 2)).toEqual([0, 100]);
+    expect(left[0]![2]!).toBeGreaterThan(130);
+    expect(left[1]).toEqual([0, 160, 90, 16384]);
+  } finally {
+    again.shutdown();
+  }
 });
 
 test("a save records the map it was made on, and loads onto another only when the server is told to", () => {

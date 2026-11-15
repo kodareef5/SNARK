@@ -27,6 +27,8 @@
 //   SPWN  u8 count, then each a string name, i32 x, i32 z in 1/512 m, u16 yaw. The first is where a new survivor arrives.
 //   WILD  where wild creatures live: u16 count, then each a string spawns id, u16 count it holds at 1x, u8 shape (0 a circle,
 //         1 a box), i32 x, i32 z, u32 radius or half width, u32 half depth, in 1/512 m.
+//   VHCL  vehicles parked in a new world: u16 count and that many content ids, a u32 count, then 12-byte rows:
+//         u16 id, u16 yaw, i32 x, z in 1/512 m. Each stands on the ground under it.
 //   WATR  water standing on its own surfaces (shared/world/water.ts), only in a file of version 3: u8 metres a square (1, 2,
 //         4, 8, 16, 32 or 64), u16 count of bodies, each a string name and a u16 surface in the heights' units, then a u32
 //         count of the chunks holding water, each a u32 chunk index, ascending, and its squares as u16, row by row from
@@ -175,6 +177,14 @@ export interface MapSpawn {
   readonly yaw: number;
 }
 
+/** A vehicle the map parks: set down once, in a new world, and its save's from then on. `kind` is a content id, `yaw` in 1/65,536 turns. */
+export interface MapVehicle {
+  readonly kind: string;
+  readonly x: number;
+  readonly z: number;
+  readonly yaw: number;
+}
+
 /** Nodes scattered by a hash: `perChunk` slots in every chunk, each a kind drawn by weight, or empty where the ground does not suit. */
 export interface NodeScatter {
   readonly seed: number;
@@ -236,6 +246,7 @@ export interface MapData {
   readonly spawns: readonly MapSpawn[];
   /** Spawn regions, each naming a `spawns` definition and the creatures it holds. They are added to those of the map's definition. */
   readonly regions?: readonly MapZone[];
+  readonly vehicles?: readonly MapVehicle[];
   /** Lakes, ponds, reservoirs and the reaches of rivers, each on its own surface. Without it the sea is the only water. */
   readonly water?: MapWater;
 }
@@ -308,6 +319,7 @@ function check(m: MapData): void {
     if (z.kind !== "spawn" || z.spawns === undefined || !whole(z.count ?? -1, 0, 65535)) fail(`a spawn region at ${z.at[0]}, ${z.at[1]} names no spawns, or holds other than 0 to 65,535`);
     if (!inside(z.at[0], z.at[1]) || !(rx > 0 && rz > 0 && rx <= sizeX && rz <= sizeZ)) fail(`the spawn region of ${z.spawns} at ${z.at[0]}, ${z.at[1]} is off the map or has no size`);
   }
+  for (const v of m.vehicles ?? []) if (!inside(v.x, v.z)) fail(`a ${v.kind} parked at ${v.x}, ${v.z} is off the map`);
 }
 
 class Out {
@@ -488,6 +500,22 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
       }
     });
   }
+  const vehicles = m.vehicles ?? [];
+  if (vehicles.length > 0) {
+    section("VHCL", () => {
+      const ids = new Map<string, number>();
+      for (const v of vehicles) if (!ids.has(v.kind)) ids.set(v.kind, ids.size);
+      o.u16(ids.size);
+      for (const id of ids.keys()) o.text(id);
+      o.u32(vehicles.length);
+      for (const v of vehicles) {
+        o.u16(ids.get(v.kind)!);
+        o.u16(v.yaw);
+        o.i32(Math.round(v.x * STRUCT_UNITS));
+        o.i32(Math.round(v.z * STRUCT_UNITS));
+      }
+    });
+  }
   const w = m.water;
   if (w) {
     section("WATR", () => {
@@ -625,6 +653,7 @@ function read(r: In): Omit<MapFile, "hash"> {
   const nodes: NodeLayer[] = [];
   const spawns: MapSpawn[] = [];
   const regions: MapZone[] = [];
+  const vehicles: MapVehicle[] = [];
   let water: MapWater | null = null;
   while (r.at < r.bytes.length) {
     const tag = String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8());
@@ -670,6 +699,14 @@ function read(r: In): Omit<MapFile, "hash"> {
         const rz = s.u32() / STRUCT_UNITS;
         regions.push(box ? { kind: "spawn", spawns, count, at, half: [rx, rz] } : { kind: "spawn", spawns, count, at, radius: rx });
       }
+    } else if (tag === "VHCL") {
+      const ids = Array.from({ length: s.u16() }, () => s.text());
+      for (let n = s.u32(); n > 0; n--) {
+        const kind = ids[s.u16()];
+        if (kind === undefined) throw new Error("map: a parked vehicle is of a kind its table does not name");
+        const yaw = s.u16();
+        vehicles.push({ kind, x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw });
+      }
     } else if (tag === "WATR") {
       if (water) throw new Error("map: it has two WATR sections");
       const cell = s.u8();
@@ -690,7 +727,7 @@ function read(r: In): Omit<MapFile, "hash"> {
   }
   if (!heights) throw new Error("map: it has no heights");
   statics ??= new MapStatics(dims, [], 0, () => {});
-  return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(water ? { water } : {}) };
+  return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(water ? { water } : {}) };
 }
 
 /** Throws with a reason if the file is not a map this build can play on. */

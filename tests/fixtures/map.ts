@@ -52,5 +52,10 @@ export function busyMap(): MapData {
       { kind: "spawn", spawns: "core:spawns_beach", count: 12, at: [30, 60.5], radius: 25 + 1 / 512 },
       { kind: "spawn", spawns: "test:elsewhere", count: 0, at: [100, 150], half: [20, 40] },
     ],
+    vehicles: [
+      { kind: "core:compact", x: 40.25, z: 70, yaw: 16384 },
+      { kind: "test:hauler", x: 128, z: 0, yaw: 65535 },
+      { kind: "core:compact", x: 90, z: 120 + 1 / 512, yaw: 0 },
+    ],
   };
 }

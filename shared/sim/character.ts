@@ -173,6 +173,30 @@ export class Body {
    */
   kind = 0;
   yaw = 0;
+  /** Full wheel-controller state, copied and replayed with the ordinary body. */
+  vehicle = false;
+  vehicleYaw = 0;
+  vehicleYawRate = 0;
+  vehicleGear = 0;
+  vehicleRpm = 0;
+  vehicleShiftTime = 0;
+  vehiclePayloadMass = 0;
+  vehiclePitchRate = 0;
+  vehicleRollRate = 0;
+  vehicleGroundPitch = 0;
+  vehicleGroundRoll = 0;
+  vehicleRideOffset = 0;
+  vehicleRideVelocity = 0;
+
+  vehiclePitch = 0;
+  vehicleRoll = 0;
+  steering = 0;
+  wheelAngle = 0;
+  fuel = 0;
+  seat = 0;
+  seatSlot = 0;
+  seatGen = 0;
+
   /**
    * Action state (shared/sim/weapon.ts). `held` is the content index of the item in hand, 0 for none. `reloadTo` is the rounds a
    * reload would leave loaded, set by the server from what the body carries.
@@ -214,6 +238,29 @@ export class Body {
     this.mflags = o.mflags;
     this.kind = o.kind;
     this.yaw = o.yaw;
+    this.vehicle = o.vehicle;
+    this.vehicleYaw = o.vehicleYaw;
+    this.vehicleYawRate = o.vehicleYawRate;
+    this.vehicleGear = o.vehicleGear;
+    this.vehicleRpm = o.vehicleRpm;
+    this.vehicleShiftTime = o.vehicleShiftTime;
+    this.vehiclePayloadMass = o.vehiclePayloadMass;
+    this.vehiclePitchRate = o.vehiclePitchRate;
+    this.vehicleRollRate = o.vehicleRollRate;
+    this.vehicleGroundPitch = o.vehicleGroundPitch;
+    this.vehicleGroundRoll = o.vehicleGroundRoll;
+    this.vehicleRideOffset = o.vehicleRideOffset;
+    this.vehicleRideVelocity = o.vehicleRideVelocity;
+
+    this.vehiclePitch = o.vehiclePitch;
+    this.vehicleRoll = o.vehicleRoll;
+    this.steering = o.steering;
+    this.wheelAngle = o.wheelAngle;
+    this.fuel = o.fuel;
+    this.seat = o.seat;
+    this.seatSlot = o.seatSlot;
+    this.seatGen = o.seatGen;
+
     this.held = o.held;
     this.act = o.act;
     this.actTicks = o.actTicks;
@@ -242,6 +289,29 @@ export class Body {
       this.mflags === o.mflags &&
       this.kind === o.kind &&
       this.yaw === o.yaw &&
+      this.vehicle === o.vehicle &&
+      this.vehicleYaw === o.vehicleYaw &&
+      this.vehicleYawRate === o.vehicleYawRate &&
+      this.vehicleGear === o.vehicleGear &&
+      this.vehicleRpm === o.vehicleRpm &&
+      this.vehicleShiftTime === o.vehicleShiftTime &&
+      this.vehiclePayloadMass === o.vehiclePayloadMass &&
+      this.vehiclePitchRate === o.vehiclePitchRate &&
+      this.vehicleRollRate === o.vehicleRollRate &&
+      this.vehicleGroundPitch === o.vehicleGroundPitch &&
+      this.vehicleGroundRoll === o.vehicleGroundRoll &&
+      this.vehicleRideOffset === o.vehicleRideOffset &&
+      this.vehicleRideVelocity === o.vehicleRideVelocity &&
+
+      this.vehiclePitch === o.vehiclePitch &&
+      this.vehicleRoll === o.vehicleRoll &&
+      this.steering === o.steering &&
+      this.wheelAngle === o.wheelAngle &&
+      this.fuel === o.fuel &&
+      this.seat === o.seat &&
+      this.seatSlot === o.seatSlot &&
+      this.seatGen === o.seatGen &&
+
       this.held === o.held &&
       this.act === o.act &&
       this.actTicks === o.actTicks &&

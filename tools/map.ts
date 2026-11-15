@@ -36,6 +36,8 @@
 //   regions.json  [{ "spawns": "core:spawns_beach", "count": 12, "x": 180, "z": 300, "radius": 40 }]
 //                 Where wild creatures live: the spawns definition a region is stocked from, how many it holds at a
 //                 DinoCountMultiplier of 1, and a circle, or a box given as "half": [half width, half depth]. Optional.
+//   vehicles.json [{ "kind": "core:compact", "x": 240, "z": 270, "yaw": 90 }]
+//                 Vehicles parked on the ground, owned by nobody: set down once, in a new world, and kept by its save. Optional.
 //   water.json    { "squares": "water.png", "bodies": [{ "name": "Stow Lake", "surface": 86 }] }
 //                 Water standing on its own surface apart from the sea: lakes, ponds, reservoirs, a river's reaches. The
 //                 picture is 16-bit greyscale of 1, 2, 4, 8, 16, 32 or 64 m a pixel, its value the number of the body
@@ -75,6 +77,11 @@ export function describe(file: Uint8Array): string[] {
     `spawn points: ${map.spawns.map((s) => `${s.name} (${s.x}, ${s.z})`).join(", ")}`,
   ];
   if (map.regions) lines.push(`spawn regions: ${map.regions.map((r) => `${r.count} of ${r.spawns} at (${r.at[0]}, ${r.at[1]})`).join(", ")}`);
+  if (map.vehicles) {
+    const parked = new Map<string, number>();
+    for (const v of map.vehicles) parked.set(v.kind, (parked.get(v.kind) ?? 0) + 1);
+    lines.push(`parked vehicles: ${[...parked].map(([id, n]) => `${n} of ${id}`).join(", ")}`);
+  }
   const w = map.water;
   if (w) {
     let squares = 0;
@@ -83,7 +90,7 @@ export function describe(file: Uint8Array): string[] {
     lines.push(`${w.bodies.length} bodies of water in ${squares} squares of ${w.cell} m over ${w.chunks().length} chunks, surfaces ${Math.min(...w.surface.subarray(1)).toFixed(2)} to ${Math.max(...w.surface.subarray(1)).toFixed(2)} m${names.length > 0 ? `: ${names.join(", ")}` : ""}`);
   }
   const known = registry().index;
-  const named = new Set([...map.statics.kinds, ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!)]);
+  const named = new Set([...map.statics.kinds, ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!), ...(map.vehicles ?? []).map((v) => v.kind)]);
   const lacking = [...named].filter((id) => !known.has(id));
   if (lacking.length > 0) lines.push(`not in the core content: ${lacking.join(", ")}`);
   return lines;

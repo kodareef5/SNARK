@@ -9,6 +9,7 @@ import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../shared/world/collide.ts";
+import { vehicleMeetsKind } from "../shared/world/vehicle.ts";
 import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, floorTop, freePose, obstructed, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
@@ -229,9 +230,10 @@ export class Build {
       for (let ox = -1; ox <= 1; ox++) {
         if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
         for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
-          // A rider goes where its mount goes.
+          // A rider goes where its mount goes, and a vehicle is not shoved aside: the piece was refused if it met one.
           if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE || ents.seat[i] !== 0) continue;
           const k = ents.kind[i]!;
+          if (reg.vehicle[k]) continue;
           if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, SKIN)) found.push(i);
         }
       }
@@ -695,8 +697,9 @@ export class Build {
         if (cx + ox < 0 || cz + oz < 0 || cx + ox >= dims.chunksX || cz + oz >= dims.chunksZ) continue;
         for (let i = ents.chunkHead[(cz + oz) * dims.chunksX + cx + ox]!; i >= 0; i = ents.next[i]!) {
           if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
-          const k = ents.kind[i]!;
-          if (capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
+          const k = ents.kind[i]!, car = reg.vehicle[k];
+          // A vehicle is its whole hull, nose to boot, not a body of its half width.
+          if (car ? vehicleMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[i]!, BODY_SLACK) : capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;
         }
       }
     }

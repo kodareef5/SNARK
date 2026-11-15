@@ -192,7 +192,8 @@ function metAt(cell: number, upper: boolean, t: number): number {
 }
 
 /** The direction must be a unit vector, and `maxT` is in metres. Fills `rayHit` and returns the HIT_ kind. */
-export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
+/** solidOnly excludes nonblocking vegetation from support queries; normal targeting rays retain their existing hits. */
+export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number, solidOnly = false): number {
   const hf = w.hf;
   let best = maxT;
   let kind = HIT_NONE;
@@ -231,6 +232,7 @@ export function castWorld(w: CollisionWorld, ox: number, oy: number, oz: number,
         const t = structs.chunks[Math.floor(r / 65536)]!;
         const slot = r & 0xffff;
         const k = t.kind[slot]!;
+        if (solidOnly && structs.isSoft(k)) continue;
         frameOf(t.yaw[slot]!);
         const s = frame.sin;
         const c = frame.cos;

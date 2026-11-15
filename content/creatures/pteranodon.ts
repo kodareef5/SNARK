@@ -93,7 +93,9 @@ export const PTERANODON: readonly Def[] = [
     // eleven rolls of 10 against our tools, a hatchet favouring hide and a pick meat, as the dodo's are.
     corpse: { health: 110, roll: 10 },
     drops: [{ item: "core:hide", min: 1, max: 1, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, favoured: "stone" }],
-    // Its head takes three times; damage by type is the shared carnivore's, as the raptor's is.
+    // Its head takes three times; damage by type is the shared carnivore's, as the raptor's is: 70% from guns ("all
+    // creatures aside from Humans", ark.wiki.gg, Longneck Rifle, 2026-11-15).
+    takes: { bullet: 0.7 },
     zones: { head: 3 },
     // The experience the infobox gives for a kill at level 1. Its data module's base is 3.
     killXp: 12,

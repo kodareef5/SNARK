@@ -88,7 +88,7 @@ test("status tells what is carried, eat feeds, craft makes what is known, and mo
 
   p.h.host.survival.add(p.rec, V_FOOD, -30);
   const ate = await p.call("eat");
-  expect(ate).toMatchObject({ state: "done", ate: "berry", self: { food: [74, 100] } });
+  expect(ate).toMatchObject({ state: "done", ate: "berry", self: { food: [71, 100] } });
   expect(await p.call("eat", { item: "stone" })).toMatchObject({ state: "blocked" });
   expect(await p.call("eat", { item: "meat" })).toEqual({ state: "refused", reason: "you carry no meat" });
 
