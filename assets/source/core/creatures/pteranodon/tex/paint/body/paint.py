@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
-"""Paint the body from the live accepted studies. No Blender; only writes here.
+"""Paint the body from the live accepted studies. No Blender.
 
 python3 tex/paint/body/paint.py
 The animal-space patch field is shared across UV islands. All sampling, filtering
 and relief are in physical units, and the bake is read anew on every invocation.
+Missing study deliveries are rebuilt by their own build.py in the study folder.
 """
 from pathlib import Path
-import argparse
 import hashlib
 import json
-import shutil
 import subprocess
 import sys
 import time
@@ -63,14 +62,28 @@ def unit(a):
 
 
 def ensure_study(name, sets):
-    """Missing ignored layers rebuild in a private copy, never in another painter's folder."""
+    """Read the study's own delivery, running its unchanged build if needed."""
     source = ASSET/'tex/studies'/name
-    if all((source/f'{s}_{l}.png').exists() for s in sets for l in ['base','height','packed','regions']):
-        return source
-    target = HERE/'checks/rebuilt_studies'/name
-    shutil.copytree(source,target,dirs_exist_ok=True,ignore=shutil.ignore_patterns('checks','superseded','__pycache__'))
-    subprocess.run([sys.executable,str(target/'build.py')],check=True)
-    return target
+    layers = ['base','height','packed','regions']
+
+    def complete():
+        required = [source/'study.json'] + [source/f'{s}_{l}.png' for s in sets for l in layers]
+        if not all(path.is_file() for path in required):
+            return False
+        if name == 'fuzz':
+            spec = json.loads((source/'study.json').read_text())
+            manifest = source/spec.get('elements_manifest','elements/elements.json')
+            if not manifest.is_file():
+                return False
+            elements = json.loads(manifest.read_text())
+            return all((source/'elements'/f'{e}_{l}.png').is_file() for e in elements for l in layers)
+        return True
+
+    if not complete():
+        subprocess.run([sys.executable,str(source/'build.py')],cwd=source,check=True)
+    if not complete():
+        raise FileNotFoundError(f'Incomplete study delivery after build: {source}')
+    return source
 
 
 class Study:
@@ -251,6 +264,37 @@ def mantle_ids(folder, p, distance):
     return out
 
 
+def nape_profile(p, normal):
+    """Inset from the actual rear silhouette in the YZ profile, in metres.
+
+    X-width alone is foreshortened away near the dorsal meridian. Locate that
+    meridian using the live normals, then measure perpendicular to its projected
+    curve. The mirrored half shares exactly the same YZ curve and inset.
+    """
+    spec=metadata(HERE/'source/joins.json')['nape']['profile']
+    dorsal=(np.abs(normal[:,0])<.04)&(normal[:,2]<-.2)
+    candidates=p[dorsal,1:]
+    # Two-mm bins average raster/position quantization, not the neck's shape.
+    bins=np.floor(candidates[:,0]/.002).astype(np.int32)
+    curve=np.array([np.median(candidates[bins==k],axis=0) for k in np.unique(bins)],F)[::-1]
+    arc=np.r_[0,np.cumsum(np.linalg.norm(np.diff(curve,axis=0),axis=1))]
+    s=np.linspace(0,arc[-1],int(np.ceil(arc[-1]/.0005))+1)
+    curve=np.stack([np.interp(s,arc,curve[:,k]) for k in range(2)],1)
+    tangent=unit(np.gradient(curve,axis=0))
+    outward=np.stack([-tangent[:,1],tangent[:,0]],1)
+    _,near=cKDTree(curve).query(p[:,1:])
+    inset=np.sum((curve[near]-p[:,1:])*outward[near],axis=1)
+    fraction=s[near]/s[-1]
+    stops=np.array(spec['depth_stations'],F)
+    depth=np.interp(fraction,stops[:,0],stops[:,1])
+    # Keep the accepted fringe's physical width on the surface: convert the
+    # projected signed distance to a local surface distance at the edge.
+    dot=np.sum(normal[:,1:]*outward[near],axis=1)
+    surface_gradient=np.sqrt(np.maximum(1-dot*dot,0))
+    distance=(depth-inset)/np.maximum(surface_gradient,.25)
+    return distance.astype(F),inset,fraction,curve,s
+
+
 def main():
     start=time.monotonic()
     out=HERE/'layers';out.mkdir(exist_ok=True)
@@ -368,6 +412,15 @@ def main():
         value=base[m].mean(-1)
         value += .5-float(value.mean())
         base[m]=np.clip(value[:,None],.06,.94)
+        means[str(region)]=float(lin(np.round(srgb(base[m])*255)/255).mean())
+    # Round 2 changes only neck region coverage. Keep the accepted material's
+    # value calibration above, so no base/relief/roughness/AO texels are repainted.
+    neck=pieces==numbers['neck']
+    distance,_,_,_,_=nape_profile(pos[neck],normal[neck])
+    wrap=mantle_ids(fuzzdir,pos[neck],distance)
+    regions[neck]=np.where(wrap,0,regions[neck])
+    for region in [0,2,5]:
+        m=owned&(regions==region)
         means[str(region)]=float(lin(np.round(srgb(base[m])*255)/255).mean())
     rgba=np.zeros((N,N,4),np.uint8)
     rgba[owned,:3]=np.uint8(srgb(base[owned])*255+.5);rgba[owned,3]=255

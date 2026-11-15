@@ -1,78 +1,64 @@
-# Pteranodon body painting — body round 1
+# Pteranodon body painting — body round 2
 
-Delivered the ten assigned pieces on `pteranodon`: torso (including tail), neck, leg, four toes and three small fingers. All authored files are in this folder. No Blender, external references, new generated originals, or edits to other painters' files were used.
+The nape stripe now wraps onto both sides of the neck to the measured profile depths. **Only 15,382 neck region texels changed, all ivory to charcoal.** The accepted round 4 fuzz, base colour, height, roughness and occlusion are byte-identical to round 1. Every region texel outside the neck, including the torso mantle, is unchanged.
 
-[Game review](checks/review.png) · [before / after](checks/round1_before_after.png) · [rider](checks/look/rider_design.png) · [profile close-up](checks/round1_details/neck_profile_1000ppm_design.png) · [concept at matched scale](checks/concept_side_scale.png) · [source / base / relight](checks/source_base_relit.png)
+[Head / side / rider before and after](superseded/checks/round2_review.png) · [Profile before and after at 1,000 px/m](superseded/checks/round2_profile_comparison.png) · [Final head](superseded/checks/look/head_design.png) · [Final side](superseded/checks/look/side_design.png) · [Final rider](superseded/checks/look/rider_design.png)
 
-## Body round 1
+## Measured profile depth
 
-Both requested changes are delivered: the nape is **70 mm across under the head**, with a continuous charcoal centre visible in profile, and all body fuzz now samples the **accepted round 4** study. The mantle's established shape, flow mapping, foot and finger construction, claws and material means are retained. The neck's rear gate follows its curve, and its fringe becomes shorter with the face-scale pile so pale locks do not cut across the narrow stripe. The head painter's updated placement file explicitly adopts the 70 mm body contract; the actual common cut is verified below.
+Round 1 controlled the stripe by its width across X. That established a broad dorsal stripe, but its visible depth in profile was too shallow. The previous report's profile claim overstated that result. This round measures **perpendicular inward distance in the animal's YZ plane from the rear silhouette**, rather than treating transverse width as profile depth.
 
-Inspected the final **side, rider, above and head** views in the game's renderer, then the rider in loud/dark dyes and a true side close-up at 1,000 px/m. The side shows charcoal along the rear silhouette down into the mantle; the rider sees an unbroken centre with interlocking side locks. The round 4 pile stays fine and directional over the neck and shoulders. The above view preserves the saddle-shaped mantle. All writes for this round stayed in `tex/paint/body/`; the renderer's isolated build is in the temporary look cache.
+| Along the neck | Requested | Delivered coverage depth | Previous coverage depth |
+|---|---:|---:|---:|
+| Just behind the head | 15 mm | **15.4 mm** | 13.5 mm |
+| One third down | 20 mm | **21.2 mm** | 11.0 mm |
+| Two thirds down | 30 mm | **29.5 mm** | 14.0 mm |
+| Approaching the mantle | 35–40 mm | **36.5 mm** | 29.6 mm |
 
-## Construction and placement
+These are measurements of the **delivered region PNG**, not the input width settings. Each averages dark coverage across 20 mm of contour: projected dark area divided by contour length gives the equivalent solid-band depth, counting the interlocking dark and pale locks. Individual fringe tips wander either side of this value. Samples are 0.25 mm inward and 0.5 mm along the contour, querying the live position map within 1.5 mm. The head and mantle sections are 28 mm and 432 mm along the 470 mm rear curve; the cut rings themselves cannot support a full perpendicular section. The middle sections are at one third and two thirds of the curve. [Measurements and coordinates](superseded/checks/round2_profile.json).
 
-`paint.py` reads the current piece IDs, position box, 16-bit positions, millimetres per texel, object normals and flow on every run. The current normal bake has positive X on this half while the newer position bake has negative X; the script resolves their handedness separately. It derives surface flow from the position Jacobian and the baked UV direction, rather than treating UV pixels as equally sized physical patches.
+## Placement and unchanged materials
 
-The source is the live **accepted round 4 fuzz study**, including `fuzz`, `mantle_edge`, the element manifest and all aligned base/height/packed/region crops. Every element is checked against its parent layer at runtime. There is no frozen copy of an earlier study. Missing ignored study outputs are rebuilt by their own `build.py` in a private copy under this folder's `checks/rebuilt_studies/`, preserving other painters' directories.
+`paint.py` reads the current positions, normals, piece IDs and studies on every build. It locates the neck's dorsal meridian where the normal has almost no X component and faces backward (`abs(nx) < 0.04`, `nz < −0.2`). The upper bend may face slightly downward as it joins the head; it remains part of the rear silhouette. Two-millimetre bins average bake quantization, and the resulting curve is sampled every half millimetre.
 
-The fuzz is sampled in overlapping surface frames on a shared 40 mm animal-space lattice. Frames follow the baked flow; cubic blend weights and source-variance compensation keep the fine value drawing without lattice seams. The same field spans torso, neck and leg, independent of the islands' atlas rotation. Absolute X preserves mirror symmetry. Two millimetres of gently reduced contrast at the back/belly meridians avoid a sharp reflected parting. The source is filtered for the actual body density before sampling; no noise-generated imitation fibres replace the study.
+The requested inset interpolates through **15, 20, 30 and 37.5 mm** along that curve. Its projected distance is converted to local surface distance before sampling the existing `mantle_edge` drawing, preserving the accepted locks, wandering and face-scale fringe. The added coverage is united with the accepted dorsal stripe on the **neck only**. Both sides use the same mirrored texels. The 70 mm transverse width in [source/joins.json](source/joins.json) remains the established head-join/core contract; the new `profile` entry controls the added side coverage.
 
-Body fibre calibration remains **6–12 mm**, with **12–30 mm locks**, sampled from the study's **500 mm** tile. Frames gradually reach half scale toward the head (y 1.14–1.32 m) and lower shin: **3–6 mm fibres**, **6–15 mm locks**. This matches the accepted face-scale morphology, which currently uses the same drawing at half the span and relief. The stub tail receives a restrained 2.5% pigment decrease near z −0.765 m, with no painted form shadow. The shoulders remain ordinary, unpressed fuzz beneath the separate saddle.
+The existing fuzz field and material normalization run unchanged before the new region assignment. Consequently base, height, roughness and occlusion retain exactly the previous bytes, rather than acquiring small global changes from recalibrating the new region populations. The delivered pattern/body linear means remain within 0.00012 of 0.50. No study, geometry, head, wing, feet, finger, claw or mantle painting changed. No new image originals were generated and no Blender process was run. Authored files stay in `tex/paint/body/`; the game preview uses its normal isolated temporary build.
 
-The mantle is a smooth, rounded saddle over the shoulders and back, tapering to the hips near z −0.675 m. Its half-width reaches roughly 158 mm over the shoulders and narrows to **35 mm** on the upper neck: **70 mm total**, broadening through 80–90 mm down into the mantle. Its edge directly samples the live `mantle_edge` categorical drawing, including wandering and interleaved dark/pale locks. The edge placement and sampling scale are unchanged on the torso; its across-edge span follows the pile down to half scale near the head, leaving approximately 1–2 cm interleaving there. It does not inherit the stepped region guide. Region assignment and material sampling both use animal-space coordinates, including at the torso/neck cut.
+The six delivery files remain in `layers/`: 2048-square RGBA base, 16-bit height, roughness, occlusion, categorical regions, and `layers.json`. Full height encoding is **0.8 mm**. Occupied relief remains **0.105 mm torso**, **0.099 mm neck**, **0.135 mm leg**, and **0.169–0.198 mm digits**. Fuzz roughness remains about **0.86**. The accepted source is still round 4 fuzz: 6–12 mm fibres and 12–30 mm locks, falling to half scale near the head and lower shin.
 
-The nape placement is recorded in [source/joins.json](source/joins.json), which is now read by both painters on each build. Under the head its nominal edge is `abs(x) = 0.035 m`. The rear gate follows the curved neck centreline instead of the old straight diagonal, which let the final study's pale fringe reach across the dorsal centre. The actual rear midpoint of the head/neck cut is approximately **(0, 1.351, 0.401) m**. Along its sides, representative points are **(±0.030, 1.348, 0.419)** in the dark core and **(±0.035, 1.344, 0.425)** at the interlocking edge. Exact sampled points and current region IDs are in [validation.json](checks/validation.json). The head painter reads this width and samples the live body maps within 4 mm of the cut; body region tips take precedence inside 1.5 mm. The common baseline remains 0.4 mm, base 0.50 linear and dry roughness about 0.86.
+## Checks and game review
 
-On the lower leg, fuzz thins into horn skin over **28 mm**, centred at z −1.015 m. Material roughness and relief blend continuously; pure yellow/blue region IDs interleave along source-derived small tufts. This is material coverage, not transparent alpha.
+Inspected the final game's **head, side and rider** images, plus the true-profile close-up at **1,000 px/m**. The charcoal now has visible depth along the rear neck in profile, grows toward the mantle, and remains joined to the head streak. From the rider's seat it is broader through the middle neck, with the same interlocking edges and uninterrupted dark centre. The head and torso retain their previous painting.
 
-Foot and toe layers come from the accepted skin study. Distance along each tube and its circumference are reconstructed from the live position bake. The `scutes` tile runs lengthwise along the toe, placing its **3–6 mm transverse plates** on the anatomical dorsal face. In the glide the toes curl toward +Y, so dorsal is −Y; the hand is oriented the other way. The sides and soles use the **0.5–1.5 mm pebbles** of `skin`. Both source tiles cover **200 mm**. Small fingers use **70%** of those feature sizes. Filtering lets subtexel pebbles settle into grain while the scutes remain legible.
+`check.py` passed:
 
-Each claw uses the skin study's curved `claw` element and its recorded centreline, with longitudinal growth grain and the lighter, smoother worn point. Its colour remains natural dark brown-grey, region black, in every dye. The physical guide yields toe claw spans **35.9–44.6 mm** and small-hand spans **20.3–31.8 mm**. Collar placement follows the actual claw geometry/guide in longitudinal distance; it is not an arbitrary atlas rectangle.
+- **1,126,308 / 1,126,308** assigned texels covered; zero unpainted or outside-owned texels; valid pure region colours and exactly neutral dyed base.
+- Linear means: pattern **0.500119**, horn skin **0.500003**, body **0.499969**. The composer reports x1.000 corrections.
+- **7,149 / 7,149** sampled dorsal core texels remain charcoal.
+- Torso/neck seam metrics are unchanged: 673 nearby samples, mean height difference **0.0091 mm**, base difference **0.0503 linear**, and **96.0%** region agreement between neighbouring texels up to 2.5 mm apart.
+- Head/neck region agreement is **99.13%** across 1,608 neighbours within 1.5 mm. Fourteen samples differ from the previous head at the widened fringe; there is no visible pale break in the rendered join. The head maps were preserved. Base/height agreement is unchanged.
+- `review_profile.py` verifies the measured depths, zero changes outside the neck, zero changes to all four material maps, and preservation of every previously dark neck texel.
 
-## Delivered layers
+[Validation](superseded/checks/validation.json) · [Build provenance](superseded/checks/build_metrics.json) · [Round 2 reproducibility](superseded/checks/round2_reproducibility.json). The first build took **55.1 seconds**. A second complete build took **31.4 seconds** including process overhead and reproduced all six delivered files byte for byte.
 
-The ignored `layers/` directory contains five 2048-square PNGs and `layers.json`:
-
-| Layer | Contents |
-|---|---|
-| `pteranodon_base.png` | RGBA, exact alpha 255 on all assigned texels and 0 elsewhere. Neutral value drawing under dyes; naturally coloured claws. |
-| `pteranodon_height.png` | Genuine 16-bit grey. Full encoding represents **0.8 mm**, recorded in `layers.json`. |
-| `pteranodon_rough.png` | Dry fuzz, matte/satin pebbled skin and scutes, polished claw. |
-| `pteranodon_occlusion.png` | Only the source materials' fine gaps and creases. No saddle or body-form shading. |
-| `pteranodon_regions.png` | Pure red patterning, blue horn skin, yellow body and black undyed claw. |
-
-No normal map is delivered: `compose.py` derives it from the quantized height at each texel's real scale. All non-owned texels are zero in every delivered layer. The body's occupied relief is **0.105 mm** on the torso and **0.099 mm** on the neck, **0.135 mm** over the leg's fuzz/skin transition, and **0.169–0.198 mm** across skin/claw pieces. This is shallow velvet and horn relief, not the length of exposed hairs. Fuzz roughness averages **0.860** and fine AO is **0.988–1.0**.
-
-## Validation and visual review
-
-Rebuild from the creature folder:
+Reproduce from the creature folder:
 
 ```sh
 python3 tex/paint/body/paint.py
 python3 tex/paint/body/check.py
-zsh tex/paint/look.sh tex/paint/body/checks/look --maps
-bun tex/paint/body/render_details.ts
 ```
 
-`check.py` validates the delivered files and makes the source/base/relight panel. [Validation](checks/validation.json), [build provenance](checks/build_metrics.json), and [reproducibility](checks/reproducibility.json) record the results and SHA-256 hashes.
+`review_profile.py` recreates the historical before/after sheets using `superseded/checks/round2_before/` and the review renders in `superseded/checks/`; its regression assertions require the geometry bakes used for that round. The renderer sources are retained as `render_details.ts.txt` and `feet_review.ts.txt`. Historical game renders used the cached model and the then-current layers of all painters; no other painter's layers were changed.
 
-- **1,126,308 / 1,126,308** assigned texels covered; **zero** unpainted or outside-owned texels.
-- Exact R=G=B in every dyed texel; no illegal region colours.
-- Linear means: pattern **0.499998**, horn skin **0.500003**, body **0.499999**. The composer reports x1.000 correction for these regions.
-- Fuzz along-flow / cross-flow gradient energy: torso **0.100**, neck **0.095**, leg **0.174**. The stronger transverse gradients confirm that the visible strands follow the flow.
-- At 673 nearby samples across the torso/neck cut, mean height difference is **0.0091 mm**, mean linear value difference **0.0503**, and region agreement **96.1%**. These compare neighbours up to 2.5 mm apart, rather than identical points; local fringe differences are expected. The rendered cut is not visible.
-- All **7,149** sampled dorsal core texels are charcoal; no pale crossbar interrupts the upper stripe.
-- At **1,608** head samples within 1.5 mm of the neck, current region agreement is **100%**, mean linear base difference **0.00381**, and mean height difference **0.000317 mm**. The comparison reads the other painter's current layers; it does not modify them.
-- Toe and finger region, height, roughness and occlusion texels are **identical** to the previous body delivery. Base normalization changes 3,606 digit texels by at most **one 8-bit level**; undyed claws and geometry are retained.
-- A second complete run with unchanged input hashes reproduced **all six delivery files byte for byte** using fuzz round 4.
+## Files
 
-The game's own renderer is the visual judge. The current four-view sheet, before/after comparison and 1,000 px/m concept comparison are linked above. The source/base/relight comparison filters both source references to the body's actual density before enlargement; it shows the final source's fine strand drawing surviving in the mapped base and under both lights. The final rider views in design/loud/dark dyes retain the uninterrupted nape and fine grain. Original feet/distance reviews remain in `checks/round1_before/` and `checks/feet_dyes/`; this round does not claim a new feet-dye review. Renders compose the other painters' current layers as well as this body's delivery.
+`paint.py` uses Python, NumPy, Pillow and SciPy. It reads the accepted `tex/studies/fuzz/` and `tex/studies/skin/` deliveries directly (metadata, layers and fuzz elements), the live piece/position/texel maps in `tex/paint/`, the flow/object-normal/region bakes in `ref/bakes/`, and `source/joins.json`. Missing study deliveries invoke that study's unchanged `build.py` in its own folder. No study copies are used. `source/` contains only the authored join data; `paint.py` regenerates nothing there. Outputs and `superseded/` are ignored; retained TypeScript review sources end in `.ts.txt`.
+
+Two runs starting without `layers/` rebuilt all six delivered files **byte for byte**. The preserved pre-tidy painter also produced those same bytes with the current inputs. [Round 3 verification](superseded/round3_verification/reproducibility.json). `check.py` passed on the rebuilt delivery; [validation](superseded/round3_verification/checks/validation.json).
+
+The archived accepted delivery used eight older shared geometry/bake inputs, so its images differ from the current rebuilds. This tidy changes no painting function or placement data; the archived delivery and input hashes remain in `superseded/`.
 
 ## Remaining limits
 
-The current cached model shows visible **gaps between the ankle/foot mesh and the toe roots**, angular tapering claws, and angular joins near the wing roots. The position bake also makes each full toe island roughly **200–230 mm** from its attachment-cap end to its tip, longer than the brief's approximately 100 mm fleshy toe plus claw. The toe/claw material is sampled in physical metres, not stretched to hide this geometry. These mesh issues require modelling changes; this painter changed no geometry.
-
-The composer reports **no form-occlusion bake yet**. These maps deliberately supply only fine material occlusion. Material maps cannot add silhouette fuzz. At the renderer's 1024-square rgba maps, individual submillimetre pebbles and the finest velvet filaments are below resolution; the source drawing survives as directional grain. Dark dyes suppress more of it. The concept retains broader hand-painted strokes than the accepted photographic velvet study. The torso/leg boundary has no pairs within the 2.5 mm boundary-sample threshold, so that join is assessed visually, not claimed as a numerical seam pass.
-
-Round 1 used three body builds while reviewing width, the curved rear gate and the shorter upper-neck edge, then a determinism rebuild. Recorded build times were **27.6, 36.1, 86.1 and 47.3 seconds**; the last run including process overhead was **47.57 seconds**. The standard game views were rendered after each material revision, with extra exact-scale profiles for the final review. No Blender was run.
+The soft fringe is not a ruler-straight boundary; the table reports its coverage depth rather than its longest isolated hair. The game review loads 1024-square rgba maps, so the finest fuzz and categorical edge details are filtered. The accepted material changes no silhouette geometry. Existing model/angular joins and ankle/toe gaps remain outside this round, and there is still no form-occlusion bake. This round fixes the stripe placement only.

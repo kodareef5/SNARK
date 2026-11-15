@@ -12,7 +12,9 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { LAYER_LEVELS, LAYER_STAGES } from "../../../../../../../client/core/render/surface.ts";
 import { buildRig } from "../../../../../../../shared/anim/rigs.ts";
-import { parsePack } from "../../../../../../../shared/pack/pack.ts";
+import { parsePack, setTexture, textureOf, type Pack } from "../../../../../../../shared/pack/pack.ts";
+import { TEXTURE_ROLES } from "../../../../../../../shared/pack/texture.ts";
+import { buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../../../../../../../tools/pack/write.ts";
 import { nearestColour } from "../../../../../../../shared/pack/palette.ts";
 import { findAssets } from "../../../../../../../tools/art/assets.ts";
 import { repack } from "../../../../../../../tools/art/build.ts";
@@ -37,7 +39,47 @@ const rig = buildRig(pack.header.rigs[pack.header.meshes[index]!.rig!]!, pack.cl
 if (!rig) throw new Error("the pack has no rig");
 new Poser(rig).set(null, 0);
 const materials = materialsOf(asset);
-const textures = (pack.header.textures ?? []).map((t) => rgbaOf(materials.find((m) => t.id === `${m.id}/${t.role}`)!, t.role, t.top, null));
+const texturesOf = (p: Pack) => (p.header.textures ?? []).map((t) => rgbaOf(materials.find((m) => t.id === `${m.id}/${t.role}`)!, t.role, t.top, null));
+const textures = texturesOf(pack);
+
+/** The body and its worn saddle as one mesh of their finest levels, so one draw shows the animal saddled. */
+function saddledPack(): Pack | null {
+  const meshes = unpackMeshes(pack);
+  const body = meshes.find((m) => m.id === "core:pteranodon")!;
+  const saddle = meshes.find((m) => m.id.endsWith("/worn"));
+  if (!saddle || !body.materials || !saddle.materials) return null;
+  const [a, b] = [body.lods[0]!, saddle.lods[0]!];
+  const count = a.positions.length / 3;
+  const join = <T extends Float32Array | Uint8Array | Uint32Array>(x: T | undefined, y: T | undefined, make: (n: number) => T): T | undefined => {
+    if (!x || !y) return undefined;
+    const out = make(x.length + y.length);
+    out.set(x);
+    out.set(y, x.length);
+    return out;
+  };
+  const lod: SourceLod = {
+    positions: join(a.positions, b.positions, (n) => new Float32Array(n))!,
+    colors: join(a.colors, b.colors, (n) => new Uint8Array(n))!,
+    indices: Uint32Array.from([...a.indices, ...[...b.indices].map((i) => i + count)]),
+    bones: join(a.bones, b.bones, (n) => new Uint8Array(n)),
+    uvs: join(a.uvs, b.uvs, (n) => new Float32Array(n)),
+    normals: join(a.normals, b.normals, (n) => new Float32Array(n)),
+    tangents: join(a.tangents, b.tangents, (n) => new Float32Array(n)),
+    joints: join(a.joints, b.joints, (n) => new Uint8Array(n)),
+    weights: join(a.weights, b.weights, (n) => new Float32Array(n)),
+    sections: Uint8Array.from([...(a.sections ?? new Uint8Array(a.indices.length / 3)), ...[...(b.sections ?? new Uint8Array(b.indices.length / 3))].map((s) => s + body.materials!.length)]),
+  };
+  const shift = body.textures!.length;
+  const theirs = saddle.materials.map((m) => {
+    const moved = { ...m };
+    for (const role of TEXTURE_ROLES) if (textureOf(m, role) >= 0) setTexture(moved, role, textureOf(m, role) + shift);
+    return moved;
+  });
+  const mesh: SourceMesh = { ...body, id: "core:pteranodon", lods: [lod], flat: 1, materials: [...body.materials, ...theirs], textures: [...body.textures!, ...saddle.textures!] };
+  return parsePack(buildPack([mesh], pack.palette, pack.clips.clips, pack.header.rigs));
+}
+const saddled = saddledPack();
+const saddledTextures = saddled ? texturesOf(saddled) : [];
 
 const hex = (h: string): number => nearestColour(pack.palette, parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16));
 const DYES: Record<string, readonly number[]> = {
@@ -60,19 +102,24 @@ const SHOTS: Record<string, Shot> = {
   inner_wing: [[1.1, 0.85, -0.35], 1.1, 160, 45, false],
   under_wing: [[1.2, 0.8, -0.35], 1.1, 10, -65, true],
   feet: [[0, 0.45, -1.05], 0.35, 60, -20, false],
+  // With its saddle: the rider's view, the seat close, and the whole from the side.
+  saddled_rider: [[0, 1.1, 0.25], 0.75, 185, 32, false],
+  saddled_seat: [[0, 1.0, -0.1], 0.4, 140, 35, false],
+  saddled_side: [[0, 1.0, 0.2], 1.0, 80, 10, false],
+  saddled_front: [[0, 1.0, 0.3], 0.6, 25, 15, false],
 };
 const W = 1200;
 const H = 900;
 const SS = 2;
 
-function draw(view: ModelView, shot: Shot, colors: readonly number[]): void {
+function draw(view: ModelView, shot: Shot, colors: readonly number[], mesh: number): void {
   const [centre, radius, around, above] = shot;
-  view.draw({ mesh: index, level: 0, around, above, centre, radius, rig, colors, textured: true });
+  view.draw({ mesh, level: 0, around, above, centre, radius, rig, colors, textured: true });
 }
 
-function viewOf(w: number, h: number, sky: boolean): ModelView {
-  const v = new ModelView(pack, w, h, sky ? SKY : GROUND);
-  textures.forEach((t, slot) => v.texture(slot, t.role, t.pictures));
+function viewOf(w: number, h: number, sky: boolean, withSaddle = false): ModelView {
+  const v = new ModelView(withSaddle ? saddled! : pack, w, h, sky ? SKY : GROUND);
+  (withSaddle ? saddledTextures : textures).forEach((t, slot) => v.texture(slot, t.role, t.pictures));
   return v;
 }
 
@@ -144,9 +191,11 @@ for (const [dyes, colors] of Object.entries(DYES)) {
   writeFileSync(file, encodePng(s.w, s.h, s.img));
   console.log(file);
   for (const [name, shot] of Object.entries(SHOTS)) {
-    if (dyes !== "design" && !["below", "three_quarter", "head", "rider"].includes(name)) continue;
-    const view = viewOf(W * SS, H * SS, shot[4]);
-    draw(view, shot, colors);
+    if (dyes !== "design" && !["below", "three_quarter", "head", "rider", "saddled_rider"].includes(name)) continue;
+    const withSaddle = name.startsWith("saddled");
+    if (withSaddle && !saddled) continue;
+    const view = viewOf(W * SS, H * SS, shot[4], withSaddle);
+    draw(view, shot, colors, withSaddle ? 0 : index);
     const src = view.raster.color;
     const img = new Uint8Array(W * H * 4);
     for (let y = 0; y < H; y++) {

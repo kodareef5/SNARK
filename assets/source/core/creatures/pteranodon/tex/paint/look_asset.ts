@@ -19,7 +19,7 @@ const sample = (h: string): number => nearestColour(palette, parseInt(h.slice(0,
 
 export default {
   kind: "creature",
-  source: { scripts: ["rig.py", "model.py"] },
+  source: { scripts: ["rig.py", "model.py", "saddle.py"] },
   scale: 1,
   skeleton: { id: "pteranodon", root: "pelvis", drop: /^ctl_/, bones: 42 },
   zones: [],
@@ -46,6 +46,23 @@ export default {
   clips: [],
   feet: [],
   gaits: {},
-  budgets: { triangles: [16000, 7000, 3200, 1400, 600, 240, 64], texture: { top: 2048, megabytes: 60, layer: 256 } },
+  budgets: { triangles: [16000, 7000, 3200, 1400, 600, 240, 64], texture: { top: 2048, megabytes: 64, layer: 256 } },
   flat: 3,
+  // The saddle, a worn mesh of its own on the same bones; its maps are drawn with the animal's by look.ts.
+  worn: [
+    {
+      item: "core:saddle_pteranodon",
+      object: "saddle",
+      materials: {
+        pteranodon_saddle: {
+          base: "tex/pteranodon_saddle_base.png",
+          normal: "tex/pteranodon_saddle_normal.png",
+          packed: "tex/pteranodon_saddle_packed.png",
+          regions: "tex/pteranodon_saddle_regions.png",
+          height: "tex/pteranodon_saddle_height.png",
+        },
+      },
+      budgets: { triangles: [2400, 1000, 400, 120] },
+    },
+  ],
 } satisfies CreatureAsset;

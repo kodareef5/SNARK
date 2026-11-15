@@ -73,7 +73,7 @@ if (body/'layers.json').exists():
 # Round-two review keeps the actual renderer pixels: no contrast edits. The
 # standard views have different perspective from the orthographic concepts;
 # the side/front_1000ppm sheets above are the physical-scale comparisons.
-before=C/'round1_before/checks/look'
+before=H/'superseded/checks/round2_before/checks/look'
 for shot,reference in [('head','head_side'),('head_front','head_front'),('rider','head_side')]:
     current=C/'look'/f'{shot}_design.png'
     if not current.exists() or not (before/current.name).exists():continue
@@ -94,14 +94,26 @@ for shot,reference in [('head','head_side'),('head_front','head_front'),('rider'
     for i,(im,title) in enumerate(zip([ref,a,b],titles)):
         d.text((i*1200+18,15),title,font=font,fill=(24,24,24))
         row.paste(im,(i*1200+(1200-im.width)//2,50))
-    row.save(C/f'{shot}_round2_comparison.png')
+    row.save(C/f'{shot}_feedback2_comparison.png')
 
 # Keep a focused rider comparison legible without rescaling whole-animal views.
-if (before/'rider_design.png').exists():
+if (before/'rider_design.png').exists() and (C/'look/rider_design.png').exists():
     refs=[Image.open(paint.ASSET/'ref/concept/head_side.png').crop((1020,720,1490,1200)),
           Image.open(before/'rider_design.png').crop((470,180,735,660)).resize((530,960),Image.Resampling.NEAREST),
           Image.open(C/'look/rider_design.png').crop((470,180,735,660)).resize((530,960),Image.Resampling.NEAREST)]
     row=Image.new('RGB',(1590,1020),(225,223,218));d=ImageDraw.Draw(row)
     for i,(im,title) in enumerate(zip(refs,['CONCEPT | 1000 px/m','SENT BACK | rider 2x','REVISED | rider 2x'])):
         d.text((i*530+10,14),title,font=font,fill=(24,24,24));row.paste(im,(i*530,50))
-    row.save(C/'rider_round2_detail.png')
+    row.save(C/'rider_feedback2_detail.png')
+
+# The requested turn at equal physical density, with unchanged renderer pixels.
+paths=[paint.ASSET/'ref/concept/head_side.png',
+       H/'superseded/checks/round2_before/checks/details/side_1000ppm_design.png',
+       C/'details/side_1000ppm_design.png']
+if all(p.exists() for p in paths):
+    boxes=[(1060,720,1520,1180),(1120,640,1580,1100),(1120,640,1580,1100)]
+    sheet=Image.new('RGB',(2760,980),(225,223,218));d=ImageDraw.Draw(sheet)
+    for i,(path,box,label) in enumerate(zip(paths,boxes,['CONCEPT','SENT BACK','ROUND 2'])):
+        d.text((i*920+18,15),label+' | 1000 px/m, enlarged 2x',font=font,fill=(24,24,24))
+        sheet.paste(Image.open(path).convert('RGB').crop(box).resize((920,920),Image.Resampling.NEAREST),(i*920,50))
+    sheet.save(C/'occiput_feedback2_detail.png')

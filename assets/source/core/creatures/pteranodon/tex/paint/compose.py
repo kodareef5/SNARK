@@ -28,15 +28,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TEX = os.path.dirname(HERE)
 BAKES = os.path.join(os.path.dirname(TEX), "ref", "bakes")
 GREY = 0.50
-SIZE = 2048
 REGION = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 255, 255), (255, 0, 255), (255, 255, 0)]
-MATERIALS = ["pteranodon", "pteranodon_wing"]
+MATERIALS = ["pteranodon", "pteranodon_wing", "pteranodon_saddle"]
+# Each material's side, as ref/bakes/bakes.json gives it.
+SIZES = {m: json.load(open(os.path.join(BAKES, "bakes.json")))[f"material {m}"]["size"] for m in MATERIALS}
 # Which material takes masks made by hand rather than a painted region map.
 MASKED = {"pteranodon_wing"}
 GROUPS = {
     "body": {"pteranodon": ["torso", "neck", "leg", "toe_0", "toe_1", "toe_2", "toe_3", "hand_0", "hand_1", "hand_2"]},
     "head": {"pteranodon": ["head", "beak", "jaw", "crest", "eye_l"]},
     "wing": {"pteranodon_wing": ["membrane_upper", "membrane_under", "arm", "finger"]},
+    "saddle": {"pteranodon_saddle": ["seat_top", "seat_under", "seat_edge", "cantle", "cantle_plate_out", "cantle_plate_in", "grip",
+                                     "girth_out", "girth_in", "girth_edge", "girth_edge2", "collar_out", "collar_in", "collar_edge",
+                                     "collar_edge2", "strap_out", "strap_in", "boss", "rope", "peg", "halter", "rein"]},
 }
 # Roughness of a piece not painted yet.
 ROUGH = 0.8
@@ -51,14 +55,14 @@ def srgb(l):
     return np.where(l <= 0.0031308, l * 12.92, 1.055 * l ** (1 / 2.4) - 0.055)
 
 
-def load(path, channels=None):
+def load(path, size, channels=None):
     if not os.path.exists(path):
         return None
     im = Image.open(path)
     a = np.asarray(im)
     a = a.astype(np.float32) / (65535.0 if a.dtype == np.uint16 or im.mode.startswith("I") else 255.0)
-    if a.shape[0] != SIZE:
-        raise SystemExit(f"{path}: {a.shape[0]} pixels across, wants {SIZE}")
+    if a.shape[0] != size:
+        raise SystemExit(f"{path}: {a.shape[0]} pixels across, wants {size}")
     if channels == 1 and a.ndim == 3:
         a = a[..., 0]
     return a
@@ -119,17 +123,18 @@ def hold_grey(base_lin, w, covered, label, report):
     return np.clip(base_lin * k[..., None], 0, 1)
 
 
-def form_occlusion(material):
+def form_occlusion(material, size):
     path = os.path.join(BAKES, f"{material}_occlusion.png")
     if not os.path.exists(path):
         return None
     im = Image.open(path).convert("L")
-    if im.size[0] != SIZE:
-        im = im.resize((SIZE, SIZE), Image.BILINEAR)
+    if im.size[0] != size:
+        im = im.resize((size, size), Image.BILINEAR)
     return np.asarray(im).astype(np.float32) / 255.0
 
 
 def compose(material, out, report):
+    SIZE = SIZES[material]
     meta = json.load(open(os.path.join(HERE, f"{material}_pieces.json")))
     number = {p["name"]: p["number"] for p in meta["pieces"]}
     piece = np.asarray(Image.open(os.path.join(HERE, f"{material}_pieces.png")))[..., 0].astype(np.int32)
@@ -148,7 +153,7 @@ def compose(material, out, report):
             continue
         own = np.isin(piece, [number[n] for n in spec[material] if n in number])
         folder = os.path.join(HERE, group, "layers")
-        b = load(os.path.join(folder, f"{material}_base.png"))
+        b = load(os.path.join(folder, f"{material}_base.png"), SIZE)
         if b is None:
             report.append(f"{material}, {group}: not painted yet; its pieces are plain grey")
             continue
@@ -159,18 +164,18 @@ def compose(material, out, report):
                 report.append(f"{material}, {group}: {gaps.sum() / own.sum() * 100:.2f}% of its pieces' texels left unpainted; drawn grey")
             own &= ~gaps
         base[own] = lin(b[..., :3][own])
-        h = load(os.path.join(folder, f"{material}_height.png"), 1)
+        h = load(os.path.join(folder, f"{material}_height.png"), SIZE, 1)
         if h is not None:
             height[own] = h[own] * float(info[f"{material}_height_mm"])
-        ro = load(os.path.join(folder, f"{material}_rough.png"), 1)
+        ro = load(os.path.join(folder, f"{material}_rough.png"), SIZE, 1)
         if ro is not None:
             rough[own] = ro[own]
-        oc = load(os.path.join(folder, f"{material}_occlusion.png"), 1)
+        oc = load(os.path.join(folder, f"{material}_occlusion.png"), SIZE, 1)
         if oc is not None:
             occl[own] = oc[own]
         if masked:
-            m1 = load(os.path.join(folder, f"{material}_mask.png"))
-            m2 = load(os.path.join(folder, f"{material}_mask2.png"))
+            m1 = load(os.path.join(folder, f"{material}_mask.png"), SIZE)
+            m2 = load(os.path.join(folder, f"{material}_mask2.png"), SIZE)
             if m1 is not None:
                 w[own] = weights_of_masks(m1, m2)[own]
         else:
@@ -180,7 +185,7 @@ def compose(material, out, report):
         report.append(f"{material}, {group}: painted {own.sum()} texels")
 
     base = hold_grey(base, w, covered, material, report)
-    form = form_occlusion(material)
+    form = form_occlusion(material, SIZE)
     packed_r = occl * (form if form is not None else 1.0)
     if form is None:
         report.append(f"{material}: no form occlusion baked yet; the packed map holds the painters' own")

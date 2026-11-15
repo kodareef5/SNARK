@@ -30,7 +30,7 @@ rm -f $DIR/tex/*_hurt.png(N) $DIR/tex/*_decay.png(N)
 for f in $ASSET/tex/pteranodon*_hurt.png(N) $ASSET/tex/pteranodon*_decay.png(N); do cp $f $DIR/tex/; done
 sed "s|\.\./\.\./\.\./\.\./\.\./\.\./\.\./|$ROOT/|g" $HERE/look_asset.ts > $DIR/asset.ts
 if [[ $TREE == $BUILT ]]; then
-  cp $ASSET/rig.py $ASSET/model.py $ASSET/layout.json $DIR/
+  cp $ASSET/rig.py $ASSET/model.py $ASSET/layout.json $ASSET/saddle.py $ASSET/saddle_layout.json $DIR/
   (cd $ROOT && bun run art -- core:pteranodon --source $TREE --out $OUT/art)
 fi
 cd $ROOT

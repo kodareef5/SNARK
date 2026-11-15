@@ -1,0 +1,72 @@
+{
+  "coordinate_frame": "animal rest/glide; abs(x) on mirrored half, y up, z forward; metres",
+  "nape": {
+    "region": 0,
+    "full_width_m": 0.07,
+    "condition": "abs(x) < 0.035 under the head, broadening to 0.040 half-width at z=0.29 and 0.045 at z=0.20; behind centreline_yz_m, with signed perpendicular depth used for the back gate",
+    "centreline_yz_m": [
+      [
+        0.79,
+        0.05
+      ],
+      [
+        0.872,
+        0.112
+      ],
+      [
+        0.952,
+        0.22
+      ],
+      [
+        1.06,
+        0.33
+      ],
+      [
+        1.178,
+        0.428
+      ],
+      [
+        1.285,
+        0.505
+      ],
+      [
+        1.34,
+        0.56
+      ]
+    ],
+    "join": "actual shared neck/head top ring in live position bake; rear midline about (0, 1.351, 0.401) m; use body.paint.mantle_distance and mantle_ids or nearest live body texels at the shared cut",
+    "surface": "live fuzz study, face scale near the head; no baked form shading",
+    "base_linear": 0.5,
+    "roughness": 0.86,
+    "height_baseline_mm": 0.4,
+    "fringe": "live round 4 mantle_edge categorical drawing; unchanged on mantle, half the across-edge span at y >= 1.32 m to match face-scale pile (smooth from y=1.14 m); roughly 1 to 2 cm interleaving under head",
+    "profile": {
+      "round": 2,
+      "measurement": "perpendicular YZ distance inward from the rear silhouette, located in live neck position/normal maps (abs(normal.x) < 0.04, normal.z < -0.2); stations run by silhouette arc length from head to mantle",
+      "depth_stations": [
+        [
+          0,
+          0.015
+        ],
+        [
+          0.3333333333333333,
+          0.02
+        ],
+        [
+          0.6666666666666666,
+          0.03
+        ],
+        [
+          1,
+          0.0375
+        ]
+      ],
+      "edge": "same live mantle_edge drawing and face-scale transition; convert projected inset to local surface distance for the interlocking fringe",
+      "scope": "union with accepted dorsal stripe on neck only; torso mantle and all material maps retained",
+      "head_contract": "full_width_m retains the accepted 70 mm minimum at the shared cut; profile inset controls the added side coverage"
+    }
+  },
+  "body_to_leg": "same animal-space fuzz field across both pieces; no independent UV phase",
+  "arm_to_small_hands": "region 2 horn skin; hand study scale 0.70; no base shadow at knuckle",
+  "saddle": "unpressed natural fuzz; no saddle contact shading in these maps"
+}

@@ -124,7 +124,7 @@ def main():
                    'body_region':0 if dark[indices[k]] else 5})
   metrics['nape']['shared_ring_samples']=samples
  # Regression evidence for the untouched orange fingers, toes and dark claws.
- before=out/'round1_before/layers'
+ before=HERE/'superseded/checks/round1_before/layers'
  if before.exists():
   digits=np.isin(piece,[numbers[k] for k in OWN if k.startswith(('toe_','hand_'))])
   changes={};delta={}

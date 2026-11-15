@@ -1,0 +1,3 @@
+Tidied the head folder, archived extras in ignored `superseded/`, removed all `.ts` files, and added the “Files” section to `REPORT.md`. Missing study layers now trigger their own builds.
+
+Two clean rebuilds matched byte for byte; checks passed. Painting calculations are unchanged. Shared inputs changed during verification, so final hashes differ from the original accepted files; the report records this.

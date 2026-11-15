@@ -1,0 +1,347 @@
+{
+ "size": 1024,
+ "position_box": {
+  "min": [
+   -0.32,
+   0.41411,
+   -0.4562
+  ],
+  "max": [
+   0.14964,
+   1.47376,
+   0.80691
+  ]
+ },
+ "pieces": [
+  {
+   "number": 1,
+   "name": "boss",
+   "regions": [
+    6
+   ],
+   "box": [
+    156,
+    969,
+    267,
+    1017
+   ],
+   "texels": 3078,
+   "median_mm_a_texel": 1.034
+  },
+  {
+   "number": 2,
+   "name": "cantle",
+   "regions": [
+    6
+   ],
+   "box": [
+    792,
+    707,
+    951,
+    1017
+   ],
+   "texels": 41613,
+   "median_mm_a_texel": 0.862
+  },
+  {
+   "number": 3,
+   "name": "cantle_plate_in",
+   "regions": [
+    6
+   ],
+   "box": [
+    7,
+    470,
+    250,
+    652
+   ],
+   "texels": 13049,
+   "median_mm_a_texel": 0.867
+  },
+  {
+   "number": 4,
+   "name": "cantle_plate_out",
+   "regions": [
+    6
+   ],
+   "box": [
+    7,
+    149,
+    250,
+    323
+   ],
+   "texels": 11943,
+   "median_mm_a_texel": 0.865
+  },
+  {
+   "number": 5,
+   "name": "collar_edge",
+   "regions": [
+    6
+   ],
+   "box": [
+    768,
+    163,
+    868,
+    511
+   ],
+   "texels": 1680,
+   "median_mm_a_texel": 1.043
+  },
+  {
+   "number": 6,
+   "name": "collar_edge2",
+   "regions": [
+    6
+   ],
+   "box": [
+    536,
+    309,
+    784,
+    705
+   ],
+   "texels": 2223,
+   "median_mm_a_texel": 1.04
+  },
+  {
+   "number": 7,
+   "name": "collar_in",
+   "regions": [
+    6
+   ],
+   "box": [
+    36,
+    881,
+    144,
+    999
+   ],
+   "texels": 2792,
+   "median_mm_a_texel": 2.974
+  },
+  {
+   "number": 8,
+   "name": "collar_out",
+   "regions": [
+    6
+   ],
+   "box": [
+    191,
+    334,
+    511,
+    678
+   ],
+   "texels": 22958,
+   "median_mm_a_texel": 1.041
+  },
+  {
+   "number": 9,
+   "name": "girth_edge",
+   "regions": [
+    6
+   ],
+   "box": [
+    884,
+    90,
+    913,
+    704
+   ],
+   "texels": 2885,
+   "median_mm_a_texel": 1.04
+  },
+  {
+   "number": 10,
+   "name": "girth_edge2",
+   "regions": [
+    6
+   ],
+   "box": [
+    923,
+    66,
+    954,
+    713
+   ],
+   "texels": 3062,
+   "median_mm_a_texel": 1.04
+  },
+  {
+   "number": 11,
+   "name": "girth_in",
+   "regions": [
+    6
+   ],
+   "box": [
+    805,
+    464,
+    850,
+    689
+   ],
+   "texels": 4262,
+   "median_mm_a_texel": 2.969
+  },
+  {
+   "number": 12,
+   "name": "girth_out",
+   "regions": [
+    6
+   ],
+   "box": [
+    678,
+    359,
+    816,
+    1017
+   ],
+   "texels": 36129,
+   "median_mm_a_texel": 1.039
+  },
+  {
+   "number": 13,
+   "name": "grip",
+   "regions": [
+    6
+   ],
+   "box": [
+    334,
+    320,
+    696,
+    690
+   ],
+   "texels": 47070,
+   "median_mm_a_texel": 0.865
+  },
+  {
+   "number": 14,
+   "name": "halter",
+   "regions": [
+    6
+   ],
+   "box": [
+    844,
+    54,
+    976,
+    1018
+   ],
+   "texels": 10976,
+   "median_mm_a_texel": 1.301
+  },
+  {
+   "number": 15,
+   "name": "peg",
+   "regions": [
+    6
+   ],
+   "box": [
+    589,
+    609,
+    686,
+    734
+   ],
+   "texels": 10412,
+   "median_mm_a_texel": 1.033
+  },
+  {
+   "number": 16,
+   "name": "rein",
+   "regions": [
+    6
+   ],
+   "box": [
+    961,
+    161,
+    994,
+    694
+   ],
+   "texels": 14322,
+   "median_mm_a_texel": 1.298
+  },
+  {
+   "number": 17,
+   "name": "rope",
+   "regions": [
+    6
+   ],
+   "box": [
+    244,
+    128,
+    693,
+    244
+   ],
+   "texels": 29566,
+   "median_mm_a_texel": 1.037
+  },
+  {
+   "number": 18,
+   "name": "seat_edge",
+   "regions": [
+    6
+   ],
+   "box": [
+    7,
+    217,
+    772,
+    388
+   ],
+   "texels": 16886,
+   "median_mm_a_texel": 1.04
+  },
+  {
+   "number": 19,
+   "name": "seat_top",
+   "regions": [
+    6
+   ],
+   "box": [
+    7,
+    668,
+    690,
+    1016
+   ],
+   "texels": 167257,
+   "median_mm_a_texel": 0.801
+  },
+  {
+   "number": 20,
+   "name": "seat_under",
+   "regions": [
+    6
+   ],
+   "box": [
+    7,
+    404,
+    169,
+    528
+   ],
+   "texels": 8236,
+   "median_mm_a_texel": 2.967
+  },
+  {
+   "number": 21,
+   "name": "strap_in",
+   "regions": [
+    6
+   ],
+   "box": [
+    91,
+    599,
+    311,
+    680
+   ],
+   "texels": 1605,
+   "median_mm_a_texel": 2.969
+  },
+  {
+   "number": 22,
+   "name": "strap_out",
+   "regions": [
+    6
+   ],
+   "box": [
+    7,
+    102,
+    304,
+    1016
+   ],
+   "texels": 12885,
+   "median_mm_a_texel": 1.039
+  }
+ ]
+}

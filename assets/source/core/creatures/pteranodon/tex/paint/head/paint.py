@@ -2,12 +2,15 @@
 """Paint only the head group from accepted studies, in metres on the current bakes.
 
 python3 tex/paint/head/paint.py
-No Blender, downloads, external writes, baked illumination, or resized normals.
+No Blender, downloads, baked illumination, or resized normals.
 Source originals remain in the studies; their delivered layers are read every run.
+Missing study deliveries are rebuilt only by that study's own build.py.
 """
 from pathlib import Path
 import json
 import hashlib
+import subprocess
+import sys
 import time
 from functools import lru_cache
 import numpy as np
@@ -26,6 +29,22 @@ F = np.float32
 COLORS = np.array([(255,0,0),(0,255,0),(0,0,255),(0,255,255),(255,0,255),(255,255,0),(0,0,0)], np.uint8)
 OWN = ('head','beak','jaw','crest','eye_l')
 RECIPE = json.loads((HERE/'source/placement.json').read_text())
+
+
+def ensure_studies():
+    """Read the accepted deliveries in place, rebuilding missing sets upstream."""
+    for folder, names in [('horn', ('horn',)), ('fuzz', ('fuzz_face',)),
+                          ('skin', ('eye', 'mouth'))]:
+        path = STUDIES / folder
+        required = [path / 'study.json'] + [
+            path / f'{name}_{layer}.png'
+            for name in names for layer in ('base', 'height', 'packed', 'regions')
+        ]
+        if any(not p.is_file() for p in required):
+            subprocess.run([sys.executable, str(path / 'build.py')], cwd=path, check=True)
+            missing = [str(p) for p in required if not p.is_file()]
+            if missing:
+                raise FileNotFoundError(f'Study build did not deliver: {missing}')
 
 
 def linear(s):
@@ -131,10 +150,12 @@ def flow_chart(mask, pos, flow):
     return [map_coordinates(charts[...,k],[yy/step,xx/step],order=1,mode='nearest') for k in range(2)]
 
 
-def nape_ids(p, distjoin, feather):
-    """A broad rear-head patch tapering into the live body's nape.
-    Short face fibres interleave the edge over 2–4 mm. The actual common cut
-    takes the body's live categorical tips below, even as that source evolves.
+def nape_ids(p, distjoin, feather, profile_points, profile_normals):
+    """Turn the cheek band down the occiput at a measured profile depth.
+
+    Retain the accepted material placement, then reshape the rear band. Its
+    inset is perpendicular to the live rear silhouette, like the body's round
+    two contract; an X-width alone disappears around the back in side view.
     """
     x,y,z=p.T
     joinpath=PAINT/'body/source/joins.json'
@@ -144,12 +165,42 @@ def nape_ids(p, distjoin, feather):
     # Taper both toward the neck cut and upward beneath the crest root.
     width=half+(.068-half)*smooth(distjoin/.055)
     upper=np.interp(z,[.39,.43,.50,.694],[1.379,1.389,1.400,1.393])
-    distance=np.minimum.reduce([width-x,(y-.84-(z-.08)*1.30)*.72,(.54-z)*.7,
-                                upper-y])
-    return distance>-1.5*feather
+    distance=np.minimum.reduce([width-x,(y-.84-(z-.08)*1.30)*.72,(.54-z)*.7,upper-y])
+    accepted=distance>-1.5*feather
+    dorsal=(np.abs(profile_normals[:,0])<.04)&(profile_normals[:,2]<-.2)
+    dorsal&=(profile_points[:,1]>1.20)&(profile_points[:,1]<1.395)
+    candidates=profile_points[dorsal,1:]
+    bins=np.floor(candidates[:,0]/.002).astype(np.int32)
+    curve=np.array([np.median(candidates[bins==k],axis=0)
+                    for k in np.unique(bins)],F)[::-1]
+    arc=np.r_[0,np.cumsum(np.linalg.norm(np.diff(curve,axis=0),axis=1))]
+    s=np.linspace(0,arc[-1],int(np.ceil(arc[-1]/.0005))+1)
+    curve=np.stack([np.interp(s,arc,curve[:,k]) for k in range(2)],1)
+    tangent=np.gradient(curve,axis=0)
+    tangent/=np.maximum(np.linalg.norm(tangent,axis=1,keepdims=True),1e-8)
+    outward=np.stack([-tangent[:,1],tangent[:,0]],1)
+    _,near=cKDTree(curve).query(p[:,1:])
+    inset=np.sum((curve[near]-p[:,1:])*outward[near],axis=1)
+    depth=join.get('profile',{}).get('depth_stations',[[0,.015]])[0][1]
+    turn_spec=RECIPE['nape_join']
+    ribbon=depth-inset
+    # Raise the rear cheek's inner edge gently before it turns down. A union
+    # with the old broad patch would leave a downward lobe beside the neck cut.
+    # Only the occiput changes; the accepted eye and anterior cheek stay put.
+    sy=np.interp(z,[.39,.43,.50,.694,.76],[1.354,1.364,1.375,1.378,1.378])
+    sd=RECIPE['streak_depth_mm']/1000+.020*smooth((.694-z)/.174)
+    t=smooth((turn_spec['turn_maximum_z_m']-z)/turn_spec['turn_transition_m'])
+    lower=(sy-sd/2)*(1-t)+turn_spec['inner_corner_y_m']*t
+    cheek=y-lower
+    k=turn_spec['turn_union_mm']/1000
+    h=np.maximum(k-np.abs(ribbon-cheek),0)/k
+    turn=np.maximum(ribbon,cheek)+h*h*k/4
+    turn=np.minimum(turn,upper-y)
+    return accepted,turn>-1.5*feather
 
 
 def main():
+    ensure_studies()
     start=time.monotonic();out=HERE/'layers';out.mkdir(exist_ok=True)
     checks=HERE/'checks';checks.mkdir(exist_ok=True)
     meta=json.loads((PAINT/'pteranodon_pieces.json').read_text()); N=meta['size']
@@ -192,7 +243,10 @@ def main():
     # Upper/lower margins follow separate interlocking fibres, at 2–4 mm.
     streak=(np.abs(y-streak_y)<depth/2+1.5*feather)&(z>.39)
     nape=np.zeros(len(x),bool)
-    nape[ishead]=nape_ids(p[ishead],distjoin,feather[ishead])
+    nape_turn=np.zeros(len(x),bool)
+    profile_mask=np.isin(piece,[numbers['head'],numbers['neck']])
+    profile_normals=read(BAKES/'pteranodon_normal_object.png')[profile_mask,:3].astype(F)/127.5-1
+    nape[ishead],nape_turn[ishead]=nape_ids(p[ishead],distjoin,feather[ishead],pfull[profile_mask],profile_normals)
     region[ishead&(streak|nape)]=0
     region[horn]=2
 
@@ -313,6 +367,7 @@ def main():
     # When the live body delivery exists, meet its exact filtered texels at the
     # shared cut. The JSON contract above remains the standalone fallback.
     body=PAINT/'body/layers'
+    share=np.zeros(ishead.sum(),bool)
     if (body/'layers.json').exists():
         near=piece==numbers['neck']
         b=linear(read(body/'pteranodon_base.png')[near,:3].astype(F)/255)[joinindex]
@@ -345,7 +400,14 @@ def main():
     for regs in [(2,3),(0,),(5,)]:
         m=np.isin(region,regs)
         before[str(regs)]=float(base[m].mean())
-        base[m]*=.5/max(float(base[m].mean()),1e-6)
+        mean=RECIPE['accepted_fuzz_calibration_means'].get(str(regs),before[str(regs)])
+        base[m]*=.5/max(mean,1e-6)
+    # This round changes colour-region placement, not the accepted material.
+    # Retain its value calibration and reshape the rear band only afterward.
+    # The body still owns the interlocking categorical tips at the shared cut.
+    turn=ishead&(z<RECIPE['nape_join']['turn_maximum_z_m'])&np.isin(region,[0,5])
+    turn[ishead]&=~share
+    region[turn]=np.where(nape_turn[turn],0,5)
     stats={'owned_texels':int(own.sum()),'pieces':{},'region_means_linear':{},'means_before':before,
         'height_range_mm':full,'height_used_mm':[float(height.min()),float(height.max())],
         'nostril_dark_core_texels':int((slit>.8).sum()),'band_from_tip_mm':[99,185],

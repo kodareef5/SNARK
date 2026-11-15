@@ -2,9 +2,9 @@
  "size": 2048,
  "position_box": {
   "min": [
-   -1.56687,
-   0.40782,
-   -1.30663
+   -1.57117,
+   0.40902,
+   -1.30253
   ],
   "max": [
    -0.0,
@@ -74,7 +74,7 @@
     2035
    ],
    "texels": 14710,
-   "median_mm_a_texel": 0.526
+   "median_mm_a_texel": 0.513
   },
   {
    "number": 5,
@@ -90,7 +90,7 @@
     1323
    ],
    "texels": 17670,
-   "median_mm_a_texel": 0.529
+   "median_mm_a_texel": 0.518
   },
   {
    "number": 6,
@@ -106,7 +106,7 @@
     1239
    ],
    "texels": 13484,
-   "median_mm_a_texel": 0.532
+   "median_mm_a_texel": 0.515
   },
   {
    "number": 7,
@@ -188,7 +188,7 @@
     2034
    ],
    "texels": 24105,
-   "median_mm_a_texel": 0.53
+   "median_mm_a_texel": 0.529
   },
   {
    "number": 12,
@@ -204,7 +204,7 @@
     1415
    ],
    "texels": 28517,
-   "median_mm_a_texel": 0.531
+   "median_mm_a_texel": 0.528
   },
   {
    "number": 13,
@@ -220,7 +220,7 @@
     1451
    ],
    "texels": 26843,
-   "median_mm_a_texel": 0.531
+   "median_mm_a_texel": 0.527
   },
   {
    "number": 14,

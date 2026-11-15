@@ -3,14 +3,16 @@ ref/bakes/bake.py writes (run it with `-- --occlusion 0` for the surface alone).
 
     python3 tex/paint/pieces.py SURFACE_JSON
 
-Writes beside this script, for each material (`pteranodon` and `pteranodon_wing`, both 2,048):
+Writes beside this script, for each material (`pteranodon` and `pteranodon_wing` at 2,048, `pteranodon_saddle` at
+1,024, as ref/bakes/bakes.json gives them):
 - <material>_pieces.png: each texel's piece by number in the red channel (0 is no piece); <material>_pieces.json says
   each piece's number, name, the colour regions the model gives it, its box in pixels, its texels and its median
   millimetres a texel;
 - <material>_position_x.png, _y.png, _z.png: each texel's place on the animal at rest (x to its left, y up, z forward),
   16-bit over the material's position_box in <material>_pieces.json;
 - <material>_texel_mm.png: how many millimetres one texel spans on the animal there (16-bit, value / 1000 mm).
-The body's layout is the left side, the right its mirror; the wing's is the left wing, the right its mirror.
+The body's layout is the left side, the right its mirror; the wing's is the left wing, the right its mirror; the
+saddle's is its left side and middle, the right its mirror.
 """
 
 import json
@@ -24,7 +26,7 @@ import numpy as np
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SIZE = 2048
+BAKES = os.path.join(os.path.dirname(os.path.dirname(HERE)), "ref", "bakes")
 
 
 def rasterize(faces, size):
@@ -41,7 +43,8 @@ def rasterize(faces, size):
             tri = [0, k, k + 1]
             p = uv[tri]
             q = p3[tri]
-            area_uv = abs(np.cross(p[1] - p[0], p[2] - p[0])) / 2
+            e1, e2 = p[1] - p[0], p[2] - p[0]
+            area_uv = abs(e1[0] * e2[1] - e1[1] * e2[0]) / 2
             if area_uv < 1e-9:
                 continue
             area_3d = np.linalg.norm(np.cross(q[1] - q[0], q[2] - q[0])) / 2
@@ -72,7 +75,9 @@ def save16(path, a):
 
 def main():
     surface = json.load(open(sys.argv[1]))
+    bakes = json.load(open(os.path.join(BAKES, "bakes.json")))
     for m, material in enumerate(surface["materials"]):
+        SIZE = bakes[f"material {material}"]["size"]
         faces = [f for f in surface["faces"] if f["m"] == m]
         names = sorted({f["i"] for f in faces})
         number = {n: k + 1 for k, n in enumerate(names)}
