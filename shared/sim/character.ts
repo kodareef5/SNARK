@@ -4,7 +4,7 @@
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
-import { SKIN, capsuleBox, capsuleFree, ground, groundUnder, nothingBuilt, push, restingAt, settleOnto, stepOnto, type CollisionWorld } from "../world/collide.ts";
+import { SKIN, capsuleBox, capsuleFree, groundStands, groundUnder, nothingBuilt, push, restingAt, settleOnto, steepGround, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { Found } from "../world/structures.ts";
 
 export const BTN_JUMP = 1;
@@ -416,6 +416,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
   const tall = height > 2 * r ? height : 2 * r;
   const slope = p.slopeCos;
+  /** How far a substep goes, and so the deepest a body clear at its start can go into anything. */
+  const stride = Math.sqrt(sx * sx + sy * sy + sz * sz) + SKIN;
   /** The last surface this tick a falling body slid along, as a unit normal. */
   let slid = false;
   let slideX = 0;
@@ -435,17 +437,18 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     if (nz < r) nz = r;
     else if (nz > maxZ) nz = maxZ;
 
-    // Terrain: rise onto walkable ground, slide along or stop at anything else. What is walkable is where the body touches it.
+    // Terrain: rise onto walkable ground, or slide along or stop at a rise too high. What is walkable is where the body touches
+    // it. Ground too steep is met below as a part's face is.
     let h = groundUnder(hf, nx, nz, r);
-    if (ny < h) {
-      if (!(h - ny <= p.stepUp && (ground.ny >= p.slopeCos || h - ny <= SKIN))) {
+    if (ny < h && groundStands(slope)) {
+      if (h - ny > p.stepUp) {
         const hx = groundUnder(hf, nx, z, r);
-        if (ny >= hx || (hx - ny <= p.stepUp && ground.ny >= p.slopeCos)) {
+        if (ny >= hx || (hx - ny <= p.stepUp && groundStands(slope))) {
           nz = z;
           h = hx;
         } else {
           const hz = groundUnder(hf, x, nz, r);
-          if (ny >= hz || (hz - ny <= p.stepUp && ground.ny >= p.slopeCos)) {
+          if (ny >= hz || (hz - ny <= p.stepUp && groundStands(slope))) {
             nx = x;
             h = hz;
           } else {
@@ -468,76 +471,104 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     let blocked = false;
     /** The last round touched nothing, and the body has not moved since. */
     let clear = false;
-    /** The highest a body on foot may rise onto in this substep. */
+    /** The highest a body on foot may rise onto in this substep, and the highest a falling one is going. */
     const top = y + p.stepUp;
+    const rise = sy > 0 ? y + sy : y;
+    /** Ground too steep is tried in the first round if the body is in it, and in each after one it pushed in, as in a gully. */
+    let banks = ny < h;
     for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
       let moved = false;
-      // Structures, then resource nodes. Both stores hold boxes.
-      for (let pass = 0; pass < 2; pass++) {
+      const bank = banks;
+      banks = false;
+      // Ground too steep to stand on, met as a part's face is, then structures, then resource nodes.
+      for (let pass = bank ? -1 : 0; pass < 2; pass++) {
         const store = pass === 0 ? structs : w.nodes;
-        if (!store) continue;
-        // A radius of margin each way, for what a push within the round may bring into reach.
-        const count = store.query(nx - r, nz - r, nx + r, nz + r, found, ny - r, ny + tall + r);
-        // A push moves the body before the next piece is tried, so the order decides where it ends. The grid lists pieces
-        // in the order they were stored, which differs between a client and its server. Refs are the same on both.
-        sortU32(found.refs, count);
+        let count = 1;
+        if (pass >= 0) {
+          if (!store) continue;
+          // A radius of margin each way, for what a push within the round may bring into reach.
+          count = store.query(nx - r, nz - r, nx + r, nz + r, found, ny - r, ny + tall + r);
+          // A push moves the body before the next piece is tried, so the order decides where it ends. The grid lists pieces
+          // in the order they were stored, which differs between a client and its server. Refs are the same on both.
+          sortU32(found.refs, count);
+        }
         for (let k = 0; k < count; k++) {
-          if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
+          if (pass >= 0) {
+            if (!capsuleBox(store!, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
+          } else if (steepGround(hf, nx, ny, nz, r, slope)) banks = true;
+          else continue;
           moved = true;
           // Where it touches, both the way out and the surface must be level enough for it to stand.
           const stands = push.y > slope * push.depth && push.up > slope;
-          if (walking && push.y > 0 && !(push.face && stands)) {
+          let level = false;
+          if (push.y > 0 && (walking ? !(push.face && stands) : !stands && ny + push.y > rise && push.depth <= stride)) {
             // The piece meets the lower sphere `down` below its centre. Higher than a step, or too steep there to stand on, it is
             // a wall to a body on foot, which leaves it level and is not pushed up it: off a face as far as clears its plane, off an
-            // edge to where the sphere is as wide as it is there.
+            // edge to where the sphere is as wide as it is there. Nor is a falling body lifted higher than it was going by what
+            // is too steep to stand on and it went into this substep, as Unreal keeps a slide from boosting it up a slope.
             const gap = r - push.depth;
             const down = (push.y * gap) / push.depth;
             const side = Math.sqrt(push.x * push.x + push.z * push.z);
-            if (side > 0 && (push.up <= slope || (push.depth < r && ny + r - down > top + SKIN))) {
+            if (side > 0 && (!walking || push.up <= slope || (push.depth < r && ny + r - down > top + SKIN))) {
               const out = push.face ? (push.depth * push.depth) / (side * side) : (Math.sqrt(r * r - down * down) - (side * gap) / push.depth) / side;
               nx += push.x * out;
               nz += push.z * out;
               blocked = true;
+              if (walking) continue;
+              level = true;
+            }
+          }
+          if (!level) {
+            if (push.hull && stands) {
+              // A sloped part it can stand on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
+              ny += (push.depth * push.depth) / push.y;
+            } else {
+              nx += push.x;
+              ny += push.y;
+              nz += push.z;
+            }
+            if (stands) {
+              if (vy < 0) {
+                if (-vy > fall) fall = -vy;
+                vy = 0;
+              }
               continue;
             }
+            blocked = true;
           }
-          if (push.hull && stands) {
-            // A sloped part it can stand on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
-            ny += (push.depth * push.depth) / push.y;
-          } else {
-            nx += push.x;
-            ny += push.y;
-            nz += push.z;
-          }
-          if (stands) {
-            if (vy < 0) {
-              if (-vy > fall) fall = -vy;
-              vy = 0;
-            }
-            continue;
-          }
-          blocked = true;
           if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
           else if (push.y > 0 && !walking) {
             // What holds a falling body up too steeply to stand on, it slides along, losing what of its speed went into it, so
-            // it banks no speed there to land with. Pressed into a second such surface, it slides along their crease.
+            // it banks no speed there to land with, and level where sliding would lift it. Pressed into a second such surface,
+            // it slides along their crease, unless that would lift it.
             const ux = push.x / push.depth;
             const uy = push.y / push.depth;
             const uz = push.z / push.depth;
             const into = vx * ux + vy * uy + vz * uz;
             if (into < 0) {
-              vx -= ux * into;
-              vy -= uy * into;
-              vz -= uz * into;
+              const going = vy > 0 ? vy : 0;
+              if (vy - uy * into > going) {
+                const across = (vx * ux + vz * uz) / (ux * ux + uz * uz);
+                if (across < 0) {
+                  vx -= ux * across;
+                  vz -= uz * across;
+                }
+              } else {
+                vx -= ux * into;
+                vy -= uy * into;
+                vz -= uz * into;
+              }
               const cx = slideY * uz - slideZ * uy;
               const cy = slideZ * ux - slideX * uz;
               const cz = slideX * uy - slideY * ux;
               const c2 = cx * cx + cy * cy + cz * cz;
               if (slid && c2 > 1e-6 && vx * slideX + vy * slideY + vz * slideZ < -1e-9) {
                 const along = (vx * cx + vy * cy + vz * cz) / c2;
-                vx = cx * along;
-                vy = cy * along;
-                vz = cz * along;
+                if (cy * along <= going) {
+                  vx = cx * along;
+                  vy = cy * along;
+                  vz = cz * along;
+                }
               }
             }
             slideX = ux;
@@ -595,10 +626,12 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
 
   // Grounded means resting on terrain or on a structure it can stand on, held where it has no way down, or close enough above
   // support to follow it down (slopes, stairs, kerbs). A sloped part it can stand on is followed as far down as the steepest
-  // such slope falls over the way the body went this tick, so a ramp is kept at any speed.
+  // such slope falls over the way the body went this tick, so a ramp is kept at any speed. Ground too steep where it touches
+  // holds it up as a steep part does.
   let grounded = false;
   if (vy <= 0) {
     const under = groundUnder(hf, x, z, r);
+    const level = groundStands(slope);
     const low = y - p.stepDown;
     let lowest = low;
     if (walking) {
@@ -607,8 +640,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       const fallsTo = y - Math.sqrt((ddx * ddx + ddz * ddz) * (1 / (slope * slope) - 1));
       if (fallsTo < low) lowest = fallsTo;
     }
-    if (y - under <= GROUND_PROBE) grounded = true;
-    else if (walking && nothingBuilt(w, x, z, r, lowest, y + tall)) {
+    if (level && y - under <= GROUND_PROBE) grounded = true;
+    else if (level && walking && nothingBuilt(w, x, z, r, lowest, y + tall)) {
       // Only the ground is near, and where the body rests on it is known.
       if (under >= low) {
         y = under;
@@ -837,7 +870,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   let grounded = false;
   if (hf.seaLevel - y < p.height * SWIM_EXIT) {
     b.mode = MODE_WALK;
-    if (y - groundUnder(hf, x, z, r) <= GROUND_PROBE || !Number.isNaN(restingAt(w, x, y, z, r, p.height, GROUND_PROBE, p.slopeCos))) {
+    if ((y - groundUnder(hf, x, z, r) <= GROUND_PROBE && groundStands(p.slopeCos)) || !Number.isNaN(restingAt(w, x, y, z, r, p.height, GROUND_PROBE, p.slopeCos))) {
       grounded = true;
       vy = 0;
     }
@@ -1004,7 +1037,7 @@ function stepFlyer(w: CollisionWorld, b: Body, moveZ: number, yaw: number, pitch
   if (!down || b.vy > 0) return;
   // Going down, it sets down on what it can stand on, as a walker comes to rest, or afloat on water deep enough to swim in.
   const under = groundUnder(hf, b.x, b.z, p.radius);
-  const on = b.y - under <= GROUND_PROBE ? b.y : restingAt(w, b.x, b.y, b.z, p.radius, p.height, GROUND_PROBE, p.slopeCos);
+  const on = b.y - under <= GROUND_PROBE && groundStands(p.slopeCos) ? b.y : restingAt(w, b.x, b.y, b.z, p.radius, p.height, GROUND_PROBE, p.slopeCos);
   if (!Number.isNaN(on)) {
     b.y = Math.fround(on);
     b.vy = 0;

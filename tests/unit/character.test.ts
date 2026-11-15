@@ -4,7 +4,7 @@ import { Rng } from "../../shared/rng.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { WORLD_MAX_Y } from "../../shared/coords.ts";
 import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLY, MODE_FLYER, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
-import { SKIN, capsuleFree } from "../../shared/world/collide.ts";
+import { SKIN, capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 import { SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { flatWorld, provingWorld, sealedRoom, type TestWorld } from "../fixtures/world.ts";
@@ -191,6 +191,58 @@ test("fuzz: among sloped pieces in a closed room no body of any species leaves i
         const height = stanceHeight(p, b.stance);
         if (!capsuleFree(w, b.x, b.y, b.z, p.radius, height)) throw new Error(`${id} in solid at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
         if (b.x < 55.1 || b.x > 72.9 || b.z < 55.1 || b.z > 72.9 || b.y < -SKIN || b.y + height > 6 + SKIN) throw new Error(`${id} out of the room at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
+      }
+    }
+  }
+});
+
+test("fuzz: on ground too steep to stand on, among sloped pieces leaning on it, in a closed room, no body of any species leaves it or enters solid", () => {
+  const w = flatWorld();
+  const tan = (deg: number): number => Math.tan((deg * Math.PI) / 180);
+  // Inside the room of the fuzz above: a gully of 60 degrees along Z at x = 60 with a shelf 3 m up each side of it, a bank of
+  // 70 degrees rising to 3 m toward the north wall, and a mound of 50 degrees 2.5 m high.
+  const height = (x: number, z: number): number => {
+    const gully = x < 64 ? Math.min(3, Math.abs(x - 60) * tan(60)) : 0;
+    const bank = Math.max(0, Math.min(3, (z - 67) * tan(70)));
+    const mound = Math.max(0, 2.5 - Math.hypot(x - 68, z - 60) * tan(50));
+    return Math.max(gully, bank, mound);
+  };
+  for (let j = 0; j < w.hf.nz; j++) for (let i = 0; i < w.hf.nx; i++) w.hf.setSample(i, j, height(i * w.hf.cell, j * w.hf.cell));
+  const add = (id: string, x: number, base: number, z: number, yaw = 0): number => w.structs.add(w.kind(id), x, base + w.reg.halfY[w.kind(id)]!, z, yaw, 0, 1);
+  for (let i = 0; i < 6; i++) {
+    for (const y of [0, 3]) {
+      add("core:wall", 56.5 + 3 * i, y, 55);
+      add("core:wall", 56.5 + 3 * i, y, 73);
+      add("core:wall", 55, y, 56.5 + 3 * i, 16384);
+      add("core:wall", 73, y, 56.5 + 3 * i, 16384);
+    }
+  }
+  for (const x of [59, 67, 69]) for (const z of [59, 67, 69]) add("core:slab", x, 6, z);
+  // A slab at 60 degrees leaning on the bank, rubble against the mound, a flight up onto the gully's shelf, and a slab at 60
+  // degrees leaning into the gully.
+  add(slopeKind("slab60"), 66, 0.5, 66.5, 32768);
+  add(slopeKind("rubble"), 68, 0, 64.5, 32768);
+  add(slopeKind("stairs_solid"), 64.5, 0, 63, 49152);
+  add(slopeKind("slab60"), 61, 0.2, 58, 16384);
+  const walkers = w.reg.defs.flatMap((d) => (d?.type === "species" && !d.still ? [d.id] : []));
+  for (const seed of [21, 22, 23, 24, 25, 26, 27, 28]) {
+    const rng = new Rng(seed);
+    for (const id of walkers) {
+      for (const p of [w.reg.move[w.kind(id)]!, w.reg.tamedMove[w.kind(id)]!]) {
+        const b = new Body();
+        do {
+          b.x = rng.range(56, 72);
+          b.z = rng.range(56, 72);
+          b.y = groundUnder(w.hf, b.x, b.z, p.radius) + rng.range(0, 1);
+        } while (!capsuleFree(w, b.x, b.y, b.z, p.radius, p.height) || b.y + p.height > 6);
+        let [moveX, moveZ, yaw, buttons] = [0, 127, rng.int(65536), 0];
+        for (let i = 0; i < 3000; i++) {
+          if (rng.int(15) === 0) [moveX, moveZ, yaw, buttons] = [rng.int(255) - 127, rng.int(255) - 127, rng.int(65536), rng.int(4) | (rng.int(6) === 0 ? BTN_CROUCH : 0) | (rng.int(9) === 0 ? BTN_PRONE : 0)];
+          stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
+          const height = stanceHeight(p, b.stance);
+          if (!capsuleFree(w, b.x, b.y, b.z, p.radius, height)) throw new Error(`${id} in solid at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
+          if (b.x < 55.1 || b.x > 72.9 || b.z < 55.1 || b.z > 72.9 || b.y + height > 6 + SKIN) throw new Error(`${id} out of the room at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
+        }
       }
     }
   }
