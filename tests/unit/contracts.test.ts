@@ -301,10 +301,10 @@ test("a flyer's numbers compile into its moves in whole units a tick and its tam
   ]);
 });
 
-test("the class table holds the flyers' fields as stubs, each waiting for its feature but `fly`, which the step reads, and only a creature may declare them", () => {
+test("the class table holds the flyers' fields as stubs, each waiting for its feature but `fly`, which the step reads, and `defendsEgg`, which the egg rule reads, and only a creature may declare them", () => {
   const s = FIELDS.species;
   expect(["fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth"].map((k) => [k, s[k]!.waits])).toEqual([
-    ["fly", undefined], ["grab", "flyers"], ["defendsEgg", "flyers"], ["riderWeight", undefined], ["missiles", "flyers"], ["structures", "flyers"], ["tameBonus", "tameBonus"], ["tamedHealth", "tameBonus"],
+    ["fly", undefined], ["grab", "flyers"], ["defendsEgg", undefined], ["riderWeight", undefined], ["missiles", "flyers"], ["structures", "flyers"], ["tameBonus", "tameBonus"], ["tamedHealth", "tameBonus"],
   ]);
   // A ridden bite's stamina is spent (FL2).
   expect(s.bite!.stubs).toBeUndefined();
