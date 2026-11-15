@@ -1,97 +1,255 @@
-// The dodo in the game's world: a flock on the proving ground east of the pool, where its beach table puts them, drawn
-// as a client on the high tier draws them with the pictures the pack names, from near, from a survivor's height and from
-// far. Each bird has colours rolled from its species' set as a wild one's are, the nearest the default bird, and a
-// survivor stands among them for size. Writes near.png, standing.png and far.png beside this file.
+// The dodo as the game draws it today: the software rasterizer drawing what a client on the medium and the ultra tier
+// draws, with the pictures the pack names, on the proving ground's grass north-west of the plaza. Each shot is written
+// beside this file as <shot>_<tier>.png:
 //
-//   bun assets/source/core/creatures/dodo/ref/world/snap.ts
+//   2m, 6m, 20m   a flock seen from a survivor's eyes 2, 6 and 20 m from the nearest bird, at the game's 70 degree view;
+//                 each also enlarged about the birds, pixel for pixel (<shot>_<tier>_x<times>.png)
+//   profile       the default bird side on from 2 m at its own height, through a long lens, against the concept's side
+//   dyes          ten birds side on: the default bird, then nine wild rolls from its colour set
+//   young         grown, newborn, a third grown and three quarters grown, and its egg, with a survivor for size
+//   knocked_out   standing, going down, lying, and swallowing a berry as it lies
+//   lying         two birds knocked out, close: one seen from its belly, one from its back
+//   dead          two corpses six seconds after death, one killed standing and one killed knocked out, by a live bird
+//
+//   bun assets/source/core/creatures/dodo/ref/world/snap.ts [shot ...] [--tier medium|ultra]
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tierOf } from "../../../../../../../client/core/assets/tiers.ts";
-import { AnimState } from "../../../../../../../shared/anim/pose.ts";
+import { AnimState, CUE_TORPOR, LAYER_EAT, bodySeed } from "../../../../../../../shared/anim/pose.ts";
 import { Rng } from "../../../../../../../shared/rng.ts";
 import { rollWild } from "../../../../../../../shared/sim/genome.ts";
 import { GEAR_COUNT } from "../../../../../../../shared/sim/entities.ts";
 import { ACT_NONE, ACT_SWING, HOLD_HANDS } from "../../../../../../../shared/sim/weapon.ts";
-import { PROVING_POOL } from "../../../../../../../shared/world/proving.ts";
 import { SOURCE } from "../../../../../../../tools/art/source.ts";
 import { provingView, settle, type ProvingView } from "../../../../../../../tools/snap.ts";
 import { gameFiles } from "../../../../../../../tools/snap/files.ts";
 import { encodePng } from "../../../../../../../tools/snap/png.ts";
 
 const [W, H] = [1280, 720];
+/** A grassy patch beyond the plaza with no tree or rock between it and a camera 26 m to its south. */
+const [CX, CZ] = [160, 360];
+const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead"] as const;
+type Shot = (typeof SHOTS)[number];
+
+const args = process.argv.slice(2);
+const tierArg = args.indexOf("--tier");
+const tiers = tierArg >= 0 ? [args[tierArg + 1]!] : ["medium", "ultra"];
+const asked = args.filter((a, i) => !a.startsWith("--") && (tierArg < 0 || i !== tierArg + 1));
+const shots = asked.length > 0 ? (asked as Shot[]) : [...SHOTS];
 const files = await gameFiles(SOURCE);
-// The flock's middle, east of the pool on its flat rim.
-const [CX, CZ] = [PROVING_POOL.x + 30, PROVING_POOL.z];
 
-/** Six dodos about (CX, CZ): x, z from the middle, facing in radians (0 is +z), metres a second, pecking. */
-const BIRDS: readonly (readonly [number, number, number, number, boolean])[] = [
-  [0, 0, -1.9, 0, false],
-  [-1.1, 0.9, -1.2, 0, true],
-  [1.2, 0.6, -2.6, 0.5, false],
-  [0.4, 2.2, -1.6, 0, false],
-  [-2.3, 2.6, -0.9, 1.3, false],
-  [2.6, 3.4, -2.2, 0, false],
-];
+interface Body {
+  x: number;
+  z: number;
+  yaw: number;
+  kind?: string;
+  /** Six palette entries; the default bird's when not given. */
+  colors?: readonly number[];
+  /** Fraction grown, 1 for an adult. */
+  grown?: number;
+  set?: (s: AnimState) => void;
+  /** Ticks ahead on its clock. */
+  seed?: number;
+}
 
-function scene(view: ProvingView, tick: number): void {
+/** The smallest id whose body clock runs `seed` ticks ahead, in its own block of 1024. */
+function idFor(n: number, seed: number): number {
+  for (let id = 1024 * (n + 1); id < 1024 * (n + 2); id++) if (bodySeed(id) === seed) return id;
+  return 1024 * (n + 1);
+}
+
+function place(view: ProvingView, bodies: readonly Body[], tick: number): void {
   const r = view.remote;
   const reg = view.reg;
-  const kind = reg.index.get("core:dodo")!;
-  const set = reg.colorSet[kind]!;
-  const rng = new Rng(7);
+  const dodo = reg.index.get("core:dodo")!;
+  const set = reg.colorSet[dodo]!;
+  const plain = Array.from({ length: 6 }, (_, q) => set.palette[set.start[q]!]!);
   const st = new AnimState();
   r.count = 0;
   r.tick = tick;
-  const put = (k: number, x: number, z: number, yaw: number): number => {
+  for (const b of bodies) {
     const n = r.count++;
-    r.id[n] = 2048 * (n + 1) + n * 37;
-    r.kind[n] = k;
-    r.x[n] = CX + x;
-    r.z[n] = CZ + z;
-    r.y[n] = view.hf.heightAt(CX + x, CZ + z);
-    r.yaw[n] = yaw;
-    r.flags[n] = 1;
+    const kind = reg.index.get(b.kind ?? "core:dodo")!;
+    r.id[n] = idFor(n, b.seed ?? (n * 7) % 32);
+    r.kind[n] = kind;
+    r.x[n] = CX + b.x;
+    r.z[n] = CZ + b.z;
+    r.y[n] = view.hf.heightAt(CX + b.x, CZ + b.z);
+    r.yaw[n] = b.yaw;
+    r.flags[n] = b.kind === "core:egg_dodo" ? 1 | 8 : 1;
     r.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
-    r.span[n] = r.grown[n] = r.seat[n] = r.hasLook[n] = 0;
-    return n;
-  };
-  BIRDS.forEach(([x, z, yaw, speed, peck], i) => {
-    const n = put(kind, x, z, yaw);
-    const g = rollWild(rng, 1 + rng.int(30), set);
-    for (let q = 0; q < 6; q++) r.colors[n * 6 + q] = i === 0 ? set.palette[set.start[q]!]! : g.colors[q]!;
-    st.speed = speed;
+    const colors = b.kind === undefined || b.kind === "core:dodo" ? (b.colors ?? plain) : [0, 0, 0, 0, 0, 0];
+    for (let q = 0; q < 6; q++) r.colors[n * 6 + q] = colors[q]!;
+    const grown = b.grown ?? 1;
+    r.span[n] = grown < 1 ? 1000 : 0;
+    r.grown[n] = grown < 1 ? tick + Math.round((1 - grown) * 1000) : 0;
+    r.seat[n] = r.hasLook[n] = 0;
+    st.unpack(0);
     st.mode = 1;
     st.grounded = true;
-    st.setAction(peck ? ACT_SWING : ACT_NONE, HOLD_HANDS, peck ? tick - 4 : 0);
+    st.setAction(ACT_NONE, HOLD_HANDS, 0);
+    b.set?.(st);
     r.anim[n] = st.pack();
-  });
-  const man = put(reg.index.get("core:survivor")!, 1.9, -0.6, -2.2);
-  st.speed = 0;
-  st.setAction(ACT_NONE, HOLD_HANDS, 0);
-  r.anim[man] = st.pack();
-  r.colors.fill(0, man * 6, man * 6 + 6);
+    r.cue[n] = st.packCue();
+  }
 }
 
-/** Draws the flock with the camera `back` metres from its middle, `up` metres above the ground, turned `yaw`. */
-function shot(name: string, back: number, side: number, up: number, yaw: number, pitch: number, fov: number): void {
-  const view = provingView(W, H, {}, files);
-  view.scene.assets.tier = tierOf("high");
-  view.scene.viewHeight = H;
-  scene(view, 40);
+/** Points the camera from (x, y above the ground, z) about the patch's middle at a point `at` high over (tx, tz). */
+function aim(view: ProvingView, x: number, up: number, z: number, tx: number, at: number, tz: number, fov = 1.2217): void {
   const cam = view.cam;
-  cam.x = CX + side;
-  cam.z = CZ - back;
+  cam.x = CX + x;
+  cam.z = CZ + z;
   cam.y = view.hf.heightAt(cam.x, cam.z) + up;
-  cam.yaw = yaw;
-  cam.pitch = pitch;
+  const ty = view.hf.heightAt(CX + tx, CZ + tz) + at;
+  const [dx, dy, dz] = [CX + tx - cam.x, ty - cam.y, CZ + tz - cam.z];
+  cam.yaw = Math.atan2(dx, dz);
+  cam.pitch = Math.atan2(dy, Math.hypot(dx, dz));
   cam.fovY = fov;
-  settle(view);
-  const out = join(import.meta.dir, `${name}.png`);
-  writeFileSync(out, encodePng(W, H, view.raster.color));
-  console.log(out);
 }
 
-shot("near", 1.6, -0.9, 0.75, 0.5, -0.12, 0.7);
-shot("standing", 4, -1.5, 1.62, 0.35, -0.3, 0.9);
-shot("far", 22, -9, 1.62, 0.35, -0.05, 0.9);
+const walk = (s: AnimState): void => void (s.speed = 1);
+const peck = (tick: number) => (s: AnimState): void => s.setAction(ACT_SWING, HOLD_HANDS, tick - 4);
+
+/** A flock of six about the patch's middle and a survivor among them, the nearest bird at the origin. */
+function flock(view: ProvingView, tick: number): void {
+  const set = view.reg.colorSet[view.reg.index.get("core:dodo")!]!;
+  const rng = new Rng(11);
+  const wild = (): number[] => [...rollWild(rng, 1 + rng.int(30), set).colors];
+  place(view, [
+    { x: 0, z: 0, yaw: Math.PI - 0.7 },
+    { x: 1.2, z: 1.0, yaw: Math.PI + 1.1, colors: wild(), set: peck(tick) },
+    { x: -1.3, z: 1.4, yaw: 1.6, colors: wild(), set: walk },
+    { x: 0.5, z: 2.6, yaw: Math.PI - 0.2, colors: wild() },
+    { x: 2.4, z: 3.1, yaw: -2.2, colors: wild(), set: walk },
+    { x: -2.6, z: 3.6, yaw: 2.6, colors: wild() },
+    { x: 3.4, z: 1.6, yaw: -2.6, kind: "core:survivor" },
+  ], tick);
+}
+
+function scene(view: ProvingView, shot: Shot): void {
+  const tick = 400;
+  if (shot === "2m" || shot === "6m" || shot === "20m") {
+    flock(view, tick);
+    const d = { "2m": 2, "6m": 6, "20m": 20 }[shot];
+    aim(view, -0.25 * d, 1.62, -d, 0.6, 0.35, 1.6);
+    return;
+  }
+  if (shot === "profile") {
+    place(view, [{ x: 0, z: 0, yaw: Math.PI / 2 }], tick);
+    aim(view, 0, 0.45, -2, 0, 0.36, 0, 0.42);
+    return;
+  }
+  if (shot === "dyes") {
+    const set = view.reg.colorSet[view.reg.index.get("core:dodo")!]!;
+    const rng = new Rng(5);
+    const bodies: Body[] = [];
+    for (let i = 0; i < 10; i++) {
+      const row = i < 5 ? 0 : 1;
+      const col = i % 5;
+      bodies.push({ x: (2 - col) * 0.95 + row * 0.45, z: row * 1.3, yaw: -Math.PI / 2 + (row ? 0.35 : -0.25), colors: i === 0 ? undefined : [...rollWild(rng, 1, set).colors], seed: i * 3 });
+    }
+    place(view, bodies, tick);
+    aim(view, 0, 1.6, -3.4, 0, 0.3, 0.6, 0.75);
+    return;
+  }
+  if (shot === "young") {
+    place(view, [
+      { x: 0.9, z: 0, yaw: -Math.PI / 2 - 0.3 },
+      { x: 0.1, z: 0, yaw: -Math.PI / 2 - 0.3, grown: 0 },
+      { x: -0.4, z: 0, yaw: -Math.PI / 2 - 0.3, grown: 0.3 },
+      { x: -1.15, z: 0, yaw: -Math.PI / 2 - 0.3, grown: 0.75 },
+      { x: 1.9, z: 0.5, yaw: 0.4, kind: "core:egg_dodo" },
+      { x: -2.1, z: 1.2, yaw: -2.4, kind: "core:survivor" },
+    ], tick);
+    aim(view, -0.1, 1.2, -3.6, -0.1, 0.45, 0.3, 0.8);
+    return;
+  }
+  if (shot === "knocked_out") {
+    const at = (frames: number): number => (tick - frames) & 255;
+    place(view, [
+      { x: 1.2, z: 0, yaw: -Math.PI / 2 - 0.4 },
+      { x: 0.4, z: 0, yaw: -Math.PI / 2 - 0.4, set: (s) => ((s.out = true), (s.cue = CUE_TORPOR), (s.cueStart = at(25))) },
+      { x: -0.4, z: 0, yaw: -Math.PI / 2 - 0.4, set: (s) => void (s.out = true) },
+      { x: -1.2, z: 0, yaw: -Math.PI / 2 - 0.4, set: (s) => ((s.out = true), (s.layer = LAYER_EAT), (s.layerStart = at(12))) },
+    ], tick);
+    aim(view, 0, 1.3, -2.6, 0, 0.15, 0, 0.9);
+    return;
+  }
+  if (shot === "lying") {
+    place(view, [
+      { x: 0.35, z: 0, yaw: -Math.PI / 2 - 0.3, set: (s) => void (s.out = true) },
+      { x: -0.45, z: 0.25, yaw: Math.PI / 2 + 0.3, set: (s) => void (s.out = true) },
+    ], tick);
+    aim(view, 0, 0.75, -1.5, -0.05, 0.12, 0.1, 0.62);
+    return;
+  }
+  // dead: two birds die, one standing and one knocked out; a third stays alive beside them.
+  const r = view.remote;
+  place(view, [
+    { x: 0.8, z: 0, yaw: -Math.PI / 2 - 0.4 },
+    { x: -0.3, z: 0.1, yaw: -Math.PI / 2 + 0.5, set: (s) => void (s.out = true) },
+    { x: -1.5, z: 0.6, yaw: Math.PI - 0.5 },
+  ], 100);
+  const cam = view.cam;
+  aim(view, -0.3, 1.1, -2.1, -0.3, 0.1, 0.25, 0.75);
+  // Each frame carries its uploads to the card, as settle's do, so that what it fetched is there when the shot is drawn.
+  const frame = (): void => {
+    view.scene.now += 1000 / 60;
+    view.port?.advance(view.scene.now);
+    const p = view.scene.build(cam, r);
+    p.drawCount = p.tileCount = 0;
+    view.raster.render(p);
+  };
+  frame();
+  r.tick += 0.5;
+  frame();
+  r.died = new Map([[r.id[0]!, r.tick], [r.id[1]!, r.tick]]);
+  for (const k of ["id", "kind", "x", "y", "z", "yaw", "flags", "anim", "cue", "span", "grown", "seat", "hasLook"] as const) r[k][0] = r[k][2]!;
+  r.colors.copyWithin(0, 12, 18);
+  r.count = 1;
+  for (let f = 0; f < 6 * 60; f++) {
+    r.tick += 0.5;
+    frame();
+  }
+}
+
+/** Where the point (x, up, z) about the patch's middle falls in the picture, in pixels. */
+function project(view: ProvingView, x: number, up: number, z: number): [number, number] {
+  const { cam, hf } = view;
+  const m = cam.viewProj;
+  const [rx, ry, rz] = [CX + x - cam.x, hf.heightAt(CX + x, CZ + z) + up - cam.y, CZ + z - cam.z];
+  const w = m[3]! * rx + m[7]! * ry + m[11]! * rz;
+  return [(((m[0]! * rx + m[4]! * ry + m[8]! * rz) / w) * 0.5 + 0.5) * W, (0.5 - ((m[1]! * rx + m[5]! * ry + m[9]! * rz) / w) * 0.5) * H];
+}
+
+/** The pixels about (px, py) blown up `k` times, each a square, so the bird can be seen as drawn at that distance. */
+function enlarged(color: Uint8ClampedArray, px: number, py: number, k: number): Uint8ClampedArray {
+  const out = new Uint8ClampedArray(W * H * 4);
+  const x0 = Math.min(Math.max(Math.round(px - W / k / 2), 0), W - Math.ceil(W / k));
+  const y0 = Math.min(Math.max(Math.round(py - H / k / 2), 0), H - Math.ceil(H / k));
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) out.set(color.subarray(((y0 + Math.floor(y / k)) * W + x0 + Math.floor(x / k)) * 4, ((y0 + Math.floor(y / k)) * W + x0 + Math.floor(x / k)) * 4 + 4), (y * W + x) * 4);
+  return out;
+}
+
+/** For the distance shots, the point to enlarge about and how many times. */
+const CROPS: Partial<Record<Shot, [number, number, number, number]>> = { "2m": [0, 0.33, 0, 2], "6m": [0.4, 0.3, 1.6, 3], "20m": [0.4, 0.3, 1.6, 6] };
+
+for (const tier of tiers) {
+  for (const shot of shots) {
+    const t0 = performance.now();
+    const view = provingView(W, H, {}, files);
+    view.scene.assets.tier = tierOf(tier);
+    view.scene.viewHeight = H;
+    scene(view, shot);
+    settle(view);
+    const out = join(import.meta.dir, `${shot}_${tier}.png`);
+    writeFileSync(out, encodePng(W, H, view.raster.color));
+    const crop = CROPS[shot];
+    if (crop) {
+      const [px, py] = project(view, crop[0], crop[1], crop[2]);
+      writeFileSync(join(import.meta.dir, `${shot}_${tier}_x${crop[3]}.png`), encodePng(W, H, enlarged(view.raster.color, px, py, crop[3])));
+    }
+    console.log(`${out}  ${(performance.now() - t0).toFixed(0)} ms`);
+  }
+}
