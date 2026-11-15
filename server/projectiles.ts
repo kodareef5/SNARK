@@ -100,6 +100,8 @@ export class Projectiles {
   private readonly stuck: Stuck[] = [];
   private readonly thrown: Thrown[] = [];
   bursts = 0;
+  /** While `fling` sends a throw: `tell` tells the thrower too. */
+  private toShooter = false;
   private readonly stuckKind: number;
   private readonly liveKind: number;
   private readonly rng: Rng;
@@ -337,6 +339,18 @@ export class Projectiles {
     return src;
   }
 
+  /**
+   * Throws one `item` that flies and hits (M5 of planning/reference/weapons-plan.md, the bola): a thrown weapon with an
+   * ammo facet of its own is its own round, flown as an arrow is from `c`'s eye at its view tick. `draw`, how long a charged
+   * throw was held (W2), buys speed and nothing else ("Charging up the Bola will increase its velocity, but not its
+   * immobilization time", Bola). Unlike a shot, the thrower is told of it too, since its client predicts no round for it.
+   */
+  fling(c: Client, rec: EntityRecord, item: number, quality: number, draw: number): void {
+    this.toShooter = true;
+    this.launch(c, rec, item, quality, item, draw);
+    this.toShooter = false;
+  }
+
   /** Throws one `item` from the eye of `c`'s body. It goes off when its fuse runs out, wherever it then is. */
   lob(c: Client, rec: EntityRecord, item: number, quality: number): void {
     const world = this.ctx.world;
@@ -498,7 +512,7 @@ export class Projectiles {
     const game = this.ctx.game;
     const ents = this.ctx.world.ents;
     for (const other of game.clients) {
-      if (!other?.active || other.closed || other === shooter) continue;
+      if (!other?.active || other.closed || (other === shooter && !this.toShooter)) continue;
       const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
       const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
       if ((bx - ox) * (bx - ox) + (bz - oz) * (bz - oz) > HEARD * HEARD) continue;

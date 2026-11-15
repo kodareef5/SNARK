@@ -67,7 +67,9 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
   const ids = (defs: readonly Def[]): string[] => defs.filter((d) => d.type === "item").map((d) => d.id.slice(5));
   expect(ids(WEAPONS)).toEqual(["bow", "crossbow", "rifle", "pistol"]);
   expect(ids(AMMO)).toEqual(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "dart_tranq", "dart_shock", "scope", "silencer", "flashlight", "laser"]);
-  expect(ids(EXPLOSIVES)).toEqual(["grenade"]);
+  // W4 added the bola, with its two buffs and its engram (tests/integration/bola.test.ts).
+  expect(ids(EXPLOSIVES)).toEqual(["grenade", "bola"]);
+  expect(EXPLOSIVES.filter((d) => d.type === "buff").map((d) => d.id)).toEqual(["core:entangled", "core:entangle_spent"]);
   const all = new Set(CORE_CONTENT.map((d) => `${d.type} ${d.id}`));
   for (const d of [...WEAPONS, ...AMMO, ...EXPLOSIVES]) {
     expect(ITEMS.includes(d)).toBe(true);
@@ -75,16 +77,17 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
     expect(CORE_CONTENT.filter((o) => o.type === d.type && o.id === d.id).length).toBe(1);
   }
   // Each moved item brought its engram and the rename of its old recipe id, and is made as before.
-  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(16);
+  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(17);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
   expect(pistol).toMatchObject({ weight: 3, weapon: { clip: 6, reload: 2.2, interval: 0.35, uses: 60 }, craft: { seconds: 12, xp: 11, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
 });
 
-test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud class wait, as the plan has them", () => {
+test("the weapon and ammo facets' stubs and the cloud class wait, as the plan has them", () => {
   // W2 built auto, reloadEach and melee (M4): their pins are in the test below and tests/unit/weapon.test.ts.
   expect(FIELDS.item.weapon!.stubs).toEqual({ spread: "polish", recoil: "polish", structures: "polish", cloud: "polish" });
   expect(FIELDS.item.ammo!.stubs).toEqual({ pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" });
-  expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual(["polish", "polish", "polish"]);
+  // W4 built the bola's buff fields (M6): their pins are in tests/integration/bola.test.ts.
+  expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual([undefined, undefined, undefined]);
   expect(classRow("prop/cloud")).toMatchObject({ status: "stub", waits: "polish", parent: "prop" });
   expect(CLASSES.filter((r) => r.id === "prop/cloud").length).toBe(1);
   // The holo-scope is an attachment kind no item is yet.

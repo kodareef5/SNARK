@@ -381,6 +381,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       }
     } else if (d.type === "buff") {
       if (d.seconds !== undefined) positive(d, "seconds", d.seconds, 86400);
+      if (d.survivorSeconds !== undefined) positive(d, "survivorSeconds", d.survivorSeconds, 86400);
+      if (d.after === d.id) errors.push(`${d.id}: after must name another buff`);
       for (const [name, v] of [["speed", d.speed], ["dealt", d.dealt], ["taken", d.taken]] as const) {
         if (v !== undefined && !(v >= 0 && v <= 100)) errors.push(`${d.id}: ${name} must be from 0 to 100`);
       }
@@ -425,7 +427,10 @@ export function compileContent(all: readonly Def[]): CompileResult {
       const w = d.weapon;
       if (w) {
         positive(d, "weapon.uses", w.uses, 60000);
-        if ((w.kind === "melee" || w.kind === "thrown") && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
+        // A thrown weapon with an ammo facet of its own flies and hits with that facet's damage, which may be none (the bola).
+        if ((w.kind === "melee" || (w.kind === "thrown" && !d.ammo)) && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
+        if (d.ammo && !(w.kind === "thrown" && d.ammo.speed !== undefined)) errors.push(`${d.id}: a weapon with an ammo facet of its own is thrown, and flies at its ammo.speed`);
+        if (d.ammo && w.fuse !== undefined) errors.push(`${d.id}: a thrown weapon that flies and hits has no fuse`);
         if ((w.kind === "bow" || w.kind === "gun") && !(w.ammo && w.ammo.length > 0)) errors.push(`${d.id}: a ${w.kind} needs the ammunition it takes`);
         if (w.kind === "bow" && !(w.draw! > 0)) errors.push(`${d.id}: a bow needs a draw time`);
         if (w.clip !== undefined && !(Number.isInteger(w.clip) && w.clip >= 1 && w.clip <= 255)) errors.push(`${d.id}: weapon.clip must be a whole number from 1 to 255`);
