@@ -52,17 +52,8 @@ STANCE_HAND = {}
 STANCE_ELBOW = {}
 _r = None
 
-# How the engine lifts a flyer as it takes off (shared/sim/character.ts, D497): it leaves the ground at
-# sqrt(2 x 12 x 1.5) = 6 m/s and slows at its 12 m/s2 flying acceleration to a hover 1.5 m up, in half a second.
-TAKE_OFF_SPEED = 6.0
-TAKE_OFF_RISE = 1.5
-
-
-def rise(f):
-    """How far the engine has lifted the body f frames into a take-off."""
-    a = TAKE_OFF_SPEED * TAKE_OFF_SPEED / (2.0 * TAKE_OFF_RISE)
-    t = min(f / rig.FPS, TAKE_OFF_SPEED / a)
-    return TAKE_OFF_SPEED * t - 0.5 * a * t * t
+# How far the engine has lifted the body f frames into a take-off.
+rise = rig.take_off_lift
 
 
 # =====================================================================================================================
@@ -383,8 +374,10 @@ def carried(p, point):
 
 
 def between_hands(a, b, s):
-    """A hand target (position, turn) moved from a toward b by s."""
-    return a[0].lerp(b[0], s), tuple(x + (y - x) * s for x, y in zip(a[1], b[1]))
+    """A hand target (position, turn) moved from a toward b by s, the turn by the shortest way."""
+    q = rot(*a[1]).to_quaternion().slerp(rot(*b[1]).to_quaternion(), min(1.0, max(0.0, s)))
+    e = q.to_matrix().to_euler("YXZ")
+    return a[0].lerp(b[0], s), (-math.degrees(e.x), math.degrees(e.z), math.degrees(e.y))
 
 
 def lean_of(p, head):
@@ -585,15 +578,17 @@ def make(r, name, frames, pose_at):
 # the cycle the downstroke takes; sweep: the wing's sweep forward (+) at the bottom of the stroke and back at the top,
 # about `swept`; flex: how far the wing folds at the middle of the upstroke, about `flexed`; twist: the leading edge's
 # turn down on the downstroke and up on the upstroke; lag: the share of the cycle the finger trails the arm by, and
-# curl how much of that it bends; elbow: degrees the forearm lifts the outer wing at the top of the upstroke; bob and
-# nod: the body's rise on the downstroke (metres) and its pitch (degrees).
+# curl how much of that it bends, `upcurl` times more on the way up, where the elbow leads and the finger follows;
+# elbow: degrees the forearm lifts the outer wing near the top of the upstroke, highest at `elbow_at`; lead: the share
+# of the cycle before the bottom that the wrist begins to fold; back: how much further than forward the wing sweeps
+# back as it recovers; bob and nod: the body's rise on the downstroke (metres) and its pitch (degrees).
 BEATS = {
-    "fly": dict(top=36.0, bottom=-38.0, down=0.55, sweep=5.0, swept=0.0, flex=0.12, flexed=0.0, twist=8.0, lag=0.09,
-                curl=0.55, elbow=16.0, bob=0.028, nod=2.0),
-    "fly_fast": dict(top=26.0, bottom=-30.0, down=0.5, sweep=3.0, swept=-9.0, flex=0.08, flexed=0.07, twist=6.0,
-                     lag=0.1, curl=0.45, elbow=10.0, bob=0.018, nod=1.2),
-    "hover": dict(top=38.0, bottom=-42.0, down=0.55, sweep=11.0, swept=0.0, flex=0.22, flexed=0.0, twist=14.0,
-                  lag=0.09, curl=0.5, elbow=20.0, bob=0.035, nod=3.0),
+    "fly": dict(top=36.0, bottom=-38.0, down=0.55, sweep=5.0, swept=0.0, flex=0.13, flexed=0.0, twist=8.0, lag=0.09,
+                curl=0.55, upcurl=0.8, elbow=16.0, elbow_at=0.86, lead=0.0, back=1.0, bob=0.055, nod=3.0),
+    "fly_fast": dict(top=18.0, bottom=-32.0, down=0.55, sweep=3.0, swept=-14.0, flex=0.08, flexed=0.12, twist=6.0,
+                     lag=0.1, curl=0.45, upcurl=0.5, elbow=4.0, elbow_at=0.88, lead=0.0, back=1.0, bob=0.035, nod=2.0),
+    "hover": dict(top=38.0, bottom=-42.0, down=0.55, sweep=11.0, swept=0.0, flex=0.32, flexed=0.0, twist=14.0,
+                  lag=0.09, curl=0.5, upcurl=0.6, elbow=20.0, elbow_at=0.9, lead=0.08, back=1.8, bob=0.06, nod=4.0),
 }
 
 
@@ -605,12 +600,15 @@ def beat(u, b):
     f = shoulder(u)
     slope = (shoulder(u + 0.01) - shoulder(u - 0.01)) / 0.02
     peak = 1.5 * (b["top"] - b["bottom"]) / b["down"]
-    curl = b["curl"] * (f - shoulder(u - b["lag"]))
+    rising = min(1.0, max(0.0, 2.0 * slope / peak))
+    curl = b["curl"] * (1.0 + b["upcurl"] * rising) * (f - shoulder(u - b["lag"]))
     twist = b["twist"] * slope / peak
-    sweep = b["swept"] + b["sweep"] * math.sin(2.0 * math.pi * (u - 0.05))
-    up = 0.0 if u < b["down"] else math.sin(math.pi * (u - b["down"]) / (1.0 - b["down"]))
+    swing = math.sin(2.0 * math.pi * (u - 0.05))
+    sweep = b["swept"] + b["sweep"] * swing * (b["back"] if swing < 0.0 else 1.0)
+    start = b["down"] - b["lead"]
+    up = 0.0 if u < start else math.sin(math.pi * (u - start) / (1.0 - start))
     flex = b["flexed"] + b["flex"] * up ** 1.5
-    elbow = b["elbow"] * Keys([(0.0, 0.55), (0.18, 0.0), (b["down"], -0.15), (0.93, 1.0)], period=1.0)(u)
+    elbow = b["elbow"] * Keys([(0.0, 0.55), (0.18, 0.0), (b["down"], -0.15), (b["elbow_at"], 1.0)], period=1.0)(u)
     extra = {"forearm": (0.0, 0.0, -elbow)}
     rise_ = b["bob"] * Keys([(0.08, -1.0), (b["down"] + 0.07, 1.0)], period=1.0)(u)
     nod = b["nod"] * Keys([(0.12, -1.0), (b["down"], 1.0)], period=1.0)(u)
@@ -705,9 +703,10 @@ def fly_fast(r):
     def at(t):
         p = flapping(t, N, BEATS[name])
         a, y, r3 = p["body_rot"]
-        p["body_rot"] = (a - 3.0, y, r3)
-        p["head"] = within_neck(p, REST_HEAD + Vector((0.0, -0.06, 0.05)))
-        p["head_rot"] = (-6.0, 0.0, 0.0)
+        p["body_rot"] = (a - 5.0, y, r3)
+        p["head"] = within_neck(p, REST_HEAD + Vector((0.0, -0.10, 0.16)))
+        p["neck"] = [(6.0, 0.0, 0.0), (4.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (-4.0, 0.0, 0.0)]
+        p["head_rot"] = (-7.0, 0.0, 0.0)
         for s in "lr":
             p["foot_" + s] = trailing(p, s, reach=0.975, droop=-6.0, splay=-2.0)
         return p
@@ -733,9 +732,9 @@ def hover_at(u, lift=0.0):
         p["wing_" + s] = dict(w)
         p["wing_extra_" + s] = dict(extra)
         lag = beat(u - 0.12, b)[2]
-        foot = leg_hanging(p, s, 0.50, 0.10, 0.06) + Vector((0.0, -0.4 * lag, 0.0))
+        foot = leg_hanging(p, s, 0.46, 0.10, 0.06) + Vector((0.0, -0.9 * lag, 0.0))
         p["foot_" + s] = foot
-        p["foot_rot_" + s] = (80.0 + 60.0 * lag, 0.0, 0.0)
+        p["foot_rot_" + s] = (80.0 + 120.0 * lag, 0.0, 0.0)
         p["knee_" + s] = knee_ahead(p, s, foot)
         p["talons_" + s] = 0.25
     p["neck"] = [(-12.0, 0.0, 0.0), (-6.0, 0.0, 0.0), (8.0, 0.0, 0.0), (10.0, 0.0, 0.0)]
@@ -784,38 +783,41 @@ def dive(r):
 
 
 def take_off(r):
-    """From the crouch: it sinks onto its arms, kicks off with the legs and vaults on the arms; the hands leave the
-    ground as the wings begin to open, the wings snap open above it and give one deep stroke that carries it up, and
-    it settles into the hover. The engine lifts the body 1.5 m from its first tick (rise: 0.37 m by frame 2, 0.96 by
-    frame 6, all of it by frame 15), so the push is quick and the clip's own lift, from the crouch to the hover's
-    height, comes on top of it."""
+    """A quadrupedal launch from the crouch: the body loads down onto the arms, the legs kick it forward and up, the
+    arms straighten and vault it off the ground last, and the wings open up over the back and give the deepest stroke
+    of all, which lifts it past the hover's height; it settles into the hover. The engine lifts the body 1.5 m from
+    its first tick (rig.take_off_lift: 0.37 m by frame 2, 0.96 by frame 6, all of it by frame 15): the hands and feet
+    hold the ground it leaves for the push, so in the clip that ground falls away under it as it rises. It starts
+    exactly on STANCE, so it needs no fade from what played before, and the planted hands and feet hold only if it
+    has none."""
     name = "take_off"
     N = rig.CLIPS[name]["frames"]
-    # The pelvis over the clip's ground. The first stroke lifts it past the hover's height, and it settles into the
-    # hover as the wings rise again; so high that the tips stay above the ground it left (rig.check_clip).
-    body_y = Keys([(0, STANCE_BODY.y), (2, STANCE_BODY.y - 0.02), (5, 0.56), (8, 0.68), (12, 0.78), (16, 0.95),
-                   (21, 1.26), (25, 1.38), (29, 1.27), (33, 0.98), (N - 1, HOVER_BODY.y)])
-    body_z = Keys([(0, STANCE_BODY.z), (2, STANCE_BODY.z - 0.03), (6, -0.32), (14, -0.40), (N - 1, HOVER_BODY.z)])
-    pitch = Keys([(0, S["body"]["pitch"]), (2, S["body"]["pitch"] + 2.0), (6, 50.0), (11, 52.0), (17, 50.0),
+    g = rise
+    # The pelvis over the ground it leaves; in the clip, that less the engine's lift.
+    world_y = Keys([(0, STANCE_BODY.y), (2, STANCE_BODY.y - 0.04), (4, 0.45), (6, 0.66), (8, 0.99), (11, 1.52),
+                    (14, 1.98), (17, 2.32), (21, 2.62), (25, 2.76), (29, 2.64), (33, 2.42),
+                    (N - 1, HOVER_BODY.y + rig.TAKE_OFF["rise"])])
+    body_z = Keys([(0, STANCE_BODY.z), (2, STANCE_BODY.z - 0.03), (4, STANCE_BODY.z + 0.04), (8, -0.30), (14, -0.40),
+                   (N - 1, HOVER_BODY.z)])
+    pitch = Keys([(0, S["body"]["pitch"]), (2, S["body"]["pitch"] - 2.0), (4, 46.0), (6, 52.0), (10, 54.0), (17, 50.0),
                   (25, 46.0), (N - 1, HOVER_PITCH)])
     flat = Keys([(0, 0.0), (3, 0.0), (12, 1.0)])
-    # The hands leave the ground at hands_off and follow the free arm, which takes over by `free`. The wings open
-    # from open0, up over the back (OPEN), and are spread at stroke0.
-    hands_off, free, open0, stroke0 = 4.0, 9.0, 4.0, 16.0
-    fold = Keys([(0, 1.0), (open0, 1.0), (11, 0.5, -0.07), (stroke0, 0.04)])
-    open_flap = Keys([(0, 0.0), (open0, 2.0), (11, 22.0), (stroke0, 38.0)])
-    feet_off = 5.0
+    # The feet leave the ground first, at feet_off; the arms push on until hands_off, then the hands follow the free
+    # arms, which take over at `free`. The wings open from hands_off up over the back (OPEN), spread by stroke0.
+    feet_off, hands_off, free, stroke0 = 3.0, 6.0, 10.0, 16.0
+    fold = Keys([(0, 1.0), (hands_off, 1.0), (11, 0.5), (stroke0, 0.04)])
+    open_flap = Keys([(0, 0.0), (hands_off, 2.0), (11, 22.0), (stroke0, 38.0)])
     lean0, ext0 = lean_of(ground(), STANCE_HEAD)
     hv0 = hover_at(0.0)
     lean1, ext1 = lean_of(hv0, hv0["head"])
-    lean = Keys([(0, lean0), (2, lean0 + 6.0), (8, lean0 - 3.0), (20, lean1 + 3.0), (N - 1, lean1)])
-    ext = Keys([(0, ext0), (2, ext0 - 0.04), (8, 0.95), (20, ext1), (N - 1, ext1)])
+    lean = Keys([(0, lean0), (2, lean0 + 8.0), (6, lean0 - 4.0), (20, lean1 + 3.0), (N - 1, lean1)])
+    ext = Keys([(0, ext0), (2, ext0 - 0.04), (7, 0.95), (20, ext1), (N - 1, ext1)])
     into = Keys([(0, 0.0), (stroke0 + 2, 0.0), (26, 0.3), (N - 3, 1.0)])
 
     def body_at(t):
         h = 1.0 - flat(t)
         p = ground()
-        p["body"] = Vector((0.0, body_y(t), body_z(t)))
+        p["body"] = Vector((0.0, world_y(t) - g(t), body_z(t)))
         p["body_rot"] = (pitch(t), 0.0, 0.0)
         p["spine"] = (S["spine"]["pitch"] * h - 4.0 * (1 - h), 0.0, 0.0)
         p["chest"] = (S["chest"]["pitch"] * h - 8.0 * (1 - h), 0.0, 0.0)
@@ -823,43 +825,51 @@ def take_off(r):
 
     def at(t):
         p = body_at(t)
+        down = Vector((0.0, -g(t), 0.0))
         p["head"] = on_neck(p, lean(t), ext(t))
         p["head_rot"] = (-6.0 * smooth(t / 2.0) * (1.0 - smooth((t - 3.0) / 4.0)), 0.0, 0.0)
         p["neck"] = [(-6.0 * flat(t), 0.0, 0.0)] * 2 + [(6.0 * flat(t), 0.0, 0.0)] * 2
         for s in "lr":
             # The feet push until feet_off, rolling up onto the toes; then the legs, kicked out straight, swing down
             # and hang.
-            heel = smooth((t - 2.0) / 3.0)
-            planted = STANCE_FOOT[s] + Vector((0.0, 0.10 * heel, -0.03 * heel))
+            heel = smooth((t - 1.0) / 2.0)
+            planted = STANCE_FOOT[s] + Vector((0.0, -g(min(t, feet_off)) + 0.10 * heel, -0.03 * heel))
             if t <= feet_off:
                 p["foot_" + s] = planted
                 p["foot_rot_" + s] = (STANCE_FOOT_PITCH - 34.0 * heel, 0.0, 0.0)
+                p["knee_" + s] = STANCE_KNEE[s] + down
             else:
                 off = body_at(feet_off)
                 kick = planted - hip(off, s)
                 kick = kick.normalized() * min(kick.length, 0.95 * LEG_LENGTH)
-                s_ = smooth((t - feet_off) / 11.0)
-                hang = leg_hanging(p, s, 0.50, 0.10, 0.06)
+                s_ = smooth((t - feet_off) / 12.0)
+                hang = leg_hanging(p, s, 0.46, 0.10, 0.06)
                 p["foot_" + s] = (hip(p, s) + kick).lerp(hang, s_)
                 p["foot_rot_" + s] = (lerp(STANCE_FOOT_PITCH - 34.0, 80.0, smooth((t - feet_off) / 7.0)), 0.0, 0.0)
-                knee0 = STANCE_KNEE[s] + (hip(p, s) - hip(off, s))
+                knee0 = STANCE_KNEE[s] + Vector((0.0, -g(feet_off), 0.0)) + (hip(p, s) - hip(off, s))
                 p["knee_" + s] = knee0.lerp(knee_ahead(p, s, p["foot_" + s]), s_)
             p["wing_" + s] = wing(fold=fold(t), flap=open_flap(t), skip=OPEN,
-                                  curl=-10.0 * smooth((t - open0 - 3.0) / 4) * (1 - smooth((t - stroke0) / 4)))
+                                  curl=-10.0 * smooth((t - hands_off - 2.0) / 4) * (1 - smooth((t - stroke0) / 4)))
             lift_tuck(p, s)
-            # The hands hold the ground until hands_off, then follow the free arm, which takes over at `free`.
+            # The hands hold the ground it leaves until hands_off, then follow the free arm, which takes over at
+            # `free`.
+            held = (STANCE_HAND[s] + Vector((0.0, -g(min(t, hands_off)), 0.0)), (0.0, 0.0, 0.0))
+            if t > hands_off:
+                # Off the ground, the straight arm rises with the shoulder before it folds.
+                pushed = body_at(hands_off)
+                held = (held[0] + chest_point(p, _J["upper_arm_" + s]) - chest_point(pushed, _J["upper_arm_" + s]), held[1])
             k = smooth((t - hands_off) / (free - hands_off))
-            p["hand_" + s] = between_hands((STANCE_HAND[s], (0.0, 0.0, 0.0)), free_hand(p, s), k)
-            p["elbow_" + s] = STANCE_ELBOW[s].lerp(carried(p, STANCE_ELBOW[s])[0], k)
-            p["plant_" + s] = 1.0 - smooth((t - free + 1.0) / 2.0)
+            p["hand_" + s] = between_hands(held, free_hand(p, s), k)
+            p["elbow_" + s] = (STANCE_ELBOW[s] + down).lerp(carried(p, STANCE_ELBOW[s])[0], k)
+            p["plant_" + s] = 1.0 - smooth((t - free + 2.0) / 4.0)
             p["talons_" + s] = 0.25 * smooth((t - feet_off) / 8.0)
         if t >= stroke0:
             # One stroke from the top, where the wings are open, to the top again at the end, where the hover takes
-            # over: quicker than the hover's own, and not so deep, this near the ground.
+            # over: quicker and deeper than the hover's own, the hardest pull of all.
             u = (t - stroke0) / (N - 1 - stroke0)
-            hv = hover_at(u, lift=body_y(t) - HOVER_BODY.y)
+            hv = hover_at(u, lift=world_y(t) - g(t) - HOVER_BODY.y)
             k = into(t)
-            w, extra, dy, nod = beat(u, dict(BEATS["hover"], down=0.42, bottom=-28.0))
+            w, extra, dy, nod = beat(u, dict(BEATS["hover"], down=0.42, bottom=-40.0))
             first = {s: mix(p["wing_" + s], w, smooth((t - stroke0) / 2.0)) for s in "lr"}
             p = mix(p, hv, k)
             for s in "lr":
