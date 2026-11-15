@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from layout import CLUSTERS, CUTS, FERN_SIZE, FRONDS, LEAVES, MASS, MOSS_SIZE, PARTS, ROOTS_SIZE, RUIN_SIZE, RUINS, SPRAY_SIZE, STRIPS, frond_slot, leaf_cell  # noqa: E402
+from layout import CLUSTERS, CUTS, FERN_SIZE, FRONDS, LEAVES, MASS, MOSS_SIZE, PARTS, ROOTS_SIZE, RUIN_SIZE, RUINS_SOURCE as RUINS, SPRAY_SIZE, STRIPS, frond_slot, leaf_cell  # noqa: E402
 
 N = 2048
 

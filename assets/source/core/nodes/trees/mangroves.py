@@ -10,11 +10,12 @@ import math
 import broadleaf as bl
 import far
 from kit import UP, Mesh, add, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, sub, tube, unit
-from layout import CUTS, SPANS
+from layout import CUTS, ROOTS_AT, SPANS, crown_mass
 
 ATLAS = "mangrove_leaves"
 BARK = "mangrove_bark"
-ROOTS = "mangrove_roots"
+ROOTS = "mangrove_crown"
+MASS = crown_mass(ROOTS)
 STEM = "f7f7970"
 WET = "f4f4a44"
 LIGHT, MID, DARK = "f446730", "f3a5625", "f2c3b2b"
@@ -143,13 +144,16 @@ def root_tube(m, b, sides, flat, lumpy=True):
     vs = [(ROOT_HIGH - y) / span for y in h]
     for i in range(top - 1, -1, -1):
         vs[i] = vs[i + 1] - length(sub(b.pts[i + 1], b.pts[i])) / span
-    tube(m, b.pts, b.radii, sides, ROOTS, uv=(0.0, 1.0, 0.0, 1.0), vs=vs, dents=dents, shaped=lumpy)
+    # Into the roots' part of the crown's picture, never past it: what lies deeper than its bottom row is underground.
+    u0, v0, u1, v1 = ROOTS_AT
+    vs = [mix(v0, v1, min(max(v, 0.002), 0.998)) for v in vs]
+    tube(m, b.pts, b.radii, sides, ROOTS, uv=(u0, u1, 0.0, 1.0), vs=vs, dents=dents, shaped=lumpy)
 
 
 def mangrove(name, lod):
     spec = SPECS[name]
     if lod == far.LEVEL:
-        return far.mangrove(mangrove(name, lod - 1), skeleton(spec)[-1], (LIGHT, MID, DARK), WET, spec["reach"] * 0.9, name)
+        return far.crown(mangrove(name, 3), (LIGHT, MID, DARK), STEM, spec["stem"], name, stilts=(spec["reach"] * 0.9, WET))
     m = Mesh(lod <= 2)
     rng = rng_for(name, "level", lod)
     hs, path, ribs, roots, limbs, broken, lobes = skeleton(spec)
@@ -171,11 +175,11 @@ def mangrove(name, lod):
     if broken is not None and lod <= 2:
         bl.bark_tube(m, bl.coarser(broken, {0: 5, 1: 3, 2: 2}[lod]), order_sides[0], BARK, STEM, caps=(True, True))
     if lod <= 2:
-        bl.crown(m, lobes, lod, rng, ATLAS, 0.8, shade=shade)
+        bl.crown(m, lobes, lod, rng, ATLAS, 0.8, MASS, shade=shade, grain=0.8)
         if lod == 0 and spec.get("broken"):
             hanging(m, broken, rng)
     else:
-        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 6 if lod == 3 else 3)
+        bl.flat_crown(m, lobes, lod, (LIGHT, MID, DARK), 8 if lod == 3 else 4)
     return m
 
 

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { CHUNK_SIZE, TICK_DT, chunkCx, chunkCz } from "../../shared/coords.ts";
+import { CHUNK_SIZE, TICK_DT, chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Body, STANCE_STAND, stanceEye, stepBody } from "../../shared/sim/character.ts";
@@ -52,8 +52,8 @@ test("where nodes stand is a pure function of the map: the same every time, dry,
   for (const id of ["core:tree", "core:rock", "core:bush"]) expect(counts.get(kind(id))!).toBeGreaterThan(200);
   // The big trees are few: elder oaks among the figs, and banyans only where the ground is level enough for their trunks.
   for (const id of KINDS) expect(counts.get(kind(id)) ?? 0).toBeGreaterThan(id === "core:banyan" ? 15 : 20);
-  // Every young live oak is one of sixteen sizes from 0.4 to 0.75 of its model.
-  expect([...sizes].sort((x, y) => x - y)).toEqual(Array.from({ length: SIZE_STEPS }, (_, s) => Math.round((0.4 + (0.35 * s) / 15) * SIZE_UNITS)));
+  // Every young tree is one of sixteen sizes from 0.85 to 1.15 of its model.
+  expect([...sizes].sort((x, y) => x - y)).toEqual(Array.from({ length: SIZE_STEPS }, (_, s) => Math.round((0.85 + (0.3 * s) / 15) * SIZE_UNITS)));
 });
 
 test("a world saved before the new kinds came keeps every node where it was and of its kind: the first 96 slots are as they were, but where a rock's footing fails", () => {
@@ -334,7 +334,49 @@ test("trees stop a body, rocks stop it or are climbed, bushes do not, and a ray 
   expect(seen.size).toBe(KINDS.length);
 });
 
-test("a live oak, young or elder, stops a body at its trunk alone, which a swing reaches, and a banyan at each of its trunks, with free ground between", () => {
+/**
+ * Bodies of species `who` walking from `sides` sides, on the ground of `w`, at the node of `form` standing alone where `at`
+ * says, each straight at the middle of its first box from `from` m off: how far short of that box the most held of them
+ * stops, and from how many sides a look level from the eye, from where it stopped, at that box's middle meets the node
+ * within a hatchet's swing.
+ */
+function walkInto(w: { hf: Heightfield; structs: StructureStore }, form: number, at: NodeSpot, who: string, sides: number, from: number): { short: number; looked: number } {
+  const nodes = new StructureStore(w.hf.dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+  nodes.put(chunkAt(w.hf.dims, at.x, at.z), 0, form, at.x, at.y, at.z, at.yaw, 0, 1, 1);
+  const world = { hf: w.hf, structs: w.structs, nodes };
+  const p = reg.move[kind(who)]!;
+  const b0 = forms.parts.start[form]! * 6;
+  const box = forms.parts.box;
+  const a = (at.yaw / 65536) * TAU;
+  const [c, s] = [Math.cos(a), Math.sin(a)];
+  const [lx, lz, hx, hz] = [box[b0]!, box[b0 + 2]!, box[b0 + 3]!, box[b0 + 5]!];
+  const [mx, mz] = [c * lx + s * lz + at.x, c * lz - s * lx + at.z];
+  /** How far a body's axis at (x, z) is from the first box's sides, in the node's own frame. */
+  const off = (x: number, z: number): number => {
+    const [dx, dz] = [x - at.x, z - at.z];
+    return Math.hypot(Math.max(0, Math.abs(c * dx - s * dz - lx) - hx), Math.max(0, Math.abs(s * dx + c * dz - lz) - hz));
+  };
+  let [short, looked] = [0, 0];
+  for (let side = 0; side < sides; side++) {
+    const yaw = Math.round((side * 65536) / sides) & 0xffff;
+    const t = (yaw / 65536) * TAU;
+    const b = new Body();
+    [b.x, b.z, b.yaw, b.grounded] = [mx - Math.sin(t) * from, mz - Math.cos(t) * from, yaw, true];
+    b.y = groundUnder(w.hf, b.x, b.z, p.radius);
+    let [gap, x, y, z] = [Infinity, b.x, b.y, b.z];
+    for (let tick = 0; tick < 150; tick++) {
+      stepBody(world, b, 0, 127, yaw, 0, 0, p, TICK_DT);
+      if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`${who} in ${forms.mesh[form]} from side ${side}`);
+      if (off(b.x, b.z) - p.radius < gap) [gap, x, y, z] = [off(b.x, b.z) - p.radius, b.x, b.y, b.z];
+    }
+    short = Math.max(short, gap);
+    const d = Math.hypot(mx - x, mz - z);
+    if (castWorld(world, x, y + stanceEye(p, STANCE_STAND), z, (mx - x) / d, 0, (mz - z) / d, reg.reach[kind("core:hatchet")]!) === HIT_NODE) looked++;
+  }
+  return { short, looked };
+}
+
+test("a young tree or an elder stops a body at its trunk alone, which a survivor against it looking level meets from every side, and a banyan at each of its trunks, with free ground between", () => {
   const f = field();
   f.retain(0, 16, 1, () => false);
   const world = { hf, structs: new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), nodes: f.store };
@@ -348,30 +390,24 @@ test("a live oak, young or elder, stops a body at its trunk alone, which a swing
     return [Math.cos(a) * lx + Math.sin(a) * lz + s.x, s.y + box[b * 6 + 1]! - box[b * 6 + 4]!, Math.cos(a) * lz - Math.sin(a) * lx + s.z];
   };
   const meets = (x: number, y: number, z: number): boolean => capsuleKind(forms.parts, s.form, s.x, s.y, s.z, s.yaw, x, y, z, p.radius, p.height, SKIN);
-  let [oaks, elders, banyans] = [0, 0, 0];
-  for (let chunk = 0; chunk < CHUNKS && (oaks < 20 || elders < 10 || banyans < 5); chunk++) {
+  let [young, elders, banyans] = [0, 0, 0];
+  for (let chunk = 0; chunk < CHUNKS && (young < 20 || elders < 10 || banyans < 5); chunk++) {
     for (let i = 0; i < f.source.perChunk; i++) {
       f.source.at(chunk, i, s);
       const [first, end] = [forms.parts.start[s.form]!, forms.parts.start[s.form + 1]!];
       const elder = s.kind === kind("core:oak");
-      if ((s.kind === kind("core:tree") && oaks < 20) || (elder && elders < 10)) {
+      const inland = Math.min(s.x, s.z, hf.sizeX - s.x, hf.sizeZ - s.z) > 8;
+      if (inland && ((s.kind === kind("core:tree") && young < 20) || (elder && elders < 10))) {
         if (elder) elders++;
-        else oaks++;
-        // One box, its trunk, 0.6 to 1.6 m across or an elder's 1.3 to 2.5: a body cannot stand in it, and stands free of it
-        // under its limbs.
-        expect([forms.mesh[s.form]!.startsWith("core:tree_"), end - first]).toEqual([true, 1]);
+        else young++;
+        // Its trunk, 0.4 to 1.2 m across or an elder's 1.3 to 2.5: a body cannot stand in it, and stands free of it under
+        // its limbs.
+        expect(forms.mesh[s.form]!.startsWith(elder ? "core:oak_" : "core:tree_")).toBe(true);
         expect(meets(s.x, s.y, s.z)).toBe(true);
         for (let k = 0; k < 8; k++) for (const d of [2.5, 6, 9]) expect(meets(s.x + Math.sin((k * TAU) / 8) * d, s.y, s.z + Math.cos((k * TAU) / 8) * d)).toBe(false);
-        // A survivor beside it, looking at the middle of its trunk, meets it well within the 3.5 m a use or a swing reaches. A
-        // young oak's trunk forks below a survivor's eyes, and its limbs are not met.
-        const alone = new StructureStore(PROVING_DIMS, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
-        alone.put(chunk, i, s.form, s.x, s.y, s.z, s.yaw, 0, 1, 1);
-        const back = box[first * 6 + 3]! + p.radius + 0.3;
-        const eye = hf.heightAt(s.x, s.z - back) + 1.62;
-        const down = s.y + box[first * 6 + 1]! - eye;
-        const far = Math.hypot(back, down);
-        expect(castWorld({ hf, structs: world.structs, nodes: alone }, s.x, eye, s.z - back, 0, down / far, back / far, 3.5)).toBe(HIT_NODE);
-        expect([rayHit.ref, rayHit.t < far]).toEqual([chunk * 65536 + i, true]);
+        // A survivor walking at it on the ground about it, from each of eight sides, is held by its trunk alone, and looking
+        // level from there meets it well within a swing.
+        expect(walkInto(world, s.form, s, "core:survivor", 8, 4)).toEqual({ short: expect.closeTo(0, 1), looked: 8 });
       }
       if (s.kind === kind("core:banyan") && banyans < 5) {
         banyans++;
@@ -386,7 +422,27 @@ test("a live oak, young or elder, stops a body at its trunk alone, which a swing
       }
     }
   }
-  expect([oaks, elders, banyans]).toEqual([20, 10, 5]);
+  expect([young, elders, banyans]).toEqual([20, 10, 5]);
+});
+
+test("on level ground every young tree and elder, at its least and largest size, holds a survivor and the tallest mount at its trunk alone, and a survivor against it looking level meets it, from every side", () => {
+  const mounts = [...reg.saddleFits].filter((k) => k !== 0).map((k) => reg.ids[k]!);
+  const tallest = mounts.reduce((a, b) => (reg.move[kind(b)]!.height > reg.move[kind(a)]!.height ? b : a));
+  expect([tallest, reg.move[kind(tallest)]!.height]).toEqual(["core:parasaur", 2.6]);
+  const w = flatWorld(2);
+  for (const id of ["core:tree", "core:oak"]) {
+    const k = kind(id);
+    const steps = forms.steps[k]!;
+    for (let v = 0; v < forms.sums[k]!.length; v++) {
+      for (const step of [0, steps - 1]) {
+        const form = forms.first[k]! + v * steps + step;
+        const at = { kind: k, form, x: 32, y: 0, z: 32, yaw: 0 };
+        const looks = walkInto(w, form, at, "core:survivor", 16, 7);
+        const mount = walkInto(w, form, at, tallest, 16, 7);
+        expect([forms.mesh[form], looks.short, looks.looked, mount.short]).toEqual([forms.mesh[form], expect.closeTo(0, 1), 16, expect.closeTo(0, 1)]);
+      }
+    }
+  }
 });
 
 /** A survivor walking at a node of `form` standing alone on level ground, from eight sides. */

@@ -52,6 +52,22 @@ LEAVES = {
 CLUSTERS = (0, 1, 2, 3)
 MASS = (0.0, 0.5, 1.0, 1.0)
 
+# The opaque crown materials (crowns.py): where each picture holds its kind's crown skin as sun leaves and as shade
+# leaves, and the metres one skin spans across. The oak's fill its picture; the fig's and the mangrove's its upper half,
+# over what the figs swallowed (RUINS) and over the prop roots (ROOTS_AT).
+CROWN_SKIN = {
+    "oak_crown": (((0.0, 0.0, 1.0, 0.5), (0.0, 0.5, 1.0, 1.0)), 4.8),
+    "fig_crown": (((0.0, 0.0, 1.0, 0.25), (0.0, 0.25, 1.0, 0.5)), 6.4),
+    "mangrove_crown": (((0.0, 0.0, 1.0, 0.25), (0.0, 0.25, 1.0, 0.5)), 4.0),
+}
+ROOTS_AT = (0.0, 0.5, 1.0, 1.0)
+
+
+def crown_mass(name):
+    """A crown skin as broadleaf.skin takes it: its material, its rectangles of sun and shade leaves, the metres across."""
+    rects, width = CROWN_SKIN[name]
+    return (name, rects, width)
+
 
 def leaf_cell(k):
     """Cluster cell k: 0 and 1 across the top row of the top left quarter, 2 and 3 across its second row."""
@@ -72,16 +88,24 @@ ROOTS_SIZE = (1.0, 2.0)
 SPRAYS = STRIPS
 SPRAY_SIZE = (0.45, 0.9)
 
-# ruins: what the figs and the banyan have swallowed, each laid once, not repeated. A column's four faces each wear
-# the column strip, top row at its top; a pole and a post go round once, top row at their tops; the sign's blade wears
-# its front on the left half of its region and its back on the right; the car's body goes round it from the middle of
-# its underside (u0) by its right side, its roof and its left side, front (v0) to back (v1).
-RUINS = {
+# What the figs and the banyan have swallowed, each laid once, not repeated, as tex/ruins/ paints them (RUINS_SOURCE)
+# and as fig_crown holds them under the fig's skin (RUINS). A column's four faces each wear the column strip, top row
+# at its top; a pole and a post go round once, top row at their tops; the sign's blade wears its front on the left half
+# of its region and its back on the right; the car's body goes round it from the middle of its underside (u0) by its
+# right side, its roof and its left side, front (v0) to back (v1).
+RUINS_SOURCE = {
     "column": (0.0, 0.0, 0.25, 1.0),  # a square portico column 0.45 m wide, 4.5 m tall, its capital the top 0.6 m
     "pole": (0.25, 0.0, 0.5, 1.0),  # a round concrete utility pole 0.3 m across, 6 m tall
     "post": (0.5, 0.0, 0.625, 1.0),  # a rusted steel sign post 0.08 m across, 3.5 m tall
     "sign": (0.625, 0.0, 1.0, 0.375),  # a rusted street sign blade 0.75 m by 0.45 m, front and back
     "car": (0.625, 0.375, 1.0, 1.0),  # a small rusted car's body, 5 m round and 4 m long
+}
+RUINS = {
+    "column": (0.0, 0.5, 0.125, 1.0),
+    "pole": (0.125, 0.5, 0.3125, 1.0),
+    "post": (0.3125, 0.5, 0.375, 1.0),
+    "sign": (0.375, 0.5, 0.625, 0.65),
+    "car": (0.625, 0.5, 1.0, 1.0),
 }
 RUIN_SIZE = {"column": (0.45, 4.5), "pole": (0.94, 6.0), "post": (0.25, 3.5), "sign": (0.75, 0.45), "car": (5.0, 4.0)}
 

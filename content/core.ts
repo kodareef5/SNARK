@@ -111,14 +111,27 @@ const PALMS: NodeVariant[] = [
   { mesh: "core:palm_6", weight: 2, boxes: [{ at: [0.03, 0.87, -0.15], half: [0.37, 1.31, 0.48] }, { at: [0.12, 2.93, -0.55], half: [0.21, 0.76, 0.41] }, { at: [0.23, 4.43, -1.1], half: [0.21, 0.74, 0.46] }, { at: [0.3, 5.94, -1.6], half: [0.16, 0.78, 0.34] }, { at: [0.26, 7.51, -1.79], half: [0.2, 0.79, 0.18] }, { at: [0.12, 9.09, -1.62], half: [0.22, 0.78, 0.28] }, { at: [-0.02, 10.66, -1.37], half: [0.19, 0.79, 0.25] }, { at: [-0.08, 12.25, -1.19], half: [0.14, 0.8, 0.19] }, { at: [-0.08, 13.35, -1.15], half: [0.14, 0.3, 0.13] }],
     depleted: { mesh: "core:palm_6_depleted", boxes: [{ at: [0, 0.14, 0], half: [0.33, 0.42, 0.33] }] } },
 ];
-const OAKS: NodeVariant[] = [
-  { mesh: "core:tree_1", weight: 3, boxes: [{ at: [0, 0.66, 0], half: [0.79, 1.34, 0.79] }],
-    depleted: { mesh: "core:tree_1_depleted", boxes: [{ at: [0, -0, 0], half: [0.83, 0.7, 0.83] }] } },
-  { mesh: "core:tree_2", weight: 2, boxes: [{ at: [0, 0.8, 0], half: [1.05, 1.7, 1.05] }],
-    depleted: { mesh: "core:tree_2_depleted", boxes: [{ at: [0, -0.12, 0], half: [1.1, 0.82, 1.1] }] } },
-  { mesh: "core:tree_3", weight: 2, boxes: [{ at: [0, 0.72, 0], half: [0.89, 1.48, 0.89] }],
-    depleted: { mesh: "core:tree_3_depleted", boxes: [{ at: [0, -0.05, 0], half: [0.94, 0.75, 0.94] }] } },
+const YOUNG: NodeVariant[] = [
+  { mesh: "core:tree_1", weight: 3, boxes: [{ at: [0.06, 1.47, 0.05], half: [0.25, 1.73, 0.24] }],
+    depleted: { mesh: "core:tree_1_depleted", boxes: [{ at: [0, 0.22, 0], half: [0.2, 0.38, 0.2] }] } },
+  { mesh: "core:tree_2", weight: 3, boxes: [{ at: [-0.06, 1.67, -0.02], half: [0.28, 1.93, 0.25] }],
+    depleted: { mesh: "core:tree_2_depleted", boxes: [{ at: [0, 0.2, 0], half: [0.23, 0.4, 0.23] }] } },
+  { mesh: "core:tree_3", weight: 2, boxes: [{ at: [0.05, 1.37, -0.09], half: [0.33, 1.73, 0.37] }],
+    depleted: { mesh: "core:tree_3_depleted", boxes: [{ at: [0, 0.18, 0], half: [0.29, 0.42, 0.29] }] } },
+  { mesh: "core:tree_4", weight: 2, boxes: [{ at: [-0.18, 1.4, 0.31], half: [0.39, 2, 0.53] }],
+    depleted: { mesh: "core:tree_4_depleted", boxes: [{ at: [0, 0.21, 0], half: [0.22, 0.39, 0.22] }] } },
 ];
+const PRINTED_OAKS: NodeVariant[] = [
+  { mesh: "core:oak_1", weight: 3, boxes: [{ at: [0, 0.96, 0], half: [0.79, 1.64, 0.79] }, { at: [-0.83, 2.77, -0.51], half: [0.41, 0.51, 0.41] }, { at: [-1.61, 2.89, -0.97], half: [0.65, 0.49, 0.54] }, { at: [0.78, 2.61, 0.45], half: [0.61, 0.61, 0.5] }, { at: [1.79, 2.87, 0.67], half: [0.63, 0.47, 0.39] }, { at: [-0.44, 2.7, 0.73], half: [0.42, 0.54, 0.49] }, { at: [-0.85, 3.28, 1.57], half: [0.46, 0.6, 0.66] }, { at: [0.32, 2.63, -0.89], half: [0.36, 0.45, 0.36] }, { at: [0.54, 2.94, -1.52], half: [0.42, 0.53, 0.55] }],
+    depleted: { mesh: "core:oak_1_depleted", boxes: [{ at: [0, -0, 0], half: [0.83, 0.7, 0.83] }] } },
+  { mesh: "core:oak_2", weight: 2, boxes: [{ at: [0, 0.95, 0], half: [1.05, 1.85, 1.05] }, { at: [1.41, 3.12, 0.7], half: [0.82, 0.72, 0.67] }, { at: [-1.69, 3.06, 0.3], half: [0.85, 0.68, 0.56] }, { at: [0.03, 3.48, 0.88], half: [0.43, 0.53, 0.43] }, { at: [0.07, 4.16, 1.74], half: [0.43, 0.83, 0.84] }, { at: [-0.37, 3.14, -0.77], half: [0.45, 0.57, 0.45] }, { at: [-0.76, 3.53, -1.54], half: [0.57, 0.67, 0.69] }, { at: [0.52, 3.78, -0.77], half: [0.37, 0.46, 0.37] }, { at: [0.79, 4.46, -1.41], half: [0.49, 0.77, 0.68] }],
+    depleted: { mesh: "core:oak_2_depleted", boxes: [{ at: [0, -0.12, 0], half: [1.1, 0.82, 1.1] }] } },
+  { mesh: "core:oak_3", weight: 2, boxes: [{ at: [0, 0.92, 0], half: [0.89, 1.68, 0.89] }, { at: [1.15, 2.88, 1.17], half: [0.7, 0.61, 0.7] }, { at: [-0.73, 2.93, -0.88], half: [0.39, 0.49, 0.39] }, { at: [-1.21, 3.24, -1.47], half: [0.54, 0.57, 0.57] }, { at: [0.41, 2.82, -1.05], half: [0.38, 0.47, 0.38] }, { at: [0.64, 3.07, -1.76], half: [0.44, 0.53, 0.6] }, { at: [0.85, 3.42, -0.2], half: [0.47, 0.59, 0.37] }, { at: [1.56, 4.44, -0.61], half: [0.64, 0.88, 0.56] }],
+    depleted: { mesh: "core:oak_3_depleted", boxes: [{ at: [0, -0.05, 0], half: [0.94, 0.75, 0.94] }] } },
+];
+// The maker's boxes up each great limb start 2 m up the model, 1.69 m at an elder's least size: they would hold a survivor,
+// and a parasaur almost anywhere, short of the trunk. Until they clear the tallest mount, an elder is its trunk alone.
+const OAKS = PRINTED_OAKS.map((v): NodeVariant => ({ ...v, boxes: v.boxes!.slice(0, 1) }));
 const FIGS: NodeVariant[] = [
   { mesh: "core:fig_1", weight: 2, boxes: [{ at: [0, 1.48, 0], half: [0.76, 2.12, 0.76] }],
     depleted: { mesh: "core:fig_1_depleted", boxes: [{ at: [0, 0.13, 0], half: [0.76, 0.77, 0.76] }] } },
@@ -203,9 +216,9 @@ const METAL_ROCKS: NodeVariant[] = [
     depleted: { mesh: "core:metal_rock_3_depleted", boxes: [{ at: [-0.04, 0.0, 0.04], half: [1.35, 0.3, 0.85] }, { at: [-0.44, 0.03, 0.24], half: [1.05, 0.33, 0.45] }, { at: [0.21, -0.05, -0.31], half: [1.3, 0.25, 0.6] }, { at: [0.16, -0.03, -0.01], half: [1.65, 0.28, 0.2] }, { at: [0.66, -0.07, -1.21], half: [0.15, 0.23, 0.2] }] } },
 ];
 const NODES: NodeDef[] = [
-  // Hardwood hammock trees: the common harvest tree is a young live oak, 11 to 24 m across. The full-grown ones are their
-  // own kind, a giant here and there among the figs and banyans.
-  tree("tree", 12, [0.3, 2, 0.3], { half: [1.4, 1.6, 1.4], color: 7 }, [0.4, 0.75], OAKS),
+  // Hardwood hammock trees: the common harvest tree is a young hardwood, 9 to 16 m tall. The elder live oaks are their own
+  // kind, a giant here and there among the figs and banyans.
+  tree("tree", 12, [0.3, 2, 0.3], { half: [1.4, 1.6, 1.4], color: 7 }, [0.85, 1.15], YOUNG),
   tree("palm", 10, [0.2, 3.5, 0.2], { half: [1.6, 0.5, 1.6], color: 17 }, [0.85, 1.15], PALMS),
   // Strangler figs, banyans and the elder oaks are the big trees, and take the most blows.
   tree("fig", 20, [0.5, 2.5, 0.5], { half: [3.2, 2, 3.2], color: 16 }, [1, 1.25], FIGS),

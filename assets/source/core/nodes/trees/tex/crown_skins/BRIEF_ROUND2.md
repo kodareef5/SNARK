@@ -1,0 +1,16 @@
+# Crown skins, round 2: sun leaves and shade leaves, and leaves the size of the cards
+
+Read your `REPORT.md` and `BRIEF.md` first. Your skins are in the game: `feedback/round2_game_oak_25m_gpu.jpg` is a live oak drawn by the GPU at 10:00 with shadows (its core wears your oak skin, sun leaves where the surface looks up and shade leaves under it, both made from your skin by a plain colour gain for now), and `feedback/round2_game_oaks_17h.jpg` the three at 17:00. Beside them the concept, `../../ref/concept/broadleaf/oak_lineup.png`. The form reads now: heads of clumps, lit on top, a closed ceiling beneath. What is short of the concept is the glow: the concept's lit leaves are a warm yellow-green, its shade deep and cool, and the game's light at 10:00 shows a base colour at about its own value, so that difference has to be in the leaves.
+
+A tree makes two kinds of leaf, as the atlases already say: **sun leaves** on the outside and top of a crown, smaller, thicker, lighter and yellower, with the fresh growth; **shade leaves** inside and under it, larger, thinner, darker and bluer. The model now lays each face of a crown with one or the other by the way it faces. So for each of the three skins make two base colours over the same leaves, height, normals and occlusion:
+
+- `<kind>_skin_sun_base.png`: the sun leaves. For the oak a mean near (140, 142, 66) with the fresh tips toward (175, 170, 85); fig near (125, 133, 60); mangrove near (110, 128, 58) with its yellow-green new rosettes. The colour gain I used gave about those means; yours should be leaves, not a gain: more fresh growth, a little more yellow in the blades, the pale undersides as rare as now.
+- `<kind>_skin_shade_base.png`: the shade leaves. Oak near (94, 106, 62), fig near (84, 100, 58), mangrove near (74, 96, 56): cooler, a little bluer, no fresh tips.
+- The two must meet face to face in the same crown without a seam in the leaves, only in their colour: the same leaf in the same place in both.
+
+Two more things:
+
+1. **Leaf size.** You found the atlases' cards carry larger blades than the brief gave you (oak cards about 10.5 to 12 cm, fig 14 to 20 cm). The cards stand along the skin's outline, right beside it, so the skin's leaves should be the cards' size: rebuild the oak and fig skins with the cards' blades and their clumps scaled to match. Keep each skin's rectangle and periodicity as they are (oak 4.8 by 2.4 m, fig 6.4 by 3.2 m, mangrove 4.0 by 2.0 m).
+2. **Keep the folder lean.** The first round left 200 MB, most of it full-size tiling proofs and intermediate structure and composition files the builder makes again. Keep in `checks/` what a reader opens (contact sheets, the tiling sheets as JPEG, the purpose tests, the metrics) and keep intermediates out of the folder or in a part git ignores; the builder must still rebuild every delivered PNG byte for byte from what stays.
+
+Rerun every check, redo the purpose test with the sun and shade leaves on a head (sun on its upper faces, shade on its lower, the way the model lays them) at 10:00 and 17:00 beside the concept, update `REPORT.md`, and remove what you superseded. The current single base colours (`<kind>_skin_base.png`) stay, as the mean of the two, for anything that reads one.

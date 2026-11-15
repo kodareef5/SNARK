@@ -331,7 +331,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(w.port.log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
   // place of the palm's last level.
-  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([7898, 767, 23, 0]);
+  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([7900, 767, 23, 0]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -351,8 +351,10 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // 1700240194 until far nodes were drawn as rows of an atlas, every mesh of a tile in one draw (DRAW_PULLED), each
   // instance naming its row: the far wood's draws, its instances' bytes and order, and the levels uploaded moved, the
   // palm's last level for the pulled draws' three. The hand-over band (hand.ts) alone leaves it as it was: every node
-  // here stands within 152 m, and with the band past the near field it is this again.
-  expect(hash).toBe(4087841682);
+  // here stands within 152 m, and with the band past the near field it is this again. It was 4087841682 until the common
+  // tree grew at 0.85 to 1.15 of its models, not 0.4 to 0.75, and the 300 frames took two draws more: the sizes alone give
+  // it, and its four young variants and the elders' boxes alone leave it as it was.
+  expect(hash).toBe(3734161494);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

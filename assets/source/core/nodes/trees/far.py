@@ -1,35 +1,21 @@
-# The far level of every tree, level 5: what the far layer draws of it out to kilometres (client/core/render/farnodes.ts,
-# D259), its reach cut by its triangles. Each is a few closed solids in flat colours made to level 4's box, colours and
-# masses, so a tree keeps its size, its spot and its tone where far meets near.
+# The far level of every tree, level 5: what the far layer draws of it from the near store's hand-over band (152 to 184
+# m on medium) out to kilometres (client/core/render/farnodes.ts, D259, D352), its reach cut by its triangles. Each is a
+# few closed solids in flat colours made to the box, colours and masses of the level drawn in that band, level 3, so the
+# two dissolve between overlapping shapes and a tree keeps its size, its spot and its tone.
 #
-# A hammock tree's crown is a low dome: a lit top over a band of faces and a dark skirt, as wide each way as level 4's
-# masses reach. Tried first and seen in the wood: two upright octahedra read as diamonds on a hill, a lens of three
-# rings of three as cut crystal, a crown roofed over its masses' heads as a field of umbrellas paler than level 4, and
-# clumps tipped as leaves lie as shards seen from above.
+# A broadleaf crown is two rings of three, one low and wide and one at its shoulders turned a sixth, roofed over the
+# heads of its two halves: its roof in a lit tone and its sides in a darker, on its trunk; fourteen faces. farcheck.py
+# measures the pixels it shares with level 3 at 170 m: this shape 65 to 74 in a hundred (a mangrove 54 to 73), a ring
+# roofed from a third of the way up 52 to 70, as its sides met the near crown's only at its waist. Tried before and seen
+# in the wood: two upright octahedra read as diamonds on a hill, a lens of three rings of three as cut crystal, clumps
+# tipped as leaves lie as shards seen from above, and one low dome as a tent once the far level came as near as 150 m.
 
 import math
 from itertools import combinations, combinations_with_replacement
 
-import broadleaf as bl
-from kit import Mesh, add, cross, dot, mul, rng_for, rotate, sub, unit
+from kit import Mesh, add, cross, dot, mul, rng_for, sub, unit
 
 LEVEL = 5
-
-
-def pick(colours, light=0.42):
-    """A face's colour by the way it looks, as the flat levels pick theirs: the first of `colours` on faces looking up
-    more than `light`, the last on faces looking down, the middle one on the rest."""
-    top, side, under = colours
-    return lambda n: top if n[1] > light else under if n[1] < -0.3 else side
-
-
-def painted(m, tris, colour):
-    """Faces wound alike as one closed solid, turned outward, each coloured by `colour(normal)`."""
-    volume = sum(dot(a, cross(b, c)) for a, b, c in tris)
-    for a, b, c in tris:
-        if volume < 0:
-            b, c = c, b
-        m.face([m.point(a), m.point(b), m.point(c)], colour(unit(cross(sub(b, a), sub(c, a)))))
 
 
 def solid(m, tris):
@@ -37,29 +23,6 @@ def solid(m, tris):
     volume = sum(dot(a, cross(b, c)) for (a, b, c), _ in tris)
     for (a, b, c), colour in tris:
         m.face([m.point(a), m.point(b), m.point(c)] if volume > 0 else [m.point(a), m.point(c), m.point(b)], colour)
-
-
-def gem(centre, radius, tall, sides, tilt, turn):
-    """The faces, wound alike, of a ring of `sides` points `radius` round `centre` with a point `tall` above and below
-    it, the whole tipped `tilt` radians about a level axis `turn` radians round: an octahedron for four sides."""
-    axis = (math.cos(turn), 0.0, math.sin(turn))
-
-    def place(p):
-        q = rotate(rotate(p, axis, tilt), (0.0, 1.0, 0.0), turn)
-        return (centre[0] + q[0] * radius, centre[1] + q[1] * tall, centre[2] + q[2] * radius)
-
-    ring = [place((math.cos(2 * math.pi * k / sides), 0.0, math.sin(2 * math.pi * k / sides))) for k in range(sides)]
-    top, bottom = place((0.0, 1.0, 0.0)), place((0.0, -1.0, 0.0))
-    return [(top, ring[k], ring[(k + 1) % sides]) for k in range(sides)] + [(bottom, ring[(k + 1) % sides], ring[k]) for k in range(sides)]
-
-
-def fitted(gems, lo, hi):
-    """Gems' faces stretched together on each axis to span from `lo` to `hi`."""
-    pts = [p for g in gems for t in g for p in t]
-    least = [min(p[k] for p in pts) for k in range(3)]
-    most = [max(p[k] for p in pts) for k in range(3)]
-    fit = lambda p: tuple(lo[k] + (p[k] - least[k]) * (hi[k] - lo[k]) / (most[k] - least[k]) for k in range(3))
-    return [[tuple(fit(p) for p in t) for t in g] for g in gems]
 
 
 def fin(m, foot, head, width, turn, colour):
@@ -71,38 +34,108 @@ def fin(m, foot, head, width, turn, colour):
     m.face([m.point(b), m.point(a), m.point(head)], colour)
 
 
-def crown_of(near, lobes, count, colours):
-    """Level 4's whole box, its crown's box, its masses largest first, and the height they are widest at."""
-    box = box_of(near)
-    lo, hi = box_of(near, colours)
-    big = sorted(bl.masses(lobes, count), key=lambda l: -l.radii[0] ** 2 * l.radii[1])
-    waist = sum(l.centre[1] * l.radii[0] ** 2 for l in big) / sum(l.radii[0] ** 2 for l in big)
-    return box, lo, hi, big, waist
-
-
-def broadleaf(near, lobes, colours, stem, trunk, seed):
-    """A live oak or a fig, sixteen faces: a low dome on a trunk. Its waist is a ring of four points two fifths of the
-    way up level 4's crown, each as far out as level 4's masses reach that way, its shoulder a ring of four three
-    quarters as far out near the top, turned an eighth of a turn from the waist's; a flat top, and below a shallow fan
-    to a point over the trunk, all stretched to the crown's box. The trunk is one face both sides drawn, `trunk` metres
-    in radius."""
+def crown(near, colours, stem, trunk, seed, low=0.05, high=0.7, wide=1.2, shoulder=1.35, posts=(), stilts=None):
+    """A broadleaf tree's far level made to its level 3, `near`, whose crown wears `colours`: a ring of three points
+    `low` of the way up the crown and one `high` up turned a sixth from it, each `wide` or `shoulder` times as far out
+    as the crown reaches that way about that height, for a triangle's sides cut inside a round crown; the shoulders
+    roofed over two heads, the tops of the crown's two halves, so its outline is two masses and not a dome, and the low
+    ring closed flat. The roof in one flat tone and the sides in a darker, the pair of level 3's colours whose mix
+    comes nearest its; on a trunk `trunk` across drawn as one face both sides, on `posts` ((x, z), radius, depth) so
+    drawn, or on `stilts` (reach, colour). Fourteen faces, two more a post."""
     m = Mesh(False)
-    ((x0, y0, z0), _), lo, hi, big, waist = crown_of(near, lobes, 6, colours)
-    rng = rng_for(seed, "far")
+    (_, y0, _), _ = box_of(near)
+    lo, hi = box_of(near, colours)
+    pts = [near.points[i] for idx, mat, _, _ in near.faces if mat in colours for i in idx]
     centre = ((lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2)
-    turn = rng.uniform(0, 2 * math.pi)
-    ring = reach_ring(big, 4, lo[1] + 0.4 * (hi[1] - lo[1]), turn, centre)
-    shoulder = [(centre[0] + (p[0] - centre[0]) * 0.75, p[1], centre[1] + (p[2] - centre[1]) * 0.75)
-                for p in reach_ring(big, 4, lo[1] + 0.85 * (hi[1] - lo[1]), turn + math.pi / 4, centre)]
-    under = (0.0, lo[1], 0.0)
-    tris = [shoulder[:3], [shoulder[0], shoulder[2], shoulder[3]]]
-    for i in range(4):
-        j = (i + 1) % 4
-        tris += [(ring[i], ring[j], shoulder[i]), (shoulder[i], ring[j], shoulder[j]), (ring[j], ring[i], under)]
-    (dome,) = fitted([tris], lo, hi)
-    painted(m, dome, pick(colours))
-    fin(m, (0.0, y0, 0.0), (0.0, lo[1] + 0.35 * (hi[1] - lo[1]), 0.0), 2 * trunk, rng.uniform(0, math.pi), stem)
+    tall = hi[1] - lo[1]
+    turn = rng_for(seed, "far").uniform(0, 2 * math.pi / 3)
+    a = reach_ring(pts, centre, lo[1] + low * tall, turn, wide, 0.15 * tall)
+    b = reach_ring(pts, centre, lo[1] + high * tall, turn + math.pi / 3, shoulder, 0.15 * tall)
+    heads = tops(pts, b)
+    roof = roofed(b, heads)
+    sides = [t for k in range(3) for t in ((a[k], a[(k + 1) % 3], b[k]), (b[k], b[(k + 1) % 3], a[(k + 1) % 3]))]
+    inside = (centre[0], lo[1] + 0.4 * tall, centre[1])
+    tris = [outward(t, inside) for t in roof + sides + [(a[0], a[1], a[2])]]
+    upper, lower = tones(near, colours, [tris], len(roof))
+    for i, t in enumerate(tris):
+        m.face([m.point(p) for p in t], upper if i < len(roof) else lower)
+    axis = math.atan2(heads[1][2] - heads[0][2], heads[1][0] - heads[0][0])
+    if stilts is None:
+        fin(m, (0.0, y0, 0.0), (0.0, lo[1] + 0.25 * tall, 0.0), 2 * trunk, axis + math.pi / 2, stem)
+    else:
+        # A mangrove's cage: a three-sided pyramid of stilts `reach` out, from under the crown, closed below the ground.
+        reach, colour = stilts
+        apex = (centre[0], lo[1] + 0.15 * tall, centre[1])
+        base = [(reach * math.cos(t), y0, reach * math.sin(t)) for t in (axis + 2 * math.pi * k / 3 for k in range(3))]
+        solid(m, [((apex, base[k], base[(k + 1) % 3]), colour) for k in range(3)] + [((base[2], base[1], base[0]), colour)])
+    for (px, pz), pr, depth in posts:
+        fin(m, (px, depth, pz), (px, lo[1] + 0.3, pz), 2 * pr, axis, stem)
     return m
+
+
+def outward(t, inside):
+    """A triangle wound to face away from a point inside its solid."""
+    a, b, c = t
+    middle = tuple((a[k] + b[k] + c[k]) / 3 for k in range(3))
+    return t if dot(cross(sub(b, a), sub(c, a)), sub(middle, inside)) > 0 else (a, c, b)
+
+
+def tops(pts, ring):
+    """The tops of a crown's two halves: the points of its upper third split in two on the ground (k-means from the
+    two farthest apart), each half's middle at its highest point, drawn in towards the middle of `ring` till well
+    inside it, so the roof's edge is the ring."""
+    floor = min(p[1] for p in pts)
+    top = max(p[1] for p in pts)
+    upper = [p for p in pts if p[1] > top - (top - floor) / 3]
+    farthest = lambda q: max(upper, key=lambda p: (p[0] - q[0]) ** 2 + (p[2] - q[2]) ** 2)
+    first = farthest(farthest(upper[0]))
+    centres = [(first[0], first[2]), (farthest(first)[0], farthest(first)[2])]
+    for _ in range(10):
+        halves = [[], []]
+        for p in upper:
+            halves[min((0, 1), key=lambda k: (p[0] - centres[k][0]) ** 2 + (p[2] - centres[k][1]) ** 2)].append(p)
+        centres = [(sum(p[0] for p in h) / len(h), sum(p[2] for p in h) / len(h)) if h else c for h, c in zip(halves, centres)]
+    mid = (sum(p[0] for p in ring) / len(ring), sum(p[2] for p in ring) / len(ring))
+    heads = []
+    for c, h in zip(centres, halves):
+        k = 1.0
+        while k > 0.05 and not within(ring, (mid[0] + (c[0] - mid[0]) * k / 0.8, mid[1] + (c[1] - mid[1]) * k / 0.8)):
+            k *= 0.85
+        heads.append((mid[0] + (c[0] - mid[0]) * k, max((p[1] for p in h), default=top), mid[1] + (c[1] - mid[1]) * k))
+    return heads
+
+
+def within(ring, p):
+    """Whether the point (x, z) lies inside the ring of points, convex seen from above."""
+    sides = [(b[0] - a[0]) * (p[1] - a[2]) - (b[2] - a[2]) * (p[0] - a[0]) for a, b in zip(ring, ring[1:] + ring[:1])]
+    return all(s > 0 for s in sides) or all(s < 0 for s in sides)
+
+
+def tones(near, colours, solids, upper_count=3):
+    """Of the near level's colours, the lighter and darker pair for the far level's upper and under faces whose mix by
+    area, as the faces lie seen from the side, comes nearest the mix the near level's crown faces make by theirs. The
+    first `upper_count` faces of each solid are its upper ones."""
+    def mix_of(faces):
+        acc, total = [0.0, 0.0, 0.0], 0.0
+        for (a, b, c), colour in faces:
+            n = cross(sub(b, a), sub(c, a))
+            area = math.sqrt(dot(n, n)) / 2
+            # Seen from the side, a face counts as much as it faces the level ways.
+            seen = area * math.sqrt(max(0.0, 1 - (n[1] / max(2 * area, 1e-9)) ** 2))
+            acc = [x + seen * y for x, y in zip(acc, linear(colour))]
+            total += seen
+        return [x / max(total, 1e-9) for x in acc]
+
+    want = mix_of([([near.points[i] for i in idx], mat) for idx, mat, _, _ in near.faces if mat in colours and len(idx) == 3])
+    light, mid, dark = colours
+    best = None
+    for upper, under in ((light, mid), (light, dark), (mid, dark)):
+
+        got = mix_of([(t, upper if i < upper_count else under) for s in solids for i, t in enumerate(s)])
+        err = sum((a - b) ** 2 for a, b in zip(got, want))
+        if best is None or err < best[0]:
+            best = (err, upper, under)
+    return best[1], best[2]
 
 
 def delaunay(pts):
@@ -124,85 +157,29 @@ def delaunay(pts):
     return out
 
 
-def roofed(ring, peaks, under):
-    """A crown's faces, wound outward: a ring of points round its waist, convex seen from above, roofed over `peaks`
-    (points within it standing above it) and closed below by a fan to `under`. The roof's faces come first."""
+def roofed(ring, peaks):
+    """A roof over a ring of points, convex seen from above, to `peaks` within it standing above it: its faces facing
+    up."""
     pts = ring + peaks
     up = (0.0, 1.0, 0.0)
     tris = []
     for i, j, k in delaunay([(p[0], p[2]) for p in pts]):
         a, b, c = pts[i], pts[j], pts[k]
         tris.append((a, b, c) if dot(cross(sub(b, a), sub(c, a)), up) > 0 else (a, c, b))
-    for k in range(len(ring)):
-        a, b = ring[k], ring[(k + 1) % len(ring)]
-        tris.append((a, b, under) if dot(cross(sub(b, a), sub(under, a)), up) < 0 else (b, a, under))
     return tris
 
 
-def reach_ring(masses, n, waist, turn, centre):
-    """`n` points round a crown's waist, each as far out from `centre` (x, z) as level 4's masses reach that way."""
+def reach_ring(pts, centre, height, turn, scale, band):
+    """Three points round a crown at `height`, each `scale` times as far out from `centre` (x, z) as the crown's
+    points within `band` of that height reach that way."""
+    near = [p for p in pts if abs(p[1] - height) < band] or pts
     out = []
-    for k in range(n):
-        a = turn + 2 * math.pi * k / n
+    for k in range(3):
+        a = turn + 2 * math.pi * k / 3
         d = (math.cos(a), math.sin(a))
-        r = max((l.centre[0] - centre[0]) * d[0] + (l.centre[2] - centre[1]) * d[1] + l.radii[0] for l in masses)
-        out.append((centre[0] + d[0] * r, waist, centre[1] + d[1] * r))
+        r = max(0.3, max((p[0] - centre[0]) * d[0] + (p[2] - centre[1]) * d[1] for p in near)) * scale
+        out.append((centre[0] + d[0] * r, height, centre[1] + d[1] * r))
     return out
-
-
-def spanning(ring, lo, hi):
-    """The ring stretched on x and z so it spans from `lo` to `hi`."""
-    xs, zs = [p[0] for p in ring], [p[2] for p in ring]
-    sx, sz = (hi[0] - lo[0]) / (max(xs) - min(xs)), (hi[2] - lo[2]) / (max(zs) - min(zs))
-    return [(lo[0] + (p[0] - min(xs)) * sx, p[1], lo[2] + (p[2] - min(zs)) * sz) for p in ring]
-
-
-def banyan(near, lobes, colours, stem, trunk, pillar, share=0.65):
-    """A banyan, ten faces of roof and two for each post: its roof ridged along its length from a ring of four round its
-    waist, the largest of its faces to `share` of its area in the light green and the rest in the middle one, its
-    underside a shallow dark fan, over its trunk and its largest pillar if level 4 draws one (`pillar`: its foot,
-    radius and depth). Lit, a flat roof all in the light green stands out paler than level 4's crown of many clumps."""
-    m = Mesh(False)
-    ((x0, y0, z0), _), lo, hi, big, waist = crown_of(near, lobes, 6, colours)
-    light, mid, dark = colours
-    centre = ((lo[0] + hi[0]) / 2, (lo[2] + hi[2]) / 2)
-    turn = 0.0 if hi[0] - lo[0] > hi[2] - lo[2] else math.pi / 2
-    ring = spanning(reach_ring(big, 4, waist, turn + math.pi / 4, centre), lo, hi)
-    along = (math.cos(turn), 0.0, math.sin(turn))
-    half = 0.3 * max(hi[0] - lo[0], hi[2] - lo[2])
-    ridge = (centre[0], hi[1], centre[1])
-    under = (0.0, lo[1] + 0.5, 0.0)
-    tris = roofed(ring, [add(ridge, mul(along, half)), sub(ridge, mul(along, half))], under)
-    roof, skirt = tris[: -len(ring)], tris[-len(ring) :]
-    area = lambda t: math.sqrt(sum(v * v for v in cross(sub(t[1], t[0]), sub(t[2], t[0])))) / 2
-    lit, total = 0.0, sum(area(t) for t in roof)
-    for t in sorted(roof, key=area, reverse=True):
-        colour = light if lit < share * total else mid
-        lit += area(t)
-        m.face([m.point(p) for p in t], colour)
-    for t in skirt:
-        m.face([m.point(p) for p in t], dark)
-    fin(m, (0.0, y0, 0.0), under, 2 * trunk, turn + math.pi / 2, stem)
-    if pillar is not None:
-        (px, pz), pr, depth = pillar
-        fin(m, (px, depth, pz), (px, lo[1] + 0.5, pz), 2 * pr, turn, stem)
-    return m
-
-
-def mangrove(near, lobes, colours, roots, reach, seed):
-    """A mangrove, twelve faces: its crown an octahedron tipped as a clump lies, spanning level 4's crown, on a
-    three-sided pyramid of stilts `reach` metres out, closed below the ground."""
-    m = Mesh(False)
-    ((x0, y0, z0), _), lo, hi, big, waist = crown_of(near, lobes, 3, colours)
-    rng = rng_for(seed, "far")
-    middle = ((lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2, (lo[2] + hi[2]) / 2)
-    turn = rng.uniform(0, 2 * math.pi)
-    (crown,) = fitted([gem(middle, 1.0, 1.0, 4, rng.uniform(0.4, 0.55), turn)], lo, hi)
-    painted(m, crown, pick(colours))
-    under = (middle[0], lo[1] + 0.3 * (hi[1] - lo[1]), middle[2])
-    base = [(reach * math.cos(a), y0, reach * math.sin(a)) for a in (turn + 2 * math.pi * k / 3 for k in range(3))]
-    solid(m, [((under, base[k], base[(k + 1) % 3]), roots) for k in range(3)] + [((base[2], base[1], base[0]), roots)])
-    return m
 
 
 def palm(near, crown, foot, hub, r_foot, r_head, tips, stem, spread):
