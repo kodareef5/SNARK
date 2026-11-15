@@ -428,18 +428,19 @@ OPEN_TALONS = -0.45
 
 
 def carry_legs(p, u=0.0):
-    """The legs holding a load at phase u of fly's beat: as the body rises on the downstroke the load lags and the legs
-    stretch, and as it sinks they give; the load swings slowly from side to side."""
+    """The legs holding a load at phase u of fly's beat. The game hangs the load from the `grab` socket, which rides with
+    the hips, so the feet hold still against it; only the feet work at it, tipping and squeezing as the body rises on
+    the downstroke and sinks after, and the load sways them a little from side to side."""
     b = mv.BEATS["fly"]
     give = mv.beat(u - 0.15, b)[2] - mv.beat(u, b)[2]
     sway = math.sin(2.0 * math.pi * u)
     for s in "lr":
         sign = 1.0 if s == LEFT else -1.0
-        ankle = mx(CARRY_ANKLE, s) + Vector((0.015 * sway, 1.5 * give, -0.5 * give))
+        ankle = mx(CARRY_ANKLE, s) + Vector((0.012 * sway, 0.3 * give, 0.0))
         p["foot_" + s] = ankle
-        p["foot_rot_" + s] = mv.mrot((CARRY_FOOT[0] + 200.0 * give, CARRY_FOOT[1], CARRY_FOOT[2] - 3.0 * sway * sign), s)
+        p["foot_rot_" + s] = mv.mrot((CARRY_FOOT[0] + 80.0 * give, CARRY_FOOT[1], CARRY_FOOT[2] - 3.0 * sway * sign), s)
         p["knee_" + s] = mv.knee_ahead(p, s, ankle, ahead=0.5, up=0.1)
-        p["talons_" + s] = GRIP_TALONS + 2.0 * give
+        p["talons_" + s] = GRIP_TALONS + 1.5 * give
 
 
 def swung(p, swing, talons):
