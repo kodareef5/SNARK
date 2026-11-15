@@ -2,16 +2,19 @@
 // creatures it made, and those a save gave it, until they die or are tamed. Each region checks itself on a deadline, so a
 // stocked world costs nothing between checks. Where each number comes from is in planning/quality/deviations.md, DEV105 on.
 
-import { CHUNK_SIZE, TICK_RATE } from "../shared/coords.ts";
+import { CHUNK_SIZE, TICK_RATE, chunkCount } from "../shared/coords.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { Rng } from "../shared/rng.ts";
 import { F_PLAYER } from "../shared/sim/entities.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
+import { PAD, SKIN, capsuleKind, groundUnder } from "../shared/world/collide.ts";
+import type { NodeField, NodeSpot } from "../shared/world/nodes.ts";
 import { GROUND_FREE, groundAt } from "../shared/world/path.ts";
 import { ROLE_CEILING, ROLE_FOUNDATION } from "../shared/world/snap.ts";
 import type { Buffs } from "./buffs.ts";
 import type { Creatures } from "./creatures.ts";
 import type { GameServer } from "./game.ts";
+import type { Harvest } from "./harvest.ts";
 import type { Items } from "./items.ts";
 import type { Persistence } from "./persist/persistence.ts";
 import type { EntityRecord, Records } from "./records.ts";
@@ -43,6 +46,8 @@ const TRIES = 8;
 /** The most creatures made, and places tried, in one tick, over every region. */
 export const TICK_MADE = 64;
 const TICK_TRIES = 128;
+/** Chunks whose nodes, as the map places them, are kept for the places tried there. */
+const NODE_CHUNKS = 256;
 
 /** A step from 1 to 30, by LEVEL_WEIGHTS. */
 export function wildStep(rng: Rng): number {
@@ -71,6 +76,8 @@ export interface SpawnerContext {
   survival: Survival;
   buffs: Buffs;
   persistence: Persistence | null;
+  /** Which nodes are used up, where the map has nodes. */
+  harvest: Harvest | null;
   rules: Rules;
   deadlines: DeadlineHeap;
   /** The spawn tables after the server's settings (server/settings/spawns.ts), by content index. */
@@ -121,12 +128,28 @@ export class Spawner {
   /** Per chunk, the x and z of each of a tribe's foundations and ceilings, as of the chunk's version then. */
   private readonly cores: (Float32Array | null)[] = [];
   private readonly coresAt: number[] = [];
+  /**
+   * The nodes of the last NODE_CHUNKS chunks tried, as the map places them: x, y, z, form, yaw and slot of each, a chunk to a
+   * row. `mappedAt` is each chunk's row or -1. The row written longest ago is written next.
+   */
+  private readonly mapped: Float32Array;
+  private readonly mappedCount = new Uint16Array(NODE_CHUNKS);
+  private readonly mappedChunk = new Int32Array(NODE_CHUNKS).fill(-1);
+  private readonly mappedAt: Int32Array;
+  private mappedNext = 0;
+  private readonly spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  /** Metres a node's boxes reach sideways from its origin, at most. */
+  private readonly nodeReach: number;
 
   constructor(ctx: SpawnerContext, seed: number) {
     this.ctx = ctx;
     this.rng = new Rng(seed);
     const reg = ctx.world.reg;
     this.creature = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.class === "creature" ? 1 : 0));
+    const field = ctx.world.nodeField;
+    this.mapped = new Float32Array(field ? NODE_CHUNKS * field.source.perChunk * 6 : 0);
+    this.mappedAt = new Int32Array(field ? chunkCount(ctx.world.dims) : 0).fill(-1);
+    this.nodeReach = field ? Math.max(0, ...field.store.spread) : 0;
     const multiplier = ctx.rules.num("DinoCountMultiplier");
     for (const zone of ctx.world.zones) {
       const k = zone.spawns === undefined ? undefined : reg.index.get(zone.spawns);
@@ -369,10 +392,70 @@ export class Spawner {
     return share !== undefined && (r.of.get(kind) ?? 0) >= share * r.desired;
   }
 
-  /** Whether a body can stand at (x, z) on dry ground. */
+  /** Whether a body can stand at (x, z) on dry ground, clear of nodes whether or not anyone has loaded them. */
   private land(p: NonNullable<Registry["move"][number]>, x: number, z: number): boolean {
     const world = this.ctx.world;
-    return world.hf.heightAt(x, z) >= world.hf.seaLevel && groundAt(world, p, x, z) === GROUND_FREE;
+    return world.hf.heightAt(x, z) >= world.hf.seaLevel && groundAt(world, p, x, z) === GROUND_FREE && !this.inNode(p, x, z);
+  }
+
+  /**
+   * Whether a body at (x, z) meets a node in a chunk nobody has loaded, which the world's collision does not hold. Its capsule
+   * runs from the ground to its height stepped up, so it covers both places groundAt and Creatures.spawn test once it is loaded.
+   */
+  private inNode(p: NonNullable<Registry["move"][number]>, x: number, z: number): boolean {
+    const field = this.ctx.world.nodeField;
+    if (!field) return false;
+    const { dims, hf } = this.ctx.world;
+    const r = p.radius;
+    const reach = r + this.nodeReach + PAD;
+    const y = groundUnder(hf, x, z, r);
+    const forms = field.forms;
+    const at = this.mapped;
+    for (let cz = Math.max(0, Math.floor((z - reach) / CHUNK_SIZE)); cz <= Math.min(dims.chunksZ - 1, Math.floor((z + reach) / CHUNK_SIZE)); cz++) {
+      for (let cx = Math.max(0, Math.floor((x - reach) / CHUNK_SIZE)); cx <= Math.min(dims.chunksX - 1, Math.floor((x + reach) / CHUNK_SIZE)); cx++) {
+        const chunk = cz * dims.chunksX + cx;
+        if (field.isLoaded(chunk)) continue;
+        const row = this.rowOf(field, chunk);
+        for (let k = row * field.source.perChunk * 6, end = k + this.mappedCount[row]! * 6; k < end; k += 6) {
+          const dx = x - at[k]!;
+          const dz = z - at[k + 2]!;
+          if (dx * dx + dz * dz >= reach * reach) continue;
+          let form = at[k + 3]!;
+          if ((this.ctx.harvest?.regrowsAt(chunk, at[k + 5]!) ?? 0) > 0) form = forms.left[form]!;
+          if (form === 0 || forms.soft[form] === 1) continue;
+          if (capsuleKind(forms.parts, form, at[k]!, at[k + 1]!, at[k + 2]!, at[k + 4]!, x, y, z, r, p.height + p.stepUp, SKIN)) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** The row of `mapped` that holds a chunk's nodes, written now if none does. */
+  private rowOf(field: NodeField, chunk: number): number {
+    let row = this.mappedAt[chunk]!;
+    if (row >= 0) return row;
+    row = this.mappedNext;
+    this.mappedNext = (row + 1) % NODE_CHUNKS;
+    const was = this.mappedChunk[row]!;
+    if (was >= 0) this.mappedAt[was] = -1;
+    this.mappedChunk[row] = chunk;
+    this.mappedAt[chunk] = row;
+    const spot = this.spot;
+    const out = this.mapped;
+    let n = 0;
+    for (let i = 0, k = row * field.source.perChunk * 6; i < field.source.perChunk; i++) {
+      field.source.at(chunk, i, spot);
+      if (spot.kind === 0) continue;
+      out[k++] = spot.x;
+      out[k++] = spot.y;
+      out[k++] = spot.z;
+      out[k++] = spot.form;
+      out[k++] = spot.yaw;
+      out[k++] = i;
+      n++;
+    }
+    this.mappedCount[row] = n;
+    return row;
   }
 
   /** Whether a survivor stands within PLAYER_RANGE, or a tribe's creature within TAME_RANGE. */

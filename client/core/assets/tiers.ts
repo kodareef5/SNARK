@@ -1,7 +1,7 @@
 // The graphics tiers a player chooses between. A tier sets how much detail is asked for and how much memory it may take,
 // how far the far layer reaches, and whether light, sky, shadows and the sea are drawn as on the lit tiers (medium and
-// up) or as low poly has always drawn them. The far, light, shadow, cloud and water fields wait for the code that
-// reads them, and `instanced` for stand-ins.
+// up) or as low poly has always drawn them. The shadow, cloud and water fields wait for the code that reads them, and
+// `instanced` for stand-ins.
 
 export interface Tier {
   readonly name: "lowpoly" | "medium" | "high" | "ultra";

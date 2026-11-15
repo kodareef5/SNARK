@@ -57,7 +57,7 @@ const BAND = 7;
 const HOUSE = [PROVING_SPAWN.x - 24, PROVING_SPAWN.z - 2] as const;
 
 /** Bytes sent to the page in one piece. Each run starts on a multiple of 4, so the page can view it as an array of any type. */
-export class Bytes {
+class Bytes {
   private readonly parts: Uint8Array[] = [];
   length = 0;
 
@@ -211,7 +211,7 @@ function judgeCards(cards: Card[], got: Uint8Array): { ok: boolean; lines: strin
 // ---- The house ----
 
 /** A frame as the page rebuilds it: its numbers, its arrays as far as they are used, and its uploads, with where their bytes are. */
-export interface Frame {
+interface Frame {
   scalars: Record<string, number | boolean>;
   arrays: [string, number, number][];
   uploads: number[][];
@@ -222,26 +222,28 @@ export interface Frame {
   texDrops: number[];
 }
 
-const DRAW_ARRAYS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawInstances", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount"] as const;
+const DRAW_ARRAYS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawInstances", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount", "drawPass"] as const;
 
-export function packFrame(p: FramePacket, out: Bytes): Frame {
+function packFrame(p: FramePacket, out: Bytes): Frame {
   const ref = (data: Uint8Array): [number, number] => [out.add(data), data.length];
   const arrays: [string, number, number][] = [];
   const put = (name: string, count: number): void => void arrays.push([name, out.add((p[name as keyof FramePacket] as Uint8Array).subarray(0, count)), count]);
   put("viewProj", 16);
   put("nearViewProj", 16);
+  put("farViewProj", 16);
+  put("frame", p.frame.length);
   put("sky", 3);
   put("sun", 3);
-  put("frame", p.frame.length);
   for (const name of DRAW_ARRAYS) put(name, p.drawCount);
   put("drawOffset", p.drawCount * 3);
   put("tiles", p.tileCount * 4);
   put("tileOrigin", p.tileCount * 2);
+  put("tilePass", p.tileCount);
   put("transient", p.transientCount * INSTANCE_BYTES);
   put("bones", p.boneCount * BONE_FLOATS);
-  const { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount } = p;
+  const { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt } = p;
   return {
-    scalars: { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount },
+    scalars: { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount, skyAt },
     arrays,
     uploads: p.uploads.map((u) => [u.buffer, ...ref(u.data)]),
     drops: [...p.drops],

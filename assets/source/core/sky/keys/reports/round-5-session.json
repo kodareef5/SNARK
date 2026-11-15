@@ -1,0 +1,20 @@
+{
+  "archiveStartedAt": "2026-11-15T00:52:35.414294+00:00",
+  "reportWrittenAt": "2026-11-15T00:59:17.944038+00:00",
+  "elapsedSeconds": 402,
+  "imageGenerationCalls": 0,
+  "imageAssemblyPasses": 1,
+  "fitterCheckout": "a checkout of r8/l1-sky-table at 8a9ba55",
+  "fitterSHA256": "86f68483cba57334eaad57aea24f99a9c4b01b9ff82413a2c5b9c68a062a00f0",
+  "pointsReadSHA256": "499cd1b60452d1684b0df91da8d561b47357ceb5ec1b6a4d38eb1f7e2149d221",
+  "finalKeysSHA256": {
+    "dawn": "342f41b42919daa217a9638ba12ecacd84c4a1275247424ed54e98426ab2ed61",
+    "morning": "9696ec5d28a1957bd50aa85262c7e186940257f40f7e5cc7415c30056be7f8f2",
+    "noon": "83c7f8e5c82675e36f37528bb2cf34b292b132c4f0c375be9aa91fb7b2fd2674",
+    "afternoon": "a045941103504fa61b8753d9673229ae1ab984b6b45087593f264c18dc1a9815",
+    "golden": "d3cd6e400d0beda92068c579992f689ea8b62aaedeb08e46e0aa134f4f64a394",
+    "sunset": "f8293ab415b6d68dfac7d5d84d926515f9b4834c0ef4f7eb46914754e9fca348",
+    "dusk": "6204c171051997d89301d14779737d2fb778bf0ba91b51651b2689ac74943358",
+    "night": "87a61ab1cbf0caf84b540c7c12255a796a8fb7a21d3f92f20d55e76b2e4b04b9"
+  }
+}

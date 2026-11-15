@@ -1,0 +1,26 @@
+# Rejected rounds, work in progress, review dumps and run transcripts stay out of git; each folder's REPORT.md and
+# FEEDBACK files say what they showed. Kept: briefs, feedback, reports, prompts, scripts, the image tool's originals
+# that the accepted pictures are built from, and the accepted pictures.
+rounds/
+work/
+reject/
+scratch/
+iterations/
+*.transcript.txt
+
+# The keys: the underlays are made again by keys/physical.py; the review pictures and the style sheet's panels and
+# study are kept out, the style and view sheets as JPEG copies in.
+keys/underlay/
+keys/reports/*/
+keys/reports/*.png
+keys/style/panels/
+keys/style/*.png
+!keys/style/palette.png
+keys/views/sheet.png
+
+# The moon is built from four of its originals.
+moon/originals/round-*.png
+!moon/originals/round-08.png
+!moon/originals/round-15.png
+!moon/originals/round-16.png
+!moon/originals/round-17.png

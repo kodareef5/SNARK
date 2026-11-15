@@ -1,0 +1,13 @@
+{
+  "started_utc": "2026-11-14T23:34:37Z",
+  "workflow": "Built-in image generation, then local Python finishing and native-size inspection",
+  "finished_utc": "2026-11-14T23:56:15+00:00",
+  "elapsed_seconds": 1193,
+  "generation_calls": 5,
+  "edit_calls_included": 4,
+  "review_rounds": 7,
+  "selected_original": "originals/round-05.png",
+  "elapsed_seconds_scope": "Sum of both work sessions; excludes the gap for user review",
+  "revision_session": "session-round-2.json",
+  "first_delivery_session": "iterations/round-2-baseline/session.json"
+}

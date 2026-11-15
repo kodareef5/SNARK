@@ -1,0 +1,66 @@
+{
+  "source": "originals/round-08.png",
+  "source_size": [
+    1254,
+    1254
+  ],
+  "crop_circle_xy_radius": [
+    617.5772253931783,
+    629.8143933774467,
+    591.3265406040255
+  ],
+  "min_sampled_source_alpha": 0.9804400205612183,
+  "neutralized": true,
+  "target_mean_lightness": 194.0,
+  "luminance_contrast": 0.95,
+  "chroma_multiplier": 0.45,
+  "fitted_radius_retained": 0.975,
+  "workflow": "round-five-local-composite",
+  "base_source": "originals/round-08.png",
+  "local_sources": [
+    "originals/round-15.png",
+    "originals/round-16.png",
+    "originals/round-17.png"
+  ],
+  "stage": "rays",
+  "unchanged_alpha_from_round_three": true,
+  "size": [
+    512,
+    512
+  ],
+  "mode": "RGBA",
+  "color_space": "sRGB, embedded ICC profile",
+  "alpha_weighted_mean_srgb_255": [
+    195.3671713069461,
+    193.90990882662425,
+    193.95838713835835
+  ],
+  "rounded_mean_hex": "#C3C2C2",
+  "alpha_weighted_mean_linear_rgb": [
+    0.5768389635561746,
+    0.5656067567438069,
+    0.5641495268062531
+  ],
+  "opaque_luminance_percentiles_1_5_50_95_99": [
+    137.93179999999998,
+    144.14440000000002,
+    202.4252,
+    238.77819999999997,
+    244.63379999999998
+  ],
+  "annular_mean_srgb_luminance": {
+    "0.000-0.500": 190.254,
+    "0.500-0.800": 184.505,
+    "0.800-0.950": 201.269,
+    "0.950-0.995": 224.168
+  },
+  "partial_alpha_pixels": 1760,
+  "fully_opaque_interior": true,
+  "zero_alpha_corners": true,
+  "alpha_touches_all_four_edges": true,
+  "night_blue_srgb": [
+    9,
+    23,
+    46
+  ]
+}

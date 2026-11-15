@@ -1,0 +1,18 @@
+{
+  "started_utc": "2026-11-15T00:07:31.591880+00:00",
+  "baseline": "iterations/round-4-baseline",
+  "workflow": "Six targeted built-in image edits, including edge and ray refinements; native-size review after every edit",
+  "finished_utc": "2026-11-15T00:20:13.017031+00:00",
+  "elapsed_seconds": 761,
+  "generation_attempts": 6,
+  "successful_generation_calls": 6,
+  "failed_generation_calls": 0,
+  "review_rounds": 6,
+  "total_successful_generation_calls": 14,
+  "total_review_rounds": 16,
+  "selected_original": "originals/round-14.png",
+  "selected_review": "iterations/round-16-balanced-rays",
+  "validation": "iterations/round-16-balanced-rays/validation.json",
+  "rejected_ray_version": "iterations/round-15-soft-rays",
+  "delivery_sha256": "a5bf8b031ce346f7f74a9c83266bfc72bd498e8001c405e93a958cf1c0b4421b"
+}
