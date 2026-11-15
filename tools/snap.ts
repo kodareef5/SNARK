@@ -711,6 +711,9 @@ export function clientPicture(width: number, height: number, look: Uint8Array | 
   return raster.color;
 }
 
+/** The view a model is drawn with: narrow, so that near and far parts are drawn nearly the same size. */
+const MODEL_FOV = 0.2;
+
 export interface ModelShot {
   /** Index of the mesh in the pack, and the level of it to draw. */
   mesh: number;
@@ -731,6 +734,8 @@ export interface ModelShot {
   floor?: number;
   /** Lit as the lit tiers light, which is the default, or as low poly. */
   lit?: boolean;
+  /** How many times nearer the picture is than the ball: the view narrowed from where the ball puts the camera, so near and far parts keep their sizes. */
+  zoom?: number;
   /** The level of the hurt and decay layer of each material that has one, in LAYER_LEVELS (client/core/render/surface.ts); 0 for none. Its texture must be on the card. */
   layer?: number;
 }
@@ -755,8 +760,7 @@ export class ModelView {
     this.pack = pack;
     this.background = background;
     this.cam.aspect = width / height;
-    // Narrow, so that near and far parts are drawn nearly the same size.
-    this.cam.fovY = 0.2;
+    this.cam.fovY = MODEL_FOV;
     this.packet.sky.set(background);
     this.packet.fogStart = 1e8;
     this.packet.fogEnd = 2e8;
@@ -773,6 +777,7 @@ export class ModelView {
     const a = (shot.around * Math.PI) / 180;
     const e = (shot.above * Math.PI) / 180;
     // Far enough off that the ball fits the narrower way.
+    cam.fovY = MODEL_FOV;
     const half = Math.min(cam.fovY / 2, Math.atan(Math.tan(cam.fovY / 2) * cam.aspect));
     const far = shot.radius / Math.sin(half);
     cam.x = shot.centre[0] + far * Math.sin(a) * Math.cos(e);
@@ -782,6 +787,7 @@ export class ModelView {
     cam.pitch = -e;
     cam.near = Math.max(0.05, far - shot.radius * 1.5);
     cam.far = far + shot.radius * 1.5;
+    if (shot.zoom !== undefined) cam.fovY = 2 * Math.atan(Math.tan(MODEL_FOV / 2) / shot.zoom);
     cam.update();
     p.beginFrame();
     p.viewProj.set(cam.viewProj);

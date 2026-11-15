@@ -288,7 +288,7 @@ export interface PieceSpec {
   readonly errors?: readonly number[];
   readonly hold?: "prop_r" | "prop_l";
   readonly dropped?: "auto" | string;
-  readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number };
+  readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number; readonly shift?: readonly [number, number] };
 }
 
 export interface PiecesAsset {
@@ -310,7 +310,9 @@ export interface PiecesAsset {
    * - `dropped`: the piece as it lies on the ground, `<id>/dropped`. "auto" lays the held piece on its broadest side;
    *   the name of another Blender object gives a lying piece of its own.
    * - `icon`: the view its inventory picture is drawn from, where the usual three-quarter view does not suit it.
-   *   Angles in radians round and above, `roll` about the view, `zoom` past the framing that fits it.
+   *   Angles in radians round and above, `roll` about the view, `zoom` past the framing that fits it, and `shift` the
+   *   middle of the picture moved right and up, as shares of the half side of that framing: with a zoom, it shows the
+   *   part of a long thing that says what it is, as the spear's head.
    */
   readonly pieces: readonly PieceSpec[];
   /**

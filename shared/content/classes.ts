@@ -391,7 +391,7 @@ row("item/skin", "item", ITEM, { parent: "item", ark: "PrimalItemSkin_", status:
 row("item/dye", "item", ITEM, { parent: "item", ark: "PrimalItemDye_", status: "stub", waits: "cosmetics", shelf: "items/dyes", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Colours a region of what it is used on." });
 row("item/artifact", "item", ITEM, { parent: "item", ark: "PrimalItemArtifact_", status: "stub", waits: "bosses", shelf: "items/artifacts", must: ["stack"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Found once in its place and spent to call a boss." });
 
-row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "item"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: ["#icon"] } }, doc: "Learned with points at a level, for good. Its one item can then be made." });
+row("engram", "engram", ENGRAM, { ark: "EngramEntry_", shelf: "engrams", must: ["label", "level", "cost", "item"], may: ["hidden", "auto", "requires", "group", "from"], slots: { icon: { ...icon, fallback: ["{item}/icon", "swatch"] } }, doc: "Learned with points at a level, for good. Its one item can then be made." });
 row("levels", "levels", LEVELS, { ark: "the level ramp of the game data", shelf: "rules", must: ["xp", "engramPoints"], may: ["most", "tame"], doc: "The experience each level takes and the engram points it gives." });
 
 const BODY = ["mesh", "color", "radius", "height", "eyeHeight", "walkSpeed", "sprintMul", "jumpSpeed"] as const;

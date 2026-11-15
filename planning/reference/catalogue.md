@@ -98,7 +98,7 @@ Packs may add to: `weapon`, `places`.
 
 Asset slots:
 
-- `engram`: `#icon` icon, may, from `{id}/icon`, else `#icon`.
+- `engram`: `#icon` icon, may, from `{id}/icon`, else `{item}/icon` then `swatch`.
 
 ARK's names: `level` is RequiredCharacterLevel; `cost` is RequiredEngramPoints; `item` is BluePrintEntry; `hidden` is EngramHidden; `auto` is EngramEntryAutoUnlocks; `requires` is EngramRequirementSets; `group` is EngramGroup; `from` is a boss's unlock.
 
