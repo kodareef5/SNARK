@@ -15,7 +15,7 @@ import type { AssetPort } from "../assets/port.ts";
 import type { RemoteSample } from "../session.ts";
 import { ActionSounds, type OwnState } from "./actions.ts";
 import { BodySounds, type OwnBody } from "./bodies.ts";
-import { BuildSounds } from "./build.ts";
+import { BuildSounds, type Lit } from "./build.ts";
 import { CreatureSounds } from "./creatures.ts";
 import { InlineDecoder, SOUND_BUDGET, SOUND_BUDGET_TOUCH, SoundLibrary, type SoundDecoder } from "./library.ts";
 import { FLAT, KIND_NAMES, KIND_VOCAL, LOOP, Mixer, spread, type Ear } from "./mixer.ts";
@@ -69,6 +69,8 @@ export interface SoundView {
   hour: number;
   /** Trees within `r` metres of (x, z), for the beds. */
   trees: (x: number, z: number, r: number) => number;
+  /** The structures that burn near (x, z), for their crackle. */
+  lit?: Lit;
 }
 
 /** What became of an occasion asked for: the sound board and the in-game log read these. */
@@ -202,7 +204,7 @@ export class Sounds {
       this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
       this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true));
     }
-    this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false));
+    this.build.update(ear.x, ear.y, ear.z, this.hear, (id, owner, key, x, y, z, on) => this.loop(1000 + id, owner < 0 ? this.ui : owner, key, x, y, z, 1, on, false), view?.lit ?? null);
     for (const a of this.asked) {
       lib.want(a.sound, Infinity);
       if (lib.ready(a.sound)) this.push({ sound: a.sound, key: -1, owner: -1, kind: KIND_VOCAL, weight: 2, entity: -1, x: a.x, y: a.y, z: a.z, lift: 0, level: 1, rate: 1, delay: 0, flags: 0 });

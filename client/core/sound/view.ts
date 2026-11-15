@@ -5,12 +5,13 @@ import { LOOK_SEX } from "../../../shared/anim/look.ts";
 import { SESSION_ALIVE } from "../../../shared/net/protocol.ts";
 import { hourOfDay } from "../../../shared/sim/clock.ts";
 import { handleIndex } from "../../../shared/ids.ts";
-import { Found } from "../../../shared/world/structures.ts";
+import { Found, type ChunkTable } from "../../../shared/world/structures.ts";
 import type { NodeSpot } from "../../../shared/world/nodes.ts";
 import type { ClientSession } from "../session.ts";
 import type { SoundView, Sounds } from "./sounds.ts";
 
 const found = new Found();
+const rows = new Found();
 const spot: NodeSpot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
 
 /** The player as the producers hear them. */
@@ -37,6 +38,18 @@ export function soundView(session: ClientSession): SoundView {
     },
     hour: hourOfDay(session.serverTick, session.dayOffset, session.clock),
     trees: (x, z, r) => (field ? field.store.query(x - r, z - r, x + r, z + r, found) : 0),
+    lit: (x, z, r, out) => {
+      const structs = session.world?.structs;
+      if (!structs) return;
+      const n = structs.query(x - r, z - r, x + r, z + r, rows);
+      for (let i = 0; i < n; i++) {
+        const ref = rows.refs[i]!;
+        const t: ChunkTable | null | undefined = structs.chunks[Math.floor(ref / 65536)];
+        const slot = ref & 0xffff;
+        const kind = t?.kind[slot] ?? 0;
+        if (t && session.registry.burning[kind] === 1) out.push(t.x[slot]!, t.y[slot]!, t.z[slot]!, kind);
+      }
+    },
   };
 }
 

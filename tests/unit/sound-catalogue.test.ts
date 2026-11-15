@@ -151,7 +151,25 @@ test("building is heard from its rows: placed by its material, a door opening an
   b.node(k("core:oak"), 5, 0, 5);
   run();
   expect(heard).toEqual(["place/stone core:wall_stone", "door/open/wood core:door_open_wood", "door/close/wood core:door_wood", "fire/light core:campfire_lit", "destroy/stone core:wall_stone", "felled core:oak"]);
-  expect(burning[0]).toBe(true);
+});
+
+test("a fire is heard burning from the rows near the ear as they are now: one lit before the player came, and none put out while they were away", () => {
+  const owners: string[] = [];
+  const b = new BuildSounds(reg, (id) => owners.push(id) - 1);
+  const lit = reg.index.get("core:campfire_lit")!;
+  let rows: number[] = [3, 0, 3, lit];
+  const burning: { on: boolean; owner: string }[] = [];
+  const run = (): void => {
+    for (let f = 0; f < 12; f++) b.update(0, 0, 0, () => {}, (id, o, _k, _x, _y, _z, on) => void (id === 0 && burning.push({ on, owner: owners[o] ?? "" })), (_x, _z, _r, out) => void out.push(...rows));
+  };
+  // The session was never told it was lit: it burned when its chunk came.
+  run();
+  expect(burning.at(-1)).toEqual({ on: true, owner: "core:campfire_lit" });
+  // Put out while its chunk was away and told afresh: the row no longer burns, and nor does the sound.
+  b.structure(0, lit, 3, 0, 3, 0, 100, -1);
+  rows = [];
+  run();
+  expect(burning.at(-1)!.on).toBe(false);
 });
 
 test("the world's bed follows the place and the clock: a beach by the sea, grass inland, day and night, and under water only the deep", () => {

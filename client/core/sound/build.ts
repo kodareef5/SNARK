@@ -1,8 +1,9 @@
 // What building and the world's nodes are heard doing, from the structure rows and used-up nodes the client is sent
 // (ClientSession.onStructure, onNode): a piece placed, struck, mended, destroyed, brought down or taken up; a door
 // opening or shutting and a fire lit or put out (each a swap of kinds in the same slot); a tree felled, a rock broken,
-// a bush stripped. Lit fires near the ear crackle while they burn. Each piece is heard by its own sounds where it has
-// them, else by its material's (the `{tier}` of shared/sound/cues.ts).
+// a bush stripped. Lit fires near the ear crackle while they burn, found in the rows as they are now, so a fire lit
+// before the player came is heard and one put out while they were away is not. Each piece is heard by its own sounds
+// where it has them, else by its material's (the `{tier}` of shared/sound/cues.ts).
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
@@ -29,9 +30,13 @@ const K = {
   crumble: cueKey("crumble"),
   picked: cueKey("picked"),
 };
-/** Metres within which a lit fire is heard burning, and how many at most. */
+/** Metres within which a lit fire is heard burning, and how many at most; the rows are looked through every few frames. */
 const FIRE_REACH = 20;
 const FIRES = 3;
+const FIRE_FRAMES = 8;
+
+/** Fills `out` with x, y, z and kind of each structure within about `r` metres of (x, z) that burns. */
+export type Lit = (x: number, z: number, r: number, out: number[]) => void;
 
 export class BuildSounds {
   private readonly reg: Registry;
@@ -42,9 +47,11 @@ export class BuildSounds {
   /** By node kind: its owner number and what using it up sounds like. */
   private readonly nodeOwner: Int32Array;
   private readonly nodeKey: Int32Array;
-  /** Lit fires known, by place. */
-  readonly fires = new Map<string, { x: number; y: number; z: number }>();
   private readonly queue: (() => void)[] = [];
+  /** The lit fires near the ear when last looked for: x, y, z and kind of each. */
+  private readonly fires: number[] = [];
+  private readonly near: number[] = [];
+  private frame = 0;
 
   constructor(reg: Registry, ownerOf: (id: string) => number) {
     this.reg = reg;
@@ -82,24 +89,32 @@ export class BuildSounds {
 
   private hear: Hear | null = null;
 
-  /** One frame: what changed since the last, heard; and the fires near (ex, ey, ez) held burning through `burn`. */
-  update(ex: number, ey: number, ez: number, hear: Hear, burn: (id: number, owner: number, key: number, x: number, y: number, z: number, on: boolean) => void): void {
+  /** One frame: what changed since the last, heard; and the fires `lit` finds near (ex, ey, ez) held burning through `burn`. */
+  update(ex: number, ey: number, ez: number, hear: Hear, burn: (id: number, owner: number, key: number, x: number, y: number, z: number, on: boolean) => void, lit: Lit | null = null): void {
     this.hear = hear;
     for (const f of this.queue) f();
     this.queue.length = 0;
-    const near = [...this.fires.entries()].map(([k, f]) => ({ k, f, d: Math.hypot(f.x - ex, f.y - ey, f.z - ez) })).filter((e) => e.d < FIRE_REACH).sort((a, b) => a.d - b.d);
+    const fires = this.fires;
+    if (this.frame++ % FIRE_FRAMES === 0) {
+      fires.length = 0;
+      lit?.(ex, ez, FIRE_REACH, fires);
+    }
+    // The nearest few, as indices into `fires`.
+    const near = this.near;
+    near.length = 0;
+    for (let f = 0; f < fires.length; f += 4) if (Math.hypot(fires[f]! - ex, fires[f + 1]! - ey, fires[f + 2]! - ez) < FIRE_REACH) near.push(f);
+    const d = (f: number): number => Math.hypot(fires[f]! - ex, fires[f + 1]! - ey, fires[f + 2]! - ez);
+    near.sort((a, b) => d(a) - d(b));
     for (let i = 0; i < FIRES; i++) {
-      const e = near[i];
-      burn(i, 0, K.burn, e?.f.x ?? 0, e?.f.y ?? 0, e?.f.z ?? 0, e !== undefined);
+      const f = near[i];
+      burn(i, f === undefined ? -1 : this.owner[fires[f + 3]!]!, K.burn, f === undefined ? 0 : fires[f]!, f === undefined ? 0 : fires[f + 1]!, f === undefined ? 0 : fires[f + 2]!, f !== undefined);
     }
   }
 
   private heardStructure(was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause: number): void {
     const hear = this.hear!;
     const reg = this.reg;
-    const at = `${Math.round(x * 4)},${Math.round(y * 4)},${Math.round(z * 4)}`;
     if (kind === 0) {
-      this.fires.delete(at);
       const o = this.owner[was]!;
       const t = this.tier[was]!;
       if (cause === GONE_DESTROYED) hear(o, DESTROY[t]!, -1, x, y, z, 0.5, 1, false);
@@ -111,7 +126,6 @@ export class BuildSounds {
     const t = this.tier[kind]!;
     if (was === 0) {
       hear(o, PLACE[t]!, -1, x, y, z, 0.3, 1, false);
-      if (reg.burning[kind] === 1) this.fires.set(at, { x, y, z });
       return;
     }
     if (was !== kind) {
@@ -124,8 +138,6 @@ export class BuildSounds {
       } else if (reg.lights[was] === kind) {
         const lit = reg.burning[kind] === 1;
         hear(o, lit ? K.light : K.out, -1, x, y, z, 0.2, 1, false);
-        if (lit) this.fires.set(at, { x, y, z });
-        else this.fires.delete(at);
       }
       return;
     }
