@@ -268,7 +268,7 @@ test("the destination killed after it took a survivor and before it saved takes 
   // The page tries again with the ticket it has: it is let in, and nothing moves.
   const there = b2.h.join("ada", {}, { key: keyAt("ada", 2), ticket });
   b2.h.run(400);
-  expect(there.state).toBe("active");
+  expect([there.state, there.arriving]).toEqual(["active", true]);
   expect(new Map(b2.h.host.items.held(rec(b2, "ada")!))).toEqual(carried);
   // Killed after it saved, it has the survivor at its start, and the page joins with no ticket at all.
   b2.h.run(400);
