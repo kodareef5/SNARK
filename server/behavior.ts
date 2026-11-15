@@ -7,7 +7,7 @@ import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Rng } from "../shared/rng.ts";
 import { DMG_MELEE } from "../shared/sim/damage.ts";
-import { BTN_PRIMARY, BTN_SPRINT, MF_OUT, stanceEye } from "../shared/sim/character.ts";
+import { BTN_PRIMARY, BTN_SPRINT, MF_OUT, stanceEye, type MoveParams } from "../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE, F_HELD, F_PLAYER, wider } from "../shared/sim/entities.ts";
 import { ACT_NONE } from "../shared/sim/weapon.ts";
 import { GROUND_FREE, PATH_FOUND, PATH_LEG, PATH_NONE, PATH_REACH, PATH_SHORT, PathFinder, groundAt, shapeStamp } from "../shared/world/path.ts";
@@ -198,8 +198,8 @@ export class Behavior {
     this.game = game;
     this.reg = world.reg;
     this.rng = new Rng(seed);
-    // Each search is for the body that asked.
-    this.finder = new PathFinder(world, { radius: 0.5, height: 1, slopeCos: 0.5, stepUp: 0.5 });
+    // Each search is for the body that asked, with the numbers it moves by (walker); until the first, a survivor's.
+    this.finder = new PathFinder(world, world.reg.move[world.reg.index.get("core:survivor")!]!);
     this.finder.budget = SEARCH_CELLS;
     this.finder.doorways = world.reg.doorway;
     this.claimed = new BodyGrid(world.dims);
@@ -878,10 +878,16 @@ export class Behavior {
     return -1;
   }
 
+  /** What `e` moves by, as Creatures steps it: a tame by its tamed numbers, which stand on steeper slopes. */
+  private walker(e: number): MoveParams | null {
+    const ents = this.world.ents;
+    return (ents.team[e] !== 0 ? this.reg.tamedMove : this.reg.move)[ents.kind[e]!] ?? null;
+  }
+
   /** Starts the search `e` asked for: 1 if it began, 0 if it cannot (no way, then), -1 if `e` no longer wants one. */
   private begin(e: number): number {
     const ents = this.world.ents;
-    const p = this.reg.move[ents.kind[e]!];
+    const p = this.walker(e);
     if ((ents.flags[e]! & F_AWAKE) === 0 || !p) return -1;
     let gx: number;
     let gz: number;
@@ -911,7 +917,7 @@ export class Behavior {
   /** A fleeing creature makes for a point it can stand on: the one away from what hurt it, or the nearest turn of it that is. */
   private fleeGoal(e: number): void {
     const ents = this.world.ents;
-    const p = this.reg.move[ents.kind[e]!]!;
+    const p = this.walker(e)!;
     const x = ents.x[e]!;
     const z = ents.z[e]!;
     const dx = this.homeX[e]! - x;
