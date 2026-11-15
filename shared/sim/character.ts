@@ -4,7 +4,7 @@
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
-import { PAD, SKIN, capsuleBox, capsuleFree, ground, groundUnder, push, restsOnStructure, type CollisionWorld } from "../world/collide.ts";
+import { SETTLE_ITERATIONS, SETTLE_MARGIN, SKIN, capsuleBox, capsuleFree, ground, groundUnder, nothingBuilt, push, restsOnStructure, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { Found } from "../world/structures.ts";
 
 export const BTN_JUMP = 1;
@@ -205,12 +205,6 @@ const MAX_SUBSTEPS = 16;
 const TERMINAL_SPEED = 60;
 const GROUND_PROBE = 0.02;
 const RESOLVE_ITERATIONS = 4;
-const SETTLE_ITERATIONS = 7;
-/**
- * A search that lowers a body onto a surface accepts a height only if the body is still free this much lower. Without it the
- * search ends on the edge of the collision tolerance, where rounding to float32 can put the body on the wrong side.
- */
-const SETTLE_MARGIN = SKIN * 0.75;
 /** Metres per second. Sprint multiplies it by GHOST_SPRINT. */
 const GHOST_SPEED = 12;
 const GHOST_SPRINT = 5;
@@ -376,6 +370,8 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     let blocked = false;
     /** The last round touched nothing, and the body has not moved since. */
     let clear = false;
+    /** The highest a body on foot may rise onto in this substep. */
+    const top = y + p.stepUp;
     for (let iter = 0; iter < RESOLVE_ITERATIONS; iter++) {
       let moved = false;
       // Structures, then resource nodes. Both stores hold boxes.
@@ -389,6 +385,21 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
         sortU32(found.refs, count);
         for (let k = 0; k < count; k++) {
           if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
+          moved = true;
+          if (walking && push.y > 0 && push.depth < r) {
+            // The piece meets the lower sphere `down` below its centre. Higher than a step, it is a wall to a body on foot, which
+            // leaves it sideways, to where the sphere is as wide as it is there, and not up over its edge.
+            const gap = r - push.depth;
+            const down = (push.y * gap) / push.depth;
+            const side = Math.sqrt(push.x * push.x + push.z * push.z);
+            if (side > 0 && ny + r - down > top + SKIN) {
+              const out = (Math.sqrt(r * r - down * down) - (side * gap) / push.depth) / side;
+              nx += push.x * out;
+              nz += push.z * out;
+              blocked = true;
+              continue;
+            }
+          }
           if (push.hull && push.y > 0.7 * push.depth) {
             // A sloped part it stands on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
             ny += (push.depth * push.depth) / push.y;
@@ -406,7 +417,6 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
             blocked = true;
             if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
           }
-          moved = true;
         }
       }
       if (!moved) {
@@ -420,7 +430,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       clear = false;
     }
 
-    // Step up: a grounded body blocked by something low climbs onto it.
+    // Step up: a grounded body blocked by something no higher than a step climbs onto it.
     if (blocked && walking) {
       let tx = x + sx;
       let tz = z + sz;
@@ -428,19 +438,14 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       else if (tx > maxX) tx = maxX;
       if (tz < r) tz = r;
       else if (tz > maxZ) tz = maxZ;
-      const top = y + p.stepUp;
       if (capsuleFree(w, x, top, z, r, height) && capsuleFree(w, tx, top, tz, r, height)) {
-        let lo = y;
-        let hi = top;
-        for (let k = 0; k < SETTLE_ITERATIONS; k++) {
-          const mid = (lo + hi) * 0.5;
-          if (capsuleFree(w, tx, mid - SETTLE_MARGIN, tz, r, height)) hi = mid;
-          else lo = mid;
+        const on = stepOnto(w, tx, tz, y, top, r, height);
+        if (!Number.isNaN(on)) {
+          nx = tx;
+          ny = on;
+          nz = tz;
+          clear = false;
         }
-        nx = tx;
-        ny = hi;
-        nz = tz;
-        clear = false;
       }
     }
 
@@ -510,12 +515,6 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   b.grounded = grounded;
   b.stance = stance;
   b.stamina = stamina;
-}
-
-/** True when no structure or node reaches the capsule's footprint between the heights `low` and `high`. */
-function nothingBuilt(w: CollisionWorld, x: number, z: number, r: number, low: number, high: number): boolean {
-  if (w.structs.query(x - r, z - r, x + r, z + r, found, low - PAD, high + PAD) > 0) return false;
-  return !w.nodes || w.nodes.query(x - r, z - r, x + r, z + r, found, low - PAD, high + PAD) === 0;
 }
 
 function canSprint(b: Body, buttons: number): boolean {

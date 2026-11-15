@@ -394,6 +394,49 @@ export function capsuleFree(w: CollisionWorld, x: number, y: number, z: number, 
   return true;
 }
 
+/** True when no structure or node reaches the capsule's footprint between the heights `low` and `high`. */
+export function nothingBuilt(w: CollisionWorld, x: number, z: number, r: number, low: number, high: number): boolean {
+  if (w.structs.query(x - r, z - r, x + r, z + r, found, low - PAD, high + PAD) > 0) return false;
+  return !w.nodes || w.nodes.query(x - r, z - r, x + r, z + r, found, low - PAD, high + PAD) === 0;
+}
+
+/** Halvings in a search that lowers a body onto a surface. */
+export const SETTLE_ITERATIONS = 7;
+/**
+ * Such a search accepts a height only if the body is still free this much lower. Without it the search ends on the edge of the
+ * collision tolerance, where rounding to float32 can put the body on the wrong side.
+ */
+export const SETTLE_MARGIN = SKIN * 0.75;
+
+/**
+ * Where a body that capsuleFree accepts at `top` over (x, z) comes to rest when lowered toward `low`. NaN if it is free at `low`
+ * and needs no step, or if a structure or node holds it higher than `top`: raised by a step, its lower sphere passes over an
+ * edge up to a radius above its feet, so a step is judged by what it would stand on.
+ */
+export function stepOnto(w: CollisionWorld, x: number, z: number, low: number, top: number, r: number, h: number): number {
+  if (capsuleFree(w, x, low - SETTLE_MARGIN, z, r, h)) return NaN;
+  let lo = low;
+  let hi = top;
+  for (let k = 0; k < SETTLE_ITERATIONS; k++) {
+    const mid = (lo + hi) * 0.5;
+    if (capsuleFree(w, x, mid - SETTLE_MARGIN, z, r, h)) hi = mid;
+    else lo = mid;
+  }
+  // What it sinks into just below where it rests is what holds it. It meets each where the way out, from the lower sphere's
+  // centre, reaches the sphere's surface.
+  const y = lo - SETTLE_MARGIN;
+  const high = y + (h > 2 * r ? h : 2 * r) + PAD;
+  for (let pass = 0; pass < 2; pass++) {
+    const store = pass === 0 ? w.structs : w.nodes;
+    if (!store) continue;
+    const n = store.query(x - r, z - r, x + r, z + r, found, y - PAD, high);
+    for (let i = 0; i < n; i++) {
+      if (capsuleBox(store, found.refs[i]!, x, y, z, r, h, SKIN) && y + r - (push.y * (r - push.depth)) / push.depth > top + SKIN) return NaN;
+    }
+  }
+  return hi;
+}
+
 /** True when lowering the capsule by `probe` meets an upward push from a structure or node. */
 export function restsOnStructure(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, probe: number): boolean {
   const low = y - probe - PAD;
