@@ -14,7 +14,7 @@ import { stanceEye } from "../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, QUALITY_MUL } from "../shared/sim/items.ts";
-import { W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
+import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
 import { capsuleHull, hullPush } from "../shared/world/convex.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
 import { Found } from "../shared/world/structures.ts";
@@ -141,8 +141,10 @@ export class Combat {
   t = 0;
   /** A shot left `c`'s weapon. `draw` is 0 to 1. */
   onFire: ((c: Client, rec: EntityRecord, weapon: number, quality: number, ammo: number, draw: number) => void) | null = null;
-  /** A thrown item left `c`'s hand. */
-  onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number) => void) | null = null;
+  /** A thrown item left `c`'s hand. `draw` is how long a charged throw was held, 0 to 1, and 1 for any other. */
+  onThrow: ((c: Client, rec: EntityRecord, item: number, quality: number, draw: number) => void) | null = null;
+  /** Gives a hit's buff, reading its bola fields (server/entangle.ts). Unset, the buff is given as it is. `by` is a pid or 0. */
+  entangle: ((victim: EntityRecord, buff: number, by: number) => void) | null = null;
   /** Hits landed on structures. `lastStructure` holds the last one, and its `left` is 0 if the structure is gone. */
   structureHits = 0;
   /** The rider of a mount, or null. A rider also gets half the XP its mount earns by a kill. */
@@ -215,11 +217,16 @@ export class Combat {
     const reg = world.reg;
     const kind = ents.kind[e]!;
     // It swings the held item if that is a melee weapon and not worn out, else its bare hands. A creature has only its own body.
+    // A bow or gun with a blow strikes with it (weapons-plan.md, M4): ARK's "Melee attack of any Ranged Weapon", 10 and
+    // 14 torpor (Base Damage), as the melee stat and the weapon's quality make it, as a melee weapon's is.
     const inv = c ? items.inv(rec) : null;
     const slot = inv ? this.heldSlot(rec) : -1;
     let item = inv && slot >= 0 ? inv.item[slot]! : 0;
-    if (inv && item !== 0 && (reg.weapon[item]?.kind !== W_MELEE || (reg.uses[item]! > 0 && inv.dur[slot]! === 0))) item = 0;
-    const reach = reg.reach[item !== 0 ? item : kind]!;
+    const held = item !== 0 ? reg.weapon[item]?.kind : undefined;
+    const blow = (held === W_BOW || held === W_GUN) && reg.blowDamage[item]! > 0;
+    if (inv && item !== 0 && ((held !== W_MELEE && !blow) || (reg.uses[item]! > 0 && inv.dur[slot]! === 0))) item = 0;
+    const butt = blow && item !== 0;
+    const reach = butt ? reg.blowReach[item]! : reg.reach[item !== 0 ? item : kind]!;
     const d = this.dir;
     lookDirection(ents.yaw[e]!, ents.pitch[e]!, d);
     const ox = ents.x[e]!;
@@ -241,12 +248,12 @@ export class Combat {
     src.x = ox;
     src.z = oz;
     src.item = item;
-    src.base = reg.damage[item !== 0 ? item : kind]!;
-    src.type = item !== 0 ? reg.damageType[item]! : DMG_MELEE;
+    src.base = butt ? reg.blowDamage[item]! : reg.damage[item !== 0 ? item : kind]!;
+    src.type = item !== 0 && !butt ? reg.damageType[item]! : DMG_MELEE;
     src.quality = inv && item !== 0 ? (QUALITY_MUL[inv.quality[slot]!] ?? 1) : 1;
     src.draw = 1;
     src.attack = statOf(reg.defs[kind] as SpeciesDef, rec.genome, STAT_MELEE, 1);
-    src.torporInstant = reg.meleeTorpor[item !== 0 ? item : kind]!;
+    src.torporInstant = butt ? reg.blowTorpor[item]! : reg.meleeTorpor[item !== 0 ? item : kind]!;
     src.torporOver = src.torporSeconds = 0;
     src.buff = 0;
     const wears = item !== 0 && reg.uses[item]! > 0;
@@ -269,7 +276,10 @@ export class Combat {
     const slot = this.heldSlot(rec);
     const params = slot >= 0 ? world.reg.weapon[items.inv(rec).item[slot]!] : null;
     const ammo = slot >= 0 ? this.ammoFor(rec, slot) : 0;
-    if (params && ammo !== 0) items.load(rec, slot, ammo, params.clip);
+    // A round at a time loads one more than it holds of that kind, as the action step counted (weapons-plan.md, M4).
+    const inv = items.inv(rec);
+    const upTo = params?.reloadEach ? Math.min(params.clip, (slot >= 0 && inv.ammo[slot] === ammo ? inv.loaded[slot]! : 0) + 1) : (params?.clip ?? 0);
+    if (params && ammo !== 0) items.load(rec, slot, ammo, upTo);
     // The weapon's count overrides what the action step assumed.
     world.ents.rounds[c.ent] = slot >= 0 ? items.inv(rec).loaded[slot]! : 0;
   }
@@ -300,7 +310,7 @@ export class Combat {
     const item = inv.item[slot]!;
     const quality = inv.quality[slot]!;
     if (!items.burn(rec, slot, 1)) return;
-    this.onThrow?.(c, rec, item, quality);
+    this.onThrow?.(c, rec, item, quality, c.drawn);
   }
 
   /**
@@ -698,7 +708,10 @@ export class Combat {
       const from = by ? by.pid : 0;
       if (harm.torpor > 0) survival.add(victim, V_TORPOR, harm.torpor);
       if (harm.torporOver > 0 && src.torporSeconds > 0 && this.dose !== 0) buffs.give(victim, this.dose, from, src.torporSeconds, harm.torporOver / src.torporSeconds);
-      if (src.buff !== 0) buffs.give(victim, src.buff, from);
+      if (src.buff !== 0) {
+        if (this.entangle) this.entangle(victim, src.buff, from);
+        else buffs.give(victim, src.buff, from);
+      }
     }
 
     const game = this.ctx.game;

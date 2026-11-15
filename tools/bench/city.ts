@@ -36,12 +36,15 @@ const median = (a: number[]): number => percentile(a, 0.5);
 
 /** A client's world on the map: every static in a near store, which holds a chunk whole `lag` seconds after it comes within three chunks of the camera. */
 function cityWorld(path: string) {
-  const map = parseMap(new Uint8Array(readFileSync(path)));
+  const file = new Uint8Array(readFileSync(path));
+  const t0 = performance.now();
+  const map = parseMap(file);
+  const parseMs = performance.now() - t0;
   const reg = compileContent(CORE_CONTENT).registry!;
   const hf = mapHeightfield(map);
-  const t0 = performance.now();
+  const t1 = performance.now();
   const statics = new CityStatics(map.dims, map.statics, reg);
-  const indexMs = performance.now() - t0;
+  const indexMs = performance.now() - t1;
   const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   placeStatics(map, structs, reg);
   const pack = parsePack(corePackBytes());
@@ -52,7 +55,7 @@ function cityWorld(path: string) {
   const complete = (chunk: number): boolean => since[chunk]! >= 0 && now - since[chunk]! >= lag;
   const far = { cells: new FarStore(), complete };
   return {
-    map, reg, hf, statics, structs, pack, cam, far, indexMs,
+    map, reg, hf, statics, structs, pack, cam, far, parseMs, indexMs,
     scene(tier: Tier, size: [number, number]): Scene {
       const scene = new Scene({ dims: map.dims, hf, structs, far, city: { statics, complete } }, reg, pack);
       scene.assets.tier = tier;
@@ -116,8 +119,11 @@ export function benchCity(section: (title: string) => void, record: Record, path
   const w = cityWorld(path);
   const { statics, hf, map } = w;
   section(`The far city on ${map.id}: ${statics.count} statics in ${statics.first.filter((_, c) => c < chunkCount(map.dims) && statics.in(c) > 0).length} chunks`);
+  record("map file read, its statics by chunk", w.parseMs, "ms");
   record("statics indexed by chunk", w.indexMs, "ms");
-  record("statics held for the far city", (statics.count * 16 + statics.first.byteLength) / 1048576, "MB");
+  // The map's columns and the far city's, each buffer once: the city shares the map's where it draws every piece.
+  const held = new Set([map.statics.first, map.statics.kind, map.statics.yaw, map.statics.x, map.statics.y, map.statics.z, map.statics.row, statics.first, statics.kind, statics.yaw, statics.x, statics.y, statics.z].map((a) => a.buffer));
+  record("statics held, the map's and the far city's", [...held].reduce((sum, b) => sum + b.byteLength, 0) / 1048576, "MB");
 
   // A chunk's cost at each form, over the 200 busiest chunks.
   const chunks = [...Array(chunkCount(map.dims)).keys()].filter((c) => statics.in(c) > 0).sort((a, b) => statics.in(b) - statics.in(a)).slice(0, 200);

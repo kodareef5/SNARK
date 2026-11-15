@@ -8,7 +8,8 @@ import { EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NONE, castWorld, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { shotDir } from "../../shared/sim/aim.ts";
 import type { Camera } from "./render/camera.ts";
 import type { Characters } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
@@ -75,7 +76,8 @@ export class Shots {
     const reg = this.reg;
     const d = this.dir;
     for (const s of session.fired) {
-      lookDirection(s.yaw, s.pitch, d);
+      // Its own shot leaves along the server's ray: the same aim, cone and seed (shared/sim/aim.ts).
+      shotDir(s.seed, 0, s.yaw, s.pitch, s.cone, d);
       const full = reg.ammoSpeed[s.ammo]!;
       if (full <= 0) {
         const reach = castWorld(world, s.x, s.y, s.z, d[0]!, d[1]!, d[2]!, HITSCAN_RANGE) === HIT_NONE ? HITSCAN_RANGE : rayHit.t;

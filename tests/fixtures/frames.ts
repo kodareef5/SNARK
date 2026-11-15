@@ -15,6 +15,8 @@ export interface Frame {
   timed?: boolean;
   busy?: boolean;
   work?: number;
+  /** The triangles crowns near took that they could still give: none unless said. */
+  crowns?: number;
   /** A gap before this frame, in ms: a hidden page or a stall. */
   gap?: number;
   /** The display's interval, which a frame is never shorter than: 16.7 ms unless said. */
@@ -56,7 +58,7 @@ export function run(minutes: number, at: (t: number, level: number) => Frame, o:
     g.tier(tier, true, dpr, now);
     if (f.timed) timed.push(f.gpu);
     if (timed.length > 2) g.timed(timed.shift()!);
-    g.frame(now, interval, f.ours ?? 1, f.busy ?? false, f.work ?? 1e6);
+    g.frame(now, interval, f.ours ?? 1, f.busy ?? false, f.work ?? 1e6, f.crowns ?? 0);
     if (f.gap === undefined) list.push(interval);
     most = Math.max(most, g.level);
     if (now >= (out.length + 1) * 60000) {
