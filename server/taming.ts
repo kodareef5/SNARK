@@ -417,7 +417,7 @@ export class Taming {
     const slot = r.varint();
     const expect = r.u16();
     if (r.overflow) return RESULT_INVALID;
-    const { world, items, buffs } = this.ctx;
+    const { world, items } = this.ctx;
     const box = this.ctx.openOf(c);
     if (!box || world.reg.defs[box.kind]?.type !== "species" || box.keyHash !== null) return RESULT_DENIED;
     const inv = items.inv(box);
@@ -437,16 +437,25 @@ export class Taming {
       return RESULT_OK;
     }
     if (!box.out) return RESULT_DENIED;
-    const torpor = world.reg.doseTorpor[item]!;
-    const seconds = world.reg.doseSeconds[item]!;
-    if (!(torpor > 0) || !(seconds > 0) || this.drugged === 0) return RESULT_INVALID;
+    if (!(world.reg.doseTorpor[item]! > 0) || this.drugged === 0) return RESULT_INVALID;
     if (!items.burn(box, slot, 1)) return RESULT_STALE;
-    // Doses queue. The time left on the active dose is added to this one's.
-    const on = box.buffs.find((b) => b.buff === this.drugged);
-    const left = on && on.until > world.tick ? (on.until - world.tick) / TICK_RATE : 0;
-    buffs.give(box, this.drugged, c.pid, left + seconds, torpor / seconds);
+    this.dose(box, item, c.pid);
     this.doses++;
     return RESULT_OK;
+  }
+
+  /**
+   * Gives `rec` the torpor of one `item`, eaten or fed, from `by` (a pid, or 0). Doses queue: what is left of the one
+   * acting and this one are given over their two times together.
+   */
+  dose(rec: EntityRecord, item: number, by: number): void {
+    const { world, buffs } = this.ctx;
+    const torpor = world.reg.doseTorpor[item]!;
+    const seconds = world.reg.doseSeconds[item]!;
+    if (!(torpor > 0) || !(seconds > 0) || this.drugged === 0) return;
+    const on = rec.buffs.find((b) => b.buff === this.drugged);
+    const left = on && on.until > world.tick ? (on.until - world.tick) / TICK_RATE : 0;
+    buffs.give(rec, this.drugged, by, left + seconds, ((left > 0 ? on!.torpor * left : 0) + torpor) / (left + seconds));
   }
 
   /** The command carries an entity index. The creature must be near, or the one the session rides. */

@@ -882,6 +882,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       if (fedRate > 0) buffs.give(rec, fed, 0, points / fedRate);
       else survival.add(rec, V_HEALTH, points);
     },
+    dose: (rec, item, by) => taming.dose(rec, item, by),
     rearm: (rec) => {
       // No slot is -2, so the refresh sees a change of what is in hand.
       inHand.set(rec.pid, -2);

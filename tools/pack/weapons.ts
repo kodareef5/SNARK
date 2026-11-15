@@ -11,6 +11,8 @@ const DARK = 11;
 const SLATE = 4;
 const STRING = 10;
 const STONE = 15;
+const HIDE = 226;
+const FIBER = 224;
 
 type Box = readonly [cx: number, cy: number, cz: number, hx: number, hy: number, hz: number, color: number];
 
@@ -52,13 +54,42 @@ function bow(): Box[] {
   return boxes;
 }
 
+/** A knotted branch, thickest at the head, with fibre bound round the grip. */
+function club(): Box[] {
+  return [
+    [0, 0, 0.11, 0.017, 0.017, 0.2, WOOD],
+    [0, 0, 0.01, 0.021, 0.021, 0.07, FIBER],
+    [0, 0, 0.35, 0.026, 0.026, 0.06, WOOD_LIGHT],
+    [0, 0, 0.5, 0.042, 0.04, 0.11, WOOD_LIGHT],
+    [0, 0, 0.62, 0.032, 0.03, 0.02, WOOD_LIGHT],
+    [0.032, 0.02, 0.47, 0.02, 0.018, 0.026, WOOD],
+    [-0.028, -0.026, 0.55, 0.018, 0.016, 0.022, WOOD],
+    [0.01, 0.036, 0.4, 0.014, 0.014, 0.018, WOOD],
+  ];
+}
+
+/** A forked stick held upright, the band drawn back from its prongs toward the shooter at -X to a hide pouch. */
+function slingshot(): Box[] {
+  return [
+    [0, -0.03, 0, 0.017, 0.075, 0.017, WOOD],
+    [0, 0.055, 0, 0.016, 0.014, 0.05, WOOD],
+    [0, 0.115, 0.042, 0.013, 0.05, 0.013, WOOD_LIGHT],
+    [0, 0.115, -0.042, 0.013, 0.05, 0.013, WOOD_LIGHT],
+    [-0.05, 0.15, 0.03, 0.05, 0.004, 0.004, HIDE],
+    [-0.05, 0.15, -0.03, 0.05, 0.004, 0.004, HIDE],
+    [-0.105, 0.15, 0, 0.012, 0.014, 0.034, HIDE],
+  ];
+}
+
 /** Ids are the mesh ids that content names. */
 export function weaponMeshes(): SourceMesh[] {
   return [
     held("core:hatchet", B_PROP_R, [[0, 0, 0.12, 0.014, 0.014, 0.23, WOOD], [0, 0.03, 0.3, 0.01, 0.065, 0.045, STONE]]),
     held("core:pick", B_PROP_R, [[0, 0, 0.12, 0.014, 0.014, 0.23, WOOD], [0, 0, 0.32, 0.012, 0.16, 0.025, STONE]]),
     held("core:spear", B_PROP_R, [[0, 0, 0.35, 0.012, 0.012, 0.95, WOOD], [0, 0, 1.37, 0.022, 0.006, 0.09, STONE]]),
+    held("core:club", B_PROP_R, club()),
     held("core:bow", B_PROP_L, bow()),
+    held("core:slingshot", B_PROP_L, slingshot()),
     held("core:crossbow", B_PROP_R, [[0, -0.01, 0.12, 0.02, 0.028, 0.34, WOOD], [0, 0.02, 0.42, 0.3, 0.01, 0.016, WOOD_LIGHT], [0, 0.03, 0.2, 0.004, 0.004, 0.22, STRING], [0, -0.07, -0.02, 0.014, 0.05, 0.02, WOOD]]),
     held("core:rifle", B_PROP_R, [
       [0, -0.035, -0.22, 0.02, 0.05, 0.16, WOOD],
@@ -72,6 +103,7 @@ export function weaponMeshes(): SourceMesh[] {
     // The origin is at the head, so a stuck arrow stands out of what it hit.
     { id: "core:arrow", lods: [build([[0, 0, -0.36, 0.006, 0.006, 0.36, WOOD_LIGHT], [0, 0, 0.02, 0.014, 0.004, 0.03, STONE], [0, 0, -0.66, 0.003, 0.03, 0.05, STRING], [0, 0, -0.66, 0.03, 0.003, 0.05, STRING]], null)] },
     { id: "core:dart", lods: [build([[0, 0, -0.07, 0.005, 0.005, 0.08, METAL], [0, 0, -0.16, 0.014, 0.014, 0.03, 9]], null)] },
+    { id: "core:stone_shot", lods: [build([[0, 0, 0, 0.02, 0.017, 0.022, STONE], [0.006, 0.008, -0.004, 0.015, 0.014, 0.016, SLATE]], null)] },
     // The blast is a cube a metre across, scaled to the size of the explosion when drawn.
     { id: "core:grenade_thrown", lods: [build([[0, 0.05, 0, 0.04, 0.05, 0.04, 7], [0, 0.11, 0, 0.014, 0.014, 0.014, METAL]], null)] },
     { id: "core:blast", lods: [build([[0, 0, 0, 0.5, 0.5, 0.5, 6]], null)] },
