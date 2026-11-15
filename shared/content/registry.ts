@@ -321,7 +321,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.eggChance !== undefined && !(d.eggChance >= 0 && d.eggChance <= 1)) errors.push(`${d.id}: eggChance must be from 0 to 1`);
       if (d.fistsTorpor !== undefined && !(d.fistsTorpor >= 0)) errors.push(`${d.id}: fistsTorpor must not be negative`);
     } else if (d.type === "prop") {
-      positive(d, "radius", d.radius, 8);
+      // A cloud's radius is its reach, not a body's (server/clouds.ts).
+      positive(d, "radius", d.radius, d.class === "cloud" ? 32 : 8);
       positive(d, "height", d.height, 32);
       if (d.size !== undefined) positive(d, "size", d.size, 8);
     } else if (d.type === "node") {
@@ -425,7 +426,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       const w = d.weapon;
       if (w) {
         positive(d, "weapon.uses", w.uses, 60000);
-        if ((w.kind === "melee" || w.kind === "thrown") && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
+        // A thrown weapon that bursts into a cloud may do no harm of its own (smoke, poison: W5).
+        if ((w.kind === "melee" || (w.kind === "thrown" && !w.cloud)) && !(w.damage! > 0 && w.type)) errors.push(`${d.id}: a ${w.kind} weapon needs damage and a type`);
         if ((w.kind === "bow" || w.kind === "gun") && !(w.ammo && w.ammo.length > 0)) errors.push(`${d.id}: a ${w.kind} needs the ammunition it takes`);
         if (w.kind === "bow" && !(w.draw! > 0)) errors.push(`${d.id}: a bow needs a draw time`);
         if (w.clip !== undefined && !(Number.isInteger(w.clip) && w.clip >= 1 && w.clip <= 255)) errors.push(`${d.id}: weapon.clip must be a whole number from 1 to 255`);
@@ -686,8 +688,10 @@ export function compileContent(all: readonly Def[]): CompileResult {
         for (const [group, v] of Object.entries(d.zones ?? {})) for (const z of ZONE_GROUPS[group]!) zones[z] = v;
         zoneMul[i] = zones;
       }
-      bodyRadius[i] = d.radius;
-      bodyHeight[i] = d.height;
+      // A cloud has no body, so nothing aims at it, opens it or meets it; its reach is its definition's (server/clouds.ts).
+      const body = d.type !== "prop" || d.class !== "cloud";
+      bodyRadius[i] = body ? d.radius : 0;
+      bodyHeight[i] = body ? d.height : 0;
       if (d.type === "prop") drawSize[i] = d.size ?? 1;
     } else if (d.type === "item") {
       stack[i] = d.stack;

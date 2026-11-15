@@ -67,26 +67,26 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
   const ids = (defs: readonly Def[]): string[] => defs.filter((d) => d.type === "item").map((d) => d.id.slice(5));
   expect(ids(WEAPONS)).toEqual(["bow", "crossbow", "rifle", "pistol"]);
   expect(ids(AMMO)).toEqual(["arrow_stone", "arrow_tranq", "arrow_flame", "round_rifle", "round_pistol", "dart_tranq", "dart_shock", "scope", "silencer", "flashlight", "laser"]);
-  expect(ids(EXPLOSIVES)).toEqual(["grenade"]);
+  expect(ids(EXPLOSIVES)).toEqual(["grenade", "grenade_smoke", "grenade_poison"]);
   const all = new Set(CORE_CONTENT.map((d) => `${d.type} ${d.id}`));
   for (const d of [...WEAPONS, ...AMMO, ...EXPLOSIVES]) {
     expect(ITEMS.includes(d)).toBe(true);
     expect(all.has(`${d.type} ${d.id}`)).toBe(true);
     expect(CORE_CONTENT.filter((o) => o.type === d.type && o.id === d.id).length).toBe(1);
   }
-  // Each moved item brought its engram and the rename of its old recipe id, and is made as before.
-  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(16);
+  // Each moved item brought its engram and the rename of its old recipe id, and is made as before; W5's two grenades came with theirs.
+  expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(18);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
   expect(pistol).toMatchObject({ weight: 3, weapon: { clip: 6, reload: 2.2, interval: 0.35, uses: 60 }, craft: { seconds: 12, xp: 11, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
 });
 
-test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud class wait, as the plan has them", () => {
+test("the weapon and ammo facets' stubs and the bola's buff fields wait, as the plan has them", () => {
   // W2 built auto, reloadEach and melee (M4), and W1 spread and recoil (M1, M2): their pins are in the test below,
-  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts.
-  expect(FIELDS.item.weapon!.stubs).toEqual({ structures: "polish", cloud: "polish" });
+  // tests/unit/weapon.test.ts and tests/unit/aim.test.ts. W5 built the cloud and its class (M7): tests/integration/clouds.test.ts.
+  expect(FIELDS.item.weapon!.stubs).toEqual({ structures: "polish" });
   expect(FIELDS.item.ammo!.stubs).toEqual({ pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" });
   expect([FIELDS.buff.only!.waits, FIELDS.buff.survivorSeconds!.waits, FIELDS.buff.after!.waits]).toEqual(["polish", "polish", "polish"]);
-  expect(classRow("prop/cloud")).toMatchObject({ status: "stub", waits: "polish", parent: "prop" });
+  expect(classRow("prop/cloud")).toMatchObject({ status: "built", parent: "prop" });
   expect(CLASSES.filter((r) => r.id === "prop/cloud").length).toBe(1);
   // The holo-scope is an attachment kind no item is yet.
   expect(defFaults({ type: "item", class: "attachment", id: "test:holo", stack: 1, attachment: "holo" })).toEqual([]);
@@ -102,7 +102,9 @@ test("every weapon and round today compiles as it did: no stub in its timings, a
     const blow = blows.has(reg.ids[i]!);
     if (w) expect([reg.ids[i], w.meleeTicks, w.meleeStrikeTick]).toEqual(blow ? [reg.ids[i], 15, 5] : [reg.ids[i], undefined, undefined]);
     expect([reg.ids[i], reg.blowDamage[i], Math.round(reg.blowTorpor[i]! * 100) / 100, Math.round(reg.blowReach[i]! * 100) / 100]).toEqual(blow ? [reg.ids[i], 10, 1.4, 2.6] : [reg.ids[i], 0, 0, 0]);
-    expect([reg.ids[i], reg.structureMul[i], reg.cloudProp[i], reg.cloudTicks[i], reg.cloudBuff[i]]).toEqual([reg.ids[i], 1, 0, 0, 0]);
+    // W5's: the smoke grenade bursts into 40 s of smoke and the poison grenade into 20 s of gas that poisons.
+    const cloud = ({ "core:grenade_smoke": ["core:cloud_smoke", 1200, ""], "core:grenade_poison": ["core:cloud_poison", 600, "core:poisoned"] } as Record<string, [string, number, string]>)[reg.ids[i]!];
+    expect([reg.ids[i], reg.structureMul[i], reg.cloudProp[i] ? reg.ids[reg.cloudProp[i]!] : "", reg.cloudTicks[i], reg.cloudBuff[i] ? reg.ids[reg.cloudBuff[i]!] : ""]).toEqual([reg.ids[i], 1, ...(cloud ?? ["", 0, ""])]);
     expect([reg.ids[i], reg.ammoPellets[i], reg.ammoFalloffFull[i], reg.ammoFalloffNone[i], reg.ammoBlast[i], reg.ammoPierce[i], reg.ammoLight[i], reg.ammoLightColor[i]]).toEqual([reg.ids[i], 1, 0, 0, 0, 0, 0, 0]);
   }
 });

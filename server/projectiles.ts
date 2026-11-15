@@ -102,6 +102,8 @@ export class Projectiles {
   private readonly stuck: Stuck[] = [];
   private readonly thrown: Thrown[] = [];
   bursts = 0;
+  /** W5: a grenade with a cloud went off (server/clouds.ts): `item`, where, and its thrower's pid. */
+  onCloud: ((item: number, x: number, y: number, z: number, by: number) => void) | null = null;
   private readonly stuckKind: number;
   private readonly liveKind: number;
   private readonly rng: Rng;
@@ -417,6 +419,14 @@ export class Projectiles {
     const ents = world.ents;
     const reg = world.reg;
     if ((ents.flags[g.ent]! & F_ALIVE) !== 0 && ents.gen[g.ent] === g.gen) ents.destroy(g.ent);
+    // W5: a grenade with a cloud leaves it where it went off, and one that does no harm (smoke, poison) has no blast.
+    if (reg.cloudProp[g.item] !== 0) {
+      this.onCloud?.(g.item, g.x, g.y, g.z, g.by);
+      if (!(reg.damage[g.item]! > 0)) {
+        this.bursts++;
+        return;
+      }
+    }
     const src = this.src;
     src.by = records.byPid.get(g.by) ?? null;
     src.x = g.x;

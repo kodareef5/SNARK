@@ -25,6 +25,7 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
+import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
@@ -251,6 +252,8 @@ export class Scene {
   readonly characters: Characters;
   /** Small details: feathers knocked loose, dust thrown up. */
   readonly details: Details;
+  /** Smoke and gas: each prop/cloud drawn as puffs over its reach, with the details (clouds.ts). */
+  readonly clouds: Clouds;
   /** A bag of one stack, drawn as its item lying (dropped.ts). */
   private readonly dropped: Dropped;
   /** Null draws no body for the viewer. The app sets it before build(). */
@@ -329,6 +332,8 @@ export class Scene {
   /** Linear RGB of the open sky and of deep water. */
   private readonly skyColor = new Float32Array(3);
   private readonly deepColor = new Float32Array(3);
+  /** The nearest and farthest depth the clouds' puffs reach this frame. */
+  private readonly cloudRange = [0, 0];
 
   /** With `stream`, `pack` is the boot pack and other levels are asked of the port as they are wanted. */
   constructor(world: RenderWorld, reg: Registry, pack: Pack, stream?: { manifest: Manifest; port: AssetPort }) {
@@ -381,6 +386,7 @@ export class Scene {
     this.characters = new Characters(reg, pack, this.assets);
     this.details = new Details(reg, pack.header.details, pack.palette, (kind) => this.characters.creature(kind));
     if (pack.header.details) this.assets.residency.reserve("details atlas", atlasBytes(pack.header.details.atlas.side));
+    this.clouds = new Clouds(reg, pack.header.details, pack.palette);
     this.dropped = new Dropped(reg, bind);
     const p = this.packet as unknown as Record<string, unknown>;
     this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => p[k] as Uint8Array);
@@ -662,18 +668,24 @@ export class Scene {
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
     const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? [], this.own, this.world.hf, this.assets.tier, this.now);
-    for (const [first, count, flags] of [[0, cut, DRAW_CUTOUT], [cut, p.detailCount - cut, DRAW_BLEND]] as const) {
+    // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
+    const seen = p.detailCount;
+    const solid = this.clouds.write(p, cam, remote, this.cloudRange);
+    const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
+    for (const [first, count, flags, passes] of [[0, cut, DRAW_CUTOUT, NEAR], [cut, seen - cut, DRAW_BLEND, NEAR], [seen, solid, DRAW_CUTOUT, far], [seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far]] as const) {
       const d = p.drawCount;
       if (count === 0) continue;
-      if (d + this.doubled + 1 > MAX_DRAWS) {
+      const copies = passes === (NEAR | FAR) ? 2 : 1;
+      if (d + this.doubled + copies > MAX_DRAWS) {
         p.dropped++;
         continue;
       }
       [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [0, 0, 0, 0, first, count, DRAW_DETAILS | flags];
       p.drawOffset.fill(0, d * 3, d * 3 + 3);
-      this.passOf[d] = NEAR;
+      this.passOf[d] = passes;
+      this.doubled += copies - 1;
       p.drawCount = d + 1;
-      p.triangles += count * 2;
+      p.triangles += count * 2 * copies;
     }
   }
 
@@ -1273,7 +1285,8 @@ export class Scene {
     let visible = 0;
     const bodies = this.characters;
     for (let i = 0; i < remote.count; i++) {
-      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0) continue;
+      // A cloud has no mesh of its own: it is puffs among the details (clouds.ts).
+      if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0 || this.clouds.kinds[remote.kind[i]!] !== 0) continue;
       // A bag of one stack is drawn as its item, where the item has a lying mesh.
       const lies = this.dropped.item(remote.kind[i]!, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[remote.kind[i]!]!;
@@ -1290,7 +1303,7 @@ export class Scene {
     const total = this.drawTallied(cam, p.transientCount);
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
-      if (bodies.has(kind) || this.pitched[kind] !== 0) continue;
+      if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0) continue;
       const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;
