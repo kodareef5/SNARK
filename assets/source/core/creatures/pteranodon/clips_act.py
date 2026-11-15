@@ -184,19 +184,20 @@ def attack(r):
     lean0, ext0 = lean_of(ground(), mv.STANCE_HEAD)
     dz = Keys([(0, 0.0), (3, -0.04), (5, -0.045), (7, 0.11), (h, 0.17), (h + 1, 0.15), (11, 0.09), (14, 0.01),
                (16, -0.008), (n - 1, 0.0)])
-    dy = Keys([(0, 0.0), (3, 0.006), (5, 0.007), (7, -0.010), (h, -0.022), (h + 1, -0.026), (11, -0.018), (14, 0.0),
-               (16, 0.004), (n - 1, 0.0)])
-    pitch = Keys([(0, 0.0), (3, 3.0), (5, 3.5), (7, -3.0), (h, -4.5), (h + 1, -4.8), (11, -3.0), (14, 0.5), (16, 0.6),
+    dy = Keys([(0, 0.0), (3, 0.0), (5, 0.0), (7, -0.004), (h, -0.006), (h + 1, -0.010), (11, -0.008), (14, 0.0),
+               (16, 0.003), (n - 1, 0.0)])
+    pitch = Keys([(0, 0.0), (3, 1.0), (5, 1.2), (7, -2.5), (h, -3.5), (h + 1, -3.8), (11, -2.5), (14, 0.5), (16, 0.6),
                   (n - 1, 0.0)])
-    chest = Keys([(0, 0.0), (3, 2.0), (5, 2.5), (7, -3.0), (h, -4.5), (h + 1, -5.0), (11, -3.0), (14, 0.8), (n - 1, 0.0)])
-    # The thrust is level: the head is loaded low and back, at about the height it strikes at, and the neck leans out
-    # to 58 degrees from upright at full stretch while the body carries it forward, the head held level against it, so
-    # the beak travels straight out along its own line. On frame 9 it is already drawing back.
-    lean = Keys([(0, lean0), (3, lean0 + 3.0), (5, lean0 + 4.0), (7, 50.0), (h, 58.0), (h + 1, 52.0), (10, 44.0),
-                 (12, 30.0), (14, lean0 - 3.0), (16, lean0 + 2.0), (n - 1, lean0)])
-    ext = Keys([(0, ext0), (3, 0.83), (5, 0.825), (7, 0.975), (h, 0.99), (h + 1, 0.95), (10, 0.92), (12, 0.91),
+    chest = Keys([(0, 0.0), (3, 0.5), (5, 0.8), (7, -2.0), (h, -2.5), (h + 1, -3.0), (11, -2.0), (14, 0.8), (n - 1, 0.0)])
+    # The thrust is level: the head is loaded low and back, at about the height it strikes at, the body barely
+    # rocking, and the neck leans out to 47 degrees from upright at full stretch while the body carries it forward with
+    # its shoulders held up, the head held level against it, so the beak travels out along its own line. On frame 9 it
+    # is already drawing back.
+    lean = Keys([(0, lean0), (3, lean0 + 7.0), (5, lean0 + 8.0), (7, 42.0), (h, 47.0), (h + 1, 44.0), (10, 38.0),
+                 (12, 28.0), (14, lean0 - 3.0), (16, lean0 + 2.0), (n - 1, lean0)])
+    ext = Keys([(0, ext0), (3, 0.80), (5, 0.795), (7, 0.975), (h, 0.99), (h + 1, 0.95), (10, 0.92), (12, 0.91),
                 (14, 0.945), (n - 1, ext0)])
-    aim = Keys([(0, 0.0), (3, -6.0), (5, -8.0), (7, -7.0), (h, -6.0), (h + 1, -7.0), (10, -5.0), (12, -1.0), (14, 3.0),
+    aim = Keys([(0, 0.0), (3, -9.0), (5, -10.0), (7, -9.5), (h, -9.0), (h + 1, -9.0), (10, -6.0), (12, -1.0), (14, 3.0),
                 (16, -1.5), (n - 1, 0.0)])
     gape = Keys([(0, 0.0), (4, 0.05), (5, 0.25), (6, 0.65), (7, 0.85), (h, 0.0)])
     cock = Keys([(0, 0.0), (3, 1.0), (5, 1.0), (7, 0.0), (10, 0.3), (12, 0.6), (14, 0.3), (n - 1, 0.0)])
