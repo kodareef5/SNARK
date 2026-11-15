@@ -1,0 +1,3 @@
+Completed both 2048² sets in `tex/studies/horn/`, including all ten maps, reusable sources, and build/check scripts. All measurements pass; game previews reviewed.
+
+[Report](tex/studies/horn/REPORT.md) includes results and limitations. The built-in imagegen [prompt](tex/studies/horn/source/horn_prompt.txt) and untouched original are preserved.

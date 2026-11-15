@@ -1,0 +1,7 @@
+Use case: photorealistic-natural
+Asset type: reusable 2048 by 2048 game albedo texture source, square, seamless both ways.
+Primary request: a perfectly flat, unlit, neutral light grey swatch of smooth living keratin horn from the long beak and crest of a coastal pterosaur. This square covers 400 by 400 millimetres. The material fills every pixel; no object outline or background.
+Materials/textures: smooth satin horn with very faint broken growth filaments running horizontally left to right, not ruled parallel stripes. Natural scattered micro-pits and tiny low bumps 0.2 to 0.6 mm wide, subtle soft irregular mottling 3 to 15 mm wide. Sparse fine superficial wear scratches, 3 to 12 mm long. Old living horn, nearly smooth, fine stipple, restrained beautiful detail. Preserve quiet areas and tiny irregularities. Neither polished nor coarse. At distance an even pale grey, all detail subtle.
+Lighting: diffuse cross-polarised flat albedo, absolutely no light direction, gradient, highlight, vignette, bevel, ambient shadow, or curvature. The intrinsic keratin pigmentation and fine value texture remain visible. All quarters equally bright.
+Color palette: strictly neutral grey, RGB around 188; small value variations only. No orange, charcoal band or other colour.
+Constraints: seamless wrap in both directions, no text, no border, no repeated stamps. No wood rings, wood grain knots, brushed metal stripes, marble, orange peel, stone, plaster, glazed ceramic or plastic. No large pores or deep cracks. No head or animal: only the flat surface texture.
