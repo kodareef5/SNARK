@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --used X,Z, --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --ui (--console TEXT, --inventory, --chat).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -31,7 +31,7 @@ import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../sh
 import { SKY_COLOR } from "../shared/pack/palette.ts";
 import type { TextureRole } from "../shared/pack/texture.ts";
 import { Heightfield } from "../shared/world/heightfield.ts";
-import { NodeField, type NodeSpot } from "../shared/world/nodes.ts";
+import { NodeField, formOf, mix, type NodeSpot } from "../shared/world/nodes.ts";
 import { PROVING_DIMS, PROVING_SPAWN, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0, buildProvingHeightfield, populateProving, provingNodes } from "../shared/world/proving.ts";
 import { GONE_FELL, StructureStore } from "../shared/world/structures.ts";
 import { findAssets } from "./art/assets.ts";
@@ -135,6 +135,15 @@ function useUp(view: ProvingView, x: number, z: number): void {
     }
   }
   if (chunk >= 0) nodes.set(chunk, index, false);
+}
+
+/** Grows a node of kind `id` on the ground at (x, z), its variant, size and turn hashed from the place as a map's are. */
+function growAt(view: ProvingView, id: string, x: number, z: number): void {
+  const { reg, hf, nodes } = view;
+  const kind = reg.index.get(id);
+  if (kind === undefined || reg.defs[kind]?.type !== "node") throw new Error(`--grow takes a node kind, not "${id}"`);
+  const h = mix(Math.round(x * 64), Math.round(z * 64), kind);
+  nodes.store.add(formOf(nodes.forms, kind, h), x, hf.heightAt(x, z), z, (h >>> 8) & 0xffff, 0, 1);
 }
 
 /** Removes houseScene's house and shows it falling as a client would, `ms` after the removal, from the south-west foundation. */
@@ -980,6 +989,8 @@ if (import.meta.main) {
     if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
     const used = arg("used")?.split(",").map(Number);
     if (used) useUp(view, used[0]!, used[1]!);
+    const grow = arg("grow")?.split(",") ?? [];
+    for (let i = 0; i + 2 < grow.length; i += 3) growAt(view, grow[i]!, Number(grow[i + 1]), Number(grow[i + 2]));
   };
   const graphics = arg("graphics");
   if (graphics !== undefined) {
