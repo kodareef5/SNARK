@@ -25,7 +25,7 @@ test("adding tops up matching stacks, then fills empty slots, and reports what d
   expect(inv.add(stone, 80, 0, 0, 0, reg)).toBe(30);
   expect(slots(inv)).toEqual(["0:core:stonex100", "1:core:stonex100", "2:core:stonex100", "3:core:waterskinx1"]);
   expect(inv.total(stone)).toBe(300);
-  expect(inv.weight(reg)).toBeCloseTo(300 * 0.5 + 1, 5);
+  expect(inv.weight(reg)).toBeCloseTo(300 * 0.5 + 0.3, 5);
   expect(inv.used()).toBe(4);
   // Taking is all or nothing.
   expect(inv.take(stone, 301)).toBe(false);

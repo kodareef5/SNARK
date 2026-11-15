@@ -1,19 +1,27 @@
 // Levels and unspent points are functions of experience and of what was spent, so neither is stored and neither can drift.
-// A craft job burns its ingredients when a unit starts and mints the product when its deadline comes due.
+// A craft job burns its ingredients when a unit starts and mints the product when its deadline comes due. A job lives on
+// the record whose inventory gives its ingredients and takes its product: a survivor's own, for what is made in the hands,
+// or a station's, for what is made at one (craftAt). Its crafter, who must know the engram and gets the experience, is the
+// survivor who queued it. Made from the engram it is primitive. Made from a blueprint in that inventory (craftBlueprint) it
+// needs no engram, costs its quality's ingredients, and is of the blueprint's quality or above by the crafter's Crafting Skill.
 
 import type { CraftFacet, EngramDef, ItemDef, LevelsDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../shared/net/protocol.ts";
 import { STAT_COUNT, STAT_NAMES, spendPoint } from "../shared/sim/genome.ts";
+import { FLAG_BLUEPRINT, QUALITY_CRAFT_XP, QUALITY_MUL, blueprintCost, craftedQuality } from "../shared/sim/items.ts";
+import { Rng } from "../shared/rng.ts";
+import { statOf } from "./survival.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { Items } from "./items.ts";
-import type { EntityRecord, Records } from "./records.ts";
+import type { EntityRecord, Job, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
 
 export const DEADLINE_CRAFT = 4;
 const MAX_JOBS = 8;
+const STAT_CRAFTING = STAT_NAMES.indexOf("crafting");
 
 /** Sources of experience. XP_GIVEN (a cheat) is not multiplied by any rule. */
 export const XP_GIVEN = 0;
@@ -47,8 +55,11 @@ export class Progression {
   /** Content indices of the engrams learned automatically. */
   private readonly autos: number[] = [];
   private readonly survivor: number;
+  /** Draws the crafted skill bonus of what a blueprint makes. */
+  private readonly rng: Rng;
 
-  constructor(world: ServerWorld, records: Records, items: Items, deadlines: DeadlineHeap) {
+  constructor(world: ServerWorld, records: Records, items: Items, deadlines: DeadlineHeap, seed = 113) {
+    this.rng = new Rng(seed);
     this.world = world;
     this.records = records;
     this.items = items;
@@ -172,23 +183,70 @@ export class Progression {
     return RESULT_OK;
   }
 
-  /** The first unit starts at once if nothing else is being made. */
+  /** Made in the hands, from the survivor's own inventory. An item made at a station is refused. The first unit starts at once if nothing else is being made. */
   craft(rec: EntityRecord, item: number, count: number): number {
     const craft = this.craftOf(item);
     if (!craft || !(count >= 1 && count <= 100)) return RESULT_INVALID;
-    if (!this.knows(rec, this.engramOf[item]!)) return RESULT_DENIED;
-    if (rec.jobs.length >= MAX_JOBS) return RESULT_FULL;
-    if (rec.jobs.length === 0 && !this.canStart(rec, craft)) return RESULT_SHORT;
+    if (this.world.reg.craftAt[item] !== 0) return RESULT_DENIED;
+    return this.queue(rec, rec, craft, item, count);
+  }
+
+  /**
+   * Made at `station` (a structure's record) for the survivor `by`: queued on the station's record, from what lies in it,
+   * and landing in it. Only an item whose craft names the station's kind is made there.
+   */
+  craftAt(by: EntityRecord, station: EntityRecord, item: number, count: number): number {
+    const craft = this.craftOf(item);
+    if (!craft || !(count >= 1 && count <= 100)) return RESULT_INVALID;
+    if (station.at < 0 || station === by || this.world.reg.craftAt[item] !== station.kind) return RESULT_INVALID;
+    return this.queue(station, by, craft, item, count);
+  }
+
+  /**
+   * Made from the blueprint in `slot` of `on`, the inventory the item is made from: the survivor's own (`on` is `by`) for
+   * an item made in the hands, the station's for one made at a station. A blueprint needs no engram and no level
+   * (ark.wiki.gg Blueprint, 2026-11-15); its ingredients are its quality's (blueprintCost), and it must still lie there
+   * as each unit starts. The product's quality comes of the blueprint's and the crafter's skill (`due`).
+   */
+  craftBlueprint(by: EntityRecord, on: EntityRecord, slot: number, count: number): number {
+    if (!(count >= 1 && count <= 100)) return RESULT_INVALID;
+    const inv = this.items.inv(on);
+    if (slot >= inv.cap || inv.item[slot] === 0 || (inv.flags[slot]! & FLAG_BLUEPRINT) === 0) return RESULT_INVALID;
+    const item = inv.item[slot]!;
+    const craft = this.craftOf(item);
+    if (!craft) return RESULT_INVALID;
+    // Made where its craft says: in the hands from the survivor's own, or at a station of the right kind from the station's.
+    const at = this.world.reg.craftAt[item]!;
+    if (at === 0 ? on !== by : on === by || on.at < 0 || on.kind !== at) return RESULT_INVALID;
+    return this.queue(on, by, craft, item, count, inv.quality[slot]!);
+  }
+
+  /** Queues a job on `on` for the crafter `by`, who may be `on` itself. `bp` is the quality of the blueprint it is made from, or -1 for the engram. */
+  private queue(on: EntityRecord, by: EntityRecord, craft: CraftFacet, item: number, count: number, bp = -1): number {
+    if (bp < 0 && !this.knows(by, this.engramOf[item]!)) return RESULT_DENIED;
+    if (bp < 0 && craft.level !== undefined && this.level(by) < craft.level) return RESULT_SHORT;
+    if (on.jobs.length >= MAX_JOBS) return RESULT_FULL;
+    if (on.jobs.length === 0 && !this.canStart(on, craft, item, bp)) return RESULT_SHORT;
     // A module may refuse the job, or change how many are made.
-    const asked = { pid: rec.pid, item: this.world.reg.ids[item]!, count };
+    const asked = { pid: by.pid, item: this.world.reg.ids[item]!, count };
     if (this.bus.before(CRAFT_START, asked) !== "") return RESULT_DENIED;
     count = Math.floor(Number(asked.count));
     if (!(count >= 1 && count <= 100)) return RESULT_DENIED;
-    rec.jobs.push({ item, left: count, doneAt: 0 });
-    rec.progVersion++;
-    this.records.dirty.add(rec.pid);
-    if (rec.jobs.length === 1) this.start(rec);
+    const job: Job = on === by ? { item, left: count, doneAt: 0 } : { item, left: count, doneAt: 0, by: by.pid };
+    if (bp >= 0) job.bp = bp;
+    on.jobs.push(job);
+    on.progVersion++;
+    this.records.dirty.add(on.pid);
+    if (on.jobs.length === 1) this.start(on);
     return RESULT_OK;
+  }
+
+  /**
+   * Who makes the job on `rec`: the survivor who queued it at a station, or `rec` itself for one made in the hands. It gets
+   * the experience. Null if that survivor's record is gone, and then nobody does.
+   */
+  crafter(rec: EntityRecord, job: Job): EntityRecord | null {
+    return job.by === undefined ? rec : (this.records.byPid.get(job.by) ?? null);
   }
 
   /** A DEADLINE_CRAFT entry came due. */
@@ -201,21 +259,34 @@ export class Progression {
     const craft = def.craft!;
     const made = craft.count ?? 1;
     const tool = def.tool;
+    const crafter = this.crafter(rec, job);
+    // Made from the engram it is primitive; from a blueprint, of the blueprint's quality or above, by the crafter's skill.
+    const quality = job.bp === undefined ? 0 : craftedQuality(job.bp, this.craftingSkill(crafter), this.rng.float());
     // With no room for the whole product, retry in a second.
-    if (this.items.inv(rec).room(product, 0, this.items.table) < made) {
+    if (this.items.inv(rec).room(product, quality, this.items.table) < made) {
       job.doneAt = this.world.tick + TICK_RATE;
       this.deadlines.push(job.doneAt, DEADLINE_CRAFT, pid, job.doneAt);
       return;
     }
-    const got = this.items.mint(rec, product, made, 0, tool ? tool.uses : 0, -1, "craft");
-    this.bus.after(CRAFT_DONE, { pid: rec.pid, item: def.id, n: got });
+    const got = this.items.mint(rec, product, made, quality, tool ? Math.round(tool.uses * (QUALITY_MUL[quality] ?? 1)) : 0, -1, "craft");
+    this.bus.after(CRAFT_DONE, { pid: job.by ?? rec.pid, item: def.id, n: got });
     job.left--;
     job.doneAt = 0;
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
     if (job.left <= 0) rec.jobs.shift();
-    this.addXp(rec, craft.xp, XP_CRAFT);
+    // ARK multiplies the experience by the quality made (ark.wiki.gg Item_Quality, 2026-11-15).
+    if (crafter) this.addXp(crafter, craft.xp * (QUALITY_CRAFT_XP[quality] ?? 1), XP_CRAFT);
     this.start(rec);
+  }
+
+  /**
+   * A survivor's Crafting Skill, 1 for 100%: the species' crafting stat, or 1 where it has none. Null, for a crafter who is
+   * gone, is 1.
+   */
+  craftingSkill(rec: EntityRecord | null): number {
+    const def = rec ? this.world.reg.defs[rec.kind] : null;
+    return def?.type === "species" ? statOf(def, rec!.genome, STAT_CRAFTING, 1) : 1;
   }
 
   /** Restores the craft deadline of a loaded record. */
@@ -232,9 +303,11 @@ export class Progression {
     return def?.type === "item" && def.craft ? def.craft : null;
   }
 
-  private canStart(rec: EntityRecord, craft: CraftFacet): boolean {
+  /** Whether a unit can start: the ingredients are there, and for one from a blueprint of quality `bp`, that blueprint. */
+  private canStart(rec: EntityRecord, craft: CraftFacet, item: number, bp: number): boolean {
     const inv = this.items.inv(rec);
-    return craft.needs.every((n) => inv.total(this.world.reg.index.get(n.item)!) >= n.count);
+    if (bp >= 0 && inv.blueprint(item, bp) < 0) return false;
+    return craft.needs.every((n) => inv.total(this.world.reg.index.get(n.item)!) >= (bp >= 0 ? blueprintCost(n.count, bp) : n.count));
   }
 
   /** Starts the next unit of the first job. Drops jobs that cannot start. */
@@ -242,8 +315,9 @@ export class Progression {
     while (rec.jobs.length > 0) {
       const job = rec.jobs[0]!;
       const craft = this.craftOf(job.item);
-      if (craft && this.canStart(rec, craft)) {
-        for (const n of craft.needs) this.items.burnItem(rec, this.world.reg.index.get(n.item)!, n.count);
+      const bp = job.bp ?? -1;
+      if (craft && this.canStart(rec, craft, job.item, bp)) {
+        for (const n of craft.needs) this.items.burnItem(rec, this.world.reg.index.get(n.item)!, bp >= 0 ? blueprintCost(n.count, bp) : n.count);
         job.doneAt = this.world.tick + Math.max(1, Math.round(craft.seconds * TICK_RATE));
         this.deadlines.push(job.doneAt, DEADLINE_CRAFT, rec.pid, job.doneAt);
         rec.progVersion++;

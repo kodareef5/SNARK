@@ -1,0 +1,25 @@
+{
+  "seed": 481936,
+  "tile_metres": 0.2,
+  "height_range_mm": [
+    0,
+    2.5
+  ],
+  "base_height_mm": 1.35,
+  "revision": 2,
+  "build_seconds": 25.059,
+  "sha256": {
+    "flint_base.png": "a3310fd8344c77d523f0afd6d761655c0f81131baba95323903e9c652b15a882",
+    "flint_base_1024.png": "391ab3334d854f8a8416ff25ee7bd6f382b65e4ce700d34ccb5262ecca7416cb",
+    "flint_orm.png": "ec55c3c1c4f7140c5c513aca889a68511928409e9141da6bde0c9ed3df47784f",
+    "flint_orm_1024.png": "8d9f7c18da04275249125896d3c109791284ff9ac3fc6ea976bb4772130d50cf",
+    "stone_base.png": "f1b45e87db1c77496dac7b1d4c7cd5ca37779f46a236592221cd808a47628cf4",
+    "stone_base_1024.png": "a9f5f49a19d4126cbcc975f730115bf9738215e5d67a4ee89fc1b62ebf5b40bb",
+    "stone_height.png": "82450f8fa96cc0eaa8f8e05ab03b484289a08cdfd8b6abc22895bf536f3e0cfc",
+    "stone_height_1024.png": "2f07519cbaac94438de8da91921e880cd7463698a78beefa75cb279919f8df1c",
+    "stone_normal.png": "2a8d8fb7992e360b71a3b9ff471815abc44ef458ed8b562604242d01149d3f77",
+    "stone_normal_1024.png": "6ac91daae1a0f1be43007839133410a969bbd82944f6fc7e2b6c151cfcbf1a10",
+    "stone_orm.png": "519efc27830de36c780e3b45b303dac857df2e62dd5935114fc37a50e53e55d8",
+    "stone_orm_1024.png": "4d235c63533be949d3e995eeeef13d07a857ca6517d423cb65cd9c108ce27d70"
+  }
+}

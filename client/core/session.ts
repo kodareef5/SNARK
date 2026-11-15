@@ -40,6 +40,7 @@ import {
   OWN_LOOK,
   OWN_MARKERS,
   OWN_OPEN,
+  OWN_STATION,
   OWN_PROGRESSION,
   OWN_RESPAWN,
   OWN_SESSION,
@@ -334,6 +335,8 @@ export class ClientSession {
   looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
   open: { name: string; inventory: Inventory } | null = null;
+  /** The queue of the open container when it is a crafting station (OWN_STATION), or null. `kind` is the station's structure kind. */
+  station: { kind: number; jobs: { item: number; left: number; doneAt: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /** The world's respawn points, then the tribe's beds. wait is in seconds. */
@@ -835,8 +838,8 @@ export class ClientSession {
         const item = r.u16();
         const n = item === 0 ? 0 : r.u16();
         const quality = item === 0 ? 0 : r.u8();
-        // Flags (SLOT_ bits), read past until a slot keeps them.
-        if (item !== 0) r.u8();
+        // Flags (SLOT_ bits): a blueprint.
+        const flags = item === 0 ? 0 : r.u8();
         const dur = item === 0 ? 0 : r.u16();
         const spoilAt = item === 0 ? 0 : r.u32();
         const holds = item !== 0 && r.bool();
@@ -844,7 +847,7 @@ export class ClientSession {
         const loaded = holds ? r.u8() : 0;
         const attach = holds ? r.u16() : 0;
         if (r.overflow || slot >= cap) return;
-        inv.set(slot, item, n, quality, dur, spoilAt);
+        inv.set(slot, item, n, quality, dur, spoilAt, flags);
         if (holds) inv.setGear(slot, ammo, loaded, attach);
       }
     } else if (component === OWN_SUBJECT) {
@@ -866,7 +869,14 @@ export class ClientSession {
         const tribe = r.bool() ? r.string(MAX_NAME_BYTES * 3) : "";
         if (!r.overflow) this.looked = { id, health, food, torpor, taming, te, mating, tribe };
       }
+    } else if (component === OWN_STATION) {
+      const kind = r.u16();
+      const jobs: { item: number; left: number; doneAt: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32() });
+      if (!r.overflow) this.station = kind === 0 ? null : { kind, jobs };
     } else if (component === OWN_OPEN) {
+      // A station's queue comes after it is opened.
+      this.station = null;
       if (!r.bool()) this.open = null;
       else {
         const cap = r.varint();

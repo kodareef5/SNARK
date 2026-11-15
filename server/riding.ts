@@ -102,15 +102,13 @@ export class Riding {
   }
 
   dismount(c: Client): void {
-    const { world, game, records } = this.ctx;
+    const { game } = this.ctx;
     const e = c.drive;
     const ride = e >= 0 ? this.riders.get(e) : undefined;
     if (!ride || ride.c !== c) return;
-    const ents = world.ents;
-    this.riders.delete(e);
     game.release(c);
-    game.bus.after(RIDE_DISMOUNT, { pid: c.pid, mount: ents.pid[e]! });
-    const rec = (ents.flags[e]! & F_ALIVE) !== 0 ? records.byPid.get(ents.pid[e]!) : undefined;
+    game.bus.after(RIDE_DISMOUNT, { pid: c.pid, mount: ride.pid });
+    const rec = this.removeRider(e, ride);
     if (c.ent >= 0) {
       // The mount has moved this tick since its rider was pinned.
       if (rec?.pid === ride.pid) this.note(ride, e);
@@ -118,7 +116,16 @@ export class Riding {
     }
     this.dismounted++;
     c.ownDirty = true;
+  }
+
+  /** Both a dismount and a connection already released by the game remove the rider's load from its original mount. */
+  private removeRider(e: number, ride: Ride): EntityRecord | undefined {
+    this.riders.delete(e);
+    const { world, records } = this.ctx;
+    const ents = world.ents;
+    const rec = (ents.flags[e]! & F_ALIVE) !== 0 && ents.pid[e] === ride.pid ? records.byPid.get(ride.pid) : undefined;
     if (rec) this.ctx.refresh(rec);
+    return rec;
   }
 
   private note(ride: Ride, e: number): void {
@@ -232,7 +239,7 @@ export class Riding {
         else {
           // The game let go of the mount first (the connection dropped, or the mount died). Its rider is set down as one who
           // got off, and no longer marked as seated, or others would draw it on the mount while it stands somewhere else.
-          this.riders.delete(e);
+          this.removeRider(e, ride);
           if (c.ent >= 0 && c.drive < 0 && ents.seat[c.ent] === e + 1) this.setDown(ride);
         }
         continue;

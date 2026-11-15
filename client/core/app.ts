@@ -1,6 +1,7 @@
 // One whole client without a browser. The shell owns the renderer, socket and DOM, forwards events
 // here, and draws what frame() returns. Tests drive this class directly.
 
+import { Icons } from "./assets/icons.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { forTouch, tierOf } from "./assets/tiers.ts";
 import { DRAW_TRIANGLES, Governor } from "./governor.ts";
@@ -124,6 +125,8 @@ export class App {
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    // The inventory pictures the build drew, fetched as they are first shown.
+    if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     this.shots = new Shots(reg, pack);
     session.onResult = (seq, code) => {
       this.ui.creator.result(seq, code === RESULT_OK);

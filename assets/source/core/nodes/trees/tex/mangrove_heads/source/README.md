@@ -1,0 +1,11 @@
+The original artwork is [leaves_generated.png](leaves_generated.png), copied byte for byte from `../mangrove_leaves/source/set2/leaves_generated.png`. Its original [generation prompt](generation_prompt.txt) is retained. It was generated previously for this project's mangrove sprays; no image generation service was called for this head atlas.
+
+[originals.json](originals.json) records the source paths, operations and SHA-256 hashes. The mangrove lineup and botanical sheet are unchanged copies of this project's concept art. The three `sprays_*.png` files are lossless top-left 1024 × 1024 crops of the existing mangrove spray maps. They are diagnostic references, not inputs to the head relief. No photograph, web image, or other game's art was used.
+
+The offline builder extracts the twelve leaves' contours and tissue from the original library using the same rectification as `mangrove_leaves/build_material.py`. Source lighting is removed by separating pigment/vein detail from the broad source luminance. New complete blades are dimensioned at 90–130 × 40–60 mm, combined in three or four opposite pairs on a short shoot, and layered into eight independently seeded cells. The project images supply actual contours and veins; leaf shapes are not substitutes drawn from generic ellipses.
+
+`cell_*_geometry.json` records every authored blade's dimensions, source index, pose, pigment role and shoot, plus all shoot placements. Kind 1 is mature upper tissue, 2 is underside, 3 is fresh tissue, 4 is brown, and 5 is twig. IDs are unique within a cell and include twigs. `cell_*_authored.npz` records visible ownership, tissue kind, fractional brown coverage, and tissue exposure at output resolution. These are regenerated build records, not imported external images. Many authored blades are hidden under other blades.
+
+[layout.json](layout.json) records atlas regions, dimensions, physical texel pitch, color measurements and encoding. [rectified_tissue.png](rectified_tissue.png) is the intermediate leaf-library diagnostic, not a shipped material map. The full reproducible authoring recipe is [build_material.py](../build_material.py), with a local [library extractor](../leaf_library.py).
+
+All build and diagnostic outputs stay in `mangrove_heads/`. The original neighboring project files are only read. No git command was used.

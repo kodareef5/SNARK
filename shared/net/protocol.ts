@@ -191,11 +191,18 @@ export const CARRY_THROW = 2;
 /** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
 export const CMD_TAKE = 28;
 /**
- * Protocol 12, reserved for crafting at a station (planning/reference/items-plan.md, task D): item u16, count u8, made at the
- * station the session has open, from that station's inventory. Refused until it is built.
+ * Protocol 12. Crafting at a station: item u16, count u8. Queued on the station the session has open, made from what lies in
+ * it and put there; the session's survivor must know the engram, and gets the experience. Refused for an item made
+ * elsewhere, and with no station open.
  */
 export const CMD_CRAFT_AT = 29;
-/** Protocol 12, reserved for crafting from a blueprint (items-plan.md, task E): own slot varint, count u8. Refused until it is built. */
+/**
+ * Protocol 12. Crafting from a blueprint: box 1 bit (BOX_), slot varint, count u8. The blueprint lies in the inventory the
+ * item is made from: the session's own (BOX_SELF) for an item made in the hands, the station it has open (BOX_OPEN) for one
+ * made at a station, where the job is queued as CMD_CRAFT_AT's is. No engram is needed; the ingredients are the blueprint's
+ * quality's, and what is made is of its quality or above. Refused for a slot that holds no blueprint and for the wrong
+ * station (INVALID), and without the ingredients (SHORT).
+ */
 export const CMD_CRAFT_BLUEPRINT = 30;
 
 /** The only boxes a slot command can address. No ids travel. */
@@ -241,7 +248,10 @@ export const OWN_VITALS = 2;
  * bit for "it holds something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
 export const OWN_SLOTS = 3;
-/** A slot's flags. Protocol 12 sends them; nothing sets one until blueprints are built (items-plan.md, task E). */
+/**
+ * A slot's flags, protocol 12. The slot holds a blueprint of its item: one alone, at its quality, crafted from
+ * (CMD_CRAFT_BLUEPRINT) and never spent. Stacks join only at the same quality and flags (shared/sim/items.ts FLAG_BLUEPRINT).
+ */
 export const SLOT_BLUEPRINT = 1;
 
 /** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
@@ -295,7 +305,10 @@ export const OWN_SUBJECT = 14;
  * effectiveness (10 bits each), its pair's mating progress (1 bit, 10 bits), its tribe's name (1 bit, string).
  */
 export const OWN_OVERHEAD = 15;
-/** Protocol 12, reserved for the open station's queue (items-plan.md, task D): count u8, then per job: item u16, units left u8, done tick u32. */
+/**
+ * Protocol 12. The open station's queue, sent when it changes: the station's kind u16 (0 when what is open is no longer a
+ * station, and nothing follows but a count of 0), count u8, then per job: item u16, units left u8, done tick u32.
+ */
 export const OWN_STATION = 16;
 
 export const MARKER_DEATH = 1;

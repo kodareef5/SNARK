@@ -27,7 +27,17 @@ bun install
 bun run dev        # http://localhost:8787
 ```
 
-Open the page in two tabs to see two survivors. The world is the proving ground:
+The page remembers its default survivor and device key in local storage, so a
+reload returns to the same survivor. To play two survivors in separate tabs,
+open `http://localhost:8787/?name=Ada` and `http://localhost:8787/?name=Bea`.
+An explicit name selects that survivor without replacing the saved default;
+another tab with the same name and key takes over its connection. Clearing
+local storage loses the key. If storage is unavailable, identity lasts only for
+that page load. An older unnamed survivor is recoverable with `?name=OldName`
+while its device key is still saved; the former timer-generated name cannot be
+inferred automatically.
+
+The world is the proving ground:
 a checkered plaza with slopes, stairs, a house, a pool to swim and drown in, and
 around it trees, rocks, bushes, a herd of parasaurs, and further off a few
 raptors that will come for you.

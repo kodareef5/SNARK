@@ -10,6 +10,7 @@ import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
 import { ZONE_COUNT } from "../anim/human.ts";
 import { DAMAGE_TYPES } from "../sim/damage.ts";
+import { lootFaults } from "../sim/loot.ts";
 import { HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_SPEAR, HOLD_THROW, HOLD_TOOL, SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, type WeaponParams } from "../sim/weapon.ts";
 import { hullOf, hullTable, type HullDef } from "../world/convex.ts";
 import type { PartTable } from "../world/structures.ts";
@@ -152,9 +153,15 @@ export interface Registry {
   readonly fuelTicks: Uint32Array;
   readonly cooksInto: Uint16Array;
   readonly cookTicks: Uint32Array;
+  /** Per item: what it becomes when it spoils (ItemDef.spoilsInto), or 0 for nothing. */
+  readonly spoilsInto: Uint16Array;
   /** Per item that can be made: the ingredients as pairs of item and count, and how many one crafting makes. Null for everything else. */
   readonly recipeOf: readonly (Uint16Array | null)[];
   readonly recipeMakes: Uint16Array;
+  /** Per item: the station it is made at (a structure's content index), or 0 for one made in the hands. */
+  readonly craftAt: Uint16Array;
+  /** Per item: 1 if it may be a blueprint (ItemDef.blueprint), which takes a craft facet. */
+  readonly blueprints: Uint8Array;
   /** A thrown weapon: metres per second off the hand, ticks until it goes off, and how far its blast reaches. */
   readonly throwSpeed: Float32Array;
   readonly fuseTicks: Uint16Array;
@@ -195,6 +202,9 @@ const MAX_ACT_TICKS = 250;
 export const MAX_BURN_SECONDS = 30 * 86400;
 /** The longest an item may keep before it spoils, in game hours. The spoil clock holds this with room to spare. */
 export const MAX_SPOIL_HOURS = 1e6;
+/** The stats a use may change at once, and the ones it may change over time, which buffs carry (server/use.ts). */
+export const USE_AT_ONCE: readonly string[] = ["health", "stamina", "oxygen", "food", "water", "torpidity"];
+export const USE_OVER_TIME: readonly string[] = ["health", "torpidity"];
 export const MAX_NODE_HITS = 10000;
 export const MAX_LEVELS = 10000;
 /** Stamina per second of sprinting, per second of rest, and per jump, where a species does not say. */
@@ -342,6 +352,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (z.count !== undefined && !(Number.isInteger(z.count) && z.count >= 0 && z.count <= 65535)) errors.push(`${d.id}: a zone holds a whole number of creatures from 0 to 65,535`);
         if ((z.spawns === undefined) !== (z.count === undefined)) errors.push(`${d.id}: a zone that names spawns says how many it holds, and only such a zone does`);
       }
+    } else if (d.type === "loot") {
+      errors.push(...lootFaults(d));
     } else if (d.type === "material") {
       for (const [type, v] of Object.entries(d.takes)) {
         if (!(DAMAGE_TYPES as readonly string[]).includes(type) || !(v >= 0)) errors.push(`${d.id}: takes.${type} must name a kind of damage and not be negative`);
@@ -380,6 +392,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.craft.count !== undefined) positive(d, "craft.count", d.craft.count, 1000);
         positive(d, "craft.seconds", d.craft.seconds, 86400);
         if (!Array.isArray(d.craft.needs) || d.craft.needs.length === 0) errors.push(`${d.id}: craft needs at least one ingredient`);
+        if (d.craft.level !== undefined) positive(d, "craft.level", d.craft.level, 1000);
       }
       if (d.weight !== undefined && !(d.weight >= 0)) errors.push(`${d.id}: weight must not be negative`);
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
@@ -408,6 +421,23 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (!(d.wear.armor >= 0)) errors.push(`${d.id}: wear.armor must not be negative`);
         positive(d, "wear.uses", d.wear.uses, 60000);
       }
+      if (d.spoilsInto !== undefined && (d.spoilsInto === d.id || d.spoilHours === undefined)) errors.push(`${d.id}: spoilsInto names another item, and only something that spoils has it`);
+      // A blueprint crafts what it is of, so only an item that is crafted may be one.
+      if (d.blueprint === true && !d.craft) errors.push(`${d.id}: only an item that is crafted may be a blueprint`);
+      // What using one does (server/use.ts). Over time only health and torpor, which buffs carry; the rest at once.
+      const use = d.use;
+      for (const a of use?.adds ?? []) {
+        const timed = a.seconds !== undefined;
+        if (!(timed ? USE_OVER_TIME : USE_AT_ONCE).includes(a.stat)) errors.push(`${d.id}: use.adds may change ${(timed ? USE_OVER_TIME : USE_AT_ONCE).join(", ")}${timed ? " over time" : ""}, not "${a.stat}"`);
+        if (!(Number.isFinite(a.amount) && a.amount !== 0 && (!timed || a.amount > 0))) errors.push(`${d.id}: use.adds amount must be a number other than 0, and above 0 over time`);
+        if (timed) positive(d, "use.adds seconds", a.seconds!, MAX_BURN_SECONDS);
+      }
+      if (use?.holds) {
+        positive(d, "use.holds.water", use.holds.water, 60000);
+        positive(d, "use.holds.each", use.holds.each, use.holds.water);
+        // The water is held as the slot's durability, which one of a kind has.
+        if (d.stack !== 1 || d.eat || d.dose || d.weapon || d.wear || d.tool) errors.push(`${d.id}: a vessel stacks to 1, wears no durability of its own, and is drunk from, not eaten`);
+      }
     }
     if (d.type === "species" || d.type === "structure" || d.type === "prop" || d.type === "node") {
       if (d.mesh.length === 0) errors.push(`${d.id}: mesh is required`);
@@ -418,6 +448,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
   errors.push(...refFaults(input));
   const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
   const crafted = new Set(input.flatMap((d) => (d.type === "item" && d.craft ? [d.id] : [])));
+  // A station's recipes take from its slots and put the product there, so a station something is made at must have some.
+  const stationSlots = new Map(input.flatMap((d) => (d.type === "structure" && d.class === "station" ? [[d.id, d.slots ?? 0] as const] : [])));
+  for (const d of input) if (d.type === "item" && d.craft?.at !== undefined && stationSlots.get(d.craft.at) === 0) errors.push(`${d.id}: it is made at "${d.craft.at}", which has no slots to make it from`);
   const noAmmo = new Set(input.flatMap((d) => (d.type === "item" && !d.ammo ? [d.id] : [])));
   const taught = new Map<string, string>();
   const young = new Map<string, string>();
@@ -513,8 +546,11 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const fuelTicks = new Uint32Array(n);
   const cooksInto = new Uint16Array(n);
   const cookTicks = new Uint32Array(n);
+  const spoilsInto = new Uint16Array(n);
   const recipeOf: (Uint16Array | null)[] = new Array(n).fill(null);
   const recipeMakes = new Uint16Array(n);
+  const craftAt = new Uint16Array(n);
+  const blueprints = new Uint8Array(n);
   const partStart = new Uint32Array(n + 1);
   const partBox: number[] = [];
   const throwSpeed = new Float32Array(n);
@@ -682,10 +718,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
         cooksInto[i] = index.get(d.cooks.into)!;
         cookTicks[i] = Math.max(1, Math.round(d.cooks.seconds * TICK_RATE));
       }
+      if (d.spoilsInto !== undefined) spoilsInto[i] = index.get(d.spoilsInto)!;
     }
     if (d.type === "item" && d.craft) {
       recipeOf[index.get(d.id)!] = Uint16Array.from(d.craft.needs.flatMap((need) => [index.get(need.item)!, need.count]));
       recipeMakes[index.get(d.id)!] = d.craft.count ?? 1;
+      if (d.craft.at !== undefined) craftAt[index.get(d.id)!] = index.get(d.craft.at)!;
+      if (d.blueprint !== false) blueprints[index.get(d.id)!] = 1;
     }
   }
   // An open door maps back to the closed door's item.
@@ -699,7 +738,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;

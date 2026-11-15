@@ -440,7 +440,7 @@ test("a world saved before eggs were things loads as it was: an egg lying hatche
   for (const row of db.query("SELECT pid, data FROM entities").all() as { pid: number; data: Uint8Array }[]) {
     const r = new BitReader(row.data);
     const w = new BitWriter(row.data.length + 16);
-    expect(r.u8()).toBe(4);
+    expect(r.u8()).toBe(5);
     w.u8(3);
     w.string(r.string(256));
     const n = r.varint();
@@ -474,7 +474,7 @@ test("a world saved before eggs were things loads as it was: an egg lying hatche
   // What changed is saved in the new form: the egg held, and Ada, whose slot stands for it.
   const store = new Database(dbPath, { readonly: true });
   const form = (pid: number): number => (store.query("SELECT data FROM entities WHERE pid = ?").get(pid) as { data: Uint8Array }).data[0]!;
-  expect([form(late.pid), form(holder)]).toEqual([4, 4]);
+  expect([form(late.pid), form(holder)]).toEqual([5, 5]);
   store.close();
   h = new Harness({}, 1, 60, { dev: true, dbPath });
   expect([held(h.host.records.byPid.get(late.pid)!), h.host.eggs.mended, h.host.items.audit()]).toEqual([true, 0, []]);

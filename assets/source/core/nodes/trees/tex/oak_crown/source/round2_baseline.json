@@ -1,0 +1,1829 @@
+{
+  "maps": {
+    "base": {
+      "sha256": "a5470efea81ac221bdcebfb09c03f49a89c1524931b0f26c58062a28cfc3433a",
+      "interior_pixel_sha256": "fb21f07fc3872685d5b51eee1b6e3d8f5d23b798d52957ed53970e8a65648332"
+    },
+    "normal": {
+      "sha256": "dc8c310d418f46f1130a67545af0f73b549ed3e336d580ed71b6597d5a0811ff",
+      "interior_pixel_sha256": "5399f158706dccefd43e637581338c352a1b51b20a3d1b9cc2c8b9151288cbcc"
+    },
+    "height": {
+      "sha256": "d2b93473beda37a0f323ed8561eb70e5f0f0c12793d214b1e0eaf0e7230b1607",
+      "interior_pixel_sha256": "bf725caaf5e75e8701d985b37b047130a5d74d93a521448fb6e6ce2dd2f6537c"
+    },
+    "orm": {
+      "sha256": "f5920bb336499e84a95a4af6f53bb1926eb4da5bfde4d938e90843b6c10d8e1a",
+      "interior_pixel_sha256": "8caf8019259857aeb9f32ed4fbf09468c547dbd1a7780239c5cfc83055bb5253"
+    }
+  },
+  "layout": {
+    "radius_pixels": 240.64,
+    "disc_surface_radius_mm": 1750,
+    "height_range_mm": [
+      0,
+      240.0
+    ],
+    "targets": [
+      [
+        118,
+        126,
+        66
+      ],
+      [
+        96,
+        108,
+        62
+      ],
+      [
+        76,
+        90,
+        58
+      ],
+      [
+        82,
+        92,
+        70
+      ],
+      [
+        48,
+        60,
+        42
+      ]
+    ],
+    "regions": [
+      {
+        "index": 0,
+        "group": 0,
+        "xywh": [
+          0,
+          0,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.013353680468979973,
+          -0.14558060599835312
+        ],
+        "mean_rgb": [
+          118.00068161829375,
+          126.00039577836412,
+          66.00111037818822
+        ],
+        "roughness_mean": 0.42911509323796587,
+        "height_mm": [
+          30.325949643804112,
+          174.31807688092647
+        ]
+      },
+      {
+        "index": 1,
+        "group": 0,
+        "xywh": [
+          512,
+          0,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          -0.024974287881739887,
+          -0.1177339812021241
+        ],
+        "mean_rgb": [
+          118.001154353562,
+          126.00017040457344,
+          66.00039028144239
+        ],
+        "roughness_mean": 0.42959565287842977,
+        "height_mm": [
+          29.84202255072547,
+          174.11525935598198
+        ]
+      },
+      {
+        "index": 2,
+        "group": 0,
+        "xywh": [
+          1024,
+          0,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.006929410654435086,
+          -0.13970212265998933
+        ],
+        "mean_rgb": [
+          118.00040677220757,
+          126.00061015831135,
+          66.00058817062445
+        ],
+        "roughness_mean": 0.4301732311961376,
+        "height_mm": [
+          30.279428656819142,
+          174.19505693163143
+        ]
+      },
+      {
+        "index": 3,
+        "group": 0,
+        "xywh": [
+          1536,
+          0,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          -0.00946122535462881,
+          -0.08894224355707836
+        ],
+        "mean_rgb": [
+          118.00041776605102,
+          126.00100043975374,
+          66.00148416886543
+        ],
+        "roughness_mean": 0.42901264950310486,
+        "height_mm": [
+          30.21498259667267,
+          174.43156420907226
+        ]
+      },
+      {
+        "index": 4,
+        "group": 1,
+        "xywh": [
+          0,
+          512,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.0029187778801150754,
+          -0.1340642773553195
+        ],
+        "mean_rgb": [
+          96.00031332453825,
+          108.00019788918206,
+          61.999967018469654
+        ],
+        "roughness_mean": 0.4999774899674336,
+        "height_mm": [
+          30.23518926277862,
+          172.00588776955354
+        ]
+      },
+      {
+        "index": 5,
+        "group": 1,
+        "xywh": [
+          512,
+          512,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.041350102749273525,
+          -0.14733287759951907
+        ],
+        "mean_rgb": [
+          95.99988456464379,
+          108.00075307827616,
+          61.99954375549692
+        ],
+        "roughness_mean": 0.499176468550844,
+        "height_mm": [
+          31.303679506330486,
+          173.95479854269797
+        ]
+      },
+      {
+        "index": 6,
+        "group": 1,
+        "xywh": [
+          1024,
+          512,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.011072595325584939,
+          -0.16897479904485452
+        ],
+        "mean_rgb": [
+          95.99974714160071,
+          107.99955474934038,
+          62.000681618293754
+        ],
+        "roughness_mean": 0.4996436696516585,
+        "height_mm": [
+          30.01233183362381,
+          173.9924896940587
+        ]
+      },
+      {
+        "index": 7,
+        "group": 1,
+        "xywh": [
+          1536,
+          512,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          -0.03297330685886263,
+          -0.12860228893480877
+        ],
+        "mean_rgb": [
+          96.00015391380826,
+          108.00105540897097,
+          62.00157761653474
+        ],
+        "roughness_mean": 0.49943115691659046,
+        "height_mm": [
+          30.052165826562284,
+          177.47111064908717
+        ]
+      },
+      {
+        "index": 8,
+        "group": 2,
+        "xywh": [
+          0,
+          1024,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          -0.0034395688967951213,
+          -0.07038244853627108
+        ],
+        "mean_rgb": [
+          75.99654793315743,
+          89.99935136323658,
+          57.99938434476693
+        ],
+        "roughness_mean": 0.5991063498743435,
+        "height_mm": [
+          32.538112212242524,
+          177.43671477739633
+        ]
+      },
+      {
+        "index": 9,
+        "group": 2,
+        "xywh": [
+          512,
+          1024,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.018745561597803856,
+          -0.09452301142640793
+        ],
+        "mean_rgb": [
+          75.99641600703606,
+          89.99959322779243,
+          58.00100043975374
+        ],
+        "roughness_mean": 0.5992118214106937,
+        "height_mm": [
+          32.7697619901127,
+          174.6121588480835
+        ]
+      },
+      {
+        "index": 10,
+        "group": 2,
+        "xywh": [
+          1024,
+          1024,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.009882338760682091,
+          -0.08043832507743577
+        ],
+        "mean_rgb": [
+          76.00584322779244,
+          90.00019788918206,
+          58.000065963060685
+        ],
+        "roughness_mean": 0.597752157903766,
+        "height_mm": [
+          34.248638281864714,
+          175.12173907890025
+        ]
+      },
+      {
+        "index": 11,
+        "group": 2,
+        "xywh": [
+          1536,
+          1024,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.0012188245871988523,
+          -0.0332317342238112
+        ],
+        "mean_rgb": [
+          75.99582233948989,
+          89.99989006156552,
+          57.99926341248901
+        ],
+        "roughness_mean": 0.5992157966127649,
+        "height_mm": [
+          36.166801670457886,
+          178.178871198204
+        ]
+      },
+      {
+        "index": 12,
+        "group": 3,
+        "xywh": [
+          0,
+          1536,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          -0.012837296030884293,
+          -0.04499006357982087
+        ],
+        "mean_rgb": [
+          82.00030233069481,
+          91.99976363236587,
+          70.00116534740545
+        ],
+        "roughness_mean": 0.7884600525242433,
+        "height_mm": [
+          30.264158626122818,
+          139.9811320188844
+        ]
+      },
+      {
+        "index": 13,
+        "group": 3,
+        "xywh": [
+          512,
+          1536,
+          512,
+          512
+        ],
+        "periodic": false,
+        "pitch_mm": 7.272273936170214,
+        "removed_log_luminance_plane": [
+          0.004619190650718086,
+          -0.03866839847418717
+        ],
+        "mean_rgb": [
+          81.99993403693931,
+          91.99974164467898,
+          70.00153364116095
+        ],
+        "roughness_mean": 0.7890590068661488,
+        "height_mm": [
+          30.801577702991295,
+          141.44775841869483
+        ]
+      },
+      {
+        "index": 14,
+        "group": 4,
+        "xywh": [
+          1024,
+          1536,
+          1024,
+          512
+        ],
+        "periodic": true,
+        "pitch_mm": 4.6875,
+        "removed_log_luminance_plane": [
+          0.0,
+          0.0
+        ],
+        "mean_rgb": [
+          47.99951171875,
+          59.999210357666016,
+          41.99932861328125
+        ],
+        "roughness_mean": 0.6835070975366454,
+        "height_mm": [
+          43.79594031774926,
+          124.18267526686296
+        ]
+      }
+    ]
+  },
+  "sources": {
+    "method": "built-in imagegen",
+    "sources": {
+      "interior_generated.png": {
+        "size": [
+          1774,
+          887
+        ],
+        "sha256": "f04b879fb7d0c8d2e6aabb50657fc1252449f091570efb0f1531d63f90a9cecb"
+      },
+      "undersides_generated.png": {
+        "size": [
+          1774,
+          887
+        ],
+        "sha256": "4fd523e207e9ff19f40d68c1055a10e9ca9536c27842d19285b19d9ffad5271f"
+      },
+      "top_heads_generated.png": {
+        "size": [
+          1448,
+          1086
+        ],
+        "sha256": "f839efb79e47a13f3aff0a7fc981a70d84d86ac86828682bfedf00dd7d5ce492"
+      }
+    },
+    "references": [
+      "../../ref/concept/broadleaf/oak_lineup.png",
+      "../../ref/concept/broadleaf/hammock_near.png",
+      "../../ref/concept/broadleaf/leaves.png",
+      "../../ref/concept/broadleaf/DESIGN.md",
+      "../oak_leaves/oak_leaves_base.png"
+    ],
+    "source_policy": "Generated from words informed by the named project art; no external images."
+  },
+  "metrics": {
+    "tests": [
+      {
+        "name": "base size",
+        "pass_": true
+      },
+      {
+        "name": "base bit depth",
+        "pass_": true
+      },
+      {
+        "name": "base colour type",
+        "pass_": true
+      },
+      {
+        "name": "height size",
+        "pass_": true
+      },
+      {
+        "name": "height bit depth",
+        "pass_": true
+      },
+      {
+        "name": "height colour type",
+        "pass_": true
+      },
+      {
+        "name": "normal size",
+        "pass_": true
+      },
+      {
+        "name": "normal bit depth",
+        "pass_": true
+      },
+      {
+        "name": "normal colour type",
+        "pass_": true
+      },
+      {
+        "name": "orm size",
+        "pass_": true
+      },
+      {
+        "name": "orm bit depth",
+        "pass_": true
+      },
+      {
+        "name": "orm colour type",
+        "pass_": true
+      },
+      {
+        "name": "base sRGB tag",
+        "pass_": true
+      },
+      {
+        "name": "height linear interpretation",
+        "pass_": true
+      },
+      {
+        "name": "normal linear interpretation",
+        "pass_": true
+      },
+      {
+        "name": "orm linear interpretation",
+        "pass_": true
+      },
+      {
+        "name": "metalness zero",
+        "pass_": true
+      },
+      {
+        "name": "bright pigment ceiling",
+        "pass_": true
+      },
+      {
+        "name": "cell 0 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 0 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 0 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 0 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 0 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 1 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 1 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 1 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 1 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 1 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 2 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 2 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 2 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 2 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 2 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 3 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 3 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 3 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 3 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 3 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 4 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 4 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 4 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 4 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 4 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 5 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 5 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 5 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 5 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 5 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 6 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 6 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 6 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 6 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 6 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 7 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 7 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 7 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 7 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 7 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 8 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 8 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 8 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 8 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 8 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 9 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 9 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 9 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 9 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 9 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 10 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 10 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 10 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 10 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 10 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 11 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 11 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 11 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 11 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 11 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 12 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 12 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 12 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 12 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 12 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 13 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 13 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "cell 13 edge darkens",
+        "pass_": true
+      },
+      {
+        "name": "cell 13 dark filled gutter",
+        "pass_": true
+      },
+      {
+        "name": "cell 13 nonradial folds survive 12px",
+        "pass_": true
+      },
+      {
+        "name": "cell 14 normal/height agreement",
+        "pass_": true
+      },
+      {
+        "name": "cell 14 mean pigment",
+        "pass_": true
+      },
+      {
+        "name": "row 1 distinct neighbouring heads",
+        "pass_": true
+      },
+      {
+        "name": "row 2 distinct neighbouring heads",
+        "pass_": true
+      },
+      {
+        "name": "row 3 distinct neighbouring heads",
+        "pass_": true
+      },
+      {
+        "name": "undersides rougher than sun tops",
+        "pass_": true
+      },
+      {
+        "name": "base periodic seam energy",
+        "pass_": true
+      },
+      {
+        "name": "height periodic seam energy",
+        "pass_": true
+      },
+      {
+        "name": "normal periodic seam energy",
+        "pass_": true
+      },
+      {
+        "name": "orm periodic seam energy",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 0 50px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 0 50px side retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 0 25px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 0 25px side retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 0 12px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 0 12px side retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 5 50px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 5 50px side retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 5 25px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 5 25px side retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 5 12px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 5 12px side retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 10 50px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 10 50px side retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 10 25px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 10 25px side retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 10 12px above retention",
+        "pass_": true
+      },
+      {
+        "name": "phone cell 10 12px side retention",
+        "pass_": true
+      }
+    ],
+    "passed": 116,
+    "total": 116,
+    "regions": [
+      {
+        "index": 0,
+        "mean_rgb": [
+          118.00068161829375,
+          126.00039577836412,
+          66.00111037818822
+        ],
+        "normal_error_max_deg": 0.3845177240879431,
+        "normal_error_p99_deg": 0.3129302926932459,
+        "height_mm": [
+          30.326390478370335,
+          174.31906614785993
+        ],
+        "ao_percentiles": [
+          0.3254901960784314,
+          0.4588235294117647,
+          0.6470588235294118,
+          0.8666666666666667,
+          0.9647058823529412
+        ],
+        "roughness_percentiles": [
+          0.3568627450980392,
+          0.4392156862745098,
+          0.5411764705882353
+        ],
+        "fold_residual_std_srgb": {
+          "50": 17.58366584777832,
+          "25": 15.316437721252441,
+          "12": 11.271463394165039
+        },
+        "blade_core_scale_proxy": {
+          "count": 1181,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              3.9999999999999996,
+              2.0
+            ],
+            [
+              6.132917253601502,
+              2.894296927855872
+            ],
+            [
+              10.463612312129715,
+              3.8229051036987514
+            ]
+          ]
+        }
+      },
+      {
+        "index": 1,
+        "mean_rgb": [
+          118.001154353562,
+          126.00017040457344,
+          66.00039028144239
+        ],
+        "normal_error_max_deg": 0.3809040631065248,
+        "normal_error_p99_deg": 0.31299803330979914,
+        "height_mm": [
+          29.842984664682994,
+          174.11398489356833
+        ],
+        "ao_percentiles": [
+          0.3254901960784314,
+          0.4627450980392157,
+          0.6509803921568628,
+          0.8705882352941177,
+          0.9686274509803922
+        ],
+        "roughness_percentiles": [
+          0.3568627450980392,
+          0.4392156862745098,
+          0.5333333333333333
+        ],
+        "fold_residual_std_srgb": {
+          "50": 18.608169555664062,
+          "25": 16.578170776367188,
+          "12": 12.82779598236084
+        },
+        "blade_core_scale_proxy": {
+          "count": 1147,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              3.9764037116814537,
+              1.9056934363922207
+            ],
+            [
+              6.188947064392935,
+              2.842663701332872
+            ],
+            [
+              10.807713043790901,
+              3.8751526527139486
+            ]
+          ]
+        }
+      },
+      {
+        "index": 2,
+        "mean_rgb": [
+          118.00040677220757,
+          126.00061015831135,
+          66.00058817062445
+        ],
+        "normal_error_max_deg": 0.3781434192124564,
+        "normal_error_p99_deg": 0.312466288008891,
+        "height_mm": [
+          30.278782330052643,
+          174.1945525291829
+        ],
+        "ao_percentiles": [
+          0.3254901960784314,
+          0.4627450980392157,
+          0.6431372549019608,
+          0.8784313725490196,
+          0.9568627450980393
+        ],
+        "roughness_percentiles": [
+          0.3568627450980392,
+          0.4392156862745098,
+          0.5411764705882353
+        ],
+        "fold_residual_std_srgb": {
+          "50": 18.846973419189453,
+          "25": 16.50912094116211,
+          "12": 12.631546974182129
+        },
+        "blade_core_scale_proxy": {
+          "count": 1120,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              3.869077908653836,
+              1.9051558369589292
+            ],
+            [
+              6.17691856620611,
+              2.828658087892159
+            ],
+            [
+              10.749315021213238,
+              3.828989376851701
+            ]
+          ]
+        }
+      },
+      {
+        "index": 3,
+        "mean_rgb": [
+          118.00041776605102,
+          126.00100043975374,
+          66.00148416886543
+        ],
+        "normal_error_max_deg": 0.3784624445504237,
+        "normal_error_p99_deg": 0.31234444963907965,
+        "height_mm": [
+          30.21652552071412,
+          174.43259327077135
+        ],
+        "ao_percentiles": [
+          0.32941176470588235,
+          0.4666666666666667,
+          0.6470588235294118,
+          0.8705882352941177,
+          0.9647058823529412
+        ],
+        "roughness_percentiles": [
+          0.3568627450980392,
+          0.4392156862745098,
+          0.5333333333333333
+        ],
+        "fold_residual_std_srgb": {
+          "50": 18.57008171081543,
+          "25": 16.227310180664062,
+          "12": 13.212050437927246
+        },
+        "blade_core_scale_proxy": {
+          "count": 1147,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              3.9999999999999996,
+              1.9015805780173491
+            ],
+            [
+              6.218704179168258,
+              2.8949874578229835
+            ],
+            [
+              10.73729141942287,
+              3.873846319397251
+            ]
+          ]
+        }
+      },
+      {
+        "index": 4,
+        "mean_rgb": [
+          96.00031332453825,
+          108.00019788918206,
+          61.999967018469654
+        ],
+        "normal_error_max_deg": 0.3835453819808096,
+        "normal_error_p99_deg": 0.31276931543437836,
+        "height_mm": [
+          30.234836346990157,
+          172.00457770656902
+        ],
+        "ao_percentiles": [
+          0.3215686274509804,
+          0.4627450980392157,
+          0.6588235294117647,
+          0.8549019607843137,
+          0.9490196078431372
+        ],
+        "roughness_percentiles": [
+          0.42745098039215684,
+          0.5058823529411764,
+          0.611764705882353
+        ],
+        "fold_residual_std_srgb": {
+          "50": 21.535295486450195,
+          "25": 18.76349639892578,
+          "12": 13.906817436218262
+        },
+        "blade_core_scale_proxy": {
+          "count": 1234,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              4.268680409234452,
+              2.0000000000000004
+            ],
+            [
+              6.7047924861876576,
+              3.1019968471782535
+            ],
+            [
+              11.392261768017207,
+              4.055587448527702
+            ]
+          ]
+        }
+      },
+      {
+        "index": 5,
+        "mean_rgb": [
+          95.99988456464379,
+          108.00075307827616,
+          61.99954375549692
+        ],
+        "normal_error_max_deg": 0.3837170659714567,
+        "normal_error_p99_deg": 0.3124889295686309,
+        "height_mm": [
+          31.304188601510642,
+          173.95651178759442
+        ],
+        "ao_percentiles": [
+          0.3333333333333333,
+          0.4745098039215686,
+          0.6705882352941176,
+          0.8549019607843137,
+          0.9647058823529412
+        ],
+        "roughness_percentiles": [
+          0.42745098039215684,
+          0.5058823529411764,
+          0.596078431372549
+        ],
+        "fold_residual_std_srgb": {
+          "50": 21.061216354370117,
+          "25": 18.70163917541504,
+          "12": 14.855579376220703
+        },
+        "blade_core_scale_proxy": {
+          "count": 1231,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              4.246474670789828,
+              2.0000000000000004
+            ],
+            [
+              6.942557742648447,
+              3.1089256009347603
+            ],
+            [
+              11.47012516351564,
+              4.126056449742626
+            ]
+          ]
+        }
+      },
+      {
+        "index": 6,
+        "mean_rgb": [
+          95.99974714160071,
+          107.99955474934038,
+          62.000681618293754
+        ],
+        "normal_error_max_deg": 0.38371706597050687,
+        "normal_error_p99_deg": 0.3129407442443657,
+        "height_mm": [
+          30.011444266422522,
+          173.9931334401465
+        ],
+        "ao_percentiles": [
+          0.3215686274509804,
+          0.47058823529411764,
+          0.6627450980392157,
+          0.8509803921568627,
+          0.9568627450980393
+        ],
+        "roughness_percentiles": [
+          0.42745098039215684,
+          0.5058823529411764,
+          0.6039215686274509
+        ],
+        "fold_residual_std_srgb": {
+          "50": 20.11089515686035,
+          "25": 17.349510192871094,
+          "12": 14.126214981079102
+        },
+        "blade_core_scale_proxy": {
+          "count": 1261,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              4.1214638422824095,
+              2.0000000000000004
+            ],
+            [
+              6.7452169178844805,
+              3.13298002803037
+            ],
+            [
+              11.356853466601493,
+              4.11048349989332
+            ]
+          ]
+        }
+      },
+      {
+        "index": 7,
+        "mean_rgb": [
+          96.00015391380826,
+          108.00105540897097,
+          62.00157761653474
+        ],
+        "normal_error_max_deg": 0.3842221989525966,
+        "normal_error_p99_deg": 0.31356187405983005,
+        "height_mm": [
+          30.0517280842298,
+          177.47219043259327
+        ],
+        "ao_percentiles": [
+          0.3215686274509804,
+          0.47058823529411764,
+          0.6588235294117647,
+          0.8549019607843137,
+          0.9725490196078431
+        ],
+        "roughness_percentiles": [
+          0.42745098039215684,
+          0.5058823529411764,
+          0.6078431372549019
+        ],
+        "fold_residual_std_srgb": {
+          "50": 20.30200958251953,
+          "25": 17.656827926635742,
+          "12": 13.659029006958008
+        },
+        "blade_core_scale_proxy": {
+          "count": 1275,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              4.284721966610384,
+              2.0263982057440972
+            ],
+            [
+              6.801577288197405,
+              3.1117754646008944
+            ],
+            [
+              11.731931792312908,
+              4.099677549672323
+            ]
+          ]
+        }
+      },
+      {
+        "index": 8,
+        "mean_rgb": [
+          75.99654793315743,
+          89.99935136323658,
+          57.99938434476693
+        ],
+        "normal_error_max_deg": 0.3744915227050602,
+        "normal_error_p99_deg": 0.31243948046057773,
+        "height_mm": [
+          32.53833829251545,
+          177.4355687800412
+        ],
+        "ao_percentiles": [
+          0.3254901960784314,
+          0.49411764705882355,
+          0.6901960784313725,
+          0.8627450980392157,
+          0.9686274509803922
+        ],
+        "roughness_percentiles": [
+          0.5254901960784314,
+          0.6039215686274509,
+          0.6980392156862745
+        ],
+        "fold_residual_std_srgb": {
+          "50": 22.226987838745117,
+          "25": 19.5795955657959,
+          "12": 15.600191116333008
+        },
+        "blade_core_scale_proxy": {
+          "count": 1054,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              4.1952353926806065,
+              2.0581440536541558
+            ],
+            [
+              7.030713881607822,
+              3.281763258702988
+            ],
+            [
+              11.234299269947261,
+              4.250526941404578
+            ]
+          ]
+        }
+      },
+      {
+        "index": 9,
+        "mean_rgb": [
+          75.99641600703606,
+          89.99959322779243,
+          58.00100043975374
+        ],
+        "normal_error_max_deg": 0.38086963985217087,
+        "normal_error_p99_deg": 0.31273744075398346,
+        "height_mm": [
+          32.7690547035935,
+          174.6120393682765
+        ],
+        "ao_percentiles": [
+          0.34509803921568627,
+          0.5019607843137255,
+          0.7058823529411765,
+          0.8705882352941177,
+          0.9686274509803922
+        ],
+        "roughness_percentiles": [
+          0.5254901960784314,
+          0.6,
+          0.6941176470588235
+        ],
+        "fold_residual_std_srgb": {
+          "50": 21.898908615112305,
+          "25": 18.77757453918457,
+          "12": 14.129714965820312
+        },
+        "blade_core_scale_proxy": {
+          "count": 1098,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              4.1952353926806065,
+              2.0000000000000004
+            ],
+            [
+              6.803816221563002,
+              3.2014021911104114
+            ],
+            [
+              11.270855603954395,
+              4.260659346545545
+            ]
+          ]
+        }
+      },
+      {
+        "index": 10,
+        "mean_rgb": [
+          76.00584322779244,
+          90.00019788918206,
+          58.000065963060685
+        ],
+        "normal_error_max_deg": 0.37652087603874385,
+        "normal_error_p99_deg": 0.3126121395788105,
+        "height_mm": [
+          34.248569466697184,
+          175.1210803387503
+        ],
+        "ao_percentiles": [
+          0.32941176470588235,
+          0.5058823529411764,
+          0.7019607843137254,
+          0.8627450980392157,
+          0.9450980392156862
+        ],
+        "roughness_percentiles": [
+          0.5254901960784314,
+          0.6,
+          0.6941176470588235
+        ],
+        "fold_residual_std_srgb": {
+          "50": 21.04775619506836,
+          "25": 18.505002975463867,
+          "12": 13.355226516723633
+        },
+        "blade_core_scale_proxy": {
+          "count": 1064,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              4.388715648713798,
+              2.101974637729469
+            ],
+            [
+              7.089635184228977,
+              3.329432317722704
+            ],
+            [
+              11.424681579964279,
+              4.292705686711187
+            ]
+          ]
+        }
+      },
+      {
+        "index": 11,
+        "mean_rgb": [
+          75.99582233948989,
+          89.99989006156552,
+          57.99926341248901
+        ],
+        "normal_error_max_deg": 0.37935674255221874,
+        "normal_error_p99_deg": 0.31260879396233354,
+        "height_mm": [
+          36.167544060425726,
+          178.17898832684824
+        ],
+        "ao_percentiles": [
+          0.33725490196078434,
+          0.4980392156862745,
+          0.6941176470588235,
+          0.8666666666666667,
+          0.9803921568627451
+        ],
+        "roughness_percentiles": [
+          0.5294117647058824,
+          0.6039215686274509,
+          0.6862745098039216
+        ],
+        "fold_residual_std_srgb": {
+          "50": 21.630361557006836,
+          "25": 18.811511993408203,
+          "12": 13.797657012939453
+        },
+        "blade_core_scale_proxy": {
+          "count": 1039,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              4.32865065552949,
+              2.0465152429233253
+            ],
+            [
+              7.0546644406381125,
+              3.319196703627203
+            ],
+            [
+              11.981893363528478,
+              4.270407062795303
+            ]
+          ]
+        }
+      },
+      {
+        "index": 12,
+        "mean_rgb": [
+          82.00030233069481,
+          91.99976363236587,
+          70.00116534740545
+        ],
+        "normal_error_max_deg": 0.383473733166374,
+        "normal_error_p99_deg": 0.3135453983182192,
+        "height_mm": [
+          30.264133669031814,
+          139.98260471503775
+        ],
+        "ao_percentiles": [
+          0.3215686274509804,
+          0.4666666666666667,
+          0.6431372549019608,
+          0.7764705882352941,
+          0.8588235294117647
+        ],
+        "roughness_percentiles": [
+          0.7254901960784313,
+          0.796078431372549,
+          0.8980392156862745
+        ],
+        "fold_residual_std_srgb": {
+          "50": 13.452054977416992,
+          "25": 10.545309066772461,
+          "12": 7.027217388153076
+        },
+        "blade_core_scale_proxy": {
+          "count": 1795,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              3.7366894358508627,
+              1.632993161855452
+            ],
+            [
+              5.759756452449843,
+              2.908182880656492
+            ],
+            [
+              10.313369808295297,
+              4.428886274768644
+            ]
+          ]
+        }
+      },
+      {
+        "index": 13,
+        "mean_rgb": [
+          81.99993403693931,
+          91.99974164467898,
+          70.00153364116095
+        ],
+        "normal_error_max_deg": 0.3802483263123091,
+        "normal_error_p99_deg": 0.3138685208375678,
+        "height_mm": [
+          30.802471961547266,
+          141.44747081712063
+        ],
+        "ao_percentiles": [
+          0.3176470588235294,
+          0.4627450980392157,
+          0.6392156862745098,
+          0.7764705882352941,
+          0.8666666666666667
+        ],
+        "roughness_percentiles": [
+          0.7215686274509804,
+          0.8,
+          0.8980392156862745
+        ],
+        "fold_residual_std_srgb": {
+          "50": 13.355051040649414,
+          "25": 9.8523588180542,
+          "12": 6.051397323608398
+        },
+        "blade_core_scale_proxy": {
+          "count": 1879,
+          "length_width_p10_p50_p90_pixels": [
+            [
+              3.7366894358508627,
+              1.632993161855452
+            ],
+            [
+              5.72204864818522,
+              2.8753457447035284
+            ],
+            [
+              10.5321510630813,
+              4.382907482114114
+            ]
+          ]
+        }
+      },
+      {
+        "index": 14,
+        "mean_rgb": [
+          47.99951171875,
+          59.999210357666016,
+          41.99932861328125
+        ],
+        "normal_error_max_deg": 0.3849105367550679,
+        "normal_error_p99_deg": 0.3133352802359393,
+        "height_mm": [
+          43.7958342870222,
+          124.18402380407416
+        ],
+        "ao_percentiles": [
+          0.49019607843137253,
+          0.6509803921568628,
+          0.788235294117647,
+          0.8862745098039215,
+          0.9450980392156862
+        ],
+        "roughness_percentiles": [
+          0.6196078431372549,
+          0.6823529411764706,
+          0.7725490196078432
+        ]
+      }
+    ],
+    "seams": {
+      "base": {
+        "horizontal_ratio": 1.4010525218305667,
+        "vertical_ratio": 1.066492896237865
+      },
+      "height": {
+        "horizontal_ratio": 1.2465882654828044,
+        "vertical_ratio": 1.0765315090176644
+      },
+      "normal": {
+        "horizontal_ratio": 0.9565250478762961,
+        "vertical_ratio": 1.0241215030280821
+      },
+      "orm": {
+        "horizontal_ratio": 1.079998272175547,
+        "vertical_ratio": 1.0167175790688783
+      }
+    },
+    "neighbour_max_correlations": [
+      0.29810284650143426,
+      0.15482885606381888,
+      0.019453493939524565
+    ],
+    "phone_comparison": [
+      {
+        "cell": 0,
+        "diameter": 50,
+        "light": "above",
+        "mean_abs_code_error": 0.02263267429760666,
+        "max_code_error": 1.0
+      },
+      {
+        "cell": 0,
+        "diameter": 50,
+        "light": "side",
+        "mean_abs_code_error": 0.018557058619493583,
+        "max_code_error": 1.0
+      },
+      {
+        "cell": 0,
+        "diameter": 25,
+        "light": "above",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 0,
+        "diameter": 25,
+        "light": "side",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 0,
+        "diameter": 12,
+        "light": "above",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 0,
+        "diameter": 12,
+        "light": "side",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 5,
+        "diameter": 50,
+        "light": "above",
+        "mean_abs_code_error": 0.021678806798473813,
+        "max_code_error": 1.0
+      },
+      {
+        "cell": 5,
+        "diameter": 50,
+        "light": "side",
+        "mean_abs_code_error": 0.015435310440513354,
+        "max_code_error": 1.0
+      },
+      {
+        "cell": 5,
+        "diameter": 25,
+        "light": "above",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 5,
+        "diameter": 25,
+        "light": "side",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 5,
+        "diameter": 12,
+        "light": "above",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 5,
+        "diameter": 12,
+        "light": "side",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 10,
+        "diameter": 50,
+        "light": "above",
+        "mean_abs_code_error": 0.01768990634755463,
+        "max_code_error": 1.0
+      },
+      {
+        "cell": 10,
+        "diameter": 50,
+        "light": "side",
+        "mean_abs_code_error": 0.014741588622962192,
+        "max_code_error": 1.0
+      },
+      {
+        "cell": 10,
+        "diameter": 25,
+        "light": "above",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 10,
+        "diameter": 25,
+        "light": "side",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 10,
+        "diameter": 12,
+        "light": "above",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      },
+      {
+        "cell": 10,
+        "diameter": 12,
+        "light": "side",
+        "mean_abs_code_error": 0.0,
+        "max_code_error": 0.0
+      }
+    ],
+    "height_range_mm": [
+      0,
+      240
+    ],
+    "observed_height_mm": [
+      29.842984664682994,
+      178.17898832684824
+    ],
+    "brown_pixel_fraction": 0.0,
+    "render": {
+      "kind": "CPU material diagnostic; not game capture",
+      "geometry": "closed 2.2m x 2.2m x 1.52m ellipsoid",
+      "seam_polar_angle_radians": 1.75,
+      "top_camera_elevation_degrees": 35,
+      "underside_elevation_degrees": -70,
+      "lighting": [
+        "overhead (0.1,-0.15,1)",
+        "side (-1,-0.15,0.2)"
+      ],
+      "filtering": "linear-light colour box mips; linear normal/ORM mips; trilinear sample; 4x pixel supersampling"
+    },
+    "hashes": {
+      "base": "a5470efea81ac221bdcebfb09c03f49a89c1524931b0f26c58062a28cfc3433a",
+      "height": "d2b93473beda37a0f323ed8561eb70e5f0f0c12793d214b1e0eaf0e7230b1607",
+      "normal": "dc8c310d418f46f1130a67545af0f73b549ed3e336d580ed71b6597d5a0811ff",
+      "orm": "f5920bb336499e84a95a4af6f53bb1926eb4da5bfde4d938e90843b6c10d8e1a"
+    }
+  }
+}

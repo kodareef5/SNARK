@@ -6,7 +6,7 @@ import { MARKER_DEATH, RESULT_INVALID, RESULT_OK, SESSION_DEAD, TEXT_NOTICE } fr
 import { BTN_USE, stanceEye } from "../shared/sim/character.ts";
 import { leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
 import { F_PROP, GEAR_COUNT, GEAR_HELD } from "../shared/sim/entities.ts";
-import { Inventory } from "../shared/sim/items.ts";
+import { Inventory, stackOf } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { TICK_RATE, chunkCx, chunkCz } from "../shared/coords.ts";
 import { castWorld, lookDirection, rayBox, rayHit, HIT_NONE, HIT_STRUCTURE } from "../shared/world/ray.ts";
@@ -177,9 +177,11 @@ export class Death {
     const last = this.lying(rec.pid, this.bag, ents.x[e]!, ents.y[e]!, ents.z[e]!, 2);
     if (last) {
       const inv = items.inv(last);
-      const what = items.inv(rec).item[slot]!;
+      const src = items.inv(rec);
+      const what = src.item[slot]!;
       let to = -1;
-      for (let s = 0; s < inv.bag && to < 0; s++) if (inv.item[s] === what && inv.count[s]! < items.table.stack[what]!) to = s;
+      // Only onto a stack it joins: the same item at the same quality and flags. Put on another, the move would swap.
+      for (let s = 0; s < inv.bag && to < 0; s++) if (inv.item[s] === what && inv.quality[s] === src.quality[slot] && inv.flags[s] === src.flags[slot] && inv.count[s]! < stackOf(what, inv.flags[s]!, items.table)) to = s;
       if (to < 0) to = inv.free();
       if (to >= 0 && items.move(rec, slot, last, to, n) > 0) {
         this.renew(last);
