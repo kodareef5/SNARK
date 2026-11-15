@@ -620,45 +620,52 @@ def beat(u, b):
 # =====================================================================================================================
 
 def glide(r):
-    """Wings flat and still in the shallow M, the tips drooping a little and lifting with each gust; the body rides
-    small bumps, rolls and pitches, which the wings answer by twisting one against the other; the head holds level
-    and looks about, the legs trail."""
+    """Wings broad and still in the shallow M, riding the air: one gust rolls it, the wings answer and it settles and
+    holds; later it looks down to one side, holds the look and looks ahead again. The head holds level against the
+    roll, the legs trail."""
     name = "glide"
     N = rig.CLIPS[name]["frames"]
 
+    # A gust under the right wing rolls it over to the left; the wings answer, the left twisting up and its tip lifting,
+    # and it is level again and still by 30. Later it looks down to its left, holds, and looks ahead again.
+    gust_roll = Keys([(0, 0.0), (14, 0.0), (18, 4.0), (22, 1.2), (26, -0.4), (30, 0.0), (N - 1, 0.0)], period=N)
+    look = Keys([(0, 0.0), (58, 0.0), (63, 24.0), (73, 26.0), (79, 0.0), (N - 1, 0.0)], period=N)
+    look_down = Keys([(0, 0.0), (58, 0.0), (63, 1.0), (73, 1.0), (79, 0.0), (N - 1, 0.0)], period=N)
+
     def roll_at(t):
-        return loop_sine(t, N, [(2.4, 1, 0.0), (0.9, 3, 0.0), (0.4, 5, 0.0)])
+        return gust_roll(t) + loop_sine(t, N, [(0.8, 1, 0.0)])
 
     # The neck rests nearly straight, where the smallest move of the head swings it about: from the rest pose at the
     # loop's seam it eases the head in a little, and out again.
     rest_base = chain(air())["neck"]
     rest_reach = (REST_HEAD - rest_base).length / NECK_LENGTH
-    ease = Keys([(0, 0.0), (14, 1.0), (N - 14, 1.0)], period=N)
+    ease = Keys([(0, 0.0), (12, 1.0), (N - 12, 1.0)], period=N)
 
     def at(t):
         roll = roll_at(t)
-        pitch = loop_sine(t, N, [(1.2, 2, 0.0), (0.5, 5, 0.0)])
-        gust = loop_sine(t, N, [(1.0, 3, 0.0), (0.6, 4, 0.0)])
+        pitch = loop_sine(t, N, [(0.6, 2, 0.0)]) + 0.8 * gust_roll(t - 2.0) / 4.0
+        bump = loop_sine(t, N, [(1.0, 3, 0.0)])
         p = air()
-        p["body"] = REST_BODY + Vector((0.0, 0.012 * gust, 0.0))
-        p["body_rot"] = (pitch, loop_sine(t, N, [(1.0, 1, 0.0)]), roll)
-        # The wing on the dropping side twists its leading edge up to lift itself, the other down.
-        steer = 6.0 * (roll_at(t + 2.0) - roll_at(t - 2.0)) / 4.0
-        droop = 1.5 * (1.0 - math.cos(4.0 * math.pi * t / N))
+        p["body"] = REST_BODY + Vector((0.0, 0.006 * bump + 0.01 * gust_roll(t - 1.0) / 4.0, 0.0))
+        p["body_rot"] = (pitch, loop_sine(t, N, [(0.6, 1, 0.0)]), roll)
+        # The wing on the dropping side twists its leading edge up to lift itself, the other down, and its tip lifts.
+        steer = 8.0 * (roll_at(t + 2.0) - roll_at(t - 2.0)) / 4.0
+        droop = 1.2 * (1.0 - math.cos(2.0 * math.pi * t / N))
         for s in "lr":
             sign = 1.0 if s == LEFT else -1.0
-            p["wing_" + s] = wing(flap=1.5 * gust - 0.6 * sign * roll, twist=sign * steer + 0.5 * gust,
-                                  curl=droop - 2.0 * gust, sweep=loop_sine(t, N, [(1.2, 2, 0.0)]))
+            correct = max(0.0, sign * gust_roll(t - 1.0)) / 4.0
+            p["wing_" + s] = wing(flap=0.8 * bump - 0.6 * sign * roll, twist=sign * steer, curl=droop - 5.0 * correct,
+                                  sweep=loop_sine(t, N, [(0.8, 2, 0.0)]))
             # The legs rest straight, so they ride with the hips; the feet trim a little.
             p["foot_" + s] = body_point(p, REST_FOOT[s])
-            p["foot_rot_" + s] = (pitch + 3.0 * gust, 0.0, 0.0)
-        # The head holds level against the roll and looks about.
-        look = loop_sine(t, N, [(9.0, 1, 0.0), (3.0, 2, 0.0)])
-        d = turned(rot(yaw=0.25 * look), REST_HEAD - rest_base).normalized()
+            p["foot_rot_" + s] = (pitch + 2.0 * bump, 0.0, 0.0)
+        # The head holds level against the roll, and turns more than the neck does when it looks.
+        lk = look(t)
+        d = turned(rot(yaw=0.1 * lk), REST_HEAD - rest_base).normalized()
         p["head"] = chain(p)["neck"] + d * (lerp(rest_reach, 0.972, ease(t)) * NECK_LENGTH)
-        p["head_rot"] = (-pitch, look, -0.8 * roll)
-        p["neck"] = [(-3.0 * ease(t), 0.15 * look, -0.2 * roll), (-2.0 * ease(t), 0.15 * look, -0.2 * roll),
-                     (2.0 * ease(t), 0.15 * look, -0.2 * roll), (3.0 * ease(t), 0.15 * look, -0.2 * roll)]
+        p["head_rot"] = (-pitch - 12.0 * look_down(t), lk, -0.8 * roll + 0.25 * lk)
+        p["neck"] = [(-3.0 * ease(t), 0.08 * lk, -0.2 * roll), (-2.0 * ease(t), 0.08 * lk, -0.2 * roll),
+                     (2.0 * ease(t), 0.08 * lk, -0.2 * roll), (3.0 * ease(t), 0.08 * lk, -0.2 * roll)]
         p["tail"] = (-1.0 * pitch, 0.0)
         return p
 
@@ -768,8 +775,10 @@ def dive(r):
         p["body_rot"] = (-10.0 + loop_sine(t, N, [(0.8, 2, 0.0)]), 0.0, roll)
         for s in "lr":
             sign = 1.0 if s == LEFT else -1.0
-            p["wing_" + s] = wing(fold=0.24, flap=17.0 - sign * 0.8 * roll, sweep=-22.0, twist=-2.0 + sign * 0.5 * roll,
-                                  curl=-4.0 + 1.5 * q)
+            p["wing_" + s] = wing(fold=0.08, flap=4.0 - sign * 0.8 * roll, sweep=-10.0, twist=-3.0 + sign * 0.5 * roll,
+                                  curl=-2.0 + 1.5 * q)
+            # The elbows and wrists draw the span in and back, so the tips trail behind like an arrow's fletching.
+            p["wing_extra_" + s] = {"forearm": (0.0, 28.0, 0.0), "hand": (0.0, 30.0, 0.0)}
             p["foot_" + s] = trailing(p, s, reach=0.975, droop=-8.0, splay=-3.0)
             p["knee_" + s] = body_point(p, REST_KNEE[s])
             p["foot_rot_" + s] = (-10.0, 0.0, 0.0)
