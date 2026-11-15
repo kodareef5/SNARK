@@ -1022,10 +1022,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     survival.init(rec);
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
-    // A mount's load includes what its rider carries, and a survivor's half of what a creature in its arms carries.
+    // A mount's load includes what its rider carries, at its species' share (a pteranodon's 0.85), and a survivor's half of
+    // what a creature in its arms carries.
     const rider = riding.riderOf(e);
     const arms = carry.heldBy(rec.pid);
-    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0) + (arms >= 0 ? carry.load(rec) : 0);
+    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) * reg.riderWeight[rec.kind]! : 0) + (arms >= 0 ? carry.load(rec) : 0);
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);

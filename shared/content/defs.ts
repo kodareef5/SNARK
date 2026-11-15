@@ -184,8 +184,11 @@ export interface FlyFacet {
   readonly stamina: { readonly fly: number; readonly sprint: number; readonly roll: number; readonly grab: number };
   /** Seconds after it last flew before any stamina comes back on the ground. None comes back in the air. */
   readonly wait: number;
-  /** The barrel roll: metres per second it adds to its speed, and seconds from one roll to the next. */
-  readonly roll: { readonly burst: number; readonly every: number };
+  /**
+   * The barrel roll: metres per second it adds to its speed, and seconds from one roll to the next. FL2: the damage it does
+   * to each body it passes, at 100% melee, 0 where not given.
+   */
+  readonly roll: { readonly burst: number; readonly every: number; readonly damage?: number };
 }
 
 /** `at` is the centre, measured from the piece's origin. `half` is the half extents. Both are in metres. */
