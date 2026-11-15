@@ -182,18 +182,19 @@ def attack(r):
     name = "attack"
     n, h = BITE_FRAMES, BITE_HIT
     lean0, ext0 = lean_of(ground(), mv.STANCE_HEAD)
-    dz = Keys([(0, 0.0), (3, -0.04), (5, -0.045), (7, 0.10), (h, 0.16), (h + 1, 0.165), (11, 0.10), (14, 0.01),
+    dz = Keys([(0, 0.0), (3, -0.04), (5, -0.045), (7, 0.11), (h, 0.17), (h + 1, 0.15), (11, 0.09), (14, 0.01),
                (16, -0.008), (n - 1, 0.0)])
-    dy = Keys([(0, 0.0), (3, 0.012), (5, 0.014), (7, -0.015), (h, -0.035), (h + 1, -0.042), (11, -0.025), (14, 0.0),
+    dy = Keys([(0, 0.0), (3, 0.006), (5, 0.007), (7, -0.010), (h, -0.022), (h + 1, -0.026), (11, -0.018), (14, 0.0),
                (16, 0.004), (n - 1, 0.0)])
-    pitch = Keys([(0, 0.0), (3, 3.5), (5, 4.0), (7, -3.5), (h, -5.5), (h + 1, -6.0), (11, -3.5), (14, 0.5), (16, 0.6),
+    pitch = Keys([(0, 0.0), (3, 3.0), (5, 3.5), (7, -3.0), (h, -4.5), (h + 1, -4.8), (11, -3.0), (14, 0.5), (16, 0.6),
                   (n - 1, 0.0)])
-    chest = Keys([(0, 0.0), (3, 2.5), (5, 3.0), (7, -4.0), (h, -6.5), (h + 1, -7.0), (11, -4.0), (14, 0.8), (n - 1, 0.0)])
-    # The thrust keeps the head high: the neck leans out to 62 degrees from upright at full stretch while the body
-    # carries it forward, and the head is held level against it, so the beak travels out along its own line.
-    lean = Keys([(0, lean0), (3, lean0 - 15.0), (5, lean0 - 17.0), (7, 52.0), (h, 62.0), (h + 1, 63.0), (10, 52.0),
-                 (12, 32.0), (14, lean0 - 3.0), (16, lean0 + 2.0), (n - 1, lean0)])
-    ext = Keys([(0, ext0), (3, 0.88), (5, 0.875), (7, 0.975), (h, 0.99), (h + 1, 0.99), (10, 0.93), (12, 0.92),
+    chest = Keys([(0, 0.0), (3, 2.0), (5, 2.5), (7, -3.0), (h, -4.5), (h + 1, -5.0), (11, -3.0), (14, 0.8), (n - 1, 0.0)])
+    # The thrust is level: the head is loaded low and back, at about the height it strikes at, and the neck leans out
+    # to 58 degrees from upright at full stretch while the body carries it forward, the head held level against it, so
+    # the beak travels straight out along its own line. On frame 9 it is already drawing back.
+    lean = Keys([(0, lean0), (3, lean0 + 3.0), (5, lean0 + 4.0), (7, 50.0), (h, 58.0), (h + 1, 52.0), (10, 44.0),
+                 (12, 30.0), (14, lean0 - 3.0), (16, lean0 + 2.0), (n - 1, lean0)])
+    ext = Keys([(0, ext0), (3, 0.83), (5, 0.825), (7, 0.975), (h, 0.99), (h + 1, 0.95), (10, 0.92), (12, 0.91),
                 (14, 0.945), (n - 1, ext0)])
     aim = Keys([(0, 0.0), (3, -6.0), (5, -8.0), (7, -7.0), (h, -6.0), (h + 1, -7.0), (10, -5.0), (12, -1.0), (14, 3.0),
                 (16, -1.5), (n - 1, 0.0)])
@@ -274,8 +275,10 @@ def startled(r):
     # are on the ground at `down`.
     free, hold, down = 5.0, 15.0, 20.0
     recoil = Keys([(0, 0.0), (1, 0.0), (2, 0.7), (3, 1.0), (10, 0.9), (15, 0.45), (20, 0.12), (22, -0.15), (n - 1, 0.0)])
-    # The body follows the head; it comes down heavily, sinking past the crouch as the hands take its weight.
-    rear = Keys([(0, 0.0), (1, 0.0), (2, 0.15), (5, 1.0), (10, 0.88), (hold, 0.3), (down, -0.3), (23, 0.05), (n - 1, 0.0)])
+    # The body follows the head; it stays up while the hands reach for the ground, and comes down heavily, the
+    # shoulders sinking past the crouch as the hands take its weight (`sink`, below 0).
+    rear = Keys([(0, 0.0), (1, 0.0), (2, 0.15), (5, 1.0), (10, 0.88), (13, 0.7), (hold, 0.5), (17, 0.05), (down, -0.35),
+                 (23, 0.05), (n - 1, 0.0)])
     # The wings open once the hands are off the ground, or the folded skin would swing into it, and fold back over
     # four frames before the hands come down. The right wing is a frame behind the left.
     fold = {"l": Keys([(0, 1.0), (2, 1.0), (7, 0.34), (10, 0.37), (hold - 1, 1.0)]),
@@ -288,8 +291,9 @@ def startled(r):
     def at(t):
         k = rear(t)
         h = recoil(t)
+        sink = min(0.0, k) / 0.35
         p = ground()
-        from_stance(p, -0.01 * k, -0.11 * k, 21.0 * k, 1.0 * k, -3.0 * k)
+        from_stance(p, -0.01 * k + 0.05 * sink, -0.11 * k, 21.0 * k, 1.0 * k, -3.0 * k + 5.0 * sink)
         braced(p)
         y = look(t)
         up = max(0.0, k)
@@ -308,7 +312,10 @@ def startled(r):
                 p["plant_" + s] = 1.0 - smooth((t - free + 1.0) / 1.0)
             elif t >= hold - 1.0:
                 k_ = smooth((t - hold) / (down - hold))
-                p["hand_" + s] = mv.between_hands(mv.free_hand(p, s), planted, k_)
+                knuckle, turn = mv.between_hands(mv.free_hand(p, s), planted, k_)
+                # The body sinks as the hands land: they meet the ground, not the place the sunken arm would take them.
+                knuckle.y = max(knuckle.y, mv.STANCE_HAND[s].y)
+                p["hand_" + s] = (knuckle, turn)
                 p["elbow_" + s] = mv.carried(p, mv.STANCE_ELBOW[s])[0].lerp(mv.STANCE_ELBOW[s], k_)
                 p["plant_" + s] = smooth((t - hold + 1.0) / 1.0)
             else:
@@ -333,9 +340,10 @@ def attack_air(r):
     n, h = BITE_FRAMES, BITE_HIT
     rest = air()
     lean0, ext0 = lean_of(rest, mv.REST_HEAD)
-    lean = Keys([(0, lean0), (3, lean0 - 22.0), (5, lean0 - 24.0), (7, 56.0), (h, 62.0), (h + 1, 63.0), (10, 48.0),
-                 (11, 40.0), (14, lean0 - 3.0), (17, lean0 + 1.0), (n - 1, lean0)])
-    ext = Keys([(0, ext0), (3, 0.85), (5, 0.84), (7, 0.975), (h, 0.99), (h + 1, 0.99), (10, 0.93), (11, 0.91),
+    # Loaded back at about the height it strikes at, then out level along the beak's line; drawing back on frame 9.
+    lean = Keys([(0, lean0), (3, lean0 - 12.0), (5, lean0 - 13.0), (7, 52.0), (h, 58.0), (h + 1, 50.0), (10, 42.0),
+                 (11, 36.0), (14, lean0 - 3.0), (17, lean0 + 1.0), (n - 1, lean0)])
+    ext = Keys([(0, ext0), (3, 0.855), (5, 0.845), (7, 0.975), (h, 0.99), (h + 1, 0.95), (10, 0.92), (11, 0.905),
                 (14, 0.945), (17, 0.97), (n - 1, ext0)])
     aim = Keys([(0, 0.0), (3, -5.0), (5, -7.0), (7, -6.0), (h, -6.0), (h + 1, -6.5), (10, -4.0), (11, -2.0), (14, 2.0),
                 (17, -0.8), (n - 1, 0.0)])
@@ -421,8 +429,8 @@ def barrel_roll(r):
 
 # The carry. Where each ankle goes to hold a body on the `grab` socket: forward of the hips and under them, the foot
 # pointing down and forward and the toes curled back under the load. The talons shut round it, not all the way.
-CARRY_ANKLE = Vector((0.105, 0.425, -0.465))
-CARRY_FOOT = (98.0, -8.0, 0.0)
+CARRY_ANKLE = Vector((0.065, 0.41, -0.465))
+CARRY_FOOT = (98.0, -30.0, -25.0)
 GRIP_TALONS = 0.85
 OPEN_TALONS = -0.45
 
@@ -537,9 +545,10 @@ def flinch(r):
         p["beak"] = 0.15 * w
         for s in "lr":
             left = s == LEFT
-            # No fold: laid on the folded wing on the ground, a fold's turns would swing the finger out from the arm.
+            # No fold: laid on the folded wing on the ground, a fold's turns would swing the finger out from the arm. The
+            # left wing's finger is swept back at its knuckle instead, which shortens that wing in the air.
             p["wing_" + s] = wing(flap=3.5 * w, sweep=0.0 if left else 3.0 * w, twist=4.0 * w, curl=(10.0 if left else 2.0) * w)
-            p["wing_extra_" + s] = {"wing_1": (0.0, 0.0, -(9.0 if left else 4.0) * w)}
+            p["wing_extra_" + s] = {"wing_1": (0.0, 16.0 * w if left else 0.0, -(9.0 if left else 4.0) * w)}
         p["tail"] = (9.0 * k, 0.0)
         return p
 
@@ -595,8 +604,11 @@ def carried(r):
             beat_ = e * math.sin(2.0 * math.pi * (t - lag) / STRUGGLE)
             # Hanging limp the wings fall from the shoulders, the elbows and wrists hanging under them, the fingers
             # drooping; struggling the shoulders heave and the outer wing follows.
-            p["wing_" + s] = wing(fold=0.34 - 0.2 * outer, flap=-56.0 + 28.0 * e + 26.0 * beat_, sweep=-4.0 + 5.0 * beat_,
-                                  twist=-6.0 + 8.0 * beat_, curl=22.0 - 14.0 * outer)
+            # The left hangs lower than the right, its tip drooping furthest. Folded much further, the arm would lie back
+            # along the body, where a turn at the shoulder only rolls it about its length and no longer lowers it.
+            limp = 1.0 if s == LEFT else 0.7
+            p["wing_" + s] = wing(fold=0.2 - 0.12 * outer, flap=-40.0 - 22.0 * limp + 36.0 * e + 26.0 * beat_,
+                                  sweep=-4.0 + 5.0 * beat_, twist=-6.0 + 8.0 * beat_, curl=(40.0 * limp) * (1.0 - outer) + 8.0 * outer)
             ph = 2.0 * math.pi * (t / STRUGGLE + (0.0 if s == LEFT else 0.5))
             dangle = mv.leg_hanging(p, s, 0.45 - 0.08 * e * (1 + math.cos(ph)) / 2, 0.05 + 0.10 * e * math.sin(ph), 0.04)
             p["foot_" + s] = dangle
