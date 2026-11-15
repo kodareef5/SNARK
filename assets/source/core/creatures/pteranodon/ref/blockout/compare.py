@@ -69,12 +69,38 @@ def on_bg(path):
     return bg
 
 
+POSES = [("glide", "three"), ("upstroke", "three"), ("downstroke", "three"), ("bank", "three"), ("dive", "three"),
+         ("hover", "side"), ("tucked", "three"), ("carry", "side"), ("stance", "side"), ("stance", "close"),
+         ("stance_open", "three"), ("call", "side")]
+
+
+def poses_sheet(folder, out):
+    """preview.py --poses renders, four to a row, each labelled."""
+    cell, cols = 600, 4
+    label = font(24)
+    rows = (len(POSES) + cols - 1) // cols
+    sheet = Image.new("RGB", (cell * cols, rows * (cell + 36)), BG)
+    d = ImageDraw.Draw(sheet)
+    for k, (name, view) in enumerate(POSES):
+        path = os.path.join(folder, f"pose_{name}_{view}.png")
+        if not os.path.exists(path):
+            continue
+        x, y = (k % cols) * cell, (k // cols) * (cell + 36)
+        sheet.paste(on_bg(path).convert("RGB").resize((cell, cell), Image.LANCZOS), (x, y + 36))
+        d.text((x + 12, y + 6), f"{name.replace('_', ' ')} ({view})", fill=(40, 40, 40), font=label)
+    sheet.save(out)
+    print("poses:", out)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--concept", required=True)
     ap.add_argument("--blockout", required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--poses", help="also lay preview.py's pose renders from --blockout on one sheet, written here")
     a = ap.parse_args()
+    if a.poses:
+        poses_sheet(a.blockout, a.poses)
 
     label, small = font(30), font(24)
     width = 2400
