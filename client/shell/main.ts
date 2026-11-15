@@ -94,7 +94,7 @@ async function boot(): Promise<void> {
   const sound = SoundIo.supported ? new SoundIo(app.ui.settings.touchFirst) : null;
   app.sound = sound;
   if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
-  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.context() : null);
+  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.shared() : null);
   app.voice = voice;
   for (const gesture of ["pointerdown", "pointerup", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */

@@ -3,7 +3,8 @@
 // and a panner that places it by direction only, since distance is worked out in client/core; a voice at the ear has
 // no panner. Each goes to its bus's gain: effects and ambience through a compressor that keeps many sounds at once
 // from clipping, music and the interface around it, so a fight never squeezes a click. The page's voices share the
-// same audio context. While the page is hidden the context is suspended.
+// same audio context. While the page is hidden the context is suspended, unless voice chat shares it: then only the
+// world's sounds fall silent.
 
 import { BUSES, MOVE_FIELDS, START_FIELDS, type SoundPacket, type SoundSink } from "../core/sound/packet.ts";
 
@@ -61,9 +62,24 @@ export class SoundIo implements SoundSink {
     squeeze.connect(this.bus);
     this.buses[2]!.connect(this.bus);
     this.buses[3]!.connect(this.bus);
-    if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => void (document.hidden ? ctx.suspend() : this.resumed && ctx.resume()));
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden && !this.voiced) void ctx.suspend();
+        // The next frame's packet brings the volume back.
+        else if (document.hidden) this.bus!.gain.setTargetAtTime(0, ctx.currentTime, GLIDE);
+        else if (this.resumed) void ctx.resume();
+      });
+    }
     return ctx;
   }
+
+  /** The context for voice chat, which goes on while the page is hidden. */
+  shared(): AudioContext {
+    this.voiced = true;
+    return this.context();
+  }
+
+  private voiced = false;
 
   /** Looks at what leaves the volume now, and keeps the loudest sample in `peak`. Only the self-check calls it. */
   listen(): void {
