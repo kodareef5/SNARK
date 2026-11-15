@@ -99,6 +99,11 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           plant = towers ? P("plaza") : P("open ground");
           stone = T("street blocks");
           break;
+        // Desert takes the open ground's plants, as a city's growth sets them, and natural stone.
+        case S.DESERT:
+          plant = P("open ground");
+          stone = T("limestone");
+          break;
         case S.YARD:
           plant = P("yard");
           stone = T("scrap");

@@ -1,9 +1,10 @@
 import { hash3 } from "./raster.ts";
-import { RUIN_SHAPES, type RuinFinish } from "../../content/ruins.ts";
+import { RUIN_SHAPES, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import { inside, Mason, SIDES, tileKey, tilesOf, type Tile } from "./ruin-geometry.ts";
 import type { Composition, Round, Rule, Vocabulary } from "./ruin-vocabulary.ts";
 
 export interface LayoutOptions { seed: number; playable: number; detail: number; coreU?: number; }
+type Op = Composition["operations"][number];
 const has = (tiles: Set<string>, t: Tile, dx: number, dz: number): boolean => tiles.has(tileKey(t.i + dx, t.j + dz));
 
 // A layout composes an intact circulation path, structural frame, then the remnants around it.
@@ -366,17 +367,97 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
   }
 }
 
-/** Pieces round a circle at one height, each turned along it and as many as its length allows; one at the middle when the circle is smaller than a piece. */
-function ring(m: Mason, op: Round, radius: number, y: number, finish: RuinFinish): void {
+/**
+ * Pieces round a circle at one height, each turned along it and as many as its length allows; one at the middle when the
+ * circle is smaller than a piece. `scale` stretches the circle along u and v into an ellipse.
+ */
+function ring(m: Mason, op: Round, radius: number, y: number, finish: RuinFinish, scale?: readonly [number, number]): void {
   const shape = op.shape ?? "crown"; const [cu, cv] = op.at ?? [0, 0]; const [from, to] = op.arc ?? [0, 360];
   const along = RUIN_SHAPES[shape][0];
-  if (radius < along / 2) { m.put(shape, cu, y, cv, finish); return; }
   const whole = to - from >= 360;
+  if (scale) {
+    const ru = radius * scale[0]; const rv = radius * scale[1];
+    if ((ru + rv) / 2 < along / 2) { m.put(shape, cu, y, cv, finish); return; }
+    const count = Math.max(whole ? 3 : 2, Math.round((((ru + rv) / 2) * (to - from) * Math.PI) / 180 / along));
+    for (let k = 0; k < count; k++) {
+      const rad = ((from + (to - from) * (whole ? k / count : k / (count - 1))) * Math.PI) / 180;
+      m.put(shape, cu + ru * Math.cos(rad), y, cv + rv * Math.sin(rad), finish, -(Math.atan2(rv * Math.cos(rad), -ru * Math.sin(rad)) * 180) / Math.PI);
+    }
+    return;
+  }
+  if (radius < along / 2) { m.put(shape, cu, y, cv, finish); return; }
   const count = Math.max(whole ? 3 : 2, Math.round((radius * (to - from) * Math.PI) / 180 / along));
   for (let k = 0; k < count; k++) {
     const a = from + (to - from) * (whole ? k / count : k / (count - 1));
     const rad = (a * Math.PI) / 180;
     m.put(shape, cu + radius * Math.cos(rad), y, cv + radius * Math.sin(rad), finish, -(a + 90));
+  }
+}
+
+/** The largest radius of a round op, and how its ellipse stretches a circle of that radius, if it is one. */
+function roundOf(op: Round): [number, (readonly [number, number]) | undefined] {
+  if (!op.radii) return [op.radius ?? 8, undefined];
+  const r = Math.max(op.radii[0], op.radii[1]);
+  return [r, [op.radii[0] / r, op.radii[1] / r]];
+}
+
+/** A stepped pyramid of courses a piece high round a shrinking rectangle, each filled in to where the course above reaches. */
+function pyramid(m: Mason, op: Op, rule: Rule): void {
+  const shape = op.shape ?? "zmass8"; const [along, h, depth] = RUIN_SHAPES[shape]; const finish = op.finish ?? rule.finish;
+  const [cu, cv] = op.at ?? [0, 0]; const [hu, hv] = op.half ?? [m.frame.width / 2, m.frame.depth / 2];
+  const foot = op.y ?? 0; const rise = (op.height ?? rule.height) - foot;
+  const square = (wu: number, wv: number, y: number): void => {
+    const nu = Math.max(1, Math.round((2 * wu + depth) / along)); const nv = Math.max(1, Math.round((2 * wv) / along));
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < nu; i++) m.put(shape, cu - wu - depth / 2 + ((i + .5) * (2 * wu + depth)) / nu, y, cv + side * wv, finish);
+      if (wv > along / 2) for (let i = 0; i < nv; i++) m.put(shape, cu + side * wu, y, cv - wv + ((i + .5) * 2 * wv) / nv, finish, 90);
+    }
+  };
+  const courses: [number, number][] = [];
+  for (let k = 0; k * h < rise; k++) { const f = 1 - ((k + .5) * h) / rise; courses.push([hu * f, hv * f]); }
+  courses.forEach(([wu, wv], k) => {
+    const y = foot + (k + .5) * h; const [nu, nv] = courses[k + 1] ?? [-along, -along];
+    for (let j = 0; ; j++) {
+      const iu = wu - j * along; const iv = wv - j * along;
+      if (j > 0 && iu < nu + along / 4 && iv < nv + along / 4) break;
+      if (iv <= along / 2) { if (iu > -along / 2) for (let u = -Math.max(0, iu); u <= Math.max(0, iu) + .01; u += along) m.put(shape, cu + u, y, cv, finish); break; }
+      if (iu <= along / 2) { for (let v = -iv; v <= iv + .01; v += along) m.put(shape, cu, y, cv + v, finish, 90); break; }
+      square(iu, iv, y);
+    }
+  });
+}
+
+/** A wheel standing in a vertical plane: its rim of pieces round a hub, cabins outside it, and a leg each side to the ground. */
+function wheel(m: Mason, op: Op, rule: Rule): void {
+  const shape = op.shape ?? "crown"; const [along, h] = RUIN_SHAPES[shape]; const finish = op.finish ?? rule.finish;
+  const r = op.radius ?? 20; const [cu, cv] = op.at ?? [0, 0]; const hub = op.y ?? r + 2;
+  const turn = ((op.turn ?? 0) * Math.PI) / 180; const cu1 = Math.cos(turn); const sv1 = Math.sin(turn);
+  const at = (w: number, y: number, shapeName: RuinShape, finishName: RuinFinish): void => m.put(shapeName, cu + w * cu1, y, cv + w * sv1, finishName, -(op.turn ?? 0));
+  const count = Math.max(8, Math.round((2 * Math.PI * r) / Math.max(along, h)));
+  for (let k = 0; k < count; k++) { const a = (2 * Math.PI * k) / count; at(r * Math.cos(a), hub + r * Math.sin(a), shape, finish); }
+  for (let k = 0; k < (op.cabins ?? 0); k++) { const a = (2 * Math.PI * k) / op.cabins!; at((r + 3.5) * Math.cos(a), hub + (r + 3.5) * Math.sin(a), "zcore", "blue"); }
+  at(0, hub, "zcore", "steel");
+  for (const side of [-1, 1]) for (let y = 0; y < hub - 4; y += 16) {
+    const top = Math.min(hub - 2, y + 16); const piece: RuinShape = top - y > 8 ? "fin16" : top - y > 4 ? "fin8" : "fin4";
+    m.put(piece, cu - side * 4 * sv1, y + RUIN_SHAPES[piece][1] / 2, cv + side * 4 * cu1, "steel", -(op.turn ?? 0));
+  }
+}
+
+/** A roof of plates over the chosen part of the footprint, each raised to where a shallow dome over it stands. */
+function vault(m: Mason, tiles: Tile[], op: Op, rule: Rule): void {
+  if (!tiles.length) return;
+  const shape = op.shape ?? "floor16"; const along = RUIN_SHAPES[shape][0]; const finish = op.finish ?? rule.finish;
+  const minU = Math.min(...tiles.map((t) => t.u)) - 4; const maxU = Math.max(...tiles.map((t) => t.u)) + 4;
+  const minV = Math.min(...tiles.map((t) => t.v)) - 4; const maxV = Math.max(...tiles.map((t) => t.v)) + 4;
+  const [cu, cv] = op.at ?? [(minU + maxU) / 2, (minV + maxV) / 2];
+  const [ru, rv] = op.radii ?? [(maxU - minU) / 2, (maxV - minV) / 2];
+  const keys = new Set(tiles.map((t) => `${Math.round(t.u)},${Math.round(t.v)}`));
+  const near = (u: number, v: number): boolean => tiles.some((t) => Math.abs(t.u - u) <= 4 && Math.abs(t.v - v) <= 4) || keys.has(`${Math.round(u)},${Math.round(v)}`);
+  const spring = op.y ?? rule.height; const rise = op.rise ?? 8;
+  for (let u = minU + along / 2; u < maxU; u += along) for (let v = minV + along / 2; v < maxV; v += along) {
+    if (!near(u, v)) continue;
+    const d = ((u - cu) / ru) ** 2 + ((v - cv) / rv) ** 2;
+    m.put(shape, u, spring + Math.round(rise * Math.max(0, 1 - d) * 4) / 4, v, finish);
   }
 }
 
@@ -398,19 +479,31 @@ function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, compo
         m.put("trim8", t.u, rule.height, t.v + (op.rear ? 4 : -4), op.finish ?? rule.finish);
       }
     }
-    if (op.op === "ring") for (const y of op.heights ?? []) ring(m, op, op.radius ?? 8, y, op.finish ?? rule.finish);
+    if (op.op === "ring") { const [r, scale] = roundOf(op); for (const y of op.heights ?? []) ring(m, op, r, y, op.finish ?? rule.finish, scale); }
     if (op.op === "dome") {
-      // A drum up to the springing, then courses a block high as far in as the hemisphere's radius at their middle, each
-      // filled inward to where the course above it reaches, so the dome is closed from above.
-      const r = op.radius ?? 8; const shape = op.shape ?? "crown"; const [along, h] = RUIN_SHAPES[shape]; const spring = op.y ?? rule.height;
-      for (let y = spring - (op.drum ?? 0); y < spring - .01; y += h) ring(m, op, r, y + h / 2, op.finish ?? rule.finish);
+      // A drum up to the springing, then courses a block high as far in as the dome's radius at their middle, each
+      // filled inward to where the course above it reaches, so the dome is closed from above. `below` carries the
+      // sphere down from the drum's foot, each course filled outward to the one above, so it is closed from below.
+      const [r, scale] = roundOf(op); const shape = op.shape ?? "crown"; const [along, h] = RUIN_SHAPES[shape]; const spring = op.y ?? rule.height;
+      const finish = op.finish ?? rule.finish; const top = op.rise ?? r;
+      const at = (d: number): number => op.rise === undefined ? Math.sqrt(Math.max(0, r * r - d ** 2)) : r * Math.sqrt(Math.max(0, 1 - (d / top) ** 2));
+      for (let y = spring - (op.drum ?? 0); y < spring - .01; y += h) ring(m, op, r, y + h / 2, finish, scale);
       const radii: number[] = [];
-      for (let k = 0; k * h < r; k++) radii.push(Math.sqrt(Math.max(0, r * r - ((k + .5) * h) ** 2)));
+      for (let k = 0; k * h < top; k++) radii.push(at((k + .5) * h));
       radii.forEach((outer, k) => {
         const inner = radii[k + 1] ?? -along;
-        for (let rho = outer; rho > inner + along / 4; rho -= along) ring(m, op, Math.max(0, rho), spring + (k + .5) * h, op.finish ?? rule.finish);
+        for (let rho = outer; rho > inner + along / 4; rho -= along) ring(m, op, Math.max(0, rho), spring + (k + .5) * h, finish, scale);
+      });
+      const foot = spring - (op.drum ?? 0); const lower: number[] = [];
+      for (let k = 0; k * h < (op.below ?? 0); k++) lower.push(at((k + .5) * h));
+      lower.forEach((rho, k) => {
+        const above = k === 0 ? r : lower[k - 1]!;
+        for (let q = rho; q < above - along / 4 || q === rho; q += along) ring(m, op, Math.max(0, q), foot - (k + .5) * h, finish, scale);
       });
     }
+    if (op.op === "pyramid") pyramid(m, op, rule);
+    if (op.op === "wheel") wheel(m, op, rule);
+    if (op.op === "vault") vault(m, selected, op, rule);
     if (op.op === "portal") for (let i = m.pieces.length - 1; i >= 0; i--) {
       const p = m.pieces[i]!; const u = (p.x - m.frame.x) * m.frame.c - (p.z - m.frame.z) * m.frame.s;
       if (Math.abs(u) < (op.width ?? 12) / 2 && p.y - m.base < (op.height ?? 16) - .5) m.pieces.splice(i, 1);

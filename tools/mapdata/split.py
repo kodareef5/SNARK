@@ -15,7 +15,7 @@ from shapely.ops import unary_union
 from shapely.strtree import STRtree
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from common import folder_arg  # noqa: E402
+from common import folder_arg, relation_polygon  # noqa: E402
 from prepare import buildings  # noqa: E402
 
 # Ids of split pieces start here: above any USA Structures object id, and four times it still fits an int32.
@@ -46,18 +46,35 @@ def main():
     osm, tags = [], {}
     for el in json.loads((m.raw / 'osm/buildings.json').read_text())['elements']:
         g = el.get('geometry') or []
-        if el['type'] != 'way' or len(g) < 4 or g[0] != g[-1]:
+        if el['type'] == 'relation' and el.get('members'):
+            # A multipolygon building (Elara, Palms Place), as the way its outer rings draw; a relation's id is kept
+            # negative, so it never meets a way of the same number.
+            area = relation_polygon(el['members'], tm.transform)
+            if area is None:
+                continue
+            p, key = largest(make_valid(area)), -el['id']
+        elif el['type'] != 'way' or len(g) < 4 or g[0] != g[-1]:
             continue
-        p = largest(make_valid(Polygon([tm.transform(q['lon'], q['lat']) for q in g])))
+        else:
+            p, key = largest(make_valid(Polygon([tm.transform(q['lon'], q['lat']) for q in g]))), el['id']
         if p.geom_type == 'Polygon' and p.area >= SLIVER_M2:
-            osm.append((el['id'], p))
-            tags[el['id']] = el.get('tags', {})
+            osm.append((key, p))
+            tags[key] = el.get('tags', {})
     tree = STRtree([p for _, p in osm])
     out, split, pieces_total, rows, remainders = [], 0, 0, [], 0
     next_id = SPLIT_BASE
     used = set()
+    taller_first = rule.get('split_taller_first', False)
+
+    def tagged_height(way):
+        t = tags[way]
+        return metres(t.get('height')) or (int(t['building:levels']) * 3.5 if (t.get('building:levels') or '').isdigit() else 0)
     for g, props in sorted(usa, key=lambda gp: gp[1]['id']):
         inside = sorted((osm[i] for i in tree.query(g) if g.contains(osm[i][1].representative_point())), key=lambda wp: (-wp[1].area, wp[0]))
+        if taller_first:
+            # Where buildings overlap, the taller is cut first (a tower standing through the casino drawn round it), so
+            # the lower one does not swallow it; buildings that do not overlap come out the same in any order.
+            inside.sort(key=lambda wp: (-tagged_height(wp[0]), -wp[1].area, wp[0]))
         used.update(way for way, _ in inside)
         pieces, taken = [], None
         for way, p in inside:
@@ -105,10 +122,13 @@ def main():
         rows.append((next_id, None, round(p.area, 1)))
         next_id += 1
         added += 1
-    m.write_features('buildings', out)
-
     path = m.base / 'buildings_attributes.json'
     attrs = json.loads(path.read_text())
+    by_parts = 0
+    if rule.get('split_by_parts'):
+        out, rows, next_id, by_parts = split_parts(m, out, rows, next_id, tags, attrs, rule)
+    m.write_features('buildings', out)
+
     fields = attrs['fields'] if 'PARENT' in attrs['fields'] else attrs['fields'] + ['PARENT']
     oid, sq = fields.index('OBJECTID'), fields.index('SQMETERS')
     own = [r + [None] * (len(fields) - len(r)) for r in attrs['rows'] if r[oid] < SPLIT_BASE]
@@ -131,7 +151,73 @@ def main():
         derived.append(r)
     attrs['fields'], attrs['rows'] = fields, own + derived
     path.write_text(json.dumps(attrs) + '\n')
-    print(f'split: {split} of {len(usa)} USA Structures footprints into {pieces_total - remainders} OpenStreetMap buildings and {remainders} remainders; {added} OpenStreetMap buildings added; {len(out)} footprints')
+    print(f'split: {split} of {len(usa)} USA Structures footprints into {pieces_total - remainders} OpenStreetMap buildings and {remainders} remainders; {added} OpenStreetMap buildings added; {by_parts} cut into their parts; {len(out)} footprints')
+
+
+def split_parts(m, out, rows, next_id, tags, attrs, rule):
+    """A resort or a casino OpenStreetMap draws as one building holds towers it maps only as building parts. Where the
+    parts standing on the ground (no min_height) reach more than a quarter over what the footprint is known to stand
+    (its building's height, else the survey's), it is cut into those parts and the podium left round them, which keeps
+    the footprint's own height."""
+    path = m.raw / 'osm/features.json'
+    if not path.exists():
+        return out, rows, next_id, 0
+    tm = Transformer.from_crs(4326, m.crs, always_xy=True)
+    level_m = rule.get('split_parts_level_m', 3.5)
+
+    def height(t):
+        h = metres(t.get('height'))
+        return h if h else (int(t['building:levels']) * level_m if (t.get('building:levels') or '').isdigit() else None)
+    parts = []
+    for el in json.loads(path.read_text())['elements']:
+        t = el.get('tags', {})
+        g = el.get('geometry') or []
+        if 'building:part' not in t or el['type'] != 'way' or len(g) < 4 or g[0] != g[-1]:
+            continue
+        if (metres(t.get('min_height')) or 0) > 0 or (t.get('building:min_level') or '0') not in ('0', ''):
+            continue
+        p = largest(make_valid(Polygon([tm.transform(q['lon'], q['lat']) for q in g])))
+        if p.geom_type == 'Polygon' and p.area >= SLIVER_M2:
+            parts.append((el['id'], p, t))
+    if not parts:
+        return out, rows, next_id, 0
+    tree = STRtree([p for _, p, _ in parts])
+    oid = attrs['fields'].index('OBJECTID')
+    hgt = attrs['fields'].index('HEIGHT') if 'HEIGHT' in attrs['fields'] else None
+    survey = {r[oid]: r[hgt] for r in attrs['rows']} if hgt is not None else {}
+    least = rule.get('split_remainder_m2', 2000)
+    kept, cut = [], 0
+    for g, props in out:
+        inside = [parts[i] for i in tree.query(g) if g.contains(parts[i][1].representative_point())] if g.area >= least else []
+        tallest = max((height(t) or 0 for _, _, t in inside), default=0)
+        parent = props.get('parent', props['id']) if props['id'] >= SPLIT_BASE else props['id']
+        known = metres((tags.get(props.get('osm_way')) or {}).get('height')) or survey.get(parent)
+        if not inside or not tallest or (known and tallest <= 1.25 * float(known)):
+            kept.append((g, props))
+            continue
+        pieces, taken = [], None
+        for way, p, _ in sorted(inside, key=lambda wp: (-wp[1].area, wp[0])):
+            piece = p.intersection(g)
+            if taken is not None:
+                piece = piece.difference(taken)
+            piece = largest(make_valid(piece)) if not piece.is_empty else piece
+            if piece.is_empty or piece.geom_type != 'Polygon' or piece.area < SLIVER_M2:
+                continue
+            pieces.append((way, piece))
+            taken = piece if taken is None else taken.union(piece)
+        left = g.difference(taken).buffer(-1.5).buffer(1.5, join_style=2) if taken is not None else g
+        rest = [h for h in getattr(left, 'geoms', [left]) if h.geom_type == 'Polygon' and h.area >= 60]
+        rows = [r for r in rows if r[0] != props['id']]
+        for way, piece in sorted(pieces, key=lambda wp: wp[0]):
+            kept.append((piece, {'id': next_id, 'parent': parent, 'osm_way': props.get('osm_way'), 'osm_part': way}))
+            rows.append((next_id, parent, round(piece.area, 1)))
+            next_id += 1
+        for h in sorted(rest, key=lambda h: (h.centroid.x, h.centroid.y)):
+            kept.append((h, {'id': next_id, 'parent': parent, 'osm_way': props.get('osm_way'), 'parts_remainder': True}))
+            rows.append((next_id, parent, round(h.area, 1)))
+            next_id += 1
+        cut += 1
+    return kept, rows, next_id, cut
 
 
 if __name__ == '__main__':

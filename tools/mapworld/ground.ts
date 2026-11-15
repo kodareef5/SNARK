@@ -36,6 +36,8 @@ export const S = {
   WRECK: 23,
   YARD: 24,
   CONTAINER: 25,
+  /** Dry ground that grows no green: desert pavement and scrub, where a city's succession names its land cover dry. */
+  DESERT: 26,
 } as const;
 
 export interface District {
@@ -357,6 +359,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     else if (b === 5) surface[i] = S.MARSH;
     else if (canopy[i]) surface[i] = S.CANOPY;
     else if (b === 3) surface[i] = S.GREEN;
+    else if (b === 10) surface[i] = S.DESERT;
     else surface[i] = styleOf(i) === "industrial" ? S.YARD : S.OPEN;
   }
   // The port's yards are rows of containers along the island, one or two high, some gone, with lanes between.

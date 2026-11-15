@@ -37,8 +37,10 @@ def main():
     b_fine = m.burn([(g, 1) for g, p in bld], FINE, tx)
     save(w_fine, m.base / 'water_fine.png')
     save(b_fine, m.base / 'buildings_fine.png')
-    surface = [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
-               for g, p in sorted(roads, key=lambda gp: gp[1]['width_m']) if tunnel_name not in (p['name'] or '').lower()]
+    # An airfield's paving (prepare.py's paved layer) lies under the roads, as a highway's surface.
+    paved = [(g, 2) for g, p in m.vectors('paved')] if (m.base / 'paved.geojson').exists() else []
+    surface = paved + [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
+                       for g, p in sorted(roads, key=lambda gp: gp[1]['width_m']) if tunnel_name not in (p['name'] or '').lower()]
     tunnels = [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 1) for g, p in roads if tunnel_name in (p['name'] or '').lower()]
     report = {}
     for size, t, suffix in [(FINE, tx, '_fine'), (m.n, m.grid, '')]:

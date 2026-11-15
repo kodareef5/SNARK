@@ -393,7 +393,7 @@ function makeStreetPieces(site: Site, v: ReturnType<typeof vocabulary>, accept: 
     for (let dz = -1; dz <= 1 && !occupied; dz++) for (let dx = -1; dx <= 1 && !occupied; dx++) occupied = (clusterBins.get(Math.floor(x / 32) + dx + (Math.floor(z / 32) + dz) * 1024) ?? []).some((c) => (c.x - x) ** 2 + (c.z - z) ** 2 < 18 * 18);
     if (occupied) continue;
     const yard = surface === S.YARD;
-    const verge = (surface === S.OPEN || surface === S.GREEN) && [[-4, 0], [4, 0], [0, -4], [0, 4]].some(([dx, dz]) => road(site.ground.surface[at(x + dx!, z + dz!)]));
+    const verge = (surface === S.OPEN || surface === S.GREEN || surface === S.DESERT) && [[-4, 0], [4, 0], [0, -4], [0, 4]].some(([dx, dz]) => road(site.ground.surface[at(x + dx!, z + dz!)]));
     if (!yard && !road(surface) && !verge) continue;
     // The middle of the street remains a continuous lane; wrecks occupy its edge.
     const vertical = site.ground.surface[at(x, z - 6)] === surface && site.ground.surface[at(x, z + 6)] === surface;

@@ -1,0 +1,115 @@
+{
+  "name": "las-vegas",
+  "label": "Las Vegas",
+  "centre": [-115.172, 36.115],
+  "size_m": 8128,
+  "chunk_m": 64,
+  "spacing_m": 2,
+  "height_zero_m": 500,
+  "tiger": {
+    "year": 2025,
+    "counties": ["32003"],
+    "layers": ["roads", "areawater"],
+    "source": "Census TIGER/Line 2025, Clark County, NV",
+    "licence": "https://creativecommons.org/publicdomain/zero/1.0/ (catalog.data.gov); \"These products are free to use in a product or publication, however acknowledgement must be given to the U.S. Census Bureau as the source.\""
+  },
+  "dem": {
+    "kind": "tnm",
+    "project": "NV_ClarkCounty_B22",
+    "dataset": "Original Product Resolution (OPR) Digital Elevation Model (DEM)",
+    "z_to_m": 0.304800609601219,
+    "source": "USGS 3DEP Original Product Resolution DEM, NV_ClarkCounty_B22, work unit NV_ClarkCo_2_B22 (published 2023-06-14); NAD83(2011) Nevada East and NAVD88 (GEOID18), both in US survey feet, 1 ft cells",
+    "licence": "USGS public domain. Access constraints: \"None.\" Credit: \"Acknowledgement of the USGS 3D Elevation Program would be appreciated in products derived from these data.\""
+  },
+  "nlcd": {
+    "url": "https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/ows",
+    "coverage": "NLCD_2021_Land_Cover_L48",
+    "file": "nlcd2021.tif",
+    "source": "USGS / MRLC NLCD 2021 Land Cover (CONUS)",
+    "licence": "Public domain (USGS)"
+  },
+  "footprints": {
+    "service": "https://services2.arcgis.com/FiaPA4ga0iQKduv3/arcgis/rest/services/USA_Structures_View/FeatureServer/0",
+    "source": "FEMA / ORNL USA Structures",
+    "licence": "CC BY 4.0, as the Esri-hosted delivery item declares; a U.S. government work per catalog.data.gov. Attribution: Oak Ridge National Laboratory (ORNL); Federal Emergency Management Agency (FEMA) Geospatial Response Office.",
+    "split_by_osm": true,
+    "split_cover": 0.6,
+    "split_remainder_m2": 2000,
+    "split_taller_first": true,
+    "split_by_parts": true,
+    "split_why": "Resorts are drawn as one building holding podium and towers: a tower drawn across a casino (the Eiffel Tower over Paris) is cut out of it first and each piece keeps its own building's height, and where only building parts carry the towers (MGM Grand, New York-New York, Westgate) the footprint is cut into its parts and its podium"
+  },
+  "osm": {
+    "servers": ["https://overpass-api.de/api/interpreter", "https://overpass.private.coffee/api/interpreter", "https://maps.mail.ru/osm/tools/overpass/api/interpreter"],
+    "source": "OpenStreetMap contributors, through the Overpass API",
+    "licence": "Open Database License (ODbL) 1.0, (c) OpenStreetMap contributors"
+  },
+  "roads": {
+    "widths_m": {"S1100": 22, "S1200": 14, "S1400": 8, "S1630": 7, "S1640": 5, "S1710": 3, "S1720": 3, "S1740": 4},
+    "other_width_m": 6,
+    "tunnel_name": "tunl"
+  },
+  "succession": {
+    "dry_classes": [31, 52],
+    "dry_why": "The Mojave: NLCD's barren land and shrub/scrub are desert pavement and creosote, which grow no green; developed open space (golf courses, the Strip's medians) is watered and stays grown",
+    "sand_ribbon": null,
+    "flood_below_navd88_m": null,
+    "flood_within_m": 300
+  },
+  "canopy": {
+    "rule": "succession",
+    "share_of_vegetation": 0.1,
+    "share_of_open": 0.02,
+    "seed": 7
+  },
+  "world": {
+    "sea": false,
+    "seaNavd88": 0,
+    "sea_source": "No sea in the frame, and none within 350 km; heights are NAVD88 (GEOID18) as the survey gives them",
+    "minY": 500,
+    "report": "ruins4",
+    "easy_around_spawns_m": 400,
+    "places": [
+      {"name": "South Strip", "at": [-115.1755, 36.0935], "why": "the resorts from Mandalay Bay to Excalibur; OpenStreetMap maps the Strip as no place"},
+      {"name": "Center Strip", "at": [-115.1735, 36.1145], "why": "Bellagio, Caesars Palace, Paris and the LINQ"},
+      {"name": "North Strip", "at": [-115.1660, 36.1290], "why": "Wynn, Encore, Resorts World, Fontainebleau and the Sahara"},
+      {"name": "Naked City", "at": [-115.1590, 36.1430], "why": "the old neighbourhood under the Strat, by its name"},
+      {"name": "Las Vegas Convention Center", "at": [-115.1530, 36.1320], "why": "a district of exhibition halls and their lots"},
+      {"name": "Harry Reid International Airport", "at": [-115.1500, 36.0850], "why": "the airport's north end: its terminals, concourses and runways"},
+      {"name": "Las Vegas Country Club", "at": [-115.1450, 36.1357], "why": "the neighbourhood round its golf course, mapped as a golf course, not a place"}
+    ],
+    "styles": {
+      "South Strip": "concrete", "Center Strip": "concrete", "North Strip": "concrete", "Harry Reid International Airport": "concrete",
+      "Las Vegas Convention Center": "concrete",
+      "Flamingo Heights": "terracotta", "Chinatown": "terracotta", "Filipino Town": "terracotta",
+      "Rancho Oakey": "terracotta", "Midtown UNLV": "terracotta", "Las Vegas Country Club": "terracotta", "Naked City": "terracotta"
+    },
+    "obelisks": [
+      {"name": "Welcome to Fabulous Las Vegas", "at": [-115.17262, 36.08120], "face": [-115.17277, 36.08206], "why": "on the sign's parking in the boulevard's median, facing it"},
+      {"name": "Sphere", "at": [-115.16010, 36.12130], "face": [-115.16207, 36.12124], "why": "on the Sphere's parking lot A, facing it"},
+      {"name": "The Strat", "at": [-115.16000, 36.14760], "face": [-115.15552, 36.14741], "why": "at the east end of Chester Stupak Park, facing the tower"}
+    ],
+    "spawn_places": [
+      {"name": "Welcome to Fabulous Las Vegas Sign", "face": [-115.1728, 36.0950]},
+      {"name": "Allegiant Stadium", "at": [-115.18060, 36.09260], "face": [-115.18333, 36.09073]},
+      {"name": "Siegfried and Roy Park", "face": [-115.1500, 36.0840]},
+      {"name": "Fountains of Bellagio", "at": [-115.17210, 36.11270], "face": [-115.17411, 36.11281]},
+      {"name": "High Roller", "at": [-115.16960, 36.11760], "face": [-115.16816, 36.11756]},
+      {"name": "Sphere", "at": [-115.15990, 36.12200], "face": [-115.16207, 36.12124]},
+      {"name": "Donald H. Baepler Xeric Garden", "face": [-115.1430, 36.1077]},
+      {"name": "Las Vegas Convention Center", "at": [-115.15600, 36.13300], "face": [-115.1574, 36.1342]},
+      {"name": "Chester Stupak Park", "face": [-115.15552, 36.14741]},
+      {"name": "Chinatown Plaza", "face": [-115.1720, 36.1200]}
+    ]
+  },
+  "ruins": {
+    "rules_from": "miami",
+    "blocks_per_footprint": 130
+  },
+  "future": {
+    "spans_why": "None: no bridge in the frame crosses water",
+    "spans": [],
+    "wrecks_why": "None: no water in the frame holds a hull",
+    "wrecks": []
+  }
+}

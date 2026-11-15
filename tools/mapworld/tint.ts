@@ -28,6 +28,8 @@ const GROUND: Record<number, readonly number[]> = {
   [S.MANGROVE]: [138, 117, 137],
   [S.MARSH]: [139, 130, 147, 129],
   [S.WRECK]: [179, 180, 97],
+  // Desert: buff and tan gravel, a little grey.
+  [S.DESERT]: [123, 122, 167, 124, 100],
 };
 
 /** A ruin's colour by its district's style: one picked for each ruin, then a step lighter or darker by noise. */
