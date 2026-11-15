@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
 import { HudModel, headingOf, minimapImage, updateHud } from "../../client/core/hud.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { probePasses, provingProbes } from "../../client/core/selfcheck.ts";
+import { tierOf } from "../../client/core/assets/tiers.ts";
+import { heldTo, probePasses, provingProbes } from "../../client/core/selfcheck.ts";
 import { MARKER_DEATH, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { latOf, lonOf } from "../../shared/world/coords.ts";
@@ -122,5 +123,29 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
   for (const c of [probes[4]!, probes[5]!]) {
     const o = (Math.floor(c.sy * H) * W + Math.floor(c.sx * W)) * 4;
     expect(probePasses(c, view.raster.color[o]!, view.raster.color[o + 1]!, view.raster.color[o + 2]!)).toBe(false);
+  }
+});
+
+test("on a lit tier the creature probe holds its colour to the facing nearest it, and still tells its region's colour from the species' own", () => {
+  const view = provingView(320, 180);
+  view.cam.pitch = 0;
+  view.scene.assets.tier = tierOf("medium");
+  view.scene.plainSky = true;
+  const r = view.remote;
+  [r.x[1], r.z[1], r.y[1]] = [PROBE_CREATURE.x, PROBE_CREATURE.z, view.hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z)];
+  const pal = view.pack.palette;
+  const dot = (a: readonly number[], b: readonly number[]): number => (a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!) / (Math.hypot(a[0]!, a[1]!, a[2]!) * Math.hypot(b[0]!, b[1]!, b[2]!));
+  // What a GPU read off the grazer at the probe server's hours, where the twin facing the camera says 0.9974 to 0.9999.
+  const gpu: Record<string, number[]> = { "7.5": [183, 154, 55], "9": [145, 132, 52], "12": [102, 97, 41] };
+  for (const [hour, got] of Object.entries(gpu)) {
+    view.scene.hour = Number(hour);
+    const packet = view.scene.build(view.cam, r);
+    const creature = provingProbes(view.cam, view.reg, pal, SKY_COLOR, view.hf, true, packet).find((p) => p.name === "creature")!;
+    expect(creature.facings!.length).toBeGreaterThan(32);
+    expect(probePasses(creature, got[0]!, got[1]!, got[2]!)).toBe(true);
+    expect(dot(heldTo(creature, got[0]!, got[1]!, got[2]!), got)).toBeGreaterThan(0.9995);
+    // The grazer in its species' own colour, lit from any facing, is not taken for the region's.
+    const own = provingProbes(view.cam, view.reg, Uint8Array.from(pal, (c, i) => (i >> 2 === PROBE_CREATURE.color ? pal[9 * 4 + (i & 3)]! : c)), SKY_COLOR, view.hf, true, packet).find((p) => p.name === "creature")!;
+    for (const c of [own.rgb, ...own.facings!]) expect(probePasses(creature, c[0], c[1], c[2])).toBe(false);
   }
 });

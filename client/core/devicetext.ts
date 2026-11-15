@@ -51,7 +51,7 @@ function onThis(g: Record<string, unknown>): string {
   return `${identify(nav.userAgent ?? "", nav.maxTouchPoints ?? 0)}, ${screen.width ?? "?"} by ${screen.height ?? "?"} at ${g.devicePixelRatio ?? "?"}x`;
 }
 
-const TESTS: Readonly<Record<Mode, string>> = { quick: "Quick look, about 3 minutes", ladder: "Load ladder, about 5 minutes", soak: "Soak, 10 minutes", terrain: "Terrain flight, about 3 minutes" };
+const TESTS: Readonly<Record<Mode, string>> = { quick: "Quick look, about 3 minutes", ladder: "Load ladder, about 5 minutes", soak: "Soak, 10 minutes", governed: "Soak with the governor on, 10 minutes", terrain: "Terrain flight, about 3 minutes" };
 const buttons = (modes: readonly Mode[]): string => modes.map((m) => `<button data-mode="${m}" style="display:block;width:100%;max-width:26em;margin:10px 0;padding:14px;font:inherit;font-size:17px;border-radius:10px;border:0;background:#2a6;color:#fff">${TESTS[m]}</button>`).join("");
 
 /** What a page shows before a test: the device it takes itself to be on, and the tests to tap. */
@@ -192,8 +192,8 @@ function terrainLines(r: DeviceReport): string[] {
   if (t.wood.length === 0) return out;
   out.push("wood      the map's trees, rocks and bushes, 160 slots a chunk, to each tier's reach, from eye height at its middle, turning");
   out.push(row(["tier", "held", "median", "p95", "worst", "build", "draw", "calls", "tris", "nodes", "gpu"], fw));
-  for (const g of t.wood) out.push(row([g.tier, held(g), String(g.frameMs.median), String(g.frameMs.p95), String(g.frameMs.worst), String(g.buildMs), String(g.drawMs), count(g.calls), count(g.tris), String(g.nodeDraws), g.gpuMs === null ? "-" : String(g.gpuMs)], fw));
-  out.push(`nodes: far node draws a frame; trees reach ${t.wood.map((g) => `${g.reach} m on ${g.tier}`).join(", ")}`);
+  for (const g of t.wood) out.push(row([g.band ? `${g.tier}*` : g.tier, held(g), String(g.frameMs.median), String(g.frameMs.p95), String(g.frameMs.worst), String(g.buildMs), String(g.drawMs), count(g.calls), count(g.tris), String(g.nodeDraws), g.gpuMs === null ? "-" : String(g.gpuMs)], fw));
+  out.push(`nodes: far node draws a frame; trees reach ${t.wood.filter((g) => !g.band).map((g) => `${g.reach} m on ${g.tier}`).join(", ")}; *: the near nodes in the hand-over band drawn without its discard`);
   for (const g of t.wood.filter((x) => x.invalid)) out.push(`invalid   wood ${g.tier}: ${g.invalid}`);
   return out;
 }
@@ -202,10 +202,14 @@ function soakLines(r: DeviceReport): string[] {
   const s = r.soak!;
   const l = s.load;
   const what = s.wood ? "" : `${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, `;
-  const out = [`soak      ${s.tier}: ${what}turning once a minute (${s.from}), ${s.cascades > 0 ? `shadows on in ${s.cascades} cascades` : "no shadows"}; ${s.minutes.length} of ${s.minutesWanted} minutes`];
-  const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5];
-  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss"], widths));
-  for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed)], widths));
+  const out = [`soak      ${s.tier}: ${what}turning once a minute (${s.from}), ${s.cascades > 0 ? `shadows on in ${s.cascades} cascades` : "no shadows"}${s.governed ? ", the governor on" : ""}; ${s.minutes.length} of ${s.minutesWanted} minutes`];
+  const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5, 6];
+  out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss", ...(s.governed ? ["level"] : [])], widths));
+  for (const m of s.minutes) {
+    out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed), ...(s.governed ? [`${m.level ?? "?"}${m.most !== m.level ? ` (${m.most})` : ""}`] : [])], widths));
+    for (const step of m.steps ?? []) out.push(`          to ${step}`);
+  }
+  if (s.governed) out.push("level: the governor's at the minute's end, and the deepest in it in brackets where deeper; its steps under the minute");
   out.push(`mat: the most draws with materials in a frame. long: frames of ${LONG} display intervals or more while the page was shown;`);
   out.push("time it was hidden is left out, a stall is not");
   const [first, final] = [s.minutes[0], s.minutes.at(-1)];
@@ -234,7 +238,7 @@ export function deviceTable(r: DeviceReport): string[] {
     const f = d.features;
     out.push(`device    ${identify(d.userAgent, d.touch)}`);
     out.push(`agent     ${d.userAgent}`);
-    out.push(`screen    ${d.screen.join("x")} CSS pixels, the page ${d.window.join("x")}, ${d.pixelRatio} device pixels to one; ${d.cores} cores${d.memoryGB ? `, ${d.memoryGB} GB` : ""}; ${d.touch} touch points`);
+    out.push(`screen    ${d.screen.join("x")} CSS pixels, the page ${d.window.join("x")}, ${d.pixelRatio} device pixels to one; ${d.cores} cores${d.memoryGB ? `, ${d.memoryGB} GB` : ""}; ${d.touch} touch points${d.touchFirst ? ", touch-first: each tier drawn by its touch rule" : ""}`);
     out.push(`features  workers ${yes(f.workers)}, file storage ${yes(f.opfs)}, decompression ${f.decompress || "none"}, audio worklet ${yes(f.audioWorklet)}, storage quota ${f.quotaMB ?? "?"} MB`);
     out.push(`          opus encode ${yes(f.opusEncode)}, opus decode ${yes(f.opusDecode)}, webtransport ${yes(f.webTransport)}, webgpu ${yes(f.webgpu)}`);
   }

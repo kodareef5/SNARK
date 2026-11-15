@@ -128,6 +128,8 @@ export class HudModel {
   speed = 0;
   pingMs = 0;
   fps = 0;
+  /** What the governor has done, after the frame rate, or "" (client/core/governor.ts). */
+  steady = "";
   corrections = 0;
   nearby = 0;
   /** Stamina comes from the predicted body, the others from vitals evaluated at the server's tick. */
@@ -226,7 +228,7 @@ export class HudModel {
   formatReadout(): void {
     this.readout[0] = `${latLonText(this.lat, this.lon)}  ${this.compass} ${this.heading.toFixed(0)}`;
     this.readout[1] = `x ${this.x.toFixed(1)}  y ${this.y.toFixed(1)}  z ${this.z.toFixed(1)}  ${this.speed.toFixed(1)} m/s`;
-    this.readout[2] = `${this.fps.toFixed(0)} fps  ${this.pingMs.toFixed(0)} ms  ${this.corrections} corrections  ${this.nearby} nearby`;
+    this.readout[2] = `${this.fps.toFixed(0)} fps${this.steady}  ${this.pingMs.toFixed(0)} ms  ${this.corrections} corrections  ${this.nearby} nearby`;
   }
 
   /** True once every `every` calls. */

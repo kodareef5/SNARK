@@ -24,7 +24,15 @@ export interface Probe {
    * brightness within LIT_BRIGHTNESS times either way.
    */
   mode: "exact" | "hue" | "lit";
+  /**
+   * For a lit point whose facing is not known, the twins of FACINGS normals turned toward the camera: the colour is held
+   * to the one nearest it in direction. Lit from the side the sun is on, a facet is warmer than one facing the camera.
+   */
+  facings?: [number, number, number][];
 }
+
+/** Normals spread over the half of the sphere that faces the camera, for a probe's `facings`. */
+const FACINGS = 64;
 
 /**
  * Probes for the proving ground seen from its spawn point looking north, in frame `p`. The slope probe lands where
@@ -46,6 +54,20 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
     lit(out, raw.map((c) => srgbToLinear(c / 255)), [1, 1, 0], n ?? v, v, p.frame, [0, 0, 0]);
     shown(rgb, out, at[2]!, p);
     return rgb.map((c) => Math.round(c * 255)) as [number, number, number];
+  };
+  /** The same colour on FACINGS faces turned toward the camera, spread evenly (a Fibonacci spiral round the view). */
+  const facings = (index: number): [number, number, number][] | undefined => {
+    if (!p.lit) return undefined;
+    cam.ray(at[0]!, at[1]!, ray);
+    const v = ray.map((c) => -c);
+    const [a, b] = [Math.abs(v[1]!) < 0.9 ? [0, 1, 0] : [1, 0, 0], [0, 0, 0]];
+    const u = [a[1]! * v[2]! - a[2]! * v[1]!, a[2]! * v[0]! - a[0]! * v[2]!, a[0]! * v[1]! - a[1]! * v[0]!].map((c, _, all) => c / Math.hypot(...all));
+    [b[0], b[1], b[2]] = [v[1]! * u[2]! - v[2]! * u[1]!, v[2]! * u[0]! - v[0]! * u[2]!, v[0]! * u[1]! - v[1]! * u[0]!];
+    return Array.from({ length: FACINGS }, (_, i) => {
+      const z = 1 - (i + 0.5) / FACINGS;
+      const [r, t] = [Math.sqrt(1 - z * z), i * Math.PI * (3 - Math.sqrt(5))];
+      return color(index, [0, 1, 2].map((k) => v[k]! * z + (u[k]! * Math.cos(t) + b[k]! * Math.sin(t)) * r));
+    });
   };
   const sky = (): [number, number, number] => {
     if (!p.lit) return color(skyIndex);
@@ -77,7 +99,8 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   // The probe server stands a grazer at a known spot in a colour not its species' own, which checks the entity path and the colour regions.
   const grazer = reg.defs[reg.index.get("core:grazer") ?? 0];
   if (withCreature && grazer && grazer.type === "species" && cam.project(PROBE_CREATURE.x, hf.heightAt(PROBE_CREATURE.x, PROBE_CREATURE.z) + grazer.height / 2, PROBE_CREATURE.z, at)) {
-    probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(PROBE_CREATURE.color), mode: hue });
+    // Its facing at the point is the pose's, which the twins do not know, so the colour may be lit from any facing.
+    probes.push({ name: "creature", sx: at[0]!, sy: at[1]!, rgb: color(PROBE_CREATURE.color), mode: hue, facings: facings(PROBE_CREATURE.color) });
   }
   // The chest of the survivor body is where expected only if bones reach the GPU, and skin-coloured only if its look's
   // colour regions do. The chest is on the body's axis, so its facing does not matter.
@@ -89,7 +112,14 @@ export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, s
   return probes;
 }
 
+/** The twin a colour read is held to: the probe's, or of its facings the one nearest the colour in direction. */
+export function heldTo(p: Probe, r: number, g: number, b: number): [number, number, number] {
+  const toward = (rgb: readonly number[]): number => (r * rgb[0]! + g * rgb[1]! + b * rgb[2]!) / Math.max(Math.hypot(rgb[0]!, rgb[1]!, rgb[2]!), 1e-9);
+  return (p.facings ?? []).reduce((best, rgb) => (toward(rgb) > toward(best) ? rgb : best), p.rgb);
+}
+
 export function probePasses(p: Probe, r: number, g: number, b: number): boolean {
+  if (p.facings) return probePasses({ ...p, rgb: heldTo(p, r, g, b), facings: undefined }, r, g, b);
   if (p.mode === "exact") return Math.abs(r - p.rgb[0]) <= 4 && Math.abs(g - p.rgb[1]) <= 4 && Math.abs(b - p.rgb[2]) <= 4;
   const got = Math.hypot(r, g, b);
   const want = Math.hypot(p.rgb[0], p.rgb[1], p.rgb[2]);

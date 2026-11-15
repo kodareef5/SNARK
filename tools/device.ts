@@ -1,18 +1,18 @@
 // `bun run device`: a throwaway game server for measuring a phone, and the reports its page sends. It prints a short path
 // to open. With --tunnel it also runs a temporary Cloudflare tunnel (cloudflared, no account) and prints the whole link.
-// The page shows which device it takes itself to be on and three tests to tap (client/core/device.ts): a quick look, a
-// load ladder, and a soak. With --terrain the server is on the bench's 8 km map instead, with the far nodes' bench's
-// wood, and the page offers the terrain flight (D253), which ends with far bases (D257) and the wood (D259), and a soak
-// through the wood (`--self soak --terrain`). It posts its report after every step; each run is kept in
-// .cache/device/ and printed as a table when it is done. The server serves a client of its own, built into a temporary
-// folder as it starts and removed as it stops, so a build in this checkout cannot take files from under a phone; each
-// report says if what it serves changed all the same. With --self the local headless Chrome opens the link and runs a
-// test without a tap, which must finish: `--self` for the quick look, `--self ladder`, `--self soak` (with
-// --soak-minutes n) or `--self terrain`, the test that the probe works, not part of the check. With `--texfmt astc` the
-// page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a made-up link (delay ms, KB/s,
-// % lost), and with `--rebuild` a plain build of client/dist starts once the page has the game, as `bun run build` in
-// another terminal would. --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED name the
-// programs.
+// The page shows which device it takes itself to be on and the tests to tap (client/core/device.ts): a quick look, a
+// load ladder, a soak, and the soak with the governor on. With --terrain the server is on the bench's 8 km map instead,
+// with the far nodes' bench's wood, and the page offers the terrain flight (D253), which ends with far bases (D257) and
+// the wood (D259), and a soak through the wood (`--self soak --terrain`). It posts its report after every step; each
+// run is kept in .cache/device/ and printed as a table when it is done. The server serves a client of its own, built
+// into a temporary folder as it starts and removed as it stops, so a build in this checkout cannot take files from under
+// a phone; each report says if what it serves changed all the same. With --self the local headless Chrome opens the
+// link and runs a test without a tap, which must finish: `--self` for the quick look, `--self ladder`, `--self soak`
+// or `--self governed` (with --soak-minutes n), or `--self terrain`, the test that the probe works, not part of the
+// check. With `--texfmt astc` the page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a
+// made-up link (delay ms, KB/s, % lost), and with `--rebuild` a plain build of client/dist starts once the page has the
+// game, as `bun run build` in another terminal would. --port n, and --minutes n before it stops by itself (30). CHROME
+// and CLOUDFLARED name the programs.
 //
 // While the tunnel is up anyone may reach the server. The short path has four letters nobody is told and closes after
 // 64 wrong guesses, the probe's routes need a 128-bit token, joining needs a random password, and cheats are off. What a
@@ -235,7 +235,8 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
     const m = r.ladder?.memory;
     if (!m || (m.failedMB === null && m.heldMB !== MEMORY_MB.at(-1)) || m.heldMB === 0) out.push(`texture memory did not finish: ${m ? m.how : "no memory step"}`);
   }
-  if (mode === "soak" && (r.soak?.minutes.length ?? 0) < (r.soak?.minutesWanted ?? 1)) out.push("the soak did not run its minutes");
+  if ((mode === "soak" || mode === "governed") && (r.soak?.minutes.length ?? 0) < (r.soak?.minutesWanted ?? 1)) out.push("the soak did not run its minutes");
+  if (mode === "governed" && (!r.soak?.governed || r.soak.minutes.some((m) => m.level === undefined))) out.push("the governed soak does not say what the governor did");
   if (mode === "terrain") {
     const flights = r.terrain?.flights ?? [];
     if (flights.length < FLIGHT_TIER_COUNT) out.push(`the terrain flight flew ${flights.length} of ${FLIGHT_TIER_COUNT} tiers`);
@@ -340,7 +341,7 @@ if (import.meta.main) {
     }
     return built.length;
   };
-  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,soak" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)) });
+  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,soak,governed" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)) });
   // With --rebuild, once a page has the game, another process builds client/dist as a person might in another terminal.
   let builder: ReturnType<typeof Bun.spawn> | null = null;
   let besideDone: Promise<unknown> = Promise.resolve();
@@ -424,7 +425,7 @@ if (import.meta.main) {
   }
 
   console.log(terrain ? `\nSNARK device probe on the bench's 8 km map, for the terrain flight; reports go to ${dir}` : `\nSNARK device probe: ${crowd} bodies in the crowd and ${pieces} pieces of thatch; reports go to ${dir}`);
-  const tests = terrain ? "&tests=terrain,soak" : "";
+  const tests = terrain ? "&tests=terrain,soak,governed" : "";
   console.log(`  open on the device:  ${base0}/d/${code}`);
   console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}${tests}`);
   if (tunnel) console.log(`  on this machine:     http://127.0.0.1:${running.port}/d/${code}`);
@@ -436,7 +437,7 @@ if (import.meta.main) {
     // A phone's shape: a narrow window three device pixels to the CSS pixel. The test starts without a tap.
     const link = `${base0}/?device=${token}&password=${password}${tests}&mode=${mode}&minutes=${soakMinutes}${texfmt ? `&texfmt=${texfmt}` : ""}${assetnet ? `&assetnet=${assetnet}` : ""}`;
     const browser = Bun.spawn([chrome!, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=430,932", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
-    const limit = (mode === "soak" ? soakMinutes + 5 : mode === "ladder" ? 20 : mode === "terrain" ? 8 : 6) * 60000;
+    const limit = (mode === "soak" || mode === "governed" ? soakMinutes + 5 : mode === "ladder" ? 20 : mode === "terrain" ? 8 : 6) * 60000;
     const got = await Promise.race([whole, new Promise<null>((r) => setTimeout(() => r(null), limit))]);
     browser.kill();
     await browser.exited;

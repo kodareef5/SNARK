@@ -58,6 +58,7 @@ import { benchTerrain } from "./bench/terrain.ts";
 import { benchTextures } from "./bench/textures.ts";
 import { benchParts } from "./bench/parts.ts";
 import { benchTransport } from "./bench/transport.ts";
+import { benchGpu } from "./bench/gpu.ts";
 
 const PLAYERS = 100;
 const STRUCTURES = 500000;
@@ -1226,6 +1227,7 @@ benchTerrain(section, record, hf);
 await benchTextures(section, record);
 await benchParts(section, record);
 benchTransport(section, record);
+await benchGpu(section, record);
 
 rmSync(dir, { recursive: true, force: true });
 const misses = rows.filter((r) => r.budget !== null && r.value > r.budget);

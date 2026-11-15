@@ -2,7 +2,9 @@
 // here, and draws what frame() returns. Tests drive this class directly.
 
 import type { AssetPort } from "./assets/port.ts";
-import { tierOf } from "./assets/tiers.ts";
+import { forTouch, tierOf } from "./assets/tiers.ts";
+import { DRAW_TRIANGLES, Governor } from "./governor.ts";
+import { BENCH_TURN_MS, effectsOff, packetWithout, tierWithout, type Effect } from "./passes.ts";
 import { keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -91,6 +93,12 @@ export class App {
   steer = true;
   /** The dome drawn as the sky table alone and nothing hazed, as the rasterizer draws, so the self-check's colours are the twins'. */
   plainSky = false;
+  /** Keeps the frame steady under the tier chosen (governor.ts). The shell tells it what each frame took. */
+  readonly governor = new Governor();
+  /** The screen's device pixels a CSS pixel, and effects the page's address turned off (passes.ts). */
+  dpr = 1;
+  off: ReadonlySet<Effect> = new Set();
+  private interval = 0;
 
   /** The registry last handed to the UI and shots. frame() swaps it when the session's changes. */
   private shown: Registry;
@@ -275,11 +283,14 @@ export class App {
     if (!this.ui.settings.toggleTalk) this.talk(false);
   }
 
-  /** Steers for a measurement run. Call it each frame instead of forwarding input. */
-  autopilot(nowMs: number): void {
-    this.controls.key("KeyW", true);
-    this.controls.yaw = nowMs / 1600;
-    this.controls.pitch = Math.sin(nowMs / 2300) * 0.35 - 0.1;
+  /**
+   * Steers for a measurement run, `ms` into its measured frames: the body stands and the view turns once round in
+   * BENCH_TURN_MS, a little up and down, so that every run of a scene sees the same views. Call it each frame instead
+   * of forwarding input.
+   */
+  autopilot(ms: number): void {
+    this.controls.yaw = (ms / BENCH_TURN_MS) * TAU;
+    this.controls.pitch = Math.sin(ms / 2300) * 0.2 - 0.05;
   }
 
   textInput(key: number, value: string): void {
@@ -414,16 +425,36 @@ export class App {
     cam.pitch = -0.06;
   }
 
-  /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
+  /**
+   * What the page's address asks: `off`, effects turned off for a before and after (passes.ts). A page that pins pictures
+   * or hashes, or measures, holds the governor at the tier, or at `level`, and may name the `tier`.
+   */
+  address(get: (name: string) => string | null, pinned: boolean): void {
+    this.off = effectsOff(get("off"));
+    if (!pinned) return;
+    this.governor.held = Number(get("level") ?? 0);
+    this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
+  }
+
+  /** After the frame is handed to WebGL: our code took `ours` ms of it, and `timed` are earlier frames' GPU ms by pass, as they came back. */
+  drawn(packet: FramePacket, ours: number, timed: readonly number[][]): void {
+    for (const ms of timed) this.governor.timed(ms.reduce((a, b) => a + b, 0));
+    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, packet.triangles + DRAW_TRIANGLES * packet.drawCount);
+  }
+
   /** The shell says the graphics card ran out of memory or lost everything. On every third time the graphics tier falls by one. */
   pressure(): void {
+    // What follows is the uploads of all that was lost, or of what failed, which are no reason to step.
+    this.governor.pause(this.nowMs);
     if (!this.scene?.assets.pressure()) return;
     this.ui.settings.tier = this.scene.assets.tier.name;
     this.ui.chat.print(TEXT_NOTICE, `The graphics card keeps running out of memory, so the graphics setting is now ${this.ui.settings.tier}.`, this.session.serverTick);
   }
 
+  /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
+    this.interval = this.last < 0 ? 0 : dt;
     this.last = nowMs;
     this.fps += (1000 / Math.max(dt, 1) - this.fps) * 0.05;
     const aspect = width / Math.max(height, 1);
@@ -570,12 +601,14 @@ export class App {
     if (this.ui.settings.download) this.scene.assets.residency.download();
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
-    this.scene.assets.tier = tierOf(this.ui.settings.tier);
+    this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), this.off);
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
     session.askFar(this.scene.assets.tier.reach.bases);
     session.holdNodes(this.scene.assets.tier.nodes.chunks);
     const packet = this.scene.build(cam, this.remote);
+    packetWithout(packet, this.off);
     updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);
+    hud.steady = this.governor.level > 0 ? ` (${this.governor.level} down: ${this.governor.name})` : "";
     this.feedback.absorb(session, this.reg, nowMs);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers, session.hitMarkers);
     fillHotbar(hud, alive ? session.inventory : null, session.held, this.reg, this.pack.palette);

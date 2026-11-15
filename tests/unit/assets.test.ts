@@ -1,7 +1,7 @@
 // The asset library's table, binding and tiers.
 import { expect, test } from "bun:test";
 import { Assets, HYSTERESIS } from "../../client/core/assets/assets.ts";
-import { DEFAULT_TIER, TIERS, tierOf } from "../../client/core/assets/tiers.ts";
+import { DEFAULT_TIER, TIERS, forTouch, offeredTiers, tierOf } from "../../client/core/assets/tiers.ts";
 import { SETTING_ROWS, Settings, keptLine } from "../../client/core/settings.ts";
 import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -110,6 +110,23 @@ test("the graphics setting steps through the tiers and stops at either end", () 
     seen.push(row.value(s));
   }
   expect(seen).toEqual(["low poly", "low poly", "medium", "high", "ultra", "ultra"]);
+  // A touch-first device is offered low poly to high, and draws medium's and high's shadows as their touch rule says.
+  s.touchFirst = true;
+  row.step(s, 1);
+  expect(row.value(s)).toBe("high");
+  expect(offeredTiers(true).map((t) => t.name)).toEqual(["lowpoly", "medium", "high"]);
+  for (const name of ["medium", "high"]) {
+    const [tier, touched] = [tierOf(name), forTouch(tierOf(name), true)];
+    expect([touched.shadows.size, touched.shadows.taps, touched.shadows.cascades]).toEqual([1024, 1, tier.shadows.cascades]);
+    expect(forTouch(tier, true)).toBe(touched);
+    expect(forTouch(tier, false)).toBe(tier);
+  }
+  expect(forTouch(tierOf("lowpoly"), true)).toBe(tierOf("lowpoly"));
+  // Steady frame is automatic unless turned off.
+  const steady = SETTING_ROWS.find((r) => r.label === "Steady frame")!;
+  expect(steady.value(s)).toBe("automatic");
+  steady.step(s, 1);
+  expect([steady.value(s), s.steady]).toEqual(["off", false]);
 });
 
 test("the settings screen says what is kept of the assets between visits, and asks for all of them when told", () => {

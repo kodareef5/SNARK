@@ -166,6 +166,8 @@ try {
 /**
  * The timing page: each program full screen on a canvas 1,024 square, blended so that a tiled GPU shades every pixel
  * of every draw, by timer query where there is one, else by the clock; seven rounds in a turned order, the median.
+ * Alpha is added, ONE and ONE, as the device probe blends (D329): blended as colour, a program whose alpha is 1 is
+ * taken for opaque, and ANGLE on Metal drew one of the stacked draws (D330).
  */
 const TIME_PAGE = `<!doctype html><meta charset="utf-8"><title>sky timing</title><body><script type="module">
 const get = async (path) => (await fetch(path)).json();
@@ -221,7 +223,7 @@ try {
   });
   gl.disable(gl.DEPTH_TEST);
   gl.enable(gl.BLEND);
-  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE);
   gl.viewport(0, 0, 1024, 1024);
   const one = new Uint8Array(4);
   const finish = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, one);

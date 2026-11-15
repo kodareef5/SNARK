@@ -52,10 +52,10 @@ export interface Tier {
    */
   readonly shadows: { readonly cascades: number; readonly size: number; readonly distance: number; readonly taps: number; readonly blend: number; readonly everyOther: boolean };
   /**
-   * The shadows a touch-first device takes on this tier in place of `shadows`, or null for the same. They wait for the
-   * phones' answers (M1); M2 sets them, and the app asks `forTouch` once it knows the device.
+   * What a touch-first device draws on this tier in place of the tier's own values, or null for the same (forTouch), and
+   * whether its settings offer the tier at all. Each value is a phone's report's (planning/decisions.md, M2's rows).
    */
-  readonly touchShadows: Tier["shadows"] | null;
+  readonly touch: { readonly shadows?: Tier["shadows"]; readonly offered?: boolean } | null;
   /** Cloud layers over the dome. */
   readonly clouds: number;
   /** The sea: "flat", one see-through colour as low poly draws it, or "simple": the sky reflected, a glint, lighter over shallows. */
@@ -64,22 +64,29 @@ export interface Tier {
 
 const MB = 1024 * 1024;
 
+// The touch rule, from the iPhone's kept reports (planning/reference/device-reports, D349): a depth pass into a 1,024
+// map costs 0.18 ms per 100,000 triangles against 0.38 into a 2,048 one, and a lookup of 1 compared tap 0.06 ms a
+// megapixel against 0.19 for 4 and 0.49 for 9 (the quick look of 07-35-24). Ultra draws at the phone's own three pixels
+// a side and broke the ladder at 256 to 512 draws and 64 to 128 near rocks where high held 1,024 and 128 (the ladders of
+// 07-43-00 and 08-19-25), and its textures may take 2.4 GB where the phone's tab was dropped at 2 GB, so a phone is not
+// offered it.
+
 export const TIERS: readonly Tier[] = [
   {
     name: "lowpoly", texture: 0, textureShare: 0, view: 256, bones: 8192, threshold: 0.44, finest: 1, instanced: 160, pixelRatio: 1, gpuBytes: 96 * MB, uploadBytes: 0.5 * MB, diskBytes: 256 * MB,
-    lit: false, split: 0, reach: { bases: 1024, trees: 500, rocks: 0, bushes: 0 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touchShadows: null, clouds: 0, water: "flat",
+    lit: false, split: 0, reach: { bases: 1024, trees: 500, rocks: 0, bushes: 0 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 0, size: 0, distance: 0, taps: 0, blend: 0, everyOther: false }, touch: null, clouds: 0, water: "flat",
   },
   {
     name: "medium", texture: 1024, textureShare: 0.6, view: 512, bones: 16384, threshold: 0.22, finest: 0, instanced: 256, pixelRatio: 1.5, gpuBytes: 512 * MB, uploadBytes: 1 * MB, diskBytes: 2048 * MB,
-    lit: true, split: 384, reach: { bases: 2048, trees: 1200, rocks: 600, bushes: 300 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touchShadows: null, clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, trees: 1200, rocks: 600, bushes: 300 }, fade: 0.1, nodes: { chunks: 3, band: [152, 184] }, shadows: { cascades: 2, size: 2048, distance: 64, taps: 4, blend: 0.8, everyOther: false }, touch: { shadows: { cascades: 2, size: 1024, distance: 64, taps: 1, blend: 0.8, everyOther: false } }, clouds: 2, water: "simple",
   },
   {
     name: "high", texture: 2048, textureShare: 0.6, view: 1024, bones: 32768, threshold: 0.14, finest: 0, instanced: 384, pixelRatio: 2, gpuBytes: 1536 * MB, uploadBytes: 2 * MB, diskBytes: 8192 * MB,
-    lit: true, split: 384, reach: { bases: 2048, trees: 2000, rocks: 900, bushes: 500 }, fade: 0.1, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touchShadows: null, clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, trees: 2000, rocks: 900, bushes: 500 }, fade: 0.1, nodes: { chunks: 4, band: [216, 248] }, shadows: { cascades: 3, size: 2048, distance: 128, taps: 9, blend: 0.85, everyOther: false }, touch: { shadows: { cascades: 3, size: 1024, distance: 128, taps: 1, blend: 0.85, everyOther: false } }, clouds: 2, water: "simple",
   },
   {
     name: "ultra", texture: 4096, textureShare: 0.6, view: 2048, bones: 65536, threshold: 0.08, finest: 0, instanced: 512, pixelRatio: 0, gpuBytes: 4096 * MB, uploadBytes: 4 * MB, diskBytes: 24576 * MB,
-    lit: true, split: 384, reach: { bases: 2048, trees: 3000, rocks: 1200, bushes: 600 }, fade: 0.1, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touchShadows: null, clouds: 2, water: "simple",
+    lit: true, split: 384, reach: { bases: 2048, trees: 3000, rocks: 1200, bushes: 600 }, fade: 0.1, nodes: { chunks: 5, band: [280, 312] }, shadows: { cascades: 4, size: 2048, distance: 192, taps: 9, blend: 0.9, everyOther: false }, touch: { offered: false }, clouds: 2, water: "simple",
   },
 ];
 
@@ -90,7 +97,14 @@ export function tierOf(name: string): Tier {
   return TIERS.find((t) => t.name === name) ?? TIERS.find((t) => t.name === DEFAULT_TIER)!;
 }
 
-/** The rule for touch-first devices: a tier as one draws it, with the tier's touch shadows where it has them. */
+const touched = new Map<Tier, Tier>();
+
+/** The rule for touch-first devices: a tier as one draws it, the same copy each time, since the renderer keeps programs by the tier. */
 export function forTouch(tier: Tier, touchFirst: boolean): Tier {
-  return touchFirst && tier.touchShadows ? { ...tier, shadows: tier.touchShadows } : tier;
+  if (!touchFirst || !tier.touch) return tier;
+  const { offered: _, ...values } = tier.touch;
+  return touched.get(tier) ?? touched.set(tier, { ...tier, ...values }).get(tier)!;
 }
+
+/** The tiers the settings offer: on a touch-first device, those whose touch rule does not leave them out. */
+export const offeredTiers = (touchFirst: boolean): readonly Tier[] => TIERS.filter((t) => !touchFirst || t.touch?.offered !== false);

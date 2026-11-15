@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
+import { JOIN_MS } from "../../client/core/governor.ts";
 import { DeviceProbe, MEMORY_MB, deviceScenarios, newReport, spread, type DeviceBrowser, type DeviceReport, type RendererLike, type RungReport, type Timing } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
 import { FRAME, type FramePacket } from "../../client/core/render/packet.ts";
@@ -245,6 +246,35 @@ test("the soak counts a long frame while the page is shown as a stall, and leave
   expect(deviceTable(probe.report).some((line) => /^1 +\d+ +16\.7 +16\.7 +16\.7 +25\d\d\.\d +[\d.]+ +[\d.]+ +\d+ +1 +0$/.test(line))).toBe(true);
 });
 
+test("the governed soak lets the governor act, says beside each minute what it did, and holds it at the tier after", async () => {
+  const { h, pack, app, expected } = client();
+  const { b } = browser({ clock: () => h.now, expected, mode: "governed" });
+  const probe = new DeviceProbe(TOKEN, b, { ...TIMING, soakMs: 5000 });
+  await probe.before();
+  const { r: gpu } = renderer();
+  probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
+  app.governor.held = 0;
+  let held: unknown = "never";
+  // The harness draws in no time, so the governor is told of frames of 30 ms, which no step makes faster, on a clock
+  // past the wait that follows the soak's tier.
+  const each = (now: number): void => {
+    if (probe.report.stage !== "soak") return;
+    held = app.governor.held;
+    app.governor.frame(now + JOIN_MS, 30, 1, false, 1e6);
+  };
+  await run(probe, h, app, gpu, 60000, { each });
+  const s = probe.report.soak!;
+  expect([probe.report.done, probe.report.errors, held, app.governor.held, s.minutes.length]).toEqual([true, [], null, 0, 1]);
+  // Two missed windows took a step.
+  expect(s.governed!.map((x) => x.level)).toEqual([1]);
+  expect([s.minutes[0]!.level, s.minutes[0]!.most, s.minutes[0]!.steps!.length]).toEqual([1, 1, 1]);
+  const table = deviceTable(probe.report);
+  expect(table.some((line) => line.includes("the governor on"))).toBe(true);
+  expect(table.some((line) => line.startsWith("          to 1: the farther cascade every other frame (30 ms a frame)"))).toBe(true);
+  const lacks = lacking(probe.report, "governed");
+  expect([lacks.includes("the soak did not run its minutes"), lacks.includes("the governed soak does not say what the governor did")]).toEqual([false, false]);
+});
+
 test("a rung that did not draw all it was given, or never settled, is invalid: neither held nor broke, and not counted as held", async () => {
   const { h, pack, app, expected } = client();
   // A display the harness keeps up with, so every rung would hold on its frames alone.
@@ -310,7 +340,7 @@ test("the terrain flight is offered only by its own server's link, flies the cam
   // Then the wood on each tier the device takes. The proving ground's far nodes are only in the chunks at its west and
   // north edges that the near field leaves out, which the turning camera faces in some rungs and not in others, as its
   // settling took longer or shorter: whether a rung drew any is not judged here.
-  expect(t.wood.map((g) => `${g.tier} ${g.reach}`)).toEqual(["lowpoly 500", "medium 1200", "high 2000"]);
+  expect(t.wood.map((g) => `${g.tier} ${g.reach}${g.band ? " band" : ""}`)).toEqual(["lowpoly 500", "medium 1200", "high 2000", "medium 1200 band"]);
   expect(lacking(r, "terrain").filter((line) => !line.startsWith("wood "))).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window", "far 130: bases stood in 58 chunks", "far 480: bases stood in 58 chunks", "the wood has no rung on ultra"]);
   const table = deviceTable(r);
   expect(table.some((line) => line.startsWith("terrain   a map 0.5 km across"))).toBe(true);
