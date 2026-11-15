@@ -53,6 +53,7 @@ import { IMAGE_MAP, IMAGE_MINIMAP } from "./ui/hud.ts";
 import { CANVAS_HEIGHT } from "./ui/nodes.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
+import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
 import { arrivalAddress, joinAddress, serverAddress, type Page } from "./travel.ts";
 
@@ -165,6 +166,8 @@ export class App {
   private usePulse = 0;
   /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
   private eggAimed = -1;
+  /** The obelisk terminal under the crosshair within reach, or -1. */
+  private terminalAimed = -1;
   private eggKept = false;
 
   voice: VoicePort | null = null;
@@ -243,6 +246,11 @@ export class App {
     if (code === "KeyE" && (this.eggKept || (down && !repeat && this.eggAimed >= 0))) {
       if (!this.eggKept) this.session.command(CMD_TAKE, (w) => w.u32(this.eggAimed >>> 0));
       this.eggKept = down;
+      return true;
+    }
+    // The use key at an obelisk's terminal opens the list of servers to travel to.
+    if (code === "KeyE" && down && !repeat && this.terminalAimed >= 0) {
+      this.ui.travel.openAt(this.terminalAimed);
       return true;
     }
     // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
@@ -400,11 +408,16 @@ export class App {
     const s = this.session;
     const d = this.aim;
     this.aimed = -1;
+    this.terminalAimed = -1;
     lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
     if (castWorld(world, s.own.x, s.own.y + eye, s.own.z, d[0]!, d[1]!, d[2]!, ACT_REACH) !== HIT_STRUCTURE) return "";
     const ref = rayHit.ref;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
     const kind = t.kind[ref & 0xffff]!;
+    if (kind === this.reg.index.get(TRAVEL_TERMINAL)) {
+      this.terminalAimed = ref;
+      return "E travel to another server";
+    }
     // Skip structures nobody built.
     if (this.reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
     this.aimed = ref;

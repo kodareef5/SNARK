@@ -50,6 +50,7 @@ import {
   PITCH_LIMIT,
   PROTOCOL_VERSION,
   SESSION_ALIVE,
+  SESSION_DEAD,
   S_CHUNK,
   S_CHUNK_DROP,
   S_EVENT,
@@ -88,7 +89,7 @@ import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
-import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
+import { V_COUNT, V_HEALTH, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
@@ -315,6 +316,10 @@ export class ClientSession {
   logVersion = 0;
   /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
+  /** It came from another server of the cluster and chooses where to rise: bodiless as the dead are, and alive (Cluster.arriving). */
+  get arriving(): boolean {
+    return this.sessionState === SESSION_DEAD && this.vitals.max[V_HEALTH]! > 0 && this.vitals.value[V_HEALTH]! > 0;
+  }
   hasVitals = false;
   /** Oldest first. Falling.absorb empties it. */
   readonly rubble: Rubble[] = [];

@@ -17,8 +17,9 @@ import { hashKey } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { RecordCodec, idMap } from "../../server/persist/codec.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { REJECT_FULL, REJECT_TRAVEL } from "../../shared/net/protocol.ts";
-import { TestCluster, beat, commit, keyAt, places, rec, travel } from "../fixtures/cluster.ts";
+import { REJECT_FULL, REJECT_TRAVEL, RESULT_FAR } from "../../shared/net/protocol.ts";
+import { OBELISK, TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
+import { TestCluster, beat, commit, keyAt, places, rec, rise, travel } from "../fixtures/cluster.ts";
 import { testKey } from "../fixtures/net.ts";
 
 const t = new TestCluster();
@@ -40,6 +41,7 @@ test("a save restored from before a transfer gives up again what left and takes 
   const ticket = travel(a, session, b.world) as Uint8Array;
   const there = b.h.join("ada", {}, { key: keyAt("ada", 2), ticket });
   b.h.run(400);
+  rise(b, there);
   // On Miami it picks up five more stone, which the island never sees.
   b.h.host.items.mint(rec(b, "ada")!, id("stone"), 5);
   b.h.run(100);
@@ -142,6 +144,7 @@ test("a ticket works once, for its own name, before it expires, and not for a su
   expect(places(me.pid, folder, a, b)).toEqual(["sealed"]);
   const there = join("ada", keyAt("ada", 2), ticket);
   expect(there.state).toBe("active");
+  rise(b, there);
   // Another browser with the same ticket is refused. The one it was used for may join with it again, and nothing moves.
   expect(turned(join("ada", testKey("a thief"), ticket))).toEqual(["closed", REJECT_TRAVEL, "that ticket has been used"]);
   expect(places(me.pid, folder, a, b)).toEqual(["world 2"]);
@@ -207,6 +210,30 @@ test("a destination that will not take a survivor refuses before it leaves where
   commit(a, b, c, d);
   expect(auditCluster(folder, own).lines).toEqual(["the cluster balances: 4 worlds, 2 transfers recorded, 0 on the way"]);
   for (const s of [a, b, c, d]) s.h.host.shutdown();
+});
+
+test("a survivor leaves only at a terminal it stands at, which nothing harms and nobody owns; a cheat sends it from anywhere", () => {
+  const clock = { ms: Date.now() };
+  const a = t.server("Island", "terminal", clock, { host: { dev: true } });
+  const b = t.server("Miami", "terminal", clock);
+  const ada = t.survivor(a, "ada");
+  beat(a, b);
+  const { structs } = a.h.world;
+  const kind = a.h.reg.index.get(TRAVEL_TERMINAL)!;
+  // Twenty metres off, and a wall that is no terminal, are both too far from any terminal.
+  const far = structs.add(kind, a.h.world.spawn.x + 20, a.h.world.hf.heightAt(a.h.world.spawn.x + 20, a.h.world.spawn.z) + 0.6, a.h.world.spawn.z, 0, 0, 1000000);
+  const wall = structs.add(id("wall"), a.h.world.spawn.x + 2, 1.5, a.h.world.spawn.z + 2, 0, ada.me.team, 500);
+  expect([travel(a, ada.session, b.world, far), travel(a, ada.session, b.world, wall)]).toEqual([RESULT_FAR, RESULT_FAR]);
+  // The obelisk and its terminal take no harm of any kind, and belong to no tribe, so nothing joins or rests on them.
+  expect([a.h.reg.structTakes[kind], a.h.reg.structTakes[a.h.reg.index.get(OBELISK)!], structs.chunks[Math.floor(far / 65536)]!.owner[far & 0xffff]]).toEqual([null, null, 0]);
+  expect(a.h.host.tribes.may(ada.me, 0)).toBe(false);
+  // A player has no travel command; an operator's cheat sends it from where it stands.
+  expect(a.h.say(ada.session, "travel Miami").join(" ")).toContain("cheat");
+  a.h.say(ada.session, "enablecheats");
+  a.h.say(ada.session, "travel Miami");
+  expect(ada.session.travelled?.world).toBe(b.world);
+  a.h.host.shutdown();
+  b.h.host.shutdown();
 });
 
 test("each server's switches say what may leave it and what may come: survivors, and what they carry", () => {
@@ -334,6 +361,7 @@ test("a tribe follows its members: one whose owner leaves passes to the member w
   expect(tribes.of(bea.me)).toMatchObject({ id: team, owner: bea.me.pid, members: [bea.me.pid] });
   const there = b.h.join("ada", {}, { key: keyAt("ada", 2), ticket });
   b.h.run(400);
+  rise(b, there);
   expect(b.h.host.tribes.of(rec(b, "ada")!)).toMatchObject({ id: team, name: "Raptors", owner: ada.me.pid });
   beat(a, b);
   const back = travel(b, there, a.world) as Uint8Array;

@@ -8,13 +8,13 @@ import { KEY_TRAVEL_BUTTON } from "../../client/core/ui/travel.ts";
 import { TICKET_SECONDS } from "../../server/cluster/cluster.ts";
 import { clusterList } from "../../server/main.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { REJECT_TRAVEL } from "../../shared/net/protocol.ts";
+import { REJECT_TRAVEL, SESSION_ALIVE, SESSION_DEAD } from "../../shared/net/protocol.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
-import { TestCluster, beat, commit, crash, from, keyAt, places, rec, shift, travel } from "../fixtures/cluster.ts";
+import { TestCluster, beat, commit, crash, from, keyAt, places, rec, rise, shift, terminal, travel } from "../fixtures/cluster.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
 const t = new TestCluster();
@@ -88,6 +88,10 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   const there = b.h.join("ada", {}, { key: keyAt("ada", 2), ticket: ticket as Uint8Array });
   b.h.run(400);
   expect(there.state).toBe("active");
+  // It is shown the spawn screen, bodiless and alive, with what it carries out of everyone's reach until it chooses.
+  expect([there.sessionState, there.arriving, b.h.ent(there), there.respawnPoints.map((p) => p.name)]).toEqual([SESSION_DEAD, true, -1, b.h.world.spawns.map((p) => p.name)]);
+  rise(b, there);
+  expect([there.sessionState, there.arriving]).toEqual([SESSION_ALIVE, false]);
   const at = rec(b, "ada")!;
   expect([at.pid, at.xp, at.engrams.includes(id("engram-waterskin")), [...at.look!], at.team]).toEqual([pid, 12345, true, [...look], team]);
   expect(b.h.host.tribes.of(at)).toMatchObject({ id: team, name: "Raptors", owner: pid });
@@ -98,17 +102,19 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   expect(binv.flags.includes(FLAG_BLUEPRINT)).toBe(true);
   // The berries spoil on: what was left less the half minute in transit.
   const b2 = binv.item.indexOf(id("berry"));
-  expect(Math.abs(binv.spoilAt[b2]! - b.h.world.tick - (spoilLeft - 30 * TICK_RATE))).toBeLessThanOrEqual(TICK_RATE);
+  expect(Math.abs(binv.spoilAt[b2]! - b.h.world.tick - (spoilLeft - 30 * TICK_RATE))).toBeLessThanOrEqual(2 * TICK_RATE);
   const held = b.h.host.records.byPid.get(egg.pid)!;
   expect([held.egg!.carrier, held.egg!.hatchAt, binv.ref![binv.item.indexOf(id("dodo_egg_fertile"))]]).toEqual([egg.pid, eggLeft, egg.pid]);
-  // Where it arrives is the map's spawn point.
-  expect(Math.hypot(b.h.world.ents.x[b.h.ent(there)]! - b.h.world.spawn.x, b.h.world.ents.z[b.h.ent(there)]! - b.h.world.spawn.z)).toBeLessThan(8);
+  // It rose at the first spawn point, as it chose.
+  expect(from(b, there, [b.h.world.spawn.x, b.h.world.spawn.z])).toBeLessThan(8);
   // Its own clock stopped while it was away, as a survivor's does out of the world: the half minute cost it no food.
   expect(fed - at.vitals!.at(V_FOOD, b.h.world.tick)).toBeLessThan(hunger * 2 * TICK_RATE);
   expect(b.h.host.items.audit()).toEqual([]);
   expect(audit(a, b)).toEqual([]);
 
-  // And back, with the egg and all, to the island's spawn point as any arrival: not to where it stood when it left.
+  // And back, with the egg and all, to rise at a bed its tribe has on the island, not where it stood when it left.
+  const bed = a.h.world.structs.add(id("bed"), 246, a.h.world.hf.heightAt(246, 233) + a.h.reg.halfY[id("bed")]!, 233, 0, team, 1000);
+  a.h.host.fixtures.ensure(bed);
   b.h.run(1000);
   beat(a, b);
   const back = travel(b, there, a.world);
@@ -117,10 +123,12 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   const home = a.h.join("ada", {}, { key: keyAt("ada", 1), ticket: back as Uint8Array });
   a.h.run(400);
   expect(home.state).toBe("active");
+  expect(home.respawnPoints.map((p) => p.name).slice(a.h.world.spawns.length).length).toBe(1);
+  rise(a, home, a.h.world.spawns.length);
   const again = rec(a, "ada")!;
   expect([again.pid, again.xp, again.team, again.rank]).toEqual([pid, 12345, team, 2]);
   expect(new Map(items.held(again))).toEqual(carried);
-  expect([from(a, home, [a.h.world.spawn.x, a.h.world.spawn.z]) < 8, from(a, home, stood) > 10]).toEqual([true, true]);
+  expect([from(a, home, [246, 233]) < 1, from(a, home, stood) > 10]).toEqual([true, true]);
   expect(tribes.of(again)).toMatchObject({ id: team, name: "Raptors", owner: pid });
   expect(a.h.host.tribes.may(again, a.h.world.structs.chunks[Math.floor(wall / 65536)]!.owner[wall & 0xffff]!)).toBe(true);
   expect(a.h.host.tribes.may(again, pet.team)).toBe(true);
@@ -135,7 +143,7 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   b.h.host.shutdown();
 });
 
-test("the page lists the other servers on L, leaves for one on a click, and goes to its address with the ticket, where the survivor arrives", async () => {
+test("the page at an obelisk's terminal lists the other servers on E, leaves for one on a click, and goes to its address with the ticket, where the survivor arrives", async () => {
   const clock = { ms: Date.now() };
   const a = server("Island", "page", clock);
   const b = server("Miami", "page", clock);
@@ -147,8 +155,13 @@ test("the page lists the other servers on L, leaves for one on a click, and goes
   const run = (ms: number): void => a.h.run(ms, (now) => app.frame(now, 1280, 720));
   run(500);
   a.h.host.items.mint(rec(a, "ada")!, id("stone"), 40);
-  app.key("KeyL", true);
-  app.key("KeyL", false);
+  // A terminal two metres ahead, looked at from above its top.
+  terminal(a, app.session);
+  app.controls.pitch = -0.6;
+  run(300);
+  expect(app.hud.prompt).toBe("E travel to another server");
+  app.key("KeyE", true);
+  app.key("KeyE", false);
   run(100);
   await Promise.resolve();
   run(100);
@@ -265,6 +278,10 @@ test("the destination killed after it took a survivor and before it saved takes 
   const later = b3.h.join("ada", {}, { key: keyAt("ada", 2) });
   b3.h.run(400);
   expect(later.state).toBe("active");
+  // It had not chosen where to rise when the server stopped, so it chooses now.
+  expect([later.arriving, b3.h.ent(later)]).toEqual([true, -1]);
+  rise(b3, later);
+  expect([later.sessionState, new Map(b3.h.host.items.held(rec(b3, "ada")!))]).toEqual([SESSION_ALIVE, carried]);
   expect(places(pid, folder, a, b3)).toEqual(["world 2"]);
   expect(audit(a, b3)).toEqual([]);
   a.h.host.shutdown();

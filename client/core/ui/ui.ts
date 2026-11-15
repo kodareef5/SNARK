@@ -32,7 +32,7 @@ export class Ui {
   readonly respawn = new RespawnScreen();
   readonly structure = new StructMenu();
   readonly naming = new NamePrompt();
-  /** The other servers of the cluster (L). */
+  /** The other servers of the cluster, opened at an obelisk's terminal. */
   readonly travel = new TravelScreen();
   /** The session is in the creator, which is then the whole interface. */
   creating = false;
@@ -86,7 +86,7 @@ export class Ui {
         return true;
       }
       // Screens leave the keyboard to the body, so the survivor can keep walking with one open.
-      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || code === "KeyL" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options || this.travel.open))) {
+      if (code === "KeyI" || code === "KeyM" || code === "KeyP" || code === "KeyO" || (code === "Escape" && (this.inventory.open || this.map || this.character || this.options || this.travel.open))) {
         if (down && !repeat) {
           this.structure.close();
           // Opening one screen closes the others.
@@ -97,7 +97,7 @@ export class Ui {
           this.map = map;
           this.character = character;
           this.options = options;
-          this.travel.open = code === "KeyL" && !this.travel.open;
+          this.travel.open = false;
           if (inventory) this.inventory.open = true;
           else this.inventory.close(session);
         }

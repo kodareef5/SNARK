@@ -1,4 +1,5 @@
-// Travel to another server of the cluster, and the operator's look at the cluster.
+// The operator's look at the cluster, and a cheat that sends a survivor to another server of it with no terminal. A player
+// travels at an obelisk's terminal (planning/architecture/transfers.md).
 
 import { auditCluster } from "../cluster/audit.ts";
 import type { Console } from "../console.ts";
@@ -9,8 +10,8 @@ export function addClusterCommands(con: Console): void {
     {
       name: "travel",
       usage: "[server]",
-      help: "List the other servers of the cluster, or leave for one with your survivor and what it carries. ARK does this at an obelisk.",
-      admin: false,
+      help: "List the other servers of the cluster, or send your survivor to one with what it carries, as its terminal would.",
+      admin: true,
       run(ctx, args) {
         const cluster = ctx.host.cluster;
         if (!cluster) return "this server is not part of a cluster";

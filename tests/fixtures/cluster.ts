@@ -11,7 +11,8 @@ import type { HostOptions } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import type { Registry } from "../../shared/content/registry.ts";
-import { CMD_TRAVEL } from "../../shared/net/protocol.ts";
+import { CMD_RESPAWN, CMD_TRAVEL } from "../../shared/net/protocol.ts";
+import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
 import { Harness, testKey } from "./net.ts";
 import { coreRegistry } from "./world.ts";
 
@@ -136,13 +137,33 @@ export function from(s: Server, session: ClientSession, at: readonly number[]): 
   return Math.hypot(s.h.world.ents.x[e]! - at[0]!, s.h.world.ents.z[e]! - at[1]!);
 }
 
-/** Asks to travel to world `to`. Returns the ticket the server sent, or the code it refused with. */
-export function travel(s: Server, session: ClientSession, to: number): Uint8Array | number {
+/** Sets a travel terminal down two metres in front of `session`'s body, as a map's obelisk has one, and gives its ref. */
+export function terminal(s: Server, session: ClientSession): number {
+  const reg = s.h.reg;
+  const kind = reg.index.get(TRAVEL_TERMINAL)!;
+  const e = s.h.ent(session);
+  const x = s.h.world.ents.x[e]!;
+  const z = s.h.world.ents.z[e]! + 2;
+  return s.h.world.structs.add(kind, x, s.h.world.hf.heightAt(x, z) + reg.halfY[kind]!, z, 0, 0, reg.maxHp[kind]!);
+}
+
+/** Asks, at the terminal `at` (one set down in front of it if not given), to travel to world `to`. The ticket, or the refusal's code. */
+export function travel(s: Server, session: ClientSession, to: number, at = terminal(s, session)): Uint8Array | number {
   let code = -1;
   session.onResult = (seq, c) => void (seq !== 0 && (code = c));
-  session.command(CMD_TRAVEL, (w) => w.u16(to));
+  session.command(CMD_TRAVEL, (w) => {
+    w.u16(to);
+    w.u32(at >>> 0);
+  });
   s.h.run(400);
   return session.travelled ? session.travelled.ticket : code;
+}
+
+/** A survivor that arrived chooses the `index`th place of its spawn screen and rises there. */
+export function rise(s: Server, session: ClientSession, index = 0): void {
+  s.h.run(200);
+  session.command(CMD_RESPAWN, (w) => w.u8(index));
+  s.h.run(300);
 }
 
 /** Where record `pid` is among the running servers and the files still sealed: exactly one place, when nothing is lost or doubled. */

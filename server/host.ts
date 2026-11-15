@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -77,6 +77,7 @@ import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
 import { Cluster } from "./cluster/cluster.ts";
+import { restoreObelisks } from "../shared/world/obelisks.ts";
 import { dirname, join, resolve } from "node:path";
 
 export interface HostOptions {
@@ -289,7 +290,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the map's.
   const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
-  const world = opts.world ?? createMapWorld(reg, parseMap(mapFile!), { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
+  const parsed = mapFile ? parseMap(mapFile) : null;
+  const world = opts.world ?? createMapWorld(reg, parsed!, { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -341,6 +343,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   let refusedNext = 0;
   const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
   const loaded = persistence ? persistence.load() : null;
+  if (loaded && !loaded.fresh && parsed) {
+    const set = restoreObelisks(parsed, world.structs, reg);
+    if (set > 0) say(`set down ${set} pieces of the map's obelisks, which this save was made without`);
+  }
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
   const survivorMove = reg.move[survivor]!;
@@ -737,7 +743,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     game.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
     game.away = (name, key) => cluster.awayCheck(name, key);
   }
-  game.savedPosition = (name) => recordOf(name) ?? null;
+  // A survivor that came from another server and has not risen joins as one that died does: with no body, choosing where.
+  game.savedPosition = (name) => {
+    const rec = recordOf(name);
+    return rec && cluster?.arriving.has(rec.pid) ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, dead: true, team: rec.team } : (rec ?? null);
+  };
   game.needsLook = (name) => !recordOf(name)?.look;
   game.onBody = (c) => {
     let rec = recordOf(c.name);
@@ -951,14 +961,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       const asked = { pid: c.pid, bed: p.bed, wait: p.bed >= 0 ? Math.max(0, Math.ceil(((fixtures.find(p.bed)?.readyAt ?? 0) - world.tick) / TICK_RATE)) : 0 };
       if (bus.before(SESSION_RESPAWN, asked) !== "") return RESULT_DENIED;
       if (asked.wait > 0) return RESULT_WAIT;
-      if (p.bed < 0) return death.respawn(c, p.x, p.z, p.yaw);
+      // One that came from another server rises alive with what it carried; one that died comes back to life.
+      const rise = (x: number, z: number, yaw: number, y?: number): number => (cluster?.arriving.has(c.pid) ? cluster.rise(c, x, z, yaw, y) : death.respawn(c, x, z, yaw, y));
+      if (p.bed < 0) return rise(p.x, p.z, p.yaw);
       // The bed must still stand and still belong to its tribe.
       const bed = fixtures.find(p.bed);
       const t = world.structs.chunks[Math.floor(p.bed / 65536)];
       const slot = p.bed & 0xffff;
       if (!bed || !t || world.reg.isBed[t.kind[slot]!] !== 1 || !tribes.may(records.byPid.get(c.pid), t.owner[slot]!)) return RESULT_INVALID;
       if (bed.readyAt > world.tick) return RESULT_WAIT;
-      const code = death.respawn(c, p.x, p.z, p.yaw, p.y);
+      const code = rise(p.x, p.z, p.yaw, p.y);
       if (code === RESULT_OK) {
         bed.readyAt = world.tick + BED_WAIT_TICKS;
         records.dirty.add(bed.pid);
@@ -1187,7 +1199,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   game.handle(CMD_TAKE, (c, r) => eggs.take(c, r));
   game.handle(CMD_TRAVEL, (c, r) => {
     const to = r.u16();
+    const at = r.u32();
     if (r.overflow || !cluster) return RESULT_INVALID;
+    // A survivor travels from a terminal it stands at, as ARK's from an obelisk's.
+    if (!cluster.atTerminal(c, at)) return RESULT_FAR;
     const why = cluster.leave(c, to);
     if (why === "") return RESULT_OK;
     game.sendText(c, TEXT_NOTICE, why);

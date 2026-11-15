@@ -6,7 +6,9 @@ import type { Registry } from "../../shared/content/registry.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { pidSeq, pidWorld } from "../../shared/ids.ts";
-import { SESSION_ALIVE, TICKET_BYTES } from "../../shared/net/protocol.ts";
+import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
+import { ACT_REACH } from "../../shared/world/upkeep.ts";
+import { RESULT_INVALID, RESULT_OK, SESSION_ALIVE, TICKET_BYTES } from "../../shared/net/protocol.ts";
 import { event, type Bus } from "../events/bus.ts";
 import type { Client, GameServer } from "../game.ts";
 import type { Items } from "../items.ts";
@@ -89,6 +91,13 @@ export class Cluster {
   readonly recovered: string[] = [];
   /** Names given out here whose survivor is elsewhere. */
   readonly away = new Map<string, Away>();
+  /**
+   * Survivors that came from another server and have not chosen where to rise. Until they do they have no body, as a survivor
+   * out of the world has none (DEV08): nothing reaches them or what they carry, and their clock is stopped. Their owner is
+   * shown the spawn screen whenever it joins, and they are kept in the save, so a server that stops loses none of it.
+   */
+  readonly arriving = new Set<number>();
+  private readonly arrivals = { dirty: false, serialize: (): string => JSON.stringify([...this.arriving]) };
   private ctx: ClusterContext | null = null;
   /** The world being started will resume what its records hold (start). */
   private resumes = false;
@@ -162,6 +171,11 @@ export class Cluster {
     this.ctx = ctx;
     // The save keeps the cluster it is in from its next commit on (Cluster.open).
     ctx.persistence.sidecar("cluster", { dirty: true, serialize: () => this.id });
+    ctx.persistence.sidecar("arrivals", this.arrivals);
+    if (!fresh) {
+      const kept = ctx.persistence.store.meta("arrivals");
+      for (const pid of typeof kept === "string" ? (JSON.parse(kept) as number[]) : []) if (ctx.records.byPid.has(pid)) this.arriving.add(pid);
+    }
     // What a loaded save holds resumes with the rest of it. A new world resumes nothing, so what comes into it now is put in.
     this.resumes = !fresh;
     if (this.first && !fresh) this.checkTeams();
@@ -257,6 +271,18 @@ export class Cluster {
     if (!a.survivors) return `${a.name} takes no survivors from other servers`;
     if (a.players >= a.max) return `${a.name} is full`;
     return "";
+  }
+
+  /** Whether the session's body stands within reach of the travel terminal `ref`, as the use key's reach is. */
+  atTerminal(c: Client, ref: number): boolean {
+    const { world, reg } = this.ctx!;
+    const terminal = reg.index.get(TRAVEL_TERMINAL) ?? 0;
+    const t = world.structs.chunks[Math.floor(ref / 65536)];
+    const slot = ref & 0xffff;
+    if (terminal === 0 || !t || slot >= t.high || t.kind[slot] !== terminal || c.ent < 0) return false;
+    const e = world.ents;
+    const far = Math.hypot(e.x[c.ent]! - t.x[slot]!, e.z[c.ent]! - t.z[slot]!) - Math.max(reg.halfX[terminal]!, reg.halfZ[terminal]!);
+    return far <= ACT_REACH && Math.abs(e.y[c.ent]! - t.y[slot]!) <= ACT_REACH;
   }
 
   /**
@@ -407,6 +433,17 @@ export class Cluster {
     return this.takeBack(parcel, false) ? "" : `${name} is on ${this.serverName(a.to)}: travel back from there`;
   }
 
+  /**
+   * The session's survivor came from another server and rises at the place it chose of those the spawn screen offered, alive,
+   * with all it carried. Returns a RESULT code.
+   */
+  rise(c: Client, x: number, z: number, yaw: number, y?: number): number {
+    if (!this.arriving.has(c.pid) || !this.ctx!.game.revive(c, x, z, yaw, y)) return RESULT_INVALID;
+    this.arriving.delete(c.pid);
+    this.arrivals.dirty = true;
+    return RESULT_OK;
+  }
+
   /** Takes a sealed transfer that left from here back. False if another server took it first, or this build cannot read it. */
   private takeBack(parcel: Parcel, loading: boolean): boolean {
     const head = parcel.head;
@@ -452,14 +489,17 @@ export class Cluster {
     for (const r of recs) rebaseTicks(r, delta);
     const rec = recs[0]!;
     if (key.length > 0) rec.keyHash = key.slice();
-    // Every arrival, home included, is at the map's spawn point, as ARK's is at a spawn and never where the survivor last stood:
-    // that would let one leave from inside a base it broke into and come back inside it. One taken back from a ticket never
-    // used never left, as one that logs out and in, so it stands where it was.
+    // Every arrival, home included, chooses where it rises, at a spawn point or a bed of its tribe's, as on ARK's spawn screen,
+    // and never where it last stood: that would let one leave from inside a base it broke into and come back inside it. Until
+    // it chooses it is kept at the spawn point. One taken back from a ticket never used never left, as one that logs out and
+    // in, so it stands where it was.
     if (head.from !== this.world) {
       rec.x = world.spawn.x;
       rec.z = world.spawn.z;
       rec.y = world.hf.heightAt(rec.x, rec.z);
       rec.yaw = world.spawn.yaw;
+      this.arriving.add(rec.pid);
+      this.arrivals.dirty = true;
     }
     for (const r of recs) {
       records.put(r);
@@ -562,6 +602,7 @@ export class Cluster {
     }
     items.sentAway(carried);
     if (rec) tribes.departed(rec);
+    if (this.arriving.delete(head.pid)) this.arrivals.dirty = true;
     for (const r of recs) records.delete(r.pid);
     if (head.seq > records.nextSeq) records.nextSeq = head.seq;
     if (head.teams > records.nextTeam) records.nextTeam = head.teams;

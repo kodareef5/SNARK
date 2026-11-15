@@ -1,6 +1,6 @@
-// The travel list: the other servers of this one's cluster, opened with L. With the session in the world a click asks to
-// leave for one; once the session is closed, as when a server turned the survivor away, a click goes to that server's page.
-// ARK lists them at an obelisk; this game has no terminal yet, so the list is in the menu (planning/architecture/transfers.md).
+// The travel list: the other servers of this one's cluster, opened with the use key at an obelisk's terminal, as ARK's
+// "Travel to another server" is. With the session in the world a click asks to leave for one from that terminal; once the
+// session is closed, as when a server turned the survivor away, a click goes to that server's page.
 
 import { CMD_TRAVEL } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
@@ -29,6 +29,16 @@ export class TravelScreen {
   goTo: ClusterServer | null = null;
   /** When the list was last asked for. */
   askedAt = -Infinity;
+  /** The terminal it was opened at, which the server checks the survivor stands at. */
+  at = -1;
+
+  /** Opens the list at terminal `ref`. */
+  openAt(ref: number): void {
+    this.open = true;
+    this.at = ref;
+    this.note = "";
+    this.askedAt = -Infinity;
+  }
 
   build(f: UiFrame, session: ClientSession): void {
     const servers = this.list?.servers ?? [];
@@ -60,7 +70,10 @@ export class TravelScreen {
     if (row < 0 || row >= TRAVEL_ROWS || !s) return false;
     if (session.state === "closed") this.goTo = s;
     else if (s.why === "") {
-      session.command(CMD_TRAVEL, (w) => w.u16(s.world));
+      session.command(CMD_TRAVEL, (w) => {
+        w.u16(s.world);
+        w.u32(this.at >>> 0);
+      });
       this.note = `leaving for ${s.name}`;
     }
     return true;
