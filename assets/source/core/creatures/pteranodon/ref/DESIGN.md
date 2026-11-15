@@ -47,9 +47,9 @@ Positions at rest; `asset.ts` gives each as its offset from its bone's joint.
 | `beak_tip` | skull | 0, 1.306, 1.552 | the bite's origin |
 | `head` | skull | 0, 1.360, 0.780 | look target, head zone |
 | `overhead` | skull | 0, 2.150, 0.600 | marks over it |
-| `seat` | chest | 0, 0.975, -0.120 | the top of the saddle pad under the rider's hips |
-| `grip_l`, `grip_r` | chest | ±0.170, 1.035, 0.220 | the seated rider's palms on the grips |
-| `rest_l`, `rest_r` | chest | ±0.250, 0.395, 0.380 | under the balls of the seated rider's feet |
+| `seat` | chest | 0, 1.000, -0.160 | the top of the saddle pad under the rider's hips |
+| `grip_l`, `grip_r` | chest | ±0.170, 1.050, 0.190 | the seated rider's palms on the grips |
+| `rest_l`, `rest_r` | chest | ±0.250, 0.430, 0.360 | under the balls of the seated rider's feet |
 | `grab` | pelvis | 0, 0.300, -0.420 | where a grabbed body hangs; `grab` and `carry` put the feet here |
 | `carry_point` | spine | 0, 0.900, -0.300 | where a large carrier's jaws take it |
 | `vent` | pelvis | 0, 0.620, -0.720 | eggs and feces |
@@ -60,17 +60,19 @@ Positions at rest; `asset.ts` gives each as its offset from its bone's joint.
 
 `RIDER` in `rig.py` is where the human seated pose (FL2's one clip) must put the survivor's joints, relative to
 `seat` in the chest's frame, with the bone lengths of `shared/anim/human.ts`: hips 0.10 above the seat, the body
-leaning 15 degrees forward of the chest's up, thighs forward and down either side of the base of the neck, knees 0.30
+leaning 10 degrees forward of the chest's up, thighs forward and down either side of the base of the neck, knees 0.34
 ahead of the hips, lower legs hanging in front of the wing roots to the foot rests, palms on the grips. The rider's
-frame is the chest bone's: in the glide the rider leans into the wind, and on the ground, where the chest tilts back
-about 30 degrees, the rider leans back about 15.
+frame is the chest bone's: in the glide the rider leans a little into the wind, and on the ground, where the chest
+tilts back about 30 degrees, the rider leans back about 20. The seat is 0.16 behind the shoulder joints, over the
+wing roots.
 
 `check_clip` warns when any of the block-out reaches more than 2 cm into the rider in a clip the animal is ridden in.
-What the block-out shows: the head turned 80 degrees either way, a bite and the head lowered keep clear; the flap
-keeps clear down to -42 degrees; the front membrane reaches the rider's thighs past about 45 degrees of upstroke at the
-shoulder or 20 degrees of forward sweep, and the crest reaches the rider's head with the head pitched up 20 degrees at
-its rest height. So a ridden clip takes the upstroke past 45 degrees at the elbow and wrist, not the shoulder, and
-raises the head as it pitches it up.
+Measured on the block-out (`ref/blockout/checks.json`): the head turned 80 degrees either way, lowered, biting, or
+pitched up 10 degrees in flight keeps clear, and so does the call on the ground; the downstroke keeps clear to -42
+degrees and the sweep to 22 degrees forward; an upstroke of 40 degrees at the shoulder with 25 more at the elbow keeps
+clear (0.8 cm), 45 at the shoulder alone touches (2.0 cm) and 58 reaches 5.4 cm into the thighs. So ridden clips keep
+the shoulder's upstroke to about 40 degrees and lift the rest at the elbow and wrist, as a real wing does, and pitch
+the head up no more than about 10 degrees in flight.
 
 ## The saddle
 

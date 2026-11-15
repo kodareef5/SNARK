@@ -157,10 +157,11 @@ SOCKETS = {
     "grab":        ("pelvis", (0.000, 0.300, -0.420)),
     "carry_point": ("spine",  (0.000, 0.900, -0.300)),  # the top of the back, where a large carrier's jaws take it
     "vent":        ("pelvis", (0.000, 0.620, -0.720)),  # under the tail: eggs and feces
-    "foot_l":      ("toes_l", (0.215, 0.400, -1.190)),  # under the ball of each foot: footsteps
-    "foot_r":      ("toes_r", (-0.215, 0.400, -1.190)),
-    "hand_l":      ("fingers_l", (1.545, 0.975, 0.090)),  # under each hand where it stands: footsteps, dust
-    "hand_r":      ("fingers_r", (-1.545, 0.975, 0.090)),
+    # On the ground under the ball of each foot and under each hand in STANCE: footsteps, dust, planted-foot targets.
+    "foot_l":      ("toes_l", (0.210, 0.457, -1.191)),
+    "foot_r":      ("toes_r", (-0.210, 0.457, -1.191)),
+    "hand_l":      ("fingers_l", (1.546, 0.979, 0.109)),
+    "hand_r":      ("fingers_r", (-1.546, 0.979, 0.109)),
 }
 
 # The seated rider, as the human seated pose must put the survivor (FL2's clip), relative to `seat` in the animal's
@@ -248,7 +249,7 @@ STANCE = {
     "spine": {"pitch": -8.0},
     "chest": {"pitch": -14.0},
     "head": {"pos": (0.000, 1.830, 0.150), "pitch": 0.0},
-    "foot": {"pos": (0.150, 0.045, -0.430), "pitch": 158.0, "yaw": 0.0, "roll": 0.0},
+    "foot": {"pos": (0.150, 0.030, -0.430), "pitch": 158.0, "yaw": 0.0, "roll": 0.0},
     "knee": (0.200, 0.700, 0.200),
     "tail": {"lift": 0.0},
 }
@@ -441,6 +442,11 @@ def rest_position(name):
 
 def mirrored(p, side):
     return p if side == "l" else _mirror_point(p)
+
+
+def socket_offsets():
+    """Each socket as asset.ts gives it: {name: (bone, offset from the bone's joint at rest)}."""
+    return {name: (bone, tuple(round(p[k] - _JOINT[bone][k], 4) for k in range(3))) for name, (bone, p) in SOCKETS.items()}
 
 
 def region_material(index):
