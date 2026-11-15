@@ -3,6 +3,7 @@ import { Controls, LOOK_SPEED } from "../../client/core/controls.ts";
 import { HudModel } from "../../client/core/hud.ts";
 import { KEY_CHAT_INPUT, KEY_CHAT_PANEL, KEY_CHAT_ROW, KEY_CHAT_TAG } from "../../client/core/ui/chat.ts";
 import { ConsoleState, KEY_CONSOLE_INPUT, KEY_CONSOLE_PANEL, KEY_CONSOLE_ROW, MAX_LINE } from "../../client/core/ui/console.ts";
+import { bindTextInput } from "../../client/core/ui/events.ts";
 import { KEY_BANNER, KEY_CROSS, KEY_MARKER, KEY_MINIMAP, KEY_READOUT, KEY_VITAL, KEY_VOICE } from "../../client/core/ui/hud.ts";
 import { K_BAR, K_INPUT, K_TEXT, textWidth, wrap, type UiFrame } from "../../client/core/ui/nodes.ts";
 import type { ClientSession } from "../../client/core/session.ts";
@@ -236,6 +237,55 @@ test("the console edits a line, sends it once, and browses history without losin
   }
   expect(c.history.length).toBe(50);
   expect(c.history[49]).toBe("line 79");
+});
+
+test("the console keeps accepting edits and commands as output and HUD rows change without reopening", () => {
+  for (const [, aspect] of ASPECTS) {
+    const ui = new Ui();
+    const hud = new HudModel();
+    const sent: string[] = [];
+    ui.local = (line) => { sent.push(line); return "answer to " + line; };
+    ui.key("Backquote", true, false, null);
+    ui.build(aspect, hud, null);
+    // The shell creates one field and listener, then keeps both while the console stays open.
+    const field = { value: "" };
+    const edit = bindTextInput(ui.frame.find(KEY_CONSOLE_INPUT)!, field, { text: (key, value) => ui.input(key, value) });
+    const rebuild = () => {
+      ui.build(aspect, hud, null);
+      expect(ui.console.open).toBe(true);
+      expect(ui.captureKeyboard).toBe(true);
+      expect(ui.wantsPointerLock).toBe(false);
+      expect(ui.frame.find(KEY_CONSOLE_INPUT)!.focus).toBe(true);
+      return ui.frame.find(KEY_CONSOLE_INPUT)!.text;
+    };
+    const commands = ["help", "pos", "help", "who"];
+    for (const command of commands) {
+      field.value = "";
+      for (const char of command) {
+        field.value += char;
+        edit();
+        expect(rebuild()).toBe(field.value);
+      }
+      ui.key("Enter", true, false, null);
+      expect(rebuild()).toBe("");
+    }
+    expect(sent).toEqual(commands);
+
+    field.value = "draft";
+    edit();
+    expect(rebuild()).toBe("draft");
+    // Incoming output wraps; changing HUD rows also moves the input's slot in the pooled frame.
+    ui.console.print("server notice ".repeat(100));
+    hud.banner = "SPECTATING";
+    expect(rebuild()).toBe("draft");
+    field.value += " continued";
+    edit();
+    expect(rebuild()).toBe("draft continued");
+    ui.key("ArrowUp", true, false, null);
+    expect(rebuild()).toBe("who");
+    ui.key("ArrowDown", true, false, null);
+    expect(rebuild()).toBe("draft continued");
+  }
 });
 
 test("console keys: one press toggles once, the open console owns the keyboard, and paging stays in range", () => {
