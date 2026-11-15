@@ -35,14 +35,15 @@ function tables(mode: string[]) {
   return { beach, made, lists, plain: (t = beach) => t.entries.map((e) => [e.kinds.map((kind) => reg.ids[kind]), e.chances, e.weight]) };
 }
 
-test("the beach is ARK's for the dodo and the parasaur, its groups, chances, offsets and limits", () => {
+test("the beach is ARK's for the dodo, the parasaur and the pteranodon, its groups, chances, offsets and limits", () => {
   const { beach, plain } = tables([]);
   expect(plain()).toEqual([
     [Array(5).fill("core:dodo"), [1, 0.7, 0.6, 0.25, 0.2], 0.425],
     [["core:parasaur", "core:parasaur"], [1, 0.5], 0.125],
+    [["core:pteranodon", "core:pteranodon"], [1, 0.5], 0.15],
   ]);
   expect(beach.entries[0]!.offsets).toEqual([[0, 6.8], [0, 0], [0, -6.8], [0, -3.4], [0, 3.4]]);
-  expect([...beach.limits].map(([kind, share]) => [reg.ids[kind], share])).toEqual([["core:dodo", 0.6], ["core:parasaur", 0.2]]);
+  expect([...beach.limits].map(([kind, share]) => [reg.ids[kind], share])).toEqual([["core:dodo", 0.6], ["core:parasaur", 0.2], ["core:pteranodon", 0.25]]);
 });
 
 test("the spawn settings: override, then add, then subtract; one species for another or for none; a species' weight and limit by its tag", () => {
@@ -58,9 +59,10 @@ test("the spawn settings: override, then add, then subtract; one species for ano
   // The parasaur's entry and limit went from the beach; the raptors came, as grazers, without the rex this build lacks.
   expect(plain()).toEqual([
     [Array(5).fill("core:dodo"), [1, 0.7, 0.6, 0.25, 0.2], 0.85],
+    [["core:pteranodon", "core:pteranodon"], [1, 0.5], 0.15],
     [["core:grazer", "core:grazer"], [1, 1], 0.1],
   ]);
-  expect([...beach.limits].map(([kind, share]) => [reg.ids[kind], share])).toEqual([["core:dodo", 0.3], ["core:grazer", 0.1]]);
+  expect([...beach.limits].map(([kind, share]) => [reg.ids[kind], share])).toEqual([["core:dodo", 0.3], ["core:pteranodon", 0.25], ["core:grazer", 0.1]]);
   // The hunters' table is wholly the override's, offsets in metres.
   const hunters = made.tables.get(k("core:spawns_proving_hunters"))!;
   expect(plain(hunters)).toEqual([[["core:dodo", "core:dodo"], [1, 0.25], 2]]);

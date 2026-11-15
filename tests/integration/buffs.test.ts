@@ -3,14 +3,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import { KEY_BANNER, KEY_BUFF, KEY_OUT, KEY_VITAL } from "../../client/core/ui/hud.ts";
+import { KEY_BUFF } from "../../client/core/ui/hud.ts";
 import { MAX_BUFFS } from "../../server/buffs.ts";
 import { createHost } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { EVENT_KILL } from "../../shared/net/protocol.ts";
-import { BTN_PRIMARY, MF_NO_SPRINT, MF_OUT, MF_ROOTED, STANCE_PRONE } from "../../shared/sim/character.ts";
+import { BTN_PRIMARY, MF_NO_SPRINT, MF_OUT, MF_ROOTED } from "../../shared/sim/character.ts";
 import { V_HEALTH, V_TORPOR } from "../../shared/sim/vitals.ts";
-import { ACT_NONE } from "../../shared/sim/weapon.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { takeInHand } from "../fixtures/gather.ts";
 import { Harness, type Pilot } from "../fixtures/net.ts";
@@ -127,54 +126,7 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
   expect(h.host.items.audit()).toEqual([]);
 });
 
-test("a survivor knocked out lies down, can do nothing, sees the dark, and comes round; flak keeps most of a dart out", () => {
-  const h = new Harness({}, 1, 60, { dev: true });
-  const pack = corePack();
-  const app = new App(h.join("bob", {}, { manual: true }), h.reg, pack);
-  app.frame(0, 1280, 720);
-  const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
-  run(500);
-  const s = app.session;
-  const rec = h.host.records.byPid.get(h.world.ents.pid[h.ent(s)]!)!;
-  const survival = h.host.survival;
-  const f = app.ui.frame;
-  const e = h.ent(s);
-  const ents = h.world.ents;
-  // 150 of his 200 torpor. It falls 4 a second.
-  survival.add(rec, V_TORPOR, 150);
-  run(300);
-  expect(f.find(KEY_VITAL + 11)!.value).toBeGreaterThan(0.7);
-  expect(f.find(KEY_OUT)).toBeNull();
-  run(5000);
-  expect(survival.value(rec, V_TORPOR)).toBeCloseTo(150 - 4 * 5.3, 0);
-  expect(rec.out).toBe(false);
-  survival.add(rec, V_TORPOR, 200);
-  app.controls.key("KeyW", true);
-  app.controls.mouseButton(0, true);
-  const [x, z] = [ents.x[e]!, ents.z[e]!];
-  run(1500);
-  expect(rec.out).toBe(true);
-  expect(ents.mflags[e]! & MF_OUT).toBe(MF_OUT);
-  // His own client predicts the same state, so the server corrects nothing.
-  expect(ents.stance[e]).toBe(STANCE_PRONE);
-  expect(Math.hypot(ents.x[e]! - x, ents.z[e]! - z)).toBeLessThan(0.3);
-  expect([ents.act[e], s.own.act]).toEqual([ACT_NONE, ACT_NONE]);
-  expect(s.own.stance).toBe(STANCE_PRONE);
-  const corrections = s.stats.corrections;
-  run(1000);
-  expect(s.stats.corrections).toBe(corrections);
-  expect(f.find(KEY_OUT)!.alpha).toBeGreaterThan(0.5);
-  expect(f.find(KEY_BANNER)!.text).toBe("UNCONSCIOUS");
-  // 200 torpor at 4 a second is gone in fifty seconds.
-  run(51000);
-  expect(rec.out).toBe(false);
-  expect(f.find(KEY_OUT)).toBeNull();
-  run(1500);
-  expect(Math.hypot(ents.x[e]! - x, ents.z[e]! - z)).toBeGreaterThan(2);
-  app.controls.release();
-});
-
-test("a flame arrow sets its mark burning: eight health a second for eight seconds, nothing stepped, and the kill is the archer's", () => {
+test("a flame arrow sets its mark burning: twenty-two health a second for eight seconds, nothing stepped, and the kill is the archer's", () => {
   const { h, s, pilot, rec, spawn, arm } = range();
   const survival = h.host.survival;
   const d = spawn("dummy", 10);
@@ -187,18 +139,18 @@ test("a flame arrow sets its mark burning: eight health a second for eight secon
   loose(h, pilot, 300);
   expect(h.host.combat.last.damage).toBe(55);
   expect(d.rec.buffs.map((b) => [b.buff, b.by])).toEqual([[id("burning"), rec.pid]]);
-  // The burn changes the health rate and steps nothing. The rate is 0.2 mending less 8 burning a second, in millionths per tick.
+  // The burn changes the health rate and steps nothing. The rate is 0.2 mending less 22 burning a second (Flame Arrow), in millionths per tick.
   const v = d.rec.vitals!;
-  expect(v.rate[V_HEALTH]).toBe(Math.round(((0.2 - 8) * 1e6) / 30));
+  expect(v.rate[V_HEALTH]).toBe(Math.round((0.2 * 1e6) / 30) + Math.round((-22 * 1e6) / 30));
   const began = d.rec.buffs[0]!.until - 8 * 30;
   h.run(4000);
   const mid = h.world.tick;
-  expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - (7.8 * (mid - began)) / 30, 1);
+  expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - (21.8 * (mid - began)) / 30, 1);
   h.run(5000);
   expect(d.rec.buffs.length).toBe(0);
   expect(v.rate[V_HEALTH]).toBe(Math.round((0.2 * 1e6) / 30));
   const after = h.world.tick;
-  expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - 8 * 8 + (0.2 * (after - began)) / 30, 1);
+  expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - 22 * 8 + (0.2 * (after - began)) / 30, 1);
   // A second flame arrow restarts the eight seconds. It does not add to the time left.
   aim(pilot, 10, 1.25 + 0.1);
   loose(h, pilot, 300);
@@ -222,7 +174,7 @@ test("a flame arrow sets its mark burning: eight health a second for eight secon
   const hits = h.host.combat.hits;
   loose(h, pilot, 200);
   expect(h.host.combat.hits).toBe(hits + 1);
-  // The arrow takes 55 of its 70 health. The last 15 take two seconds of burning.
+  // The arrow takes 55 of its 70 health. The last 15 take under a second of burning.
   expect(h.host.records.byPid.has(g.rec.pid)).toBe(true);
   h.run(2500);
   expect(h.host.records.byPid.has(g.rec.pid)).toBe(false);
@@ -265,7 +217,7 @@ test("what acts on a body: a stun roots it, an injury slows it and mends, god mo
   run(600);
   say("buff stunned");
   expect(ents.mflags[e]! & (MF_ROOTED | MF_NO_SPRINT)).toBe(MF_ROOTED | MF_NO_SPRINT);
-  expect(marks()).toEqual(["Stunned  3s"]);
+  expect(marks()).toEqual(["Stunned  2s"]);
   run(400);
   const [x, z] = [ents.x[e]!, ents.z[e]!];
   run(1000);

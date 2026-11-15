@@ -15,6 +15,7 @@ import { NodeChanges } from "../../client/core/render/farnodes.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { bakeChunk, pieceShapes, Summary, writeFar } from "../../shared/world/tactical.ts";
 import { MapStatics, parseMap, type MapStatic } from "../../shared/world/mapfile.ts";
+import { CityStatics } from "../../shared/world/city.ts";
 import { SOURCE } from "../art/source.ts";
 import { provingView, settle } from "../snap.ts";
 import { gameFiles } from "../snap/files.ts";
@@ -46,11 +47,12 @@ const views = (JSON.parse(readFileSync(list, "utf8")) as View[]).filter((v) => o
 const files = await gameFiles(resolve(SOURCE));
 mkdirSync(folder, { recursive: true });
 let farCells: FarStore | null = null;
+let city: CityStatics | null = null;
 let previousIsolated = false;
 const stageX = map.dims.chunksX * 32; const stageZ = map.dims.chunksZ * 32;
 const flatHeights = new Uint16Array(map.heights.length).fill(Math.round((2 - map.minY) / map.stepY));
 const flatTint = new Uint8Array(map.tint.length).fill(100);
-const rendered: { name: string; frames: number; milliseconds: number; eye: number[]; draws: number; dropped: number; casterDropped: number }[] = [];
+const rendered: { name: string; frames: number; milliseconds: number; eye: number[]; draws: number; triangles: number; budget: { draws: number; triangles: number }; buildMs: number; dropped: number; casterDropped: number }[] = [];
 const small: { w: number; h: number; rgba: Uint8Array }[] = [];
 /** The map's pieces `first` to `first + count` in the order it lists them, as a list a staged map can take. */
 function piecesOf(t: MapStatics, first: number, count: number): MapStatic[] {
@@ -71,9 +73,10 @@ for (const v of views) {
     const i = v.isolate; const a = i.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
     activeMap = { ...map, heights: flatHeights, tint: flatTint, nodes: [], statics: MapStatics.of(map.dims, piecesOf(map.statics, i.first, i.count).map((p) => ({ ...p, x: stageX + (p.x - i.x) * c - (p.z - i.z) * s, z: stageZ + (p.x - i.x) * s + (p.z - i.z) * c, y: p.y - i.y + 2, yaw: (p.yaw - Math.round(i.yaw * 65536 / 360) + 65536) & 65535 }))) };
   }
-  if (v.isolate || previousIsolated) farCells = null;
+  if (v.isolate || previousIsolated) { farCells = null; city = null; }
   previousIsolated = !!v.isolate;
   const view = provingView(w, h, {}, files, activeMap);
+  city ??= new CityStatics(map.dims, activeMap.statics, view.reg);
   // Supply the same far-cell stream and complete near chunks as a stationary live client.
   // The generic snap harness holds the entire map as near rows, overflowing its draw list on a city.
   if (!farCells) {
@@ -89,9 +92,11 @@ for (const v of views) {
   const complete = (chunk: number): boolean => Math.abs(chunkCx(map.dims, chunk) - Math.floor(view.cam.x / 64)) <= 3 && Math.abs(chunkCz(map.dims, chunk) - Math.floor(view.cam.z / 64)) <= 3;
   const scene = new Scene({ dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
     far: { cells: farCells, complete },
+    city: { statics: city, complete },
     farNodes: { nodes: view.nodes.source, held: (c) => view.nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(map.dims) }
   }, view.reg, view.pack, view.port ? { manifest: files.manifest, port: view.port } : undefined);
   view.scene = scene;
+  if (scene.city) scene.city.makeMs = Infinity;
   view.render = () => { const packet = scene.build(view.cam, view.remote); view.raster.render(packet); return packet; };
   view.scene.assets.tier = tierOf(tierName);
   view.scene.viewHeight = h;
@@ -114,6 +119,16 @@ for (const v of views) {
   if (v.fov !== undefined) cam.fovY = (v.fov * Math.PI) / 180;
   view.nodes.retain(chunkAt(map.dims, cam.x, cam.z), 4, 1, () => false);
   const frames = settle(view);
+  // What the frame spends against the tier's budget, and how long core takes to build it, the picture drawn as it stands.
+  const packet = scene.packet;
+  const [triangles, draws] = [packet.triangles, packet.drawCount];
+  const builds: number[] = [];
+  for (let k = 0; k < 15; k++) {
+    const t = performance.now();
+    scene.build(cam, view.remote);
+    builds.push(performance.now() - t);
+  }
+  const buildMs = Number(builds.sort((a, b) => a - b)[7]!.toFixed(2));
   const out = join(folder, `${v.name}.png`);
   writeFileSync(out, encodePng(w, h, view.raster.color));
   // A quarter of it, for the contact sheet of every view.
@@ -126,9 +141,10 @@ for (const v of views) {
       }
     }
   }
-  rendered.push({ name: v.name, frames, milliseconds: Math.round(performance.now() - t0), eye: [cam.x, cam.y, cam.z], draws: scene.packet.drawCount, dropped: scene.packet.dropped, casterDropped: scene.packet.casterDropped });
+  const budget = scene.assets.tier.budget;
+  rendered.push({ name: v.name, frames, milliseconds: Math.round(performance.now() - t0), eye: [cam.x, cam.y, cam.z], draws, triangles, budget: { draws: budget.draws, triangles: budget.triangles }, buildMs, dropped: packet.dropped, casterDropped: packet.casterDropped });
   small.push({ w: w >> 1, h: h >> 1, rgba: half });
-  console.log(`${out}  ${frames} frames, ${(performance.now() - t0).toFixed(0)} ms, eye ${cam.x.toFixed(0)}, ${cam.y.toFixed(1)}, ${cam.z.toFixed(0)}, dropped ${scene.packet.dropped}`);
+  console.log(`${out}  ${frames} frames, ${(performance.now() - t0).toFixed(0)} ms, eye ${cam.x.toFixed(0)}, ${cam.y.toFixed(1)}, ${cam.z.toFixed(0)}, ${draws} of ${budget.draws} draws, ${(triangles / 1000).toFixed(0)} k of ${(budget.triangles / 1000).toFixed(0)} k triangles, built in ${buildMs} ms, dropped ${packet.dropped}`);
 }
 // Every view at half size, three across, in the order listed.
 if (small.length > 1 && !only) {

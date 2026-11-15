@@ -1,7 +1,7 @@
 // Server settings that change content become one piece of data, the tuning. applyTuning applies it to the definitions,
 // which then compile as usual (D90). The server sends its tuning in the welcome and the client derives the same registry.
 
-import type { CraftFacet, Def, EngramDef, ItemDef, LevelsDef, NodeDef, SpeciesDef } from "./defs.ts";
+import type { CraftFacet, Def, EngramDef, ItemDef, LevelsDef, NodeDef, SpeciesDef, StructureDef } from "./defs.ts";
 import { MAX_BURN_SECONDS, MAX_LEVELS, MAX_NODE_HITS, MAX_SPOIL_HOURS, STAMINA_DEFAULT, compileContent, type Registry } from "./registry.ts";
 
 export interface Tuning {
@@ -202,6 +202,11 @@ export function applyTuning(defs: readonly Def[], t: Tuning): Def[] {
       if (m === 1 && stats === d.stats) return d;
       const s = d.stamina ?? STAMINA_DEFAULT;
       const out: SpeciesDef = { ...d, ...(stats ? { stats } : {}), ...(m !== 1 ? { stamina: { ...s, sprint: s.sprint * m, jump: s.jump * m } } : {}) };
+      return out;
+    }
+    if (d.type === "structure" && d.burns && fuel !== 1) {
+      // A station's own fuel burns as much longer as every item's fuel does.
+      const out: StructureDef = { ...d, burns: d.burns.map((b) => ({ ...b, seconds: within(b.seconds * fuel, 0.05, MAX_BURN_SECONDS) })) };
       return out;
     }
     if (d.type === "node") {

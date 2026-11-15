@@ -50,8 +50,9 @@ export const DRAW_CUTOUT = 128;
 export const DRAW_SIZED = 256;
 export const SIZE_REGION = 5;
 /**
- * The sea seen from above on a lit tier (render/water.ts), a see-through draw of the flat mesh `core:water` whose
- * `drawMaterial` holds the waves' pictures. Where this bit is not understood it is the see-through flat draw it always was.
+ * Water seen from above on a lit tier (render/water.ts), a see-through draw of the flat mesh `core:water`, or of a lake
+ * tile (render/lakes.ts), whose `drawMaterial` holds the waves' pictures. Where this bit is not understood it is the
+ * see-through flat draw it always was.
  */
 export const DRAW_WATER = 512;
 /**
@@ -155,8 +156,9 @@ export const FRAME = {
   skyBelow: 20,
   /**
    * fHaze: its density at sea level, per metre (0 for none), the height over which that thins by e, the camera's
-   * height over the sea, and 1 where the dome draws the sun, the moon, the stars and the clouds over the table, 0 for
-   * the table alone, as the rasterizer draws it (atmosphere.ts).
+   * height over the sea (over 0 with no sea, and never under 0 out of the water; under water, the sea's or a lake's,
+   * its height under the surface over it), and 1 where the dome draws the sun, the moon, the stars and the clouds over
+   * the table, 0 for the table alone, as the rasterizer draws it (atmosphere.ts).
    */
   haze: 24,
   hazeHeight: 25,
@@ -177,7 +179,11 @@ export const FRAME = {
   waves: 40,
   /** fGround: where the camera is in the samples of the terrain window drawn, from its corner (far outside while there is none), and in the whole map's pair's. */
   ground: 44,
-  /** fSea: sea level in the heights' units over the lowest, metres a unit, samples a metre in the window (a COARSE-th of that in the whole map's pair), and how strong the waves are. */
+  /**
+   * fSea: in the heights' units over the lowest, the level fHaze's eye height is measured from, so that a surface's
+   * height over the ground is known from its own (water.ts seaDepth); metres a unit, samples a metre in the window (a
+   * COARSE-th of that in the whole map's pair), and how strong the waves are.
+   */
   sea: 48,
   /** fSwell: where the camera is over the swell's tile (water.ts SWELL), wind and all, as a share of it along its axes. */
   swell: 52,

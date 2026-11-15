@@ -12,20 +12,28 @@ import { KNOCKOUT } from "./knockout.ts";
 import { MAPS } from "./maps.ts";
 import { RUIN_BLOCKS } from "./miami-ruins.ts";
 import { SLOPE_BLOCKS } from "./slopes.ts";
+import { LETTER_BLOCKS } from "./lettering.ts";
 import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
+import { ROADS } from "./vehicles/roads.ts";
+import { COMPACT_SPECIES } from "./vehicles/compact.ts";
+import { CIVILIAN } from "./civilians.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 const id = (name: string): string => `core:${name}`;
 /** Real minutes, as the hours of 140 seconds that spoiling is written in. */
 const minutes = (n: number): number => (n * 60) / 140;
 
-// Every piece of an armor tier has the same rating and durability, so a full set rates five times one piece.
-const ARMOR_TIERS: readonly { tier: string; set: string; armor: number; uses: number; weight: number; colors: readonly [number, number, number] }[] = [
+// Every piece of an armor tier has the same rating and durability, so a full set rates five times one piece. `weight` is
+// every piece's, or each piece's by its name.
+type PerPiece = Readonly<Record<string, number>>;
+const ARMOR_TIERS: readonly { tier: string; set: string; armor: number; uses: number; weight: number | PerPiece; colors: readonly [number, number, number] }[] = [
   { tier: "cloth", set: "cloth", armor: 10, uses: 25, weight: 0.4, colors: [1, 15, 225] },
   { tier: "hide", set: "hide", armor: 20, uses: 45, weight: 1.5, colors: [227, 228, 225] },
-  { tier: "chitin", set: "hide", armor: 50, uses: 50, weight: 3, colors: [9, 4, 1] },
-  { tier: "flak", set: "hide", armor: 100, uses: 120, weight: 4, colors: [2, 11, 6] },
+  // ark.wiki.gg, Chitin Helmet, Chitin Chestpiece, Chitin Gauntlets, Chitin Leggings and Chitin Boots, and the same of Flak,
+  // infoboxes, 2026-11-15 (stations S6): each piece's weight.
+  { tier: "chitin", set: "hide", armor: 50, uses: 50, weight: { hat: 4, shirt: 6, gloves: 3, pants: 6, boots: 3 }, colors: [9, 4, 1] },
+  { tier: "flak", set: "hide", armor: 100, uses: 120, weight: { hat: 4, shirt: 10, gloves: 2, pants: 10, boots: 4 }, colors: [2, 11, 6] },
 ];
 const ARMOR_PIECES: readonly { slot: "head" | "torso" | "hands" | "legs" | "feet"; name: string; label: string }[] = [
   { slot: "head", name: "hat", label: "hat" },
@@ -35,16 +43,21 @@ const ARMOR_PIECES: readonly { slot: "head" | "torso" | "hands" | "legs" | "feet
   { slot: "feet", name: "boots", label: "boots" },
 ];
 const ARMOR: Def[] = ARMOR_TIERS.flatMap((t) =>
-  ARMOR_PIECES.map((p): Def => ({ type: "item", class: "armor", id: id(`${t.tier}_${p.name}`), stack: 1, weight: t.weight, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors } })),
+  ARMOR_PIECES.map((p): Def => ({ type: "item", class: "armor", id: id(`${t.tier}_${p.name}`), stack: 1, weight: typeof t.weight === "number" ? t.weight : t.weight[p.name]!, label: `${t.tier} ${p.label}`, color: t.colors[0], wear: { slot: p.slot, armor: t.armor, uses: t.uses, set: t.set, colors: t.colors } })),
 );
 
 const GEAR: Def[] = [
   { type: "item", class: "resource", id: id("hide"), stack: 200, weight: 0.01, color: 227 },
   { type: "item", class: "resource", id: id("chitin"), stack: 100, weight: 0.05, color: 9 },
   { type: "item", class: "resource", id: id("ore"), stack: 300, weight: 1, label: "metal ore", color: 4 },
-  { type: "item", class: "resource", id: id("ingot"), stack: 300, weight: 1, label: "metal ingot", color: 2 },
+  // ark.wiki.gg Metal Ingot and Refining Forge: "2 pieces of Metal can be smelted to create a Metal Ingot", 20 s each at the
+  // refining forge, which makes it by itself while it burns and ore lies in it (fired, planning/reference/stations-plan.md,
+  // S1): no engram, no hand recipe, no experience (neither page gives any).
+  { type: "item", class: "resource", id: id("ingot"), stack: 300, weight: 1, label: "metal ingot", color: 2, craft: { needs: [{ item: id("ore"), count: 2 }], seconds: 20, xp: 0, at: id("forge"), fired: true } },
   { type: "item", class: "resource", id: id("gunpowder"), stack: 100, weight: 0.1, color: 11 },
-  { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, dose: { torpor: 40, seconds: 8 } },
+  // Eaten, 8 health and 40 torpor over 8 seconds ("Increases your health, but puts you to sleep", ark.wiki.gg, Narcotic,
+  // 2026-11-15).
+  { type: "item", class: "consumable", id: id("narcotic"), stack: 100, weight: 0.1, color: 9, eat: { health: 8 }, dose: { torpor: 40, seconds: 8 } },
 
   { type: "item", class: "weapon", id: id("spear"), stack: 1, weight: 2, color: 3, weapon: { kind: "melee", damage: 30, type: "pierce", reach: 3, uses: 20, mesh: id("spear"), hold: "spear" } },
   ...ARMOR,
@@ -52,12 +65,18 @@ const GEAR: Def[] = [
 
 type Needs = readonly (readonly [item: string, count: number])[];
 
-/** level and cost are the tier engram's level and points. */
-const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number; needs: Readonly<Record<string, Needs>> }>> = {
+/**
+ * level and cost are the tier engram's level and points, `cost` every piece's or each piece's by its name; `xp` each
+ * piece's Crafting XP where the pages give it (else a third of the level); `at` the station it is made at, else the hand.
+ */
+const ARMOR_MAKING: Readonly<Record<string, { level: number; cost: number | PerPiece; xp?: PerPiece; at?: string; needs: Readonly<Record<string, Needs>> }>> = {
   cloth: { level: 3, cost: 3, needs: { hat: [["fiber", 10]], shirt: [["fiber", 40]], gloves: [["fiber", 20]], pants: [["fiber", 50]], boots: [["fiber", 25], ["hide", 6]] } },
   hide: { level: 15, cost: 9, needs: { hat: [["hide", 15], ["fiber", 6]], shirt: [["hide", 20], ["fiber", 8]], gloves: [["hide", 10], ["fiber", 4]], pants: [["hide", 25], ["fiber", 10]], boots: [["hide", 12], ["fiber", 5]] } },
-  chitin: { level: 37, cost: 18, needs: { hat: [["chitin", 15], ["hide", 7], ["fiber", 3]], shirt: [["chitin", 20], ["hide", 10], ["fiber", 4]], gloves: [["chitin", 10], ["hide", 5], ["fiber", 2]], pants: [["chitin", 25], ["hide", 12], ["fiber", 5]], boots: [["chitin", 12], ["hide", 6], ["fiber", 4]] } },
-  flak: { level: 56, cost: 16, needs: { hat: [["ingot", 10], ["hide", 7], ["fiber", 3]], shirt: [["ingot", 13], ["hide", 10], ["fiber", 4]], gloves: [["ingot", 6], ["hide", 5], ["fiber", 2]], pants: [["ingot", 16], ["hide", 12], ["fiber", 5]], boots: [["ingot", 8], ["hide", 6], ["fiber", 4]] } },
+  // Chitin and flak are made at the smithy, as ARK makes them (stations S6), at each piece's page (the infoboxes named above
+  // ARMOR_TIERS, 2026-11-15): level, engram points, ingredients and craftingxp, shown times the global 4 of patches 253.0
+  // and 313.5 (D465). No page gives a crafting time: 5 s is ours (DEV135).
+  chitin: { level: 37, cost: { hat: 18, shirt: 18, gloves: 15, pants: 15, boots: 15 }, xp: { hat: 7.6, shirt: 10.4, gloves: 5.2, pants: 12.8, boots: 6.4 }, at: "smithy", needs: { hat: [["chitin", 15], ["hide", 7], ["fiber", 3]], shirt: [["chitin", 20], ["hide", 10], ["fiber", 4]], gloves: [["chitin", 10], ["hide", 5], ["fiber", 2]], pants: [["chitin", 25], ["hide", 12], ["fiber", 5]], boots: [["chitin", 12], ["hide", 6], ["fiber", 4]] } },
+  flak: { level: 56, cost: { hat: 20, shirt: 18, gloves: 16, pants: 15, boots: 16 }, xp: { hat: 17.64, shirt: 23.12, gloves: 10.76, pants: 28.4, boots: 14.32 }, at: "smithy", needs: { hat: [["ingot", 10], ["hide", 7], ["fiber", 3]], shirt: [["ingot", 13], ["hide", 10], ["fiber", 4]], gloves: [["ingot", 6], ["hide", 5], ["fiber", 2]], pants: [["ingot", 16], ["hide", 12], ["fiber", 5]], boots: [["ingot", 8], ["hide", 6], ["fiber", 4]] } },
 };
 
 // Trees, rocks and bushes. As in the reference game, every tree gives thatch and wood, the hatchet more wood; every rock gives
@@ -216,7 +235,10 @@ const NODES: NodeDef[] = [
   { type: "node", id: id("rock"), mesh: "box", color: 15, half: [0.9, 0.6, 0.8], hits: 10, respawnHours: REGROW, material: "stone", yields: [...ROCK_YIELDS, { item: "core:ore", min: 0, max: 1, tool: true }], xp: 1, size: [0.8, 1.25], variants: ROCKS, footing: { reach: 4, fall: 1.9 } },
   { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.85, 1.15], variants: RUBBLE, footing: { reach: 4, fall: 1.85 } },
   // A metal rock, darker and veined, which a player learns to spot. It is harder than limestone, and a pick gets its ore.
-  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
+  // It gives obsidian too, at a reduced rate: "Mountain-rocks which yield Metal now also yield Obsidian at a reduced rate"
+  // (Obsidian, patch 171.8). Ours is the only metal rock, so every one does. The rate is unverified and chosen: none to one
+  // a hit, times the pick's 3, a quarter of the ore it gives.
+  { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }, { item: "core:obsidian", min: 0, max: 1, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
   // Berry bushes, their berries red. How many narcoberries each picking gives is chosen, as the wiki gives no figure.
   plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }, { item: "core:narcoberry", min: 0, max: 2 }], [0.8, 1.2], BUSHES),
   // Saw palmetto bears a few berries. A fern bears none.
@@ -230,17 +252,27 @@ const NODES: NodeDef[] = [
 /** Levels are the reference game's. */
 const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
-  ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["narcoberry", 5], ["meat", 1]]),
-  ...making("ingot", "Smelting", 20, 6, 1, 6, [["ore", 2], ["wood", 1]]),
-  ...making("gunpowder", "Gunpowder", 21, 2, 1, 2, [["flint", 1], ["stone", 1], ["wood", 1]]),
-  // Each piece of an armor tier has its own engram, at the tier's level and cost. They were one engram for all five once,
-  // and a save that knew the set knows every piece.
+  // ark.wiki.gg, Narcotic, infobox, 2026-11-15: at the mortar and pestle, 5 narcoberries and 1 spoiled meat, in 5 s,
+  // craftingxp 2 (our 8, D465's four times); level 6, 6 engram points (moved from the hand and raw meat by S6). The
+  // chemistry bench's 20 and 4 for 6 waits for the bench.
+  ...making("narcotic", "Narcotic", 6, 6, 1, 5, [["narcoberry", 5], ["spoiled_meat", 1]], 8, "mortar"),
+  // The metal ingot has no engram and is not made in the hand, as in ARK, where the refining forge makes it (by the user,
+  // 2026-11-15, on planning/reference/stations-plan.md's question 2: no rename, no refund); the forge refines it (S1, in
+  // GEAR above). A save that knew the engram "Smelting" loads without it, and a job of ingots it was making is dropped
+  // (server/progression.ts). Its recipe's old id still reads as the ingot.
+  { type: "rename", id: id("make-ingot"), to: [id("ingot")] },
+  // ark.wiki.gg, Gunpowder, infobox, 2026-11-15: at the mortar and pestle, 1 sparkpowder and 1 charcoal, in 1 s, craftingxp
+  // 0.05 (our 0.2, D465's four times); level 15, 2 engram points (moved from the hand and its flint, stone and wood by S6,
+  // once the forge's wood left charcoal, S1). The chemistry bench's recipe waits for the bench.
+  ...making("gunpowder", "Gunpowder", 15, 2, 1, 1, [["sparkpowder", 1], ["charcoal", 1]], 0.2, "mortar"),
+  // Each piece of an armor tier has its own engram, at the tier's level and the piece's cost. They were one engram for all
+  // five once, and a save that knew the set knows every piece.
   ...ARMOR_TIERS.flatMap((t): Def[] => {
     const m = ARMOR_MAKING[t.tier]!;
     return [
       ...ARMOR_PIECES.flatMap((p): Def[] => [
-        crafting(id(`${t.tier}_${p.name}`), { needs: m.needs[p.name]!.map(([item, n]) => ({ item: id(item), count: n })), seconds: 5, xp: Math.round(m.level / 3) }),
-        { type: "engram", id: id(`engram-${t.tier}_${p.name}`), label: `${t.tier[0]!.toUpperCase()}${t.tier.slice(1)} ${p.label}`, level: m.level, cost: m.cost, item: id(`${t.tier}_${p.name}`) },
+        crafting(id(`${t.tier}_${p.name}`), { needs: m.needs[p.name]!.map(([item, n]) => ({ item: id(item), count: n })), seconds: 5, xp: m.xp?.[p.name] ?? Math.round(m.level / 3), ...(m.at ? { at: id(m.at) } : {}) }),
+        { type: "engram", id: id(`engram-${t.tier}_${p.name}`), label: `${t.tier[0]!.toUpperCase()}${t.tier.slice(1)} ${p.label}`, level: m.level, cost: typeof m.cost === "number" ? m.cost : m.cost[p.name]!, item: id(`${t.tier}_${p.name}`) },
       ]),
       { type: "rename", id: id(`engram-${t.tier}`), to: ARMOR_PIECES.map((p) => id(`engram-${t.tier}_${p.name}`)) },
     ];
@@ -312,7 +344,9 @@ const ALL: readonly Def[] = [
     killXp: 10,
     // Knocked out at 200 torpor, and out for most of a minute.
     torporDrain: 4,
-    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0] },
+    // Crafting Skill is 100% and a point adds 10% (ark.wiki.gg, Human, "Base Stats and Growth", and Crafting Skill,
+    // 2026-11-15); a blueprint's bonus is up to a twentieth of it (D419).
+    stats: { health: [100, 0, 0.1], stamina: [100, 0, 0.1], oxygen: [100, 0, 0.2], food: [100, 0, 0.1], water: [100, 0, 0.1], weight: [100, 0, 0.1], melee: [1, 0, 0.05], speed: [1, 0, 0.015], torpidity: [200, 0, 0], crafting: [1, 0, 0.1] },
   },
   // A practice target with a survivor's shape and zones.
   {
@@ -350,6 +384,9 @@ const ALL: readonly Def[] = [
   { type: "structure", class: "static", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
   ...BUILDING_CONTENT,
   ...CREATURES,
+  COMPACT_SPECIES,
+  ...ROADS,
+  CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,
   ...CORPSES,
@@ -362,11 +399,16 @@ const ALL: readonly Def[] = [
   { type: "prop", class: "container", id: "core:cache", mesh: "box", color: 6, radius: 0.35, height: 0.5, slots: 60 },
   // Holds items dropped on the ground.
   { type: "prop", class: "container", id: "core:bag", mesh: "box", color: 3, radius: 0.22, height: 0.28, slots: 10 },
-  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -8, damage: "fire" },
+  // A flame arrow's burn: "approximately 22 damage per second to players" for 8 seconds (ark.wiki.gg, Flame Arrow,
+  // 2026-11-15), as fire, so a body takes its own share of it. ARK's grows with the creature's size (DEV28).
+  { type: "buff", id: "core:burning", label: "Burning", color: 3, seconds: 8, health: -22, damage: "fire" },
   { type: "buff", id: "core:tranquilized", label: "Tranquilized", color: 9, seconds: 5, again: "stack" },
   // A narcotic at work. Doses run one after another.
   { type: "buff", id: "core:drugged", label: "Drugged", color: 9, seconds: 8 },
-  { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 3, root: true },
+  // A shock dart's stun holds a survivor where it stands for 2 seconds ("Decreased the stun on humans from shocking tranq
+  // darts from 5 seconds to 2 seconds", patch 265.0, ark.wiki.gg, Shocking Tranquilizer Dart, 2026-11-15). A creature is
+  // not stunned: "It can also stop the player from moving."
+  { type: "buff", id: "core:stunned", label: "Stunned", color: 6, seconds: 2, root: true, only: ["core:survivor"] },
   { type: "buff", id: "core:injured", label: "Injured", color: 8, speed: 0.8 },
   // What a meal mends comes at this rate. A piece of cooked meat is 8 health over five seconds.
   { type: "buff", id: "core:fed", label: "Fed", color: 12, seconds: 5, health: 1.6, good: true },
@@ -376,10 +418,14 @@ const ALL: readonly Def[] = [
   { type: "item", class: "resource", id: "core:fiber", stack: 300, weight: 0.01, color: 7 },
   // A slingshot's ammunition. Its speed is chosen.
   { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15, ammo: { damage: 14, type: "melee", speed: 35, gravity: 9.81, torpor: { instant: 1.35, over: 0, seconds: 0 }, mesh: "core:stone_shot" } },
-  { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 4, water: 2 }, color: 8 },
-  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 }, spoilsInto: "core:spoiled_meat" },
-  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 35, health: 8 }, color: 3, label: "cooked meat", spoilsInto: "core:spoiled_meat" },
-  { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
+  // What a survivor gets of eating each is its infobox's (ark.wiki.gg, 2026-11-15). Our one berry stands for the four that
+  // feed alike, each 1.5 food and 0.2 water (Mejoberry, Amarberry, Azulberry, Tintoberry). Raw meat is 10 food and takes
+  // 5 health, at once as spoiled meat's harm is (Raw Meat); cooked meat 20 food and 8 health (Cooked Meat).
+  { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 1.5, water: 0.2 }, color: 8 },
+  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 10 }, use: { adds: [{ stat: "health", amount: -5 }] }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 }, spoilsInto: "core:spoiled_meat" },
+  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 20, health: 8 }, color: 3, label: "cooked meat", spoilsInto: "core:spoiled_meat" },
+  // A piece burns 30 s in a campfire or forge and leaves one charcoal when it has burnt out (ark.wiki.gg Charcoal, Campfire).
+  { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30, burnsInto: "core:charcoal" },
   { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
   { type: "item", class: "resource", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
   { type: "item", class: "weapon", id: "core:pick", stack: 1, weight: 1, color: 2, tool: { on: "stone", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 16, type: "melee", torpor: 0.5, uses: 60, mesh: "core:pick", hold: "tool" } },
@@ -396,7 +442,7 @@ const ALL: readonly Def[] = [
   LEVELS,
 ];
 
-export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS]);
+export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS, ...TERMINALS, ...SLOPE_BLOCKS, ...LETTER_BLOCKS]);
 
 /** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

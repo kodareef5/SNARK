@@ -7,7 +7,7 @@ import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHost } from "../../server/host.ts";
-import { CARRY_GRAB, CARRY_PICK_UP, CARRY_RELEASE, CARRY_THROW, CMD_CARRY, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_LAND, ORDER_WANDER, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS } from "../../shared/net/protocol.ts";
+import { CARRY_GRAB, CARRY_PICK_UP, CARRY_RELEASE, CARRY_THROW, CMD_CARRY, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_LAND, ORDER_WANDER, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK } from "../../shared/net/protocol.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { F_GROUNDED, F_HELD } from "../../shared/sim/entities.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -49,7 +49,7 @@ test("a wild creature is not picked up from out of reach nor ordered, a creature
 
 // The flyers' contracts (planning/reference/flyers-plan.md, FL0) in a running host.
 
-test("the flyers' codes are refused until their packages build them, and the pteranodon stand-in, made by the spawn cheat, walks the ground as any creature", () => {
+test("the grab codes are refused until their package builds them, a wild flyer is nobody's to land, and the pteranodon stand-in, made by the spawn cheat, rests on the ground and then takes off", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const ada = h.join("ada");
   h.run(500);
@@ -69,9 +69,13 @@ test("the flyers' codes are refused until their packages build them, and the pte
   ada.command(CMD_ORDER, (w) => (w.u32(e), w.u8(ORDER_LAND)));
   ada.command(CMD_ORDER, (w) => (w.u32(ORDER_ALL), w.u8(ORDER_LAND)));
   h.run(1500);
-  expect(codes).toEqual([RESULT_INVALID, RESULT_INVALID, RESULT_INVALID, RESULT_INVALID]);
+  // Landing is built (tests/integration/flyers.test.ts): a whistle with nothing of hers in earshot lands nothing.
+  expect(codes).toEqual([RESULT_INVALID, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK]);
   const ents = h.world.ents;
   expect([ents.mode[e], (ents.flags[e]! & F_GROUNDED) !== 0]).toEqual([MODE_WALK, true]);
+  let flew = false;
+  h.run(25000, () => void (flew ||= ents.mode[e] === MODE_FLYER));
+  expect(flew).toBe(true);
 });
 
 test("a creature in its own flight is saved flying and loads in the air, and a save written by main before the flying bit loads as it was", () => {
@@ -96,7 +100,7 @@ test("a creature in its own flight is saved flying and loads in the air, and a s
       store.close();
       return row.data[0]!;
     };
-    expect(format(db, pid)).toBe(6);
+    expect(format(db, pid)).toBe(7);
     const back = createHost(reg, { dbPath: db });
     const f = back.records.entOf.get(pid)!;
     expect([back.records.byPid.get(pid)!.flying, back.world.ents.mode[f], (back.world.ents.flags[f]! & F_GROUNDED) !== 0, back.world.ents.y[f]]).toEqual([true, MODE_FLYER, false, aloft]);
@@ -113,16 +117,20 @@ test("a creature in its own flight is saved flying and loads in the air, and a s
     copyFileSync(join(import.meta.dir, "../fixtures/saves/before-flyers.db"), old);
     const [ada, mount, bo] = [1099511627777, 1099511627778, 1099511627779];
     expect([ada, mount, bo].map((id) => format(old, id))).toEqual([5, 5, 5]);
-    const loaded = createHost(reg, { dbPath: old });
+    // It was made on the proving ground before the ground listed its resource nodes (shared/world/proving.ts), so on other
+    // bytes of the same map; what it holds is what is read here, so it is loaded as an operator would, told to go on.
+    const loaded = createHost(reg, { dbPath: old, allowMapMismatch: true });
     const rec = (id: number) => loaded.records.byPid.get(id)!;
-    expect(loaded.persistence!.store.missingContent).toEqual([]);
+    // The save knew the ingot's engram, which the stations wave took out (planning/reference/stations-plan.md, Decided 2).
+    // Nothing in it uses the engram, so it loads without --allow-missing-content.
+    expect(loaded.persistence!.store.missingContent).toEqual(["core:engram-ingot"]);
     expect([rec(ada).held, rec(ada).inv!.total(reg.index.get("core:stone")!), rec(ada).flying]).toEqual([2, 40, false]);
     expect([reg.ids[rec(mount).saddle], rec(mount).stance, rec(mount).team, rec(mount).flying]).toEqual(["core:saddle_raptor", 2, 7, false]);
     expect([rec(bo).dead, rec(bo).expiresAt, rec(bo).flying]).toEqual([true, 900, false]);
     expect(loaded.world.ents.mode[loaded.records.entOf.get(mount)!]).toBe(MODE_WALK);
     loaded.shutdown();
-    // Written again by this build, it is revision 6 and reads the same.
-    expect([ada, mount, bo].map((id) => format(old, id))).toEqual([6, 6, 6]);
+    // Written again by this build, it is revision 7 and reads the same.
+    expect([ada, mount, bo].map((id) => format(old, id))).toEqual([7, 7, 7]);
     const resaved = createHost(reg, { dbPath: old });
     expect([resaved.records.byPid.get(ada)!.held, reg.ids[resaved.records.byPid.get(mount)!.saddle], resaved.records.byPid.get(bo)!.expiresAt]).toEqual([2, "core:saddle_raptor", 900]);
     resaved.shutdown();

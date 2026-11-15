@@ -112,6 +112,16 @@ export class Gait {
    */
   spin = 0;
   turned = 0;
+  /**
+   * A flyer's shares of its hover, its fast flapping, its glide and its dive, and its roll into a turn
+   * (shared/anim/creature.ts), eased so a step of what it is sent is not a jump in how it is drawn. Kept as it last flew
+   * once it is down, for its landing to come in from; NaN until it is first seen flying.
+   */
+  hover = Number.NaN;
+  fast = Number.NaN;
+  glide = Number.NaN;
+  dive = Number.NaN;
+  roll = Number.NaN;
 
   /**
    * Moves to the body's place at `tick` and returns the metres its feet covered, at the size it was made, or -1 when it

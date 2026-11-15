@@ -98,7 +98,7 @@ const VOID = 0xff30241a;
 const RELIEF_SIZE = 256;
 const RELIEF_KEPT = 24;
 
-/** Paints one tile of the pyramid from the heightfield: each sample's colour, shaded by its slope with the light from the north-west, and water over what lies under the sea. */
+/** Paints one tile of the pyramid from the heightfield: each sample's colour, shaded by its slope with the light from the north-west, and water over what lies under the sea or a lake. */
 export function paintRelief(hf: Heightfield, palette: Uint8Array, zoom: number, col: number, row: number, size: number, out: Uint32Array): void {
   const side = Math.max(hf.sizeX, hf.sizeZ) / (1 << zoom);
   // The slope is taken over about a pixel, so a far zoom shows the broad shape of the land.
@@ -120,9 +120,10 @@ export function paintRelief(hf: Heightfield, palette: Uint8Array, zoom: number, 
       let r = palette[tint]! * shade;
       let g = palette[tint + 1]! * shade;
       let b = palette[tint + 2]! * shade;
-      if (h < hf.seaLevel) {
+      const water = hf.waterAt(x, z);
+      if (h < water) {
         // Deeper water is more of the water's colour.
-        const k = Math.min(0.9, 0.55 + (hf.seaLevel - h) * 0.08);
+        const k = Math.min(0.9, 0.55 + (water - h) * 0.08);
         r += (40 - r) * k;
         g += (92 - g) * k;
         b += (140 - b) * k;

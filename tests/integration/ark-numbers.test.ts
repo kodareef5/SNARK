@@ -110,10 +110,13 @@ test("a saddle of 25 halves a round or a blow and takes a fifth off an explosion
     return before - h.host.survival.value(rec, V_HEALTH);
   };
   expect(reg.saddleArmor[id("saddle_parasaur")]).toBe(25);
-  expect(hit(20, DMG_BULLET, ZONE_TORSO)).toBeCloseTo(20, 3);
+  // A creature takes 70% of a round, saddled or not (Longneck Rifle).
+  expect(hit(20, DMG_BULLET, ZONE_TORSO)).toBeCloseTo(14, 3);
+  expect(hit(20, DMG_MELEE, ZONE_TORSO)).toBeCloseTo(20, 3);
   rec.saddle = id("saddle_parasaur");
   // The page's examples: a pistol round of 60 does 30, and an explosion of 750 does 600. These are a tenth of the second.
-  expect(hit(60, DMG_BULLET, ZONE_TORSO)).toBeCloseTo(30, 3);
+  // The round's 30 is the saddle's alone; the creature takes 70% of it.
+  expect(hit(60, DMG_BULLET, ZONE_TORSO)).toBeCloseTo(30 * 0.7, 3);
   expect(hit(60, DMG_MELEE, ZONE_TORSO)).toBeCloseTo(30, 3);
   expect(hit(75, DMG_EXPLOSIVE, ZONE_NONE)).toBeCloseTo(60, 3);
 });

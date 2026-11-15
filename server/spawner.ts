@@ -11,6 +11,7 @@ import { groundUnder } from "../shared/world/collide.ts";
 import { GROUND_FREE, groundAt } from "../shared/world/path.ts";
 import { ROLE_CEILING, ROLE_FOUNDATION } from "../shared/world/snap.ts";
 import type { Buffs } from "./buffs.ts";
+import { openSky } from "./behavior.ts";
 import type { Creatures } from "./creatures.ts";
 import type { GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
@@ -373,11 +374,13 @@ export class Spawner {
   /**
    * Whether a body can stand at (x, z) on dry ground, clear of nodes whether or not anyone has loaded them. Against those nobody
    * has, its capsule runs from the ground to its height stepped up, so it covers both places groundAt and Creatures.spawn test.
+   * A flyer is put down only under open sky, where it could have landed, since under a roof it cannot take off.
    */
   private land(p: NonNullable<Registry["move"][number]>, x: number, z: number): boolean {
     const world = this.ctx.world;
-    if (world.hf.heightAt(x, z) < world.hf.seaLevel || groundAt(world, p, x, z) !== GROUND_FREE) return false;
-    return !world.unloaded?.meets(x, groundUnder(world.hf, x, z, p.radius), z, p.radius, p.height + p.stepUp);
+    if (world.hf.heightAt(x, z) < world.hf.waterAt(x, z) || groundAt(world, p, x, z) !== GROUND_FREE) return false;
+    const y = groundUnder(world.hf, x, z, p.radius);
+    return !world.unloaded?.meets(x, y, z, p.radius, p.height + p.stepUp) && (!p.flies || openSky(world, p.radius, x, y, z));
   }
 
   /** Whether a survivor stands within PLAYER_RANGE, or a tribe's creature within TAME_RANGE. */

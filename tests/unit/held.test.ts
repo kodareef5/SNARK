@@ -4,15 +4,22 @@ import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CORE_CONTENT } from "../../content/core.ts";
+import { authoredClips } from "../../shared/anim/authored.ts";
 import { B_PROP_L, B_PROP_R, HUMAN } from "../../shared/anim/human.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
+import { defaultPalette } from "../../shared/pack/palette.ts";
 import { encodePng } from "../../tools/pack/image.ts";
 import { convertPieces, heldOn, packOf, type Built } from "../../tools/art/build.ts";
 import { GRIP_SLACK, checkAsset, heldFaults, lyingFaults, measureSurface } from "../../tools/art/check.ts";
 import type { PiecesAsset } from "../../tools/art/spec.ts";
+import { grayboxMeshes } from "../../tools/pack/build.ts";
 import { boundsOf, lying, thinnest } from "../../tools/pack/lying.ts";
+import { mannequinMeshes } from "../../tools/pack/mannequin.ts";
 import { splitPack } from "../../tools/pack/split.ts";
-import { boxMesh, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
+import { weaponMeshes } from "../../tools/pack/weapons.ts";
+import { boxMesh, buildPack, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
+import { sceneWorld } from "../fixtures/sceneworld.ts";
 import { tubeGlb, tubePictures, writeGlb } from "../fixtures/textured.ts";
 
 const built = (): Built => ({ meshes: [], rigs: [], clips: [], lines: [], warnings: [], faults: [] });
@@ -183,4 +190,22 @@ test("a piece lies with its thinnest side up, turned and not mirrored, and the h
   const turned = lying(one, "t:one/dropped").lods[0]!;
   expect([...turned.normals!.subarray(0, 3), ...turned.tangents!.subarray(0, 4)].map((v) => v + 0)).toEqual([0, 1, 0, 0, 0, 1, -1]);
   for (const mesh of [flat, disc, one]) expect(measureSurface(lying(mesh, "x").lods[0]!)).toMatchObject({ holes: 0, flipped: 0, insideOut: 0 });
+});
+
+test("an item that is no weapon is drawn in the hand by its held piece where its class has a held slot", () => {
+  // A food, an egg and a stone, each with a held piece named for its item as a pieces asset names one. The stone is a
+  // resource, whose class has no held slot, so its piece is never drawn in the hand.
+  const ids = ["core:meat_cooked", "core:raptor_egg", "core:stone"];
+  const pieces = ids.map((id) => heldOn({ id, lods: [box([0.04, 0.04, 0.06], [0, 0, 0.05], 8)] }, "prop_r"));
+  const meshes = [...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes(), ...pieces];
+  const w = sceneWorld({}, {}, splitPack(buildPack(meshes, defaultPalette(), authoredClips(), []), "held"));
+  const inHand = (held: string): boolean => {
+    w.remote.count = 0;
+    w.place("core:survivor", 32, 23, { held });
+    let p = w.frame();
+    for (let k = 0; k < 20; k++) p = w.frame();
+    return [...p.drawMesh.subarray(0, p.drawCount)].includes(w.mesh(held));
+  };
+  expect(ids.map((id) => w.mesh(id) >= 0)).toEqual([true, true, true]);
+  expect(ids.map(inHand)).toEqual([true, true, false]);
 });

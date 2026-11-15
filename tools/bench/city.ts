@@ -1,8 +1,11 @@
 // The far city's benchmark rows on a built map's real city (client/core/render/farcity.ts): what its statics hold, what a
 // chunk costs to make at each level, what each tier draws from the cameras of planning's views, a ghost flying across it
-// at 600 m/s, and walking through the hand-over. bun tools/bench/city.ts <file.snmap> [views.json], or bun run bench --city <file>.
+// at 600 m/s, a pteranodon's rider at 150 m, and walking through the hand-over. bun tools/bench/city.ts <file.snmap>
+// [views.json], or bun run bench --city <file>; with --rider, the rider's flight alone.
 
 import { readFileSync } from "node:fs";
+import { cpus, loadavg } from "node:os";
+import { Viewpoint } from "../../client/core/viewpoint.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { TIERS, type Tier } from "../../client/core/assets/tiers.ts";
 import { FarStore } from "../../client/core/farcells.ts";
@@ -234,6 +237,8 @@ export function benchCity(section: (title: string) => void, record: Record, path
     }
   }
 
+  benchRider(section, record, w);
+
   section("Walking through downtown at 6 m/s on medium, chunks held whole a second after they come near");
   {
     const scene = w.scene(medium, [1920, 1080]);
@@ -266,15 +271,68 @@ export function benchCity(section: (title: string) => void, record: Record, path
   }
 }
 
+/**
+ * A pteranodon's rider over downtown at 150 m on medium (flyers-plan.md, FL2): its tamed sprint, 18.975 m/s, its riding
+ * camera (client/core/viewpoint.ts, the boom the app gives the stand-in), straight for 20 s, banking round at 15 degrees
+ * a second for 20 s, and straight again, a frame a sixtieth of a second, with the machine's load before and after.
+ */
+function benchRider(section: (title: string) => void, record: Record, w: ReturnType<typeof cityWorld>): void {
+  const medium = TIERS.find((t) => t.name === "medium")!;
+  const speed = 18.975;
+  section(`A pteranodon's rider at 150 m over downtown on medium, at ${speed} m/s, banking round for a third of the minute; load ${loadavg().map((l) => l.toFixed(1)).join(" ")} over ${cpus().length} cores`);
+  const { hf, structs, reg } = w;
+  const scene = w.scene(medium, [1920, 1080]);
+  const cam = w.cam;
+  const view = new Viewpoint();
+  const kind = reg.index.get("core:pteranodon")!;
+  const seat = reg.saddleSeats[reg.index.get("core:saddle_pteranodon")!]!.find((s) => s.driver)!;
+  const up = seat.anchor[1] + 0.75;
+  const boom = 1.5 + 1.2 * Math.max(reg.bodyHeight[kind]!, 2 * reg.bodyRadius[kind]!);
+  let [x, z, yaw] = [4300, 2900, Math.PI / 2];
+  const height = (): number => Math.max(hf.heightAt(x, z), hf.seaLevel) + 150;
+  const place = (dt: number): void => void view.placeVehicle(cam, { hf, structs }, x, height() + up, z, yaw, -0.1, yaw, speed, dt, false, { vx: Math.sin(yaw) * speed, vy: 0, vz: Math.cos(yaw) * speed, id: 1, boom });
+  place(16);
+  w.step(0, 1);
+  w.settleNear();
+  settleScene(scene, cam);
+  const builds: number[] = [];
+  let draws = 0;
+  let triangles = 0;
+  let unseen = 0;
+  const frames = 60 * 60;
+  for (let f = 0; f < frames; f++) {
+    if (f >= 20 * 60 && f < 40 * 60) yaw += (15 * Math.PI) / 180 / 60;
+    x += (Math.sin(yaw) * speed) / 60;
+    z += (Math.cos(yaw) * speed) / 60;
+    place(1000 / 60);
+    w.step(1 / 60, 1);
+    const t = performance.now();
+    const p = scene.build(cam, null);
+    builds.push(performance.now() - t);
+    draws = Math.max(draws, p.drawCount);
+    triangles = Math.max(triangles, p.triangles);
+    if (scene.city!.stats.unseen > 0) unseen++;
+  }
+  record("frame build, median", median(builds), "ms");
+  record("frame build, 99th percentile", percentile(builds, 0.99), "ms");
+  record("frame build, the worst", Math.max(...builds), "ms", 16.7);
+  record("the most draws in a frame", draws, "draws");
+  record("the most triangles in a frame", triangles / 1000, "k");
+  record("frames with a far city tile in view not yet made", unseen, `of ${frames}`);
+  record(`the machine's load after (1, 5, 15 minutes)`, loadavg()[0]!, `${loadavg().slice(1).map((l) => l.toFixed(1)).join(", ")} over ${cpus().length} cores`);
+}
+
 if (import.meta.main) {
-  const [path, views] = process.argv.slice(2);
+  const rider = process.argv.includes("--rider");
+  const [path, views] = process.argv.slice(2).filter((a) => a !== "--rider");
   if (!path) {
-    console.error("bun tools/bench/city.ts <file.snmap> [views.json]");
+    console.error("bun tools/bench/city.ts <file.snmap> [views.json] [--rider]");
     process.exit(2);
   }
   const record: Record = (name, value, unit, budget = null) => {
     const verdict = budget === null ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`;
     console.log(`  ${name.padEnd(64)} ${value.toFixed(value < 10 ? 3 : 1).padStart(10)} ${unit}${verdict}`);
   };
-  benchCity((title) => console.log(`\n${title}`), record, path, views);
+  if (rider) benchRider((title) => console.log(`\n${title}`), record, cityWorld(path));
+  else benchCity((title) => console.log(`\n${title}`), record, path, views);
 }

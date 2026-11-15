@@ -5,8 +5,8 @@ import { Rng } from "../../shared/rng.ts";
 import { Body, STANCE_STAND, stanceEye, stepBody } from "../../shared/sim/character.ts";
 import { ROUTE_MARGIN } from "../../server/behavior.ts";
 import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../../shared/world/collide.ts";
-import { NodeField, SIZE_STEPS, SIZE_UNITS, mix, nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
-import { PROVING_DIMS, PROVING_NODES_PER_CHUNK, PROVING_SEA_LEVEL, buildProvingHeightfield, provingNodeLayers, provingNodes } from "../../shared/world/proving.ts";
+import { NodeField, SEA_UNDER, SIZE_STEPS, SIZE_UNITS, mix, nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
+import { PROVING_DIMS, PROVING_NODES_PER_CHUNK, PROVING_SEA_LEVEL, PROVING_ZONED_PER_CHUNK, buildProvingHeightfield, provingNodeLayers, provingNodes } from "../../shared/world/proving.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { nodeLayers, type NodeZoned } from "../../shared/world/mapfile.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -24,6 +24,8 @@ const CHUNKS = PROVING_DIMS.chunksX * PROVING_DIMS.chunksZ;
 const field = (): NodeField => new NodeField(PROVING_DIMS, reg, provingNodes(hf, reg));
 const kind = (id: string) => reg.index.get(id)!;
 const spot = (): NodeSpot => ({ kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 });
+/** Slots of the two scattered layers, before the listed resource nodes. */
+const SCATTERED = PROVING_NODES_PER_CHUNK + PROVING_ZONED_PER_CHUNK;
 const KINDS = ["core:tree", "core:oak", "core:palm", "core:fig", "core:banyan", "core:mangrove", "core:rock", "core:rubble", "core:metal_rock", "core:bush", "core:palmetto", "core:fern", "core:seagrape", "core:creeper"];
 
 test("where nodes stand is a pure function of the map: the same every time, dry, off the plaza, on the ground, and of every kind", () => {
@@ -32,7 +34,8 @@ test("where nodes stand is a pure function of the map: the same every time, dry,
   const [sa, sb] = [spot(), spot()];
   const counts = new Map<number, number>();
   const sizes = new Set<number>();
-  expect(a.perChunk).toBe(144);
+  // The two scattered layers' 96 and 48 slots, and the most resource nodes the third lists in a chunk.
+  expect(a.perChunk).toBe(SCATTERED + 4);
   for (let chunk = 0; chunk < CHUNKS; chunk++) {
     for (let i = 0; i < a.perChunk; i++) {
       a.at(chunk, i, sa);
@@ -42,7 +45,9 @@ test("where nodes stand is a pure function of the map: the same every time, dry,
       counts.set(sa.kind, (counts.get(sa.kind) ?? 0) + 1);
       expect([forms.kind[sa.form], forms.depleted[sa.form]]).toEqual([sa.kind, 0]);
       if (sa.kind === kind("core:tree")) sizes.add(forms.size[sa.form]!);
-      expect(hf.heightAt(sa.x, sa.z)).toBeGreaterThan(PROVING_SEA_LEVEL);
+      // Dry but for the clams and oil rocks of the sea floor, which the third layer lists in the pool's bowl.
+      if (forms.sea[sa.kind] !== SEA_UNDER) expect(hf.heightAt(sa.x, sa.z)).toBeGreaterThan(PROVING_SEA_LEVEL);
+      else expect([i >= SCATTERED, hf.heightAt(sa.x, sa.z) < PROVING_SEA_LEVEL]).toEqual([true, true]);
       expect(sa.y).toBe(hf.heightAt(sa.x, sa.z)); // its origin is the ground under it
       expect(Math.max(Math.abs(sa.x - 256), Math.abs(sa.z - 256))).toBeGreaterThan(96);
     }
@@ -96,7 +101,7 @@ test("the zoned layer's slots keep their places and kinds: an elder oak grows on
   const [a, b] = [spot(), spot()];
   const changed = new Map<string, number>();
   for (let chunk = 0; chunk < CHUNKS; chunk++) {
-    for (let i = PROVING_NODES_PER_CHUNK; i < now.perChunk; i++) {
+    for (let i = PROVING_NODES_PER_CHUNK; i < SCATTERED; i++) {
       was.at(chunk, i, a);
       now.at(chunk, i, b);
       if (a.kind === b.kind) {

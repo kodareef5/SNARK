@@ -23,6 +23,92 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import folder_arg, save  # noqa: E402
 
 HIGHWAY = ('S1100', 'S1200')
+# An airfield's paving in roads.png: no street, and no street's wrecks.
+PAVED = 6
+# Census water by its feature class, as the perched layer names it.
+TIGER_WATER = {'H2030': 'lake or pond', 'H2040': 'reservoir', 'H2041': 'treatment pond', 'H2051': 'bay', 'H2053': 'ocean',
+               'H3010': 'stream', 'H3013': 'braided stream', 'H3020': 'canal'}
+GRASS_LIKE = [21, 31, 41, 42, 43, 52, 71, 90, 95]
+# An airfield's paving where OpenStreetMap gives no width: ICAO's common runway and taxiway widths.
+AEROWAY_WIDTH_M = {'runway': 45, 'taxiway': 23}
+
+
+def osm_features(m):
+    path = m.raw / 'osm/features.json'
+    if not path.exists():
+        return []
+    to_map = Transformer.from_crs(4326, m.crs, always_xy=True).transform
+    clip = box(*m.b)
+    out = []
+    for el in json.loads(path.read_text())['elements']:
+        t = el.get('tags', {})
+        if el['type'] == 'way' and el.get('geometry'):
+            pts = [to_map(p['lon'], p['lat']) for p in el['geometry']]
+            closed = len(pts) >= 4 and pts[0] == pts[-1]
+            g = make_valid(Polygon(pts)) if closed else None
+            if not closed and len(pts) >= 2:
+                from shapely.geometry import LineString
+                g = LineString(pts)
+        elif el['type'] == 'relation' and el.get('members'):
+            outers = [Polygon([to_map(p['lon'], p['lat']) for p in mb['geometry']]) for mb in el['members']
+                      if mb.get('role') == 'outer' and mb.get('geometry') and len(mb['geometry']) >= 4 and mb['geometry'][0] == mb['geometry'][-1]]
+            inners = [Polygon([to_map(p['lon'], p['lat']) for p in mb['geometry']]) for mb in el['members']
+                      if mb.get('role') == 'inner' and mb.get('geometry') and len(mb['geometry']) >= 4 and mb['geometry'][0] == mb['geometry'][-1]]
+            if not outers:
+                continue
+            g = unary_union([make_valid(p) for p in outers])
+            if inners:
+                g = g.difference(unary_union([make_valid(p) for p in inners]))
+        else:
+            continue
+        g = g.intersection(clip)
+        if not g.is_empty:
+            out.append((g, el['type'], el['id'], t))
+    return out
+
+
+def osm_water(m, features, tiger_water):
+    """Water OpenStreetMap maps on the ground that TIGER does not: fountains, pools, ponds, lagoons, basins. A pool on a
+    roof or a deck, indoors or on an upper level is left out; one that is dry most of the year is listed and not burnt."""
+    from shapely.strtree import STRtree
+    wet = STRtree([g for g, _ in tiger_water])
+    out = []
+    for g, kind_el, oid, t in features:
+        if not (t.get('natural') == 'water' or 'water' in t or t.get('leisure') in ('swimming_pool', 'hot_tub') or t.get('amenity') == 'fountain'):
+            continue
+        if g.geom_type not in ('Polygon', 'MultiPolygon') or g.area < 8:
+            continue
+        layer = t.get('layer', '0')
+        if t.get('location') in ('roof', 'rooftop', 'indoor', 'underground') or t.get('indoor') == 'yes' or t.get('swimming_pool') == 'above' \
+                or (t.get('level') or '0').lstrip('-').split(';')[0] not in ('0', '') or (layer.lstrip('-').isdigit() and int(layer) != 0):
+            continue
+        if any(tiger_water[i][0].intersection(g).area > .5 * g.area for i in wet.query(g)):
+            continue
+        kind = 'fountain' if t.get('amenity') == 'fountain' or t.get('water') == 'fountain' else \
+            'pool' if t.get('leisure') in ('swimming_pool', 'hot_tub') else t.get('water') or 'pond'
+        out.append((g, {'id': f'osm:{kind_el}/{oid}', 'source': 'OpenStreetMap', 'name': t.get('name'), 'kind': kind,
+                        'intermittent': t.get('intermittent') == 'yes' or t.get('seasonal') == 'yes'}))
+    return out
+
+
+def osm_paved(m, features):
+    """An airfield's runways, taxiways, aprons and helipads, as OpenStreetMap draws them: paved like a highway."""
+    out = []
+    for g, kind_el, oid, t in features:
+        a = t.get('aeroway')
+        if a not in ('runway', 'taxiway', 'apron', 'helipad'):
+            continue
+        if g.geom_type in ('LineString', 'MultiLineString'):
+            width = None
+            try:
+                width = float((t.get('width') or '').split()[0])
+            except (ValueError, IndexError):
+                pass
+            g = g.buffer((width or AEROWAY_WIDTH_M.get(a, 15)) / 2, cap_style=2, join_style=2)
+        if g.is_empty or g.area < 8:
+            continue
+        out.append((g, {'id': f'osm:{kind_el}/{oid}', 'aeroway': a, 'name': t.get('name') or t.get('ref')}))
+    return out
 
 
 def tiger(m, name):
@@ -131,24 +217,41 @@ def main():
     sea = m.city.get('world', {}).get('seaNavd88', .3)
     above = m.city['succession'].get('perched_above_sea_m', 2)
     perched, sea_water = [], []
+    features = osm_features(m)
     for g, p in water:
         mask = m.burn([(g, 1)], n, m.grid) > 0
         surveyed = mask & valid
         if surveyed.sum() >= .5 * max(1, mask.sum()) and float(np.median(elev[surveyed])) > sea + above:
-            perched.append((g, p, float(np.median(elev[surveyed]))))
+            perched.append((g, {**p, 'kind': TIGER_WATER.get(p['mtfcc'], 'water')} if features else p, float(np.median(elev[surveyed]))))
         else:
             sea_water.append((g, p))
+    for g, p in osm_water(m, features, water):
+        # A pool's lidar surface may be interpolated across it; the median of what the survey has there stands for it.
+        mask = m.burn([(g, 1)], n, m.grid) > 0
+        surveyed = mask & valid
+        if not surveyed.any():
+            mask = m.burn([(g.buffer(4), 1)], n, m.grid) > 0
+            surveyed = mask & valid
+        if surveyed.any() and float(np.median(elev[surveyed])) > sea + above:
+            perched.append((g, {**p, 'area_m2': round(g.area, 1)}, float(np.median(elev[surveyed]))))
     m.write_features('perched_water', [(g, {**p, 'surface_navd88_m': round(h, 2), 'above_sea_m': round(h - sea, 2)}) for g, p, h in perched])
-    lake = m.burn([(g, 1) for g, p, h in perched], n, m.grid)
+    # Water that is dry most of the year, a detention basin or a wash, is listed and left as the ground it is.
+    lake = m.burn([(g, 1) for g, p, h in perched if not p.get('intermittent')], n, m.grid)
     save(lake, m.base / 'perched_water.png')
     water = sea_water
     m.write_features('areawater', water)
     w = m.burn([(g, 1) for g, p in water], n, m.grid)
     b = m.burn([(g, 1) for g, p in bld], n, m.grid)
-    rd = m.burn([(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
+    paved = osm_paved(m, features)
+    if paved:
+        m.write_features('paved', paved)
+    rd = m.burn([(g, PAVED) for g, p in paved] + [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
                  for g, p in sorted(roads, key=lambda gp: gp[1]['width_m'])], n, m.grid)
     rd[(rd > 0) & (w > 0)] = 3  # a bridge over the water, which stays beneath it
-    save(np.rint(np.clip((elev + 100) * 100, 0, 65535)).astype('uint16'), m.base / 'height.png')
+    zero = m.cfg.get('height_zero_m', -100)
+    if elev[valid].max() > zero + 655.35 or elev[valid].min() < zero:
+        raise SystemExit(f'ground from {elev[valid].min():.1f} to {elev[valid].max():.1f} m does not fit height.png over {zero} m: set height_zero_m')
+    save(np.rint(np.clip((elev - zero) * 100, 0, 65535)).astype('uint16'), m.base / 'height.png')
     save(valid.astype('uint8') * 255, m.base / 'height_valid.png')
     save(w, m.base / 'water.png')
     save(b, m.base / 'buildings.png')
@@ -159,8 +262,10 @@ def main():
                   dst_transform=m.grid, dst_crs=m.crs, resampling=Resampling.nearest)
     save(lc, m.base / 'landcover.png')
     # Fictional succession, the rule Miami's was made by; distinct from NLCD.
-    coast = nd.distance_transform_edt(w == 0) * 2
-    grown = np.isin(lc, [21, 31, 41, 42, 43, 52, 71, 90, 95]) | ((lc == 22) & (coast < 180))
+    coast = nd.distance_transform_edt(w == 0) * 2 if w.any() else np.full((n, n), np.inf, np.float32)
+    # A desert city names the land cover that stays dry (barren, shrub and scrub): it is desert, not grown green.
+    dry = m.city['succession'].get('dry_classes') or []
+    grown = np.isin(lc, [c for c in GRASS_LIKE if c not in dry]) | ((lc == 22) & (coast < 180))
     grown = nd.gaussian_filter(grown.astype('float32'), 4) > .48
     yy, xx = np.mgrid[:n, :n].astype(np.float32)
     field = np.sin(xx / 47 + .7 * np.sin(yy / 83)) + np.cos(yy / 61 - xx / 103)
@@ -174,7 +279,10 @@ def main():
     biome[grown & (coast < 70)] = 4
     biome[grown & (rise < .45) & (coast < 140)] = 5
     biome[lake > 0] = 5
-    beach = lc == 31
+    if dry:
+        biome[(biome == 2) & (nd.gaussian_filter(np.isin(lc, dry).astype('float32'), 4) > .48)] = 10
+    # Barren land is beach by the water; inland it is bare ground (a ridge, a quarry, a lot being built on).
+    beach = (lc == 31) & (coast < 500)
     ribbon = m.city['succession'].get('sand_ribbon')
     if ribbon:
         # An authored strip of bare sand east of a given easting, as Miami Beach's.
@@ -187,7 +295,8 @@ def main():
     biome[rd == 3] = 9
     save(biome, m.base / 'biome.png')
     s = m.city['succession']
-    flooded = (w == 0) & (rd > 0) & (rd < 3) & valid & (elev < s['flood_below_navd88_m']) & (coast < s['flood_within_m']) & (b == 0)
+    flood = s.get('flood_below_navd88_m')
+    flooded = (w == 0) & (rd > 0) & (rd < 3) & valid & (elev < (flood if flood is not None else -np.inf)) & (coast < s['flood_within_m']) & (b == 0)
     flooded = nd.binary_opening(flooded, iterations=1)
     save(flooded.astype('uint8'), m.base / 'flooded_streets.png')
     stats = {'seconds': time.time() - t, 'roads': len(roads), 'water_polygons': len(water), 'buildings': len(bld),

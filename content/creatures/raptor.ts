@@ -34,6 +34,8 @@ export const RAPTOR: readonly Def[] = [
     // Chosen, near what it gave before bodies were harvested: 7.5 hide and 6 meat in all on average.
     corpse: { health: 135, roll: 10 },
     drops: [{ item: "core:hide", min: 1, max: 1, weight: 7.5, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 6, favoured: "stone" }],
+    // Every creature takes 70% from guns ("all creatures aside from Humans", ark.wiki.gg, Longneck Rifle, 2026-11-15).
+    takes: { bullet: 0.7 },
     zones: { head: 3 },
     killXp: 8,
     torporDrain: 0.3,
@@ -43,7 +45,8 @@ export const RAPTOR: readonly Def[] = [
   { type: "prop", class: "egg", id: "core:egg_raptor", mesh: "core:egg_s", color: 5, radius: 0.06, height: 0.16, item: "core:raptor_egg", fertile: "core:raptor_egg_fertile" },
   { type: "item", class: "egg", id: "core:raptor_egg", label: "raptor egg", color: 5, stack: 100, weight: 7, eat: { food: 35, health: 35 }, spoilHours: (8 * 3600) / 140, decomposeHours: (30 * 60) / 140 },
   { type: "item", class: "egg", id: "core:raptor_egg_fertile", label: "fertilised raptor egg", color: 5, stack: 1, weight: 7, eat: { food: 35, health: 35 }, spoilHours: (8 * 3600) / 140 },
-  { type: "item", class: "saddle", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25 } },
+  // One seat, ARK's: the rider's, on the rig's `seat` socket, got onto and off from its left.
+  { type: "item", class: "saddle", id: "core:saddle_raptor", stack: 1, weight: 10, label: "raptor saddle", color: 3, saddle: { fits: "core:raptor", armor: 25, seats: [{ id: "rider", driver: true, socket: "seat", anchor: [0, 1.182, 0.326], entry: [1.2, 0, 0.326] }] } },
   crafting("core:saddle_raptor", { needs: [{ item: "core:hide", count: 110 }, { item: "core:fiber", count: 65 }, { item: "core:wood", count: 20 }], seconds: 10, xp: 8 }),
   { type: "engram", id: "core:engram-saddle_raptor", label: "Raptor saddle", level: 18, cost: 9, item: "core:saddle_raptor" },
 ];

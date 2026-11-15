@@ -1,11 +1,16 @@
 // Where a rider sits on its mount: in the seat socket's whole frame on the mount as it is posed, so a rider leans,
-// pitches and banks as the seat does. The client draws a rider so (client/core/render/characters.ts).
+// pitches and banks as the seat does. The server pins a rider so and hits it there (server/riding.ts, server/combat.ts),
+// and the client draws it so (client/core/render/characters.ts).
 
+import type { Registry } from "../content/registry.ts";
 import { detCos, detSin } from "../math/scalar.ts";
+import type { Seat } from "../sim/seats.ts";
+import { creaturePose, type CreatureAnim } from "./creature.ts";
 import type { Socket } from "./human.ts";
-import { boneToModel, type Solved } from "./skeleton.ts";
+import type { AnimState } from "./pose.ts";
+import { boneToModel, solve, type Solved } from "./skeleton.ts";
 
-/** Metres a rider's origin hangs below its seat, along the seat's up. Matches server/riding.ts. */
+/** Metres a rider's origin hangs below its seat, along the seat's up. */
 export const SEAT_DROP = 0.55;
 /** Numbers `seatFrame` writes: the rider's origin, then the rows of its turn. */
 export const SEAT_FLOATS = 12;
@@ -44,4 +49,40 @@ export function seatFrame(solved: Solved, socket: Socket, x: number, y: number, 
   out[9] = c * r20 - s * r00;
   out[10] = c * r21 - s * r01;
   out[11] = c * r22 - s * r02;
+}
+
+/** As seatFrame for a seat with no socket to follow: at its anchor on the creature, turned by the creature's yaw alone. */
+export function anchorFrame(anchor: readonly [number, number, number], x: number, y: number, z: number, yaw: number, out: Float64Array): void {
+  const s = detSin(yaw);
+  const c = detCos(yaw);
+  out[0] = x + c * anchor[0] + s * anchor[2];
+  out[1] = y + anchor[1] - SEAT_DROP;
+  out[2] = z + c * anchor[2] - s * anchor[0];
+  out[3] = c;
+  out[4] = 0;
+  out[5] = s;
+  out[6] = 0;
+  out[7] = 1;
+  out[8] = 0;
+  out[9] = -s;
+  out[10] = 0;
+  out[11] = c;
+}
+
+/** Seat `slot` (1 for its first) of the saddle `saddle` (an item), or null. */
+export function saddleSeat(reg: Registry, saddle: number, slot: number): Seat | null {
+  return reg.saddleSeats[saddle]?.[slot - 1] ?? null;
+}
+
+/**
+ * seatFrame for `seat` on a creature of `anim` (null for one with no rig) posed by `st` at `tick`: on the seat's socket
+ * where the rig has it, else at its anchor (anchorFrame).
+ */
+export function seatOn(anim: CreatureAnim | null, seat: Seat, st: AnimState, tick: number, x: number, y: number, z: number, yaw: number, out: Float64Array): void {
+  const rig = anim?.rig;
+  const socket = seat.socket !== undefined ? rig?.sockets.get(seat.socket) : undefined;
+  if (!anim || !rig || !socket) return anchorFrame(seat.anchor, x, y, z, yaw, out);
+  creaturePose(anim, st, tick, rig.a);
+  solve(rig, rig.a, rig.solved);
+  seatFrame(rig.solved, socket, x, y, z, yaw, out);
 }

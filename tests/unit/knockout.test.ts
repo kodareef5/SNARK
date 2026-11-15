@@ -52,8 +52,9 @@ test("the wooden club and the slingshot: their engrams, what they cost and how t
   expect(slots.filter((u) => u.slot === "shot" && u.owner === "core:stone").map((u) => u.id)).toEqual(["core:stone_shot"]);
   expect(slots.filter((u) => u.slot === "shot" && reg.defs[reg.index.get(u.owner)!]?.type === "item" && (reg.defs[reg.index.get(u.owner)!] as ItemDef).class === "resource").map((u) => u.owner)).toEqual(["core:stone"]);
   expect(slots.find((u) => u.slot === "held" && u.owner === "core:club")!.id).toBe("core:club");
-  // A narcotic is five narcoberries and a piece of meat.
-  expect(item("narcotic").craft!.needs).toEqual([{ item: "core:narcoberry", count: 5 }, { item: "core:meat", count: 1 }]);
+  // A narcotic is five narcoberries and a piece of spoiled meat, at the mortar and pestle (ark.wiki.gg Narcotic,
+  // 2026-11-15; it was raw meat in the hand until S6 moved it).
+  expect([item("narcotic").craft!.needs, item("narcotic").craft!.at]).toEqual([[{ item: "core:narcoberry", count: 5 }, { item: "core:spoiled_meat", count: 1 }], "core:mortar"]);
 });
 
 test("a narcoberry: 4 food and 7.5 torpor over 3 seconds, stacks of 100 at 0.1 each, spoils in 10 minutes, and bushes bear it", () => {

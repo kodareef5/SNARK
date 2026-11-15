@@ -1,7 +1,8 @@
-// What grows and lies where: two zoned layers (tools/map.ts), one of trees and plants and one of stones, each a picture of
-// 4 m squares whose value names its zone. A square takes its zone from the ground at its middle and round it.
+// What grows and lies where: three zoned layers (tools/map.ts), one of trees and plants, one of stones and one of the sea
+// floor, each a picture of 4 m squares whose value names its zone. A square takes its zone from the ground at its middle and round it.
 
 import { S, type Ground, type World } from "./ground.ts";
+import type { Vocabulary } from "./ruin-vocabulary.ts";
 
 export const ZONE_CELL = 4;
 
@@ -43,8 +44,22 @@ export const STONES: readonly Zone[] = [
   { name: "street blocks", kinds: { "core:rubble": 1 }, bare: 36 },
 ];
 
+/**
+ * The sea floor: the stations wave's resources that grow under the sea (content/items/nodes.ts), a third layer so every
+ * slot of the other two keeps its place. The reference game puts silica pearls' clams "in the deepest areas of the ocean",
+ * oil's dark stones "all around the map in the oceans", and crystal under the sea as well as on mountains (Crystal, 180.0:
+ * "New Mountain & Underwater Crystal"); so clams and crystal in the channels deeper than 7 m, oil rocks there and in the
+ * deeps of 3 to 7 m, and nothing on the flats and shallows. A city map has no mountain or cave, so no obsidian rock grows
+ * on it, and obsidian comes from its metal rocks; crystal only from the sea. The weights are chosen.
+ */
+export const SEA_FLOOR: readonly Zone[] = [
+  { name: "channel", kinds: { "core:clam": 3, "core:oil_rock": 2, "core:crystal_rock": 1 }, bare: 26 },
+  { name: "deep", kinds: { "core:oil_rock": 2, "core:clam": 1 }, bare: 33 },
+];
+
 export const PLANT_SLOTS = 160;
 export const STONE_SLOTS = 64;
+export const SEA_SLOTS = 16;
 
 const zoneIndex = (list: readonly Zone[], name: string): number => list.findIndex((z) => z.name === name) + 1;
 
@@ -52,13 +67,15 @@ const zoneIndex = (list: readonly Zone[], name: string): number => list.findInde
 const URBAN = new Set(["concrete", "deco", "terracotta", "mural"]);
 
 /** Each zone's picture, north up, a byte a square, and the layers that name them. `clear` is true where nothing may stand. */
-export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean, low: (col: number, row: number) => boolean = () => false): { plants: Uint8Array; stones: Uint8Array; side: number; layers: unknown[] } {
+export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean, low: (col: number, row: number) => boolean = () => false, growth?: Vocabulary["growth"]): { plants: Uint8Array; stones: Uint8Array; sea: Uint8Array; side: number; layers: unknown[] } {
   const { n, surface, height, shore } = ground;
   const side = (n - 1) / (ZONE_CELL / 2);
   const plants = new Uint8Array(side * side);
   const stones = new Uint8Array(side * side);
+  const sea = new Uint8Array(side * side);
   const P = (name: string): number => zoneIndex(PLANTS, name);
   const T = (name: string): number => zoneIndex(STONES, name);
+  const W = (name: string): number => zoneIndex(SEA_FLOOR, name);
   const styleAt = (i: number): string => world.districts[ground.district[i]! - 1]?.style ?? "";
   for (let py = 0; py < side; py++) {
     for (let px = 0; px < side; px++) {
@@ -98,6 +115,11 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           plant = towers ? P("plaza") : P("open ground");
           stone = T("street blocks");
           break;
+        // Desert takes the open ground's plants, as a city's growth sets them, and natural stone.
+        case S.DESERT:
+          plant = P("open ground");
+          stone = T("limestone");
+          break;
         case S.YARD:
           plant = P("yard");
           stone = T("scrap");
@@ -119,6 +141,7 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           break;
         case S.STREET:
         case S.HIGHWAY:
+          if (growth && (Math.floor(col / 3) + Math.floor(row / 3)) % 4 === 0) plant = P("street garden");
           stone = T("street blocks");
           break;
         case S.DECK:
@@ -130,16 +153,17 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
       }
       // Industrial shore growth stays low enough to see the yards from the bay.
       if (industrial && plant) plant = P("yard");
-      else if (low(col, row) && plant) plant = P("street garden");
+      else if (low(col, row) && plant) plant = P(growth ? "yard" : "street garden");
       plants[py * side + px] = plant;
       stones[py * side + px] = stone;
+      sea[py * side + px] = s === S.CHANNEL ? W("channel") : s === S.DEEP ? W("deep") : 0;
     }
   }
   const layer = (seed: number, perChunk: number, zones: readonly Zone[], picture: string): unknown => ({
     seed,
     perChunk,
-    zones: zones.map((z) => ({ kinds: z.kinds, bare: z.bare })),
+    zones: zones.map((z) => ({ kinds: growth?.zones[z.name]?.kinds ?? z.kinds, bare: growth?.zones[z.name]?.bare ?? z.bare })),
     zone: picture,
   });
-  return { plants, stones, side, layers: [layer(0x4d1a, PLANT_SLOTS, PLANTS, "plants.png"), layer(0x4d1b, STONE_SLOTS, STONES, "stones.png")] };
+  return { plants, stones, sea, side, layers: [layer(0x4d1a, PLANT_SLOTS, PLANTS, "plants.png"), layer(0x4d1b, STONE_SLOTS, STONES, "stones.png"), layer(0x4d1c, SEA_SLOTS, SEA_FLOOR, "sea.png")] };
 }

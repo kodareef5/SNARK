@@ -293,8 +293,8 @@ test("burning harms a dodo by its fire multiplier, three eighths of what it harm
   h.host.buffs.give(rec, burning);
   const before = h.host.survival.value(rec, V_HEALTH);
   h.run(4000);
-  // 8 a second times 0.375, less the 0.2 a second it mends.
-  expect(before - h.host.survival.value(rec, V_HEALTH)).toBeCloseTo(4 * (8 * 0.375 - 0.2), 1);
+  // 22 a second (Flame Arrow) times 0.375, less the 0.2 a second it mends.
+  expect(before - h.host.survival.value(rec, V_HEALTH)).toBeCloseTo(4 * (22 * 0.375 - 0.2), 1);
 });
 
 test("her creatures wander, go for what she points at and take up her target, as ARK's whistles and menu have them, and refuse what they should", () => {

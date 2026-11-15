@@ -12,6 +12,7 @@ import { Body, stepBody } from "../../shared/sim/character.ts";
 import { mapHeightfield, mapNodes, parseMap, placeStatics } from "../../shared/world/mapfile.ts";
 import { NodeField } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
+import { Base } from "../mapworld/base.ts";
 
 type P = [number, number];
 const map = parseMap(new Uint8Array(readFileSync(process.argv[2] ?? "")));
@@ -125,14 +126,56 @@ const stairs = (JSON.parse(readFileSync(`${city}/blocks/stairs.json`, "utf8")) a
   .sort((a, b) => b.rise - a.rise);
 const topStairs = stairs.slice(0, count);
 
+// The ground past the survivor's limit, as the lidar has it (base/height.png) and as the map does once footprints are
+// levelled and approaches graded: shares on footprints, roads and the rest, and the steepest squares of 256 m, each
+// named by the nearest named place.
+const base = new Base(city);
+const lidar = base.elevation();
+const onFootprint = base.bytes("buildings");
+const onRoad = base.bytes("roads");
+const n = base.n;
+const limit = Math.acos(params.slopeCos);
+const tooSteep = (h: (c: number, r: number) => number, c: number, r: number): boolean => {
+  const gx = (h(c + 1, r) - h(c, r)) / 2; const gz = (h(c, r + 1) - h(c, r)) / 2;
+  return Math.atan(Math.hypot(gx, gz)) > limit;
+};
+const mapAt = (c: number, r: number): number => hf.heightAt(size - c * 2, size - r * 2);
+const lidarAt = (c: number, r: number): number => lidar[r * n + c]!;
+const SQUARE = 128;
+const squares = new Map<number, { lidar: number; map: number }>();
+const tally = { lidar: { footprints: 0, roads: 0, open: 0 }, map: { footprints: 0, roads: 0, open: 0 }, cells: 0 };
+for (let r = 0; r + 1 < n; r++) for (let c = 0; c + 1 < n; c++) {
+  tally.cells++;
+  const where = onFootprint[r * n + c] ? "footprints" : onRoad[r * n + c] ? "roads" : "open";
+  const k = Math.floor(r / SQUARE) * 64 + Math.floor(c / SQUARE);
+  const sq = squares.get(k) ?? { lidar: 0, map: 0 };
+  if (tooSteep(lidarAt, c, r)) { tally.lidar[where]++; sq.lidar++; }
+  if (tooSteep(mapAt, c, r)) { tally.map[where]++; sq.map++; }
+  squares.set(k, sq);
+}
+const places = (JSON.parse(readFileSync(`${city}/blocks/places.json`, "utf8")) as { name: string | null; kind: string; e: number; n: number }[]).filter((p) => p.name && !["bridge", "artwork", "attraction"].includes(p.kind));
+const hectares = (cells: number): number => Number(((cells * 4) / 10000).toFixed(1));
+const steepGround = {
+  cellM: 2, landHectares: hectares(tally.cells),
+  lidarHectares: Object.fromEntries(Object.entries(tally.lidar).map(([k, v]) => [k, hectares(v)])),
+  mapHectares: Object.fromEntries(Object.entries(tally.map).map(([k, v]) => [k, hectares(v)])),
+  steepestSquares: [...squares.entries()].sort((a, b) => b[1].lidar - a[1].lidar).slice(0, count).map(([k, v]) => {
+    const [e, no] = [-half + ((k % 64) + 0.5) * SQUARE * 2, half - (Math.floor(k / 64) + 0.5) * SQUARE * 2];
+    const near = places.reduce((best, p) => (Math.hypot(p.e - e, p.n - no) < Math.hypot(best.e - e, best.n - no) ? p : best), places[0]!);
+    return { near: near.name, e: Math.round(e), n: Math.round(no), lidarShare: Number((v.lidar / SQUARE ** 2).toFixed(3)), mapShare: Number((v.map / SQUARE ** 2).toFixed(3)) };
+  }),
+};
+
 const report = {
-  map: map.id, mapHash: map.hash, slopeLimitDegrees: Number(((Math.acos(params.slopeCos) * 180) / Math.PI).toFixed(1)), stepUp: params.stepUp,
+  map: map.id, mapHash: map.hash, slopeLimitDegrees: Number(((Math.acos(params.slopeCos) * 180) / Math.PI).toFixed(1)), stepUp: params.stepUp, steepGround,
   streets: topStreets.map((s) => ({ name: s.name, grade30m: Number((s.grade * 100).toFixed(1)), degrees: Number(s.degrees.toFixed(1)), riseM: Number(s.rise.toFixed(1)), at: s.at.map((v) => Math.round(v)), ...walk(s.pts) })),
   streetLines: streets.length, linesOverCliffs: cliffs.length, cliffNames: [...new Set(cliffs.map((s) => s.name))].sort(),
   stairs: { mapped: stairs.length, kmMapped: Number((stairs.reduce((a, s) => a + s.length_m, 0) / 1000).toFixed(1)),
     tallest: topStairs.map((s) => ({ id: s.id, name: s.name, steps: s.steps, riseM: Number(s.rise.toFixed(1)), runM: Number(s.run.toFixed(1)), grade: Number((s.grade * 100).toFixed(1)), degrees: Number(degrees(s.grade).toFixed(1)), steepest6mDegrees: Number(degrees(s.steepest6).toFixed(1)), at: [Math.round(s.pts[0]!.x), Math.round(s.pts[0]!.z)], ...walk(s.pts) })) },
 };
 writeFileSync(`${city}/reports/steep${ground ? "-ground" : plants ? "" : "-no-plants"}.json`, `${JSON.stringify({ plants, statics: !ground, ...report }, null, 2)}\n`);
+console.log(`ground past ${report.slopeLimitDegrees}° of ${steepGround.landHectares} ha: lidar ${JSON.stringify(steepGround.lidarHectares)} ha, map ${JSON.stringify(steepGround.mapHectares)} ha`);
+for (const s of steepGround.steepestSquares) console.log(`  ${(s.lidarShare * 100).toFixed(0).padStart(3)}% lidar, ${(s.mapShare * 100).toFixed(0).padStart(3)}% map: the 256 m square by ${s.near} (${s.e}, ${s.n})`);
 for (const s of report.streets) console.log(`${s.ok ? "ok  " : "FAIL"} street ${s.name.padEnd(28)} ${String(s.grade30m).padStart(5)}% (${s.degrees}°) over 30 m, rise ${s.riseM} m ${s.message}`);
 console.log(`${report.linesOverCliffs} of ${report.streetLines} street lines cross a cliff: ${report.cliffNames.join(", ")}`);
 for (const s of report.stairs.tallest) console.log(`${s.ok ? "ok  " : "FAIL"} stair  ${(s.name ?? String(s.id)).padEnd(28)} rise ${s.riseM} m over ${s.runM} m (${s.degrees}°, steepest 6 m ${s.steepest6mDegrees}°) ${s.message}`);
