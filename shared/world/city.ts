@@ -2,17 +2,23 @@
 // the faces a far drawing needs. Each form is a pure function of a chunk's standing pieces (and its neighbours', which
 // may hide its faces) and the ground, so a client makes the same faces wherever it stands.
 //
-// - Boxes (boxPart, mergedPart): every standing piece's box, less each face another box holds whole or the ground hides,
-//   boxes of one colour and cross-section in a line along an axis merged into one. With no gap and nothing left out it
-//   is the near drawing of the chunk in one mesh; with gaps up to `gap` metres bridged and boxes no longer than `least`
-//   left out it is a lighter one with the same frames, floors and broken tops.
+// - Boxes (boxPart, mergedPart): every standing piece's boxes and sloped parts, less each face another holds whole or the
+//   ground hides, boxes of one colour and cross-section in a line along an axis merged into one. With no gap and nothing
+//   left out it is the near drawing of the chunk in one mesh; with gaps up to `gap` metres bridged and boxes no longer
+//   than `least` left out it is a lighter one with the same frames, floors and broken tops. Sloped parts are never merged.
 // - Cells (cellPart): the pieces set into cells in each building's own frame (a chunk's pieces grouped by their turn short
 //   of a quarter), the air outside flooded in, and the faces between a filled cell and that air merged into rectangles
 //   of one colour: a building's mass, for where its storeys are a pixel or two.
+//
+// Most pieces are one box of their kind's half extents. A kind with a shape is its boxes and convex parts (convex.ts), as
+// it is walked; nearest, where it looks otherwise (a flight's treads over its ramp), as it looks, since that is how the
+// near store draws it.
 
+import type { ShapeLook } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
 import { CHUNK_SIZE, YAW_UNITS, chunkAt, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
+import { MAX_CORNERS, hullPoint, hullTable, type HullDef, type HullTable } from "./convex.ts";
 import type { Heightfield } from "./heightfield.ts";
 import type { MapStatic } from "./mapfile.ts";
 import { TACTICAL_CELL, farTopByte } from "./tactical.ts";
@@ -35,6 +41,11 @@ export class CityStatics {
   readonly halfY: Float32Array;
   readonly halfZ: Float32Array;
   readonly color: Uint8Array;
+  /** Per content index: 1 for a kind that is one box of its half extents, 0 for one with a shape, drawn by `walked` and `look`. */
+  readonly plain: Uint8Array;
+  /** Every kind's boxes and convex parts as walked (the registry's parts), and as drawn near. */
+  readonly walked: CityForm;
+  readonly look: CityForm;
 
   constructor(dims: MapDims, statics: readonly MapStatic[], reg: Registry) {
     this.dims = dims;
@@ -71,6 +82,9 @@ export class CityStatics {
     this.halfY = reg.halfY;
     this.halfZ = reg.halfZ;
     this.color = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" ? d.color : 0));
+    this.plain = Uint8Array.from(reg.defs, (d) => (d?.type === "structure" && d.shape !== undefined ? 0 : 1));
+    this.walked = { start: reg.parts.start, box: reg.parts.box, hulls: reg.parts.hulls ?? null };
+    this.look = lookForm(reg, this.walked);
   }
 
   get count(): number {
@@ -84,8 +98,44 @@ export class CityStatics {
 }
 
 /**
+ * A form of every kind: kind k's boxes are start[k] up to start[k + 1] of `box`, six numbers each, its middle and half
+ * extents in the piece's own frame; and its convex parts those of `hulls`, if any kind has some.
+ */
+export interface CityForm {
+  readonly start: Uint32Array;
+  readonly box: Float32Array;
+  readonly hulls: HullTable | null;
+}
+
+/** Every kind's form as the near store draws it: its shape's look where it has one, else as walked. */
+function lookForm(reg: Registry, walked: CityForm): CityForm {
+  const shapeOf = (k: number): { hulls?: readonly HullDef[]; look?: ShapeLook } | null => {
+    const d = reg.defs[k];
+    const s = d?.type === "structure" && d.shape !== undefined ? reg.defs[reg.index.get(d.shape) ?? 0] : null;
+    return s?.type === "shape" ? s : null;
+  };
+  const n = reg.defs.length;
+  if (!reg.defs.some((_, k) => shapeOf(k)?.look)) return walked;
+  const start = new Uint32Array(n + 1);
+  const box: number[] = [];
+  for (let k = 0; k < n; k++) {
+    start[k] = box.length / 6;
+    const look = shapeOf(k)?.look;
+    if (look) for (const b of look.boxes ?? []) box.push(...b.at, ...b.half);
+    else box.push(...walked.box.subarray(walked.start[k]! * 6, walked.start[k + 1]! * 6));
+  }
+  start[n] = box.length / 6;
+  const hullsOf = (k: number): readonly HullDef[] => {
+    const s = shapeOf(k);
+    return (s?.look ? s.look.hulls : s?.hulls) ?? [];
+  };
+  return { start, box: Float32Array.from(box), hulls: hullTable(n, hullsOf) };
+}
+
+/**
  * One chunk's form: four corners a face, x and z from the chunk's corner and y in the world, counter-clockwise seen from
- * outside, and a palette colour a face; with the box that holds it, x and z from the chunk's corner.
+ * outside, and a palette colour a face; with the box that holds it, x and z from the chunk's corner. A sloped part's face
+ * of more corners is several, and a triangle's last corner is its third again.
  */
 export interface CityPart {
   readonly pos: Float32Array;
@@ -144,6 +194,23 @@ class Out {
     }
     this.color[f] = col;
   }
+
+  /** A face of `count` world corners in `c`, in order round it, as quads fanned from its first; one left a triangle repeats its last corner. */
+  ring(c: Float64Array, count: number, col: number): void {
+    const q = this.corners;
+    for (let k = 1; k + 1 < count; k += 2) {
+      const last = Math.min(k + 2, count - 1);
+      for (let a = 0; a < 3; a++) {
+        q[a] = c[a]!;
+        q[3 + a] = c[k * 3 + a]!;
+        q[6 + a] = c[(k + 1) * 3 + a]!;
+        q[9 + a] = c[last * 3 + a]!;
+      }
+      this.quad(q, 0, col);
+    }
+  }
+
+  private readonly corners = new Float64Array(12);
 
   part(): CityPart {
     if (this.faces === 0) return EMPTY_PART;
@@ -213,16 +280,130 @@ class Boxes {
 }
 
 const boxes = new Boxes();
+
+/** Most faces a convex part has. */
+const PART_FACES = 2 * MAX_CORNERS - 4;
+/** Each quarter turn's cosine and sine, exactly. */
+const QUARTER_COS = [1, 0, -1, 0];
+const QUARTER_SIN = [0, 1, 0, -1];
+
+/**
+ * Convex parts to make faces of or fill cells with, placed: their corners and the planes of their faces (an outward unit
+ * normal and its distance from the origin), and the box round them; the table and part they are, a colour, and whether
+ * their faces are wanted.
+ */
+class Hulls {
+  n = 0;
+  at = new Float64Array(3 * MAX_CORNERS * 64);
+  planes = new Float64Array(4 * PART_FACES * 64);
+  box = new Float64Array(6 * 64);
+  table: HullTable[] = [];
+  part = new Uint32Array(64);
+  color = new Uint8Array(64);
+  own = new Uint8Array(64);
+
+  /** Part `p` of `t` on a piece whose middle is at (cx, cy, cz), turned by the cosine and sine (c, s) as a box is. */
+  push(t: HullTable, p: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean): void {
+    if (this.n === this.part.length) {
+      const grow = <T extends Float64Array | Uint32Array | Uint8Array>(a: T): T => {
+        const b = new (a.constructor as new (n: number) => T)(a.length * 2);
+        b.set(a);
+        return b;
+      };
+      [this.at, this.planes, this.box] = [grow(this.at), grow(this.planes), grow(this.box)];
+      [this.part, this.color, this.own] = [grow(this.part), grow(this.color), grow(this.own)];
+    }
+    const h = this.n++;
+    this.table[h] = t;
+    this.part[h] = p;
+    this.color[h] = color;
+    this.own[h] = own ? 1 : 0;
+    const at = this.at;
+    const b = this.box;
+    b.fill(Infinity, h * 6, h * 6 + 3).fill(-Infinity, h * 6 + 3, h * 6 + 6);
+    const c0 = t.corner[p]!;
+    const sixty = t.sixty[p] === 1;
+    for (let k = 0, n = t.corner[p + 1]! - c0; k < n; k++) {
+      const w = (c0 + k) * 3;
+      const [u, y, v] = hullPoint([t.at[w]!, t.at[w + 1]!, t.at[w + 2]!], sixty);
+      const o = (h * MAX_CORNERS + k) * 3;
+      at[o] = c * u + s * v + cx;
+      at[o + 1] = y + cy;
+      at[o + 2] = c * v - s * u + cz;
+      for (let a = 0; a < 3; a++) {
+        if (at[o + a]! < b[h * 6 + a]!) b[h * 6 + a] = at[o + a]!;
+        if (at[o + a]! > b[h * 6 + 3 + a]!) b[h * 6 + 3 + a] = at[o + a]!;
+      }
+    }
+    const fc = t.faceCorners;
+    for (let f = t.face[p]!, end = t.face[p + 1]!, o = h * PART_FACES * 4; f < end; f++, o += 4) {
+      const i = (h * MAX_CORNERS + fc[f * 3]!) * 3;
+      const j = (h * MAX_CORNERS + fc[f * 3 + 1]!) * 3;
+      const k = (h * MAX_CORNERS + fc[f * 3 + 2]!) * 3;
+      const [ux, uy, uz] = [at[j]! - at[i]!, at[j + 1]! - at[i + 1]!, at[j + 2]! - at[i + 2]!];
+      const [vx, vy, vz] = [at[k]! - at[i]!, at[k + 1]! - at[i + 1]!, at[k + 2]! - at[i + 2]!];
+      const nx = uy * vz - uz * vy;
+      const ny = uz * vx - ux * vz;
+      const nz = ux * vy - uy * vx;
+      const l = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      this.planes[o] = nx / l;
+      this.planes[o + 1] = ny / l;
+      this.planes[o + 2] = nz / l;
+      this.planes[o + 3] = (nx * at[i]! + ny * at[i + 1]! + nz * at[i + 2]!) / l;
+    }
+  }
+
+  /** Faces of part `h`. */
+  faces(h: number): number {
+    const t = this.table[h]!;
+    return t.face[this.part[h]! + 1]! - t.face[this.part[h]!]!;
+  }
+
+  /** Whether part `h` holds the world point (wx, wy, wz), within HELD of each of its faces. */
+  holds(h: number, wx: number, wy: number, wz: number): boolean {
+    const P = this.planes;
+    for (let f = 0, o = h * PART_FACES * 4, n = this.faces(h); f < n; f++, o += 4) if (P[o]! * wx + P[o + 1]! * wy + P[o + 2]! * wz - P[o + 3]! > HELD) return false;
+    return true;
+  }
+}
+
+const hulls = new Hulls();
+
+/** The longest side of the box round part `p` of `t` in its piece's own frame, in metres. */
+function partLength(t: HullTable, p: number): number {
+  const lo = [Infinity, Infinity, Infinity];
+  const hi = [-Infinity, -Infinity, -Infinity];
+  for (let c = t.corner[p]!; c < t.corner[p + 1]!; c++) {
+    const q = hullPoint([t.at[c * 3]!, t.at[c * 3 + 1]!, t.at[c * 3 + 2]!], t.sixty[p] === 1);
+    for (let a = 0; a < 3; a++) {
+      lo[a] = Math.min(lo[a]!, q[a]!);
+      hi[a] = Math.max(hi[a]!, q[a]!);
+    }
+  }
+  return Math.max(hi[0]! - lo[0]!, hi[1]! - lo[1]!, hi[2]! - lo[2]!);
+}
+
+/** Puts kind `k`'s convex parts in `form` longer than `least` on a piece at (cx, cy, cz) turned by (c, s) in `hulls`. */
+function pushHulls(form: CityForm, k: number, cx: number, cy: number, cz: number, c: number, s: number, color: number, own: boolean, least: number): void {
+  const t = form.hulls;
+  if (!t) return;
+  for (let p = t.start[k]!; p < t.start[k + 1]!; p++) if (least <= 0 || partLength(t, p) > least) hulls.push(t, p, cx, cy, cz, c, s, color, own);
+}
+
 const gridCount = new Uint32Array(GRID_SIDE * GRID_SIDE + 1);
 const gridFill = new Uint32Array(GRID_SIDE * GRID_SIDE);
 let gridList = new Uint32Array(16384);
-/** A box's eight corners in the world, and a face's four. */
+/** A box's eight corners in the world, and a face's four, or a part's face's every one. */
 const corners = new Float64Array(24);
 const face = new Float64Array(12);
+const ring = new Float64Array(3 * MAX_CORNERS);
 
-/** Puts the standing pieces of the chunks round `chunk` that reach within MARGIN of it in `boxes`, and with `own` its own. */
-function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean): void {
-  const { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color } = city;
+/**
+ * Puts the standing pieces of the chunks round `chunk` that reach within MARGIN of it in `boxes` and `hulls`, as `form`
+ * has them, and with `own` its own.
+ */
+function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone, own: boolean, form: CityForm): void {
+  const { dims, first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const cx = chunkCx(dims, chunk);
   const cz = chunkCz(dims, chunk);
   const [x0, z0] = [cx * CHUNK_SIZE, cz * CHUNK_SIZE];
@@ -239,7 +420,15 @@ function gather(city: CityStatics, chunk: number, gone: (chunk: number) => Gone,
         const r = Math.max(halfX[k]!, halfZ[k]!) * 1.5;
         if (x[i]! + r < x0 - MARGIN || x[i]! - r > x0 + CHUNK_SIZE + MARGIN || z[i]! + r < z0 - MARGIN || z[i]! - r > z0 + CHUNK_SIZE + MARGIN) continue;
         const a = (yaw[i]! / YAW_UNITS) * TAU;
-        boxes.push(x[i]!, y[i]!, z[i]!, halfX[k]!, halfY[k]!, halfZ[k]!, detCos(a), detSin(a), color[k]!, c === chunk);
+        if (plain[k] === 1) boxes.push(x[i]!, y[i]!, z[i]!, halfX[k]!, halfY[k]!, halfZ[k]!, detCos(a), detSin(a), color[k]!, c === chunk);
+        else {
+          const [cs, sn] = [detCos(a), detSin(a)];
+          const B = form.box;
+          for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
+            boxes.push(x[i]! + cs * B[b]! + sn * B[b + 2]!, y[i]! + B[b + 1]!, z[i]! + cs * B[b + 2]! - sn * B[b]!, B[b + 3]!, B[b + 4]!, B[b + 5]!, cs, sn, color[k]!, c === chunk);
+          }
+          pushHulls(form, k, x[i]!, y[i]!, z[i]!, cs, sn, color[k]!, c === chunk, 0);
+        }
       }
     }
   }
@@ -264,28 +453,41 @@ function holds(q: number, wx: number, wy: number, wz: number): boolean {
   return Math.abs(c * dx - s * dz) <= B[o + 3]! + HELD && Math.abs(s * dx + c * dz) <= B[o + 5]! + HELD && Math.abs(wy - B[o + 1]!) <= B[o + 4]! + HELD;
 }
 
-/** The faces of `boxes` marked own, less those another box holds whole and those under the ground. */
+/**
+ * The faces of `boxes` and `hulls` marked own, less those another box or part holds whole and those under the ground. In
+ * the grid, entries from boxes.n on are parts.
+ */
 function faces(dims: MapDims, chunk: number, hf: Heightfield): CityPart {
   const x0 = chunkCx(dims, chunk) * CHUNK_SIZE;
   const z0 = chunkCz(dims, chunk) * CHUNK_SIZE;
   out.reset(x0, z0);
   const n = boxes.n;
   const B = boxes.f;
+  const H = hulls.box;
   const gx0 = x0 - MARGIN;
   const gz0 = z0 - MARGIN;
-  // Each box in every grid cell its turned box reaches, counted and then listed.
+  // Each box and part in every grid cell its turned box reaches, counted and then listed.
   gridCount.fill(0);
   for (let pass = 0; pass < 2; pass++) {
-    for (let q = 0; q < n; q++) {
-      const o = q * 8;
-      const c = Math.abs(B[o + 6]!);
-      const s = Math.abs(B[o + 7]!);
-      const ex = c * B[o + 3]! + s * B[o + 5]! + HELD;
-      const ez = s * B[o + 3]! + c * B[o + 5]! + HELD;
-      const i0 = Math.max(0, Math.floor((B[o]! - ex - gx0) / GRID));
-      const i1 = Math.min(GRID_SIDE - 1, Math.floor((B[o]! + ex - gx0) / GRID));
-      const j0 = Math.max(0, Math.floor((B[o + 2]! - ez - gz0) / GRID));
-      const j1 = Math.min(GRID_SIDE - 1, Math.floor((B[o + 2]! + ez - gz0) / GRID));
+    for (let q = 0; q < n + hulls.n; q++) {
+      let i0: number, i1: number, j0: number, j1: number;
+      if (q < n) {
+        const o = q * 8;
+        const c = Math.abs(B[o + 6]!);
+        const s = Math.abs(B[o + 7]!);
+        const ex = c * B[o + 3]! + s * B[o + 5]! + HELD;
+        const ez = s * B[o + 3]! + c * B[o + 5]! + HELD;
+        i0 = Math.max(0, Math.floor((B[o]! - ex - gx0) / GRID));
+        i1 = Math.min(GRID_SIDE - 1, Math.floor((B[o]! + ex - gx0) / GRID));
+        j0 = Math.max(0, Math.floor((B[o + 2]! - ez - gz0) / GRID));
+        j1 = Math.min(GRID_SIDE - 1, Math.floor((B[o + 2]! + ez - gz0) / GRID));
+      } else {
+        const o = (q - n) * 6;
+        i0 = Math.max(0, Math.floor((H[o]! - HELD - gx0) / GRID));
+        i1 = Math.min(GRID_SIDE - 1, Math.floor((H[o + 3]! + HELD - gx0) / GRID));
+        j0 = Math.max(0, Math.floor((H[o + 2]! - HELD - gz0) / GRID));
+        j1 = Math.min(GRID_SIDE - 1, Math.floor((H[o + 5]! + HELD - gz0) / GRID));
+      }
       for (let j = j0; j <= j1; j++) {
         for (let i = i0; i <= i1; i++) {
           const cell = j * GRID_SIDE + i;
@@ -324,21 +526,62 @@ function faces(dims: MapDims, chunk: number, hf: Heightfield): CityPart {
       let above = false;
       for (let m = 0; m < 4 && !above; m++) above = face[m * 3 + 1]! > hf.heightAt(face[m * 3]!, face[m * 3 + 2]!) + 0.05;
       if (!above) continue;
-      // Held whole by one other box, found in the grid cell of the face's middle.
-      const gi = Math.floor(((face[0]! + face[6]!) / 2 - gx0) / GRID);
-      const gj = Math.floor(((face[2]! + face[8]!) / 2 - gz0) / GRID);
-      let held = false;
-      if (gi >= 0 && gj >= 0 && gi < GRID_SIDE && gj < GRID_SIDE) {
-        const cell = gj * GRID_SIDE + gi;
-        for (let e = gridCount[cell]!; e < gridCount[cell + 1]! && !held; e++) {
-          const h = gridList[e]!;
-          held = h !== q && holds(h, face[0]!, face[1]!, face[2]!) && holds(h, face[3]!, face[4]!, face[5]!) && holds(h, face[6]!, face[7]!, face[8]!) && holds(h, face[9]!, face[10]!, face[11]!);
-        }
+      // Held whole by one other box or part, found in the grid cell of the face's middle.
+      if (!heldWhole(q, face, 4, (face[0]! + face[6]!) / 2, (face[2]! + face[8]!) / 2, gx0, gz0)) out.quad(face, 0, boxes.color[q]!);
+    }
+  }
+  for (let q = 0; q < hulls.n; q++) {
+    if (hulls.own[q] !== 1) continue;
+    const t = hulls.table[q]!;
+    const p = hulls.part[q]!;
+    const first = q * MAX_CORNERS * 3;
+    for (let f = t.face[p]!, end = t.face[p + 1]!, o = q * PART_FACES * 4; f < end; f++, o += 4) {
+      // Its corners, less any on the line between the two either side of it, as a flight's bend is.
+      const all = t.ring[f + 1]! - t.ring[f]!;
+      let count = 0;
+      for (let m = 0; m < all; m++) {
+        const corner = (d: number): number => first + t.ringCorners[t.ring[f]! + ((m + d + all) % all)]! * 3;
+        const [b, c, d] = [corner(-1), corner(0), corner(1)];
+        const A = hulls.at;
+        const [ux, uy, uz] = [A[c]! - A[b]!, A[c + 1]! - A[b + 1]!, A[c + 2]! - A[b + 2]!];
+        const [vx, vy, vz] = [A[d]! - A[c]!, A[d + 1]! - A[c + 1]!, A[d + 2]! - A[c + 2]!];
+        if (Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) <= 1e-8) continue;
+        for (let a = 0; a < 3; a++) ring[count * 3 + a] = A[c + a]!;
+        count++;
       }
-      if (!held) out.quad(face, 0, boxes.color[q]!);
+      let [mx, mz, top, above] = [0, 0, -Infinity, false];
+      for (let m = 0; m < count; m++) {
+        mx += ring[m * 3]! / count;
+        mz += ring[m * 3 + 2]! / count;
+        top = Math.max(top, ring[m * 3 + 1]!);
+        above ||= ring[m * 3 + 1]! > hf.heightAt(ring[m * 3]!, ring[m * 3 + 2]!) + 0.05;
+      }
+      // Under the ground, as a box's: a face looking straight down onto it, or every corner below it.
+      if (!above || (hulls.planes[o + 1]! < -0.9999 && top <= hf.heightAt(mx, mz) + 0.1)) continue;
+      if (!heldWhole(n + q, ring, count, mx, mz, gx0, gz0)) out.ring(ring, count, hulls.color[q]!);
     }
   }
   return out.part();
+}
+
+/**
+ * Whether a face of `count` world corners in `c`, its middle at (mx, mz), is held whole by one box or part other than
+ * grid entry `q`, among those in the grid cell of its middle.
+ */
+function heldWhole(q: number, c: Float64Array, count: number, mx: number, mz: number, gx0: number, gz0: number): boolean {
+  const gi = Math.floor((mx - gx0) / GRID);
+  const gj = Math.floor((mz - gz0) / GRID);
+  if (gi < 0 || gj < 0 || gi >= GRID_SIDE || gj >= GRID_SIDE) return false;
+  const cell = gj * GRID_SIDE + gi;
+  const n = boxes.n;
+  for (let e = gridCount[cell]!; e < gridCount[cell + 1]!; e++) {
+    const h = gridList[e]!;
+    if (h === q) continue;
+    let all = true;
+    for (let m = 0; m < count && all; m++) all = h < n ? holds(h, c[m * 3]!, c[m * 3 + 1]!, c[m * 3 + 2]!) : hulls.holds(h - n, c[m * 3]!, c[m * 3 + 1]!, c[m * 3 + 2]!);
+    if (all) return true;
+  }
+  return false;
 }
 
 // Scratch for a frame's boxes: least and most corners in the frame and a colour, seven numbers a box.
@@ -359,55 +602,75 @@ function framesOf(city: CityStatics, chunk: number, g: Gone): number[] {
   return frames;
 }
 
-/** Puts the standing pieces of `chunk` turned by `f` short of a quarter in `framed`, in the frame turned by (c, s). Returns how many. */
-function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number): number {
-  const { first, kind, yaw, x, y, z, halfX, halfY, halfZ, color } = city;
+/**
+ * Puts the standing pieces of `chunk` turned by `f` short of a quarter in `framed`, in the frame turned by (c, s), by their
+ * boxes as `form` has them; with `parts`, their convex parts in `hulls` too, placed in the frame. Returns how many boxes.
+ */
+function frameBoxes(city: CityStatics, chunk: number, g: Gone, f: number, c: number, s: number, form: CityForm, parts: boolean): number {
+  const { first, kind, yaw, x, y, z, halfX, halfY, halfZ, color, plain } = city;
   const from = first[chunk]!;
   let nb = 0;
   for (let i = from; i < first[chunk + 1]!; i++) {
     if ((g && g[i - from] === 1) || yaw[i]! % QUARTER !== f) continue;
     const k = kind[i]!;
-    const odd = Math.floor(yaw[i]! / QUARTER) % 2 === 1;
-    const hx = odd ? halfZ[k]! : halfX[k]!;
-    const hz = odd ? halfX[k]! : halfZ[k]!;
+    const quarter = Math.floor(yaw[i]! / QUARTER) % 4;
+    const odd = quarter % 2 === 1;
     // The world to the frame: the inverse of the turn a piece's vertices are given.
     const lx = c * x[i]! - s * z[i]!;
     const lz = s * x[i]! + c * z[i]!;
-    if ((nb + 1) * 7 > framed.length) {
-      const grown = new Float64Array(framed.length * 2);
-      grown.set(framed);
-      framed = grown;
+    if (plain[k] === 1) {
+      nb = frameBox(nb, lx, y[i]!, lz, odd ? halfZ[k]! : halfX[k]!, halfY[k]!, odd ? halfX[k]! : halfZ[k]!, color[k]!);
+      continue;
     }
-    const o = nb * 7;
-    framed[o] = lx - hx;
-    framed[o + 1] = y[i]! - halfY[k]!;
-    framed[o + 2] = lz - hz;
-    framed[o + 3] = lx + hx;
-    framed[o + 4] = y[i]! + halfY[k]!;
-    framed[o + 5] = lz + hz;
-    framed[o + 6] = color[k]!;
-    nb++;
+    // In the frame a shape's boxes and parts are turned by whole quarters.
+    const [qc, qs] = [QUARTER_COS[quarter]!, QUARTER_SIN[quarter]!];
+    const B = form.box;
+    for (let b = form.start[k]! * 6; b < form.start[k + 1]! * 6; b += 6) {
+      nb = frameBox(nb, lx + qc * B[b]! + qs * B[b + 2]!, y[i]! + B[b + 1]!, lz + qc * B[b + 2]! - qs * B[b]!, odd ? B[b + 5]! : B[b + 3]!, B[b + 4]!, odd ? B[b + 3]! : B[b + 5]!, color[k]!);
+    }
+    if (parts) pushHulls(form, k, lx, y[i]!, lz, qc, qs, color[k]!, true, 0);
   }
   return nb;
+}
+
+/** Puts the box of half extents (hx, hy, hz) at (fx, fy, fz) in the frame in `framed` as box `nb`. Returns how many there are. */
+function frameBox(nb: number, fx: number, fy: number, fz: number, hx: number, hy: number, hz: number, colour: number): number {
+  if ((nb + 1) * 7 > framed.length) {
+    const grown = new Float64Array(framed.length * 2);
+    grown.set(framed);
+    framed = grown;
+  }
+  const o = nb * 7;
+  framed[o] = fx - hx;
+  framed[o + 1] = fy - hy;
+  framed[o + 2] = fz - hz;
+  framed[o + 3] = fx + hx;
+  framed[o + 4] = fy + hy;
+  framed[o + 5] = fz + hz;
+  framed[o + 6] = colour;
+  return nb + 1;
 }
 
 /**
  * The standing pieces of `chunk` with fewer boxes: in each frame, boxes of one colour and one cross-section in a line
  * along an axis, no more than `gap` metres apart, become one box (a row of floor plates, a beam along them), and boxes no
- * longer than `least` metres are left out. Faces held by another box or under the ground go, the neighbouring chunks'
- * pieces holding faces as they stand. A gap below 0 merges nothing.
+ * longer than `least` metres are left out. Sloped parts are kept whole, and left out only for being as short. Faces held by
+ * another box or part or under the ground go, the neighbouring chunks' pieces holding faces as they stand. A gap below 0
+ * merges nothing. With nothing left out pieces are as the near store draws them (a flight's treads), else as walked.
  */
 export function mergedPart(city: CityStatics, chunk: number, hf: Heightfield, gone: (chunk: number) => Gone, gap: number, least: number): CityPart {
   if (city.in(chunk) === 0) return EMPTY_PART;
+  const form = least > 0 ? city.walked : city.look;
   boxes.n = 0;
-  gather(city, chunk, gone, gap < 0 && least <= 0);
+  hulls.n = 0;
+  gather(city, chunk, gone, gap < 0 && least <= 0, form);
   if (gap >= 0 || least > 0) {
     const g = gone(chunk);
     for (const f of framesOf(city, chunk, g)) {
       const a = (f / YAW_UNITS) * TAU;
       const c = detCos(a);
       const s = detSin(a);
-      let nb = frameBoxes(city, chunk, g, f, c, s);
+      let nb = frameBoxes(city, chunk, g, f, c, s, form, false);
       if (gap >= 0) nb = merge(nb, gap);
       for (let b = 0; b < nb; b++) {
         const o = b * 7;
@@ -417,6 +680,12 @@ export function mergedPart(city: CityStatics, chunk: number, hf: Heightfield, go
         // Back to the world from the frame, as a piece's vertices are turned.
         boxes.push(c * fx + s * fz, fy, c * fz - s * fx, hx, hy, hz, c, s, framed[o + 6]!, true);
       }
+    }
+    const { first, kind, yaw, x, y, z, color, plain } = city;
+    for (let i = first[chunk]!; i < first[chunk + 1]!; i++) {
+      if ((g && g[i - first[chunk]!] === 1) || plain[kind[i]!] === 1) continue;
+      const a = (yaw[i]! / YAW_UNITS) * TAU;
+      pushHulls(form, kind[i]!, x[i]!, y[i]!, z[i]!, detCos(a), detSin(a), color[kind[i]!]!, true, least);
     }
   }
   return faces(city.dims, chunk, hf);
@@ -575,6 +844,204 @@ let mask = new Int16Array(4096);
 const TAKES = 0.3;
 const rect = new Float64Array(12);
 
+/** Fills `cell` with a box from (lx, ly, lz) to (hx, hy, hz) in the frame: how far out it reaches each way. */
+function reaches(cell: number, lx: number, ly: number, lz: number, hx: number, hy: number, hz: number): void {
+  const e = cell * 6;
+  cellColour[cell] = 1;
+  if (hx > faceReach[e]!) faceReach[e] = hx;
+  if (-lx > faceReach[e + 1]!) faceReach[e + 1] = -lx;
+  if (hy > faceReach[e + 2]!) faceReach[e + 2] = hy;
+  if (-ly > faceReach[e + 3]!) faceReach[e + 3] = -ly;
+  if (hz > faceReach[e + 4]!) faceReach[e + 4] = hz;
+  if (-lz > faceReach[e + 5]!) faceReach[e + 5] = -lz;
+}
+
+/** What each face of `cell` sees of a box from (lx, ly, lz) to (hx, hy, hz) whose extents within the cell are (sx, sy, sz). */
+function shows(cell: number, lx: number, ly: number, lz: number, hx: number, hy: number, hz: number, sx: number, sy: number, sz: number, colour: number): void {
+  const e = cell * 6;
+  const show = (d: number, reach: number, area: number): void => {
+    if (reach < faceReach[e + d]! - FACE_DEPTH || area <= faceArea[e + d]!) return;
+    faceArea[e + d] = area;
+    faceColour[e + d] = colour;
+  };
+  show(0, hx, sy * sz);
+  show(1, -lx, sy * sz);
+  show(2, hy, sx * sz);
+  show(3, -ly, sx * sz);
+  show(4, hz, sx * sy);
+  show(5, -lz, sx * sy);
+}
+
+// Scratch for the cells a part takes: per cell of the range round it, how much of the cell it covers along each axis, or
+// -1 first for one it does not cross, and the axes along which it takes it; and every cell taken, with the part's index and
+// the extents of the box round what it fills of the cell.
+let covers = new Float64Array(3 * 512);
+let along = new Uint8Array(512);
+let taken = new Int32Array(2 * 1024);
+let takenSpan = new Float64Array(3 * 1024);
+const span = new Float64Array(6);
+const cellLo = [0, 0, 0];
+const cellHi = [0, 0, 0];
+const edge = [0, 0, 0];
+
+/**
+ * Appends to `taken`, from `nt`, the cells part `h` of `hulls` takes of the grid from `o`, `step` metres a cell along each
+ * axis and `n` cells, as a box takes them: those it covers TAKES of along each axis, measured by the box round what it
+ * fills of the cell; and, along an axis no cell of a line of them takes, the one of that line it covers most. A leaning
+ * slab so takes a band of cells and not its whole box. Returns the new count.
+ */
+function hullCells(h: number, o: readonly number[], step: readonly number[], n: readonly number[], nt: number): number {
+  const H = hulls.box;
+  const r0 = [0, 0, 0];
+  const r = [0, 0, 0];
+  for (let a = 0; a < 3; a++) {
+    r0[a] = Math.max(0, Math.floor((H[h * 6 + a]! - o[a]!) / step[a]!));
+    r[a] = Math.min(n[a]! - 1, Math.ceil((H[h * 6 + 3 + a]! - o[a]!) / step[a]!) - 1) - r0[a]! + 1;
+    if (r[a]! <= 0) return nt;
+  }
+  const stride = [1, r[0]!, r[0]! * r[1]!];
+  const m = stride[2]! * r[2]!;
+  if (along.length < m) {
+    covers = new Float64Array(m * 6);
+    along = new Uint8Array(m * 2);
+  }
+  for (let k = 0; k < r[2]!; k++) {
+    for (let j = 0; j < r[1]!; j++) {
+      for (let i = 0; i < r[0]!; i++) {
+        const at = i + j * stride[1]! + k * stride[2]!;
+        const idx = [i, j, k];
+        for (let a = 0; a < 3; a++) {
+          cellLo[a] = o[a]! + (r0[a]! + idx[a]!) * step[a]!;
+          cellHi[a] = cellLo[a]! + step[a]!;
+        }
+        along[at] = 0;
+        if (!clipSpan(h)) covers[at * 3] = -1;
+        else for (let a = 0; a < 3; a++) covers[at * 3 + a] = (span[3 + a]! - span[a]!) / step[a]!;      }
+    }
+  }
+  for (let a = 0; a < 3; a++) {
+    const [u, v] = [(a + 1) % 3, (a + 2) % 3];
+    for (let iv = 0; iv < r[v]!; iv++) {
+      for (let iu = 0; iu < r[u]!; iu++) {
+        const base = iu * stride[u]! + iv * stride[v]!;
+        let best = -1;
+        let most = -1;
+        let any = false;
+        for (let ia = 0; ia < r[a]!; ia++) {
+          const at = base + ia * stride[a]!;
+          if (covers[at * 3]! < 0) continue;
+          const cover = covers[at * 3 + a]!;
+          if (cover >= TAKES) {
+            along[at]! |= 1 << a;
+            any = true;
+          } else if (cover > most) {
+            most = cover;
+            best = at;
+          }
+        }
+        if (!any && best >= 0) along[best]! |= 1 << a;
+      }
+    }
+  }
+  for (let k = 0; k < r[2]!; k++) {
+    for (let j = 0; j < r[1]!; j++) {
+      for (let i = 0; i < r[0]!; i++) {
+        const at = i + j * stride[1]! + k * stride[2]!;
+        if (covers[at * 3]! < 0 || along[at] !== 7) continue;
+        if ((nt + 1) * 3 > takenSpan.length) {
+          const t = new Int32Array(taken.length * 2);
+          t.set(taken);
+          taken = t;
+          const s = new Float64Array(takenSpan.length * 2);
+          s.set(takenSpan);
+          takenSpan = s;
+        }
+        taken[nt * 2] = ((r0[2]! + k) * n[1]! + r0[1]! + j) * n[0]! + r0[0]! + i;
+        taken[nt * 2 + 1] = h;
+        for (let a = 0; a < 3; a++) takenSpan[nt * 3 + a] = covers[at * 3 + a]! * step[a]!;
+        nt++;
+      }
+    }
+  }
+  return nt;
+}
+
+/**
+ * The box round where part `h` of `hulls` and the cell from cellLo to cellHi meet, in `span`; false if they do not or only
+ * touch. Each corner of what they share is an end of one of the part's edges cut to the cell, or of one of the cell's
+ * edges cut to the part.
+ */
+function clipSpan(h: number): boolean {
+  span.fill(Infinity, 0, 3).fill(-Infinity, 3, 6);
+  const at = hulls.at;
+  const t = hulls.table[h]!;
+  const p = hulls.part[h]!;
+  const first = h * MAX_CORNERS * 3;
+  const put = (x: number, y: number, z: number): void => {
+    if (x < span[0]!) span[0] = x;
+    if (x > span[3]!) span[3] = x;
+    if (y < span[1]!) span[1] = y;
+    if (y > span[4]!) span[4] = y;
+    if (z < span[2]!) span[2] = z;
+    if (z > span[5]!) span[5] = z;
+  };
+  const ec = t.edgeCorners;
+  for (let e = t.edge[p]!; e < t.edge[p + 1]!; e++) {
+    const i = first + ec[e * 2]! * 3;
+    const j = first + ec[e * 2 + 1]! * 3;
+    let t0 = 0;
+    let t1 = 1;
+    for (let a = 0; a < 3 && t0 <= t1; a++) {
+      const from = at[i + a]!;
+      const d = at[j + a]! - from;
+      if (d === 0) {
+        if (from < cellLo[a]! || from > cellHi[a]!) t1 = -1;
+        continue;
+      }
+      const ta = (cellLo[a]! - from) / d;
+      const tb = (cellHi[a]! - from) / d;
+      t0 = Math.max(t0, Math.min(ta, tb));
+      t1 = Math.min(t1, Math.max(ta, tb));
+    }
+    if (t0 > t1) continue;
+    for (const s of [t0, t1]) put(at[i]! + s * (at[j]! - at[i]!), at[i + 1]! + s * (at[j + 1]! - at[i + 1]!), at[i + 2]! + s * (at[j + 2]! - at[i + 2]!));
+  }
+  const P = hulls.planes;
+  const faces = hulls.faces(h);
+  for (let a = 0; a < 3; a++) {
+    const [u, v] = [(a + 1) % 3, (a + 2) % 3];
+    const length = cellHi[a]! - cellLo[a]!;
+    for (let m = 0; m < 4; m++) {
+      edge[a] = cellLo[a]!;
+      edge[u] = m & 1 ? cellHi[u]! : cellLo[u]!;
+      edge[v] = m & 2 ? cellHi[v]! : cellLo[v]!;
+      let t0 = 0;
+      let t1 = 1;
+      for (let f = 0, o = h * PART_FACES * 4; f < faces && t0 <= t1; f++, o += 4) {
+        const room = P[o + 3]! - P[o]! * edge[0]! - P[o + 1]! * edge[1]! - P[o + 2]! * edge[2]!;
+        const rate = P[o + a]! * length;
+        if (rate === 0) {
+          if (room < 0) t1 = -1;
+        } else if (rate > 0) t1 = Math.min(t1, room / rate);
+        else t0 = Math.max(t0, room / rate);
+      }
+      if (t0 > t1) continue;
+      for (const s of [t0, t1]) {
+        const w = edge[a]!;
+        edge[a] = w + s * length;
+        put(edge[0]!, edge[1]!, edge[2]!);
+        edge[a] = w;
+      }
+    }
+  }
+  for (let a = 0; a < 3; a++) {
+    span[a] = Math.max(span[a]!, cellLo[a]!);
+    span[3 + a] = Math.min(span[3 + a]!, cellHi[a]!);
+    if (!(span[3 + a]! - span[a]! > 1e-6)) return false;
+  }
+  return true;
+}
+
 /**
  * The standing pieces of `chunk` in cells `size` metres wide and `tall` tall in each frame, with only the faces between a
  * filled cell and the air outside, merged into rectangles of one colour. A face looking down onto the ground goes.
@@ -588,13 +1055,20 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
     const a = (f / YAW_UNITS) * TAU;
     const c = detCos(a);
     const s = detSin(a);
-    const nb = frameBoxes(city, chunk, gone, f, c, s);
+    hulls.n = 0;
+    const nb = frameBoxes(city, chunk, gone, f, c, s, city.walked, true);
     const lo = [Infinity, Infinity, Infinity];
     const hi = [-Infinity, -Infinity, -Infinity];
     for (let b = 0; b < nb; b++) {
       for (let ax = 0; ax < 3; ax++) {
         lo[ax] = Math.min(lo[ax]!, framed[b * 7 + ax]!);
         hi[ax] = Math.max(hi[ax]!, framed[b * 7 + 3 + ax]!);
+      }
+    }
+    for (let h = 0; h < hulls.n; h++) {
+      for (let ax = 0; ax < 3; ax++) {
+        lo[ax] = Math.min(lo[ax]!, hulls.box[h * 6 + ax]!);
+        hi[ax] = Math.max(hi[ax]!, hulls.box[h * 6 + 3 + ax]!);
       }
     }
     // The grid starts a cell short of the lowest corner, so the outside air wraps it.
@@ -629,9 +1103,11 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
         spans[b * 6 + ax + 3] = i1;
       }
     }
+    let nt = 0;
+    for (let h = 0; h < hulls.n; h++) nt = hullCells(h, o, step, n, nt);
     // A face of a cell is coloured as that side of the pieces in it shows: first how far out the outermost reaches, then
     // the colour of the box showing most area that way among those within FACE_DEPTH of it, so a wall gives a front its
-    // colour over the slab edge before it.
+    // colour over the slab edge before it. A part reaches as far as the box round it, and shows what it fills of the cell.
     const [ox, oy, oz] = [o[0]!, o[1]!, o[2]!];
     for (let pass = 0; pass < 2; pass++) {
       for (let b = 0; b < nb; b++) {
@@ -646,34 +1122,23 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
             const sy = Math.max(0, Math.min(hy, y0 + tall) - Math.max(ly, y0));
             for (let i = spans[b * 6]!; i <= spans[b * 6 + 3]!; i++) {
               const cell = (k * ny + j) * nx + i;
-              const e = cell * 6;
               if (pass === 0) {
-                cellColour[cell] = 1;
-                if (hx > faceReach[e]!) faceReach[e] = hx;
-                if (-lx > faceReach[e + 1]!) faceReach[e + 1] = -lx;
-                if (hy > faceReach[e + 2]!) faceReach[e + 2] = hy;
-                if (-ly > faceReach[e + 3]!) faceReach[e + 3] = -ly;
-                if (hz > faceReach[e + 4]!) faceReach[e + 4] = hz;
-                if (-lz > faceReach[e + 5]!) faceReach[e + 5] = -lz;
+                reaches(cell, lx, ly, lz, hx, hy, hz);
                 continue;
               }
               const x0 = ox + i * size;
               const sx = Math.max(0, Math.min(hx, x0 + size) - Math.max(lx, x0));
-              // What each face of the cell sees of the box: its extent across that face within the cell.
-              const show = (d: number, reach: number, area: number): void => {
-                if (reach < faceReach[e + d]! - FACE_DEPTH || area <= faceArea[e + d]!) return;
-                faceArea[e + d] = area;
-                faceColour[e + d] = colour;
-              };
-              show(0, hx, sy * sz);
-              show(1, -lx, sy * sz);
-              show(2, hy, sx * sz);
-              show(3, -ly, sx * sz);
-              show(4, hz, sx * sy);
-              show(5, -lz, sx * sy);
+              shows(cell, lx, ly, lz, hx, hy, hz, sx, sy, sz, colour);
             }
           }
         }
+      }
+      for (let t = 0; t < nt; t++) {
+        const cell = taken[t * 2]!;
+        const h = taken[t * 2 + 1]!;
+        const H = hulls.box;
+        if (pass === 0) reaches(cell, H[h * 6]!, H[h * 6 + 1]!, H[h * 6 + 2]!, H[h * 6 + 3]!, H[h * 6 + 4]!, H[h * 6 + 5]!);
+        else shows(cell, H[h * 6]!, H[h * 6 + 1]!, H[h * 6 + 2]!, H[h * 6 + 3]!, H[h * 6 + 4]!, H[h * 6 + 5]!, takenSpan[t * 3]!, takenSpan[t * 3 + 1]!, takenSpan[t * 3 + 2]!, hulls.color[h]!);
       }
     }
     // The air outside, flooded in from the grid's sides.
