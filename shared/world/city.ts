@@ -569,7 +569,8 @@ function faces(dims: MapDims, chunk: number, hf: Heightfield): CityPart {
         const A = hulls.at;
         const [ux, uy, uz] = [A[c]! - A[b]!, A[c + 1]! - A[b + 1]!, A[c + 2]! - A[b + 2]!];
         const [vx, vy, vz] = [A[d]! - A[c]!, A[d + 1]! - A[c + 1]!, A[d + 2]! - A[c + 2]!];
-        if (Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) <= 1e-8) continue;
+        const [nx, ny, nz] = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+        if (nx * nx + ny * ny + nz * nz <= 1e-16) continue;
         for (let a = 0; a < 3; a++) ring[count * 3 + a] = A[c + a]!;
         count++;
       }
