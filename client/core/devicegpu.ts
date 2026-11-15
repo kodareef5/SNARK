@@ -13,8 +13,11 @@ import { airFrame } from "./render/atmosphere.ts";
 import { FAR_FROM } from "./render/camera.ts";
 import { fadeKeeps } from "./render/far.ts";
 import { FRAME, FRAME_FLOATS } from "./render/packet.ts";
-import { PROGRAMS, withDefines, type ProgramText } from "./render/programs.ts";
+import { PROGRAMS, withDefines } from "./render/programs.ts";
 import { SKY_SIZE, SKY_SLICES, skyFrame, theSky, trueSun } from "./render/sky.ts";
+import { groundSize } from "./render/terrain.ts";
+import { seaFrame } from "./render/water.ts";
+import { Heightfield } from "../../shared/world/heightfield.ts";
 import type { TextureFormat } from "../../shared/pack/texture.ts";
 
 type Obj = unknown;
@@ -110,7 +113,7 @@ export const GL = {
   FRAMEBUFFER: 0x8d40, READ_FRAMEBUFFER: 0x8ca8, DRAW_FRAMEBUFFER: 0x8ca9, RENDERBUFFER: 0x8d41, FRAMEBUFFER_COMPLETE: 0x8cd5,
   COLOR_ATTACHMENT0: 0x8ce0, DEPTH_ATTACHMENT: 0x8d00,
   TEXTURE_2D: 0x0de1, TEXTURE_3D: 0x806f, TEXTURE_2D_ARRAY: 0x8c1a, TEXTURE0: 0x84c0,
-  RGBA: 0x1908, RGBA8: 0x8058, SRGB8_ALPHA8: 0x8c43, RGBA32F: 0x8814, DEPTH_COMPONENT: 0x1902, DEPTH_COMPONENT16: 0x81a5, DEPTH_COMPONENT24: 0x81a6, DEPTH_COMPONENT32F: 0x8cac,
+  RGBA: 0x1908, RGBA8: 0x8058, R16UI: 0x8234, RED_INTEGER: 0x8d94, SRGB8_ALPHA8: 0x8c43, RGBA32F: 0x8814, DEPTH_COMPONENT: 0x1902, DEPTH_COMPONENT16: 0x81a5, DEPTH_COMPONENT24: 0x81a6, DEPTH_COMPONENT32F: 0x8cac,
   ASTC_4X4: 0x93b0, BPTC: 0x8e8c,
   TEXTURE_MIN_FILTER: 0x2801, TEXTURE_MAG_FILTER: 0x2800, TEXTURE_WRAP_S: 0x2802, TEXTURE_WRAP_T: 0x2803, TEXTURE_WRAP_R: 0x8072, NEAREST: 0x2600, LINEAR: 0x2601, LINEAR_MIPMAP_LINEAR: 0x2703, CLAMP_TO_EDGE: 0x812f,
   TEXTURE_COMPARE_MODE: 0x884c, TEXTURE_COMPARE_FUNC: 0x884d, COMPARE_REF_TO_TEXTURE: 0x884e, NONE: 0, LEQUAL: 0x0203, LESS: 0x0201,
@@ -321,7 +324,7 @@ export function newGpuReport(): GpuReport {
  * A full-screen pass of one of the game's programs as `tier` draws it: on a wall `wall` metres off, or the dome looking
  * up toward the sun; under noon's frame block with `layers` of cloud, or plain (no haze, nothing over the table). A
  * lit program looks the sun's shadow up only when `shadowed`, in the depth passes' array, whose first cascade the frame
- * block puts the wall in.
+ * block puts the wall in. With `sea` it is drawn on the sea from 10 m up, 2 m deep, calm or with its waves' pictures.
  */
 export interface ScreenPass {
   name: string;
@@ -331,6 +334,7 @@ export interface ScreenPass {
   layers: number;
   plain: boolean;
   shadowed?: boolean;
+  sea?: "calm" | "waves";
 }
 
 /** LIT with its shadow lookup, against LIT without it: what shadows cost a pixel. */
@@ -338,7 +342,8 @@ export const SHADOWED_PASS: ScreenPass = { name: "lit shadowed", program: "flat"
 
 /**
  * The full-screen passes. LIT is hazed at 500 m and 3.5 km, where haze costs most (D266); the far blocks' program has
- * its fade's discard, against LIT; the dome is timed with the table alone and with 0, 1 and 2 cloud layers (D265).
+ * its fade's discard, against LIT; the dome is timed with the table alone and with 0, 1 and 2 cloud layers (D265); the
+ * sea calm and with its waves, against LIT drawn where it is (D270).
  */
 export const SCREEN_PASSES: readonly ScreenPass[] = [
   { name: "flat", program: "flat", tier: "lowpoly", wall: 12, layers: 0, plain: true },
@@ -351,6 +356,9 @@ export const SCREEN_PASSES: readonly ScreenPass[] = [
   { name: "sky", program: "sky", tier: "medium", layers: 0, plain: false },
   { name: "sky 1 layer", program: "sky", tier: "medium", layers: 1, plain: false },
   { name: "sky 2 layers", program: "sky", tier: "medium", layers: 2, plain: false },
+  { name: "water calm", program: "water", tier: "medium", layers: 0, plain: false, sea: "calm" },
+  { name: "water waves", program: "water", tier: "medium", layers: 0, plain: false, sea: "waves" },
+  { name: "lit on the sea", program: "flat", tier: "medium", layers: 0, plain: false, sea: "calm" },
 ];
 
 /** Gaps tried, in metres, nearest first, and where. The near range ends at the split, the far begins at 98% of it. */
@@ -421,6 +429,17 @@ void main() {
   vDye2 = mat3(1.0);
   gl_Position = vec4(c, 0.0, 1.0);
 }`;
+/** The sea 10 m under the eye, spread over the target from 20 m to 420 m off, as the lit probe times WATER. */
+const SEA_VERTEX = `#version 300 es
+${FULL_SCREEN}
+out vec3 vRel;
+flat out vec3 vColor;
+void main() {
+  vec2 c = corner();
+  vRel = vec3(c.x * 200.0, -10.0, c.y * 200.0 + 220.0);
+  vColor = vec3(0.24, 0.43, 0.67);
+  gl_Position = vec4(c, 0.0, 1.0);
+}`;
 /** Clouds of about 40% cover, drawn into a layer's picture: red the cover and green the thickness, as the sky's pictures have them. */
 const CLOUD_FRAGMENT = `#version 300 es
 precision highp float;
@@ -449,6 +468,13 @@ const MEDIUM = tierOf("medium");
 /** The side of the sky's pictures, as medium has them, and of the target the far blocks' edge is read from. */
 const SKY_MAP = 1024;
 const EDGE = 64;
+/** The sea's ground: a map 2 km square of 2 m cells, the camera over its middle, the floor 2 m under the sea; its heights' side, and the waves' pictures' as the sea's material has them. */
+const SEA_MAP = { chunks: 32, cell: 2, at: 1024, floor: 3968 };
+const SEA_HEIGHTS = 1024;
+const WAVE_MAP = 256;
+/** The samplers the probe binds a texture of its own for. One the renderer's units hold is moved to a unit of the probe's. */
+const PROVIDED = ["uSkyTable", "uShadow", "uBase", "uNormal", "uMro", "uMask", "uMask2", "uMoon", "uLow", "uHigh", "uMapHeight", "uWindowHeight", "uWaveLong", "uWaveShort"];
+const SPARE_UNIT = 13;
 const COLOUR_FRAGMENT = `#version 300 es
 precision highp float;
 uniform vec3 uColour;
@@ -1184,35 +1210,41 @@ void main() {}`);
   /**
    * The game's program `name` on `tier`, linked as the renderer links it (client/shell/gl.ts): its defines after the
    * #version line, with the shadow lookup filtering for itself where this device's compared lookups came back hard,
-   * each sampler pointed at its unit, and its frame block on the probe's binding. `vertex` in place of the game's draws
+   * each sampler pointed at its unit, and its frame block on the probe's binding. A sampler the probe binds a texture
+   * for on one of the renderer's units is pointed at one of the probe's instead. `vertex` in place of the game's draws
    * it full screen; it must write what the fragment text reads.
    */
-  private linked(name: string, tier: Tier, vertex?: string): { prog: Obj; text: ProgramText } {
+  private linked(name: string, tier: Tier, vertex?: string): { prog: Obj; units: Record<string, number> } {
     const gl = this.gl;
     const made = PROGRAMS[name];
     if (!made) throw new Error(`the renderer has no program "${name}"`);
     const text = made(tier, this.variant, this.report.compareArray === "hard");
     const prog = this.program(withDefines(vertex ?? text.vertex, text.defines), withDefines(text.fragment, text.defines));
     gl.useProgram(prog);
-    for (const sampler in text.samplers) gl.uniform1i(gl.getUniformLocation(prog, sampler), text.samplers[sampler]!);
+    const units: Record<string, number> = {};
+    let spare = SPARE_UNIT;
+    for (const [sampler, unit] of Object.entries(text.samplers)) {
+      units[sampler] = PROBE_UNITS.includes(unit) || !PROVIDED.includes(sampler) ? unit : spare++;
+      gl.uniform1i(gl.getUniformLocation(prog, sampler), units[sampler]!);
+    }
     const block = gl.getUniformBlockIndex(prog, "Frame");
     if (block !== GL.INVALID_INDEX) gl.uniformBlockBinding(prog, block, PROBE_BLOCK);
-    return { prog, text };
+    return { prog, units };
   }
 
   /** A pass of SCREEN_PASSES, with every uniform its program may read set as the renderer would, and its textures bound. */
   private screenPass(spec: ScreenPass): { bind(): void; draw(): void; scale: number } {
     const gl = this.gl;
     const tier = tierOf(spec.tier);
-    const vertex = spec.program === "sky" ? undefined : spec.program === "surface" ? SURFACE_VERTEX : wallVertex(spec.wall ?? 12);
-    const { prog, text } = this.linked(spec.program, tier, vertex);
-    const frame = this.frameBlock(spec.layers, spec.plain, spec.shadowed === true);
-    const inputs = this.inputs(text);
+    const vertex = spec.program === "sky" ? undefined : spec.sea ? SEA_VERTEX : spec.program === "surface" ? SURFACE_VERTEX : wallVertex(spec.wall ?? 12);
+    const { prog, units } = this.linked(spec.program, tier, vertex);
+    const frame = this.frameBlock(spec.layers, spec.plain, spec.shadowed === true, spec.sea !== undefined);
+    const inputs = this.inputs(units, spec.sea === "waves");
     const [w, h] = this.report.screen;
     const at = (n: string): Obj => gl.getUniformLocation(prog, n);
     // The dome looks 14 degrees up toward the sun, as the lit probe times it.
     const sun = [0, 0, 0];
-    trueSun(this.frameData(0, false, false), sun);
+    trueSun(this.frameData(0, false, false, false), sun);
     const look = lookFrom(Math.atan2(sun[0]!, sun[2]!), (14 * Math.PI) / 180, 1.2217, w! / h!, 0.25, AIR_VIEW);
     return this.fullScreen(prog, () => {
       frame();
@@ -1237,10 +1269,11 @@ void main() {}`);
 
   /**
    * Noon's frame block with the air as atmosphere.ts fills it for `layers` of cloud, or plain; medium's fade for the far
-   * blocks; and with `shadowed` medium's cascades round the wall 12 m off: the first holds it, its map seen square on.
+   * blocks; with `shadowed` medium's cascades round the wall 12 m off, the first holding it and its map seen square on;
+   * and with `sea` the sea's part as water.ts fills it, over the middle of SEA_MAP.
    */
-  private frameData(layers: number, plain: boolean, shadowed: boolean): Float32Array {
-    const key = `${layers} ${plain} ${shadowed}`;
+  private frameData(layers: number, plain: boolean, shadowed: boolean, sea: boolean): Float32Array {
+    const key = `${layers} ${plain} ${shadowed} ${sea}`;
     const had = this.frames.get(key);
     if (had) return had.data;
     const data = new Float32Array(FRAME_FLOATS);
@@ -1253,15 +1286,20 @@ void main() {}`);
       data.set([0, 0, -12, 20 * (k + 1)], FRAME.spheres + k * 4);
       data.set([0.1, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, 0.05, 0, 0, 0, 0.6, 1], FRAME.cascades + k * 16);
     }
+    if (sea) {
+      const hf = new Heightfield({ chunksX: SEA_MAP.chunks, chunksZ: SEA_MAP.chunks }, SEA_MAP.cell, -64, 1 / 64);
+      hf.seaLevel = 0;
+      seaFrame(data, hf, groundSize(hf), Int32Array.of(0, 0, 0, -1, 0, 0, 0, 0), SEA_MAP.at, SEA_MAP.at, 0);
+    }
     this.frames.set(key, { data, buffer: null });
     return data;
   }
 
   /** That frame block in a buffer, made once: a function that binds it on the probe's binding, which bind() calls. */
-  private frameBlock(layers: number, plain: boolean, shadowed: boolean): () => void {
+  private frameBlock(layers: number, plain: boolean, shadowed: boolean, sea: boolean): () => void {
     const gl = this.gl;
-    const data = this.frameData(layers, plain, shadowed);
-    const made = this.frames.get(`${layers} ${plain} ${shadowed}`)!;
+    const data = this.frameData(layers, plain, shadowed, sea);
+    const made = this.frames.get(`${layers} ${plain} ${shadowed} ${sea}`)!;
     if (!made.buffer) {
       made.buffer = this.keep("buffer", gl.createBuffer());
       gl.bindBuffer(GL.UNIFORM_BUFFER, made.buffer);
@@ -1271,21 +1309,24 @@ void main() {}`);
   }
 
   /**
-   * The probe's textures for a program's samplers, by name: the sky table, SURFACE's five maps, the sky's moon and cloud
-   * layers, and the depth passes' largest array as the shadow maps. A function that binds each on the unit the program
-   * reads it from, one of the probe's own; a sampler the probe has nothing for reads what the renderer left there.
+   * The probe's textures for a program's samplers, by name, on the units `linked` gave them: the sky table, SURFACE's
+   * five maps, the sky's moon and cloud layers, the depth passes' largest array as the shadow maps, and the sea's
+   * ground and its waves, or with no `waves` a calm sea's black. A function that binds each; a sampler the probe has
+   * nothing for reads what the renderer left there.
    */
-  private inputs(text: ProgramText): () => void {
+  private inputs(units: Record<string, number>, waves: boolean): () => void {
     const gl = this.gl;
     const bound: [number, number, Obj][] = [];
     const surface = ["uBase", "uNormal", "uMro", "uMask", "uMask2"];
     const sky = ["uMoon", "uLow", "uHigh"];
-    for (const [name, unit] of Object.entries(text.samplers)) {
+    for (const [name, unit] of Object.entries(units)) {
       if (!PROBE_UNITS.includes(unit)) continue;
       if (name === "uSkyTable") bound.push([unit, GL.TEXTURE_3D, this.table()]);
       else if (name === "uShadow") bound.push([unit, GL.TEXTURE_2D_ARRAY, this.depthMap(Math.max(...this.plan.depthSizes)).texture]);
       else if (surface.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.surfaceTextures()[surface.indexOf(name)]]);
       else if (sky.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.skyMaps()[sky.indexOf(name)]]);
+      else if (name === "uMapHeight" || name === "uWindowHeight") bound.push([unit, GL.TEXTURE_2D, this.seaFloor()]);
+      else if (name === "uWaveLong" || name === "uWaveShort") bound.push([unit, GL.TEXTURE_2D, this.waveMaps()[waves ? (name === "uWaveLong" ? 1 : 2) : 0]]);
     }
     return () => {
       for (const [unit, target, t] of bound) {
@@ -1294,6 +1335,49 @@ void main() {}`);
       }
     };
   }
+
+  private floor: Obj = null;
+
+  /** The sea's ground as the terrain's heights are kept, R16UI, SEA_HEIGHTS square: all of it 2 m under the sea. */
+  private seaFloor(): Obj {
+    if (this.floor) return this.floor;
+    const t = (this.floor = this.texture(GL.R16UI, SEA_HEIGHTS, SEA_HEIGHTS));
+    this.gl.texSubImage2D(GL.TEXTURE_2D, 0, 0, 0, SEA_HEIGHTS, SEA_HEIGHTS, GL.RED_INTEGER, GL.UNSIGNED_SHORT, new Uint16Array(SEA_HEIGHTS * SEA_HEIGHTS).fill(SEA_MAP.floor));
+    return t;
+  }
+
+  private waves: Obj[] | null = null;
+
+  /** A calm sea's waves, a black texel, then the long and the short waves' pictures, WAVE_MAP square and mipmapped, of noise. */
+  private waveMaps(): Obj[] {
+    if (this.waves) return this.waves;
+    const gl = this.gl;
+    const calm = this.texture(GL.RGBA8, 1, 1);
+    gl.texSubImage2D(GL.TEXTURE_2D, 0, 0, 0, 1, 1, GL.RGBA, GL.UNSIGNED_BYTE, new Uint8Array(4));
+    return (this.waves = [calm, ...[2, 3].map((seed) => this.noiseMap(WAVE_MAP, seed))]);
+  }
+
+  /** A picture `side` square of CLOUD_FRAGMENT's noise, mipmapped. */
+  private noiseMap(side: number, seed: number): Obj {
+    const gl = this.gl;
+    const t = this.texture(GL.RGBA8, side, side, GL.LINEAR_MIPMAP_LINEAR, Math.log2(side) + 1);
+    this.fill ??= this.program(`#version 300 es
+${FULL_SCREEN}
+void main() { gl_Position = vec4(corner(), 0.0, 1.0); }`, CLOUD_FRAGMENT);
+    gl.bindFramebuffer(GL.FRAMEBUFFER, this.keep("framebuffer", framebuffer(gl, (f) => gl.framebufferTexture2D(f, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, t, 0), `an RGBA8 texture ${side} square`)));
+    gl.viewport(0, 0, side, side);
+    for (const cap of [GL.BLEND, GL.DEPTH_TEST, GL.SCISSOR_TEST, GL.CULL_FACE]) gl.disable(cap);
+    gl.colorMask(true, true, true, true);
+    gl.useProgram(this.fill);
+    gl.uniform1f(gl.getUniformLocation(this.fill, "uSeed"), seed);
+    gl.bindVertexArray(this.empty);
+    gl.drawArrays(GL.TRIANGLES, 0, 3);
+    gl.bindTexture(GL.TEXTURE_2D, t);
+    gl.generateMipmap(GL.TEXTURE_2D);
+    return t;
+  }
+
+  private fill: Obj = null;
 
   private skyTable: Obj = null;
 
@@ -1331,27 +1415,8 @@ void main() {}`);
   /** The sky's moon and two cloud layers, as large as medium has them and mipmapped: the clouds drawn in, the moon black. */
   private skyMaps(): Obj[] {
     if (this.skyPictures) return this.skyPictures;
-    const gl = this.gl;
-    const levels = Math.log2(SKY_MAP) + 1;
-    const moon = this.texture(GL.SRGB8_ALPHA8, SKY_MAP, SKY_MAP, GL.LINEAR_MIPMAP_LINEAR, levels);
-    const fill = this.program(`#version 300 es
-${FULL_SCREEN}
-void main() { gl_Position = vec4(corner(), 0.0, 1.0); }`, CLOUD_FRAGMENT);
-    const layers = [0, 1].map((k) => {
-      const t = this.texture(GL.RGBA8, SKY_MAP, SKY_MAP, GL.LINEAR_MIPMAP_LINEAR, levels);
-      gl.bindFramebuffer(GL.FRAMEBUFFER, this.keep("framebuffer", framebuffer(gl, (f) => gl.framebufferTexture2D(f, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, t, 0), `a cloud layer's picture ${SKY_MAP} square`)));
-      gl.viewport(0, 0, SKY_MAP, SKY_MAP);
-      for (const cap of [GL.BLEND, GL.DEPTH_TEST, GL.SCISSOR_TEST, GL.CULL_FACE]) gl.disable(cap);
-      gl.colorMask(true, true, true, true);
-      gl.useProgram(fill);
-      gl.uniform1f(gl.getUniformLocation(fill, "uSeed"), k);
-      gl.bindVertexArray(this.empty);
-      gl.drawArrays(GL.TRIANGLES, 0, 3);
-      gl.bindTexture(GL.TEXTURE_2D, t);
-      gl.generateMipmap(GL.TEXTURE_2D);
-      return t;
-    });
-    return (this.skyPictures = [moon, ...layers]);
+    const moon = this.texture(GL.SRGB8_ALPHA8, SKY_MAP, SKY_MAP, GL.LINEAR_MIPMAP_LINEAR, Math.log2(SKY_MAP) + 1);
+    return (this.skyPictures = [moon, this.noiseMap(SKY_MAP, 0), this.noiseMap(SKY_MAP, 1)]);
   }
 
   /**
@@ -1362,9 +1427,9 @@ void main() { gl_Position = vec4(corner(), 0.0, 1.0); }`, CLOUD_FRAGMENT);
     const gl = this.gl;
     const gone = MEDIUM.reach.bases;
     const at = gone * (1 - MEDIUM.fade / 2);
-    const { prog, text } = this.linked("far", MEDIUM, edgeVertex(at));
-    const frame = this.frameBlock(0, true, false);
-    const inputs = this.inputs(text);
+    const { prog, units } = this.linked("far", MEDIUM, edgeVertex(at));
+    const frame = this.frameBlock(0, true, false, false);
+    const inputs = this.inputs(units, false);
     const out = this.texture(GL.RGBA8, EDGE, EDGE);
     gl.bindFramebuffer(GL.FRAMEBUFFER, this.keep("framebuffer", framebuffer(gl, (f) => gl.framebufferTexture2D(f, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, out, 0), `an RGBA8 texture ${EDGE} square`)));
     gl.viewport(0, 0, EDGE, EDGE);

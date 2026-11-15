@@ -270,7 +270,7 @@ test("a rung that did not draw all it was given, or never settled, is invalid: n
   expect(table.some((line) => line.startsWith("broke "))).toBe(false);
 });
 
-test("the terrain flight is offered only by its own server's link, flies the camera over each of its tiers with jumps, and times each jump's window", async () => {
+test("the terrain flight is offered only by its own server's link, flies the camera over each of its tiers with jumps, times each jump's window, and stands far bases and the wood; its soak turns through them", async () => {
   const { h, pack, app, expected } = client();
   const offers = async (tests?: string): Promise<boolean[]> => {
     const shown = browser({ expected, ...(tests ? { tests } : {}) });
@@ -278,9 +278,9 @@ test("the terrain flight is offered only by its own server's link, flies the cam
     await settle();
     return ["quick", "terrain"].map((m) => shown.page.text.includes(`data-mode="${m}"`));
   };
-  expect([await offers(), await offers("terrain")]).toEqual([[true, false], [false, true]]);
+  expect([await offers(), await offers("terrain,soak")]).toEqual([[true, false], [false, true]]);
   const card = renderer();
-  const { b } = browser({ clock: () => h.now + card.spent(), expected, mode: "terrain", tests: "terrain" });
+  const { b } = browser({ clock: () => h.now + card.spent(), expected, mode: "terrain", tests: "terrain,soak" });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
   await probe.before();
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
@@ -307,10 +307,22 @@ test("the terrain flight is offered only by its own server's link, flies the cam
   // nothing for; taken away after, and what the feed sent kept.
   expect(t.far.map((g) => [g.asked, g.chunks, g.farDraws > 0])).toEqual([[0, 0, false], [130, 58, true], [480, 58, true]]);
   expect([sent > 0, app.session.far.chunks.size === sent, app.ui.settings.tier]).toEqual([true, true, "medium"]);
-  expect(lacking(r, "terrain")).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window", "far 130: bases stood in 58 chunks", "far 480: bases stood in 58 chunks"]);
+  // Then the wood on each tier the device takes; the harness's map grows none.
+  expect(t.wood.map((g) => `${g.tier} ${g.reach}`)).toEqual(["lowpoly 500", "medium 1200", "high 2000"]);
+  const wood = ["lowpoly", "medium", "high"].map((n) => `wood ${n}: no far trees, rocks or bushes were drawn`);
+  expect(lacking(r, "terrain")).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window", "far 130: bases stood in 58 chunks", "far 480: bases stood in 58 chunks", "the wood has no rung on ultra", ...wood]);
   const table = deviceTable(r);
   expect(table.some((line) => line.startsWith("terrain   a map 0.5 km across"))).toBe(true);
   expect(table.some((line) => /^58\/130 +(yes|GPU|ours|invalid) /.test(line))).toBe(true);
+  expect(table.some((line) => /^high +(yes|GPU|ours|invalid) /.test(line))).toBe(true);
+
+  // The soak on this server stands at the middle among the far bases, with nothing else, and takes them away after.
+  probe.start("soak");
+  let among = 0;
+  await run(probe, h, app, card.r, 30000, { each: () => void (among = Math.max(among, app.session.far.chunks.size - sent)) });
+  const s = probe.report.soak!;
+  expect([probe.report.done, s.wood, s.load.bodies, s.minutes.length, among, app.session.far.chunks.size === sent]).toEqual([true, true, 0, 1, 58, true]);
+  expect(deviceTable(probe.report).some((line) => line.startsWith("soak      high: turning once a minute (the terrain map's wood and 480 far base chunks round its middle"))).toBe(true);
 });
 
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {

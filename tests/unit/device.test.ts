@@ -107,7 +107,7 @@ test("the ladder climbs each axis of each tier the device takes until a rung bre
 });
 
 test("a rung holds by its frames only when it drew all it was given, settled, fetched what it asked for and kept its tier", () => {
-  const phase = (o: Partial<PhaseReport> = {}): PhaseReport => ({ tier: "medium", scene: "plain", ratio: 1, canvas: [1, 1], settleMs: 500, settled: true, frames: 90, frameMs: { median: 16.7, p95: 17, p99: 18, worst: 20 }, buildMs: spread([1]), drawMs: spread([0.5]), gpuMs: null, drawCalls: 50, triangles: 1000, textured: 0, bones: 0, dropped: 0, skipped: 0, fetched: 0, failed: 0, missed: 0, lost: 0, fellTo: null, ...o });
+  const phase = (o: Partial<PhaseReport> = {}): PhaseReport => ({ tier: "medium", scene: "plain", ratio: 1, canvas: [1, 1], settleMs: 500, settled: true, frames: 90, frameMs: { median: 16.7, p95: 17, p99: 18, worst: 20 }, buildMs: spread([1]), drawMs: spread([0.5]), gpuMs: null, gpuOff: null, drawCalls: 50, triangles: 1000, textured: 0, bones: 0, dropped: 0, skipped: 0, fetched: 0, failed: 0, missed: 0, lost: 0, fellTo: null, ...o });
   expect(judgeRung(phase(), 16.7)).toEqual({ held: true, limit: "", invalid: "" });
   expect(judgeRung(phase({ frameMs: { median: 33.3, p95: 34, p99: 35, worst: 40 } }), 16.7)).toEqual({ held: false, limit: "the GPU", invalid: "" });
   expect(judgeRung(phase({ frameMs: { median: 33.3, p95: 34, p99: 35, worst: 40 }, buildMs: spread([30]) }), 16.7)).toEqual({ held: false, limit: "our code", invalid: "" });

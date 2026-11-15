@@ -1,5 +1,5 @@
 // What the device probe stands in front of the camera, and how it adds load a step at a time: bodies, building pieces,
-// rocks near and far, far bases, and texture memory. The probe's server stands the crowd and builds the base
+// rocks near and far, far bases, the terrain map's wood, and texture memory. The probe's server stands the crowd and builds the base
 // (tools/device.ts); the rest is added on the page, so that the link does not limit what is measured.
 
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
@@ -9,6 +9,7 @@ import { MAX_VIEW } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
+import type { NodeScatter } from "../../shared/world/mapfile.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Summary, bakeChunk, pieceShapes, type FarCells } from "../../shared/world/tactical.ts";
@@ -234,6 +235,9 @@ export function farBases(reg: Registry): FarCells[] {
     return s.far;
   });
 }
+
+/** The far nodes' benchmark's wood (tools/bench/far.ts, D259) as a map's layer: 160 slots a chunk, trees, rocks and bushes 3 to 2 to 1. */
+export const WOOD: NodeScatter = { seed: 0xbe7c, perChunk: 160, kinds: [["core:tree", 3], ["core:rock", 2], ["core:bush", 1]], allowCell: 0, allow: null };
 
 /** Chunks of `dims` whose middles are within `reach` of (x, z), less those `skip` says, in a shuffled order of their own. */
 export function farSpots(dims: MapDims, x: number, z: number, reach: number, skip: (chunk: number) => boolean): number[] {

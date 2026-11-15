@@ -169,8 +169,15 @@ function declared(list: Token[], macros: string[]): Declared {
   return { names, functions, declarations };
 }
 
+const compiled = new Map<string, string[]>();
+const linked = new Map<string, string[]>();
+
 /** What a GLSL ES 3.00 compiler would say of the text, a line an error; none if it would take it. */
 export function compileErrors(text: string): string[] {
+  return compiled.get(text) ?? compiled.set(text, compile(text)).get(text)!;
+}
+
+function compile(text: string): string[] {
   const errors: string[] = [];
   if (!text.startsWith("#version 300 es\n")) errors.push("ERROR: 0:1: '#version' : must be the text's first line, as 300 es");
   const { list, macros } = tokens(text);
@@ -226,6 +233,11 @@ function globals(text: string, qualifier: string): Map<string, string> {
 
 /** What a GLSL ES 3.00 linker would say of a vertex and a fragment text that each compile, a line an error. */
 export function linkErrors(vertex: string, fragment: string): string[] {
+  const key = `${vertex}\u0000${fragment}`;
+  return linked.get(key) ?? linked.set(key, link(vertex, fragment)).get(key)!;
+}
+
+function link(vertex: string, fragment: string): string[] {
   const errors: string[] = [];
   const written = globals(vertex, "out");
   for (const [name, kind] of globals(fragment, "in")) {

@@ -1,8 +1,9 @@
 // `bun run device`: a throwaway game server for measuring a phone, and the reports its page sends. It prints a short path
 // to open. With --tunnel it also runs a temporary Cloudflare tunnel (cloudflared, no account) and prints the whole link.
 // The page shows which device it takes itself to be on and three tests to tap (client/core/device.ts): a quick look, a
-// load ladder, and a soak. With --terrain the server is on the bench's 8 km map instead, and the page offers only the
-// terrain flight (D253), which ends with far bases (D257). It posts its report after every step; each run is kept in
+// load ladder, and a soak. With --terrain the server is on the bench's 8 km map instead, with the far nodes' bench's
+// wood, and the page offers the terrain flight (D253), which ends with far bases (D257) and the wood (D259), and a soak
+// through the wood (`--self soak --terrain`). It posts its report after every step; each run is kept in
 // .cache/device/ and printed as a table when it is done. With --self the local headless Chrome opens the link and runs a
 // test without a tap, which must finish: `--self` for the quick look, `--self ladder`, `--self soak` (with
 // --soak-minutes n) or `--self terrain`, the test that the probe works, not part of the check. --port n, and --minutes n
@@ -18,7 +19,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TIERS } from "../client/core/assets/tiers.ts";
 import { AXES, FAR_CHUNKS, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, deviceScenarios, scenesOf, type DeviceReport, type Mode } from "../client/core/device.ts";
-import { BASE_MOST, basePieces, crowdScene } from "../client/core/devicescene.ts";
+import { BASE_MOST, WOOD, basePieces, crowdScene } from "../client/core/devicescene.ts";
 import { deviceTable } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { startServer } from "../server/main.ts";
@@ -210,8 +211,14 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
       if (g.invalid) out.push(`far ${g.asked}: invalid, ${g.invalid}`);
       if (g.chunks > 0 && g.farDraws === 0) out.push(`far ${g.asked}: no far blocks were drawn`);
     }
+    const wood = r.terrain?.wood ?? [];
+    for (const t of TIERS) if (!wood.some((g) => g.tier === t.name)) out.push(`the wood has no rung on ${t.name}`);
+    for (const g of wood) {
+      if (g.invalid) out.push(`wood ${g.tier}: invalid, ${g.invalid}`);
+      if (g.nodeDraws === 0) out.push(`wood ${g.tier}: no far trees, rocks or bushes were drawn`);
+    }
   }
-  if (mode === "soak" && r.soak && TIERS.find((t) => t.name === r.soak!.tier)!.texture > 0 && !r.soak.minutes.some((m) => m.mat > 0)) out.push(`the soak drew nothing with materials on ${r.soak.tier}, which has them`);
+  if (mode === "soak" && r.soak && !r.soak.wood && TIERS.find((t) => t.name === r.soak!.tier)!.texture > 0 && !r.soak.minutes.some((m) => m.mat > 0)) out.push(`the soak drew nothing with materials on ${r.soak.tier}, which has them`);
   return out;
 }
 
@@ -289,12 +296,13 @@ if (import.meta.main) {
     }
     return built.length;
   };
-  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }) });
+  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,soak" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }) });
   const { rules } = loadConfig({ gus: `[ServerSettings]\nServerPassword=${password}\n` });
-  // For the terrain flight, the bench's 8 km of hills as a map file, with no water and one spawn point in the middle.
+  // For the terrain flight, the bench's 8 km of hills as a map file, with no water, the far nodes' bench's wood, and one
+  // spawn point in the middle.
   const hills = terrain ? benchHills() : null;
   const mapDir = hills ? mkdtempSync(join(tmpdir(), "snark-device-map-")) : "";
-  if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
+  if (hills) writeFileSync(join(mapDir, "hills.snmap"), writeMap({ id: "device:hills", dims: hills.dims, minY: hills.minY, stepY: hills.stepY, seaLevel: -Infinity, heights: hills.heights, tint: hills.tint.fill(12), statics: [], nodes: [WOOD], spawns: [{ name: "Middle", x: 4096, z: 4096, yaw: 0 }] }));
   // The fixed scene of the boot probe, where nothing wakes, and behind the spawn point the crowd scene's thatch and bodies.
   server = startServer({ port: Number(value("--port") ?? 0), hostname: "127.0.0.1", probeScene: true, config: rules, routes: probe.routes, ...(hills ? { map: join(mapDir, "hills.snmap") } : {}) });
   const running = server;
@@ -361,11 +369,11 @@ if (import.meta.main) {
   }
 
   console.log(terrain ? `\nSNARK device probe on the bench's 8 km map, for the terrain flight; reports go to ${dir}` : `\nSNARK device probe: ${crowd} bodies in the crowd and ${pieces} pieces of thatch; reports go to ${dir}`);
-  const tests = terrain ? "&tests=terrain" : "";
+  const tests = terrain ? "&tests=terrain,soak" : "";
   console.log(`  open on the device:  ${base0}/d/${code}`);
   console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}${tests}`);
   if (tunnel) console.log(`  on this machine:     http://127.0.0.1:${running.port}/d/${code}`);
-  console.log(terrain ? "  the page offers the terrain flight alone" : "  the page asks which test to run: a quick look, the load ladder, or a ten-minute soak; `--terrain` serves the terrain flight");
+  console.log(terrain ? "  the page offers the terrain flight, and a soak through the wood" : "  the page asks which test to run: a quick look, the load ladder, or a ten-minute soak; `--terrain` serves the terrain flight");
   console.log(`  Ctrl+C stops it; it stops by itself in ${minutes} minutes${tunnel ? ", and takes the tunnel down" : ""}\n`);
 
   if (self) {

@@ -23,6 +23,7 @@ import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
 import { FrameTimer, GpuQuestions, type Gl2, type GpuReport } from "./devicegpu.ts";
 import { BodyCopies, LOOK, TextureMemory, farBases, farSpots, rocks } from "./devicescene.ts";
+import { FAR_NODE_BUFFERS } from "./render/farnodes.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
 import { groundSize } from "./render/terrain.ts";
@@ -79,12 +80,14 @@ const JUMP = 2000;
 /**
  * After the flights, base chunks drawn as far blocks at medium, from none to as many as the far blocks' benchmark
  * draws, within FAR_REACH of the map's middle (D257); the camera FAR_UP over the ground there, turning once round every
- * FAR_TURN_MS. The proving ground is too small for them, so they are on the terrain map.
+ * FAR_TURN_MS. Then the map's wood (D259). The proving ground is too small for either, so they are on the terrain map.
  */
 export const FAR_CHUNKS: readonly number[] = [0, 130, 480];
 const FAR_REACH = 2000;
 const FAR_UP = 30;
 const FAR_TURN_MS = 2000;
+/** The wood's rungs, one a tier the device takes, are seen from eye height. */
+const EYE_UP = 1.7;
 /** Frames in a row with nothing on its way and nothing waiting to go on the graphics card: settled then. */
 const STILL = 30;
 /** A quick phase this slow, in ms a frame, and the tiers above it are not tried. */
@@ -138,8 +141,12 @@ export interface PhaseReport {
   /** In our own code: building the frame and the interface, and handing the frame to WebGL. */
   buildMs: Spread;
   drawMs: Spread;
-  /** The GPU's ms for a frame by timer query, median, or null where there are none. */
+  /**
+   * The GPU's ms for a frame by timer query, median, or null where there are none. In crowd0 where there are some, its
+   * frames have shadows and none by turns, and `gpuOff` is the median of those with none.
+   */
   gpuMs: number | null;
+  gpuOff: number | null;
   /** Medians a frame: WebGL draw calls, triangles, draws the frame asked to have drawn with their materials, and bones posed. */
   drawCalls: number;
   triangles: number;
@@ -200,7 +207,8 @@ export interface SoakReport {
   /** What the soak turned through, and where the amounts came from: "defaults", or half what the ladder held on this page. */
   load: { bodies: number; pieces: number; near: number; far: number; stress: boolean };
   from: string;
-  /** The sun's cascades the tier casts into, 0 for none: lit tiers cast by default. */
+  /** Whether it turned through the terrain map's wood, and the sun's cascades the tier casts into, 0 for none: lit tiers cast by default. */
+  wood: boolean;
   cascades: number;
   minutesWanted: number;
   /** Each minute's frames, with `long` the frames of LONG display intervals or more while the page was shown, and `mat` the most draws with materials in one. */
@@ -229,23 +237,36 @@ export interface FlightReport {
   coarser: number;
 }
 
-/** A rung of far bases on the terrain map (D257): base chunks drawn as blocks at medium, held or not as a ladder's rung is. */
-export interface FarRung {
-  /** Base chunks asked for, and those placed: none where the near store held a chunk whole or the far feed had sent cells. */
-  asked: number;
-  chunks: number;
+/** A rung on the terrain map, held or not as a ladder's rung is. */
+export interface TerrainRung {
   held: boolean;
   limit: string;
   invalid: string;
   settled: boolean;
   frameMs: Spread;
-  /** Medians: our code's ms, draw calls and triangles, far draws a frame, and the GPU's ms for a frame by timer query (null without). */
+  /** Medians: our code's ms, draw calls and triangles, and the GPU's ms for a frame by timer query (null without). */
   buildMs: number;
   drawMs: number;
   calls: number;
   tris: number;
-  farDraws: number;
   gpuMs: number | null;
+}
+
+/** Far bases (D257): base chunks drawn as blocks at medium. */
+export interface FarRung extends TerrainRung {
+  /** Base chunks asked for, and those placed: none where the near store held a chunk whole or the far feed had sent cells. */
+  asked: number;
+  chunks: number;
+  /** Far draws a frame, median. */
+  farDraws: number;
+}
+
+/** The wood (D259): far trees, rocks and bushes out to a tier's reach, its trees' in metres. */
+export interface WoodRung extends TerrainRung {
+  tier: string;
+  reach: number;
+  /** Far node draws a frame, median. */
+  nodeDraws: number;
 }
 
 export interface TerrainReport {
@@ -256,6 +277,7 @@ export interface TerrainReport {
   minutesWanted: number;
   flights: FlightReport[];
   far: FarRung[];
+  wood: WoodRung[];
 }
 
 export interface DeviceInfo {
@@ -475,9 +497,12 @@ export interface Load {
   pieces: number;
   near: number;
   far: number;
-  /** Drawn in one depth range on a tier of two, and with no shadows on a tier that casts. */
+  /** Drawn in one depth range on a tier of two, with no shadows on a tier that casts, and with no far trees, rocks or bushes. */
   oneRange?: boolean;
   noShadows?: boolean;
+  noWood?: boolean;
+  /** With noShadows, shadows and none by turns, frame by frame. */
+  byTurns?: boolean;
 }
 
 interface Step {
@@ -582,6 +607,8 @@ export interface DeviceSide {
   frames: FrameTimer | null;
   /** The display's interval between frames, which a rung holds or not. */
   display: number;
+  /** Whether the page's server is the terrain flight's, on its 8 km map, where the soak turns through the wood. */
+  terrainMap: boolean;
 }
 
 type Stage = "load" | "probes" | "hashes" | "gpu" | "steps" | "memory" | "soak" | "terrain" | "done";
@@ -616,7 +643,7 @@ export class DeviceRun {
   private failedAt = 0;
   private dropped = 0;
   private skipped = 0;
-  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[], gpu: [] as number[] };
+  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[], gpu: [] as number[], gpuOff: [] as number[] };
   /** Tiers above this index are not tried in the quick look, for `stopWhy`. */
   private stopAbove = TIERS.length;
   private stopWhy = "";
@@ -637,15 +664,18 @@ export class DeviceRun {
   private memoryRung = 0;
   private heldSince = -1;
   private sweepsAt = 0;
-  /** Whether the scene is drawn in one depth range, and with no shadows. */
-  private flat = false;
-  private dark = false;
+  /** The load whose tier the scene's build changes: in one depth range, with no shadows, with no far wood. */
+  private drawn: Load | null = null;
+  /** Whether the frame last built was drawn with no shadows. */
+  private shadowless = false;
   /** Where the terrain flight puts the camera, if it does. */
   private fly: { x: number; y: number; z: number; yaw: number; pitch: number } | null = null;
   /** The terrain flight under way: its tier, clock, heading, jumps, and the jump whose window is awaited. */
   private flight: { tier: number; ms: number; heading: number; jumps: number; wait: { frames: number; coarser: number } | null; fills: number[]; coarser: number[]; rows: boolean[]; gpu: { ms: number; tag: boolean }[] } | null = null;
-  /** The far bases' rung under way: its index in FAR_CHUNKS, the chunks bases may stand in and the cells of each kind, how many stand, and its frames' far draws and GPU times. */
-  private far: { k: number; spots: number[]; bases: FarCells[]; placed: number; draws: number[]; gpu: number[] } | null = null;
+  /** The terrain rung under way: its index, whether it is the wood's, and its frames' far draws and GPU times. */
+  private rungs: { k: number; wood: boolean; draws: number[]; gpu: number[] } | null = null;
+  /** The chunks far bases may stand in, the cells of each kind, and how many stand. */
+  private bases: { spots: number[]; cells: FarCells[]; placed: number } | null = null;
   private wrapped: object | null = null;
   /** The quick look's GPU questions, while they are asked. */
   private questions: GpuQuestions | null = null;
@@ -696,7 +726,7 @@ export class DeviceRun {
     else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
     else if (this.stage === "memory") news = this.memory(now, gap);
     else if (this.stage === "soak") news = this.soak(now, gap, p, buildMs, drawMs);
-    else if (this.stage === "terrain") news = this.far ? this.farFrame(now, gap, p, buildMs, drawMs, drawCalls) : this.terrain(now, gap, p, drawMs);
+    else if (this.stage === "terrain") news = this.rungs ? this.rungFrame(now, gap, p, buildMs, drawMs, drawCalls) : this.terrain(now, gap, p, drawMs);
     if (news) this.sync();
     return news;
   }
@@ -839,16 +869,24 @@ export class DeviceRun {
     if (this.mode === "terrain") {
       const hf = this.side.hf;
       const r = this.side.app.scene!.assets.residency;
-      this.report.terrain = { side: (hf.nx - 1) * hf.cell, groundBytes: groundSize(hf).bytes, reservedBytes: r.reserved, minutesWanted: (this.timing.flightMs * FLIGHT_TIERS.length) / 60000, flights: [], far: [] };
+      this.report.terrain = { side: (hf.nx - 1) * hf.cell, groundBytes: groundSize(hf).bytes, reservedBytes: r.reserved, minutesWanted: (this.timing.flightMs * FLIGHT_TIERS.length) / 60000, flights: [], far: [], wood: [] };
       this.stage = "terrain";
       return this.takeOff(0);
     }
     if (this.mode === "soak") {
+      // On the terrain map the soak turns through its wood among the far bases, with nothing else added.
       const tier = this.soakTier();
-      this.report.soak = { tier: tier.name, load: this.soakFrom.load, from: this.soakFrom.from, cascades: tier.lit ? tier.shadows.cascades : 0, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0 };
+      const wood = this.side.terrainMap;
+      const load = wood ? { stress: false, bodies: 0, pieces: 0, near: 0, far: 0 } : this.soakFrom.load;
+      const from = wood ? `the terrain map's wood and ${FAR_CHUNKS.at(-1)} far base chunks round its middle, nothing else` : this.soakFrom.from;
+      this.report.soak = { tier: tier.name, load, from, wood, cascades: tier.lit ? tier.shadows.cascades : 0, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0 };
       this.stage = "soak";
       this.report.stage = "soak";
-      this.apply({ ...this.soakFrom.load, tier, yaw: 0 });
+      this.apply({ ...load, tier, yaw: 0 });
+      if (wood) {
+        this.middle(EYE_UP, 0);
+        this.placeFar(FAR_CHUNKS.at(-1)!);
+      }
       this.at = -1;
       return;
     }
@@ -859,7 +897,7 @@ export class DeviceRun {
   private measure(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number): boolean {
     // The GPU's time for each frame, where there are timer queries; none is open while the GPU questions are asked.
     const frames = this.side.frames;
-    frames?.tick(true);
+    frames?.tick(!this.shadowless);
     if (this.at < 0) this.at = now;
     const step = this.step!;
     const measureMs = step.kind === "rung" ? this.timing.rungMs : this.timing.measureMs;
@@ -875,7 +913,7 @@ export class DeviceRun {
       return false;
     }
     this.sample(gap, buildMs, drawMs, drawCalls, p);
-    this.samples.gpu.push(...(frames?.take() ?? []).map((t) => t.ms));
+    for (const t of frames?.take() ?? []) (t.tag ? this.samples.gpu : this.samples.gpuOff).push(t.ms);
     if (now - this.at < measureMs) return false;
     const phase = this.result();
     if (step.kind === "again") {
@@ -912,7 +950,7 @@ export class DeviceRun {
     const app = this.side.app;
     return {
       tier: load.tier.name, scene: this.step!.scene ?? "plain", ratio: this.ratio(), canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
-      frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw), gpuMs: s.gpu.length > 0 ? spread(s.gpu).median : null,
+      frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw), gpuMs: s.gpu.length > 0 ? spread(s.gpu).median : null, gpuOff: s.gpuOff.length > 0 ? spread(s.gpuOff).median : null,
       drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median, bones: spread(s.bones).median,
       dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, failed: this.failures() - this.failedAt, missed: this.missedSince(this.stepBase),
       lost: this.lostCount - this.lostAt, fellTo: app.ui.settings.tier === load.tier.name ? null : app.ui.settings.tier,
@@ -940,6 +978,8 @@ export class DeviceRun {
     load.stress = scene === "stress";
     load.oneRange = scene === "crowd1";
     load.noShadows = scene === "crowd0";
+    // Where the GPU's frames are timed, the crowd's shadows go on and off by turns, so its time each way is set side by side.
+    load.byTurns = load.noShadows && this.side.frames?.on === true;
     this.go({ kind: again ? "again" : "phase", load, scene }, `${again ? "again " : ""}${tier.name} ${scene}`);
   }
 
@@ -962,22 +1002,28 @@ export class DeviceRun {
   }
 
   /**
-   * Whether the scene draws in one depth range on a tier of two, and with no shadows on a tier that casts. The game sets
-   * the tier on its scene each frame, so the scene's build is wrapped once to put a copy with no split, or no cascades,
-   * in its place. A copy a tier, since the renderer keeps its programs by the tier.
+   * Whether the scene draws in one depth range on a tier of two, with no shadows on a tier that casts, and with no far
+   * trees, rocks or bushes. The game sets the tier on its scene each frame, so the scene's build is wrapped once to put
+   * a copy with no split, no cascades or no reach for them in its place. A copy a tier and change, since the renderer
+   * keeps its programs by the tier.
    */
-  private variant(oneRange: boolean, noShadows: boolean): void {
+  private variant(load: Load): void {
     const scene = this.side.app.scene!;
-    [this.flat, this.dark] = [oneRange, noShadows];
+    this.drawn = load;
     if (this.wrapped === scene) return;
     this.wrapped = scene;
     const build = scene.build.bind(scene);
-    const copies = new Map<Tier, Tier>();
-    const dark = new Map<Tier, Tier>();
+    const copies = new Map<Tier, Map<number, Tier>>();
     scene.build = (cam, remote) => {
       const t = scene.assets.tier;
-      if (this.flat && t.split > 0) scene.assets.tier = copies.get(t) ?? copies.set(t, { ...t, split: 0 }).get(t)!;
-      if (this.dark && t.shadows.cascades > 0) scene.assets.tier = dark.get(t) ?? dark.set(t, { ...t, shadows: { ...t.shadows, cascades: 0 } }).get(t)!;
+      const l = this.drawn;
+      this.shadowless = l?.noShadows === true && t.shadows.cascades > 0 && (!l.byTurns || !this.shadowless);
+      const change = (l?.oneRange && t.split > 0 ? 1 : 0) | (this.shadowless ? 2 : 0) | (l?.noWood ? 4 : 0);
+      if (change !== 0) {
+        const mine = copies.get(t) ?? copies.set(t, new Map()).get(t)!;
+        const copy = mine.get(change) ?? { ...t, ...(change & 1 ? { split: 0 } : {}), ...(change & 2 ? { shadows: { ...t.shadows, cascades: 0 } } : {}), ...(change & 4 ? { reach: { ...t.reach, trees: 0, rocks: 0, bushes: 0 } } : {}) };
+        scene.assets.tier = mine.set(change, copy).get(change)!;
+      }
       // The flight moves the camera as it builds; the body stays where the server has it.
       if (this.fly) [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [this.fly.x, this.fly.y, this.fly.z, this.fly.yaw, this.fly.pitch];
       return build(cam, remote);
@@ -991,8 +1037,8 @@ export class DeviceRun {
    */
   private takeOff(k: number): void {
     const name = FLIGHT_TIERS[k];
-    if (name === undefined) return this.farRung(0);
-    this.apply(bare(tierOf(name), 0));
+    if (name === undefined) return this.terrainRung(0);
+    this.apply({ ...bare(tierOf(name), 0), noWood: true });
     this.flight = { tier: k, ms: 0, heading: 0, jumps: 0, wait: null, fills: [], coarser: [], rows: [], gpu: [] };
     this.place(this.spot(0));
     [this.measuring, this.at] = [false, -1];
@@ -1081,55 +1127,61 @@ export class DeviceRun {
   }
 
   /**
-   * The far bases' `k`th rung: FAR_CHUNKS[k] chunks of the castle, the pile and the huts by turns, handed to the
-   * session's far store as the far feed hands them, round the map's middle at medium. After the last, they are taken
-   * away and the test ends.
+   * The terrain map's `k`th rung after its flights, each round the map's middle: at medium, FAR_CHUNKS of far bases
+   * with the wood not drawn past the near field, 30 m up; then on each tier the device takes, the wood out to the
+   * tier's reach, at eye height. After the last the bases are taken away and the test ends.
    */
-  private farRung(k: number): void {
-    const s = this.side.app.session;
-    const n = FAR_CHUNKS[k];
-    if (n === undefined) {
-      this.placeFar(0);
-      [this.far, this.fly] = [null, null];
-      this.side.frames?.stop();
+  private terrainRung(k: number): void {
+    const steps = [...FAR_CHUNKS.map((n) => ({ wood: false, tier: tierOf("medium"), n })), ...takes(this.side.maxTexture).map((tier) => ({ wood: true, tier, n: 0 }))];
+    const step = steps[k];
+    if (!step) {
+      this.rungs = null;
       return this.end();
     }
-    const side = this.report.terrain!.side;
-    const hf = this.side.hf;
-    const world = s.world!;
-    // Not where the near store holds a chunk whole, which is drawn as its pieces, nor where the far feed has sent cells.
-    this.far ??= { k, spots: farSpots(world.dims, side / 2, side / 2, FAR_REACH, (chunk) => world.far.complete(chunk) || s.far.chunks.has(chunk)), bases: farBases(this.side.reg), placed: 0, draws: [], gpu: [] };
-    this.far.k = k;
-    const load = bare(tierOf("medium"), 0);
+    this.rungs = { k, wood: step.wood, draws: [], gpu: [] };
+    const load = { ...bare(step.tier, 0), noWood: !step.wood };
     this.step = { kind: "rung", load };
     this.apply(load);
-    this.fly = { x: side / 2, y: Math.max(hf.heightAt(side / 2, side / 2), hf.seaLevel) + FAR_UP, z: side / 2, yaw: 0, pitch: -0.02 };
-    this.placeFar(n);
+    this.middle(step.wood ? EYE_UP : FAR_UP, step.wood ? 0 : -0.02);
+    this.placeFar(step.n);
     [this.measuring, this.at] = [false, -1];
-    this.report.stage = `terrain far ${n}`;
+    this.report.stage = `terrain ${step.wood ? `wood ${step.tier.name}` : `far ${step.n}`}`;
   }
 
-  /** Bases in the first `n` of the far rungs' chunks, and none in the rest of those that had some. */
+  /** The camera over the map's middle, where the body stands, `up` metres over the ground. */
+  private middle(up: number, pitch: number): void {
+    const hf = this.side.hf;
+    const mid = ((hf.nx - 1) * hf.cell) / 2;
+    this.fly = { x: mid, y: Math.max(hf.heightAt(mid, mid), hf.seaLevel) + up, z: mid, yaw: 0, pitch };
+  }
+
+  /**
+   * Bases in the first `n` of the far bases' chunks, and none in the rest of those that had some: the castle, the pile
+   * and the huts by turns, handed to the session's far store as the far feed hands them, within FAR_REACH of the map's
+   * middle; not where the near store holds a chunk whole, which is drawn as its pieces, nor where the feed sent cells.
+   */
   private placeFar(n: number): void {
-    const f = this.far;
     const s = this.side.app.session;
-    if (!f || !s.world) return;
-    const want = Math.min(n, f.spots.length);
+    const world = s.world;
+    if (!world || (n === 0 && !this.bases)) return;
+    const mid = ((this.side.hf.nx - 1) * this.side.hf.cell) / 2;
+    const b = (this.bases ??= { spots: farSpots(world.dims, mid, mid, FAR_REACH, (chunk) => world.far.complete(chunk) || s.far.chunks.has(chunk)), cells: farBases(this.side.reg), placed: 0 });
+    const want = Math.min(n, b.spots.length);
     const none = new FarCells();
     const w = new BitWriter(1024);
     const r = new BitReader();
-    for (let i = Math.min(want, f.placed); i < Math.max(want, f.placed); i++) {
+    for (let i = Math.min(want, b.placed); i < Math.max(want, b.placed); i++) {
       w.reset();
-      writeFar(w, f.spots[i]!, i < want ? f.bases[i % f.bases.length]! : none);
+      writeFar(w, b.spots[i]!, i < want ? b.cells[i % b.cells.length]! : none);
       r.reset(w.bytes());
-      s.far.read(r, s.world.dims);
+      s.far.read(r, world.dims);
     }
-    f.placed = want;
+    b.placed = want;
   }
 
-  /** A frame of a far rung: the camera turning; settled, then measured for rungMs and judged as a ladder's rung. */
-  private farFrame(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number): boolean {
-    const f = this.far!;
+  /** A frame of a terrain rung: the camera turning; settled, then measured for rungMs and judged as a ladder's rung. */
+  private rungFrame(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number): boolean {
+    const g = this.rungs!;
     const frames = this.side.frames;
     frames?.tick(true);
     if (this.at < 0) this.at = now;
@@ -1140,27 +1192,27 @@ export class DeviceRun {
       this.settleMs = tenth(now - this.at);
       this.settled = this.still >= STILL;
       this.at = now;
-      for (const list of [...Object.values(this.samples), f.draws, f.gpu]) list.length = 0;
+      for (const list of [...Object.values(this.samples), g.draws, g.gpu]) list.length = 0;
       this.dropped = this.skipped = 0;
       frames?.take();
       return false;
     }
     this.sample(gap, buildMs, drawMs, drawCalls, p);
+    // The far bases' draws, or the far trees', rocks' and bushes'.
     let draws = 0;
-    for (let d = 0; d < p.drawCount; d++) if (p.drawFade[d]! > 0) draws++;
-    f.draws.push(draws);
-    f.gpu.push(...(frames?.take() ?? []).map((t) => t.ms));
+    for (let d = 0; d < p.drawCount; d++) if (g.wood ? p.drawBuffer[d]! >= FAR_NODE_BUFFERS && p.drawBuffer[d]! < FAR_NODE_BUFFERS * 2 : p.drawFade[d]! > 0) draws++;
+    g.draws.push(draws);
+    g.gpu.push(...(frames?.take() ?? []).map((t) => t.ms));
     if (now - this.at < this.timing.rungMs) return false;
     const phase = this.result();
     const { held, limit, invalid } = judgeRung(phase, this.side.display);
-    this.report.terrain!.far.push({
-      asked: FAR_CHUNKS[f.k]!, chunks: f.placed, held, limit, invalid, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median,
-      calls: phase.drawCalls, tris: phase.triangles, farDraws: spread(f.draws).median, gpuMs: frames?.on ? spread(f.gpu).median : null,
-    });
-    this.farRung(f.k + 1);
+    const frame = { held, limit, invalid, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, gpuMs: frames?.on ? spread(g.gpu).median : null };
+    const tier = this.step!.load.tier;
+    if (g.wood) this.report.terrain!.wood.push({ tier: tier.name, reach: tier.reach.trees, ...frame, nodeDraws: spread(g.draws).median });
+    else this.report.terrain!.far.push({ asked: FAR_CHUNKS[g.k]!, chunks: this.bases?.placed ?? 0, ...frame, farDraws: spread(g.draws).median });
+    this.terrainRung(g.k + 1);
     return true;
   }
-
   /** Begins the step under way afresh. */
   private show(): void {
     this.measuring = false;
@@ -1176,7 +1228,7 @@ export class DeviceRun {
     const assets = app.scene!.assets;
     app.scene!.things = [...(load.stress ? this.stressed() : []), ...(load.near + load.far > 0 ? rocks(assets.table, hf, load.near, load.far) : [])];
     bodies.n = load.bodies;
-    this.variant(load.oneRange === true, load.noShadows === true);
+    this.variant(load);
     if (load.pieces !== this.pieces) {
       this.asking = true;
       this.pieces = load.pieces;
@@ -1254,6 +1306,7 @@ export class DeviceRun {
     }
     this.soakMs += gap;
     this.side.app.controls.yaw = ((this.soakMs / 60000) * 2 * Math.PI) % (2 * Math.PI);
+    if (this.fly) this.fly.yaw = this.side.app.controls.yaw;
     const s = this.samples;
     s.frame.push(gap);
     s.build.push(buildMs);
@@ -1340,6 +1393,8 @@ export class DeviceRun {
 
   private end(): void {
     this.side.frames?.stop();
+    this.placeFar(0);
+    this.fly = null;
     this.apply(bare(tierOf(DEFAULT_TIER), 0));
     this.sync();
     this.stage = "done";
@@ -1531,6 +1586,7 @@ export class DeviceProbe {
       questions: () => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight]),
       frames: new FrameTimer(gl),
       display: this.report.idleFrameMs ?? 16.7,
+      terrainMap: this.offered.includes("terrain"),
     };
     this.run = new DeviceRun(this.report, this.side, this.mode ?? "quick", this.timing);
   }

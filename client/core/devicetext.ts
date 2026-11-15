@@ -1,7 +1,7 @@
 // What the device probe says: which device it takes itself to be on, what a renderer may count on there, the pages the
 // owner taps, and the report as lines of plain text, which the page shows and tools/device.ts prints.
 
-import type { Axis, DeviceReport, GpuInfo, Mode, PhaseReport } from "./device.ts";
+import type { Axis, DeviceReport, GpuInfo, Mode, PhaseReport, TerrainRung } from "./device.ts";
 import { AXES, FLIGHT_TIER_COUNT, LONG, MODES, RUNGS, formatsOf } from "./device.ts";
 import { FRAME_BLOCK_BYTES } from "./devicegpu.ts";
 import { FAR_FROM } from "./render/camera.ts";
@@ -134,8 +134,9 @@ function gpuLines(r: DeviceReport): string[] {
   if (lit !== null && shadowed !== null) out.push(`shadowed  LIT looking the sun's shadow up costs ${round3(shadowed - lit)} ms a megapixel more than LIT: ${round3((shadowed - lit) * mp)} ms over this screen's ${mp.toFixed(2)} megapixels; and a cascade of 100k triangles drawn 2,048 square ${depth ?? "?"} ms`);
   out.push(`full screen at ${q.screen.join("x")}, blended, the game's programs under noon's frame block: flat, lit and far on a wall 12 m off, lit hazed`);
   out.push("on one 500 m and 3.5 km off, surface with five maps 512 square; the sky looking 14 degrees up toward the sun, its table alone,");
-  out.push("then with the sun, moon and stars and 0, 1 and 2 cloud layers 1,024 square. depth into a 16-bit depth array; lit shadowed");
-  out.push("looks up medium's shadow in the 2,048 one; a draw is a uniform, a vertex array, a buffer, two pointers and the draw");
+  out.push("then with the sun, moon and stars and 0, 1 and 2 cloud layers 1,024 square; the sea 2 m deep from 10 m up, calm and with");
+  out.push("waves 256 square, and lit where it is. depth into a 16-bit depth array; lit shadowed looks up medium's shadow in the");
+  out.push("2,048 one; a draw is a uniform, a vertex array, a buffer, two pointers and the draw");
   if (q.lostDuring) out.push(`lost      the graphics context was lost during ${q.lostDuring}`);
   return out;
 }
@@ -161,19 +162,26 @@ function terrainLines(r: DeviceReport): string[] {
   out.push(`far       bases as blocks at medium in chunks within 2 km of the map's middle, the camera 30 m up turning once round in 2 s; a rung holds as the ladder's do`);
   const fw = [8, 8, 7, 6, 6, 6, 6, 6, 6, 5, 6];
   out.push(row(["chunks", "held", "median", "p95", "worst", "build", "draw", "calls", "tris", "far", "gpu"], fw));
+  const held = (g: TerrainRung): string => (g.invalid ? "invalid" : g.held ? "yes" : g.limit === "the GPU" ? "GPU" : g.limit === "our code" ? "ours" : g.limit);
   for (const g of t.far) {
-    const held = g.invalid ? "invalid" : g.held ? "yes" : g.limit === "the GPU" ? "GPU" : g.limit === "our code" ? "ours" : g.limit;
-    out.push(row([g.chunks === g.asked ? String(g.asked) : `${g.chunks}/${g.asked}`, held, String(g.frameMs.median), String(g.frameMs.p95), String(g.frameMs.worst), String(g.buildMs), String(g.drawMs), count(g.calls), count(g.tris), String(g.farDraws), g.gpuMs === null ? "-" : String(g.gpuMs)], fw));
+    out.push(row([g.chunks === g.asked ? String(g.asked) : `${g.chunks}/${g.asked}`, held(g), String(g.frameMs.median), String(g.frameMs.p95), String(g.frameMs.worst), String(g.buildMs), String(g.drawMs), count(g.calls), count(g.tris), String(g.farDraws), g.gpuMs === null ? "-" : String(g.gpuMs)], fw));
   }
   out.push("far: far draws a frame; gpu: the GPU's ms for a frame by timer query; held: GPU or ours for what took a frame that broke");
   for (const g of t.far.filter((x) => x.invalid)) out.push(`invalid   far ${g.asked}: ${g.invalid}`);
+  if (t.wood.length === 0) return out;
+  out.push("wood      the map's trees, rocks and bushes, 160 slots a chunk, to each tier's reach, from eye height at its middle, turning");
+  out.push(row(["tier", "held", "median", "p95", "worst", "build", "draw", "calls", "tris", "nodes", "gpu"], fw));
+  for (const g of t.wood) out.push(row([g.tier, held(g), String(g.frameMs.median), String(g.frameMs.p95), String(g.frameMs.worst), String(g.buildMs), String(g.drawMs), count(g.calls), count(g.tris), String(g.nodeDraws), g.gpuMs === null ? "-" : String(g.gpuMs)], fw));
+  out.push(`nodes: far node draws a frame; trees reach ${t.wood.map((g) => `${g.reach} m on ${g.tier}`).join(", ")}`);
+  for (const g of t.wood.filter((x) => x.invalid)) out.push(`invalid   wood ${g.tier}: ${g.invalid}`);
   return out;
 }
 
 function soakLines(r: DeviceReport): string[] {
   const s = r.soak!;
   const l = s.load;
-  const out = [`soak      ${s.tier}: ${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, turning once a minute (${s.from}), ${s.cascades > 0 ? `shadows on in ${s.cascades} cascades` : "no shadows"}; ${s.minutes.length} of ${s.minutesWanted} minutes`];
+  const what = s.wood ? "" : `${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, `;
+  const out = [`soak      ${s.tier}: ${what}turning once a minute (${s.from}), ${s.cascades > 0 ? `shadows on in ${s.cascades} cascades` : "no shadows"}; ${s.minutes.length} of ${s.minutesWanted} minutes`];
   const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5];
   out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss"], widths));
   for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed)], widths));
@@ -240,7 +248,8 @@ export function deviceTable(r: DeviceReport): string[] {
     out.push("gpu: the GPU's ms a frame by timer query, - where there are none.");
     out.push("calls: WebGL draws. mat: draws with materials. drop, skip: what the frame left out.");
     out.push("MB, fail, miss: fetched, fetches failed and snapshots missed while the phase settled and ran.");
-    out.push("crowd1: the crowd in one depth range on a tier of two; crowd0: with no shadows on a tier that casts; each to set against crowd");
+    out.push("crowd1: the crowd in one depth range on a tier of two; crowd0: with no shadows on a tier that casts, or where the GPU is");
+    out.push("timed, with shadows and none by turns, frame by frame; each to set against crowd");
     for (const one of r.phases.filter((p) => p.scene === "crowd1")) {
       const two = r.phases.find((p) => p.tier === one.tier && p.scene === "crowd");
       if (two) out.push(`ranges    ${one.tier}, two against one in the crowd: frames ${two.frameMs.median} against ${one.frameMs.median} ms, 95th ${two.frameMs.p95} against ${one.frameMs.p95}; our code ${tenth(two.buildMs.median + two.drawMs.median)} against ${tenth(one.buildMs.median + one.drawMs.median)} ms; ${count(two.drawCalls)} against ${count(one.drawCalls)} draws`);
@@ -249,7 +258,9 @@ export function deviceTable(r: DeviceReport): string[] {
     for (const off of r.phases.filter((p) => p.scene === "crowd0")) {
       const on = r.phases.find((p) => p.tier === off.tier && p.scene === "crowd");
       if (!on) continue;
-      const gpu = on.gpuMs != null && off.gpuMs != null ? `the GPU ${on.gpuMs} against ${off.gpuMs} ms a frame, ${signed(on.gpuMs - off.gpuMs)} ms by timer query` : "the GPU's time not known here (no timer queries)";
+      const turns = off.gpuMs != null && off.gpuOff != null;
+      const [a, b] = turns ? [off.gpuMs!, off.gpuOff!] : [on.gpuMs, off.gpuMs];
+      const gpu = a != null && b != null ? `the GPU ${a} against ${b} ms a frame, ${signed(a - b)} ms by timer query${turns ? ", on and off by turns" : ""}` : "the GPU's time not known here (no timer queries)";
       out.push(`shadows   ${off.tier}, on against off in the crowd: ${gpu}; frames ${on.frameMs.median} against ${off.frameMs.median} ms, 95th ${on.frameMs.p95} against ${off.frameMs.p95}; our code ${tenth(on.buildMs.median + on.drawMs.median)} against ${tenth(off.buildMs.median + off.drawMs.median)} ms; ${count(on.drawCalls)} against ${count(off.drawCalls)} draws`);
     }
   }
