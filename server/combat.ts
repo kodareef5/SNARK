@@ -164,6 +164,7 @@ export class Combat {
   private readonly near = new Int32Array(MAX_NEAR);
   private readonly nearT = new Float32Array(MAX_NEAR);
   private readonly past = new Past();
+  private readonly rolls: Roll[] = [];
   private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, silenced: false };
   /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
   private readonly dose: number;
@@ -229,8 +230,6 @@ export class Combat {
     }
     if (this.rolls.length > 0) this.rolling();
   }
-
-  private readonly rolls: Roll[] = [];
 
   /** Flyer `e` began a barrel roll in the step just taken: its roll's damage goes once to each body it passes for ROLL_TICKS. */
   roll(e: number): void {

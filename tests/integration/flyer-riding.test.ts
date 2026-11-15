@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { AnimState, CUE_LAND, CUE_ROLL, CUE_TAKEOFF } from "../../shared/anim/pose.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_BRAKE, BTN_JUMP, BTN_PRIMARY, BTN_ROLL, BTN_SPRINT, BTN_USE, MF_NO_JUMP, MF_NO_SPRINT, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
+import { BTN_BRAKE, BTN_JUMP, BTN_PRIMARY, BTN_ROLL, BTN_USE, MF_NO_JUMP, MF_NO_SPRINT, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
