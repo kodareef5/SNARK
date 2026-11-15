@@ -2,11 +2,22 @@
 // Carryable By Humans): its tribe's, in both arms, nothing else in the hands, set down whole whatever ends it.
 
 import { expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { App } from "../../client/core/app.ts";
+import { BONE_FLOATS } from "../../client/core/render/packet.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
+import { Pose } from "../../shared/anim/clip.ts";
+import { handsAt } from "../../shared/anim/hold.ts";
+import { HUMAN } from "../../shared/anim/human.ts";
+import { Solved, solve } from "../../shared/anim/skeleton.ts";
+import { PROVING_POOL } from "../../shared/world/proving.ts";
+import { corePack } from "../fixtures/pack.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { STANCE_AGGRESSIVE } from "../../server/behavior.ts";
 import { THROW_SPEED } from "../../server/carry.ts";
-import { CUE_HELD } from "../../shared/anim/pose.ts";
+import { CUE_HELD, humanPose } from "../../shared/anim/pose.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CARRY_DROP, CARRY_PICK_UP, CARRY_THROW, CMD_CARRY, CMD_MOVE, CMD_SELECT, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK } from "../../shared/net/protocol.ts";
 import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_SPRINT, BTN_USE, MF_ROOTED, MODE_SWIM, STANCE_PRONE, stanceEye } from "../../shared/sim/character.ts";
@@ -401,7 +412,140 @@ test("every way a carry ends leaves the creature free and whole where it fits: s
     h.host.survival.hurt(me, 1e6, 0);
     h.run(500);
     expect(me.dead).toBe(true);
-    h.say(ada, "respawn");
   });
-  void MODE_SWIM;
+});
+
+test("her leaving, wading into deep water and the server stopping set it down too, and the save has it standing where it was set down", () => {
+  const dir = mkdtempSync(join(tmpdir(), "snark-carry-"));
+  const h = new Harness({}, 1, 60, { dev: true, dbPath: join(dir, "world.db") });
+  let ada = h.join("ada");
+  h.run(500);
+  h.say(ada, "enablecheats");
+  const g = flatGround(h, 40, 30);
+  const at = { x: g.x + 12, y: g.y, z: g.z + 10 };
+  h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
+  const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
+  const ents = h.world.ents;
+  const { e, rec } = creature(h, me, at.x, at.z + 1.6);
+  look(h, ada, e);
+  expect(carry(h, ada, CARRY_PICK_UP, e)).toBe(RESULT_OK);
+  // She drops the connection: it is set down at once, while her body lingers, and she comes back to empty arms.
+  ada.close();
+  h.run(300);
+  free(h, e, rec);
+  ada = h.join("ada");
+  h.run(800);
+  expect([ada.state, h.host.carry.holding(h.client(ada)!)]).toEqual(["active", -1]);
+  // On the pool's shore she picks it up and walks into the water; once she swims it is in the water beside her.
+  const sea = h.world.hf.seaLevel;
+  // Two metres up from the water's edge east of the pool's middle.
+  let edge = PROVING_POOL.x;
+  while (h.world.hf.heightAt(edge, PROVING_POOL.z) < sea + 0.3) edge += 0.25;
+  const shore = { x: edge + 2, z: PROVING_POOL.z };
+  h.say(ada, "enablecheats");
+  h.say(ada, `tp ${shore.x.toFixed(3)} ${shore.z.toFixed(3)}`);
+  ents.setPosition(e, shore.x, h.world.hf.heightAt(shore.x, shore.z - 1.6), shore.z - 1.6);
+  h.run(300);
+  look(h, ada, e);
+  expect(carry(h, ada, CARRY_PICK_UP, e)).toBe(RESULT_OK);
+  const pilot = h.pilots[h.sessions.indexOf(ada)]!;
+  pilot.yaw = -Math.PI / 2;
+  pilot.pitch = 0;
+  pilot.moveZ = 127;
+  for (let k = 0; k < 60 && ents.mode[h.ent(ada)] !== MODE_SWIM; k++) h.run(100);
+  pilot.moveZ = 0;
+  expect(ents.mode[h.ent(ada)]).toBe(MODE_SWIM);
+  h.run(300);
+  free(h, e, rec);
+  expect(ents.y[e]!).toBeLessThan(sea + 0.5);
+  // Back on land, held when the server stops: the save has it on the ground in front of her, not at her palms.
+  h.say(ada, `tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
+  ents.setPosition(e, at.x, at.y, at.z + 1.6);
+  h.run(1500);
+  look(h, ada, e);
+  expect(carry(h, ada, CARRY_PICK_UP, e)).toBe(RESULT_OK);
+  h.run(300);
+  expect(ents.y[e]! - at.y).toBeGreaterThan(0.5);
+  h.host.shutdown();
+  expect(h.host.carry.held(e)).toBe(false);
+  expect(Math.abs(rec.y - at.y)).toBeLessThan(0.05);
+  expect(capsuleFree(h.world, rec.x, rec.y, rec.z, h.reg.bodyRadius[rec.kind]!, h.reg.bodyHeight[rec.kind]!)).toBe(true);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("in the whole client: she sees it at her palms as she runs with it, from her prediction; the prompt says what the keys do, and the button that would strike throws it", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const app = new App(h.join("ada", {}, { manual: true }), h.reg, corePack());
+  let packet = null as ReturnType<App["frame"]>;
+  const run = (ms: number): void => h.run(ms, (now) => void (packet = app.frame(now, 1280, 720)));
+  run(600);
+  const s = app.session;
+  s.text("enablecheats");
+  run(400);
+  const g = flatGround(h, 60, 30);
+  const at = { x: g.x + 10, z: g.z + 15 };
+  s.text(`tp ${at.x.toFixed(3)} ${at.z.toFixed(3)}`);
+  run(400);
+  const me = h.host.records.byPid.get(h.client(s)!.pid)!;
+  const ents = h.world.ents;
+  const { e } = creature(h, me, at.x, at.z + 1.6);
+  const eye = s.own.y + stanceEye(h.reg.move[s.ownKind]!, 0);
+  app.controls.yaw = Math.atan2(ents.x[e]! - s.own.x, ents.z[e]! - s.own.z);
+  app.controls.pitch = Math.atan2(ents.y[e]! + 0.3 - eye, Math.hypot(ents.x[e]! - s.own.x, ents.z[e]! - s.own.z));
+  run(400);
+  expect(app.hud.prompt.startsWith("E  pick up")).toBe(true);
+  const before = { moved: s.stats.corrections, state: s.stats.stateCorrections };
+  app.key("KeyE", true);
+  run(60);
+  app.key("KeyE", false);
+  run(500);
+  expect([app.holding, app.hud.prompt]).toEqual([e, "E  set down   click  throw"]);
+  // She runs east with it.
+  app.controls.yaw = Math.PI / 2;
+  app.controls.pitch = 0;
+  app.controls.key("KeyW", true);
+  app.controls.key("ShiftLeft", true);
+  run(2000);
+  // Where the bird's hold_point is drawn, and where her palms are as her own body is drawn from her prediction.
+  const p = packet!;
+  const rig = h.world.anims[ents.kind[e]!]!.rig;
+  const socket = rig.sockets.get("hold_point")!;
+  const firsts = new Uint16Array(p.transient.buffer, p.transient.byteOffset, p.transient.byteLength >> 1);
+  let drawn: number[] | null = null;
+  for (let i = 0; i < p.transientCount && !drawn; i++) {
+    if (p.transientIds[i] !== e) continue;
+    const o = (firsts[i * 10 + 6]! + socket.bone) * BONE_FLOATS;
+    const [vx, vy, vz] = [rig.rest[socket.bone * 3]! + socket.x, rig.rest[socket.bone * 3 + 1]! + socket.y, rig.rest[socket.bone * 3 + 2]! + socket.z];
+    const b = p.bones;
+    drawn = [b[o]! * vx + b[o + 1]! * vy + b[o + 2]! * vz + b[o + 3]! + p.camX, b[o + 4]! * vx + b[o + 5]! * vy + b[o + 6]! * vz + b[o + 7]! + p.camY, b[o + 8]! * vx + b[o + 9]! * vy + b[o + 10]! * vz + b[o + 11]! + p.camZ];
+  }
+  expect(drawn).not.toBeNull();
+  const own = app.scene!.own!;
+  const pose = new Pose(HUMAN.bones);
+  const solved = new Solved(HUMAN.bones);
+  humanPose(h.world.anim, own.state, own.tick, pose);
+  solve(HUMAN, pose, solved);
+  const palms = [0, 0, 0];
+  handsAt(solved, palms);
+  const [sn, cs] = [Math.sin(own.yaw), Math.cos(own.yaw)];
+  const want = [own.x + cs * palms[0]! + sn * palms[2]!, own.y + palms[1]!, own.z + cs * palms[2]! - sn * palms[0]!];
+  expect(Math.hypot(drawn![0]! - want[0]!, drawn![1]! - want[1]!, drawn![2]! - want[2]!)).toBeLessThan(0.1);
+  // The server's own copy of the bird is behind her prediction by the time it takes to hear of her steps.
+  const r = new RemoteSample();
+  s.sampleRemote(r);
+  const k = Array.from(r.id.subarray(0, r.count)).indexOf(e);
+  expect(Math.hypot(r.x[k]! - drawn![0]!, r.z[k]! - drawn![2]!)).toBeGreaterThan(0.3);
+  expect([s.stats.corrections - before.moved, s.stats.stateCorrections - before.state]).toEqual([0, 0]);
+  // The left button throws it east, and she strikes nothing.
+  app.controls.key("KeyW", false);
+  app.controls.key("ShiftLeft", false);
+  run(500);
+  const x0 = ents.x[h.ent(s)]!;
+  app.mouseButton(0, true);
+  run(60);
+  app.mouseButton(0, false);
+  run(2000);
+  expect([app.holding, h.host.carry.thrown, ents.act[h.ent(s)]]).toEqual([-1, 1, ACT_NONE]);
+  expect(ents.x[e]! - x0).toBeGreaterThan(1.5);
+  expect([s.stats.corrections - before.moved, s.stats.stateCorrections - before.state]).toEqual([0, 0]);
 });
