@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { bodySeed } from "../client/core/render/scene.ts";
-import { rayCreature } from "../shared/anim/creature.ts";
+import { CreatureAnim, rayCreature } from "../shared/anim/creature.ts";
 import { B_FOOT_L, B_HAND_L, B_HEAD, B_HIPS, B_LOWER_ARM_L, B_LOWER_LEG_L, B_NECK, B_SHOULDER_L, B_TOE_L, B_UPPER_ARM_L, B_UPPER_LEG_L, HUMAN, ZONE_COUNT, ZONE_NAMES } from "../shared/anim/human.ts";
 import { LOOK_BYTES, LOOK_SEX, SEX_LABELS, defaultLook } from "../shared/anim/look.ts";
 import { AnimState } from "../shared/anim/pose.ts";
@@ -188,6 +188,7 @@ async function measureCreature(id: string): Promise<void> {
   if (kind === undefined) throw new Error(`no species is drawn as ${id}`);
   const rig = buildRigs(pack.header.rigs, pack.clips).get(id);
   if (!rig) throw new Error(`the pack has no rig ${id}`);
+  const plays = new CreatureAnim(rig, reg.runAt[kind]!, reg.move[kind]?.swimSpeed ?? 0);
   const zoneOf = new Uint8Array(rig.bones);
   for (let b = 0; b < rig.bones; b++) {
     for (let up = b; up >= 0 && zoneOf[b] === 0; up = rig.parent[up]!) {
@@ -230,7 +231,7 @@ async function measureCreature(id: string): Promise<void> {
           const at = py * SIZE + px;
           const isBody = raster.pickKind[at] === PICK_ENTITY && raster.pickId[at] === rid && raster.pickBone[at]! > 0;
           cam.ray((px + 0.5) / SIZE, (py + 0.5) / SIZE, dir);
-          const hit = rayCreature(rig, st, tick, reg.runAt[kind]!, bx, by, bz, yawUnits, cam.x, cam.y, cam.z, dir[0]!, dir[1]!, dir[2]!, far * 2);
+          const hit = rayCreature(plays, st, tick, bx, by, bz, yawUnits, cam.x, cam.y, cam.z, dir[0]!, dir[1]!, dir[2]!, far * 2);
           if (!isBody) {
             if (hit !== 0 && raster.pickKind[at] !== PICK_STRUCTURE) phantom++;
             continue;

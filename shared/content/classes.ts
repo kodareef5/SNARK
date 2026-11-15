@@ -364,7 +364,9 @@ row("species/creature", "species", SPECIES, {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
     clip: { asset: "clip", need: "must", keys: ["idle", "walk", "run", "attack", "death"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/idle", "rest"] },
-    move: { asset: "clip", need: "may", keys: ["jump", "swim", "eat", "sleep"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/walk", "{mesh}/idle", "rest"] },
+    // Without one, what it does besides goes on.
+    move: { asset: "clip", need: "may", keys: ["swim", "swim_idle", "fall", "land", "turn", "startled", "flinch", "call", "torpor_eat", "held", "carried", "jump"], when: "skeleton", from: "{mesh}/{key}", fallback: ["none"] },
+    torpor: { asset: "clip", need: "may", keys: ["torpor_in", "torpor_idle", "torpor_out"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/death", "rest"] },
     icon,
     sound: { asset: "sound", need: "may", keys: "any", from: "{id}/sound/{key}", fallback: ["none"] },
   },

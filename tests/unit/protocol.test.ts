@@ -4,6 +4,8 @@ import { TICK_DT, WORLD_MAX_Y } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { readBody, writeBody } from "../../shared/net/protocol.ts";
 import { EntityView, MAX_VIEW, SentView, readViewDelta, writeViewDelta, type Looks } from "../../shared/net/view.ts";
+import { AnimState, CUE_BITS, CUE_TORPOR, LAYER_EAT } from "../../shared/anim/pose.ts";
+import { ACT_SWING, HOLD_HANDS } from "../../shared/sim/weapon.ts";
 import { Rng } from "../../shared/rng.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, MODE_GHOST, MODE_NONE, STAMINA_UNITS, stepBody } from "../../shared/sim/character.ts";
 import { CLOCK_HOUR_TICKS, DAY_TICKS, UNIT_CLOCK, cycleTicks, dayTick, formatHour, hourOfDay, isDay, offsetForHour } from "../../shared/sim/clock.ts";
@@ -223,4 +225,52 @@ test("whose an entity is, what it sits on and how old it is travel when it appea
   expect(belongs(held, 0)).toEqual([5, 0, 0, 0]);
   expect(held.name[0]).toBe("Rex");
   expect(sent.rev[0]).toBe(1);
+});
+
+test("a creature's cues go with its action: sent when they change, the action again with them, and nothing more for a body whose cues stay as they were", () => {
+  const w = new BitWriter(1 << 12);
+  const r = new BitReader();
+  const colors = new Uint8Array(6);
+  const looks: Looks = { level: new Uint16Array(16), colors: new Uint8Array(96), name: new Array<string>(16).fill(""), look: new Array<Uint8Array | null>(16).fill(null), gear: new Array<Uint16Array | null>(16).fill(null), team: new Uint32Array(16), seat: new Uint32Array(16), span: new Uint32Array(16), grown: new Uint32Array(16) };
+  const st = new AnimState();
+  st.speed = 3;
+  const anim = st.pack();
+  st.out = true;
+  st.cue = CUE_TORPOR;
+  st.cueStart = 201;
+  st.layer = LAYER_EAT;
+  st.layerStart = 7;
+  const knocked = st.packCue();
+  const view = (qx: number, word: number, cue: number): EntityView => {
+    const v = new EntityView();
+    v.push(4, 1, 7, qx, 200, 300, 5, 1, word, 0, cue);
+    v.appear(0, 1, colors, 0, "", null, null);
+    return v;
+  };
+  /** Sends `cur` against `sent`, which the client holds as `held`; returns what each then holds, and the bits it took. */
+  const send = (cur: EntityView, sent: SentView | null, held: EntityView | null): [SentView, EntityView, number] => {
+    const next = new SentView();
+    const got = new EntityView();
+    w.reset();
+    writeViewDelta(w, sent, cur, next, 1 << 20, 0, looks);
+    const bits = w.pos;
+    r.reset(w.bytes());
+    expect(readViewDelta(r, held, got)).toBe(true);
+    return [next, got, bits];
+  };
+  const [plainSent, plainHeld, plainCreate] = send(view(100, anim, 0), null, null);
+  const [sent, held, create] = send(view(100, anim, knocked), null, null);
+  // Appearing, a body without cues says so in a bit, and one with them sends them whole.
+  expect([held.cue[0], create - plainCreate, plainHeld.cue[0]]).toEqual([knocked, CUE_BITS, 0]);
+  // Moving with its cues as they were costs what moving without any does.
+  const [, movedHeld, moved] = send(view(101, anim, knocked), sent, held);
+  const [, , plainMoved] = send(view(101, anim, 0), plainSent, plainHeld);
+  expect([moved, movedHeld.cue[0]]).toEqual([plainMoved, knocked]);
+  // A change of cues alone sends the action again with them: what a change of the action alone sends, and the cues.
+  st.out = false;
+  const woke = st.packCue();
+  const [, wokeHeld, change] = send(view(100, anim, woke), sent, held);
+  st.setAction(ACT_SWING, HOLD_HANDS, 9);
+  const [, actHeld, act] = send(view(100, st.pack(), knocked), sent, held);
+  expect([wokeHeld.cue[0], wokeHeld.anim[0], actHeld.cue[0], change - act]).toEqual([woke, anim, knocked, CUE_BITS]);
 });

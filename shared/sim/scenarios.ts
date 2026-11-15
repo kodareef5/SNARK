@@ -4,17 +4,16 @@
 
 import { Pose } from "../anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../anim/human.ts";
-import { AnimState, HumanAnim, humanPose } from "../anim/pose.ts";
+import { AnimState, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TORPOR, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
 import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "./weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../anim/skeleton.ts";
-import { creaturePose, rayCreature } from "../anim/creature.ts";
-import type { Rig } from "../anim/rigs.ts";
+import { creaturePose, rayCreature, type CreatureAnim } from "../anim/creature.ts";
 import { shapeHalf, type Def, type ShapeDef } from "../content/defs.ts";
 import { compileContent, type Registry } from "../content/registry.ts";
 import { deriveRegistry, type Tuning } from "../content/tuning.ts";
 import { TICK_DT } from "../coords.ts";
 import { Rng } from "../rng.ts";
-import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, stepBody } from "./character.ts";
+import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, MODE_SWIM, MODE_WALK, stepBody } from "./character.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world/proving.ts";
 import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
@@ -322,8 +321,12 @@ export function snapHash(reg: Registry): string {
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
 
-/** Every creature at every third speed, striking and not, at whole and fractional ticks. Hashes its bone transforms and what two rays hit. */
-export function creatureHash(rigs: Iterable<Rig>): string {
+/**
+ * Every creature at every third speed, striking and not, at whole and fractional ticks. Then each through a knock-out,
+ * fed twice and waking; a flinch over a walk and over a strike; a startle into a run, a fall and its landing, swimming, and
+ * standing long enough for its idles. Hashes its bone transforms and what two rays hit.
+ */
+export function creatureHash(anims: Iterable<CreatureAnim>): string {
   const st = new AnimState();
   let h1 = 0x811c9dc5;
   let h2 = 0x9747b28c;
@@ -336,9 +339,27 @@ export function creatureHash(rigs: Iterable<Rig>): string {
   const f = new Float32Array(2);
   const fb = new Uint8Array(f.buffer);
   let n = 0;
-  for (const rig of rigs) {
+  for (const a of anims) {
+    const rig = a.rig;
     const rot = new Uint8Array(rig.solved.rot.buffer);
     const pos = new Uint8Array(rig.solved.pos.buffer);
+    const pose = (tick: number, rays: boolean): void => {
+      creaturePose(a, st, tick, rig.a);
+      solve(rig, rig.a, rig.solved);
+      mix(rot);
+      mix(pos);
+      // One ray from the side at mid height, and one along its length from the front.
+      if (rays) {
+        for (const [ox, oy, oz, dx, dz] of [[-20, rig.mid, 0.3, 1, 0], [0.05, rig.mid * 1.2, 30, 0, -1]] as const) {
+          f[0] = rayCreature(a, st, tick, 0, 0, 0, (n * 4099) & 0xffff, ox, oy, oz, dx, 0, dz, 60);
+          f[1] = zoneHit.t;
+          mix(fb);
+        }
+      }
+      n++;
+    };
+    st.unpack(0);
+    st.mode = MODE_WALK;
     for (let speed = 0; speed <= 15; speed += 3) {
       for (const strike of [false, true]) {
         for (let k = 0; k < 6; k++) {
@@ -346,19 +367,64 @@ export function creatureHash(rigs: Iterable<Rig>): string {
           st.speed = speed;
           st.seed = (n * 37) % 1024;
           st.setAction(strike ? ACT_SWING : ACT_NONE, HOLD_HANDS, Math.floor(tick) - k * 4);
-          creaturePose(rig, st, tick, 4, rig.a);
-          solve(rig, rig.a, rig.solved);
-          mix(rot);
-          mix(pos);
-          // One ray from the side at mid height, and one along its length from the front.
-          for (const [ox, oy, oz, dx, dz] of [[-20, rig.mid, 0.3, 1, 0], [0.05, rig.mid * 1.2, 30, 0, -1]] as const) {
-            f[0] = rayCreature(rig, st, tick, 4, 0, 0, 0, (n * 4099) & 0xffff, ox, oy, oz, dx, 0, dz, 60);
-            f[1] = zoneHit.t;
-            mix(fb);
-          }
-          n++;
+          pose(tick, true);
         }
       }
+    }
+    // Knocked out at 400 while walking, fed at 470 and 520, awake at 900. Each cue is cleared 240 ticks on, as the server does.
+    st.unpack(0);
+    st.mode = MODE_WALK;
+    st.seed = 211;
+    for (let tick = 397; tick < 1000; tick += tick < 480 || tick > 890 ? 1.25 : 9.5) {
+      st.out = tick >= 400 && tick < 900;
+      st.speed = tick < 400 ? 2 : 0;
+      const start = tick >= 900 ? 900 : 400;
+      st.cue = tick >= 400 && tick < start + 240 ? CUE_TORPOR : CUE_NONE;
+      st.cueStart = start & 255;
+      const fed = tick >= 520 ? 520 : 470;
+      st.layer = tick >= 470 && tick < fed + 240 ? LAYER_EAT : LAYER_NONE;
+      st.layerStart = fed & 255;
+      pose(tick, tick > 450 && tick < 460);
+    }
+    // A flinch over a walk, and over a strike; a startle into a run; a fall, and its landing; afloat, still and swimming.
+    st.unpack(0);
+    st.mode = MODE_WALK;
+    st.seed = 5;
+    st.layer = LAYER_FLINCH;
+    st.layerStart = 1200 & 255;
+    st.speed = 2;
+    for (let tick = 1199; tick < 1220; tick += 0.75) pose(tick, false);
+    st.speed = 0;
+    st.setAction(ACT_SWING, HOLD_HANDS, 1201);
+    for (let tick = 1199; tick < 1220; tick += 0.75) pose(tick, tick === 1205);
+    st.unpack(0);
+    st.mode = MODE_WALK;
+    st.cue = CUE_STARTLE;
+    st.cueStart = 1300 & 255;
+    for (let tick = 1299; tick < 1335; tick += 1.25) {
+      st.speed = tick < 1302 ? 0 : 2;
+      pose(tick, false);
+    }
+    st.unpack(0);
+    st.mode = MODE_WALK;
+    st.grounded = false;
+    for (let tick = 1400; tick < 1412; tick += 1.5) pose(tick, false);
+    st.grounded = true;
+    st.cue = CUE_LAND;
+    st.cueStart = 1412 & 255;
+    for (let tick = 1412; tick < 1440; tick += 1.5) pose(tick, false);
+    st.unpack(0);
+    st.mode = MODE_SWIM;
+    for (let tick = 1500; tick < 1560; tick += 3.5) {
+      st.speed = tick < 1530 ? 0 : 4;
+      pose(tick, false);
+    }
+    // Standing for a minute: every turn of its idle, a variant or not, for three bodies.
+    st.unpack(0);
+    st.mode = MODE_WALK;
+    for (const seed of [0, 333, 777]) {
+      st.seed = seed;
+      for (let tick = 2000; tick < 3800; tick += 11.5) pose(tick, false);
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
