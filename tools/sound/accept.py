@@ -89,9 +89,10 @@ def main():
                 evs = meas[slot][p["take"]]["events"]
                 e = evs[p["event"]] if "event" in p else max(evs, key=lambda e: e["peak_db"])
                 start, end = e["start"], e["end"]
-            rel, entry, rr = store(home, slot, src, rec, start, end, spec.get("loop", False))
+            rel = f"takes/{slot}/{Path(rec['file']).stem}-{int(round(start * 1000)):05d}.wav"
             if any(t["file"] == rel for t in entries):
-                raise SystemExit(f"{rel} is accepted already")
+                continue  # accepted already: picks may be given again
+            rel, entry, rr = store(home, slot, src, rec, start, end, spec.get("loop", False))
             keep_recipes[rel] = rr
             entries.append(entry)
         if entries:

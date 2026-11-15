@@ -8,7 +8,7 @@ Needs review.py's measures (tools/sound/.work/<asset>/measures.json). For each s
 - any other slot gets its best events: within the length its kind allows, no quieter than 30 dB under full scale nor
   15 dB under its file's loudest, from
   files that are not clipped and have no noisy floor (impacts and steps also none with a steady tone under them), one
-  from each file first, loudest first, then a second from each. `keep` in the slot says how many (default by kind).
+  from each file first, loudest first, then a second from each (and a third where a slot keeps six or more). `keep` in the slot says how many (default by kind).
 A slot nothing fits takes its loudest events up to 8 s long (or its prompt's length), a steady tone allowed, and
 softer ones from a clean file. The picks are measured, not heard: the owner listens before anything merges.
 """
@@ -62,7 +62,8 @@ def pick_slot(slot, spec, cands):
     events.sort(key=lambda c: -c[0])
     n = spec.get("keep", KEEP.get(kind, 4))
     chosen, used = [], {}
-    for rnd in (1, 2):
+    # A sound heard in a crowd wants many takes: a third from each file before the picks run out.
+    for rnd in (1, 2, 3) if n >= 6 else (1, 2):
         for c in events:
             if len(chosen) >= n:
                 break

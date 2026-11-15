@@ -778,6 +778,231 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/call/moss-pt-6921-03225.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6920",
+      "prompt": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6921,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6921.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6f06835631550862121115395a602eed7655719b99098b6197c4298b1150ea71",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "dbbd8989c2bc4be49f191edad93cc27d1cb7631802145a5a2cdc801ab171ef7e",
+      "cut": {
+        "source_file": "moss-pt-6921.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          152400,
+          234240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6921-00290.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6920",
+      "prompt": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6921,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6921.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "13670dedf03f16549b6da26bc508a26754895a42202f9114b0da3df459cec689",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "dbbd8989c2bc4be49f191edad93cc27d1cb7631802145a5a2cdc801ab171ef7e",
+      "cut": {
+        "source_file": "moss-pt-6921.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          11520,
+          73680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-6921-05340.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "v2-6920",
+      "prompt": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6921,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6921.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large hen clucks softly and contentedly to itself, low throaty murmurs. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "80a53c3f5d5e9ac649de22eddc3aa4857f5e3beaa8ccae281f91d4680d3b1684",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "dbbd8989c2bc4be49f191edad93cc27d1cb7631802145a5a2cdc801ab171ef7e",
+      "cut": {
+        "source_file": "moss-pt-6921.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          253920,
+          381360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/startled/stable-0001-00000.wav": {
       "model": "stable",
       "model_name": "Stable Audio 3.0 Small SFX",
@@ -1298,6 +1523,456 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/startled/moss-pt-6931-05990.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6930",
+      "prompt": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry.",
+      "negative_prompt": "",
+      "seed": 6931,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6931.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e5a919d3a666e02f4e403037f3a92cbc7f7200592a376f09784f2279f465a492",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "57021ecdbb92221457d4669511c2815a09b3c9be790298ec86547bdfee38fcdd",
+      "cut": {
+        "source_file": "moss-pt-6931.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          285120,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6930-04575.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6930",
+      "prompt": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry.",
+      "negative_prompt": "",
+      "seed": 6930,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6930.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e81edaecc157bca0e498ed3a99fe3a6198936ff797635d27d8bd37ce3a099ee6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "9500f705d1e27b50ecd3c2c9a2cd2986042f01fd1204a241f88254fcaa6df976",
+      "cut": {
+        "source_file": "moss-pt-6930.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          217200,
+          283920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6931-03195.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6930",
+      "prompt": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry.",
+      "negative_prompt": "",
+      "seed": 6931,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6931.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fc78e62819aa4c06917a793fb9fa90c00accf76c88fc1763cf614232e591f141",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "57021ecdbb92221457d4669511c2815a09b3c9be790298ec86547bdfee38fcdd",
+      "cut": {
+        "source_file": "moss-pt-6931.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          150960,
+          248640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6930-02365.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6930",
+      "prompt": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry.",
+      "negative_prompt": "",
+      "seed": 6930,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6930.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2cec63ec472f1ed8f661b3f3142b862547c3e208272194d4dcd07e8a517cc869",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "9500f705d1e27b50ecd3c2c9a2cd2986042f01fd1204a241f88254fcaa6df976",
+      "cut": {
+        "source_file": "moss-pt-6930.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          111120,
+          180960
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6931-00280.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6930",
+      "prompt": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry.",
+      "negative_prompt": "",
+      "seed": 6931,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6931.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1e23be314a5a6a1a04ab6e68406fb541c37eb211b3682bd410ae073175c2895e",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "57021ecdbb92221457d4669511c2815a09b3c9be790298ec86547bdfee38fcdd",
+      "cut": {
+        "source_file": "moss-pt-6931.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          11040,
+          107760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-6930-06405.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "v2-6930",
+      "prompt": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry.",
+      "negative_prompt": "",
+      "seed": 6930,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6930.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "43305bd17d664e994fe3faed22b07d9f4e4e03909e647e96923f041e6ed02721",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "9500f705d1e27b50ecd3c2c9a2cd2986042f01fd1204a241f88254fcaa6df976",
+      "cut": {
+        "source_file": "moss-pt-6930.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          305040,
+          366000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/hurt/stable-0703-00234.wav": {
       "model": "stable",
       "model_name": "Stable Audio 3.0 Small SFX",
@@ -1788,6 +2463,456 @@
         "frames": [
           158160,
           189360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6941-04955.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6940",
+      "prompt": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6941,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6941.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e11eabf255b56a7b28f3efd0d499fb1970fd1a0742e037b5a2dc254079822ed6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d4a5abce2fa43334d040745e6bfda831d3b5ea0ca75d17ac650b6adc758a7172",
+      "cut": {
+        "source_file": "moss-pt-6941.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          235440,
+          276240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6940-00130.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6940",
+      "prompt": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6940,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6940.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ccfcafae20e0d033689b88e1947f2fb478765de434c06ab096f949620af6586d",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8c6d4e5a8f2201b80dc242d11748877337f463c91849c007cc19fbd957025c7b",
+      "cut": {
+        "source_file": "moss-pt-6940.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          3840,
+          42240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6941-06955.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6940",
+      "prompt": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6941,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6941.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9e9d0e113796483fcef4c488f525a172d0a5657f1565267416057bbc003eed06",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d4a5abce2fa43334d040745e6bfda831d3b5ea0ca75d17ac650b6adc758a7172",
+      "cut": {
+        "source_file": "moss-pt-6941.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          331440,
+          384000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6940-04840.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6940",
+      "prompt": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6940,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6940.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b45366911c0431b8ecd9542e1222747cdcc469680cc34d73c3778c2d9e078db5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8c6d4e5a8f2201b80dc242d11748877337f463c91849c007cc19fbd957025c7b",
+      "cut": {
+        "source_file": "moss-pt-6940.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          229920,
+          359040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6941-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6940",
+      "prompt": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6941,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6941.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "fb35ceca838110d705e500f4d50214f02d6dbdd5dde25e158d76d3ae9a0e0655",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d4a5abce2fa43334d040745e6bfda831d3b5ea0ca75d17ac650b6adc758a7172",
+      "cut": {
+        "source_file": "moss-pt-6941.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          22320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-6940-07475.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "v2-6940",
+      "prompt": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 6940,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-6940.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f7abceb597ee4df2632a241456130878894c264ce8229ebc44a46c36c1706d68",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.07
+        },
+        "stages": {
+          "text": {
+            "seconds": 5.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1048.4,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 24.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8c6d4e5a8f2201b80dc242d11748877337f463c91849c007cc19fbd957025c7b",
+      "cut": {
+        "source_file": "moss-pt-6940.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          356400,
+          384000
         ],
         "rate": 48000,
         "stored_as": "mono PCM_24",
