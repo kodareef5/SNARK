@@ -1,0 +1,5 @@
+Created all four 1024×1024 RGBA textures, plus deterministic `paint.py`, sources, and the report.
+
+Verified identical rebuilds, zero hurt/decay overlap, aligned membrane marks, and 30 unchanged unhurt renders.
+
+[Visual review](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/REVIEW.jpg) · [Report and limitations](/home/user/dev/SNARK/.claude/worktrees/agent-ab7659c377487e905/assets/source/core/creatures/pteranodon/tex/layers/REPORT.md)
