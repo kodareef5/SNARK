@@ -20,6 +20,7 @@
     "art": "bun tools/art.ts",
     "settings": "bun tools/settings.ts",
     "catalogue": "bun tools/catalogue.ts",
+    "cluster-trip": "bun tools/cluster-trip.ts",
     "events": "bun tools/events.ts"
   },
   "devDependencies": {
