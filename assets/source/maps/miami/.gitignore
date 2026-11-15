@@ -11,3 +11,10 @@ paintings/**/unbalanced-master.png
 # Review evidence must survive the source-assets-wide round[0-9]*/ ignore rule.
 !reports/round3/
 !reports/round3/**
+!reports/ruins1/references/
+!reports/ruins1/references/**
+# The round's inventories are written again by tools/mapworld/ruin-report.ts.
+reports/ruins1/buildings.json
+reports/ruins1/labels.json
+reports/ruins1/circulation.json
+reports/ruins1/places.json

@@ -8,7 +8,7 @@ import { COLOR_REGIONS, Genome, STAT_COUNT } from "../../shared/sim/genome.ts";
 import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
-import { EntityRecord } from "../records.ts";
+import { EntityRecord, type Job } from "../records.ts";
 import { validLook } from "../../shared/anim/look.ts";
 import { existsSync } from "node:fs";
 import { listBackups } from "./backup.ts";
@@ -449,6 +449,10 @@ export class WorldStore {
         c.varint(j.left);
         c.uint53(j.doneAt);
       }
+      // Older saves end before who queued each job at a station. A job made in the hands has none.
+      const queued = rec.jobs.some((j) => j.by !== undefined);
+      c.bool(queued);
+      if (queued) for (const j of rec.jobs) c.uint53(j.by ?? 0);
       this.part(COMP_PROGRESSION);
     }
     if (rec.markers.length > 0) {
@@ -694,13 +698,22 @@ export class WorldStore {
             // An engram that became several is known as all of them.
             for (const e of this.split.get(saved) ?? [this.toRuntime[saved] ?? 0]) if (e !== 0 && !rec.engrams.includes(e)) rec.engrams.push(e);
           }
+          const jobs: Job[] = [];
           for (let k = c.varint(); k > 0 && !c.overflow; k--) {
             // A job saved when recipes were definitions of their own names the recipe. Its rename leads to the item.
             const item = this.toRuntime[c.varint()] ?? 0;
             const left = c.varint();
             const doneAt = c.uint53();
-            if (item !== 0) rec.jobs.push({ item, left, doneAt });
+            jobs.push({ item, left, doneAt });
           }
+          // A 1 bit here says who queued each job at a station. Padding reads as 0.
+          if (c.pos + 1 <= blob.length * 8 && c.bool()) {
+            for (const j of jobs) {
+              const by = c.uint53();
+              if (by !== 0) j.by = by;
+            }
+          }
+          for (const j of jobs) if (j.item !== 0) rec.jobs.push(j);
         } else if (component === COMP_STATE) {
           rec.dead = c.bool();
           rec.expiresAt = c.uint53();

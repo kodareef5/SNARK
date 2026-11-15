@@ -7,7 +7,7 @@
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { ZONE_NAMES } from "../../shared/anim/human.ts";
 import { buildRig, type Rig } from "../../shared/anim/rigs.ts";
-import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "../../shared/pack/pack.ts";
+import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, textureOf, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_COUNT } from "../../shared/pack/palette.ts";
 import { baseMips } from "../pack/image.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
@@ -494,10 +494,10 @@ function materialCards(page: Page, s: Subject, report: Report): void {
   const lod = header.meshes[s.index]!.lods[0]!;
   const used = [...new Set((lod.sections ?? []).filter((_, k) => k % 3 === 0))];
   const facts = report.meshes.find((m) => m.id === s.id)?.materials ?? [];
-  const roles = ["base", "normal", "mro", "mask", "mask2"] as const;
-  const names = { base: "base colour", normal: "normal", mro: "packed", mask: "regions 0-2", mask2: "regions 3-5" };
+  const roles = ["base", "normal", "mro", "mask", "mask2", "layer"] as const;
+  const names = { base: "base colour", normal: "normal", mro: "packed", mask: "regions 0-2", mask2: "regions 3-5", layer: "hurt and decay" };
   const thumb = 128;
-  const most = Math.max(1, ...used.map((k) => roles.filter((role) => header.materials![k]![role] >= 0).length));
+  const most = Math.max(1, ...used.map((k) => roles.filter((role) => textureOf(header.materials![k]!, role) >= 0).length));
   const across = Math.max(1, Math.floor((WIDTH - PAD * 2) / (most * (thumb + 6) + 24)));
   const wide = Math.floor((WIDTH - PAD * 2) / across);
   for (let from = 0; from < used.length; from += across) {
@@ -511,7 +511,7 @@ function materialCards(page: Page, s: Subject, report: Report): void {
         canvas.text(`one picture to ${m.span.toFixed(2)} m${fact ? `, ${fact.texels.toFixed(0)} px a metre` : ""}${flags.length > 0 ? `; ${flags.join(", ")}` : ""}`, x, y + 20, FAINT, 1);
         let at = x;
         for (const role of roles) {
-          const slot = m[role];
+          const slot = textureOf(m, role);
           const t = slot >= 0 ? s.views.textures[slot] : undefined;
           if (!t) continue;
           thumbnail(canvas, t, thumb, at, y + 32);

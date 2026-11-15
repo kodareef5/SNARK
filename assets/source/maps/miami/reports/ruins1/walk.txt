@@ -1,0 +1,12 @@
+host on core:miami in 786 ms, 333 spawn regions; 897 MB resident, 281 MB of heap
+ok   South Beach    arrived 0.0 m from its point at y 2.4; walked 27 m to y 1.5, 27 m to y 1.8, 27 m to y 2.8, 27 m to y 2.4
+ok   South Pointe   arrived 0.0 m from its point at y 1.8; walked 27 m to y 1.3, 27 m to y 1.6, 27 m to y 1.4, 27 m to y 1.8
+ok   Bayfront Park  arrived 0.0 m from its point at y 1.3; walked 27 m to y 1.4, 27 m to y 1.5, 27 m to y 1.4, 27 m to y 1.3
+ok   Watson Island  arrived 0.0 m from its point at y 1.6; walked 27 m to y 2.7, 27 m to y 2.6, 27 m to y 1.8, 27 m to y 1.6
+ok   Edgewater      arrived 0.0 m from its point at y 0.6; walked 27 m to y 0.5, 27 m to y -1.2, 24 m to y 0.4, 27 m to y 0.5
+ok   Virginia Key   arrived 0.0 m from its point at y 0.6; walked 27 m to y 0.2, 12 m to y 0.8, 27 m to y 0.9, 27 m to y -0.4
+ok   Belle Isle     arrived 0.0 m from its point at y 0.8; walked 27 m to y 0.5, 27 m to y 0.6, 27 m to y 0.6, 27 m to y 0.8
+ok   Brickell Key   arrived 0.0 m from its point at y 3.0; walked 12 m to y 4.2, 26 m to y 4.2, 27 m to y 3.0, 27 m to y 3.2
+ok   Wynwood        arrived 0.0 m from its point at y 4.2; walked 27 m to y 4.1, 27 m to y 4.0, 27 m to y 4.4, 27 m to y 4.2
+ok   Fisher Island  arrived 0.0 m from its point at y 1.3; walked 27 m to y 0.7, 27 m to y 2.1, 27 m to y 1.9, 27 m to y 1.3
+1226 wild creatures after 391 s of virtual time; 900 MB resident, 620 MB of heap, server and client in one process

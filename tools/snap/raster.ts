@@ -7,12 +7,12 @@ import { nearKeeps } from "../../client/core/render/hand.ts";
 import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
-import { NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear } from "../../client/core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
-import { TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
+import { MAP_ROLES, TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { SIZE_UNITS } from "../../shared/world/nodes.ts";
 import { decodeSkin, decodeSurface } from "../pack/surface.ts";
@@ -52,9 +52,14 @@ interface Texture {
   pictures: Float32Array[];
 }
 
-/** What a textured draw reads besides its vertices' places: its material's textures in the order of TEXTURE_ROLES, and what its flags say. */
+/**
+ * What a textured draw reads besides its vertices' places: its material's maps in the order of MAP_ROLES, what its
+ * flags say, and its layer with the level it is drawn at, 0 for none.
+ */
 interface Surfaced {
   maps: Texture[];
+  layer: Texture | null;
+  level: number;
   tint: readonly number[];
   /** 0 for a draw that is not cut out. */
   cutoff: number;
@@ -69,12 +74,12 @@ const TO_LINEAR = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 
 function decodeTexture(role: TextureRole, pictures: readonly ArrayLike<number>[]): Texture {
   return {
     channels: role === "normal" ? 2 : 4,
-    pictures: pictures.map((bytes) => Float32Array.from(bytes, (b, i) => (role === "base" && (i & 3) !== 3 ? TO_LINEAR[b]! : b / 255))),
+    pictures: pictures.map((bytes) => Float32Array.from(bytes, (b, i) => ((role === "base" || role === "layer") && (i & 3) !== 3 ? TO_LINEAR[b]! : b / 255))),
   };
 }
 
 /** What a draw reads where its material has no texture: one pixel of NEUTRAL. */
-const NEUTRALS = TEXTURE_ROLES.map((role) => decodeTexture(role, [NEUTRAL[role].slice(0, role === "normal" ? 2 : 4)]));
+const NEUTRALS = MAP_ROLES.map((role) => decodeTexture(role, [NEUTRAL[role].slice(0, role === "normal" ? 2 : 4)]));
 
 function bilinear(t: Texture, k: number, u: number, v: number, weight: number, out: Float64Array): void {
   const size = 1 << k;
@@ -691,12 +696,15 @@ export class Rasterizer {
     if (!surface) throw new Error(`draw ${d} is textured, and the surface of its level is not on the graphics card`);
     if (!material) throw new Error(`draw ${d} uses material ${p.drawMaterial[d]}, which the pack does not have`);
     const flags = p.drawFlags[d]!;
-    const maps = TEXTURE_ROLES.map((role, k) => {
+    const maps = MAP_ROLES.map((role, k) => {
       const t = this.textures.get(material[role]);
       if (!t && material[role] >= 0 && role !== "normal" && role !== "mro") throw new Error(`draw ${d} uses ${material.id}, whose ${role} texture is not on the graphics card`);
       return t ?? NEUTRALS[k]!;
     });
-    const s: Surfaced = { maps, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
+    const level = p.drawLayer[d]!;
+    const layer = level > 0 ? (this.textures.get(material.layer ?? -1) ?? null) : null;
+    if (level > 0 && !layer) throw new Error(`draw ${d} draws the layer of ${material.id}, which is not on the graphics card`);
+    const s: Surfaced = { maps, layer, level: level / LAYER_LEVELS, tint: material.tint, cutoff: (flags & DRAW_CUTOUT) !== 0 ? material.cutoff : 0, twoSided: (flags & DRAW_TWO_SIDED) !== 0, uvs: surface.uvs, tangents: surface.tangents };
     const end = p.drawFirstIndex[d]! + p.drawIndexCount[d]!;
     if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
     const transient = p.drawBuffer[d] === TRANSIENT_BUFFER;
@@ -962,7 +970,7 @@ export class Rasterizer {
       poly[o + CARRIED + 3] = (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / w;
     }
 
-    const [base, bump, mro, mask, mask2] = texel as [Float64Array, Float64Array, Float64Array, Float64Array, Float64Array];
+    const [base, bump, mro, mask, mask2, layer] = texel as [Float64Array, Float64Array, Float64Array, Float64Array, Float64Array, Float64Array];
     for (let k = 1; k + 1 < count; k++) {
       const v0 = 0, v1 = k * stride, v2 = (k + 1) * stride;
       const x0 = poly[v0 + CARRIED]!, y0 = poly[v0 + CARRIED + 1]!, i0 = poly[v0 + CARRIED + 2]!;
@@ -1019,6 +1027,10 @@ export class Rasterizer {
           const dist = Math.hypot(carried[0]!, carried[1]!, carried[2]!);
           for (let i = 0; i < 3; i++) eye[i] = -carried[i]! / dist;
           dyed(albedo, base, s.tint, this.dyes, mask, mask2);
+          if (s.layer) {
+            sample(s.layer, u, v, spread, layer);
+            wounded(albedo, mro, layer, s.level);
+          }
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
           const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
           for (let i = 0; i < 3; i++) reflected[i] = twice * normal[i]! - eye[i]!;

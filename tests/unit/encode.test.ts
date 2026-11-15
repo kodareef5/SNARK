@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
-import { TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_ROLES, pictureBytes, stepBytes, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
+import { MAP_ROLES, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, pictureBytes, stepBytes, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
 import { decodeAstc, encodeAstc } from "../../tools/pack/astc.ts";
 import { decodeBc5, decodeBc7, encodeBc5, encodeBc7 } from "../../tools/pack/bc.ts";
 import { buildTextures, encodeTextures, encodingOf, type TextureSource } from "../../tools/pack/encode.ts";
@@ -19,7 +19,7 @@ import { TUBE, TUBE_PIXELS, tubePack, tubePictures } from "../fixtures/textured.
 
 const mips = materialMips(tubePictures()) as Record<TextureRole, Uint8Array[]>;
 /** The tube's five textures, as a build is given them. */
-const tube = (): TextureSource[] => TEXTURE_ROLES.map((role) => ({ id: `${TUBE}/${role}`, role, top: TUBE_PIXELS, mips: () => mips[role] }));
+const tube = (): TextureSource[] => MAP_ROLES.map((role) => ({ id: `${TUBE}/${role}`, role, top: TUBE_PIXELS, mips: () => mips[role] }));
 /** Pictures in the block variants of the five: seven sizes of each, twice. */
 const PICTURES = 5 * 7 * 2;
 
@@ -61,7 +61,7 @@ test("the same textures give the same three files on one thread or three, howeve
     });
   });
   // Each file is its header and the one step of each texture.
-  for (const v of one.variants) expect(v.bytes.length).toBe(TEXTURE_ROLES.reduce((sum, role) => sum + stepBytes(v.format, role, 0), TEXTURE_HEADER_BYTES));
+  for (const v of one.variants) expect(v.bytes.length).toBe(MAP_ROLES.reduce((sum, role) => sum + stepBytes(v.format, role, 0), TEXTURE_HEADER_BYTES));
 });
 
 test("each block variant decodes to within a few levels of the rgba one, and to over 50 dB", async () => {
@@ -70,7 +70,7 @@ test("each block variant decodes to within a few levels of the rgba one, and to 
   for (const v of variants.slice(0, 2)) {
     let squares = 0;
     let count = 0;
-    TEXTURE_ROLES.forEach((role, i) => {
+    MAP_ROLES.forEach((role, i) => {
       for (let size = 1; size <= TUBE_PIXELS; size <<= 1) {
         const want = pictureOf(rgba, i, role, size);
         const got = decoded(v, i, role, size);
@@ -145,6 +145,13 @@ test("pictures that are the same are encoded once, and alpha is kept only where 
   }
   // The rgba variant holds every picture as it was given.
   expect(pictureOf(variants[2]!, 2, "base", 64)).toEqual(leaf[6]!);
+
+  // A hurt and decay layer's alpha says how soon, and is always kept, by a base colour's encoders.
+  const layered = await encodeTextures([{ id: "test:layer", role: "layer", top: TUBE_PIXELS, mips: () => leaf }], { workers: 2, cache: null });
+  layered.variants.slice(0, 2).forEach((v, k) => {
+    expect([...decoded(v, 0, "layer", 64)].filter((_, c) => (c & 3) === 3)).toEqual([...leaf[6]!].filter((_, c) => (c & 3) === 3));
+    expect(pictureOf(v, 0, "layer", 64)).toEqual(pictureOf(variants[k]!, 0, "base", 64));
+  });
 });
 
 test("a build's manifest lists the three files and where each texture is in them, and parses", async () => {

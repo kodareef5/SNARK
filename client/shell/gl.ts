@@ -9,13 +9,13 @@ import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, theSky } from "../core/render/sky.ts";
-import { NEUTRAL, skinMode } from "../core/render/surface.ts";
+import { LAYER_LEVELS, NEUTRAL, skinMode } from "../core/render/surface.ts";
 import { SKIRT_BEHIND, coarseGround, groundSize, tileMesh, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
-import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
-import { TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
+import { INSTANCE_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, textureOf, type Pack, type PackMaterial } from "../../shared/pack/pack.ts";
+import { MAP_ROLES, TEXTURE_ROLES, type TextureFormat } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 
 interface Program {
@@ -84,7 +84,7 @@ export class GlRenderer {
   /** The copy of each texture drawn with, by its index in the manifest, and a copy being filled. */
   readonly textures = new Map<number, WebGLTexture>();
   private readonly making = new Map<number, WebGLTexture>();
-  /** What units 4 to 8 hold, as far as this frame has bound them. */
+  /** What units 4 to 8 and the layer's hold, as far as this frame has bound them. */
   private readonly bound: (WebGLTexture | null)[] = [];
   private blending = false;
   private culling = false;
@@ -280,7 +280,7 @@ export class GlRenderer {
    */
   private fill(u: TextureUpload): void {
     const gl = this.gl;
-    const internal = FORMATS[u.format][u.role === "base" ? 0 : u.role === "normal" ? 1 : 2]!;
+    const internal = FORMATS[u.format][u.role === "base" || u.role === "layer" ? 0 : u.role === "normal" ? 1 : 2]!;
     let copy = this.making.get(u.slot);
     gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
     if (u.size === 1 && u.row === 0) {
@@ -317,6 +317,8 @@ export class GlRenderer {
     const text = PROGRAMS[name]!(tier, this.format, this.shadowLookup === "hard");
     const key = name + text.defines + text.vertex + text.fragment;
     made.set(name, (prog = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!));
+    // A hurt body's program is made with the surface program, so the first one hurt in view waits on no compile.
+    if (name === "surface") this.program("surfaceLayer", tier);
     return prog;
   }
 
@@ -361,19 +363,23 @@ export class GlRenderer {
     return prog;
   }
 
-  /** Material `m` of a textured draw or caster of `mesh`: its tint, grey and cutoff, what the mesh's texture coordinates span, and its maps on their five units. */
-  private material(prog: Program, m: number, mesh: number, cutout: boolean): void {
+  /**
+   * Material `m` of a textured draw or caster of `mesh`: its tint, grey and cutoff, what the mesh's texture coordinates
+   * span, and its maps on their five units; and for a draw with a layer at `level`, the layer and the level.
+   */
+  private material(prog: Program, m: number, mesh: number, cutout: boolean, level = 0): void {
     const gl = this.gl;
     const mat = this.materials[m]!;
     gl.uniform3fv(prog.uniform("uTint"), mat.tint);
     gl.uniform1f(prog.uniform("uGrey"), mat.grey);
     gl.uniform1f(prog.uniform("uCutoff"), cutout ? mat.cutoff : 0);
     gl.uniform4fv(prog.uniform("uUv"), this.uv, mesh * 4, 4);
-    this.maps(mat);
+    if (level > 0) gl.uniform1f(prog.uniform("uLevel"), level / LAYER_LEVELS);
+    this.maps(mat, level > 0);
   }
 
-  /** A material's maps on their five units, or the neutral pixel of each it lacks or has not been sent. */
-  private maps(mat: PackMaterial | undefined): void {
+  /** A material's maps on their five units, or the neutral pixel of each it lacks or has not been sent; with `layer`, its layer on its unit too. */
+  private maps(mat: PackMaterial | undefined, layer = false): void {
     const gl = this.gl;
     if (this.neutral.length === 0) {
       gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
@@ -381,16 +387,16 @@ export class GlRenderer {
       this.neutral = TEXTURE_ROLES.map((role) => {
         const t = gl.createTexture()!;
         gl.bindTexture(gl.TEXTURE_2D, t);
-        gl.texImage2D(gl.TEXTURE_2D, 0, role === "base" ? gl.SRGB8_ALPHA8 : gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, Uint8Array.from(NEUTRAL[role]));
+        gl.texImage2D(gl.TEXTURE_2D, 0, role === "base" || role === "layer" ? gl.SRGB8_ALPHA8 : gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, Uint8Array.from(NEUTRAL[role]));
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
         return t;
       });
     }
-    for (let r = 0; r < TEXTURE_ROLES.length; r++) {
-      const t = mat?.[TEXTURE_ROLES[r]!] ?? -1;
+    for (let r = 0; r < (layer ? TEXTURE_ROLES.length : MAP_ROLES.length); r++) {
+      const t = mat ? textureOf(mat, TEXTURE_ROLES[r]!) : -1;
       const texture = (t >= 0 && this.textures.get(t)) || this.neutral[r]!;
       if (this.bound[r] === texture) continue;
-      gl.activeTexture(gl.TEXTURE0 + UNIT.maps + r);
+      gl.activeTexture(gl.TEXTURE0 + (r < MAP_ROLES.length ? UNIT.maps + r : UNIT.layer));
       gl.bindTexture(gl.TEXTURE_2D, (this.bound[r] = texture));
     }
   }
@@ -481,7 +487,8 @@ export class GlRenderer {
       const fade = p.drawFade[d]!;
       const water = (flags & DRAW_WATER) !== 0;
       const hand = p.drawHand[d]!;
-      const prog = this.use(textured ? "surface" : (flags & DRAW_PULLED) !== 0 ? "pulled" : fade > 0 || hand !== 0 ? "far" : water ? "water" : blend && p.split > 0 ? "seeThrough" : "flat", p);
+      const layer = p.drawLayer[d]!;
+      const prog = this.use(textured ? (layer > 0 ? "surfaceLayer" : "surface") : (flags & DRAW_PULLED) !== 0 ? "pulled" : fade > 0 || hand !== 0 ? "far" : water ? "water" : blend && p.split > 0 ? "seeThrough" : "flat", p);
       this.set(blend, !blend && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
       gl.uniform1f(prog.uniform("uSkin"), skinMode(flags, textured && lod.skin));
       const fades = prog.uniform("uHand");
@@ -489,7 +496,7 @@ export class GlRenderer {
         gl.uniform1f(prog.uniform("uFade"), fade);
         gl.uniform1f(fades, hand);
       }
-      if (textured) this.material(prog, p.drawMaterial[d]!, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0);
+      if (textured) this.material(prog, p.drawMaterial[d]!, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer);
       else if (water) this.maps(this.materials[p.drawMaterial[d]!]);
       else {
         gl.uniform1f(prog.uniform("uSolid"), (flags & DRAW_PLAIN) !== 0 ? 2 : 1);

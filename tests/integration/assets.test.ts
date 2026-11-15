@@ -103,6 +103,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // sizes alone give it, and its four young variants and the elders' boxes alone leave it c56e26fc. It was 9a45f2b0 until
   // the pack held four meshes more, the wooden club, the slingshot and its stone (9df72448 with those alone) and the grey
   // box of feces lying (b504d298 with that alone), and wild creatures wandered at their walking speed, not at 90/127 of
-  // it, so the scene's raptor, parasaur and grazer walk further between frames (ebea25a9 with that alone).
-  expect(hash.toString(16)).toBe("47b0fc09");
+  // it, so the scene's raptor, parasaur and grazer walk further between frames (ebea25a9 with that alone). It was 47b0fc09
+  // until the pack held the mortar and pestle's grey box (content/items/stations.ts); without it and sparkpowder it is that again.
+  expect(hash.toString(16)).toBe("afc8210d");
 });

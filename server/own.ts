@@ -3,7 +3,7 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -12,6 +12,7 @@ import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Progression } from "./progression.ts";
+import { sendStation } from "./stations.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
@@ -273,6 +274,8 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       c.sentOpenVersion = box.version;
     }
   }
+  // An open station's queue follows its slots.
+  sendStation(game, c, open);
 
   if (rec.markersVersion !== c.sentMarkers) {
     const w = game.beginOwn(OWN_MARKERS);
@@ -401,6 +404,14 @@ export function addOwnCommands(ctx: OwnContext): void {
     const count = r.u8();
     const rec = mine(c);
     return r.overflow ? RESULT_INVALID : rec ? ctx.progression.craft(rec, item, count) : RESULT_DENIED;
+  });
+  // Made at the station the session has open, from what lies in it. The open box is the server's, so no station is named.
+  ctx.game.handle(CMD_CRAFT_AT, (c: Client, r: BitReader) => {
+    const item = r.u16();
+    const count = r.u8();
+    const rec = mine(c);
+    const station = ctx.openOf(c);
+    return r.overflow ? RESULT_INVALID : rec && station ? ctx.progression.craftAt(rec, station, item, count) : RESULT_DENIED;
   });
 
   const reg = ctx.world.reg;

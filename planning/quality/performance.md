@@ -23,6 +23,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | S | three quiet runs, ranges | 2026-11-14 | `95a19af` |
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
 | P2 | `bun tools/bench/corpses.ts`, three runs on a busy machine, ranges | 2026-11-15 | branch `r9/p2-corpses` |
+| P10 | the hurt and decay layers' rows, once each on a busy machine (load 9 to 14) | 2026-11-15 | `r9/p10-layers` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
 
@@ -143,6 +144,8 @@ Core's frame build on this Mac's CPU, before the shell draws.
 | 2,048 bodies on ultra: bones; triangles; median, 99th | 57,344; 3.31 M; 3.5, 6.3 ms busy | 65,536; none; 6, 12 | M |
 | 2,048 on medium: posed, rigid; triangles; median, 99th | 530, 1,518; 2.39 M; 1.8, 15.0 ms busy, missed | none; none; 6, 12 | M |
 | 500 creatures with materials: all textured after; as wide as shown after; draws | 0.12 s; 2.7 s; 2 | 1.5 s; none; 60 | M |
+| The same with a hurt and decay layer, none hurt: frame build median; draws with a layer, layer fetched | 0.21 ms; 0, no | 1.2; 0 | P10 |
+| Its 40 nearest hurt or dead: frame build median; draws added, of them with a layer | 0.23 ms; 12, 6 | 1.2; none | P10 |
 | Stress meshes over 20 Mbit/s: boot file; first usable detail; the detail wanted | 0.30 MB; 1.1 s; 3.9 s | 1 MB; 1.5 s; 6 s | M |
 | The same flying at 25 m/s: fetched over drawn; given up; left out | 1.00; 0%; 0 | 1.3; 15%; 0 | M |
 | A 4 MB card: most held over budget; left out | 1.00; 0 | 1.25; 0 | M |
@@ -217,6 +220,8 @@ The list holds 4,096 entries; no real scene has passed 933.
 | Sun shadows at 1080p, a frame | 0.7 to 1.4 ms | D268 |
 | Shadows on the device page's crowd | 0.8 ms on medium and high, 1.2 on ultra | D329 |
 | The far fade's kept share, 1,950 m off | 50.0% (rasterizer 49.9%) | D258 |
+| SURFACE and surfaceLayer, a megapixel, by slope (the device page, headless) | 0.30 ± 0.04, 0.34 ± 0.03 ms | P10 |
+| Forty hurt and dead dodos round the camera (the GPU bench's flock, 750 by 873, a GPU shared with other jobs): the frame on medium, ultra; what the layers add, each run | 4.7, 21.2 ms; -0.6 to +0.6 ms on medium, -1.0 to -0.3 on ultra | P10 |
 | Node pixels changed stepping over a chunk border, medium | 0 of 39,171 | D355 |
 | On the card on any device: terrain on 8 km; sky table; shadow maps by lit tier | 9.5 MB; 256 KB; 16, 24, 32 MB | M; computed; D268 |
 
@@ -294,6 +299,10 @@ Reasoned from the rows, in the order a growing world meets them.
 - GPU time per pass in a real frame; the iPhone has no timer queries.
 - The wood with D353's pulled draws, far stones and the broadleaf trees on a phone.
 - A soak on medium, the default tier.
+- Hurt and dead creatures on a phone: `bun run device -- --tunnel --flock` stands forty round the spawn point, and the
+  quick look times `surface layered` beside `surface`. On this Mac the layer adds about 13% to a pixel of SURFACE; at
+  the iPhone's 0.85 ms a megapixel that is 0.11 ms for each megapixel of hurt bodies, under 0.1 ms with the whole of
+  medium's screen covered.
 - Real network congestion; WebSocket send cost under load; Firefox.
 
 ## Still moving

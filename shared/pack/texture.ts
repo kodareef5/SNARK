@@ -12,7 +12,7 @@
 //   8   u32 textures, u32 reserved
 //   16  the textures, one after another
 //
-//   variant   base            normal                        mro, mask, mask2
+//   variant   base, layer     normal                        mro, mask, mask2
 //   bc        BC7, sRGB       BC5 (x in red, y in green)    BC7
 //   astc      ASTC 4x4, sRGB  ASTC 4x4 (x in rgb, y alpha)  ASTC 4x4
 //   rgba      RGBA8, sRGB     RG8                           RGBA8
@@ -21,6 +21,9 @@
 // `mask`, and regions 3, 4 and 5 in those of `mask2`. The six never sum to more than 1, and what is left of 1 is not
 // dyed. Each region has a channel to itself, so that filtering between any two regions gives a mix of those two and
 // nothing else.
+//
+// A layer is what a body's surface turns to as it is hurt and as its corpse decays: in its colour, the colour that
+// takes the dyed one's place, and in its alpha how soon (client/core/render/surface.ts `wounded`).
 //
 // The rgba variant is what every device can show and what the software rasterizer reads. It stops at 1024.
 
@@ -32,8 +35,11 @@ export type TextureFormat = "bc" | "astc" | "rgba";
 export const TEXTURE_FORMATS: readonly TextureFormat[] = ["bc", "astc", "rgba"];
 
 /** `mro` packs ambient occlusion in red, roughness in green and metalness in blue. `mask` and `mask2` mark the colour regions. */
-export type TextureRole = "base" | "normal" | "mro" | "mask" | "mask2";
-export const TEXTURE_ROLES: readonly TextureRole[] = ["base", "normal", "mro", "mask", "mask2"];
+export type TextureRole = MapRole | "layer";
+export type MapRole = "base" | "normal" | "mro" | "mask" | "mask2";
+/** The five maps a material draws with, in the order of their texture units, and every role. */
+export const MAP_ROLES: readonly MapRole[] = ["base", "normal", "mro", "mask", "mask2"];
+export const TEXTURE_ROLES: readonly TextureRole[] = [...MAP_ROLES, "layer"];
 
 /** The side of step 0, and the last step there is: 64 << 6 is 4096. */
 export const STEP0_SIZE = 64;

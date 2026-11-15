@@ -1,0 +1,163 @@
+{
+  "note": "FEEDBACK_3 changes opaque hurt RGB only: crimson/maroon blood follows the accepted feather relief and barb drawing; the wing is a broad ragged missing-covert gap without paired rims. All four alpha maps, the complete decay image and both card images retain their FEEDBACK_2 bytes. RGB is intrinsic sRGB pigment; the engine supplies wetness and decay grading.",
+  "wound": {
+    "opening": [
+      31,
+      7,
+      11
+    ],
+    "inner_meat": [
+      94,
+      23,
+      34
+    ],
+    "flesh": [
+      168,
+      64,
+      67
+    ],
+    "torn_skin": [
+      197,
+      137,
+      119
+    ],
+    "dense_blood": [
+      93,
+      20,
+      31
+    ],
+    "feather_blood": [
+      173,
+      42,
+      54
+    ],
+    "thin_blood": [
+      145,
+      44,
+      43
+    ],
+    "down": [
+      194,
+      181,
+      164
+    ]
+  },
+  "carcass": {
+    "hide_lip": [
+      46,
+      24,
+      27
+    ],
+    "fascia": [
+      169,
+      124,
+      111
+    ],
+    "muscle": [
+      115,
+      37,
+      43
+    ],
+    "deep_meat": [
+      48,
+      15,
+      22
+    ],
+    "bone": [
+      211,
+      191,
+      159
+    ],
+    "bone_joint": [
+      156,
+      123,
+      96
+    ],
+    "bone_shadow": [
+      96,
+      72,
+      59
+    ],
+    "skin": [
+      187,
+      165,
+      165
+    ],
+    "skin_pimples": [
+      130,
+      107,
+      110
+    ],
+    "edge_bloom": [
+      118,
+      131,
+      120
+    ]
+  },
+  "belly_continuation": {
+    "id": "breast_underside",
+    "pieces": [
+      "shell_body"
+    ],
+    "at": [
+      0,
+      118,
+      88
+    ],
+    "axis": [
+      0,
+      0.22,
+      1
+    ],
+    "length": 238,
+    "width": 280,
+    "onset": 0.08,
+    "edge": 2.73,
+    "kind": "harvest",
+    "seed": 461,
+    "anatomy": "ventral_keel",
+    "power": 1.4
+  },
+  "focus": {
+    "breast_split": [
+      0.3,
+      0.55,
+      -0.04
+    ],
+    "late_breast_drag": [
+      0.25,
+      0.52,
+      -0.08
+    ],
+    "neck_rake": [
+      0.35,
+      0.58,
+      -0.07
+    ],
+    "wing_tear": [
+      0.32,
+      0.54,
+      -0.05
+    ],
+    "back_rake": [
+      0.29,
+      0.52,
+      -0.04
+    ],
+    "low_flank": [
+      0.38,
+      0.54,
+      -0.06
+    ],
+    "rump_blow": [
+      0.3,
+      0.5,
+      -0.04
+    ],
+    "crown_abrasion": [
+      0.36,
+      0.5,
+      -0.03
+    ]
+  }
+}

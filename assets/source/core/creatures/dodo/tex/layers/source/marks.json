@@ -1,0 +1,562 @@
+{
+  "description": "Original, hand-directed injury and harvesting placements. Coordinates and dimensions are millimetres in the bird's rest frame. onset is the first local stage; edge is the stage at which the outer edge starts. The renderer completes each texel 0.25 stage later. No external imagery.",
+  "hurt": [
+    {
+      "id": "breast_split",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        0,
+        307,
+        213
+      ],
+      "axis": [
+        0,
+        -1,
+        -0.3
+      ],
+      "length": 127,
+      "width": 113,
+      "onset": 0.02,
+      "edge": 2.72,
+      "kind": "feather",
+      "seed": 23,
+      "core": 0.3,
+      "power": 1.8
+    },
+    {
+      "id": "late_breast_drag",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        0,
+        239,
+        185
+      ],
+      "axis": [
+        0,
+        -1,
+        -0.4
+      ],
+      "length": 106,
+      "width": 126,
+      "onset": 2.03,
+      "edge": 2.73,
+      "kind": "feather",
+      "seed": 47,
+      "core": 0.27,
+      "power": 1.55
+    },
+    {
+      "id": "neck_rake",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        48,
+        463,
+        169
+      ],
+      "axis": [
+        0,
+        -1,
+        -0.42
+      ],
+      "length": 124,
+      "width": 68,
+      "onset": 1.06,
+      "edge": 2.73,
+      "kind": "feather",
+      "seed": 57,
+      "core": 0.26,
+      "power": 1.65
+    },
+    {
+      "id": "wing_tear",
+      "pieces": [
+        "wing_l_out"
+      ],
+      "at": [
+        137,
+        304,
+        10
+      ],
+      "axis": [
+        0,
+        -0.48,
+        -1
+      ],
+      "length": 108,
+      "width": 64,
+      "onset": 0.12,
+      "edge": 2.65,
+      "kind": "feather",
+      "seed": 73,
+      "core": 0.25,
+      "power": 1.6
+    },
+    {
+      "id": "back_rake",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        0,
+        394,
+        -39
+      ],
+      "axis": [
+        0,
+        -0.1,
+        -1
+      ],
+      "length": 139,
+      "width": 105,
+      "onset": 0.4,
+      "edge": 2.72,
+      "kind": "feather",
+      "seed": 106,
+      "core": 0.29,
+      "power": 1.8
+    },
+    {
+      "id": "low_flank",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        128,
+        220,
+        -82
+      ],
+      "axis": [
+        0,
+        -0.65,
+        -1
+      ],
+      "length": 157,
+      "width": 105,
+      "onset": 1.98,
+      "edge": 2.73,
+      "kind": "feather",
+      "seed": 135,
+      "core": 0.36,
+      "power": 1.55
+    },
+    {
+      "id": "rump_blow",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        0,
+        259,
+        -214
+      ],
+      "axis": [
+        0,
+        -1,
+        0.1
+      ],
+      "length": 101,
+      "width": 91,
+      "onset": 1.93,
+      "edge": 2.73,
+      "kind": "feather",
+      "seed": 195,
+      "core": 0.27,
+      "power": 1.6
+    },
+    {
+      "id": "crown_abrasion",
+      "pieces": [
+        "shell_hood"
+      ],
+      "at": [
+        32,
+        638,
+        149
+      ],
+      "axis": [
+        0,
+        -0.45,
+        -1
+      ],
+      "length": 56,
+      "width": 19,
+      "onset": 1.55,
+      "edge": 2.6,
+      "kind": "feather",
+      "seed": 211,
+      "core": 0.3
+    },
+    {
+      "id": "cheek_bruise",
+      "pieces": [
+        "shell_face"
+      ],
+      "at": [
+        56,
+        558,
+        163
+      ],
+      "axis": [
+        0,
+        -1,
+        -0.65
+      ],
+      "length": 31,
+      "width": 23,
+      "onset": 0.24,
+      "edge": 2.58,
+      "kind": "bruise",
+      "seed": 241
+    },
+    {
+      "id": "cheek_scratch",
+      "pieces": [
+        "shell_face"
+      ],
+      "at": [
+        56,
+        563,
+        165
+      ],
+      "axis": [
+        0,
+        -1,
+        -0.65
+      ],
+      "length": 25,
+      "width": 6,
+      "onset": 0.15,
+      "edge": 1.42,
+      "kind": "scratch",
+      "seed": 259
+    },
+    {
+      "id": "brow_scrape",
+      "pieces": [
+        "brow_l"
+      ],
+      "at": [
+        53,
+        605,
+        176
+      ],
+      "axis": [
+        0,
+        0.5,
+        -1
+      ],
+      "length": 20,
+      "width": 10,
+      "onset": 1.12,
+      "edge": 2.57,
+      "kind": "scrape",
+      "seed": 289
+    },
+    {
+      "id": "hook_scuff",
+      "pieces": [
+        "beak"
+      ],
+      "at": [
+        10,
+        533,
+        335
+      ],
+      "axis": [
+        0,
+        -1,
+        0.4
+      ],
+      "length": 39,
+      "width": 15,
+      "onset": 0.4,
+      "edge": 2.53,
+      "kind": "horn",
+      "seed": 323
+    },
+    {
+      "id": "beak_crack",
+      "pieces": [
+        "beak"
+      ],
+      "at": [
+        24,
+        575,
+        262
+      ],
+      "axis": [
+        0,
+        -1,
+        -0.4
+      ],
+      "length": 39,
+      "width": 7,
+      "onset": 1.24,
+      "edge": 2.49,
+      "kind": "crack",
+      "seed": 359
+    },
+    {
+      "id": "shank_gash",
+      "pieces": [
+        "leg_l"
+      ],
+      "at": [
+        67,
+        49,
+        24
+      ],
+      "axis": [
+        0.15,
+        -1,
+        0
+      ],
+      "length": 31,
+      "width": 18,
+      "onset": 0.3,
+      "edge": 2.67,
+      "kind": "scrape",
+      "seed": 385,
+      "power": 1.65
+    },
+    {
+      "id": "toe_scrape",
+      "pieces": [
+        "toe4_+4"
+      ],
+      "at": [
+        60,
+        15,
+        62
+      ],
+      "axis": [
+        0,
+        0,
+        1
+      ],
+      "length": 23,
+      "width": 10,
+      "onset": 1.66,
+      "edge": 2.69,
+      "kind": "scrape",
+      "seed": 419
+    }
+  ],
+  "decay": [
+    {
+      "id": "breast_harvest",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        0,
+        207,
+        184
+      ],
+      "axis": [
+        0,
+        -1,
+        -0.55
+      ],
+      "length": 203,
+      "width": 184,
+      "onset": 0.08,
+      "edge": 2.73,
+      "kind": "harvest",
+      "seed": 461,
+      "anatomy": "keel",
+      "power": 1.4
+    },
+    {
+      "id": "rib_flank",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        131,
+        237,
+        13
+      ],
+      "axis": [
+        0,
+        -1,
+        0
+      ],
+      "length": 194,
+      "width": 233,
+      "onset": 0.26,
+      "edge": 2.73,
+      "kind": "harvest",
+      "seed": 491,
+      "anatomy": "ribs",
+      "power": 1.5
+    },
+    {
+      "id": "wing_pluck",
+      "pieces": [
+        "wing_l_out",
+        "wing_l_in"
+      ],
+      "at": [
+        131,
+        307,
+        -7
+      ],
+      "axis": [
+        0,
+        0,
+        -1
+      ],
+      "length": 157,
+      "width": 89,
+      "onset": 0.65,
+      "edge": 2.74,
+      "kind": "pluck",
+      "seed": 541,
+      "surround": true
+    },
+    {
+      "id": "back_hide",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        0,
+        383,
+        -75
+      ],
+      "axis": [
+        0,
+        -0.1,
+        -1
+      ],
+      "length": 182,
+      "width": 189,
+      "onset": 0.3,
+      "edge": 2.74,
+      "kind": "harvest",
+      "seed": 571,
+      "power": 1.35,
+      "surround": true
+    },
+    {
+      "id": "neck_pluck",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        41,
+        457,
+        190
+      ],
+      "axis": [
+        0,
+        -1,
+        -0.1
+      ],
+      "length": 127,
+      "width": 96,
+      "onset": 1.25,
+      "edge": 2.74,
+      "kind": "pluck",
+      "seed": 599,
+      "surround": true
+    },
+    {
+      "id": "hind_rot",
+      "pieces": [
+        "shell_body"
+      ],
+      "at": [
+        58,
+        235,
+        -192
+      ],
+      "axis": [
+        0,
+        -1,
+        0
+      ],
+      "length": 176,
+      "width": 150,
+      "onset": 1.59,
+      "edge": 2.74,
+      "kind": "rot",
+      "seed": 641,
+      "power": 1.2
+    },
+    {
+      "id": "cap_loss",
+      "pieces": [
+        "shell_hood"
+      ],
+      "at": [
+        40,
+        616,
+        114
+      ],
+      "axis": [
+        0,
+        -1,
+        0
+      ],
+      "length": 69,
+      "width": 61,
+      "onset": 1.46,
+      "edge": 2.73,
+      "kind": "pluck",
+      "seed": 677
+    },
+    {
+      "id": "face_mottling",
+      "pieces": [
+        "shell_face"
+      ],
+      "at": [
+        53,
+        575,
+        152
+      ],
+      "axis": [
+        0,
+        -1,
+        0
+      ],
+      "length": 55,
+      "width": 48,
+      "onset": 1.6,
+      "edge": 2.73,
+      "kind": "rot",
+      "seed": 701
+    },
+    {
+      "id": "shank_strip",
+      "pieces": [
+        "leg_l"
+      ],
+      "at": [
+        75,
+        98,
+        10
+      ],
+      "axis": [
+        0,
+        -1,
+        0
+      ],
+      "length": 84,
+      "width": 39,
+      "onset": 0.35,
+      "edge": 2.73,
+      "kind": "harvest",
+      "seed": 733,
+      "anatomy": "leg"
+    }
+  ]
+}
