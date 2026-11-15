@@ -1,0 +1,8 @@
+Replaced all eight 2048² maps.
+
+- **Coconut:** 22 rings, 5.3–9.5 cm apart, stronger pale lips and dark recesses, roughly 9–12 mm ridge relief.
+- **Royal:** 15 interrupted rings, 8.4–19.5 cm apart, stronger mottling and weathering while remaining smooth.
+
+Rings read at 256 and 128 pixels. Seam, normal, metalness and deterministic rebuild checks passed. New built-in imagegen sources, exact prompts and scripts are retained.
+
+Updated reports: [Royal](royal_bark/REPORT.md) · [Coconut](coconut_bark/REPORT.md). Both document the changed height encoding ranges.

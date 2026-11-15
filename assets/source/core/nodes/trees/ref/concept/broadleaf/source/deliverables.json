@@ -1,0 +1,82 @@
+[
+  {
+    "file": "fig_lineup.png",
+    "version": "fig_lineup_v3",
+    "width": 2172,
+    "height": 724,
+    "bytes": 2612645,
+    "sha256": "e597da7cfe944c5c38e9f766d405a3d43f6229fc790f9afa563b3ddc4c81b0cc"
+  },
+  {
+    "file": "fig_trunk.png",
+    "version": "fig_trunk_v1",
+    "width": 1448,
+    "height": 1086,
+    "bytes": 3049247,
+    "sha256": "6e48f3fd6fb7c7213413100c886ab511ca0f0501164a5f2beb9de4d79fb82210"
+  },
+  {
+    "file": "mangrove_lineup.png",
+    "version": "mangrove_lineup_v2",
+    "width": 2172,
+    "height": 724,
+    "bytes": 2601084,
+    "sha256": "711d2e8094df451f36c97d4642c8d332973a970e6f74d46484c4d9f45ace50dc"
+  },
+  {
+    "file": "oak_lineup.png",
+    "version": "oak_lineup_v2",
+    "width": 2172,
+    "height": 724,
+    "bytes": 2977542,
+    "sha256": "181719fc40d8adbdbc4ff7e745462e6a6ca979f42b3ccf1307aa0e30a63dcd4d"
+  },
+  {
+    "file": "oak_trunk.png",
+    "version": "oak_trunk_v1",
+    "width": 1448,
+    "height": 1086,
+    "bytes": 3588606,
+    "sha256": "8269ee1bba76c26a4513122e893be7a6573be23d950c712ea2855b4fa033f1b5"
+  },
+  {
+    "file": "stumps.png",
+    "version": "stumps_v2",
+    "width": 1774,
+    "height": 887,
+    "bytes": 2390505,
+    "sha256": "56ae7d2d1557699a30ac5bf9edcf0b489b4510f9fa6b9fa6cf3ce78889bd3888"
+  },
+  {
+    "file": "hammock_near.png",
+    "version": "hammock_near_v1",
+    "width": 1672,
+    "height": 941,
+    "bytes": 3744101,
+    "sha256": "e05dd5157cbe6ff5141bc59bbd61d59f3d084b0f12116d66e1510cf787896f57"
+  },
+  {
+    "file": "hammock_far.png",
+    "version": "hammock_far_v2",
+    "width": 1672,
+    "height": 941,
+    "bytes": 2533105,
+    "sha256": "b552770629139c394919375a713cf885ebb1d8f1c23c167c0eaf06910aa70158"
+  },
+  {
+    "file": "hammock_far_flat.png",
+    "version": "hammock_far_flat_v2",
+    "width": 1672,
+    "height": 941,
+    "bytes": 1560323,
+    "sha256": "55418133c7947254d0c446f0c8ff15776eb2c26cee68e0399adc3b8ce44da3c7"
+  },
+  {
+    "file": "leaves.png",
+    "version": "leaves_v2",
+    "width": 1536,
+    "height": 1024,
+    "bytes": 1926083,
+    "sha256": "1d4dfbd8e8552710a2510cb335bbbe18bee6bbe2cb463f472a7afd005c2e00b1"
+  }
+]

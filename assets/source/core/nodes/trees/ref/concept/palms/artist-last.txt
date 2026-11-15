@@ -1,0 +1,7 @@
+Completed all seven PNGs in this folder using the built-in image tool, with revisions for scale, anatomy, perspective and distant readability. Every PNG was verified.
+
+- [DESIGN.md](DESIGN.md): dimensions, variation rules, sRGB palettes and modelling guidance.
+- [prompts.md](prompts.md): exact prompts.
+- [source/](source/): all 15 renders, including rejected versions, plus review notes and provenance.
+
+Native resolution is 1672 × 941; the coconut lineup is 1671 × 941.

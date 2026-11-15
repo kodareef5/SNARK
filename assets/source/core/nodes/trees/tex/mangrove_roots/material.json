@@ -1,0 +1,7 @@
+{
+  "name": "mangrove_roots", "seed": 39139, "source_prefix": "root",
+  "width_m": 1.6, "height_m": 2.2, "height_range_mm": 3.0,
+  "wrap_x": true, "wrap_y": false,
+  "bottom_above_mud_m": -0.2, "top_above_mud_m": 2.0,
+  "palette": {"main":"#8A8371", "pale":"#A99C83", "aged":"#655F50", "wet":"#4D5142", "base":"#343F38", "algae":"#6D734C"}
+}

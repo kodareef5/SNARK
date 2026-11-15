@@ -1,0 +1,338 @@
+{
+  "round": "3",
+  "regions": {
+    "mass": {
+      "box": [
+        0,
+        1024,
+        2048,
+        2048
+      ],
+      "maps": {
+        "base": "792d30d6e5d04ecf64e746dbb36779d4780e1fa468502d36bc20bc1533afdfa4",
+        "height": "6784f9c7a6e4f3fd6bffe971b31c4adfd5f7c597c8c4b55ff6459040b15520a3",
+        "normal": "150fc6ec651c45c3ab76a0e2cdc2c981a7cf14737123dcfb755616acaa91c2eb",
+        "orm": "335c6604e77ca7e29c11786a0fd60bea0b40c4a52d83c3642bf130d42af06de2"
+      }
+    },
+    "moss": {
+      "box": [
+        1024,
+        0,
+        1536,
+        1024
+      ],
+      "maps": {
+        "base": "9c316c80dac0c3b5194063a292447c522e5436da147771ba8e8f400109eb09a9",
+        "height": "34b4e27f2db335630a3c28317a4bb596dd0a8d97d3760a6f7e733ac15198c781",
+        "normal": "af8fb75bc342826fd64283c43bc4ffed3de58ffc1399bbba8c74b0e9ace5f9a2",
+        "orm": "c6f2853a272725f8513e4daffc0b1e174174baedc56cadb70f447b5ed9baacd0"
+      }
+    },
+    "fern": {
+      "box": [
+        1536,
+        0,
+        2048,
+        1024
+      ],
+      "maps": {
+        "base": "19bab7b8fb67216f5297832e3992769ea61418cc37dadcc78531c75871280fcd",
+        "height": "2ea575aaed1ca8b8f1d9d1cc92daa7667e4191d793feff35e15a8c0589cd7080",
+        "normal": "38f0d1bd39a3ae5e444e24356bdb2e9938a5cb2503df2d4298412c9f48d8c41d",
+        "orm": "151051b0204a7834cabbd173909084109ef2cb50e096b3153ee8b70e9bf413d5"
+      }
+    }
+  },
+  "files": {
+    "oak_leaves_base.png": "9e9eec8819a3daa05adfb0ac57e67723d7f1beaa77dabe0ec9f4922552820680",
+    "oak_leaves_orm.png": "d610eb537d9e08722d8ec14ddd14a0dd26bd91f74350fc2b790e92e0ca9e2c49",
+    "oak_leaves_normal.png": "09e7f0339da5846f80f2d3181dccd804654924a96c4b66c6f432c16c9400d505",
+    "oak_leaves_height.png": "de9f242efeba9ea456f2330a64f40ef802f52c0bbf98e44eafee3a0815f84386"
+  },
+  "cluster_baseline": [
+    {
+      "cell": 0,
+      "occupied_cell_fraction": 0.20470046997070312,
+      "bounds_including_twig_px": [
+        107,
+        136,
+        382,
+        512
+      ],
+      "mip_coverage": [
+        {
+          "shrink": 1,
+          "size_px": [
+            512,
+            512
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7261200795659057,
+          "alpha_vs_fixed_scalloped_outline": 0.9314852103874461,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 2,
+          "size_px": [
+            256,
+            256
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7274055831450184,
+          "alpha_vs_fixed_scalloped_outline": 0.9331342869045965,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 4,
+          "size_px": [
+            128,
+            128
+          ],
+          "alpha_vs_fixed_convex_outline": 0.725511156817905,
+          "alpha_vs_fixed_scalloped_outline": 0.9307040688793223,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 8,
+          "size_px": [
+            64,
+            64
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7335218738582698,
+          "alpha_vs_fixed_scalloped_outline": 0.9409804193861964,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 16,
+          "size_px": [
+            32,
+            32
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7309238034668002,
+          "alpha_vs_fixed_scalloped_outline": 0.9376475489515345,
+          "largest_connected_fraction": 1.0
+        }
+      ]
+    },
+    {
+      "cell": 1,
+      "occupied_cell_fraction": 0.19955825805664062,
+      "bounds_including_twig_px": [
+        105,
+        166,
+        397,
+        512
+      ],
+      "mip_coverage": [
+        {
+          "shrink": 1,
+          "size_px": [
+            512,
+            512
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7295280861270709,
+          "alpha_vs_fixed_scalloped_outline": 0.9613709455113479,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 2,
+          "size_px": [
+            256,
+            256
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7300719584983545,
+          "alpha_vs_fixed_scalloped_outline": 0.9620876596526693,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 4,
+          "size_px": [
+            128,
+            128
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7329726111452,
+          "alpha_vs_fixed_scalloped_outline": 0.9659101350730497,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 8,
+          "size_px": [
+            64,
+            64
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7363195180454064,
+          "alpha_vs_fixed_scalloped_outline": 0.9703206836350271,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 16,
+          "size_px": [
+            32,
+            32
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7389970435655715,
+          "alpha_vs_fixed_scalloped_outline": 0.973849122484609,
+          "largest_connected_fraction": 1.0
+        }
+      ]
+    },
+    {
+      "cell": 2,
+      "occupied_cell_fraction": 0.1931304931640625,
+      "bounds_including_twig_px": [
+        107,
+        148,
+        387,
+        512
+      ],
+      "mip_coverage": [
+        {
+          "shrink": 1,
+          "size_px": [
+            512,
+            512
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7222047873099199,
+          "alpha_vs_fixed_scalloped_outline": 0.9566170357493765,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 2,
+          "size_px": [
+            256,
+            256
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7222618470229095,
+          "alpha_vs_fixed_scalloped_outline": 0.9566926158264681,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 4,
+          "size_px": [
+            128,
+            128
+          ],
+          "alpha_vs_fixed_convex_outline": 0.724430116116516,
+          "alpha_vs_fixed_scalloped_outline": 0.959564658755952,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 8,
+          "size_px": [
+            64,
+            64
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7212347721890959,
+          "alpha_vs_fixed_scalloped_outline": 0.9553321744388179,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 16,
+          "size_px": [
+            32,
+            32
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7230606830047644,
+          "alpha_vs_fixed_scalloped_outline": 0.9577507369057516,
+          "largest_connected_fraction": 1.0
+        }
+      ]
+    },
+    {
+      "cell": 3,
+      "occupied_cell_fraction": 0.16324234008789062,
+      "bounds_including_twig_px": [
+        155,
+        90,
+        349,
+        512
+      ],
+      "mip_coverage": [
+        {
+          "shrink": 1,
+          "size_px": [
+            512,
+            512
+          ],
+          "alpha_vs_fixed_convex_outline": 0.6959682534519492,
+          "alpha_vs_fixed_scalloped_outline": 0.9250340459566373,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 2,
+          "size_px": [
+            256,
+            256
+          ],
+          "alpha_vs_fixed_convex_outline": 0.697903621903817,
+          "alpha_vs_fixed_scalloped_outline": 0.9276064071247919,
+          "largest_connected_fraction": 0.9992542878448919
+        },
+        {
+          "shrink": 4,
+          "size_px": [
+            128,
+            128
+          ],
+          "alpha_vs_fixed_convex_outline": 0.6940003577992095,
+          "alpha_vs_fixed_scalloped_outline": 0.9224184518276735,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 8,
+          "size_px": [
+            64,
+            64
+          ],
+          "alpha_vs_fixed_convex_outline": 0.6963423162619741,
+          "alpha_vs_fixed_scalloped_outline": 0.9255312250059445,
+          "largest_connected_fraction": 1.0
+        },
+        {
+          "shrink": 16,
+          "size_px": [
+            32,
+            32
+          ],
+          "alpha_vs_fixed_convex_outline": 0.7202823361035666,
+          "alpha_vs_fixed_scalloped_outline": 0.9573506841616048,
+          "largest_connected_fraction": 1.0
+        }
+      ]
+    }
+  ],
+  "round2_coverage_reference": {
+    "provenance": "Round-1 coverage table retained verbatim in artist-transcript-round2.txt lines 122-126; round 2 preserved its alpha (source/accepted_alpha_reference.json recorded in that transcript). Percentages rounded to two decimal places.",
+    "convex_percent_by_shrink": {
+      "1": [
+        79.61,
+        80.65,
+        82.78,
+        71.99
+      ],
+      "2": [
+        79.64,
+        80.72,
+        82.76,
+        72.06
+      ],
+      "4": [
+        79.8,
+        80.77,
+        82.91,
+        72.32
+      ],
+      "8": [
+        80.43,
+        81.44,
+        83.15,
+        72.64
+      ],
+      "16": [
+        79.15,
+        80.61,
+        82.52,
+        71.75
+      ]
+    }
+  }
+}

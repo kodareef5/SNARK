@@ -1,0 +1,10 @@
+# Palm bark, round 2
+
+Your two palm barks in `royal_bark/` and `coconut_bark/` (brief: `BRIEF-palm-bark.md`, your reports beside them) are clean, seamless and well built, and they are now on the trunks in the game. Seen there, both are too quiet: the game lights with one sun and the sky and casts no shadows, so relief alone barely shows, and at 5 to 15 m, where a player usually sees a trunk, both read as plain pipes, the royal a grey one and the coconut a brown one. Look at the concept again (`../ref/concept/palms/palm_parts.png`, the two trunk surfaces, and `grove_near.png`): in both, the rings are what you see first.
+
+- **coconut_bark**: the concept's coconut trunk is a stack of rings: raised, pale, fibrous leaf-scar ridges **every 5 to 10 cm** (not 15 to 20), each a lip that catches the light with a dark line of shadow under it, the band between them warm grey-brown with vertical fibres, ridges uneven in spacing and thickness, some broken, some merging, compressed in places. Carry that in the base colour as well as in the height: a pale lip and a dark recess per ring, so it reads with no shadows at all. Relief up to about 8 to 12 mm at the ridges. Keep the lichen patches small and few.
+- **royal_bark**: keep the smooth, chalky, pale grey column, but the leaf-scar rings must be visible from 10 m: narrow, interrupted bands **8 to 20 cm apart**, each a thin pale line with a faint darker line beside it, a little raised; slightly more warm and cool mottling over the surface, and a little more grey-green weathering low down. It stays quiet and smooth, as the concept is, but not blank.
+
+Everything else in the first brief holds: 2048 square, both pairs of edges meeting, no repeat the eye catches on a 14 m trunk (with closer rings the repeat matters more: vary them), base unlit, OpenGL normal from the height, packed occlusion, roughness and zero metal. Before you finish, look at each picture shrunk to 256 and 128 pixels across, as a trunk at 10 and 20 m shows it, and make sure the rings still read there.
+
+Replace the four layers in each folder, keep the new sources and scripts, and update each `REPORT.md` with what changed.

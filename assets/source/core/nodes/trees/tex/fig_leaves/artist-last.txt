@@ -1,0 +1,7 @@
+Completed all four 2048×2048 maps, retained sources, rebuild scripts and checks. Removed superseded assets.
+
+**136 checks pass; all four maps rebuild byte-for-byte. Height range: 0–200 mm.**
+
+[Report](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/fig_leaves/REPORT.md) · [Layer preview](/home/user/dev/SNARK/.claude/worktrees/agent-a84518807920d9470/assets/source/core/nodes/trees/tex/fig_leaves/checks/layers.jpg)
+
+In-game validation remains; the report documents the diagnostic’s limits.

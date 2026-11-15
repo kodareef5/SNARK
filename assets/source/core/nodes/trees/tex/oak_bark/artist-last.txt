@@ -1,0 +1,3 @@
+Replaced all four 2048×2048 maps with chunky plate relief and a **48 mm height range**. Checks passed, including byte-identical rebuilding. New sources and scripts are retained; unused first-set sources were removed.
+
+Review the [report](./REPORT.md), [layer sheet](./checks/layers.jpg), and [3 m / 10 m cylinder previews](./checks/cylinder_distances.jpg). In-engine verification remains.

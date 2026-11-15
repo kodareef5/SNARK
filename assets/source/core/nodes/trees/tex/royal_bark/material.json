@@ -1,0 +1,292 @@
+{
+  "name": "royal_bark",
+  "revision": 2,
+  "size": [
+    2048,
+    2048
+  ],
+  "physical_width_mm": 1600.0,
+  "physical_height_mm": 2000.0,
+  "full_height_range_mm": 2.5,
+  "height_used_mm": [
+    0.5421453714370728,
+    1.9563333988189697
+  ],
+  "seed": 31073,
+  "normal_convention": "OpenGL; +X image-right; +Y image-up; +Z outward",
+  "normal_derivative": "central differences of decoded delivered 16-bit height, wrapping both axes",
+  "master_size": [
+    2304,
+    2304
+  ],
+  "source_crops": [
+    {
+      "source": "royal_a.png",
+      "crop_xy": [
+        212,
+        53
+      ],
+      "master_xy": [
+        0,
+        0
+      ],
+      "flip_x": true,
+      "flip_y": true
+    },
+    {
+      "source": "royal_b.png",
+      "crop_xy": [
+        28,
+        144
+      ],
+      "master_xy": [
+        768,
+        0
+      ],
+      "flip_x": true,
+      "flip_y": true
+    },
+    {
+      "source": "royal_a.png",
+      "crop_xy": [
+        111,
+        1
+      ],
+      "master_xy": [
+        1536,
+        0
+      ],
+      "flip_x": false,
+      "flip_y": true
+    },
+    {
+      "source": "royal_b.png",
+      "crop_xy": [
+        133,
+        11
+      ],
+      "master_xy": [
+        0,
+        768
+      ],
+      "flip_x": true,
+      "flip_y": false
+    },
+    {
+      "source": "royal_a.png",
+      "crop_xy": [
+        80,
+        138
+      ],
+      "master_xy": [
+        768,
+        768
+      ],
+      "flip_x": true,
+      "flip_y": false
+    },
+    {
+      "source": "royal_b.png",
+      "crop_xy": [
+        184,
+        179
+      ],
+      "master_xy": [
+        1536,
+        768
+      ],
+      "flip_x": false,
+      "flip_y": false
+    },
+    {
+      "source": "royal_a.png",
+      "crop_xy": [
+        178,
+        102
+      ],
+      "master_xy": [
+        0,
+        1536
+      ],
+      "flip_x": true,
+      "flip_y": true
+    },
+    {
+      "source": "royal_b.png",
+      "crop_xy": [
+        68,
+        88
+      ],
+      "master_xy": [
+        768,
+        1536
+      ],
+      "flip_x": true,
+      "flip_y": false
+    },
+    {
+      "source": "royal_a.png",
+      "crop_xy": [
+        32,
+        112
+      ],
+      "master_xy": [
+        1536,
+        1536
+      ],
+      "flip_x": true,
+      "flip_y": false
+    }
+  ],
+  "rings": [
+    {
+      "center_mm": 31.0,
+      "gap_to_next_mm": 115,
+      "source_width_multiplier": 1.0754454135894775,
+      "peak_rise_parameter_mm": 0.6799637628497105,
+      "measured_ring_relief_mm": 0.7639294982660231,
+      "visible_fraction": 0.69384765625
+    },
+    {
+      "center_mm": 146.0,
+      "gap_to_next_mm": 162,
+      "source_width_multiplier": 1.0717747211456299,
+      "peak_rise_parameter_mm": 0.7484192479942328,
+      "measured_ring_relief_mm": 0.8310347990445329,
+      "visible_fraction": 0.65771484375
+    },
+    {
+      "center_mm": 308.0,
+      "gap_to_next_mm": 92,
+      "source_width_multiplier": 1.0638251304626465,
+      "peak_rise_parameter_mm": 0.8010644857676192,
+      "measured_ring_relief_mm": 0.8853498647718883,
+      "visible_fraction": 0.666015625
+    },
+    {
+      "center_mm": 400.0,
+      "gap_to_next_mm": 138,
+      "source_width_multiplier": 0.967619776725769,
+      "peak_rise_parameter_mm": 0.664071304528981,
+      "measured_ring_relief_mm": 0.7458067507566234,
+      "visible_fraction": 0.67431640625
+    },
+    {
+      "center_mm": 538.0,
+      "gap_to_next_mm": 180,
+      "source_width_multiplier": 1.166442632675171,
+      "peak_rise_parameter_mm": 0.6528063276379874,
+      "measured_ring_relief_mm": 0.7347080539005675,
+      "visible_fraction": 0.734375
+    },
+    {
+      "center_mm": 718.0,
+      "gap_to_next_mm": 106,
+      "source_width_multiplier": 1.1206378936767578,
+      "peak_rise_parameter_mm": 0.7740472480572784,
+      "measured_ring_relief_mm": 0.8564211919349801,
+      "visible_fraction": 0.76953125
+    },
+    {
+      "center_mm": 824.0,
+      "gap_to_next_mm": 152,
+      "source_width_multiplier": 1.125190258026123,
+      "peak_rise_parameter_mm": 0.6813135204568836,
+      "measured_ring_relief_mm": 0.7651778215996416,
+      "visible_fraction": 0.62646484375
+    },
+    {
+      "center_mm": 976.0,
+      "gap_to_next_mm": 126,
+      "source_width_multiplier": 1.0144139528274536,
+      "peak_rise_parameter_mm": 0.6661697716702504,
+      "measured_ring_relief_mm": 0.7489634951351722,
+      "visible_fraction": 0.6953125
+    },
+    {
+      "center_mm": 1102.0,
+      "gap_to_next_mm": 195,
+      "source_width_multiplier": 0.957893967628479,
+      "peak_rise_parameter_mm": 0.817614521855849,
+      "measured_ring_relief_mm": 0.9011527843823239,
+      "visible_fraction": 0.669921875
+    },
+    {
+      "center_mm": 1297.0,
+      "gap_to_next_mm": 84,
+      "source_width_multiplier": 0.9766059517860413,
+      "peak_rise_parameter_mm": 0.602724257520002,
+      "measured_ring_relief_mm": 0.683455587773613,
+      "visible_fraction": 0.7021484375
+    },
+    {
+      "center_mm": 1381.0,
+      "gap_to_next_mm": 146,
+      "source_width_multiplier": 1.0186638832092285,
+      "peak_rise_parameter_mm": 0.6163413445571553,
+      "measured_ring_relief_mm": 0.698881373656368,
+      "visible_fraction": 0.62744140625
+    },
+    {
+      "center_mm": 1527.0,
+      "gap_to_next_mm": 118,
+      "source_width_multiplier": 1.1119170188903809,
+      "peak_rise_parameter_mm": 0.7693852461695431,
+      "measured_ring_relief_mm": 0.8523140642109361,
+      "visible_fraction": 0.67431640625
+    },
+    {
+      "center_mm": 1645.0,
+      "gap_to_next_mm": 171,
+      "source_width_multiplier": 1.1184406280517578,
+      "peak_rise_parameter_mm": 0.7209779668804261,
+      "measured_ring_relief_mm": 0.8039998017987116,
+      "visible_fraction": 0.67919921875
+    },
+    {
+      "center_mm": 1816.0,
+      "gap_to_next_mm": 98,
+      "source_width_multiplier": 1.0394566059112549,
+      "peak_rise_parameter_mm": 0.6355544556489795,
+      "measured_ring_relief_mm": 0.7194498156857335,
+      "visible_fraction": 0.720703125
+    },
+    {
+      "center_mm": 1914.0,
+      "gap_to_next_mm": 117,
+      "source_width_multiplier": 1.1494985818862915,
+      "peak_rise_parameter_mm": 0.6799092178836923,
+      "measured_ring_relief_mm": 0.7642081507554014,
+      "visible_fraction": 0.69775390625
+    }
+  ],
+  "neutral_height_mm": 0.92,
+  "base_ring_colours_srgb255": {
+    "body": [
+      184.0,
+      183.0,
+      171.0
+    ],
+    "lip": [
+      217.0,
+      217.0,
+      205.0
+    ],
+    "recess": [
+      155.0,
+      155.0,
+      145.0
+    ]
+  },
+  "base_contrast": "Pale exposed scar fibre plus dark recessed-tissue pigment, calibrated independently of illumination. No broad directional light or cast shadows; AO is not multiplied into base.",
+  "lichen_coverage_over_025": 0.0076520442962646484,
+  "repeat_note": "Any single fixed UV tile repeats exactly after its specified physical height. Contrast and salience are minimized; true aperiodicity needs engine-side variation.",
+  "source_sha256": {
+    "composed_master_2304.png": "6ffe461dc050f785863d6b6a9f39a6fb766017058be6b8821cdf043652ed6537",
+    "ridge_extraction.png": "ec8caa16fd88cb160bd616667905fbdaa413ae0c3a98b6ebfad4175f626f4023",
+    "royal_a.png": "3bce1f1942227a51b74ec41288865b1ae15073ff11645b95ed3a11c9dfb1cb23",
+    "royal_b.png": "dd729aac95650877b37618567427a36ea1e2fe810acc3ab2b9b05b8358822378",
+    "royal_rings.png": "a561bd85528ed671de9cc918912650df3e906f8574074388964f7bbe03cfef92",
+    "royal_rings_v2.png": "e4c07724efa15fab28f54532aa7a32cc32b39915bc10390988a7338d57e7779a"
+  }
+}

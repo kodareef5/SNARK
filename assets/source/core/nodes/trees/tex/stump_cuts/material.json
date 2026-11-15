@@ -1,0 +1,133 @@
+{
+  "size": [
+    2048,
+    2048
+  ],
+  "height_range_mm": 48.0,
+  "height_datum_mm": 24,
+  "normal_convention": "OpenGL: +X right, +Y image-up, +Z outward",
+  "normal_formula": "normalize(-dH/dx, +dH/dy_down, 1)",
+  "disc_diameter_px": 819.2,
+  "disc_centres_px": [
+    [
+      511.5,
+      511.5
+    ],
+    [
+      1535.5,
+      511.5
+    ],
+    [
+      511.5,
+      1535.5
+    ],
+    [
+      1535.5,
+      1535.5
+    ]
+  ],
+  "seed": 601114,
+  "patches": {
+    "fig": {
+      "x": 0,
+      "y": 0,
+      "diameter_mm": 1500,
+      "rim_mm": 30,
+      "wood": "#D9C392",
+      "inner": "#B69A68",
+      "torn": "#E7D5AE",
+      "bark": "#A6A79C",
+      "mm_per_pixel": 1.8310546875,
+      "square_coverage_mm": 1875.0,
+      "source_boundary_px": [
+        588.0,
+        611.2352905273438
+      ],
+      "rim_mm_measured": [
+        24.229022979736328,
+        29.999998092651367,
+        35.77098083496094
+      ],
+      "facet_count": 6,
+      "ring_relief_amplitude_mm": 0.12,
+      "ring_value_contrast": 0.031,
+      "bark_chip_count": 6
+    },
+    "oak": {
+      "x": 1024,
+      "y": 0,
+      "diameter_mm": 2000,
+      "rim_mm": 35,
+      "wood": "#DCC296",
+      "inner": "#AE855B",
+      "torn": "#EAD6B1",
+      "bark": "#493F34",
+      "mm_per_pixel": 2.44140625,
+      "square_coverage_mm": 2500.0,
+      "source_boundary_px": [
+        538.316162109375,
+        605.8027954101562
+      ],
+      "rim_mm_measured": [
+        29.399011611938477,
+        34.990989685058594,
+        39.79999923706055
+      ],
+      "facet_count": 6,
+      "ring_relief_amplitude_mm": 0.22,
+      "ring_value_contrast": 0.049,
+      "bark_chip_count": 6
+    },
+    "mangrove": {
+      "x": 0,
+      "y": 1024,
+      "diameter_mm": 500,
+      "rim_mm": 25,
+      "wood": "#D2AA7F",
+      "inner": "#A87853",
+      "torn": "#E3C49A",
+      "bark": "#8A8371",
+      "mm_per_pixel": 0.6103515625,
+      "square_coverage_mm": 625.0,
+      "source_boundary_px": [
+        554.6906127929688,
+        610.2940063476562
+      ],
+      "rim_mm_measured": [
+        20.200000762939453,
+        25.003530502319336,
+        30.255434036254883
+      ],
+      "facet_count": 6,
+      "ring_relief_amplitude_mm": 0.1,
+      "ring_value_contrast": 0.04,
+      "bark_chip_count": 5
+    },
+    "banyan": {
+      "x": 1024,
+      "y": 1024,
+      "diameter_mm": 2200,
+      "rim_mm": 30,
+      "wood": "#D9C392",
+      "inner": "#B69A68",
+      "torn": "#E7D5AE",
+      "bark": "#A6A79C",
+      "mm_per_pixel": 2.685546875,
+      "square_coverage_mm": 2750.0,
+      "source_boundary_px": [
+        586.0999145507812,
+        609.7667236328125
+      ],
+      "rim_mm_measured": [
+        24.294069290161133,
+        30.00000762939453,
+        35.705936431884766
+      ],
+      "facet_count": 6,
+      "ring_relief_amplitude_mm": 0.13,
+      "ring_value_contrast": 0.033,
+      "bark_chip_count": 5
+    }
+  },
+  "provenance": "Four original and four edited built-in image_gen sources; source/generation_prompts.json and source/round2_prompts.json; no downloaded imagery."
+}

@@ -1,0 +1,16 @@
+{
+  "size": 2048,
+  "supersampling": 2,
+  "height_range_mm": 8.0,
+  "seed": "140726 + slot*137",
+  "pixels_per_metre_across": 359.29824561403507,
+  "pixels_per_metre_along": 409.6,
+  "normal_convention": "+X right, +Y image-up, +Z outward; OpenGL",
+  "source": "source/generated_leaflets.png",
+  "source_sha256": "b858ce4969c915c15fb66c82cb200c378dd186d244d1077533c417d77183f42e",
+  "leaflet_counts": [
+    170,
+    171,
+    180
+  ]
+}

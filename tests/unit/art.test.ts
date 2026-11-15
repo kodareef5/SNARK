@@ -8,7 +8,7 @@ import { ZONE_TORSO } from "../../shared/anim/human.ts";
 import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { main } from "../../tools/art.ts";
-import { findAssets, type Asset } from "../../tools/art/assets.ts";
+import { findAssets, isNode, type Asset } from "../../tools/art/assets.ts";
 import { checkAsset, measureSurface } from "../../tools/art/check.ts";
 import { readPacks } from "../../tools/art/source.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
@@ -21,12 +21,36 @@ import { ASSETS } from "../fixtures/assets.ts";
 /** The examples of scripted assets, which are in no game pack. */
 const EXAMPLES = await findAssets(join(import.meta.dir, "../../tools/blender/example"));
 
+/**
+ * A node pack (trees, rocks, plants) is many meshes of crowns and cards, whose errors are stated rather than measured on
+ * their points, and that measure takes seconds on such a pack. Its maker sees it in `bun run art -- <id> --check`. Here a
+ * node pack is checked without it, and its stated errors are held to rise level by level while its triangles fall.
+ */
+function unmeasured(asset: Asset): Asset {
+  if (!isNode(asset) || asset.spec.kind !== "pieces") return asset;
+  return { ...asset, spec: { ...asset.spec, pieces: asset.spec.pieces.map(({ errors: _, ...p }) => p) } };
+}
+
 test("every asset folder has its pack, named as the folder is, and the pack passes its check; so do the examples", () => {
   expect(ASSETS.length).toBeGreaterThan(0);
   expect(EXAMPLES.map((a) => [a.id, a.spec.kind])).toEqual([["demo:pup", "creature"], ["demo:crate", "pieces"]]);
   for (const asset of [...ASSETS, ...EXAMPLES]) {
     expect([asset.id, basename(asset.file), basename(dirname(asset.file)), existsSync(asset.file)]).toEqual([asset.id, `${asset.name}.snpk`, asset.name, true]);
-    expect([asset.id, checkAsset(asset, parsePack(new Uint8Array(readFileSync(asset.file)))).faults]).toEqual([asset.id, []]);
+    expect([asset.id, checkAsset(unmeasured(asset), parsePack(new Uint8Array(readFileSync(asset.file)))).faults]).toEqual([asset.id, []]);
+  }
+});
+
+// A first flat level may carry more triangles than the textured level before it: it builds in geometry what that level
+// cuts out of a picture (a palmetto's fingers, a fern's leaflets). From there on they never rise, and end under the first.
+test("a node pack's levels state errors that rise and carry triangles that do not", () => {
+  for (const asset of ASSETS.filter(isNode)) {
+    const pack = parsePack(new Uint8Array(readFileSync(asset.file)));
+    for (const mesh of pack.header.meshes) {
+      const errors = mesh.lods.slice(1).map((l) => l.error);
+      const triangles = mesh.lods.map((l) => l.indexCount / 3);
+      expect([mesh.id, errors.every((e, i) => e > (errors[i - 1] ?? 0))]).toEqual([mesh.id, true]);
+      expect([mesh.id, triangles.every((t, i) => i < 2 || t <= triangles[i - 1]!) && triangles.at(-1)! < triangles[0]!]).toEqual([mesh.id, true]);
+    }
   }
 });
 

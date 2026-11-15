@@ -1,0 +1,5 @@
+Replaced all four layers with clearer blade halves, pale veins, stronger crease normals, subtle sheen, crossing AO, and softened alpha edges.
+
+The 0.5 cutout is unchanged pixel for pixel. Slot characters, mip coverage, and the 10 mm height range are preserved. All checks pass; all four PNGs rebuild byte for byte.
+
+New built-in imagegen sources, prompts, and updated scripts are retained. See [REPORT.md](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/royal_frond/REPORT.md) and the [before/after comparison](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/royal_frond/checks/round2_comparison.jpg).

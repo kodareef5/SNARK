@@ -1,0 +1,5 @@
+Saved all **10 final PNGs** at native resolution in [this folder](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/ref/concept/broadleaf), alongside `DESIGN.md` and exact `prompts.md`.
+
+Inspected 18 paintings; every version is preserved in `source/`. PNG integrity checks passed. The design notes document the mangrove stump’s low-collar solution.
+
+No outside imagery was used, and no git commands were run.

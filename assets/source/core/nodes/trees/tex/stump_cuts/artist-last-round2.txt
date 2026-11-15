@@ -1,0 +1,5 @@
+Replaced all four layers with visible rings, six stepped facets, rounded oak heartwood with radial checks, chipped rims, and banyan seams. Layout, colours, and torn ridges are preserved.
+
+**131 checks pass**, including a byte-identical rebuild. New built-in imagegen sources, prompts, and scripts are retained.
+
+[Before/after comparison](checks/round2_before_after.jpg) · [Updated REPORT.md](REPORT.md)

@@ -1,0 +1,16 @@
+BUILT-IN IMAGE GENERATOR — original source leaflets
+
+LIVING
+Use case: photorealistic-natural.
+Asset type: original botanical game-material source sheet, isolated royal palm leaflets, not whole fronds.
+Create SIX separate individual long narrow royal palm leaflets arranged parallel upright, one per equally spaced column in a square transparent PNG. Each blade's small cut attachment is at bottom and its long tapered needle tip at top. Entire leaves visible with 6 percent top/bottom padding, each centered perfectly in its column. Mid-vein straight and vertically aligned. Leaflets are extraordinarily slender strap blades, approximately 85 cm long by 3.5 cm wide in nature: length about 24 times blade width. No stalk branches or secondary leaves. All six individual blades are separate with ample transparent space.
+Real botanical surface detail, crisp intact edges, continuous fine parallel longitudinal veins, a subtle paler central vein. Vary natural taper, some tiny tip splits, a few modest brown flecks, subtle pigment variation down the length. Leftmost two mature deep middle green (sRGB approximately #4D7338), next two similar varied medium green, rightmost two fresh brighter green (#8DA844). Thin leathery leaf surfaces, clean waxy tissue.
+Strictly flat unlit diffuse/base colour: evenly exposed cross-polarized top-down scan, NO specular streaks, NO highlights, NO directional shadows, NO cast shadow, no dark outline. Natural vein pigment is welcome. This sheet is used to construct a metrically exact material with separate computed normal and roughness maps. Photographic botanical detail, not illustration, not vector art.
+Transparent background, no text, no ground, no ruler, no logos. Use original leaf imagery only; do not imitate any game assets.
+
+AGING
+Use case: photorealistic-natural.
+Asset type: original botanical source sheet for a dying royal palm frond game material.
+SIX individual isolated royal palm leaflets, separated evenly in six parallel upright columns. Each long narrow blade points up, cut attachment down; midvein runs vertically. Entire blades visible with small transparent padding at top and bottom. NOT six fronds: six individual strap-shaped leaflets, no branching or lateral leaves. Long spear shapes, about 85 cm long by 3.5 cm wide, gently narrowing to fine asymmetrical split tips. Some lengthwise creasing and tiny edge tears, few speckled age lesions, mostly intact outlines and broad continuous tissue.
+Left two blades yellow-green turning golden ochre at the tips; middle two dry gold and rusty orange; right two muted cinnamon and umber brown with paler straw veins, not black. Rich but restrained botanical pigment, mature yellow target #A7994F, brown target #88633C. Microscopic parallel fibres and fine continuous central veins.
+Photographic top-down cross-polarized scan, flat even diffuse BASE COLOUR ONLY. Absolutely no cast shadow, highlights, gloss, directional light or painted dark half. No background, no text, no ruler. Transparent background; six separate leaves with air between. Original natural imagery only, no game reference.

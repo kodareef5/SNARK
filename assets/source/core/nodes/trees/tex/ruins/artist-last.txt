@@ -1,0 +1,7 @@
+Delivered all four 2048 × 2048 maps, full-size sources, rebuild/check scripts, and checks.
+
+Height range: **48 mm**. Normals: **OpenGL**, computed from delivered height. All checks and byte-identical rebuilding pass.
+
+[Layer preview](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/ruins/checks/layers.jpg) · [Report and caveats](/home/user/dev/SNARK/.claude/worktrees/agent-a458d8524219d596e/assets/source/core/nodes/trees/tex/ruins/REPORT.md)
+
+Some painted crevice contrast remains; engine validation is still outstanding.

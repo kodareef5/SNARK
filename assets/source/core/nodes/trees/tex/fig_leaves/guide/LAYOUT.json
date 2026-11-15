@@ -1,0 +1,99 @@
+{
+  "picture": 2048,
+  "cells": [
+    {
+      "cell": 0,
+      "what": "cluster",
+      "box": [
+        0,
+        0,
+        512,
+        512
+      ],
+      "metres_across": 1.2,
+      "twig_enters": [
+        256,
+        512
+      ]
+    },
+    {
+      "cell": 1,
+      "what": "cluster",
+      "box": [
+        512,
+        0,
+        1024,
+        512
+      ],
+      "metres_across": 1.2,
+      "twig_enters": [
+        768,
+        512
+      ]
+    },
+    {
+      "cell": 2,
+      "what": "cluster",
+      "box": [
+        0,
+        512,
+        512,
+        1024
+      ],
+      "metres_across": 1.2,
+      "twig_enters": [
+        256,
+        1024
+      ]
+    },
+    {
+      "cell": 3,
+      "what": "cluster",
+      "box": [
+        512,
+        512,
+        1024,
+        1024
+      ],
+      "metres_across": 1.2,
+      "twig_enters": [
+        768,
+        1024
+      ]
+    },
+    {
+      "what": "aerial roots, dense, hang from the top edge",
+      "box": [
+        1024,
+        0,
+        1536,
+        1024
+      ],
+      "metres_across": 1.0,
+      "metres_down": 2.0
+    },
+    {
+      "what": "aerial roots, sparse, hang from the top edge",
+      "box": [
+        1536,
+        0,
+        2048,
+        1024
+      ],
+      "metres_across": 1.0,
+      "metres_down": 2.0
+    },
+    {
+      "what": "mass",
+      "box": [
+        0,
+        1024,
+        2048,
+        2048
+      ],
+      "metres_across": 6.4,
+      "metres_down": 3.2
+    }
+  ],
+  "margin_px": 12
+}

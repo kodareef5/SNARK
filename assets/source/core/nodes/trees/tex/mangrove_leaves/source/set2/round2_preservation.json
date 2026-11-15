@@ -1,0 +1,91 @@
+{
+  "description": "Pre-round-2 immutable channels and inputs; captured before the sun/shade correction.",
+  "files": {
+    "mangrove_leaves_height.png": "2bc59bd845a31a5cb920e290533493093936bdafe662c14105ffbacbc89a0029",
+    "mangrove_leaves_normal.png": "70e14271c6ecf7c8cf0a9c401eb60dafbd2ab651c4293310e5109516ddda3e41",
+    "source/set2/composition.json": "cdd943c360d8b195b706634ec2ad0114681fea6b414211fcd3e838bf76084ab4",
+    "source/set2/surface_ids.png": "0f812ed270d3d7b4a00168dda97af26960d772b5f0431399b1af255465ac37f2",
+    "source/set2/surface_kind.png": "5670a94e142ab2eff27da09eb9f507c6a2995ba66a3630fa833b184bb3f44f09",
+    "source/set2/surface_depth.png": "4a5133ef49580b986dca38b3e3e340f41d2f6fc0689106a058b1ab31f331ca97",
+    "source/set2/leaves_generated.png": "d75c79e643ed9d6e0506a9a0af65a4f4d78e7f325c36e541b0753098d607c605",
+    "guide/LAYOUT.json": "3a57e2077d52365f9e6f0c1e427dd4f907eda1e6a05bbe9aee707132b0cdec52",
+    "guide/layout.png": "d0067fe893b5f292200da7c94a0e68391e2ca04077a98dec5221644f728e8b93",
+    "fitted.json": "e8e1d0807962ea7fadf24f4d6d2afc7f55f455dd4b5d82e7d405f604d7af7ecb"
+  },
+  "arrays": {
+    "alpha": "1877dd25b2b0f54b4b7c2ea8a2c9e6149b401ecb3bf8dcc9c2ecdfc4dc07a862",
+    "roughness": "79d4a1fbb252092e879fa2fb3461fc8c49178c2cf757c6d934b20afe98f03177",
+    "metalness": "bb9f8df61474d25e71fa00722318cd387396ca1736605e1248821cc0de3d3af8",
+    "cutout_ao": "f50f6adf5c59e7d371354799c088f3c7a7fbda985cd6e8bed0655d9914e798fb",
+    "strips_base": "b0bc082fec316699ebac4ff10fcd584a5ef9afaac278ed1b4220ad84866e9eb8",
+    "strips_height": "eda7e7fcba6abfa076a6fbaea1be45cc1149ab9b6e8efcf82a4bf1e54bfd1193",
+    "strips_normal": "ee795c4e6896a34ed619d3331ef8465106a3f8599450ae0e04c68ed484019026",
+    "strips_orm": "7891607e6a2c4337e8da31c14bdbca804ab26f24399bb18ee70fc7a4e4643f3a",
+    "visible_cell_twigs_and_brown": "b03ab5c2d65bb0cc93b620c05225fbebbf9a4e24912ceba67e31005be59126b9"
+  },
+  "mass_before": {
+    "name": "mass",
+    "mean_rgb": [
+      61.99061632156372,
+      81.99856615066528,
+      48.017945766448975
+    ],
+    "height_mm": [
+      15.073472190432593,
+      133.12947280079348
+    ],
+    "roughness": [
+      0.9176470588235294,
+      0.9411764705882353
+    ],
+    "occlusion": [
+      0.45098039215686275,
+      0.9803921568627451
+    ],
+    "normal_error_degrees": {
+      "mean": 0.1702270420777926,
+      "p99": 0.3147101182801714,
+      "max": 0.38389894870382424
+    },
+    "normal_tilt_degrees": [
+      11.50785368477988,
+      26.378472116153546,
+      41.47154702318235
+    ],
+    "interior_leaf_tilt_degrees": [
+      10.994563337834707,
+      25.20955661197169,
+      39.05316405897296
+    ],
+    "seam_over_interior_difference": {
+      "base": {
+        "x": 0.9521553191236811,
+        "y": 1.1439098095022682
+      },
+      "height": {
+        "x": 1.2907356131508974,
+        "y": 1.0090384160300356
+      },
+      "normal": {
+        "x": 0.9490892955687315,
+        "y": 1.2108266279017281
+      },
+      "orm": {
+        "x": 1.14977662911446,
+        "y": 1.0850241777756435
+      }
+    },
+    "exposed_top_mean": [
+      75.38206853611568,
+      98.15727759653602,
+      54.85602189733812
+    ],
+    "hollow_mean": [
+      44.48289665333473,
+      60.84510614536415,
+      39.0605521375399
+    ],
+    "hollow_fraction": 0.4252638816833496
+  },
+  "protected_tissue_note": "Twig and brown-leaf RGB compared at the 0.5 alpha cutoff. Below-cutoff RGB is renewed from the nearest visible surface, as required for padding."
+}
