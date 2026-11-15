@@ -276,10 +276,10 @@ test("forty dodos startled at once are heard as the nearest five, the quietest s
   // Out of range is not started at all.
   expect(m.play(p, ear, 0, 2, 1, 0.2, 20, KIND_STEP, 0.25, -1, 30, 0, 0, 0, 1, 1, 0)).toBe(0);
   // A call cut short by its creature's pain; a call is not let cut a cry.
-  const before = p.stops.length;
   expect(m.play(p, ear, 0, 3, 2, 1, 40, KIND_VOCAL, 0.4, 500, 5, 0, 0, 0, 1, 1, 0)).toBeGreaterThan(0);
+  p.clear();
   expect(m.play(p, ear, 0, 4, 3, 1, 40, KIND_VOCAL, 0.9, 500, 5, 0, 0, 0, 1, 1, 0)).toBeGreaterThan(0);
-  expect(p.stops.length).toBe(before + 1);
+  expect(p.stops.length).toBe(1);
   expect(m.play(p, ear, 0, 3, 2, 1, 40, KIND_VOCAL, 0.4, 500, 5, 0, 0, 0, 1, 1, 0)).toBe(0);
   // Voices end with their sound.
   m.expire(5000);
@@ -476,4 +476,30 @@ test("a dodo carried in a survivor's arms takes no steps of its own as its carri
   st.setMotion(-1.2, 0, Math.PI / 2, 0);
   for (let k = 0; k < 8 * TICK_RATE; k++) frame(() => (remote.x[0]! -= 1.2 / TICK_RATE));
   expect(heard.filter((h) => h.startsWith("step"))).toEqual([]);
+});
+
+test("a voice taken over in the frame it was started never reaches the device, which stops before it starts", () => {
+  const m = new Mixer();
+  const p = new SoundPacket();
+  const ear = { x: 0, y: 0, z: 0 };
+  // client/sound carries out a packet's stops, then its starts.
+  const device = new Set<number>();
+  const apply = (): void => {
+    for (const s of p.stops) device.delete(s);
+    for (let i = 0; i < p.starts.length; i += START_FIELDS) device.add(p.starts[i]!);
+    p.clear();
+  };
+  // Forty squawks in one frame, the nearest last, and two cries of one mouth.
+  for (let k = 0; k < 40; k++) m.play(p, ear, 0, 1, 0, 1, 60, KIND_VOCAL, 0.9, 100 + k, 50 - k, 0, 0, 0, 1, 1, 0);
+  m.play(p, ear, 0, 2, 1, 1, 60, KIND_VOCAL, 0.5, 7, 3, 0, 0, 0, 1, 1, 0);
+  m.play(p, ear, 0, 3, 2, 1, 60, KIND_VOCAL, 0.9, 7, 3, 0, 0, 0, 1, 1, 0);
+  apply();
+  expect(device.size).toBe(m.playing);
+  const live = new Set([...m.serial].filter((s) => s !== 0));
+  expect([...device].sort()).toEqual([...live].sort());
+  // Across frames a voice taken over is stopped as before.
+  for (let k = 0; k < 5; k++) m.play(p, ear, 0, 1, 0, 1, 60, KIND_VOCAL, 0.9, 200 + k, 1, 0, 0, 0, 1, 1, 0);
+  expect(p.stops.length).toBe(5);
+  apply();
+  expect(device.size).toBe(m.playing);
 });

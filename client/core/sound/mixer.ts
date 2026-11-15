@@ -8,7 +8,7 @@
 // looping sound plays until it is stopped.
 
 import type { Rng } from "../../../shared/rng.ts";
-import type { SoundPacket } from "./packet.ts";
+import { START_FIELDS, type SoundPacket } from "./packet.ts";
 import { TOP_HZ, distanceGain, lowpassAt } from "./place.ts";
 
 export const VOICES = 48;
@@ -87,8 +87,15 @@ export class Mixer {
   }
 
   private stop(v: number, p: SoundPacket): void {
-    p.stops.push(this.serial[v]!);
+    const serial = this.serial[v]!;
     this.serial[v] = 0;
+    // The device stops before it starts, so a voice started in this packet is taken out of it instead.
+    for (let i = p.starts.length - START_FIELDS; i >= 0; i -= START_FIELDS) {
+      if (p.starts[i] !== serial) continue;
+      p.starts.splice(i, START_FIELDS);
+      return;
+    }
+    p.stops.push(serial);
   }
 
   /** Frees the voices whose sound has ended by `nowMs`. */
