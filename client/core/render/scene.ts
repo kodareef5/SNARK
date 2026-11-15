@@ -125,6 +125,12 @@ interface ChunkBatch {
   cellBox: Float32Array | null;
   /** Per range and cell, the level it was last drawn at, or -1. */
   cellLevel: Int8Array | null;
+  /**
+   * Per range, and per range and cell, the largest size of the kinds of its nodes, as a multiple of the modelled size. Two
+   * kinds may grow as one mesh at different sizes (the young live oak and the elder), and each is drawn by its own.
+   */
+  reach: Float32Array | null;
+  cellReach: Float32Array | null;
   minX: number;
   minY: number;
   minZ: number;
@@ -159,9 +165,11 @@ export class Scene {
   private readonly meshOfForm: Uint16Array;
   private readonly colorOfForm: Uint8Array;
   private readonly sizeOfForm: Uint8Array;
+  /** Per node form, the largest size of its kind, in SIZE_UNITS. */
+  private readonly mostOfForm: Uint8Array;
   /**
-   * Per mesh, the largest size a node draws it at, as a multiple of its modelled size, or 1. A node mesh's level and textures
-   * are chosen for its distance divided by this, as if every node of it were that size.
+   * Per mesh, the largest size a node draws it at, as a multiple of its modelled size, or 1. Its shadows' levels and its far
+   * textures are chosen for its distance divided by this, as if every node of it were that size.
    */
   private readonly reachOfMesh: Float32Array;
   /** 1 for kinds drawn with their pitch as well as their yaw. */
@@ -322,6 +330,7 @@ export class Scene {
     this.meshOfForm = new Uint16Array(forms.count).fill(HIDDEN);
     this.colorOfForm = new Uint8Array(forms.count);
     this.sizeOfForm = forms.size;
+    this.mostOfForm = forms.most;
     this.reachOfMesh = new Float32Array(table.count).fill(1);
     for (let f = 1; f < forms.count; f++) {
       const kind = forms.kind[f]!;
@@ -978,7 +987,8 @@ export class Scene {
   }
 
   /**
-   * Draws a chunk of nodes `dist` metres off. A mesh's level is chosen as if every node of it were its kind's largest. Where
+   * Draws a chunk of nodes `dist` metres off. A mesh's level is chosen as if each node of it were its kind's largest, and a
+   * cell holding nodes of two kinds of it as if all were the larger kind's largest. Where
    * the chunk's nearest and farthest points ask for the same level, each mesh is one draw; otherwise each cell takes the level
    * the nearest of its nodes asks for, measured to its trunk. Every draw of the chunk is in the depth ranges `passes`.
    */
@@ -995,7 +1005,7 @@ export class Scene {
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
       const errors = this.assets.table.error[mesh]!;
-      const reach = this.reachOfMesh[mesh]!;
+      const reach = b.reach![q]!;
       const near = this.assets.choose(errors, dist / reach, b.level[q]!);
       if (near === this.assets.choose(errors, far / reach, b.level[q]!)) {
         b.level[q] = near;
@@ -1019,7 +1029,7 @@ export class Scene {
         const dx = Math.max(box[k]! - cam.x, cam.x - box[k + 3]!, 0);
         const dy = Math.max(box[k + 1]! - cam.y, cam.y - box[k + 4]!, 0);
         const dz = Math.max(box[k + 2]! - cam.z, cam.z - box[k + 5]!, 0);
-        const seen = Math.sqrt(dx * dx + dy * dy + dz * dz) / reach;
+        const seen = Math.sqrt(dx * dx + dy * dy + dz * dz) / b.cellReach![q * cells + c]!;
         const level = (levels[q * cells + c] = this.assets.choose(errors, seen, levels[q * cells + c]!));
         // A run is its first and end instance, its level, the coarsest level a cell of it asked for, its nearest distance, and how many of it asked for that coarsest.
         const last = runs.length - 6;
@@ -1086,6 +1096,8 @@ export class Scene {
       cellFirst: cells > 1 ? new Uint32Array(n * (cells + 1)) : null,
       cellBox: cells > 1 ? new Float32Array(n * cells * 6) : null,
       cellLevel: cells > 1 ? new Int8Array(n * cells).fill(-1) : null,
+      reach: cells > 1 ? new Float32Array(n) : null,
+      cellReach: cells > 1 ? new Float32Array(n * cells) : null,
       minX: Infinity,
       minY: Infinity,
       minZ: Infinity,
@@ -1137,6 +1149,9 @@ export class Scene {
       box[at + 3] = Math.max(box[at + 3]!, x);
       box[at + 4] = Math.max(box[at + 4]!, hi);
       box[at + 5] = Math.max(box[at + 5]!, z);
+      const most = this.mostOfForm[kind]! / SIZE_UNITS;
+      b.reach![this.cursor[mesh]!] = Math.max(b.reach![this.cursor[mesh]!]!, most);
+      b.cellReach![this.cursor[mesh]! * cells + cell] = Math.max(b.cellReach![this.cursor[mesh]! * cells + cell]!, most);
     }
     this.batches.set(id, b);
     return b;
