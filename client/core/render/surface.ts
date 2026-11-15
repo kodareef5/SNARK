@@ -50,8 +50,11 @@ export const NEUTRAL: Readonly<Record<TextureRole, readonly [number, number, num
  */
 export const LAYER_STAGES = 6;
 export const LAYER_LEVELS = LAYER_STAGES * 16;
-/** A texel of the layer fades in over this share of the level, a quarter of a stage, once the level passes it. */
-const LAYER_EDGE = 24;
+/**
+ * A texel of the layer fades in over the inverse of this share of the level, a little under a quarter of a stage, once
+ * the level passes it: so a hurt texel of alpha 191, 106 or 21 is whole by stages 1, 2 and 3, and a decay texel so by decay's.
+ */
+const LAYER_EDGE = 26;
 /** A corpse fully decayed is this much toward grey, a little warm, and this much darker. */
 const DULL = 0.55;
 const DULL_TINT = [1.04, 0.97, 0.86] as const;

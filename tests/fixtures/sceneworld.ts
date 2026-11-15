@@ -123,14 +123,27 @@ export function sceneRegistry(): Registry {
 }
 
 /**
- * The boot file, the mesh file and the rgba texture file, with their manifest. The tube's pictures are `pixels`
- * across, which tests leave at 64 and the benchmark raises. Built once per process for each size.
+ * The tube's hurt and decay pictures: on the left of its hide a red mark that shows from the first hurt stage, then
+ * the band beside it at the second and the next at the third; on the right a pale patch that shows at the first decay
+ * stage.
  */
-export function sceneSet(pixels = 64): SceneSet {
-  const made = sets.get(pixels);
+export function tubeLayers(size: number): { hurt: Picture; decay: Picture } {
+  const hurt = picture(size, (x) => (x < size / 4 ? [140, 10, 12, 255] : x < (size * 3) / 8 ? [140, 10, 12, 150] : x < size / 2 ? [140, 10, 12, 60] : [0, 0, 0, 0]));
+  const decay = picture(size, (x) => (x >= (size * 3) / 4 ? [225, 215, 190, 255] : [0, 0, 0, 0]));
+  return { hurt, decay };
+}
+
+/**
+ * The boot file, the mesh file and the rgba texture file, with their manifest. The tube's pictures are `pixels`
+ * across, which tests leave at 64 and the benchmark raises. Built once per process for each size. With `layered` its
+ * hide has a hurt and decay layer (`tubeLayers`).
+ */
+export function sceneSet(pixels = 64, layered = false): SceneSet {
+  const made = sets.get(pixels * 2 + (layered ? 1 : 0));
   if (made) return made;
   const tube = tubeMesh();
   for (const t of tube.textures!) t.top = pixels;
+  if (layered) tube.materials![0]!.layer = tube.textures!.push({ id: `${TUBE}/layer`, role: "layer", top: pixels }) - 1;
   // Drawn flat, the tube's horn is the palette colour the build finds nearest its pictures (D154), not the fixture's yellow.
   for (const lod of tube.lods) lod.colors = lod.colors.map((c) => (c === 6 ? HORN : c));
   const meshes = [...grayboxMeshes(DEFS), ...mannequinMeshes(), ...weaponMeshes(), tube, panelMesh(), clubMesh()];
@@ -139,12 +152,12 @@ export function sceneSet(pixels = 64): SceneSet {
   const planks = picture(64, (x, y) => (((x >> 3) + (y >> 3)) & 3) === 0 ? [150, 110, 70, 0] : (x >> 3) & 1 ? [170, 125, 80, 255] : [120, 85, 55, 255]);
   const pictures = tubePictures();
   for (const role of MAP_ROLES) pictures[role] = enlarged(pictures[role], pixels / pictures[role].width);
-  const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips(pictures), [PANEL]: materialMips({ base: planks }) };
+  const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips({ ...pictures, ...(layered ? tubeLayers(pixels) : {}) }), [PANEL]: materialMips({ base: planks }) };
   const file = writeTextureFile("rgba", manifest.textures!.map((t) => rgbaTexture(t.role, mips[t.id.slice(0, t.id.lastIndexOf("/"))]![t.role]!)));
   manifest.textures!.forEach((t, i) => (t.in.rgba = { file: files.length, ...file.placed[i]! }));
   files.push({ name: "scene.tex.rgba.sntx", role: "tex", bytes: file.bytes });
   manifest.files.push({ name: "scene.tex.rgba.sntx", bytes: file.bytes.length, role: "tex", format: "rgba" });
-  sets.set(pixels, { files, manifest });
+  sets.set(pixels * 2 + (layered ? 1 : 0), { files, manifest });
   return { files, manifest };
 }
 

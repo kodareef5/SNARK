@@ -51,7 +51,7 @@ export class Layers {
     s.level = wanted > s.level ? Math.min(wanted, s.level + step) : Math.max(wanted, s.level - step);
     s.tick = tick;
     s.seen = this.frame;
-    if (s.level === 0) this.shown.delete(id);
+    if (s.level === 0 && wanted === 0) this.shown.delete(id);
     return Math.round(s.level);
   }
 
