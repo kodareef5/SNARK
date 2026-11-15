@@ -13,7 +13,7 @@ import type { EntityRecord } from "../../server/records.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { CMD_DROP, CMD_OPEN, CMD_TAKE, CMD_USE, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_STALE } from "../../shared/net/protocol.ts";
-import { EGG_LIMIT, EGG_LIMIT_RANGE } from "../../shared/sim/breeding.ts";
+import { EGG_LIMIT, EGG_LIMIT_RANGE, leftAtSpeed } from "../../shared/sim/breeding.ts";
 import { F_AWAKE, F_PROP } from "../../shared/sim/entities.ts";
 import { Genome, rollWild } from "../../shared/sim/genome.ts";
 import { V_FOOD } from "../../shared/sim/vitals.ts";
@@ -129,6 +129,12 @@ test("a dodo's fertilised egg taken up keeps its young and the time it had left 
   // Held past the tick it would have hatched, it has not, as in ARK.
   while (h.world.tick < hatchAt + 300) h.run(1000);
   expect([h.host.breeding.hatched, egg!.egg!.hatchAt, young(h).length]).toEqual([0, left, 0]);
+  // Hatching made twice as fast while it is held halves what it has left.
+  h.say(ada, "setting EggHatchSpeedMultiplier 100");
+  expect([egg!.egg!.hatchAt, egg!.egg!.span]).toEqual([leftAtSpeed(left, 50, 100), span / 2]);
+  h.say(ada, "setting EggHatchSpeedMultiplier 50");
+  expect([egg!.egg!.hatchAt, egg!.egg!.span]).toEqual([leftAtSpeed(leftAtSpeed(left, 50, 100), 100, 50), span]);
+  const kept = egg!.egg!.hatchAt;
 
   h.host.shutdown();
   h = new Harness({}, 1, 60, { dev: true, dbPath, config: h.host.rules });
@@ -136,7 +142,7 @@ test("a dodo's fertilised egg taken up keeps its young and the time it had left 
   h.run(1000);
   const again = h.host.records.byPid.get(egg!.pid)!;
   const mine = h.host.items.inv(h.host.records.byPid.get(me.pid)!);
-  expect([mine.item[slot], mine.refOf(slot), again.egg!.hatchAt, held(again), h.host.records.entOf.has(again.pid), h.host.eggs.mended, h.host.items.audit()]).toEqual([id("dodo_egg_fertile"), egg!.pid, left, true, false, 0, []]);
+  expect([mine.item[slot], mine.refOf(slot), again.egg!.hatchAt, held(again), h.host.records.entOf.has(again.pid), h.host.eggs.mended, h.host.items.audit()]).toEqual([id("dodo_egg_fertile"), egg!.pid, kept, true, false, 0, []]);
   const g = again.genome!;
   expect({ wild: [...g.wild], colors: [...g.colors], female: g.female, mother: g.mother, father: g.father }).toEqual(was);
 
@@ -144,8 +150,8 @@ test("a dodo's fertilised egg taken up keeps its young and the time it had left 
   const down = h.world.tick;
   expect(drop(h, ada, slot, id("dodo_egg_fertile"))).toBe(RESULT_OK);
   const due = again.egg!.hatchAt;
-  expect(due - left).toBeGreaterThanOrEqual(down);
-  expect(due - left).toBeLessThanOrEqual(h.world.tick);
+  expect(due - kept).toBeGreaterThanOrEqual(down);
+  expect(due - kept).toBeLessThanOrEqual(h.world.tick);
   const ee = h.host.records.entOf.get(again.pid)!;
   expect([mine.item[slot], held(again), (h.world.ents.flags[ee]! & F_PROP) !== 0, h.world.ents.span[ee], h.world.ents.grown[ee]]).toEqual([0, false, true, span, due]);
   while (h.world.tick < due - 30) h.run(500);
