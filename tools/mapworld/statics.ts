@@ -39,6 +39,7 @@ export interface Site {
   /** The ground's height in metres above the sea at engine x and z, between samples. */
   groundAt(x: number, z: number): number;
   readonly clearPlants: Uint8Array;
+  readonly lowPlants: Uint8Array;
 }
 
 export interface StaticLayer {
@@ -57,6 +58,7 @@ export function siteOf(world: World, ground: Ground, size: number, source = "ass
     world,
     ground,
     clearPlants: new Uint8Array(((n - 1) / 2) ** 2),
+    lowPlants: new Uint8Array(((n - 1) / 2) ** 2),
     footprints: ground.heaps.ruins.map((ruin) => ({ building: ruin.building, ruin, district: world.districts[ruin.district - 1] ?? null })),
     toEngine: (e, no) => [half - e, half + no],
     groundAt(x, z) {

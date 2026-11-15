@@ -21,7 +21,8 @@ export const PLANTS: readonly Zone[] = [
   { name: "open ground", kinds: { "core:tree": 2, "core:palm": 1, "core:bush": 1, "core:creeper": 1, "core:fern": 1 }, bare: 22 },
   { name: "ruin", kinds: { "core:fig": 2, "core:banyan": 1, "core:tree": 1, "core:creeper": 3, "core:fern": 2 }, bare: 14 },
   { name: "marsh", kinds: { "core:mangrove": 3, "core:fern": 2, "core:palmetto": 1, "core:bush": 1 }, bare: 9 },
-  { name: "yard", kinds: { "core:tree": 1, "core:bush": 1, "core:creeper": 1 }, bare: 26 },
+  { name: "yard", kinds: { "core:bush": 1, "core:creeper": 2 }, bare: 40 },
+  { name: "street garden", kinds: { "core:palm": 1, "core:bush": 1, "core:fern": 2 }, bare: 45 },
   { name: "spill", kinds: { "core:creeper": 2, "core:fern": 1, "core:bush": 1, "core:tree": 1 }, bare: 18 },
   // Among the towers the ground was paved: palms that lined the avenues, and weeds in the cracks.
   { name: "plaza", kinds: { "core:palm": 2, "core:tree": 1, "core:bush": 1, "core:creeper": 1 }, bare: 36 },
@@ -51,8 +52,8 @@ const zoneIndex = (list: readonly Zone[], name: string): number => list.findInde
 const URBAN = new Set(["concrete", "deco", "terracotta", "mural"]);
 
 /** Each zone's picture, north up, a byte a square, and the layers that name them. `clear` is true where nothing may stand. */
-export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean): { plants: Uint8Array; stones: Uint8Array; side: number; layers: unknown[] } {
-  const { n, surface, height, shore, heaps } = ground;
+export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean, low: (col: number, row: number) => boolean = () => false): { plants: Uint8Array; stones: Uint8Array; side: number; layers: unknown[] } {
+  const { n, surface, height, shore } = ground;
   const side = (n - 1) / (ZONE_CELL / 2);
   const plants = new Uint8Array(side * side);
   const stones = new Uint8Array(side * side);
@@ -67,9 +68,8 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
       const i = row * n + col;
       const s = surface[i]!;
       const h = height[i]!;
-      const industrial = styleAt(i) === "industrial";
+      const industrial = styleAt(i) === "industrial" || (shore[i]! < 100 && [-32, 0, 32].some((dy) => [-32, 0, 32].some((dx) => row + dy >= 0 && row + dy < n && col + dx >= 0 && col + dx < n && styleAt((row + dy) * n + col + dx) === "industrial")));
       const towers = (world.districts[ground.district[i]! - 1]?.tall ?? 0) >= 0.5;
-      const ruin = heaps.owner[i]!;
       let plant = 0;
       let stone = 0;
       switch (s) {
@@ -128,8 +128,9 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           stone = T("wreck");
           break;
       }
-      // A ruin's heap in a garden district grows over more readily than one downtown.
-      if (ruin >= 0 && plant === P("ruin") && heaps.ruins[ruin]!.crest < 3) plant = P("old garden");
+      // Industrial shore growth stays low enough to see the yards from the bay.
+      if (industrial && plant) plant = P("yard");
+      else if (low(col, row) && plant) plant = P("street garden");
       plants[py * side + px] = plant;
       stones[py * side + px] = stone;
     }
