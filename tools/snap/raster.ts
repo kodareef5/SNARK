@@ -2,9 +2,10 @@
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { NEAR_BODY } from "../../client/core/render/camera.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, SIZE_REGION, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
-import { NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyLight, srgbToLinear } from "../../client/core/render/surface.ts";
+import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
+import { NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
@@ -125,6 +126,28 @@ const normal = new Float64Array(3);
 const eye = new Float64Array(3);
 const light = new Float64Array(3);
 const rgb = new Float64Array(3);
+const reflected = new Float64Array(3);
+const mirrored = new Float64Array(3);
+/** What LIT lights a flat draw as: no occlusion, fully rough, not metal. Its highlight mirrors nothing. */
+const ROUGH = [1, 1, 0];
+const NOTHING = [0, 0, 0];
+
+/**
+ * A pixel of a flat draw on a lit frame into `rgb`, as LIT has it: the checker's `shade` darkens the palette colour,
+ * which is lit as SURFACE lights a fully rough surface. (rx, ry, rz) is where it is from the camera, and (nx, ny, nz) its face's normal.
+ */
+function litFlat(p: FramePacket, pal: Uint8Array, colorIndex: number, shade: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number): void {
+  const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
+  for (let c = 0; c < 3; c++) albedo[c] = srgbToLinear((pal[colorIndex * 4 + c]! / 255) * shade);
+  normal[0] = nx;
+  normal[1] = ny;
+  normal[2] = nz;
+  eye[0] = -rx / dist;
+  eye[1] = -ry / dist;
+  eye[2] = -rz / dist;
+  lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
+  shown(rgb, light, dist, p);
+}
 
 /** Vertices as the pack holds them, eight bytes each, within the bounds of their mesh. */
 function vertices(verts: Uint8Array, n: number, m: { center: readonly number[]; half: readonly number[] }): { positions: Float32Array; colors: Uint8Array; bones: Uint8Array } {
@@ -152,6 +175,12 @@ export class Rasterizer {
   /** One more than the bone the triangle under the pixel follows. 0 where no skinned body is drawn. */
   readonly pickBone: Uint8Array;
   trianglesDrawn = 0;
+  /** The sky table a lit frame reads, as the renderer holds it on its unit: the game's, or one a test sets. */
+  skyTable: Uint8Array = theSky().table;
+  /** The sky table's lookup, as `skyFrom` takes it. */
+  private readonly look = (view: ArrayLike<number>, out: Float64Array | Float32Array | number[]): void => domeLight(this.skyTable, this.sun, view, out);
+  /** Where the sun is in the frame being drawn, as the sky table is read at (sky.ts trueSun). */
+  private readonly sun = new Float64Array(3);
 
   private readonly pack: Pack;
   private readonly hf: Heightfield;
@@ -175,11 +204,20 @@ export class Rasterizer {
   private readonly textures = new Map<number, Texture>();
   /** Textures being made: their pictures as bytes, and how many bytes are still to come. */
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();
-  /** For a textured draw: each vertex's normal and tangent after its bones, a vertex's bones blended, the instance's dyes, and the sky as light. */
+  /** For a textured draw: each vertex's normal and tangent after its bones, a vertex's bones blended, and the instance's dyes. */
   private frames = new Float32Array(6 * 1024);
   private readonly blend = new Float64Array(BONE_FLOATS);
   private readonly dyes = new Float64Array(18);
-  private readonly sky = new Float64Array(3);
+  /** The last lit frame's dome, and what it was made from. */
+  private domeColor = new Uint8ClampedArray(0);
+  private domeDone = new Uint8Array(0);
+  private domeTable: Uint8Array | null = null;
+  private readonly domeKey = new Float64Array(16 + FRAME.ends + 5);
+  private readonly domeInverse = new Float64Array(9);
+  /** Per pixel, a lit flat draw's palette colour and one, 0 for none, the checker's shade, and where it is and which way it faces. */
+  private readonly deferred: Uint16Array;
+  private readonly deferredShade: Float64Array;
+  private readonly deferredAt: Float64Array;
   // A textured triangle's corners, and its clip scratch: per vertex what it carries, then screen x, y, 1/w and NDC depth.
   private readonly corners = new Float64Array(3 * CARRIED);
   private readonly wide = new Float64Array(4 * (CARRIED + 4));
@@ -195,10 +233,14 @@ export class Rasterizer {
     this.pickKind = new Uint8Array(width * height);
     this.pickId = new Uint32Array(width * height);
     this.pickBone = new Uint8Array(width * height);
+    this.deferred = new Uint16Array(width * height);
+    this.deferredShade = new Float64Array(width * height);
+    this.deferredAt = new Float64Array(width * height * 6);
   }
 
   render(packet: FramePacket): void {
     this.packet = packet;
+    trueSun(packet.frame, this.sun);
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
     if (this.manifest) {
@@ -236,7 +278,10 @@ export class Rasterizer {
     this.plain = false;
     this.bone = 0;
     this.terrain(packet);
+    // A lit frame's dome is behind everything opaque, and under what is seen through and the viewer's own body.
+    let domed = !packet.lit;
     for (let d = 0; d < packet.drawCount; d++) {
+      if (!domed && (packet.drawFlags[d]! & (DRAW_BLEND | DRAW_NEAR)) !== 0) domed = this.resolve(packet) && this.dome(packet);
       // The viewer's own body draws over everything so far, with its own near plane.
       if ((packet.drawFlags[d]! & DRAW_NEAR) !== 0 && this.matrix !== packet.nearViewProj) {
         this.matrix = packet.nearViewProj;
@@ -245,6 +290,71 @@ export class Rasterizer {
       }
       this.draw(packet, d);
     }
+    if (packet.lit) this.resolve(packet);
+    if (!domed) this.dome(packet);
+  }
+
+  /** Shades the pixels of flat draws on a lit frame that ended in front, as `litFlat` does. */
+  private resolve(p: FramePacket): true {
+    const s = this.deferredAt;
+    for (let at = 0; at < this.width * this.height; at++) {
+      if (this.deferred[at] === 0) continue;
+      const g6 = at * 6;
+      litFlat(p, this.pack.palette, this.deferred[at]! - 1, this.deferredShade[at]!, s[g6]!, s[g6 + 1]!, s[g6 + 2]!, s[g6 + 3]!, s[g6 + 4]!, s[g6 + 5]!);
+      for (let c = 0; c < 3; c++) this.color[at * 4 + c] = rgb[c]! * 255;
+      this.deferred[at] = 0;
+    }
+    return true;
+  }
+
+  /**
+   * A lit frame's dome where nothing is drawn yet, as its program draws it: through each pixel's middle, the view's
+   * direction from the inverse of the rows of `viewProj` that give x, y and w, and the sky table there. Under water,
+   * the fog's colour. A pixel's dome is kept until the view, the frame block, the fog or the table change.
+   */
+  private dome(p: FramePacket): true {
+    const key = this.domeKey;
+    let same = this.domeColor.length === this.color.length && this.domeTable === this.skyTable;
+    this.domeTable = this.skyTable;
+    const take = (at: number, v: number): void => {
+      if (key[at] !== v) same = false;
+      key[at] = v;
+    };
+    for (let i = 0; i < 16; i++) take(i, p.viewProj[i]!);
+    for (let i = 0; i < FRAME.ends; i++) take(16 + i, p.frame[i]!);
+    [p.sky[0]!, p.sky[1]!, p.sky[2]!, p.fogStart, p.fogEnd].forEach((v, i) => take(16 + FRAME.ends + i, v));
+    if (!same) {
+      if (this.domeColor.length !== this.color.length) this.domeColor = new Uint8ClampedArray(this.color.length);
+      this.domeDone = new Uint8Array(this.width * this.height);
+      const m = p.viewProj;
+      // Rows x, y and w of the view and projection, and the inverse of the three by three they make, by its cofactors.
+      const a = m[0]!, b = m[4]!, c = m[8]!, d = m[1]!, e = m[5]!, f = m[9]!, g = m[3]!, h = m[7]!, k = m[11]!;
+      const inv = this.domeInverse;
+      inv.set([e * k - f * h, c * h - b * k, b * f - c * e, f * g - d * k, a * k - c * g, c * d - a * f, d * h - e * g, b * g - a * h, a * e - b * d]);
+      const det = a * inv[0]! + b * inv[3]! + c * inv[6]!;
+      for (let i = 0; i < 9; i++) inv[i]! /= det;
+    }
+    const inv = this.domeInverse;
+    const under = p.frame[FRAME.eyeHeight]! < 0;
+    for (let at = 0; at < this.width * this.height; at++) {
+      if (this.depth[at] !== Infinity) continue;
+      const o = at * 4;
+      if (this.domeDone[at] === 0) {
+        this.domeDone[at] = 1;
+        if (under) for (let i = 0; i < 3; i++) this.domeColor[o + i] = p.sky[i]! * 255;
+        else {
+          const nx = (((at % this.width) + 0.5) / this.width) * 2 - 1, ny = 1 - ((Math.floor(at / this.width) + 0.5) / this.height) * 2;
+          for (let i = 0; i < 3; i++) reflected[i] = inv[i * 3]! * nx + inv[i * 3 + 1]! * ny + inv[i * 3 + 2]!;
+          const l = Math.hypot(reflected[0]!, reflected[1]!, reflected[2]!);
+          for (let i = 0; i < 3; i++) reflected[i]! /= l;
+          skyFrom(mirrored, p.frame, reflected, this.look);
+          shown(rgb, mirrored, 0, p);
+          for (let i = 0; i < 3; i++) this.domeColor[o + i] = rgb[i]! * 255;
+        }
+      }
+      for (let i = 0; i < 3; i++) this.color[o + i] = this.domeColor[o + i]!;
+    }
+    return true;
   }
 
   private terrain(p: FramePacket): void {
@@ -420,7 +530,6 @@ export class Rasterizer {
     const data = transient ? p.transient : buffer!.data;
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     const skinned = (flags & DRAW_SKINNED) !== 0;
-    skyLight(this.sky, p);
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;
@@ -541,11 +650,11 @@ export class Rasterizer {
       poly[i * 7 + 6] = (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / w;
     }
 
-    const light = (AMBIENT + DIFFUSE * Math.max(0, nx * p.sun[0]! + ny * p.sun[1]! + nz * p.sun[2]!)) * p.light;
+    const bright = (AMBIENT + DIFFUSE * Math.max(0, nx * p.sun[0]! + ny * p.sun[1]! + nz * p.sun[2]!)) * p.light;
     const pal = this.pack.palette;
-    const r = pal[colorIndex * 4]! * light;
-    const g = pal[colorIndex * 4 + 1]! * light;
-    const b = pal[colorIndex * 4 + 2]! * light;
+    const r = pal[colorIndex * 4]! * bright;
+    const g = pal[colorIndex * 4 + 1]! * bright;
+    const b = pal[colorIndex * 4 + 2]! * bright;
     // The checker samples the world position, pushed slightly behind the face.
     const sx = p.camX - nx * CHECK_INSET;
     const sy = p.camY - ny * CHECK_INSET;
@@ -598,12 +707,30 @@ export class Rasterizer {
             if (((Math.floor(wx) + Math.floor(wy) + Math.floor(wz)) & 1) !== 0) shade -= (1 - CHECK_FINE) * Math.max(0, 1 - dist / CHECK_FINE_FADE);
             if (((Math.floor(wx / cs) + Math.floor(wy / cs) + Math.floor(wz / cs)) & 1) !== 0) shade -= (1 - CHECK_COARSE) * Math.max(0, 1 - dist / CHECK_COARSE_FADE);
           }
+          if (p.lit && !blend) {
+            // Only what ends in front is shaded, once the opaque draws are done (`resolve`).
+            const s = this.deferredAt;
+            const g6 = at * 6;
+            this.deferred[at] = colorIndex + 1;
+            this.deferredShade[at] = shade;
+            s[g6] = rx;
+            s[g6 + 1] = ry;
+            s[g6 + 2] = rz;
+            s[g6 + 3] = nx;
+            s[g6 + 4] = ny;
+            s[g6 + 5] = nz;
+            continue;
+          }
           let fog = (dist - p.fogStart) / fogSpan;
           fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
           const o = at * 4;
-          const cr = r * shade * (1 - fog) + p.sky[0]! * 255 * fog;
-          const cg = g * shade * (1 - fog) + p.sky[1]! * 255 * fog;
-          const cb = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
+          let cr = r * shade * (1 - fog) + p.sky[0]! * 255 * fog;
+          let cg = g * shade * (1 - fog) + p.sky[1]! * 255 * fog;
+          let cb = b * shade * (1 - fog) + p.sky[2]! * 255 * fog;
+          if (p.lit) {
+            litFlat(p, pal, colorIndex, shade, rx, ry, rz, nx, ny, nz);
+            [cr, cg, cb] = [rgb[0]! * 255, rgb[1]! * 255, rgb[2]! * 255];
+          }
           if (blend) {
             this.color[o] = this.color[o]! + (cr - this.color[o]!) * WATER_ALPHA;
             this.color[o + 1] = this.color[o + 1]! + (cg - this.color[o + 1]!) * WATER_ALPHA;
@@ -720,6 +847,7 @@ export class Rasterizer {
           sample(s.maps[0]!, u, v, spread, base);
           if (base[3]! < s.cutoff) continue;
           this.depth[at] = z;
+          this.deferred[at] = 0;
           this.pickKind[at] = pickKind;
           this.pickId[at] = pickId;
           this.pickBone[at] = bone;
@@ -731,7 +859,10 @@ export class Rasterizer {
           for (let i = 0; i < 3; i++) eye[i] = -carried[i]! / dist;
           dyed(albedo, base, s.tint, this.dyes, mask, mask2);
           bumped(normal, carriedNormal, carriedTangent, bump[0]!, bump[1]!, back);
-          lit(light, albedo, mro, normal, eye, p.sun, this.sky);
+          const twice = 2 * (normal[0]! * eye[0]! + normal[1]! * eye[1]! + normal[2]! * eye[2]!);
+          for (let i = 0; i < 3; i++) reflected[i] = twice * normal[i]! - eye[i]!;
+          skyFrom(mirrored, p.frame, reflected, this.look);
+          lit(light, albedo, mro, normal, eye, p.frame, mirrored);
           shown(rgb, light, dist, p);
           this.color[at * 4] = rgb[0]! * 255;
           this.color[at * 4 + 1] = rgb[1]! * 255;

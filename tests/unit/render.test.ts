@@ -247,10 +247,11 @@ test("a body with bones is drawn where its skeleton is, standing and running", (
       expect(raster.pickKind[at]).toBe(PICK_ENTITY);
       expect(raster.pickId[at]).toBe(101);
     }
-    // The chest shows skin in the plain look's tone, which is warm, so red is over green and green over blue.
+    // The chest shows skin in the plain look's tone, which is warm, so red is over green and green over blue, though
+    // less than in the sun, since the chest is in the noon sky's bluer shade.
     const chest = px(boneCentre(view, 0, B_UPPER_CHEST)) * 4;
-    expect(raster.color[chest]!).toBeGreaterThan(raster.color[chest + 1]! * 1.15);
-    expect(raster.color[chest + 1]!).toBeGreaterThan(raster.color[chest + 2]! * 1.15);
+    expect(raster.color[chest]!).toBeGreaterThan(raster.color[chest + 1]! * 1.05);
+    expect(raster.color[chest + 1]!).toBeGreaterThan(raster.color[chest + 2]! * 1.05);
     // Its six meshes (five slots and its hair) are drawn with bones and without the checker. The grazer beside it is still one rigid box.
     const skinned = [...packet.drawFlags.subarray(0, packet.drawCount)].filter((f) => (f & DRAW_SKINNED) !== 0);
     expect(skinned.length).toBe(6);

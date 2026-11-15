@@ -178,7 +178,7 @@ async function boot(): Promise<void> {
       const rocks = app.marks.map((m) => ({ ...m, drawn: app.scene!.things[m.thing]!.level }));
       const at = [0, 0, 0];
       const stressed = rocks.flatMap((m): Probe[] => (app.cam.project(m.x, m.y, m.z, at) ? [{ name: `rock at level ${m.level}`, sx: at[0]!, sy: at[1]!, rgb: [0, 1, 2].map((c) => pack.palette[LEVEL_COLOURS[m.level]! * 4 + c]!) as Probe["rgb"], mode: "hue" }] : []));
-      const probes = [...provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature")), ...stressed].map((p) => {
+      const probes = [...provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature"), packet), ...stressed].map((p) => {
         const got = renderer.readPixel(p.sx, p.sy);
         return { name: p.name, expected: p.rgb, got, ok: probePasses(p, got[0], got[1], got[2]) };
       });

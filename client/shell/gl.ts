@@ -1,10 +1,11 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../core/render/packet.ts";
+import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME_FLOATS, FramePacket, TILE_QUADS, TRANSIENT_BUFFER, type TextureUpload } from "../core/render/packet.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
-import { NEUTRAL, skinMode, skyLight } from "../core/render/surface.ts";
+import { SKY_SIZE, theSky } from "../core/render/sky.ts";
+import { NEUTRAL, skinMode } from "../core/render/surface.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -80,7 +81,8 @@ export class GlRenderer {
   private tileBuffer!: WebGLBuffer;
   private tileIndexCount = 0;
   private readonly tileData = new Float32Array(1024 * 6);
-  private readonly sky = new Float32Array(3);
+  /** The frame block, bound to the point every lit program's block "Frame" reads. */
+  private frame!: WebGLBuffer;
   private readonly pack: Pack;
   private readonly hf: Heightfield;
   private readonly materials: readonly PackMaterial[];
@@ -136,10 +138,17 @@ export class GlRenderer {
     texture(UNIT.tint, gl.R8UI, hf.nx, hf.nz, gl.RED_INTEGER, gl.UNSIGNED_BYTE, hf.tint);
     // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit.
     texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
+    // The sky table, filtered between its texels and held at its edges, stays bound on its unit too.
+    gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
+    gl.bindTexture(gl.TEXTURE_3D, gl.createTexture());
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, theSky().table);
+    for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_3D, name, value);
 
     // A lost context took every level with it. Core sends them again.
     this.levels.clear();
     this.transient = gl.createBuffer()!;
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, (this.frame = gl.createBuffer()!));
+    gl.bufferData(gl.UNIFORM_BUFFER, FRAME_FLOATS * 4, gl.DYNAMIC_DRAW);
 
     // The terrain is one 32 x 32 grid with a skirt, drawn once per tile.
     const row = TILE_QUADS + 1;
@@ -327,7 +336,6 @@ export class GlRenderer {
     gl.uniformMatrix4fv(prog.uniform("uViewProj"), false, near ? p.nearViewProj : p.viewProj);
     gl.uniform3fv(prog.uniform("uSun"), p.sun);
     gl.uniform3fv(prog.uniform("uSky"), p.sky);
-    gl.uniform3fv(prog.uniform("uSkyLight"), this.sky);
     gl.uniform2f(prog.uniform("uFog"), p.fogStart, p.fogEnd);
     // Checker parity repeats every 16 m, so a small remainder keeps float precision.
     gl.uniform3f(prog.uniform("uCamMod"), p.camX % 16, p.camY % 16, p.camZ % 16);
@@ -394,7 +402,18 @@ export class GlRenderer {
     gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     this.pass++;
-    skyLight(this.sky, p);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
+    // A lit frame's dome goes first, under everything, and leaves depth alone.
+    if (p.lit) {
+      this.use("sky", p, false);
+      this.set(false, false, false);
+      gl.bindVertexArray(null);
+      gl.disable(gl.DEPTH_TEST);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.enable(gl.DEPTH_TEST);
+      this.drawCalls++;
+    }
 
     if (p.tileCount > 0) {
       const prog = this.use("terrain", p, false);
@@ -512,6 +531,8 @@ export class GlRenderer {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error("program: " + gl.getProgramInfoLog(program));
     gl.useProgram(program);
     for (const name in text.samplers) gl.uniform1i(gl.getUniformLocation(program, name), text.samplers[name]!);
+    const block = gl.getUniformBlockIndex(program, "Frame");
+    if (block !== gl.INVALID_INDEX) gl.uniformBlockBinding(program, block, 0);
     const cache = new Map<string, WebGLUniformLocation | null>();
     return {
       program,

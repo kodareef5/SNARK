@@ -9,8 +9,9 @@ import { Camera } from "../client/core/render/camera.ts";
 import { FakeNet, type NetOptions } from "../tests/fixtures/assetnet.ts";
 import { Harness } from "../tests/fixtures/net.ts";
 import { writeBones } from "../client/core/render/characters.ts";
-import { DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, TRANSIENT_BUFFER, type TextureUpload } from "../client/core/render/packet.ts";
+import { DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER, type TextureUpload } from "../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../client/core/render/scene.ts";
+import { skyFrame, theSky } from "../client/core/render/sky.ts";
 import { Falling } from "../client/core/rubble.ts";
 import { RemoteSample, type ClientSession, type Rubble } from "../client/core/session.ts";
 import { HAIR_STYLES, LOOK_BEARD, LOOK_BYTES, LOOK_EYE_COLOR, LOOK_HAIR, LOOK_HAIR_COLOR, LOOK_SEX, LOOK_SKIN, REGION_COUNT, defaultLook, randomLook, setRegion } from "../shared/anim/look.ts";
@@ -602,12 +603,14 @@ export interface ModelShot {
   textured?: boolean;
   /** The height of the ground: what lies below it is hidden, as the ground hides it, from a camera above it. */
   floor?: number;
+  /** Lit as the lit tiers light, which is the default, or as low poly. */
+  lit?: boolean;
 }
 
 /**
  * One mesh of a pack on its own: no world and no content, so an asset can be looked at before anything uses it
- * (tools/art/sheet.ts). The light stays over the camera's left shoulder, so every side is lit alike. A picture with
- * materials is lit by the game's sky, as a mirror shows it, and the background is painted over the sky after.
+ * (tools/art/sheet.ts). The light stays over the camera's left shoulder, so every side is lit alike. A lit picture has
+ * the noon sun's light and the noon sky's, as a mirror shows it too, and the background is painted over the dome after.
  */
 export class ModelView {
   readonly raster: Rasterizer;
@@ -661,6 +664,13 @@ export class ModelView {
     const sun = [Math.sin(a) * 0.55 - Math.cos(a) * 0.4, 0.75, Math.cos(a) * 0.55 + Math.sin(a) * 0.4];
     const length = Math.hypot(sun[0]!, sun[1]!, sun[2]!);
     for (let k = 0; k < 3; k++) p.sun[k] = sun[k]! / length;
+    p.lit = shot.lit ?? true;
+    if (p.lit) {
+      skyFrame(12, theSky(), p.frame);
+      p.frame.set(p.sun, FRAME.sun);
+      // The background is painted where nothing is drawn, so the dome need not be: as under water, the clear colour is.
+      p.frame[FRAME.eyeHeight] = -1;
+    }
     if (shot.rig) {
       writeBones(p.bones, 0, shot.rig.solved, shot.rig.rest, null, -cam.x, -cam.y, -cam.z, 0);
       p.boneCount = shot.rig.bones;
@@ -712,7 +722,7 @@ export class ModelView {
         color[at * 4 + 2] = blue;
       }
     }
-    if (!sections) return;
+    if (!sections && !p.lit) return;
     for (let at = 0; at < pickKind.length; at++) {
       if (pickKind[at] !== PICK_SKY) continue;
       color[at * 4] = red;

@@ -8,36 +8,66 @@ import type { Registry } from "../../shared/content/registry.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../../shared/world/proving.ts";
 import type { Camera } from "./render/camera.ts";
+import type { FramePacket } from "./render/packet.ts";
+import { domeLight, theSky, trueSun } from "./render/sky.ts";
+import { lit, shown, skyFrom, srgbToLinear } from "./render/surface.ts";
 
 export interface Probe {
   name: string;
   /** Screen position, 0..1, origin top-left. */
   sx: number;
   sy: number;
-  /** Expected colour before lighting, 0..255. */
+  /** Expected colour, 0..255: as the frame lights it, or before lighting on low poly. */
   rgb: [number, number, number];
   /** "exact" matches within a few levels. "hue" matches the colour direction at any brightness. */
   mode: "exact" | "hue";
 }
 
 /**
- * Probes for the proving ground seen from its spawn point looking north. The slope probe lands where expected only
- * if terrain heights reach the GPU correctly. `withCreature` adds the creature and the body the probe server places.
+ * Probes for the proving ground seen from its spawn point looking north, in frame `p`. The slope probe lands where
+ * expected only if terrain heights reach the GPU correctly. `withCreature` adds the creature and the body the probe
+ * server places. On a lit frame each colour is the one surface.ts lights it to, facing as the probe's point does (a
+ * body's facing the camera), the checker aside, and the sky is the dome, as the sky table gives it.
  */
-export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean): Probe[] {
-  const color = (index: number): [number, number, number] => [palette[index * 4]!, palette[index * 4 + 1]!, palette[index * 4 + 2]!];
-  const probes: Probe[] = [
-    { name: "sky", sx: 0.5, sy: 0.03, rgb: color(skyIndex), mode: "exact" },
-    { name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1), mode: "hue" },
-  ];
-  const block = reg.defs[reg.index.get("core:block") ?? 0];
+export function provingProbes(cam: Camera, reg: Registry, palette: Uint8Array, skyIndex: number, hf: Heightfield, withCreature: boolean, p: FramePacket): Probe[] {
+  const ray = [0, 0, 0];
+  const out = [0, 0, 0];
+  const rgb = [0, 0, 0];
   const at = [0, 0, 0];
+  /** A palette colour at screen point `at` on a face with normal `n`, or facing the camera. */
+  const color = (index: number, n?: readonly number[]): [number, number, number] => {
+    const raw: [number, number, number] = [palette[index * 4]!, palette[index * 4 + 1]!, palette[index * 4 + 2]!];
+    if (!p.lit) return raw;
+    cam.ray(at[0]!, at[1]!, ray);
+    const v = ray.map((c) => -c);
+    lit(out, raw.map((c) => srgbToLinear(c / 255)), [1, 1, 0], n ?? v, v, p.frame, [0, 0, 0]);
+    shown(rgb, out, at[2]!, p);
+    return rgb.map((c) => Math.round(c * 255)) as [number, number, number];
+  };
+  const sky = (): [number, number, number] => {
+    if (!p.lit) return color(skyIndex);
+    cam.ray(at[0]!, at[1]!, ray);
+    const sun = [0, 0, 0];
+    trueSun(p.frame, sun);
+    skyFrom(out, p.frame, ray, (view, light) => domeLight(theSky().table, sun, view, light));
+    shown(rgb, out, 0, p);
+    return rgb.map((c) => Math.round(c * 255)) as [number, number, number];
+  };
+  // The plaza is level, and far nearer than the fog.
+  [at[0], at[1], at[2]] = [0.5, 0.03, 0];
+  const probes: Probe[] = [{ name: "sky", sx: 0.5, sy: 0.03, rgb: sky(), mode: "exact" }];
+  [at[0], at[1]] = [0.5, 0.97];
+  probes.push({ name: "plaza", sx: 0.5, sy: 0.97, rgb: color(1, [0, 1, 0]), mode: "hue" });
+  const block = reg.defs[reg.index.get("core:block") ?? 0];
   // South face of the block at (253, 1, 262).
   if (block && block.type === "structure" && cam.project(253, 1, 260.99, at)) {
-    probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color), mode: "hue" });
+    probes.push({ name: "block", sx: at[0]!, sy: at[1]!, rgb: color(block.color, [0, 0, -1]), mode: "hue" });
   }
   if (cam.project(232, hf.heightAt(232, 296), 296, at)) {
-    probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!), mode: "hue" });
+    // The slope is one plane there: its normal from the heights a sample either side.
+    const [dx, dz] = [hf.heightAt(232 + hf.cell, 296) - hf.heightAt(232 - hf.cell, 296), hf.heightAt(232, 296 + hf.cell) - hf.heightAt(232, 296 - hf.cell)];
+    const n = [-dx, 2 * hf.cell, -dz].map((c, _, all) => c / Math.hypot(...all));
+    probes.push({ name: "slope", sx: at[0]!, sy: at[1]!, rgb: color(hf.tint[Math.round(296 / hf.cell) * hf.nx + Math.round(232 / hf.cell)]!, n), mode: "hue" });
   }
   // The probe server stands a grazer at a known spot in a colour not its species' own, which checks the entity path and the colour regions.
   const grazer = reg.defs[reg.index.get("core:grazer") ?? 0];

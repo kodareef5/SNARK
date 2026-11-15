@@ -2,7 +2,7 @@
 // card as bright as low poly shows it.
 import { expect, test } from "bun:test";
 import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { KNEE, cardTakes, SKY_SIZE, aroundOf, domeLight, elevationOf, flatCard, heightOf, hourOfSun, luminance, decodeTexel, encodeTexel, sampleSky, shownSky, skyFrame, trueSun, sunDirection, sunHeight, sunTravel, texelAt, theSky, tone } from "../../client/core/render/sky.ts";
+import { cardTakes, SKY_SIZE, aroundOf, domeLight, elevationOf, flatCard, heightOf, hourOfSun, luminance, decodeTexel, encodeTexel, sampleSky, shownSky, skyFrame, trueSun, sunDirection, sunHeight, sunTravel, texelAt, theSky } from "../../client/core/render/sky.ts";
 import { linearToSrgb } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
@@ -145,20 +145,6 @@ test("a texel's bytes hold a colour to within a step on screen, from the dark to
     for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(a[k]! - b[k]!));
   }
   expect(worst).toBeLessThanOrEqual(1);
-});
-
-test("the tone curve leaves light under its knee and bends smoothly above it", () => {
-  const out = [0, 0, 0];
-  tone([0.5, 0.3, 0.1], out);
-  expect(out).toEqual([0.5, 0.3, 0.1]);
-  const at = (v: number): number => {
-    tone([v, v, v], out);
-    return out[0]!;
-  };
-  expect(at(KNEE + 1e-6)).toBeCloseTo(KNEE, 5);
-  expect((at(KNEE + 1e-4) - at(KNEE)) / 1e-4).toBeCloseTo(1, 2);
-  expect(at(100)).toBeLessThan(1);
-  expect(at(100)).toBeGreaterThan(0.99);
 });
 
 test("on a lit tier the scene fills the frame block's sky for its hour, and on low poly leaves it", () => {

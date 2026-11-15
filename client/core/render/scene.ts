@@ -23,9 +23,9 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials } from "./characters.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
-import { flatLight, skyFrame, theSky } from "./sky.ts";
+import { SKY_SIZE, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
 
 export interface RenderWorld {
@@ -206,6 +206,8 @@ export class Scene {
     this.world = world;
     this.terrain = new TerrainLod(world.hf);
     this.assets = new Assets(reg, pack, stream?.manifest, stream?.port);
+    // The renderer holds the sky table on every tier.
+    this.assets.residency.reserve("sky table", SKY_SIZE ** 3 * 4);
     const { table, bind } = this.assets;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -263,6 +265,7 @@ export class Scene {
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
     p.tier = this.assets.tier;
+    p.lit = p.tier.lit;
     p.viewProj.set(cam.viewProj);
     p.nearViewProj.set(cam.nearViewProj);
     p.camX = cam.x;
@@ -275,6 +278,7 @@ export class Scene {
 
     // Under water the view is short and the fog is the water's colour, dimmed.
     const sea = this.world.hf.seaLevel;
+    p.frame[FRAME.eyeHeight] = cam.y - sea;
     if (cam.y < sea) {
       for (let k = 0; k < 3; k++) p.sky[k] = this.deepColor[k]! * p.light;
       p.fogStart = 0;
