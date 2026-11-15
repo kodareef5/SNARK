@@ -31,8 +31,8 @@ import { Feedback } from "./feedback.ts";
 import { Shots } from "./shots.ts";
 import { Falling } from "./rubble.ts";
 import { BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY } from "../../shared/sim/character.ts";
-import type { ItemDef } from "../../shared/content/defs.ts";
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
+import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
@@ -69,6 +69,8 @@ const HANDS_FULL = BTN_PRIMARY | BTN_MELEE | BTN_RELOAD | BTN_PRONE;
 const BASE_FOV = 1.2217;
 const AIM_FOV = 0.79;
 const SCOPE_FOV = 0.25;
+/** Radians in a unit of yaw or pitch on the wire (65536 to a turn). */
+const UNIT_RADIANS = TAU / 65536;
 
 export class App {
   readonly session: ClientSession;
@@ -583,22 +585,35 @@ export class App {
     const third = this.view.thirdPerson;
     if (!alive) this.view.thirdPerson = false;
     else if (session.driving >= 0) this.view.thirdPerson = true;
-    this.view.place(cam, world, bx, by + eye, bz, c.yaw, c.pitch);
+    // The view turns with the kick and, through a scope, with the sway, as a shot does (shared/sim/aim.ts), so the middle of
+    // the view is where the next shot is pointed. The look the input sends stays the player's own.
+    const gun = alive ? (this.reg.weapon[session.own.held] ?? null) : null;
+    const aiming = alive && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && gun !== null && gun.clip > 0;
+    const held = session.inventory && session.inventory.hotbar >= 0 && session.held >= 0 ? session.inventory.hotbar + session.held : -1;
+    const scoped = aiming && scopeFitted(this.reg, session.inventory, held);
+    let lookYaw = c.yaw;
+    let lookPitch = c.pitch;
+    if (gun && session.driving < 0) {
+      lookPitch += (session.ownPrev.kick + (session.own.kick - session.ownPrev.kick) * a) * KICK_UNIT * UNIT_RADIANS;
+      if (scoped) {
+        sway(gun, session.own.stance, session.ownHandle, session.tickClock);
+        lookYaw += swayOut.yaw * UNIT_RADIANS;
+        lookPitch += swayOut.pitch * UNIT_RADIANS;
+      }
+      lookPitch = lookPitch > PI / 2 ? PI / 2 : lookPitch;
+    }
+    this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch);
     this.view.thirdPerson = third;
     cam.aspect = aspect;
     // Aiming narrows the view in proportion to the player's setting, more through a scope. The mouse slows to match.
     const settings = this.ui.settings;
     const base = (settings.fov * Math.PI) / 180;
-    let want = base;
-    const aimed = this.reg.weapon[session.own.held];
-    if (alive && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && aimed && aimed.clip > 0) {
-      const inv = session.inventory;
-      const fitted = inv && inv.hotbar >= 0 && session.held >= 0 ? inv.attach[inv.hotbar + session.held]! : 0;
-      want = base * ((this.reg.defs[fitted] as ItemDef | null)?.attachment === "scope" ? SCOPE_FOV : AIM_FOV);
-    }
+    const want = aiming ? base * (scoped ? SCOPE_FOV : AIM_FOV) : base;
     this.fov += (want - this.fov) * Math.min(1, dt / 70);
     cam.fovY = this.fov;
     c.zoom = (this.fov / base) * settings.sensitivity;
+    // The crosshair opens with the cone the next shot would leave within.
+    hud.cone = gun && gun.coneHip !== undefined && session.driving < 0 ? Math.tan((shotCone(session.own, c.buttons, gun, this.reg.tamedMove[session.own.kind] ?? move!, false) * PI) / 180) / Math.tan(this.fov / 2) : -1;
     const body = this.body;
     body.kind = session.ownKind;
     body.x = bx;

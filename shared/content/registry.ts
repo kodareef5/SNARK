@@ -191,8 +191,8 @@ export interface Registry {
    */
   readonly decomposeTicks: Uint32Array;
   readonly youngItem: Uint16Array;
-  // The stub columns of planning/reference/weapons-plan.md, compiled and read by nothing until the project named builds them.
-  /** W2, a bow's or gun's blow: its damage at primitive quality (0 for none), torpor as a multiple of it, and reach in metres. */
+  // The columns of planning/reference/weapons-plan.md. The blow's are read (W2); the rest are compiled and read by nothing until the project named builds them.
+  /** A bow's or gun's blow (W2): its damage at primitive quality (0 for none), torpor as a multiple of it, and reach in metres. */
   readonly blowDamage: Float32Array;
   readonly blowTorpor: Float32Array;
   readonly blowReach: Float32Array;
@@ -435,6 +435,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
         }
         // The stubs of planning/reference/weapons-plan.md are checked before anything reads them.
         if ((w.auto || w.reloadEach || w.spread || w.recoil || w.melee) && w.kind !== "bow" && w.kind !== "gun") errors.push(`${d.id}: weapon.auto, reloadEach, spread, recoil and melee are a bow's or gun's`);
+        if (w.draw !== undefined && w.kind !== "bow" && w.kind !== "thrown") errors.push(`${d.id}: weapon.draw is a bow's, or a thrown weapon's that is charged`);
+        // A round at a time counts the round under way past its reload once it is the last, within a byte (shared/sim/weapon.ts).
+        if (w.reloadEach && !((w.reload ?? 0) * TICK_RATE <= MAX_ACT_TICKS / 2)) errors.push(`${d.id}: weapon.reload of a round at a time must be at most ${Math.floor((MAX_ACT_TICKS / 2 / TICK_RATE) * 10) / 10} seconds`);
         if (w.melee) {
           positive(d, "weapon.melee.damage", w.melee.damage, 60000);
           if (w.melee.torpor !== undefined && !(w.melee.torpor >= 0)) errors.push(`${d.id}: weapon.melee.torpor must not be negative`);
@@ -442,8 +445,10 @@ export function compileContent(all: readonly Def[]): CompileResult {
           if (w.melee.interval !== undefined && !(w.melee.interval > 0 && w.melee.interval * TICK_RATE <= MAX_ACT_TICKS)) errors.push(`${d.id}: weapon.melee.interval must be above 0 and at most ${MAX_ACT_TICKS / TICK_RATE} seconds`);
         }
         const sp = w.spread;
-        if (sp && ![sp.hip, sp.aim, sp.move ?? 0, sp.bloom ?? 0, sp.recover ?? 0].every((v) => v >= 0 && v <= 90)) errors.push(`${d.id}: weapon.spread is in degrees from 0 to 90`);
+        if (sp && ![sp.hip, sp.aim, sp.move ?? 0, sp.bloom ?? 0, sp.recover ?? 0, sp.sway ?? 0].every((v) => v >= 0 && v <= 90)) errors.push(`${d.id}: weapon.spread is in degrees from 0 to 90`);
+        if (sp && (sp.bloom ?? 0) > 0 && !((sp.recover ?? 0) > 0)) errors.push(`${d.id}: weapon.spread that blooms must recover`);
         if (w.recoil && !(w.recoil.kick >= 0 && w.recoil.kick <= 90 && w.recoil.recover >= 0)) errors.push(`${d.id}: weapon.recoil.kick is in degrees from 0 to 90, and its recovery not negative`);
+        if (w.recoil && w.recoil.kick > 0 && !(w.recoil.recover > 0)) errors.push(`${d.id}: weapon.recoil that kicks must recover`);
         if (w.structures !== undefined && !(w.structures >= 0)) errors.push(`${d.id}: weapon.structures must not be negative`);
         if (w.cloud) {
           if (w.kind !== "thrown") errors.push(`${d.id}: only a thrown weapon bursts into a cloud`);
@@ -850,7 +855,8 @@ function weaponParams(w: WeaponFacet): WeaponParams {
   const kind = w.kind === "melee" ? W_MELEE : w.kind === "bow" ? W_BOW : w.kind === "gun" ? W_GUN : W_THROWN;
   // A swing, or the pause after a shot. A bow or a single-round gun pauses briefly, because the reload that follows is the wait.
   const swingTicks = ticks(w.interval, kind === W_BOW ? 6 : kind === W_GUN && (w.clip ?? 1) === 1 ? 3 : SWING_TICKS);
-  const drawTicks = kind === W_BOW ? ticks(w.draw, 1) : 0;
+  // A thrown weapon with a draw is a charged throw (W2), held as a bow is drawn.
+  const drawTicks = kind === W_BOW || (kind === W_THROWN && w.draw !== undefined) ? ticks(w.draw, 1) : 0;
   return {
     kind,
     hold: kind === W_THROWN ? HOLD_THROW : (HOLDS[w.hold] ?? HOLD_HANDS),
@@ -862,11 +868,11 @@ function weaponParams(w: WeaponFacet): WeaponParams {
     reloadTicks: kind === W_BOW || kind === W_GUN ? ticks(w.reload, 1) : 0,
     clip: kind === W_BOW || kind === W_GUN ? (w.clip ?? 1) : 0,
     wet: w.wet ?? (kind === W_MELEE),
-    // The stubs of planning/reference/weapons-plan.md, only where the facet says, so every weapon today compiles as it did.
+    // Fire modes and the blow (planning/reference/weapons-plan.md, M4), only where the facet says.
     ...(w.auto ? { auto: true } : {}),
     ...(w.reloadEach ? { reloadEach: true } : {}),
     ...(w.melee ? blowParams(ticks(w.melee.interval, SWING_TICKS)) : {}),
-    ...(w.spread ? { coneHip: w.spread.hip, coneAim: w.spread.aim, coneMove: w.spread.move ?? 0, coneBloom: w.spread.bloom ?? 0, coneRecover: (w.spread.recover ?? 0) / TICK_RATE } : {}),
+    ...(w.spread ? { coneHip: w.spread.hip, coneAim: w.spread.aim, coneMove: w.spread.move ?? 0, coneBloom: w.spread.bloom ?? 0, coneRecover: (w.spread.recover ?? 0) / TICK_RATE, coneSway: w.spread.sway ?? 0 } : {}),
     ...(w.recoil ? { recoilKick: w.recoil.kick, recoilRecover: w.recoil.recover / TICK_RATE } : {}),
   };
 }
