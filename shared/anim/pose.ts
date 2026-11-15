@@ -110,7 +110,7 @@ export class AnimState {
   /** -PITCH_STEPS (down) to PITCH_STEPS (up). */
   pitch = 0;
   stance = STANCE_STAND;
-  /** In flight only (MODE_FLYER), else 0: -BANK_STEPS to BANK_STEPS, and a CLIMB_. Its `speed` then counts FLY_SPEED_STEP and `dir` is 0. */
+  /** In flight only (MODE_FLYER), else 0: -BANK_STEPS to BANK_STEPS, and a CLIMB_. `speed` then counts FLY_SPEED_STEP, and `dir` is 0. */
   bank = 0;
   climb = CLIMB_LEVEL;
   /** The act (shared/sim/weapon.ts) in the low three bits, then the hold (HOLD_*) in three. actionStart is the low byte of the act's first tick. */
