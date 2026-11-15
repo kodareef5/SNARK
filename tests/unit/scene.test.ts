@@ -4,7 +4,7 @@ import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { AssetRequest } from "../../client/core/assets/port.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SIZE_REGION, TRANSIENT_BUFFER, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
-import type { OwnBody } from "../../client/core/render/scene.ts";
+import type { Cutouts, OwnBody } from "../../client/core/render/scene.ts";
 import { Falling } from "../../client/core/rubble.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
 import { hashBytes } from "../../shared/hash.ts";
@@ -140,7 +140,7 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   expect([seen(PICK_ENTITY, 100) > 100, seen(PICK_ENTITY, 101) > 100, seen(PICK_ENTITY, 102) > 100, seen(PICK_ENTITY, 0) > 600, seen(PICK_STRUCTURE, -1) > 600]).toEqual([true, true, true, true, true]);
 });
 
-test("a step's cut-out draws come after all its opaque ones; the order they were made in is a switch away, and draws the same picture", () => {
+test("a step's cut-out draws come after all its opaque ones; as they were made and before them all are a switch away, and all three draw the same picture", () => {
   // Rows of panels, the nearer hiding the farther, a creature among them and one past the split. Panels are structures,
   // made before the bodies, so as made a panel's lattice comes before the creatures.
   const w = sceneWorld({}, { split: 30 });
@@ -148,19 +148,22 @@ test("a step's cut-out draws come after all its opaque ones; the order they were
   w.place(TUBE, 33, 27, { yaw: Math.PI / 2 });
   w.place(TUBE, 32, 60, { yaw: Math.PI / 2 });
   for (let f = 0; f < 8; f++) w.frame();
-  const shot = (last: boolean) => {
-    w.scene.cutoutsLast = last;
+  const shot = (cutouts: Cutouts) => {
+    w.scene.cutouts = cutouts;
     const p = w.frame();
     const draws = Array.from({ length: p.drawCount }, (_, d) => ({ step: stepOf(p, d), cut: (p.drawFlags[d]! & DRAW_CUTOUT) !== 0, what: [p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawFlags[d], p.drawMaterial[d], p.drawPass[d]].join() }));
     return { draws, picture: w.raster.color.slice() };
   };
-  const [made, ordered] = [shot(false), shot(true)];
-  /** Whether some cut-out draw comes before an opaque one of its step. */
-  const before = (draws: typeof made.draws): boolean => draws.some((a, i) => a.cut && draws.slice(i + 1).some((b) => b.step === a.step && !b.cut));
-  expect([made.draws.some((d) => d.cut), before(made.draws), before(ordered.draws)]).toEqual([true, true, false]);
-  expect(ordered.draws.map((d) => d.step)).toEqual(made.draws.map((d) => d.step).sort((a, b) => a - b));
-  expect(ordered.draws.map((d) => d.what).sort()).toEqual(made.draws.map((d) => d.what).sort());
-  expect(ordered.picture).toEqual(made.picture);
+  const [made, last, first] = [shot("made"), shot("last"), shot("first")];
+  /** Whether some draw of a step that is cut out, or not, comes before one of the same step that is not, or is. */
+  const before = (draws: typeof made.draws, cut: boolean): boolean => draws.some((a, i) => a.cut === cut && draws.slice(i + 1).some((b) => b.step === a.step && b.cut !== cut));
+  expect([made.draws.some((d) => d.cut), before(made.draws, true), before(made.draws, false)]).toEqual([true, true, true]);
+  expect([before(last.draws, true), before(first.draws, false)]).toEqual([false, false]);
+  for (const o of [last, first]) {
+    expect(o.draws.map((d) => d.step)).toEqual(made.draws.map((d) => d.step).sort((a, b) => a - b));
+    expect(o.draws.map((d) => d.what).sort()).toEqual(made.draws.map((d) => d.what).sort());
+    expect(o.picture).toEqual(made.picture);
+  }
 });
 
 test("a body drawn with its materials and the same body drawn flat agree in mean colour, as near as the palette and the two ways of lighting allow", () => {

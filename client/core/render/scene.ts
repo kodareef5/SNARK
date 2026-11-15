@@ -100,6 +100,10 @@ const FAR = 1 << PASS_FAR;
 /** What of a draw's flags a caster keeps: how its vertices are placed. */
 const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED;
 
+/** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
+export type Cutouts = "last" | "made" | "first";
+export const CUTOUTS: readonly Cutouts[] = ["last", "made", "first"];
+
 /** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
 export interface Thing {
   mesh: number;
@@ -158,11 +162,11 @@ export class Scene {
   /** Loose meshes to draw: the stress scene's. */
   things: Thing[] = [];
   /**
-   * A step's cut-out draws go after all its opaque ones, so that a tiled GPU can reject the cut-out pixels an opaque
-   * surface hides before it shades them. False keeps the draws as they were made, for the device probe to set the two
-   * orders side by side.
+   * Where an opaque step's cut-out draws go among its other draws: "last", after them all, so that a tiled GPU can
+   * reject the cut-out pixels an opaque surface hides before it shades them; "made", as they were made; "first", before
+   * them all, where it can reject none but those the ground hides. The device page sets the three side by side.
    */
-  cutoutsLast = true;
+  cutouts: Cutouts = "last";
 
   /** Pack mesh index per content index. */
   readonly meshOfKind: Uint16Array;
@@ -572,23 +576,23 @@ export class Scene {
 
   /**
    * Puts the draws in the order of the steps they are drawn in (packet.ts), each in the ranges `passOf` gives it, so a
-   * draw in both is listed twice, and with `cutoutsLast` an opaque step's cut-out draws after all its others. With one
-   * range they are all in the near range, and stay as they were made unless a cut-out is to move.
+   * draw in both is listed twice, and an opaque step's cut-out draws where `cutouts` says. With one range they are all
+   * in the near range, and stay as they were made unless a cut-out is to move.
    */
   private order(): void {
     const p = this.packet;
     const n = p.drawCount;
     const one = p.split <= 0;
-    const late = this.cutoutsLast ? DRAW_CUTOUT : 0;
+    const [cutAt, restAt] = this.cutouts === "last" ? [1, 0] : this.cutouts === "first" ? [0, 1] : [0, 0];
     if (one) {
       p.drawPass.fill(PASS_NEAR, 0, n);
       p.skyAt = n;
       let cut = false;
-      for (let d = 0; d < n && !cut; d++) cut = late !== 0 && (p.drawFlags[d]! & (DRAW_CUTOUT | DRAW_BLEND | DRAW_NEAR)) === DRAW_CUTOUT;
+      for (let d = 0; d < n && !cut; d++) cut = cutAt !== restAt && (p.drawFlags[d]! & (DRAW_CUTOUT | DRAW_BLEND | DRAW_NEAR)) === DRAW_CUTOUT;
       if (!cut) return;
     }
     // Each draw's place in each range, -1 where it is not drawn in that range: its step as stepOf will find it, and in
-    // an opaque step the cut-outs a place after the rest.
+    // an opaque step the cut-outs a place after the rest, or before it.
     const steps = this.steps;
     const starts = this.starts.fill(0);
     for (let d = 0; d < n; d++) {
@@ -597,7 +601,7 @@ export class Scene {
         const drawn = one ? range === PASS_NEAR : (this.passOf[d]! & (1 << range)) !== 0;
         let s = !drawn ? -1 : (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - range : range;
         if ((flags & DRAW_NEAR) !== 0) s = range === PASS_NEAR ? STEP_BODY : -1;
-        const place = s < 0 ? -1 : s <= STEP_FAR ? s * 2 + ((flags & late) !== 0 ? 1 : 0) : s + 2;
+        const place = s < 0 ? -1 : s <= STEP_FAR ? s * 2 + ((flags & DRAW_CUTOUT) !== 0 ? cutAt : restAt) : s + 2;
         steps[d * 2 + range] = place;
         if (place >= 0) starts[place + 1]!++;
       }
