@@ -75,6 +75,11 @@
       {"name": "Presidio", "at": [-122.4662, 37.7989], "why": "a national park of 6 km2 with its own posts and barracks, mapped as a park, not a neighbourhood"}
     ],
     "styles": {"Alcatraz Island": "concrete", "Presidio": "terracotta"},
+    "obelisks": [
+      {"name": "Marina Green", "at": [-122.4372, 37.8061], "face": [-122.4391, 37.8066]},
+      {"name": "Embarcadero", "at": [-122.3962, 37.7942], "face": [-122.3946, 37.7949]},
+      {"name": "Panhandle", "at": [-122.4455, 37.7726], "face": [-122.4474, 37.7723]}
+    ],
     "spawn_places": [
       {"name": "Golden Gate Bridge Vista Point", "face": [-122.4776, 37.8141]},
       {"name": "Presidio Tunnel Tops", "face": [-122.4780, 37.8190]},

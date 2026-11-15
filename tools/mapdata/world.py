@@ -121,6 +121,8 @@ def main():
                  'bridgeGapLayer': 'bridge_gaps', 'ruins': {'report': settings.get('report', 'ruins2'), 'yardDistricts': settings.get('yard_districts', [])}}
         if settings.get('container_district'):
             world['containerDistrict'] = settings['container_district']
+        if settings.get('obelisks'):
+            world['obelisks'] = settings['obelisks']
         path.write_text(json.dumps(world, indent=1, ensure_ascii=False) + '\n')
         print('world.json written from the proposal')
     print(len(districts), 'districts proposed:', collections.Counter(d['style'] for d in districts), '|', len(spawns), 'spawns:', [s['name'] for s in spawns])
