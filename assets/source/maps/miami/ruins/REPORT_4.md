@@ -2,6 +2,8 @@
 
 The city has a shared rule library, stronger roof and frontage identities, directional surge damage, larger street remnants with tested passages, and harvestable growth restored around circulation. Both cities build reproducibly and pass every map movement proof. The [gallery](../reports/ruins4/index.html) keeps the previous cameras beside the new views, the blind line-ups, all interiors, three seeded streets and the difficult cases.
 
+Landing on main: the city builds to the same pieces with three obelisks added (1,210,204 statics, 391,003 nodes) and passes every proof below unchanged under the slopes and ground-slide movement. The bus diagnostic's tier problem was the picture tools' (fixed on main in 5e9d914f), and the gallery was redrawn with it: near pieces the far draw's fade had hidden now show, the bus hull at medium, the deck over it at high, the office's walls and the canopy view's roof among them.
+
 Sloped pieces have not landed in this worktree. No engine file was changed or branch merged. Roofs and collapse plates still use yaw-only boxes; higher tower refuges are deferred until one-piece stairs release the local piece budget.
 
 ## The shared foundation
