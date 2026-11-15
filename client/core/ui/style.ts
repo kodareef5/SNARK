@@ -66,12 +66,13 @@ export const S_CHAT_TRIBE = 37;
 export const S_CHAT_NOTICE = 38;
 export const S_CHAT_PANEL = 39;
 export const S_CHAT_TAG = 40;
-/** Over a creature: its name when it is wild, the viewer's tribe's or another tribe's; the lines under it; the taming bar. */
+/** Over a creature: its name when it is wild, the viewer's tribe's or another tribe's; the lines under it; the taming bar; the backdrop. */
 export const S_OVER_WILD = 41;
 export const S_OVER_TRIBE = 42;
 export const S_OVER_OTHER = 43;
 export const S_OVER_TEXT = 44;
 export const S_OVER_TAMING = 45;
+export const S_OVER_PANEL = 46;
 
 export const STYLES: readonly Style[] = [
   /* S_TEXT */ style(0, 0xeeeeee, 13, 0, true),
@@ -120,4 +121,5 @@ export const STYLES: readonly Style[] = [
   /* S_OVER_OTHER */ style(0, 0xf2a860, 14, 0, true),
   /* S_OVER_TEXT */ style(0, 0xe8e8e4, 12, 0, true),
   /* S_OVER_TAMING */ style(0x00000066, 0x8cd66c),
+  /* S_OVER_PANEL */ style(0x0c10168c, 0xeeeeee),
 ];

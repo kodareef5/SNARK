@@ -4,7 +4,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { KEY_CROSS, KEY_PROMPT, KEY_READOUT } from "../../client/core/ui/hud.ts";
 import { K_IMAGE, K_TEXT, textWidth, type UiFrame } from "../../client/core/ui/nodes.ts";
-import { IMAGE_HEART, KEY_HEART, KEY_OVER_NOTE, KEY_OVER_TITLE, heartImage, heartSize } from "../../client/core/ui/tame.ts";
+import { IMAGE_HEART, KEY_HEART, KEY_OVER_NOTE, KEY_OVER_PANEL, KEY_OVER_TITLE, heartImage, heartSize } from "../../client/core/ui/tame.ts";
 import { Ui } from "../../client/core/ui/ui.ts";
 import { CUE_MATING_SHIFT, MATING_STEPS } from "../../shared/anim/pose.ts";
 import { flatWorld } from "../fixtures/world.ts";
@@ -67,9 +67,14 @@ test("the marks over creatures fit every window shape: on the canvas wherever th
               if (n.kind === K_TEXT && q.kind === K_TEXT && isOver(n.key) && isOver(q.key)) expect(overlaps(n, q), `${where} keys ${n.key} ${q.key}`).toBe(false);
             }
           }
-          // Every heart, and the mark's title, line, tribe, four labelled bars and note.
-          expect(marks, where).toBe(MAX_HEARTS + 3 + 4 * 2 + 1);
-          // The mark stands over its creature's heart.
+          // Every heart, and the mark's backdrop, title, line, tribe, four labelled bars and note.
+          expect(marks, where).toBe(MAX_HEARTS + 4 + 4 * 2 + 1);
+          // Its text is on its backdrop, and the mark stands over its creature's heart.
+          const panel = f.find(KEY_OVER_PANEL)!;
+          for (let i = 0; i < f.count; i++) {
+            const n = f.nodes[i]!;
+            if (isOver(n.key) && n.kind === K_TEXT) expect(n.x >= panel.x && n.x + n.w <= panel.x + panel.w && n.y >= panel.y && n.y + n.h <= panel.y + panel.h + 0.01, `${where} key ${n.key}`).toBe(true);
+          }
           const title = f.find(KEY_OVER_TITLE)!;
           if (heart && v * f.height - heartSize(2) - 2 > title.h + 8 && v < 0.45) expect(title.y + title.h, where).toBeLessThanOrEqual(f.find(KEY_HEART)!.y);
         }
@@ -90,16 +95,17 @@ test("a heart is smaller further off, drawn the farthest first, and filled to it
   const drawn = f.nodes.slice(0, f.count).filter((n) => isHeart(n.key));
   expect(drawn.map((n) => n.key)).toEqual(Array.from({ length: MATING_STEPS + 1 }, (_, k) => KEY_HEART + MATING_STEPS - k));
   expect(drawn.every((n) => n.kind === K_IMAGE && n.image === IMAGE_HEART + n.key - KEY_HEART && n.w === heartSize(m.hearts[n.key - KEY_HEART]!.far))).toBe(true);
-  // Each picture is lit further up than the step before. Step 0, a heart that tells no progress, is lit whole.
-  const lit = (fill: number): number => {
-    const img = heartImage(fill, 1);
+  // Each step's picture is lit further up than the step before, from none at the first to whole at the last. Step 0, a
+  // heart that tells no progress, is lit whole.
+  const lit = (s: number): number => {
+    const img = f.images[IMAGE_HEART + s]!;
     let n = 0;
     for (let p = 0; p < img.data.length; p += 4) if (img.data[p]! > 200 && img.data[p + 3]! > 200) n++;
     return n;
   };
-  const steps = Array.from({ length: MATING_STEPS }, (_, k) => lit((k + 1) / MATING_STEPS));
+  const steps = Array.from({ length: MATING_STEPS }, (_, k) => lit(k + 1));
   expect(steps.every((n, k) => k === 0 || n > steps[k - 1]!)).toBe(true);
-  expect(lit(1)).toBe(steps[MATING_STEPS - 1]!);
+  expect([steps[0], lit(0)]).toEqual([0, steps[MATING_STEPS - 1]!]);
   for (let s = 0; s <= MATING_STEPS; s++) expect(f.images[IMAGE_HEART + s]!.version).toBe(7000 + s);
   // Clear around the shape.
   const corner = heartImage(1, 1).data;

@@ -8,7 +8,7 @@ import { CMD_NAME, MAX_NAME_BYTES } from "../../../shared/net/protocol.ts";
 import { BAR_FOOD, BAR_HEALTH, BAR_TAMING, BAR_TORPOR, MAX_HEARTS, OVER_RANGE, OWNER_OTHER, OWNER_TRIBE, OWNER_WILD, type OverheadModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BAR, K_IMAGE, K_INPUT, K_PANEL, columns, lineHeight, textWidth, type UiFrame, type UiImage } from "./nodes.ts";
-import { S_FOOD, S_HEALTH, S_INPUT, S_LABEL, S_OVER_OTHER, S_OVER_TAMING, S_OVER_TEXT, S_OVER_TRIBE, S_OVER_WILD, S_PANEL, S_TITLE, S_TORPOR } from "./style.ts";
+import { S_FOOD, S_HEALTH, S_INPUT, S_LABEL, S_OVER_OTHER, S_OVER_PANEL, S_OVER_TAMING, S_OVER_TEXT, S_OVER_TRIBE, S_OVER_WILD, S_PANEL, S_TITLE, S_TORPOR } from "./style.ts";
 
 export const KEY_NAME_PANEL = 2460;
 export const KEY_NAME_TITLE = 2461;
@@ -18,6 +18,7 @@ export const KEY_NAME_INPUT = 2463;
 export const KEY_OVER_TITLE = 2500;
 export const KEY_OVER_LINE = 2501;
 export const KEY_OVER_TRIBE = 2502;
+export const KEY_OVER_PANEL = 2503;
 export const KEY_OVER_BAR = 2504;
 export const KEY_OVER_NOTE = 2514;
 /** One heart per mating creature, MAX_HEARTS at most. */
@@ -33,9 +34,10 @@ const HEART_NEAR = 20;
 const HEART_FAR = 11;
 const NEAR = 5;
 const MARK_W = 200;
-const BAR_W = 168;
+const BAR_W = 150;
 const LABEL_W = 48;
 const EDGE = 8;
+const PAD = 5;
 
 /** The side of a heart `far` metres off. */
 export function heartSize(far: number): number {
@@ -55,7 +57,7 @@ export function heartImage(fill: number, version: number): UiImage {
     const a = x * x + y * y - 1;
     return a * a * a <= x * x * y * y * y;
   };
-  const level = -0.72 + fill * 1.8;
+  const level = -0.75 + fill * 1.85;
   for (let py = 0; py < S; py++) {
     for (let px = 0; px < S; px++) {
       let rim = 0;
@@ -101,12 +103,13 @@ function centred(f: UiFrame, key: number, cx: number, y: number, most: number, s
 
 /**
  * The marks over creatures. The hearts go first, the farthest at the bottom. The mark of the creature looked at stands over
- * its heart, if it has one, and never comes down to the crosshair or the line under it.
+ * its heart, if it has one, on a dim backdrop, and never comes down to the crosshair or the line under it.
  */
 export function buildOverhead(f: UiFrame, m: OverheadModel): void {
   const W = f.width;
   const H = f.height;
-  if (!f.images[IMAGE_HEART]) for (let s = 0; s <= MATING_STEPS; s++) f.images[IMAGE_HEART + s] = heartImage(s === 0 ? 1 : s / MATING_STEPS, 7000 + s);
+  // A pair's first step shows an empty heart and its last a full one. A heart that shows no progress is full.
+  if (!f.images[IMAGE_HEART]) for (let s = 0; s <= MATING_STEPS; s++) f.images[IMAGE_HEART + s] = heartImage(s === 0 ? 1 : (s - 1) / (MATING_STEPS - 1), 7000 + s);
   const count = Math.min(m.heartCount, MAX_HEARTS);
   for (let k = count - 1; k >= 0; k--) {
     const h = m.hearts[k]!;
@@ -125,10 +128,13 @@ export function buildOverhead(f: UiFrame, m: OverheadModel): void {
   const tribeH = m.tribe !== "" ? lineHeight(tribeStyle) : 0;
   const rowH = lineH;
   const height = titleH + lineH + tribeH + m.barCount * rowH + (m.note !== "" ? lineH : 0);
+  const fits = (text: string, style: number): number => (text === "" ? 0 : textWidth(text.slice(0, columns(markW, style)), style));
+  const wide = Math.max(fits(m.title, titleStyle), fits(m.line, S_OVER_TEXT), fits(m.tribe, tribeStyle), m.barCount > 0 ? barW : 0, fits(m.note, S_OVER_TEXT)) + PAD * 2;
   const lift = m.heart >= 0 && m.heart < count ? heartSize(m.hearts[m.heart]!.far) + 4 : 4;
-  const bottom = Math.min(m.v * H - lift, H / 2 - 12);
-  let y = Math.max(EDGE, bottom - height);
-  const cx = Math.max(EDGE + markW / 2, Math.min(W - EDGE - markW / 2, m.u * W));
+  const bottom = Math.min(m.v * H - lift, H / 2 - 12) - PAD;
+  let y = Math.max(EDGE + PAD, bottom - height);
+  const cx = Math.max(EDGE + wide / 2, Math.min(W - EDGE - wide / 2, m.u * W));
+  f.add(KEY_OVER_PANEL, K_PANEL, cx - wide / 2, y - PAD, wide, height + PAD * 2, S_OVER_PANEL);
   centred(f, KEY_OVER_TITLE, cx, y, markW, titleStyle, m.title);
   y += titleH;
   centred(f, KEY_OVER_LINE, cx, y, markW, S_OVER_TEXT, m.line);
