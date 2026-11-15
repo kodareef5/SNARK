@@ -87,9 +87,7 @@ export function weaponMeshes(): SourceMesh[] {
     held("core:hatchet", B_PROP_R, [[0, 0, 0.12, 0.014, 0.014, 0.23, WOOD], [0, 0.03, 0.3, 0.01, 0.065, 0.045, STONE]]),
     held("core:pick", B_PROP_R, [[0, 0, 0.12, 0.014, 0.014, 0.23, WOOD], [0, 0, 0.32, 0.012, 0.16, 0.025, STONE]]),
     held("core:spear", B_PROP_R, [[0, 0, 0.35, 0.012, 0.012, 0.95, WOOD], [0, 0, 1.37, 0.022, 0.006, 0.09, STONE]]),
-    held("core:club", B_PROP_R, club()),
     held("core:bow", B_PROP_L, bow()),
-    held("core:slingshot", B_PROP_L, slingshot()),
     held("core:crossbow", B_PROP_R, [[0, -0.01, 0.12, 0.02, 0.028, 0.34, WOOD], [0, 0.02, 0.42, 0.3, 0.01, 0.016, WOOD_LIGHT], [0, 0.03, 0.2, 0.004, 0.004, 0.22, STRING], [0, -0.07, -0.02, 0.014, 0.05, 0.02, WOOD]]),
     held("core:rifle", B_PROP_R, [
       [0, -0.035, -0.22, 0.02, 0.05, 0.16, WOOD],
@@ -103,11 +101,13 @@ export function weaponMeshes(): SourceMesh[] {
     // The origin is at the head, so a stuck arrow stands out of what it hit.
     { id: "core:arrow", lods: [build([[0, 0, -0.36, 0.006, 0.006, 0.36, WOOD_LIGHT], [0, 0, 0.02, 0.014, 0.004, 0.03, STONE], [0, 0, -0.66, 0.003, 0.03, 0.05, STRING], [0, 0, -0.66, 0.03, 0.003, 0.05, STRING]], null)] },
     { id: "core:dart", lods: [build([[0, 0, -0.07, 0.005, 0.005, 0.08, METAL], [0, 0, -0.16, 0.014, 0.014, 0.03, 9]], null)] },
-    { id: "core:stone_shot", lods: [build([[0, 0, 0, 0.02, 0.017, 0.022, STONE], [0.006, 0.008, -0.004, 0.015, 0.014, 0.016, SLATE]], null)] },
     // The blast is a cube a metre across, scaled to the size of the explosion when drawn.
     { id: "core:grenade_thrown", lods: [build([[0, 0.05, 0, 0.04, 0.05, 0.04, 7], [0, 0.11, 0, 0.014, 0.014, 0.014, METAL]], null)] },
     { id: "core:blast", lods: [build([[0, 0, 0, 0.5, 0.5, 0.5, 6]], null)] },
     // The tracer is a metre long along +Z from the origin, scaled to the length of the shot when drawn.
     { id: "core:tracer", lods: [build([[0, 0, 0.5, 0.006, 0.006, 0.5, 6]], null)] },
+    held("core:club", B_PROP_R, club()),
+    held("core:slingshot", B_PROP_L, slingshot()),
+    { id: "core:stone_shot", lods: [build([[0, 0, 0, 0.02, 0.017, 0.022, STONE], [0.006, 0.008, -0.004, 0.015, 0.014, 0.016, SLATE]], null)] },
   ];
 }
