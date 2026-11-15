@@ -4,6 +4,7 @@ import { Rng } from "../../shared/rng.ts";
 import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, Body, MODE_FLY, MODE_GHOST, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { SKIN, capsuleFree } from "../../shared/world/collide.ts";
 import { SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
+import { slopeKind } from "../../content/slopes.ts";
 import { flatWorld, provingWorld, sealedRoom, type TestWorld } from "../fixtures/world.ts";
 
 const FWD = 127;
@@ -136,6 +137,49 @@ test("fuzz: no input sequence leaves a sealed room or enters solid space", () =>
     const inside = b.x > room.minX && b.x < room.maxX && b.z > room.minZ && b.z < room.maxZ && b.y >= -SKIN && b.y + height < room.maxY + SKIN;
     if (!inside || !capsuleFree(w, b.x, b.y, b.z, p.radius, height)) {
       throw new Error(`escaped at tick ${i}: ${b.x}, ${b.y}, ${b.z}`);
+    }
+  }
+});
+
+test("fuzz: among sloped pieces in a closed room no body of any species leaves it or enters a piece", () => {
+  const w = flatWorld();
+  const add = (id: string, x: number, base: number, z: number, yaw = 0): number => w.structs.add(w.kind(id), x, base + w.reg.halfY[w.kind(id)]!, z, yaw, 0, 1);
+  // Walls two high round an 18 m square from (55, 55), and a roof over it.
+  for (let i = 0; i < 6; i++) {
+    for (const y of [0, 3]) {
+      add("core:wall", 56.5 + 3 * i, y, 55);
+      add("core:wall", 56.5 + 3 * i, y, 73);
+      add("core:wall", 55, y, 56.5 + 3 * i, 16384);
+      add("core:wall", 73, y, 56.5 + 3 * i, 16384);
+    }
+  }
+  for (const x of [59, 67, 69]) for (const z of [59, 67, 69]) add("core:slab", x, 6, z);
+  // The thin edge of a wedge on the ground; the same with a crack of 3 cm under its foot, turned; a flight open below; a
+  // solid flight at an odd turn; and a slab at 60 degrees leaning against the north wall.
+  add(slopeKind("rubble"), 60, 0, 60);
+  add(slopeKind("rubble"), 68, 0.03, 60, 16384);
+  add(slopeKind("stairs"), 59.5, 0, 67.5, 32768);
+  add(slopeKind("stairs_solid"), 65, 0, 66, 5000);
+  add(slopeKind("slab60"), 69, 0, 72.9 - w.reg.halfZ[w.kind(slopeKind("slab60"))]!);
+  const walkers = w.reg.defs.flatMap((d) => (d?.type === "species" && !d.still ? [d.id] : []));
+  for (const seed of [5, 6, 7, 8, 9, 10, 11, 12]) {
+    const rng = new Rng(seed);
+    for (const id of walkers) {
+      const p = w.reg.move[w.kind(id)]!;
+      const b = new Body();
+      do {
+        b.x = rng.range(56, 72);
+        b.z = rng.range(56, 72);
+      } while (!capsuleFree(w, b.x, 0, b.z, p.radius, p.height));
+      b.grounded = true;
+      let [moveX, moveZ, yaw, buttons] = [0, 127, rng.int(65536), 0];
+      for (let i = 0; i < 5000; i++) {
+        if (rng.int(15) === 0) [moveX, moveZ, yaw, buttons] = [rng.int(255) - 127, rng.int(255) - 127, rng.int(65536), rng.int(4) | (rng.int(6) === 0 ? BTN_CROUCH : 0) | (rng.int(9) === 0 ? BTN_PRONE : 0)];
+        stepBody(w, b, moveX, moveZ, yaw, 0, buttons, p, TICK_DT);
+        const height = stanceHeight(p, b.stance);
+        if (!capsuleFree(w, b.x, b.y, b.z, p.radius, height)) throw new Error(`${id} in solid at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
+        if (b.x < 55.1 || b.x > 72.9 || b.z < 55.1 || b.z > 72.9 || b.y < -SKIN || b.y + height > 6 + SKIN) throw new Error(`${id} out of the room at tick ${i}, seed ${seed}: ${b.x}, ${b.y}, ${b.z}`);
+      }
     }
   }
 });
