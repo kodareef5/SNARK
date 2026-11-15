@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { CHUNK_SIZE, TICK_DT, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { TAU } from "../../shared/math/scalar.ts";
 import { Rng } from "../../shared/rng.ts";
-import { Body, stepBody } from "../../shared/sim/character.ts";
+import { Body, STANCE_STAND, stanceEye, stepBody } from "../../shared/sim/character.ts";
 import { ROUTE_MARGIN } from "../../server/behavior.ts";
 import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../../shared/world/collide.ts";
 import { NodeField, SIZE_STEPS, SIZE_UNITS, mix, nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
@@ -10,11 +10,12 @@ import { PROVING_DIMS, PROVING_NODES_PER_CHUNK, PROVING_SEA_LEVEL, buildProvingH
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { nodeLayers, type NodeZoned } from "../../shared/world/mapfile.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import type { Def, NodeDef } from "../../shared/content/defs.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { HIT_NODE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { variantRegistry } from "../fixtures/nodes.ts";
-import { coreRegistry } from "../fixtures/world.ts";
+import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const forms = nodeForms(reg);
@@ -189,7 +190,10 @@ test("a node's boxes turn and grow with its picture: what the shader draws at a 
 });
 
 test("the node store holds only chunks someone is near, minus what is used up", () => {
-  const f = field();
+  // Every kind leaves something used up, so the rocks here leave nothing.
+  const bare = compileContent(CORE_CONTENT.map((d): Def => (d.id === "core:rock" && d.type === "node" ? { ...d, variants: d.variants!.map(({ mesh, weight, boxes }) => ({ mesh, weight, boxes })) } : d))).registry!;
+  const forms = nodeForms(bare);
+  const f = new NodeField(PROVING_DIMS, bare, provingNodes(hf, bare));
   const used = new Set<string>();
   const gone = (chunk: number, i: number) => used.has(`${chunk}:${i}`);
   expect(f.store.count).toBe(0);
@@ -219,7 +223,7 @@ test("the node store holds only chunks someone is near, minus what is used up", 
   expect(t.chunks[9]!.kind[slot]).toBe(0);
   f.set(9, slot, true);
   expect(t.chunks[9]!.kind[slot]).toBe(was);
-  expect(t.chunks[9]!.hp[slot]).toBe(reg.nodeHits[forms.kind[was]!]!);
+  expect(t.chunks[9]!.hp[slot]).toBe(bare.nodeHits[forms.kind[was]!]!);
   f.set(9, slot, false);
   expect(t.chunks[9]!.kind[slot]).toBe(0);
   f.set(3, 0, true); // The chunk is not filled, so nothing happens.
@@ -279,7 +283,7 @@ test("what is left of a used-up node stands where it was, at its size and turn, 
   }
 });
 
-test("trees and rocks stop a body, bushes do not, and a ray finds every kind", () => {
+test("trees stop a body, rocks stop it or are climbed, bushes do not, and a ray finds every kind", () => {
   const f = field();
   f.retain(0, 16, 1, () => false);
   const world = { hf, structs: new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), nodes: f.store };
@@ -304,13 +308,17 @@ test("trees and rocks stop a body, bushes do not, and a ray finds every kind", (
       b.y = south;
       b.grounded = true;
       let closest = Infinity;
+      let rose = 0;
       for (let t = 0; t < 90; t++) {
         stepBody(world, b, 0, 127, 0, 0, 0, p, TICK_DT);
         if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error("in solid");
         closest = Math.min(closest, Math.hypot(b.x - s.x, b.z - s.z));
+        rose = Math.max(rose, b.y - groundUnder(hf, b.x, b.z, p.radius));
       }
-      // A bush is walked through. Anything else stops the body or turns it aside before its trunk or its middle.
+      // A bush is walked through. A tree stops the body or turns it aside before its trunk. A rock does, or the body
+      // climbs onto it where its boxes rise in steps it can take.
       if (soft) expect([closest < 0.5, b.z > s.z + 2]).toEqual([true, true]);
+      else if (reg.defs[s.kind]?.type === "node" && (reg.defs[s.kind] as NodeDef).material === "stone") expect(closest > p.radius || rose > 0.1).toBe(true);
       else expect(closest).toBeGreaterThan(p.radius);
       // A look level with the middle of its first box, which stands on its origin, from in front of it.
       const first = forms.parts.start[s.form]! * 6;
@@ -374,6 +382,124 @@ test("a live oak, young or elder, stops a body at its trunk alone, which a swing
     }
   }
   expect([oaks, elders, banyans]).toEqual([20, 10, 5]);
+});
+
+/** A survivor walking at a node of `form` standing alone on level ground, from eight sides. */
+function walkAt(form: number): { climbed: number; rose: number; reached: number } {
+  const w = flatWorld(2);
+  const nodes = new StructureStore(w.dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+  const [cx, cz] = [32, 32];
+  nodes.put(0, 0, form, cx, 0, cz, 0, 0, 1, 1);
+  const world = { hf: w.hf, structs: w.structs, nodes };
+  const p = reg.move[kind("core:survivor")]!;
+  const box = forms.parts.box;
+  const first = forms.parts.start[form]! * 6;
+  let tallest = 0;
+  for (let b = first; b < forms.parts.start[form + 1]! * 6; b += 6) tallest = Math.max(tallest, box[b + 1]! + box[b + 4]!);
+  const d = [0, 0, 0];
+  let [climbed, highest, reached] = [0, 0, 0];
+  for (let side = 0; side < 8; side++) {
+    const a = (side * TAU) / 8;
+    const b = new Body();
+    [b.x, b.y, b.z, b.grounded] = [cx - Math.sin(a) * 6, 0, cz - Math.cos(a) * 6, true];
+    // Where it stands at the stone: as near as it comes on the ground, before it climbs if it does.
+    let [standX, standZ, closest, rose] = [b.x, b.z, Infinity, 0];
+    for (let t = 0; t < 120; t++) {
+      stepBody(world, b, 0, 127, Math.round((side * 65536) / 8) & 0xffff, 0, 0, p, TICK_DT);
+      if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`in ${forms.mesh[form]} from side ${side}`);
+      const near = Math.hypot(b.x - cx, b.z - cz);
+      rose = Math.max(rose, b.y);
+      if (rose < 0.05 && near < closest) [standX, standZ, closest] = [b.x, b.z, near];
+    }
+    if (rose > 0.05) climbed++;
+    highest = Math.max(highest, rose);
+    // From there, a swing at the middle of its first box meets it within a pick's reach.
+    const eye = stanceEye(p, STANCE_STAND);
+    const [tx, ty, tz] = [cx + box[first]! - standX, box[first + 1]! - eye, cz + box[first + 2]! - standZ];
+    const far = Math.hypot(tx, ty, tz);
+    [d[0], d[1], d[2]] = [tx / far, ty / far, tz / far];
+    if (castWorld(world, standX, eye, standZ, d[0]!, d[1]!, d[2]!, reg.reach[kind("core:pick")]!) === HIT_NODE) reached++;
+  }
+  // It never stands higher than the stone's boxes reach.
+  expect(highest).toBeLessThanOrEqual(tallest + 0.01);
+  return { climbed, rose: highest, reached };
+}
+
+test("a survivor walks over a low slab and is stopped by a tall boulder as their boxes say, and a pick's swing meets every stone and broken base from where it stands", () => {
+  const climbs = new Map<string, number[]>();
+  for (const id of ["core:rock", "core:rubble", "core:metal_rock"]) {
+    const k = kind(id);
+    const steps = forms.steps[k]!;
+    for (let v = 0; v < forms.sums[k]!.length; v++) {
+      for (const step of [0, steps - 1]) {
+        const form = forms.first[k]! + v * steps + step;
+        for (const f of [form, forms.left[form]!]) {
+          const { climbed, reached } = walkAt(f);
+          expect([forms.mesh[f], reached]).toEqual([forms.mesh[f], 8]);
+          climbs.set(`${forms.mesh[f]} ${step === 0 ? "least" : "most"}`, [climbed]);
+        }
+      }
+    }
+  }
+  // The low slabs are walked onto from every side, and the tall boulders at their largest from none. A body climbs a
+  // stone wherever its boxes rise by little more than a step at a time, so it walks up most of the rest from some side.
+  for (const low of ["core:rock_4", "core:rock_5", "core:rubble_3"]) expect([climbs.get(`${low} least`), climbs.get(`${low} most`)]).toEqual([[8], [8]]);
+  for (const tall of ["core:rock_2", "core:rock_6"]) expect(climbs.get(`${tall} most`)).toEqual([0]);
+});
+
+test("a used-up rock leaves its broken base, which bodies and rays meet as its own boxes say, and the rock as it was grows back", () => {
+  const f = field();
+  f.retain(0, 16, 1, () => false);
+  const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const s = spot();
+  const box = forms.parts.box;
+  const p = reg.move[kind("core:survivor")]!;
+  /**
+   * What the store holds in the slot, standing alone: how high over its origin a look straight down at the middle of the
+   * form's first box meets it. A body standing there is in it.
+   */
+  const looked = (chunk: number, i: number, form: number): number => {
+    const t = f.store.chunks[chunk]!;
+    expect([t.kind[i], t.x[i], t.y[i], t.z[i], t.yaw[i]]).toEqual([form, Math.fround(s.x), Math.fround(s.y), Math.fround(s.z), s.yaw]);
+    const alone = new StructureStore(PROVING_DIMS, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+    alone.put(chunk, i, form, s.x, s.y, s.z, s.yaw, 0, 1, 1);
+    const b = forms.parts.start[form]! * 6;
+    const a = (s.yaw / 65536) * TAU;
+    const [lx, lz] = [box[b]!, box[b + 2]!];
+    const [x, z] = [Math.cos(a) * lx + Math.sin(a) * lz + s.x, Math.cos(a) * lz - Math.sin(a) * lx + s.z];
+    expect(capsuleKind(forms.parts, form, s.x, s.y, s.z, s.yaw, x, s.y, z, p.radius, p.height, SKIN)).toBe(true);
+    expect([castWorld({ hf, structs, nodes: alone }, x, s.y + 6, z, 0, -1, 0, 6), rayHit.ref]).toEqual([HIT_NODE, chunk * 65536 + i]);
+    return 6 - rayHit.t;
+  };
+  /** The top of the highest of the form's boxes over the middle of its first. */
+  const highest = (form: number): number => {
+    const b0 = forms.parts.start[form]! * 6;
+    let most = -Infinity;
+    for (let b = b0; b < forms.parts.start[form + 1]! * 6; b += 6) {
+      if (Math.abs(box[b0]! - box[b]!) <= box[b + 3]! && Math.abs(box[b0 + 2]! - box[b + 2]!) <= box[b + 5]!) most = Math.max(most, box[b + 1]! + box[b + 4]!);
+    }
+    return most;
+  };
+  // The first ten of each kind.
+  const stones = new Map(["core:rock", "core:rubble", "core:metal_rock"].map((id) => [kind(id), 0]));
+  for (let chunk = 0; chunk < CHUNKS; chunk++) {
+    for (let i = 0; i < f.source.perChunk; i++) {
+      f.source.at(chunk, i, s);
+      if ((stones.get(s.kind) ?? 10) >= 10) continue;
+      stones.set(s.kind, stones.get(s.kind)! + 1);
+      const whole = looked(chunk, i, s.form);
+      expect(whole).toBeCloseTo(highest(s.form), 1);
+      f.set(chunk, i, false);
+      const left = forms.left[s.form]!;
+      expect([f.store.chunks[chunk]!.kind[i], forms.depleted[left], forms.mesh[left]]).toEqual([left, 1, `${forms.mesh[s.form]}_depleted`]);
+      // The broken base is met at its own boxes' top, lower than the rock's, until it grows back.
+      const base = looked(chunk, i, left);
+      expect([base, base < whole]).toEqual([expect.closeTo(highest(left), 1), true]);
+      f.set(chunk, i, true);
+      expect(looked(chunk, i, s.form)).toBe(whole);
+    }
+  }
+  expect([...stones.values()]).toEqual([10, 10, 10]);
 });
 
 test("a creature's way is found again when anything within the reach of the widest node or piece changes, with its own radius", () => {

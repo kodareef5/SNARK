@@ -396,7 +396,9 @@ test("what it does about others is its stance: passive, nothing; neutral, it goe
   h.run(1500);
   expect([mind.mind[mine.e], mind.targetOf(mine.e)]).toEqual([MIND_HUNT, grazer]);
   const wild = h.host.records.byPid.get(ents.pid[grazer]!)!;
-  for (let k = 0; k < 120 && h.host.records.byPid.has(wild.pid); k++) h.run(500);
+  // The grazer flees east off the plaza, among the rocks and trees, and the raptor gives up the hunt and takes it up again
+  // more than once, so the chase is given time: it takes about 63,000 ticks.
+  for (let k = 0; k < 240 && h.host.records.byPid.has(wild.pid); k++) h.run(500);
   expect(h.host.records.byPid.has(wild.pid)).toBe(false);
   expect(mine.rec.xp).toBeGreaterThan(0);
   expect([h.host.records.byPid.has(other.rec.pid), h.host.survival.value(other.rec, V_HEALTH) > 150, me.dead]).toEqual([true, true, false]);

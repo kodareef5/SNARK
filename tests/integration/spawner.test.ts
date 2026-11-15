@@ -174,9 +174,9 @@ test("nothing is put down inside a node nobody has loaded, nor in what is left o
     ticks(h, 60);
     return h.spawner!.regions[0]!.count;
   };
-  // A stump in place of a used-up rock, as a kind may have one.
-  const stumps = compileContent(CORE_CONTENT.map((d): Def => (d.id === "core:rock" && d.type === "node" ? { ...d, depleted: { mesh: "test:rock_depleted", boxes: [{ at: [0, 0.3, 0], half: [0.8, 0.3, 0.8] }] } } : d))).registry!;
-  expect([made(reg, false), made(reg, true) >= 3, made(stumps, true)]).toEqual([0, true, 0]);
+  // A used-up rock leaves its broken base, and here, as a kind may, nothing.
+  const bare = compileContent(CORE_CONTENT.map((d): Def => (d.id === "core:rock" && d.type === "node" ? { ...d, variants: d.variants!.map(({ mesh, weight, boxes }) => ({ mesh, weight, boxes })) } : d))).registry!;
+  expect([made(reg, false), made(reg, true), made(bare, true) >= 3]).toEqual([0, 0, true]);
 });
 
 test("a saved world comes back with its creatures where they were, counted, and is not filled on top of them", () => {
