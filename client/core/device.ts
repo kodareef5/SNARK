@@ -28,9 +28,13 @@ import { stressThings } from "./stress.ts";
 export type Mode = "quick" | "ladder" | "soak";
 export const MODES: readonly Mode[] = ["quick", "ladder", "soak"];
 
-/** The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the crowd. */
-export type SceneName = "plain" | "stress" | "crowd";
+/**
+ * The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the
+ * crowd; and on a tier of two depth ranges (D252), the crowd again in one, to set the two against each other.
+ */
+export type SceneName = "plain" | "stress" | "crowd" | "crowd1";
 export const SCENES: readonly SceneName[] = ["plain", "stress", "crowd"];
+export const scenesOf = (tier: Tier): readonly SceneName[] => (tier.split > 0 ? [...SCENES, "crowd1"] : SCENES);
 
 /**
  * What the ladder adds, a rung at a time. Bodies: copies of the crowd, posed. Pieces: stone and wood houses the server
@@ -389,6 +393,8 @@ export interface Load {
   pieces: number;
   near: number;
   far: number;
+  /** Drawn in one depth range on a tier of two. */
+  oneRange?: boolean;
 }
 
 interface Step {
@@ -545,6 +551,9 @@ export class DeviceRun {
   private memoryRung = 0;
   private heldSince = -1;
   private sweepsAt = 0;
+  /** Whether the scene is drawn in one depth range, and the scene whose build looks at it. */
+  private flat = false;
+  private wrapped: object | null = null;
   /** The quick look's GPU questions, while they are asked. */
   private questions: GpuQuestions | null = null;
   /** The soak's amounts, clock and minute under way. */
@@ -560,7 +569,7 @@ export class DeviceRun {
     this.side = side;
     this.timing = timing;
     this.mode = mode;
-    this.plan = TIERS.flatMap((tier) => SCENES.map((scene) => ({ tier, scene })));
+    this.plan = TIERS.flatMap((tier) => scenesOf(tier).map((scene) => ({ tier, scene })));
     this.ladder = new LadderPlan(side.maxTexture);
     this.soakFrom = soakLoad(held, this.soakTier().name);
     if (mode === "ladder") report.ladder = { display: side.display, rungs: [], memory: null };
@@ -810,8 +819,9 @@ export class DeviceRun {
     }
     const again = this.index >= this.plan.length;
     const { tier, scene } = this.plan[again ? 0 : this.index]!;
-    const load = bare(tier, scene === "crowd" ? LOOK.crowd : 0);
+    const load = bare(tier, scene.startsWith("crowd") ? LOOK.crowd : 0);
     load.stress = scene === "stress";
+    load.oneRange = scene === "crowd1";
     this.go({ kind: again ? "again" : "phase", load, scene }, `${again ? "again " : ""}${tier.name} ${scene}`);
   }
 
@@ -832,6 +842,25 @@ export class DeviceRun {
     this.show();
   }
 
+  /**
+   * Whether the scene draws in one depth range on a tier of two. The game sets the tier on its scene each frame, so the
+   * scene's build is wrapped once to put a copy with no split in its place. A copy a tier, since the renderer keeps its
+   * programs by the tier.
+   */
+  private oneRange(on: boolean): void {
+    const scene = this.side.app.scene!;
+    this.flat = on;
+    if (this.wrapped === scene) return;
+    this.wrapped = scene;
+    const build = scene.build.bind(scene);
+    const copies = new Map<Tier, Tier>();
+    scene.build = (cam, remote) => {
+      const t = scene.assets.tier;
+      if (this.flat && t.split > 0) scene.assets.tier = copies.get(t) ?? copies.set(t, { ...t, split: 0 }).get(t)!;
+      return build(cam, remote);
+    };
+  }
+
   /** Begins the step under way afresh. */
   private show(): void {
     this.measuring = false;
@@ -847,6 +876,7 @@ export class DeviceRun {
     const assets = app.scene!.assets;
     app.scene!.things = [...(load.stress ? this.stressed() : []), ...(load.near + load.far > 0 ? rocks(assets.table, hf, load.near, load.far) : [])];
     bodies.n = load.bodies;
+    this.oneRange(load.oneRange === true);
     if (load.pieces !== this.pieces) {
       this.asking = true;
       this.pieces = load.pieces;

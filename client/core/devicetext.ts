@@ -4,6 +4,7 @@
 import type { Axis, DeviceReport, GpuInfo, Mode, PhaseReport } from "./device.ts";
 import { AXES, LONG, MODES, RUNGS, formatsOf } from "./device.ts";
 import { FRAME_BLOCK_BYTES } from "./devicegpu.ts";
+import { FAR_FROM } from "./render/camera.ts";
 import { UNIT } from "./render/programs.ts";
 
 const yes = (b: unknown): string => (b ? "yes" : "no");
@@ -109,6 +110,8 @@ function gpuLines(r: DeviceReport): string[] {
   const g = r.gpu;
   const gap = (m: number | null, at: string): string => (m === null ? `no gap tried at ${at}` : `${m} m at ${at}`);
   const out = [`depth     depthRange ${q.depthRange}; quads drawn in order ${gap(q.nearGap, "380 m in the near range")} apart, ${gap(q.farGap, "2 km in the far")}`];
+  const s = q.seam;
+  out.push(`seam      ${typeof s === "string" ? s : `D1's slope over 60 turning frames, the seam crossing ${s.crossing} pixels: ${s.overlap} left the clear colour with the far range from ${FAR_FROM * 100}% of the split, as the game draws, and ${s.flush} with it from the split itself`}`);
   out.push(`shadows   a 16-bit depth array ${q.depthArray}; compared lookups in it ${q.compareArray}, in a plain depth texture ${q.compare2d}; an RGBA8 3D texture ${q.texture3d}`);
   if (g) {
     const units = Math.max(...Object.values(UNIT)) + 1;
@@ -194,6 +197,11 @@ export function deviceTable(r: DeviceReport): string[] {
     out.push("median to worst: ms between frames. settle: s until nothing was on its way, ! if never. build, draw: ms in our code.");
     out.push("calls: WebGL draws. mat: draws with materials. drop, skip: what the frame left out.");
     out.push("MB, fail, miss: fetched, fetches failed and snapshots missed while the phase settled and ran.");
+    out.push("crowd1: the crowd in one depth range on a tier of two, to set against crowd");
+    for (const one of r.phases.filter((p) => p.scene === "crowd1")) {
+      const two = r.phases.find((p) => p.tier === one.tier && p.scene === "crowd");
+      if (two) out.push(`ranges    ${one.tier}, two against one in the crowd: frames ${two.frameMs.median} against ${one.frameMs.median} ms, 95th ${two.frameMs.p95} against ${one.frameMs.p95}; our code ${tenth(two.buildMs.median + two.drawMs.median)} against ${tenth(one.buildMs.median + one.drawMs.median)} ms; ${count(two.drawCalls)} against ${count(one.drawCalls)} draws`);
+    }
   }
   if (r.gpuTests) out.push("", ...gpuLines(r));
   if (r.ladder || r.reloadedDuring?.startsWith("memory")) out.push("", ...ladderLines(r));

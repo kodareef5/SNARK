@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TIERS } from "../client/core/assets/tiers.ts";
-import { AXES, MEMORY_MB, MODES, SCENES, deviceScenarios, type DeviceReport, type Mode } from "../client/core/device.ts";
+import { AXES, MEMORY_MB, MODES, deviceScenarios, scenesOf, type DeviceReport, type Mode } from "../client/core/device.ts";
 import { BASE_MOST, basePieces, crowdScene } from "../client/core/devicescene.ts";
 import { deviceTable } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -172,11 +172,11 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   if (r.link.missed > 0) out.push(`${r.link.missed} snapshots missed on this machine's own link`);
   if (mode === "quick") {
     if (!r.again) out.push("no again");
-    for (const t of TIERS) if (r.phases.filter((p) => p.tier === t.name).length !== SCENES.length) out.push(`tier ${t.name} did not run every scene`);
+    for (const t of TIERS) if (r.phases.filter((p) => p.tier === t.name).length !== scenesOf(t).length) out.push(`tier ${t.name} did not run every scene`);
     // A desktop answers every GPU question. An answer a phone may give, such as "ignored" or "hard", is not a lack.
     const q = r.gpuTests;
     if (!q) out.push("no gpu questions");
-    for (const [name, answer] of Object.entries({ depthRange: q?.depthRange, depthArray: q?.depthArray, compareArray: q?.compareArray, compare2d: q?.compare2d, texture3d: q?.texture3d })) if (q && /^(did not finish|failed|not asked|lost)/.test(answer ?? "")) out.push(`gpu ${name}: ${answer}`);
+    for (const [name, answer] of Object.entries({ depthRange: q?.depthRange, seam: typeof q?.seam === "string" ? q.seam : "", depthArray: q?.depthArray, compareArray: q?.compareArray, compare2d: q?.compare2d, texture3d: q?.texture3d })) if (q && /^(did not finish|failed|not asked|lost)/.test(answer ?? "")) out.push(`gpu ${name}: ${answer}`);
     for (const p of q?.passes ?? []) if (p.note !== "" || p.slope === null) out.push(`gpu ${p.name}: ${p.note || "no slope"}`);
     if (q?.lostDuring) out.push(`gpu: the context was lost during ${q.lostDuring}`);
   }

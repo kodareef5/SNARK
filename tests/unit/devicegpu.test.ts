@@ -2,7 +2,8 @@
 // step fills its tiles with, the slope fit, the context's state put back, and deadlines and a lost context.
 
 import { expect, test } from "bun:test";
-import { GL, GpuQuestions, PROBE_UNITS, compareKind, filterKind, fitLine, saveState, solidBlock, type GpuPlan } from "../../client/core/devicegpu.ts";
+import { GL, GpuQuestions, PROBE_UNITS, compareKind, filterKind, fitLine, lookFrom, saveState, seamCount, solidBlock, type GpuPlan } from "../../client/core/devicegpu.ts";
+import { Camera } from "../../client/core/render/camera.ts";
 import { TextureMemory } from "../../client/core/devicescene.ts";
 import { decodeAstcBlock } from "../../tools/pack/astc.ts";
 import { decodeBc7 } from "../../tools/pack/bc.ts";
@@ -35,6 +36,17 @@ test("the memory step's blocks decode to the colour it reads back for, by the re
   expect(decodeAstcBlock(astc.bytes, 0, false, out)).toBe(true);
   expect(Array.from(out)).toEqual(Array.from({ length: 64 }, (_, i) => astc.rgba[i % 4]!));
   expect(solidBlock("rgba").bytes.length).toBe(64);
+});
+
+test("the seam's view is the game camera's, and a turn counts pixels in neither range and pixels the seam crosses", () => {
+  const cam = new Camera();
+  [cam.yaw, cam.pitch, cam.fovY, cam.aspect, cam.near, cam.far] = [0.7, -0.4, 0.5, 16 / 9, 0.25, 6000];
+  cam.update();
+  const mine = lookFrom(0.7, -0.4, 0.5, 16 / 9, 0.25, 6000);
+  for (let i = 0; i < 16; i++) expect(mine[i]!).toBeCloseTo(cam.viewProj[i]!, 5);
+  // Four rows of two pixels: near, near, far, clear.
+  const px = Uint8Array.from([0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 128, 0, 255, 0, 128, 0, 255, 0, 0, 255, 255, 0, 0, 255, 255]);
+  expect(seamCount(px, 2, 4)).toEqual({ gaps: 2, crossing: 2 });
 });
 
 test("what the probe changes of a context is put back as it was", () => {
@@ -104,6 +116,7 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect([r.timers, r.lostDuring]).toEqual([true, null]);
   // The fake reads every pixel back as grey: no answer is a yes, and none is left unasked.
   expect(r.depthRange).toBe("neither (read 128,128,128)");
+  expect(r.seam).toEqual({ crossing: 0, overlap: 0, flush: 0 });
   expect([r.depthArray, r.compareArray, r.texture3d]).toEqual(["did not render (read 128 and 128 at texel centres, not 0 and 255)", "not known", "wrong (128,128,128, not 64,128,191)"]);
   const per = (name: string) => r.passes.find((p) => p.name === name)!;
   for (const p of r.passes) expect(p.note).toBe("");
@@ -122,13 +135,14 @@ test("a question past its deadline says it did not finish, and a lost context na
   const slow = timedCard();
   const late = new GpuQuestions(slow.gl, () => slow.gl.createTexture(), slow.now, "bc", [390, 844], PLAN);
   ask(late, () => slow.tick(4000));
-  expect(late.report.depthRange).toBe("neither (read 128,128,128)");
+  expect([late.report.depthRange, late.report.seam]).toEqual(["neither (read 128,128,128)", "did not finish"]);
   expect(late.report.passes.map((p) => p.note)).toEqual(Array(10).fill("did not finish"));
 
   const card = timedCard();
   const q = new GpuQuestions(card.gl, () => card.gl.createTexture(), card.now, "rgba", [390, 844], PLAN);
-  // A frame to begin, then two for each check, and the first pass begun.
-  for (let i = 0; i < 8; i++) q.frame();
+  // On to the first pass, and one frame into it.
+  while (q.stage !== "depth rigid 1024") q.frame();
+  q.frame();
   card.gl.lose();
   q.lost();
   expect(q.frame()).toBe(true);

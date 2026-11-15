@@ -6,6 +6,7 @@
 // pass drawn k times, timed across a readback that waits for the GPU; the fit's standard error says how noisy it was.
 // Each question has a deadline and says "did not finish" past it, and a lost context ends them, naming the one it hit.
 
+import { FAR_FROM } from "./render/camera.ts";
 import { FLAT_FRAGMENT } from "./render/glsl.ts";
 import { FRAME_FLOATS } from "./render/packet.ts";
 import { surfaceFragment } from "./render/surface.ts";
@@ -260,6 +261,11 @@ export function filterKind(got: readonly number[], want: readonly number[]): str
 export interface GpuReport {
   /** "honoured", "ignored", or why it was not found out. */
   depthRange: string;
+  /**
+   * D1's seam over 60 turning frames: pixels the seam crossed, and pixels left the clear colour with the far range from
+   * FAR_FROM of the split, as the game draws, and from the split itself. A string until it is answered.
+   */
+  seam: { crossing: number; overlap: number; flush: number } | string;
   /** The least of a list of gaps two quads must have to be drawn in order: in the near range at 380 m, the far at 2 km. Null if none. */
   nearGap: number | null;
   farGap: number | null;
@@ -291,7 +297,7 @@ export interface PassTime {
 
 export function newGpuReport(): GpuReport {
   const dnf = "did not finish";
-  return { depthRange: dnf, nearGap: null, farGap: null, depthArray: dnf, compareArray: dnf, compare2d: dnf, texture3d: dnf, timers: false, passes: [], lostDuring: null, screen: [0, 0] };
+  return { depthRange: dnf, seam: dnf, nearGap: null, farGap: null, depthArray: dnf, compareArray: dnf, compare2d: dnf, texture3d: dnf, timers: false, passes: [], lostDuring: null, screen: [0, 0] };
 }
 
 /** Gaps tried, in metres, nearest first, and where. The near range ends at the split, the far begins at 98% of it. */
@@ -335,6 +341,40 @@ function perspective(near: number, far: number): Float32Array {
   return m;
 }
 
+/** A view-projection from the origin as the game's camera turns (yaw 0 faces +Z, pitch up), with its depth rows as camera.ts sets them. */
+export function lookFrom(yaw: number, pitch: number, fovY: number, aspect: number, near: number, far: number): Float32Array {
+  const f = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), Math.cos(yaw) * Math.cos(pitch)];
+  const l = Math.hypot(f[2]!, f[0]!);
+  const r = [-f[2]! / l, 0, f[0]! / l];
+  const u = [r[1]! * f[2]! - r[2]! * f[1]!, r[2]! * f[0]! - r[0]! * f[2]!, r[0]! * f[1]! - r[1]! * f[0]!];
+  const [b, a] = [1 / Math.tan(fovY / 2), (far + near) / (near - far)];
+  const m = new Float32Array(16);
+  for (let c = 0; c < 3; c++) [m[c * 4], m[c * 4 + 1], m[c * 4 + 2], m[c * 4 + 3]] = [(b / aspect) * r[c]!, b * u[c]!, -a * f[c]!, f[c]!];
+  m[14] = (2 * far * near) / (near - far);
+  return m;
+}
+
+/** D1's seam shot (tools/probe-lit/depth.ts): its target, how high over the slope, the slope, the view and the turns. */
+const [SEAM_W, SEAM_H] = [480, 270];
+const SEAM_UP = 150;
+const SEAM_SLOPE = Math.tan((5 * Math.PI) / 180);
+const SEAM_PITCH = (-28 * Math.PI) / 180;
+const SEAM_FOV = (30 * Math.PI) / 180;
+const SEAM_TURNS = 60;
+
+/** What a turn of the seam read back: pixels left the clear colour (blue), and pixels whose next row up is in the other range. */
+export function seamCount(px: Uint8Array, width: number, height: number): { gaps: number; crossing: number } {
+  let [gaps, crossing] = [0, 0];
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const at = (y * width + x) * 4;
+      if (px[at + 2]! > 128) gaps++;
+      else if (y + 1 < height && px[at + 2 + width * 4]! <= 128 && px[at + 1]! > 192 !== px[at + 1 + width * 4]! > 192) crossing++;
+    }
+  }
+  return { gaps, crossing };
+}
+
 /**
  * The questions, one after another, each a few frames. `frame` is called once a frame after the game has drawn, and
  * says true when every question is answered or given up.
@@ -372,6 +412,7 @@ export class GpuQuestions {
       if (over && fields.includes("depthRange")) r.nearGap = r.farGap = null;
     };
     this.tasks.push({ name: "depth", run: () => this.depth(), ms: plan.checkMs, fail: set(["depthRange"]) });
+    this.tasks.push({ name: "seam", run: () => this.seam(), ms: plan.passMs, fail: set(["seam"]) });
     this.tasks.push({ name: "compared lookups", run: () => this.compared(), ms: plan.checkMs, fail: set(["depthArray", "compareArray", "compare2d"]) });
     this.tasks.push({ name: "3D texture", run: () => this.texture3d(), ms: plan.checkMs, fail: set(["texture3d"]) });
     for (const size of plan.depthSizes) {
@@ -505,9 +546,10 @@ export class GpuQuestions {
   }
 
   /**
-   * Quads drawn into a target of the screen's depth, a cell of it each. First whether depthRange is
-   * honoured: a quad far off in the range 0 to 0.5 must hide one near in 0.5 to 1. Then the round 8 split's ranges:
-   * pairs of quads a gap apart at 380 m in the near range and at 2 km in the far, each pair drawn both ways round.
+   * Quads drawn into a target of the screen's depth, a cell of it each. First whether depthRange is honoured, as D1's
+   * probe asks it: a slab 200 m off in the near range must hide ground 2 km off in the far, drawn after it, which it
+   * does only in 0 to 0.5 against 0.5 to 1. Then pairs of quads a gap apart at 380 m in the near range and at 2 km in
+   * the far, each pair drawn both ways round.
    */
   private *depth(): Generator<void, void, void> {
     const gl = this.gl;
@@ -550,13 +592,11 @@ export class GpuQuestions {
       gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
     };
     gl.bindFramebuffer(GL.FRAMEBUFFER, fb);
-    // Honoured: red at 90 m in 0 to 0.5 against green at 2 m in 0.5 to 1, drawn green last.
-    const simple = perspective(1, 100);
-    cell(0);
-    quad(simple, [0, 0.5], 90, true);
-    quad(simple, [0.5, 1], 2, false);
     type Pair = [Float32Array, [number, number], number, number];
-    const [near, far] = [perspective(0.25, SPLIT), perspective(SPLIT * 0.98, VIEW_END)];
+    const [near, far] = [perspective(0.25, SPLIT), perspective(SPLIT * FAR_FROM, VIEW_END)];
+    cell(0);
+    quad(near, [0, 0.5], 200, true);
+    quad(far, [0.5, 1], 2000, false);
     const pairs: Pair[] = [...NEAR_GAPS.map((g): Pair => [near, [0, 0.5], 380, g]), ...FAR_GAPS.map((g): Pair => [far, [0.5, 1], 2000, g])];
     pairs.forEach(([proj, range, at, gap], i) => {
       // The nearer quad is red, drawn first in one cell and last in the next. Red in both says the gap tells them apart.
@@ -657,6 +697,81 @@ void main() {
     // The texel centres either side read 0 and 255 whatever the filter: if not, the map did not render.
     if (px[8]! > 2 || px[12]! < 253) return `did not render (read ${px[8]} and ${px[12]} at texel centres, not 0 and 255)`;
     return compareKind(px[0]!, px[4]!);
+  }
+
+  /**
+   * D1's seam: 150 m over a 5 degree slope, looking 28 degrees down along a view 30 degrees high, 480 by 270, turned
+   * through 60 frames. The slope, 16 m quads 3 km across, is drawn in both ranges, bright green in the near and dark in
+   * the far; a pixel left the clear blue lies in neither. Once with the far range from FAR_FROM of the split, as the
+   * game draws it, and once from the split itself. Six turns a frame.
+   */
+  private *seam(): Generator<void, void, void> {
+    const gl = this.gl;
+    const bits = Number(gl.getParameter(GL.DEPTH_BITS)) || 0;
+    const colour = this.texture(GL.RGBA8, SEAM_W, SEAM_H);
+    const depth = this.keep("renderbuffer", gl.createRenderbuffer());
+    gl.bindRenderbuffer(GL.RENDERBUFFER, depth);
+    gl.renderbufferStorage(GL.RENDERBUFFER, bits >= 32 ? GL.DEPTH_COMPONENT32F : bits >= 24 ? GL.DEPTH_COMPONENT24 : GL.DEPTH_COMPONENT16, SEAM_W, SEAM_H);
+    const fb = this.keep("framebuffer", framebuffer(gl, (f) => {
+      gl.framebufferTexture2D(f, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, colour, 0);
+      gl.framebufferRenderbuffer(f, GL.DEPTH_ATTACHMENT, GL.RENDERBUFFER, depth);
+    }, "the seam's target"));
+    const side = 188;
+    const pos = new Float32Array((side + 1) * (side + 1) * 3);
+    const index = new Uint32Array(side * side * 6);
+    for (let j = 0; j <= side; j++) for (let i = 0; i <= side; i++) pos.set([i * 16 - 1504, -SEAM_UP + SEAM_SLOPE * (i * 16 - 1504), j * 16 - 1504], (j * (side + 1) + i) * 3);
+    for (let j = 0; j < side; j++) {
+      for (let i = 0; i < side; i++) {
+        const a = j * (side + 1) + i;
+        index.set([a, a + 1, a + side + 1, a + 1, a + side + 2, a + side + 1], (j * side + i) * 6);
+      }
+    }
+    const vao = this.keep("vao", gl.createVertexArray());
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(GL.ARRAY_BUFFER, this.keep("buffer", gl.createBuffer()));
+    gl.bufferData(GL.ARRAY_BUFFER, pos, GL.STATIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, GL.FLOAT, false, 12, 0);
+    gl.bindBuffer(GL.ELEMENT_ARRAY_BUFFER, this.keep("buffer", gl.createBuffer()));
+    gl.bufferData(GL.ELEMENT_ARRAY_BUFFER, index, GL.STATIC_DRAW);
+    const prog = this.program(`#version 300 es
+layout(location=0) in vec3 aPos;
+uniform mat4 uM;
+void main() { gl_Position = uM * vec4(aPos, 1.0); }`, COLOUR_FRAGMENT);
+    const [m, c] = ["uM", "uColour"].map((n) => gl.getUniformLocation(prog, n));
+    const px = new Uint8Array(SEAM_W * SEAM_H * 4);
+    const out = { crossing: 0, overlap: 0, flush: 0 };
+    for (const from of [FAR_FROM, 1]) {
+      for (let k = 0; k < SEAM_TURNS; k++) {
+        const yaw = (k / SEAM_TURNS) * 2 * Math.PI;
+        gl.bindFramebuffer(GL.FRAMEBUFFER, fb);
+        gl.viewport(0, 0, SEAM_W, SEAM_H);
+        for (const cap of [GL.SCISSOR_TEST, GL.BLEND, GL.CULL_FACE]) gl.disable(cap);
+        gl.enable(GL.DEPTH_TEST);
+        gl.depthFunc(GL.LESS);
+        gl.depthMask(true);
+        gl.colorMask(true, true, true, true);
+        gl.depthRange(0, 1);
+        gl.clearColor(0, 0, 1, 1);
+        gl.clearDepth(1);
+        gl.clear(GL.COLOR_BUFFER_BIT | GL.DEPTH_BUFFER_BIT);
+        gl.useProgram(prog);
+        gl.bindVertexArray(vao);
+        for (const [range, start, end, green] of [[[0, 0.5], 0.25, SPLIT, 1], [[0.5, 1], SPLIT * from, VIEW_END, 0.5]] as const) {
+          gl.depthRange(range[0], range[1]);
+          gl.uniformMatrix4fv(m, false, lookFrom(yaw, SEAM_PITCH, SEAM_FOV, SEAM_W / SEAM_H, start, end));
+          gl.uniform3f(c, 0, green, 0);
+          gl.drawElements(GL.TRIANGLES, index.length, GL.UNSIGNED_INT, 0);
+        }
+        gl.depthRange(0, 1);
+        gl.readPixels(0, 0, SEAM_W, SEAM_H, GL.RGBA, GL.UNSIGNED_BYTE, px);
+        const turn = seamCount(px, SEAM_W, SEAM_H);
+        if (from === 1) out.flush += turn.gaps;
+        else [out.overlap, out.crossing] = [out.overlap + turn.gaps, out.crossing + turn.crossing];
+        if (k % 6 === 5) yield;
+      }
+    }
+    this.report.seam = out;
   }
 
   /** An RGBA8 3D texture 2 a side, red, green and blue on along x, y and z, sampled between texels with linear filtering. */

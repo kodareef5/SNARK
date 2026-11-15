@@ -125,14 +125,22 @@ test("a page shows which device it is on and the tests, starts nothing until one
   const { r: gpu } = renderer();
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, gpu);
   const yaw = new Map<string, number>();
-  await run(probe, h, app, gpu, 60000, { each: () => yaw.set(probe.report.stage, app.controls.yaw) });
+  const split = new Map<string, number>();
+  const each = (): void => void (yaw.set(probe.report.stage, app.controls.yaw), split.set(probe.report.stage, app.scene!.packet.split));
+  await run(probe, h, app, gpu, 60000, { each });
   const r = probe.report;
   expect([r.mode, r.done, r.errors, r.reloadedDuring]).toEqual(["quick", true, [], null]);
-  expect(r.phases.map((p) => `${p.tier} ${p.scene}`)).toEqual(["lowpoly plain", "lowpoly stress", "lowpoly crowd", "medium plain", "medium stress", "medium crowd", "high plain", "high stress", "high crowd"]);
+  expect(r.phases.map((p) => `${p.tier} ${p.scene}`)).toEqual(["lowpoly plain", "lowpoly stress", "lowpoly crowd", "medium plain", "medium stress", "medium crowd", "medium crowd1", "high plain", "high stress", "high crowd", "high crowd1"]);
   expect(r.skipped).toEqual(["ultra: its textures are up to 4096 wide, and this device takes 2048"]);
-  expect(r.phases.map((p) => p.ratio)).toEqual([1, 1, 1, 1.5, 1.5, 1.5, 2, 2, 2]);
+  expect(r.phases.map((p) => p.ratio)).toEqual([1, 1, 1, 1.5, 1.5, 1.5, 1.5, 2, 2, 2, 2]);
   expect(r.phases[3]!.canvas).toEqual([585, 1266]);
-  expect([yaw.get("medium crowd"), yaw.get("medium plain")]).toEqual([Math.PI, 0]);
+  expect([yaw.get("medium crowd"), yaw.get("medium plain"), yaw.get("medium crowd1")]).toEqual([Math.PI, 0, Math.PI]);
+  // The crowd on medium in its two depth ranges and then in one; the next tier has its split again.
+  expect([split.get("medium crowd"), split.get("medium crowd1"), split.get("high plain")]).toEqual([384, 0, 384]);
+  expect(deviceTable(r).some((line) => line.startsWith("ranges    medium, two against one in the crowd: frames "))).toBe(true);
+  // The GPU questions were asked first, and each answered on the harness's context.
+  const q = r.gpuTests!;
+  expect([q.lostDuring, q.passes.filter((p) => p.note !== "").length, typeof q.seam]).toEqual([null, 0, "object"]);
   expect([r.again?.tier, r.again?.scene]).toEqual(["lowpoly", "plain"]);
   expect(r.hashes!.every((x) => x.got === x.want)).toBe(true);
   expect([r.load!.pageBytes, r.link.httpMs!.median, r.idleFrameMs, r.wakeLock, r.gpu!.maxTexture, r.gpu!.variant, r.device!.touch]).toEqual([500000, 0, 16.6, "held", 2048, "astc", 5]);
