@@ -12,6 +12,8 @@ core/creatures/raptor/        core:raptor
   ref/                        what it was looked at against, in folders of its own if it likes, with SOURCES.md:
                               where each thing came from and its licence
   tex/                        source pictures at full size
+  sound/                      sounds.json, the cue sheet `bun run build` reads (planning/architecture/sound.md);
+                              takes/, the accepted takes as made; how each was made and its licence beside them
 core/creatures/dino.ts        shared by the two sample dinosaurs' specs
 core/humans/human-bodies/     core:human-bodies, the two modelled bodies with hair, beards and armor
 core/humans/human-clips/      core:human-clips, the humanoid's clips
