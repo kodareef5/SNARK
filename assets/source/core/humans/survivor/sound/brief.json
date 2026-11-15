@@ -1,0 +1,571 @@
+{
+  "asset": "core/humans/survivor",
+  "review": "../ref/sound",
+  "about": "The survivor's own voice and body, male and female. Heard by others where placed; the listener's own play close and unplaced.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "voice/male/hurt": {
+      "kind": "voice",
+      "range": 30,
+      "level": -20,
+      "vary": 0.3,
+      "want": "pain from a blow",
+      "prompts": [
+        {
+          "id": "p2480",
+          "models": [
+            "moss"
+          ],
+          "seed": 2480,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man is hit and grunts in pain: short sharp pained grunts, five separate grunts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/hurt/badly": {
+      "kind": "voice",
+      "range": 30,
+      "level": -18,
+      "vary": 0.3,
+      "want": "a hard, serious blow",
+      "prompts": [
+        {
+          "id": "p2490",
+          "models": [
+            "moss"
+          ],
+          "seed": 2490,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man is badly wounded and cries out: strained pained cries, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/death": {
+      "kind": "voice",
+      "range": 30,
+      "level": -18,
+      "vary": 0.3,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p2500",
+          "models": [
+            "moss"
+          ],
+          "seed": 2500,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man collapses with a final dying groan, three separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/jump": {
+      "kind": "voice",
+      "range": 20,
+      "level": -24,
+      "vary": 0.3,
+      "want": "effort of a jump",
+      "prompts": [
+        {
+          "id": "p2510",
+          "models": [
+            "moss"
+          ],
+          "seed": 2510,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man jumps with a short effort breath, five separate jumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/land": {
+      "kind": "voice",
+      "range": 20,
+      "level": -22,
+      "vary": 0.3,
+      "want": "a hard landing",
+      "prompts": [
+        {
+          "id": "p2520",
+          "models": [
+            "moss"
+          ],
+          "seed": 2520,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man lands hard from a fall with a short winded oof, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/winded": {
+      "kind": "voice",
+      "range": 15,
+      "level": -24,
+      "vary": 0.3,
+      "want": "out of breath",
+      "prompts": [
+        {
+          "id": "p2530",
+          "models": [
+            "moss"
+          ],
+          "seed": 2530,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man is out of breath after running: heavy panting breaths. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/gasp": {
+      "kind": "voice",
+      "range": 20,
+      "level": -22,
+      "vary": 0.3,
+      "want": "surfacing for air",
+      "prompts": [
+        {
+          "id": "p2540",
+          "models": [
+            "moss"
+          ],
+          "seed": 2540,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man surfaces from underwater and gasps for air, four separate gasps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/drown": {
+      "kind": "voice",
+      "range": 15,
+      "level": -22,
+      "vary": 0.3,
+      "want": "drowning",
+      "prompts": [
+        {
+          "id": "p2550",
+          "models": [
+            "moss"
+          ],
+          "seed": 2550,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man struggles underwater holding their breath, muffled strained gurgling, two separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/knocked_out": {
+      "kind": "voice",
+      "range": 20,
+      "level": -22,
+      "vary": 0.3,
+      "want": "knocked out",
+      "prompts": [
+        {
+          "id": "p2560",
+          "models": [
+            "moss"
+          ],
+          "seed": 2560,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man is knocked out and slumps with a low dazed groan, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/wake": {
+      "kind": "voice",
+      "range": 15,
+      "level": -24,
+      "vary": 0.3,
+      "want": "coming round",
+      "prompts": [
+        {
+          "id": "p2570",
+          "models": [
+            "moss"
+          ],
+          "seed": 2570,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man wakes up groggy with a slow groaning breath, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/eat": {
+      "kind": "voice",
+      "range": 10,
+      "level": -26,
+      "vary": 0.3,
+      "want": "eating",
+      "prompts": [
+        {
+          "id": "p2580",
+          "models": [
+            "moss"
+          ],
+          "seed": 2580,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man eats a piece of cooked meat: chewing and swallowing, three separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/drink": {
+      "kind": "voice",
+      "range": 10,
+      "level": -26,
+      "vary": 0.3,
+      "want": "drinking",
+      "prompts": [
+        {
+          "id": "p2590",
+          "models": [
+            "moss"
+          ],
+          "seed": 2590,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man drinks water from a leather flask: gulping swallows, three separate drinks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/male/cough": {
+      "kind": "voice",
+      "range": 20,
+      "level": -24,
+      "vary": 0.3,
+      "want": "coughing",
+      "prompts": [
+        {
+          "id": "p2600",
+          "models": [
+            "moss"
+          ],
+          "seed": 2600,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown man coughs from smoke, four separate coughing fits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/hurt": {
+      "kind": "voice",
+      "range": 30,
+      "level": -20,
+      "vary": 0.3,
+      "want": "pain from a blow",
+      "prompts": [
+        {
+          "id": "p2610",
+          "models": [
+            "moss"
+          ],
+          "seed": 2610,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman is hit and grunts in pain: short sharp pained grunts, five separate grunts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/hurt/badly": {
+      "kind": "voice",
+      "range": 30,
+      "level": -18,
+      "vary": 0.3,
+      "want": "a hard, serious blow",
+      "prompts": [
+        {
+          "id": "p2620",
+          "models": [
+            "moss"
+          ],
+          "seed": 2620,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman is badly wounded and cries out: strained pained cries, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/death": {
+      "kind": "voice",
+      "range": 30,
+      "level": -18,
+      "vary": 0.3,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p2630",
+          "models": [
+            "moss"
+          ],
+          "seed": 2630,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman collapses with a final dying groan, three separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/jump": {
+      "kind": "voice",
+      "range": 20,
+      "level": -24,
+      "vary": 0.3,
+      "want": "effort of a jump",
+      "prompts": [
+        {
+          "id": "p2640",
+          "models": [
+            "moss"
+          ],
+          "seed": 2640,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman jumps with a short effort breath, five separate jumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/land": {
+      "kind": "voice",
+      "range": 20,
+      "level": -22,
+      "vary": 0.3,
+      "want": "a hard landing",
+      "prompts": [
+        {
+          "id": "p2650",
+          "models": [
+            "moss"
+          ],
+          "seed": 2650,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman lands hard from a fall with a short winded oof, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/winded": {
+      "kind": "voice",
+      "range": 15,
+      "level": -24,
+      "vary": 0.3,
+      "want": "out of breath",
+      "prompts": [
+        {
+          "id": "p2660",
+          "models": [
+            "moss"
+          ],
+          "seed": 2660,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman is out of breath after running: heavy panting breaths. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/gasp": {
+      "kind": "voice",
+      "range": 20,
+      "level": -22,
+      "vary": 0.3,
+      "want": "surfacing for air",
+      "prompts": [
+        {
+          "id": "p2670",
+          "models": [
+            "moss"
+          ],
+          "seed": 2670,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman surfaces from underwater and gasps for air, four separate gasps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/drown": {
+      "kind": "voice",
+      "range": 15,
+      "level": -22,
+      "vary": 0.3,
+      "want": "drowning",
+      "prompts": [
+        {
+          "id": "p2680",
+          "models": [
+            "moss"
+          ],
+          "seed": 2680,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman struggles underwater holding their breath, muffled strained gurgling, two separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/knocked_out": {
+      "kind": "voice",
+      "range": 20,
+      "level": -22,
+      "vary": 0.3,
+      "want": "knocked out",
+      "prompts": [
+        {
+          "id": "p2690",
+          "models": [
+            "moss"
+          ],
+          "seed": 2690,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman is knocked out and slumps with a low dazed groan, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/wake": {
+      "kind": "voice",
+      "range": 15,
+      "level": -24,
+      "vary": 0.3,
+      "want": "coming round",
+      "prompts": [
+        {
+          "id": "p2700",
+          "models": [
+            "moss"
+          ],
+          "seed": 2700,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman wakes up groggy with a slow groaning breath, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/eat": {
+      "kind": "voice",
+      "range": 10,
+      "level": -26,
+      "vary": 0.3,
+      "want": "eating",
+      "prompts": [
+        {
+          "id": "p2710",
+          "models": [
+            "moss"
+          ],
+          "seed": 2710,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman eats a piece of cooked meat: chewing and swallowing, three separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/drink": {
+      "kind": "voice",
+      "range": 10,
+      "level": -26,
+      "vary": 0.3,
+      "want": "drinking",
+      "prompts": [
+        {
+          "id": "p2720",
+          "models": [
+            "moss"
+          ],
+          "seed": 2720,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman drinks water from a leather flask: gulping swallows, three separate drinks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "voice/female/cough": {
+      "kind": "voice",
+      "range": 20,
+      "level": -24,
+      "vary": 0.3,
+      "want": "coughing",
+      "prompts": [
+        {
+          "id": "p2730",
+          "models": [
+            "moss"
+          ],
+          "seed": 2730,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A grown woman coughs from smoke, four separate coughing fits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "heartbeat": {
+      "kind": "impact",
+      "range": 1,
+      "level": -22,
+      "vary": 0.0,
+      "want": "a heartbeat when badly hurt",
+      "prompts": [
+        {
+          "id": "p2740",
+          "models": [
+            "moss"
+          ],
+          "seed": 2740,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "A slow heavy human heartbeat, deep muffled thumping, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "hungry": {
+      "kind": "impact",
+      "range": 1,
+      "level": -26,
+      "vary": 0.5,
+      "want": "an empty stomach",
+      "prompts": [
+        {
+          "id": "p2750",
+          "models": [
+            "moss"
+          ],
+          "seed": 2750,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A hungry stomach growls and rumbles, three separate growls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    }
+  }
+}

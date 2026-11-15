@@ -2,7 +2,7 @@
 
 import type { ClientSession } from "../client/core/session.ts";
 import type { BitWriter } from "../shared/net/codec.ts";
-import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_PIN, RESULT_SHORT, RESULT_STALE, RESULT_WAIT } from "../shared/net/protocol.ts";
+import { RESULT_BUSY, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_PIN, RESULT_SHORT, RESULT_STALE, RESULT_TOO_HIGH, RESULT_WAIT } from "../shared/net/protocol.ts";
 
 /** Commands a second, and as many at once. */
 const PER_SECOND = 10;
@@ -22,6 +22,10 @@ const WORDS: Record<number, string> = {
   [RESULT_WAIT]: "too soon, wait",
   [RESULT_LOCKED]: "it is locked",
   [RESULT_PIN]: "it wants its PIN",
+  [RESULT_NO_SNAP]: "it cannot go there: it must be set on something built, as a simple bed on a foundation",
+  [RESULT_TOO_HIGH]: "too far above the ground",
+  [RESULT_NO_SUPPORT]: "nothing would hold it up",
+  [RESULT_ENEMY_NEAR]: "too near another tribe's foundation",
 };
 
 /** Why the server refused, in words. */

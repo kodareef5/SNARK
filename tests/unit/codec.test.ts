@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { BitReader, BitWriter, fitBytes } from "../../shared/net/codec.ts";
+import { MAX_PLACE_NAME_BYTES } from "../../shared/net/protocol.ts";
 import { Rng } from "../../shared/rng.ts";
 
 test("mixed fields survive a round trip at arbitrary bit offsets", () => {
@@ -61,4 +62,18 @@ test("rewind discards later writes and reset leaves a clean buffer", () => {
   w.reset();
   w.u16(0);
   expect([...w.bytes()]).toEqual([0, 0]);
+});
+
+test("a place a survivor rises at keeps a long name: San Francisco's 30-byte spawn point reads back, and a longer one is cut whole", () => {
+  const w = new BitWriter(256);
+  const long = "Golden Gate Bridge Vista Point";
+  const longer = "Größe ".repeat(12);
+  w.string(fitBytes(long, MAX_PLACE_NAME_BYTES));
+  w.string(fitBytes(longer, MAX_PLACE_NAME_BYTES));
+  const r = new BitReader(w.bytes());
+  const [a, b] = [r.string(MAX_PLACE_NAME_BYTES), r.string(MAX_PLACE_NAME_BYTES)];
+  expect([a, r.overflow]).toEqual([long, false]);
+  expect(new TextEncoder().encode(b).length).toBeLessThanOrEqual(MAX_PLACE_NAME_BYTES);
+  expect(longer.startsWith(b) && b.length > 0).toBe(true);
+  expect(fitBytes("ab", 1)).toBe("a");
 });

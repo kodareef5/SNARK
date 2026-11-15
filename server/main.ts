@@ -1,4 +1,4 @@
-// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--map file.snmap] [--db var/world.db] [--allow-map-mismatch] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
+// bun server/main.ts [--dev] [--config dir] [--port 8787] [--host address] [--public-url https://name.example] [--map file.snmap] [--db var/world.db] [--allow-map-mismatch] [--allow-missing-content] [--restore backup-folder] [--no-backups] [--module file.ts] [--cert cert.pem --key key.pem] [?Key=Value?Key2=Value2] [-Flag[=value]]
 // SNARK_ADMIN_PASSWORD sets the `enablecheats` password. In a terminal, typed lines run as console commands with full rights.
 
 import { CORE_CONTENT } from "../content/core.ts";
@@ -18,6 +18,8 @@ import { join, resolve } from "node:path";
 import { parsePack } from "../shared/pack/pack.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
+import { boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
+import { CUES } from "../shared/sound/cues.ts";
 
 export interface ServerOptions {
   port?: number;
@@ -52,6 +54,11 @@ export interface ServerOptions {
   live?: () => string | null;
   /** Sees every request first, and answers it or returns null to pass it on. Only the device probe's server has one (tools/device.ts). */
   routes?: (req: Request, url: URL) => Response | Promise<Response> | null;
+  /**
+   * The address pages reach this server at from elsewhere, such as a tunnel's: told to the other servers of its cluster, whose
+   * pages send travellers here by it when they themselves were reached by theirs.
+   */
+  publicUrl?: string;
 }
 
 export interface RunningServer {
@@ -132,6 +139,17 @@ export function originAllowed(origin: string | null, host: string | null, allowe
   return false;
 }
 
+/**
+ * What `/cluster.json` answers: this server, and the others of its cluster that are running, with why its survivors cannot go to
+ * each now ("" where they can). A page goes to another by its `url` when it was itself reached by this one's, and otherwise by
+ * its `port` on the host it reached this one by. Outside a cluster the list is empty.
+ */
+export function clusterList(host: Host): { world: number; name: string; url: string; port: number; servers: ReturnType<NonNullable<Host["cluster"]>["destinations"]> } {
+  const c = host.cluster;
+  if (!c) return { world: 0, name: "", url: "", port: 0, servers: [] };
+  return { world: c.world, name: c.serverName(c.world), url: c.url, port: c.port, servers: c.destinations() };
+}
+
 /** The default settings folder of a development server. It speeds up taming, hatching and growth so raising a creature takes minutes. */
 export const DEV_CONFIG = resolve(import.meta.dir, "../config/dev");
 
@@ -154,6 +172,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   for (const line of host.passed) console.log(`settings: passed over: ${line}`);
   if (!opts.probeScene && host.spawner === null && host.world.zones.every((z) => z.spawns === undefined)) console.log(`map: neither the content nor the map file gives ${host.world.mapId} a spawn region, so no wild creature lives on it`);
   const mapRoute = mapRoutes(host.mapFile!, host.world.mapId, host.world.mapHash);
+  // The shared families of sounds are the owners the catalogue's fallbacks name.
+  const families = [...new Set(CUES.flatMap((c) => c.falls.map((f) => f.slice(0, f.indexOf("/")))).filter((o) => o !== "{owner}"))];
+  const board: BoardGate = { dev: opts.dev ?? false, password: host.adminPassword, guesses: host.game.cheatGuesses, tick: () => host.world.tick };
   if (opts.probeScene) {
     const ents = host.world.ents;
     const e = host.spawnCreature("core:grazer", PROBE_CREATURE.x, PROBE_CREATURE.z, 1);
@@ -226,6 +247,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         }
         return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: url.pathname === "/voice" } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
       }
+      if (url.pathname === "/cluster.json") return new Response(JSON.stringify(clusterList(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
       if (url.pathname === "/__selfcheck" && req.method === "POST" && opts.dev) {
         report(await req.json());
         return new Response("ok");
@@ -236,6 +258,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         measured(result);
         return new Response("ok");
       }
+      const sounds = soundBoard(req, srv.requestIP(req)?.address ?? "", board, join(clientDir, "sounds.html"), () => boardOwners(registry, families));
+      if (sounds) return sounds;
       return mapRoute(url.pathname, req.headers.get("accept-encoding") ?? "") ?? serveFile(clientDir, req);
     },
     websocket: {
@@ -298,6 +322,8 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       },
     },
   });
+
+  host.cluster?.listening(server.port ?? 0, (opts.publicUrl ?? "").replace(/\/+$/, ""));
 
   // Fixed-rate loop on the wall clock, with bounded catch-up after a stall.
   const tickMs = 1000 / TICK_RATE;
@@ -376,6 +402,7 @@ if (import.meta.main) {
   const running = startServer({
     port: Number(value("--port") ?? (typeof flagPort === "string" && flagPort !== "" ? flagPort : rules.num("Port"))),
     hostname: value("--host"),
+    publicUrl: value("--public-url"),
     dev,
     config: rules,
     ...(live ? { live } : {}),

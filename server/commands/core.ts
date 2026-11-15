@@ -19,7 +19,7 @@ function digest(text: string): Uint8Array {
 }
 
 /** Hashes both and folds every byte, so timing does not reveal where two secrets differ. */
-function sameSecret(a: string, b: string): boolean {
+export function sameSecret(a: string, b: string): boolean {
   const x = digest(a);
   const y = digest(b);
   let diff = 0;

@@ -127,7 +127,7 @@ export function writeLayers(map: MapData, folder: string): void {
   put("map.json", `{\n${Object.entries(about).map(([key, value]) => `  ${JSON.stringify(key)}: ${JSON.stringify(value)}`).join(",\n")}\n}\n`);
   put("heights.png", writeGrey(nx, nz, map.heights.slice().reverse()));
   put("tint.png", writeGrey(nx, nz, map.tint.slice().reverse(), defaultPalette()));
-  if (map.statics.length > 0) put("statics.json", lines(map.statics.map((s): Piece => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toDegrees(s.yaw) }))));
+  if (map.statics.length > 0) put("statics.json", lines([...map.statics].map((s): Piece => ({ kind: s.kind, x: s.x, y: s.y, z: s.z, yaw: toDegrees(s.yaw) }))));
   put("spawns.json", lines(map.spawns.map((s): Spawn => ({ name: s.name, x: s.x, z: s.z, yaw: toDegrees(s.yaw) }))));
   if (map.regions && map.regions.length > 0) put("regions.json", lines(map.regions.map((r): Region => ({ spawns: r.spawns!, count: r.count!, x: r.at[0], z: r.at[1], ...(r.half ? { half: [r.half[0], r.half[1]] } : { radius: r.radius! }) }))));
   if (map.nodes.length === 0) return;

@@ -13,6 +13,8 @@ export class Fixtures {
   private readonly items: Items;
   private readonly byRef = new Map<number, number>();
   rules: Rules | null = null;
+  /** Counts every record made, let go of or bound again. */
+  version = 0;
 
   constructor(world: ServerWorld, records: Records, items: Items) {
     this.world = world;
@@ -68,6 +70,7 @@ export class Fixtures {
     rec.team = t.owner[ref & 0xffff]!;
     rec.at = ref;
     this.byRef.set(ref, rec.pid);
+    this.version++;
     return rec;
   }
 
@@ -76,6 +79,7 @@ export class Fixtures {
     const rec = this.find(ref);
     this.byRef.delete(ref);
     if (rec) rec.at = -1;
+    this.version++;
     return rec;
   }
 
@@ -88,6 +92,7 @@ export class Fixtures {
     rec.at = ref;
     this.byRef.set(ref, rec.pid);
     this.records.dirty.add(rec.pid);
+    this.version++;
   }
 
   /** With no lock set on its record, the kind's default applies. */

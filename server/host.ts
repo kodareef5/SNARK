@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -10,8 +10,10 @@ import { addCoreCommands } from "./commands/core.ts";
 import { addSocialCommands } from "./commands/social.ts";
 import { addCreatureCommands } from "./commands/creatures.ts";
 import { addSettingsCommands } from "./commands/settings.ts";
+import { addClusterCommands } from "./commands/cluster.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
+import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Entangle } from "./entangle.ts";
@@ -27,7 +29,6 @@ import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
-import type { BedPoint } from "./own.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
@@ -54,7 +55,7 @@ import { Bus, event } from "./events/bus.ts";
 import { Modules } from "./events/modules.ts";
 import { workerKeeper } from "./persist/keeper.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
-import { Records, type EntityRecord } from "./records.ts";
+import { Records, hashKey, type EntityRecord } from "./records.ts";
 import { Use } from "./use.ts";
 import { Rules, timersOf } from "./settings/rules.ts";
 import { CATALOG, rowOf } from "./settings/catalog.ts";
@@ -76,6 +77,9 @@ import { defaultLook } from "../shared/anim/look.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON } from "../shared/sim/items.ts";
 import { HumanAnim } from "../shared/anim/pose.ts";
+import { Cluster } from "./cluster/cluster.ts";
+import { restoreObelisks } from "../shared/world/obelisks.ts";
+import { dirname, join, resolve } from "node:path";
 
 export interface HostOptions {
   /** SQLite file. Omit for a world that lives only in memory. */
@@ -134,12 +138,6 @@ export interface HostOptions {
 
 /** Ticks between console lines accepted from one session. */
 const TEXT_INTERVAL = 6;
-/** Bytes of the SHA-256 of a device key that a survivor record keeps. */
-const KEY_HASH_BYTES = 16;
-
-function hashKey(key: Uint8Array): Uint8Array {
-  return new Bun.CryptoHasher("sha256").update(key).digest().slice(0, KEY_HASH_BYTES);
-}
 
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
@@ -181,6 +179,10 @@ export interface Host {
   readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
   readonly spawner: Spawner | null;
+  /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
+  readonly beds: Beds;
+  /** The cluster the server is part of (-clusterid), or null for one alone. */
+  readonly cluster: Cluster | null;
   /** Bodies found inside a node or a piece as their chunk or a node near them loaded, and set free (server/place.ts). */
   readonly settled: { readonly bodies: number };
   /** The list settings that name classes, as tables, and the names this build lacks. */
@@ -222,8 +224,6 @@ export interface Host {
   shutdown(): void;
 }
 
-/** In ticks. After a respawn at a bed, nobody may respawn there for this long. */
-export const BED_WAIT_TICKS = 5 * 60 * TICK_RATE;
 /** One minute, in ticks. */
 const DECAY_SAVE_TICKS = 1800;
 /** How long commits have failed, in ticks, before sessions are told and before logins are refused. */
@@ -237,7 +237,7 @@ export function contentFor(content: Registry, rules: Rules): Registry {
 
 /** A host that fails to start lets go of its save, so the next try can open it. */
 export function createHost(content: Registry, opts: HostOptions = {}): Host {
-  const opened: WorldStore[] = [];
+  const opened: { close(): void }[] = [];
   try {
     return makeHost(content, opts, opened);
   } catch (err) {
@@ -264,11 +264,20 @@ const SESSION_JOIN = event("session.join");
 const SESSION_PRESENCE = event("session.presence");
 const SESSION_LEAVE = event("session.leave");
 const SESSION_SPAWN = event("session.spawn");
-const SESSION_RESPAWN = event("session.respawn");
 const DEATH = event("death");
 const BODY_OUT = event("body.out");
 
-function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): Host {
+/**
+ * The folder a server of cluster `id` shares with the others: ARK's -ClusterDirOverride, or where it is not given, `clusters`
+ * beside the save, as ARK's servers of one installation share its Saved/clusters. Both hold a folder for each cluster id.
+ */
+export function clusterRoot(rules: Rules, dbPath: string, id: string): string {
+  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(id) || id.startsWith(".")) throw new Error(`-clusterid=${id}: a cluster id is 1 to 64 letters, digits, dots, dashes and underscores`);
+  const over = rules.flag("ClusterDirOverride");
+  return join(typeof over === "string" && over !== "" ? resolve(over) : join(dirname(resolve(dbPath)), "clusters"), id);
+}
+
+function makeHost(content: Registry, opts: HostOptions, opened: { close(): void }[]): Host {
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
   const lists = new Lists(rules, content);
@@ -283,7 +292,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the map's.
   const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
-  const world = opts.world ?? createMapWorld(reg, parseMap(mapFile!), { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
+  const parsed = mapFile ? parseMap(mapFile) : null;
+  const world = opts.world ?? createMapWorld(reg, parsed!, { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
   world.clock.night = rules.num("NightTimeSpeedScale");
@@ -294,7 +304,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   world.anims = creatureAnims(reg, (d) => world.rigs.get(d.mesh));
   let settingsAt: { dirty: boolean; version: number } | null = null;
   let settingsToldAt = -1;
-  const records = new Records(opts.worldId ?? 1);
+  // A server of a cluster takes its world id there, and the save keeps it: its records are numbered under it for good.
+  const clusterFlag = rules.flag("clusterid");
+  const clusterId = typeof clusterFlag === "string" ? clusterFlag : "";
+  if (clusterId !== "" && !store) throw new Error(`-clusterid=${clusterId}: a server of a cluster needs a save, so give it --db`);
+  const cluster = store && clusterId !== "" ? Cluster.open(clusterRoot(rules, store.path, clusterId), clusterId, store) : null;
+  if (cluster) opened.push({ close: () => cluster.stop() });
+  // Alone, it would let a name be taken whose survivor is away, and never see it come back.
+  const member = store?.meta("cluster") ?? null;
+  if (!cluster && member !== null) throw new Error(`this save is in the cluster ${member}: start it with -clusterid=${member} and the folder it used, so that what left it can come back`);
+  const records = new Records(opts.worldId ?? cluster?.world ?? (store && !store.fresh ? Number(store.meta("world_id") ?? 1) : 1));
   const say = opts.log ?? ((line: string) => console.log(line));
   // Carries events to modules. Made before the systems, so that each can raise its own.
   const bus = new Bus();
@@ -326,6 +345,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   let refusedNext = 0;
   const persistence = store ? new Persistence(world, records, store, { allowMapMismatch: opts.allowMapMismatch ?? false }) : null;
   const loaded = persistence ? persistence.load() : null;
+  if (loaded && !loaded.fresh && parsed) {
+    const set = restoreObelisks(parsed, world.structs, reg);
+    if (set > 0) say(`set down ${set} pieces of the map's obelisks, which this save was made without`);
+  }
   const commitEvery = opts.commitEvery ?? 6;
   const survivor = reg.index.get("core:survivor")!;
   const survivorMove = reg.move[survivor]!;
@@ -402,6 +425,34 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   tribes.rules = rules;
   tribes.bus = bus;
   if (persistence && !loaded!.fresh) tribes.restore(persistence.store.meta("tribes"));
+  // What the cluster's folder says came and went that the save does not know is done again now, before anything resumes.
+  cluster?.start(
+    {
+      reg,
+      world,
+      records,
+      items,
+      persistence: persistence!,
+      rules,
+      tribes,
+      game,
+      bus,
+      mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+      suspend: (rec, off) => survival.suspend(rec, off),
+      adopt: (rec) => {
+        survival.restore(rec, false);
+        progression.resume(rec);
+        buffs.restore(rec, false);
+      },
+      forget: (rec) => {
+        buffs.died(rec);
+        survival.forget(rec.pid);
+        inHand.delete(rec.pid);
+      },
+      say,
+    },
+    loaded!.fresh,
+  );
   const taming = new Taming({ world, game, records, items, survival, buffs, rules, lists, tribes, deadlines, creatures, progression, onNotice: (pid, text) => notice(pid, text), openOf: (c) => death.openOf(c), refresh: (rec) => refreshBody(rec), onTamed: (rec) => {
     const e = records.entOf.get(rec.pid);
     spawner?.left(rec);
@@ -458,7 +509,30 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   fixtures.rules = rules;
   fixtures.index();
   const stations = new Stations(world, records, items, fixtures, deadlines);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  const beds = new Beds({
+    world, game, records, tribes, fixtures, rules, bus,
+    // A death refills the survivor. One that arrives or travels comes as it left.
+    rise: (c, p, why) => {
+      const at = Number.isNaN(p.y) ? undefined : p.y;
+      if (why === CHOOSE_DIED) return death.respawn(c, p.x, p.z, p.yaw, at);
+      if (why === CHOOSE_ARRIVED && cluster) return cluster.rise(c, p.x, p.z, p.yaw, at);
+      const rec = records.byPid.get(c.pid);
+      if (!rec) return RESULT_INVALID;
+      rec.dead = false;
+      if (!game.revive(c, p.x, p.z, p.yaw, at)) {
+        rec.dead = true;
+        return RESULT_INVALID;
+      }
+      records.dirty.add(rec.pid);
+      return RESULT_OK;
+    },
+    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+    drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
+  });
+  if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
+  persistence?.sidecar("beds", beds.saved);
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  build.onPlaced = (by, ref) => beds.placed(by, ref);
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
@@ -513,6 +587,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     buffs.died(rec);
     spawner?.left(rec);
     corpses.fell(rec, cause, by);
+    if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);
   };
   // Unconsciousness, an injury and any buff change how a body moves.
@@ -692,7 +767,15 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const rec = recordOf(name);
     return !rec || !rec.keyHash || sameBytes(rec.keyHash, hashKey(key));
   };
-  game.savedPosition = (name) => recordOf(name) ?? null;
+  if (cluster) {
+    game.arrive = (name, key, ticket) => (persistence?.failing && world.tick - persistence.failing.since >= UNSAVED_REFUSE_TICKS ? "this server has not been able to save for a minute, so nobody may come yet" : cluster.arrive(name, key, ticket));
+    game.away = (name, key) => cluster.awayCheck(name, key);
+  }
+  // A survivor that came from another server and has not risen joins as one that died does: with no body, choosing where.
+  game.savedPosition = (name) => {
+    const rec = recordOf(name);
+    return rec && cluster?.arriving.has(rec.pid) ? { x: rec.x, y: rec.y, z: rec.z, yaw: rec.yaw, dead: true, team: rec.team } : (rec ?? null);
+  };
   game.needsLook = (name) => !recordOf(name)?.look;
   game.onBody = (c) => {
     let rec = recordOf(c.name);
@@ -756,6 +839,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     focus.set(c.id, c.chunk);
     moved(-1, c.chunk);
     c.entered = true;
+    // One that joins with no body chooses where to rise, for the reason it left its body.
+    if (c.state === SESSION_DEAD) c.why = cluster?.arriving.has(c.pid) ? CHOOSE_ARRIVED : beds.whyOf(c.pid);
     // One still making its survivor is told of when it has made it.
     if (c.pid !== 0) joined(c);
     // Tribe member lists show who is online.
@@ -862,6 +947,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       if (settingsToldAt >= 0) bus.after(SERVER_SETTINGS, { names: "", source: "" });
       settingsToldAt = rules.version;
     }
+    cluster?.step(tick);
     if (persistence && opts.backups && tick % liveEvery === 0) bus.after(SERVER_SAVE, { tick, folder: `${persistence.store.path}.backups` });
     modules.step(tick);
     bus.flush();
@@ -899,40 +985,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),
-    respawn: (c, index) => {
-      const p = c.respawnAt[index];
-      if (!p) return RESULT_INVALID;
-      // A module may refuse the place, or make the survivor wait: `wait` is seconds, and more than none refuses for now.
-      const asked = { pid: c.pid, bed: p.bed, wait: p.bed >= 0 ? Math.max(0, Math.ceil(((fixtures.find(p.bed)?.readyAt ?? 0) - world.tick) / TICK_RATE)) : 0 };
-      if (bus.before(SESSION_RESPAWN, asked) !== "") return RESULT_DENIED;
-      if (asked.wait > 0) return RESULT_WAIT;
-      if (p.bed < 0) return death.respawn(c, p.x, p.z, p.yaw);
-      // The bed must still stand and still belong to its tribe.
-      const bed = fixtures.find(p.bed);
-      const t = world.structs.chunks[Math.floor(p.bed / 65536)];
-      const slot = p.bed & 0xffff;
-      if (!bed || !t || world.reg.isBed[t.kind[slot]!] !== 1 || !tribes.may(records.byPid.get(c.pid), t.owner[slot]!)) return RESULT_INVALID;
-      if (bed.readyAt > world.tick) return RESULT_WAIT;
-      const code = death.respawn(c, p.x, p.z, p.yaw, p.y);
-      if (code === RESULT_OK) {
-        bed.readyAt = world.tick + BED_WAIT_TICKS;
-        records.dirty.add(bed.pid);
-      }
-      return code;
-    },
+    beds,
     subject: (rec) => taming.subject(rec),
-    beds: (rec) => {
-      const out: BedPoint[] = [];
-      fixtures.each((ref, bed) => {
-        const t = world.structs.chunks[Math.floor(ref / 65536)]!;
-        const slot = ref & 0xffff;
-        const kind = t.kind[slot]!;
-        if (world.reg.isBed[kind] !== 1 || !tribes.may(rec, t.owner[slot]!)) return;
-        // The respawn point is on top of the bed, facing the way it does.
-        out.push({ ref, name: `bed at ${Math.round(t.x[slot]!)}, ${Math.round(t.z[slot]!)}`, x: t.x[slot]!, y: t.y[slot]! + world.reg.halfY[kind]!, z: t.z[slot]!, yaw: (t.yaw[slot]! / 65536) * 2 * Math.PI, wait: Math.max(0, Math.ceil((bed.readyAt - world.tick) / TICK_RATE)) });
-      });
-      return out;
-    },
     refresh: (rec) => refreshBody(rec),
     mend: (rec, points) => {
       // Health from food comes over time, at the rate of the buff that shows it, and one meal at a time.
@@ -968,10 +1022,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     survival.init(rec);
     const e = records.entOf.get(rec.pid);
     if (e === undefined || reg.defs[rec.kind]?.type !== "species") return;
-    // A mount's load includes what its rider carries, and a survivor's half of what a creature in its arms carries.
+    // A mount's load includes what its rider carries, at its species' share (a pteranodon's 0.85), and a survivor's half of
+    // what a creature in its arms carries.
     const rider = riding.riderOf(e);
     const arms = carry.heldBy(rec.pid);
-    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) : 0) + (arms >= 0 ? carry.load(rec) : 0);
+    const load = (rec.inv ? items.inv(rec).weight(items.table) : 0) + (rider?.inv ? items.inv(rider).weight(items.table) * reg.riderWeight[rec.kind]! : 0) + (arms >= 0 ? carry.load(rec) : 0);
     // A creature in someone's arms weighs on them.
     const carrier = carry.carrierOf(e);
     if (carrier && carrier !== rec) refreshBody(carrier);
@@ -1021,6 +1076,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
         if (session) session.did = 0;
       }
       inHand.set(rec.pid, slot);
+    } else if (rec.saddle !== 0 || world.ents.gear[e]) {
+      // A creature's gear names the saddle it wears, which every client draws on it (D491).
+      gear.fill(0);
+      gear[GEAR_WORN] = rec.saddle;
+      world.ents.setGear(e, gear);
     }
   }
   const gear = new Uint16Array(GEAR_COUNT);
@@ -1036,6 +1096,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   addSocialCommands(con);
   addCreatureCommands(con);
   addSettingsCommands(con);
+  addClusterCommands(con);
   // After the server's own commands, so a module can take no name of theirs.
   const modules = new Modules(
     {
@@ -1090,6 +1151,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     overhead,
     hurt,
     spawner,
+    beds,
+    cluster,
     settled,
     online: (pid) => sessionOf(pid) !== null,
     setSetting(name, words) {
@@ -1133,6 +1196,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
       }
       persistence.commit(true);
       persistence.close();
+      cluster?.stop();
     },
   };
   game.handle(CMD_PLACE, (c, r) => build.place(c, r));
@@ -1143,6 +1207,17 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   game.handle(CMD_NAME, (c, r) => taming.rename(c, r));
   game.handle(CMD_CARRY, (c, r) => carry.command(c, r));
   game.handle(CMD_TAKE, (c, r) => eggs.take(c, r));
+  game.handle(CMD_TRAVEL, (c, r) => {
+    const to = r.u16();
+    const at = r.u32();
+    if (r.overflow || !cluster) return RESULT_INVALID;
+    // A survivor travels from a terminal it stands at, as ARK's from an obelisk's.
+    if (!cluster.atTerminal(c, at)) return RESULT_FAR;
+    const why = cluster.leave(c, to);
+    if (why === "") return RESULT_OK;
+    game.sendText(c, TEXT_NOTICE, why);
+    return RESULT_DENIED;
+  });
   game.handle(CMD_CHAT, (c, r) => {
     const channel = r.bits(3);
     const words = r.string(MAX_CHAT_BYTES);

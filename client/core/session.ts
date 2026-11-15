@@ -19,6 +19,7 @@ import {
   MARGIN_UNKNOWN,
   MAX_CLIENT_MESSAGE,
   MAX_NAME_BYTES,
+  MAX_PLACE_NAME_BYTES,
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   CMD_CREATE,
@@ -43,6 +44,8 @@ import {
   OWN_STATION,
   OWN_PROGRESSION,
   OWN_RESPAWN,
+  CHOOSE_ARRIVED,
+  CHOOSE_DIED,
   OWN_SESSION,
   OWN_SLOTS,
   OWN_VITALS,
@@ -50,6 +53,7 @@ import {
   PITCH_LIMIT,
   PROTOCOL_VERSION,
   SESSION_ALIVE,
+  SESSION_DEAD,
   S_CHUNK,
   S_CHUNK_DROP,
   S_EVENT,
@@ -69,7 +73,10 @@ import {
   S_RESULT,
   S_SNAPSHOT,
   S_TEXT,
+  S_TRAVEL,
   S_WELCOME,
+  REJECT_TRAVEL,
+  TICKET_BYTES,
   nextCommandSeq,
   readBody,
   writeCommand,
@@ -81,7 +88,7 @@ import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
-import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
+import { FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -111,6 +118,8 @@ export interface SessionOptions {
   clipHash?: number;
   /** A look for a new survivor (shared/anim/look.ts). Without one, a new name waits in the creator for `create`. */
   look?: Uint8Array;
+  /** A travel ticket: the survivor arrives with it from another server of the cluster (S_TRAVEL). */
+  ticket?: Uint8Array;
   /** Returns null if this client does not have the map. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
@@ -290,6 +299,10 @@ export class ClientSession {
   state: "connecting" | "active" | "closed" = "connecting";
   /** Reject reason from the server, or a negative local reason. */
   closeReason = 0;
+  /** What the server said of a REJECT_TRAVEL. */
+  closeText = "";
+  /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
+  travelled: { ticket: Uint8Array; world: number } | null = null;
 
   world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
@@ -317,6 +330,10 @@ export class ClientSession {
   logVersion = 0;
   /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
+  /** It came from another server of the cluster and chooses where to rise, as the server says (CHOOSE_ARRIVED). */
+  get arriving(): boolean {
+    return this.sessionState === SESSION_DEAD && this.choosing === CHOOSE_ARRIVED;
+  }
   hasVitals = false;
   /** Oldest first. Falling.absorb empties it. */
   readonly rubble: Rubble[] = [];
@@ -358,8 +375,14 @@ export class ClientSession {
   station: { kind: number; jobs: { item: number; left: number; doneAt: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
-  /** The world's respawn points, then the tribe's beds. wait is in seconds. */
-  readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
+  /**
+   * While the survivor has no body: the map's spawn points, then its tribe's beds. `kind` is the bed's structure kind (0 for a
+   * spawn point), `readyAt` the tick it may be risen at from (0 for now). `choosing` says why (CHOOSE_), and `placesList` is the
+   * list's number, which a choice names.
+   */
+  readonly respawnPoints: { kind: number; name: string; x: number; z: number; readyAt: number }[] = [];
+  choosing = CHOOSE_DIED;
+  placesList = 0;
   /** The map beyond the view: structure cells and marks, as the server sends them. */
   readonly tactical = new MapStore();
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
@@ -378,6 +401,13 @@ export class ClientSession {
   private readonly died = new Map<number, number>();
   private readonly dying: number[] = [];
   onResult: ((seq: number, code: number) => void) | null = null;
+  /**
+   * Told of each structure row a snapshot changes in a chunk already whole: its kind before and after (0 where there is
+   * none), where, its health before and after, and for a removal its GONE_ cause (else -1). For sound only.
+   */
+  onStructure: ((was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause: number) => void) | null = null;
+  /** Told of each node used up (true) or grown back (false) in a chunk whose nodes were known before. For sound only. */
+  onNode: ((chunk: number, index: number, used: boolean) => void) | null = null;
   /** Predicted local body after the latest simulated tick. */
   readonly own = new Body();
   /** One tick earlier, for render interpolation. */
@@ -456,7 +486,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "");
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -692,6 +722,7 @@ export class ClientSession {
       if (jaws) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
         stepAction(this.own, buttons, buttons & ~was, jaws);
+        biteCost(this.own, this.registry.biteStamina[this.own.kind]!);
       }
       this.bodies[t & (HISTORY - 1)]!.copy(this.own);
       this.bodyTick[t & (HISTORY - 1)] = t;
@@ -768,6 +799,12 @@ export class ClientSession {
     else if (type === S_REJECT) {
       this.state = "closed";
       this.closeReason = r.u8();
+      if (this.closeReason === REJECT_TRAVEL) this.closeText = r.string(MAX_SERVER_TEXT_BYTES);
+    } else if (type === S_TRAVEL) {
+      const ticket = new Uint8Array(TICKET_BYTES);
+      for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
+      const world = r.u16();
+      if (!r.overflow) this.travelled = { ticket, world };
     }
   }
 
@@ -780,10 +817,17 @@ export class ClientSession {
     for (let k = 0; k < count; k++) gone.push(r.u8());
     const field = this.nodeField;
     if (r.overflow || !field) return;
+    const known = this.nodeGone.has(chunk);
     const before = this.nodeGone.get(chunk) ?? [];
     this.nodeGone.set(chunk, gone);
-    for (const i of before) if (!gone.includes(i)) field.set(chunk, i, true);
-    for (const i of gone) if (!before.includes(i)) field.set(chunk, i, false);
+    for (const i of before) if (!gone.includes(i)) {
+      field.set(chunk, i, true);
+      if (known) this.onNode?.(chunk, i, false);
+    }
+    for (const i of gone) if (!before.includes(i)) {
+      field.set(chunk, i, false);
+      if (known) this.onNode?.(chunk, i, true);
+    }
     this.nodeChanges?.touch(chunk);
   }
 
@@ -820,6 +864,11 @@ export class ClientSession {
       const dayOffset = r.u32();
       if (r.overflow) return;
       this.sessionState = state;
+      // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
+      if (state !== SESSION_DEAD) {
+        this.respawnPoints.length = 0;
+        this.choosing = CHOOSE_DIED;
+      }
       this.admin = admin;
       this.ownHandle = handle;
       this.dayOffset = dayOffset;
@@ -987,10 +1036,14 @@ export class ClientSession {
       p.jobs = jobs;
       p.version++;
     } else if (component === OWN_RESPAWN) {
+      const why = r.u8();
+      const number = r.u8();
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), wait: r.u16() });
+      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_PLACE_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
       if (r.overflow) return;
+      this.choosing = why;
+      this.placesList = number;
       this.respawnPoints.length = 0;
       this.respawnPoints.push(...list);
     }
@@ -1278,11 +1331,18 @@ export class ClientSession {
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
     const kinds = this.registry.defs.length;
+    const told = this.onStructure && this.whole[chunk] === 1 ? this.onStructure : null;
+    const rows = world.structs.chunks[chunk];
     for (let i = 0; i < count; i++) {
       const slot = r.u16();
       const kind = r.u16();
+      const was = told && rows && slot < rows.high ? rows.kind[slot]! : 0;
+      const hpWas = was !== 0 ? rows!.hp[slot]! : 0;
       if (kind === 0) {
-        if (!r.overflow) world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
+        if (!r.overflow) {
+          if (told && was !== 0) told(was, 0, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, 0, GONE_TAKEN);
+          world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
+        }
         continue;
       }
       const x = x0 + r.bits(15) / STRUCT_UNITS;
@@ -1292,6 +1352,7 @@ export class ClientSession {
       const owner = r.varint();
       const hp = r.f32();
       if (r.overflow || kind >= kinds) return;
+      if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
       world.structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
     }
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
@@ -1312,6 +1373,7 @@ export class ClientSession {
         if (r.overflow || !t || first < 0) break;
         for (let slot = first; slot <= first + more && slot < t.high; slot++) {
           if (t.kind[slot] === 0 || t.mod[slot]! >= at) continue;
+          this.onStructure?.(t.kind[slot]!, 0, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.hp[slot]!, 0, cause);
           if (told) {
             if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
             this.rubble.push({ kind: t.kind[slot]!, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, cause, ox, oy, oz, tick });

@@ -63,14 +63,14 @@ ev("session.presence", "after", "pid connected", "", "server/host.ts", "wired", 
 ev("session.leave", "after", "pid why", "logout and kick", "server/host.ts", "wired", "A session ended.");
 ev("session.create", "before", "name", "the create-character request", "server/own.ts", "wired", "A survivor is about to be made.");
 ev("session.spawn", "after", "pid first why", "the first spawn, and taking a body", "server/host.ts", "wired", "A survivor's body entered the world.");
-ev("session.respawn", "before", "pid bed wait!", "the respawn-at-point request", "server/host.ts", "wired", "A dead survivor is about to come back.");
+ev("session.respawn", "before", "pid bed wait!", "the respawn-at-point request", "server/beds.ts", "wired", "A dead survivor is about to come back.");
 ev("session.admin", "after", "pid", "the admin-detected notice", "server/commands/core.ts", "wired", "A session enabled cheats.");
 ev("zone.enter", "after", "pid zone", "an actor overlap beginning", "server/host.ts", "limits", "A body entered a zone.");
 ev("zone.leave", "after", "pid zone", "an actor overlap ending", "server/host.ts", "limits", "A body left a zone.");
 
 ev("chat.say", "before", "pid channel text!", "the chat send, and the chat callback", "server/chat.ts", "wired", "A survivor is about to say something.");
 ev("chat.said", "after", "pid channel text heard", "the per-recipient delivery, as a count", "server/chat.ts", "wired", "Something was said, and how many heard it.");
-ev("name.set", "before", "what text!", "name filters", "server/game.ts", "wired", "A survivor, a tribe or a creature is about to be named.");
+ev("name.set", "before", "what text!", "name filters", "server/game.ts", "wired", "A survivor, a tribe, a creature or a bed is about to be named.");
 
 ev("damage", "before", "target victim kind team byPid byTeam item type zone scale!", "three take-damage hooks and the tribe-war question", "server/combat.ts", "wired", "A blow is about to land on a body or a structure. A scale of 0 stops it.", true);
 ev("damaged", "after", "target victim kind team byPid byTeam item type zone taken blocked killed left", "", "server/combat.ts", "wired", "A blow landed.", true);
@@ -125,9 +125,9 @@ ev("tribe.rank", "after", "team pid rank", "promote and demote", "server/tribes.
 ev("tribe.war", "after", "team other", "the tribe-war call", "server/tribes.ts", "tribes", "Two tribes are at war, or no longer.");
 ev("tribe.alliance", "after", "team other", "the alliance question", "server/tribes.ts", "tribes", "Two tribes are allied, or no longer.");
 
-ev("transfer.out", "before", "op pid what", "the upload of a character, a creature or items", "server/host.ts", "transfers", "Something is about to leave for another server.");
-ev("transfer.in", "before", "op what", "the download of a creature, the arrival of a player", "server/host.ts", "transfers", "Something is about to arrive from another server.");
-ev("transfer.done", "after", "op what", "", "server/host.ts", "transfers", "A transfer finished at both ends.");
+ev("transfer.out", "before", "op pid what", "the upload of a character, a creature or items", "server/cluster/cluster.ts", "wired", "Something is about to leave for another server: `op` is what it is (\"survivor\"), `what` its name. Nothing has moved yet.");
+ev("transfer.in", "before", "op what", "the download of a creature, the arrival of a player", "server/cluster/cluster.ts", "wired", "Something is about to arrive from another server. Refused, it stays sealed for the server it left.");
+ev("transfer.done", "after", "op what", "", "server/cluster/cluster.ts", "wired", "Something arrived from another server and is here.");
 ev("cluster.message", "after", "from topic body", "cross-server chat", "server/host.ts", "transfers", "Another server of the cluster said something.");
 ev("perm.changed", "after", "account group", "the permissions plugin's callbacks", "server/host.ts", "ops", "What an account may do changed.");
 ev("ban.changed", "after", "account banned", "ban and unban", "server/host.ts", "ops", "An account was banned or let back.");

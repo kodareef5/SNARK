@@ -159,6 +159,17 @@ export class BitWriter {
   }
 }
 
+/** `s` cut at a whole character so that its UTF-8 takes at most `max` bytes. */
+export function fitBytes(s: string, max: number): string {
+  if (utf8Length(s) <= max) return s;
+  let out = "";
+  for (const ch of s) {
+    if (utf8Length(out + ch) > max) break;
+    out += ch;
+  }
+  return out;
+}
+
 function utf8Length(s: string): number {
   let n = 0;
   for (let i = 0; i < s.length; i++) {

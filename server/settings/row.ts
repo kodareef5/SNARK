@@ -171,9 +171,9 @@ export class Sheet {
     return this;
   }
 
-  /** With `valued`, the flag is written `-Key=value`. */
-  flag(name: string, doc: string, s: Standing, valued = false): this {
-    this.add(name, "flag", valued ? "" : false, doc, s, 0, 2147483647);
+  /** With `valued`, the flag is written `-Key=value`: a number, or with "text" any words, such as a name or a folder. */
+  flag(name: string, doc: string, s: Standing, valued: boolean | "text" = false): this {
+    this.add(name, "flag", valued ? "" : false, doc, s, 0, valued === "text" ? 0 : 2147483647);
     return this;
   }
 

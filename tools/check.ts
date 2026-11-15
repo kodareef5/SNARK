@@ -14,6 +14,8 @@ const BUDGET_SECONDS = 20;
 const SHELL_MAX_LINES = 1150;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
+/** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
+const SOUND_MAX_LINES = 300;
 /** The asset worker and its port: fetching, hashing and caching, with no decisions of their own. */
 const ASSETS_MAX_LINES = 500;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
@@ -32,7 +34,8 @@ const ZONES: Zone[] = [
   { dir: "client/core", may: ["shared", "content", "client/core"], builtins: false },
   { dir: "client/voice", may: ["shared", "client/core", "client/voice"], builtins: false },
   { dir: "client/assets", may: ["shared", "client/core", "client/assets"], builtins: false },
-  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/shell"], builtins: false },
+  { dir: "client/sound", may: ["shared", "client/core", "client/sound"], builtins: false },
+  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/shell"], builtins: false },
   { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
   // What a module is written against. It names nothing of the server's own.
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },
@@ -103,6 +106,7 @@ function checkPolicy(): void {
   let shellLines = 0;
   let voiceLines = 0;
   let assetLines = 0;
+  let soundLines = 0;
 
   for (const file of files) {
     const rel = relative(ROOT, file);
@@ -117,6 +121,10 @@ function checkPolicy(): void {
     if (zone.dir === "client/voice") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/voice has no tests; move the logic into client/core/voice`);
       voiceLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    }
+    if (zone.dir === "client/sound") {
+      if (rel.endsWith(".test.ts")) fail(`${rel}: client/sound has no tests; move the logic into client/core/sound`);
+      soundLines += src.split("\n").filter((l) => l.trim().length > 0).length;
     }
     if (zone.dir === "client/assets") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/assets has no tests; move the logic into client/core/assets`);
@@ -163,6 +171,8 @@ function checkPolicy(): void {
   if (assetLines > ASSETS_MAX_LINES) fail(`client/assets is ${assetLines} lines (budget ${ASSETS_MAX_LINES}); move logic into client/core/assets`);
   console.log(`  voice size   ${voiceLines}/${VOICE_MAX_LINES} lines`);
   console.log(`  assets size  ${assetLines}/${ASSETS_MAX_LINES} lines`);
+  if (soundLines > SOUND_MAX_LINES) fail(`client/sound is ${soundLines} lines (budget ${SOUND_MAX_LINES}); move logic into client/core/sound`);
+  console.log(`  sound size   ${soundLines}/${SOUND_MAX_LINES} lines`);
 }
 
 /** `cpu` is the CPU-seconds of the process and of the processes it waited for. */

@@ -2,8 +2,8 @@
 // per component. Also the slot command handlers, the only way a client can ask for its inventory to change.
 
 import type { ItemDef } from "../shared/content/defs.ts";
-import type { BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { fitBytes, type BitReader } from "../shared/net/codec.ts";
+import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -19,6 +19,7 @@ import type { Tribes } from "./tribes.ts";
 import type { Subject } from "./taming.ts";
 import type { Use } from "./use.ts";
 import type { Voice } from "./voice.ts";
+import type { Beds } from "./beds.ts";
 import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
 
@@ -34,20 +35,6 @@ function asked(ctx: OwnContext, c: Client, ev: number, data: Record<string, numb
   return refused === "";
 }
 
-/** The world's spawn points come first, then the beds. A place is chosen by one byte, so that is how many the list holds. */
-export const MAX_RESPAWN_POINTS = 255;
-
-/** A bed a survivor may respawn at. `wait` is in seconds. */
-export interface BedPoint {
-  ref: number;
-  name: string;
-  x: number;
-  y: number;
-  z: number;
-  yaw: number;
-  wait: number;
-}
-
 /** The count is one byte on the wire. A larger tribe sends only its first members. */
 const MAX_MEMBERS_SENT = 255;
 
@@ -59,10 +46,10 @@ export interface OwnContext {
   readonly survival: Survival;
   openOf(c: Client): EntityRecord | null;
   closeOpen(c: Client): void;
-  respawn(c: Client, index: number): number;
+  /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
+  readonly beds: Beds;
   /** Null if `rec` is not a creature. */
   subject(rec: EntityRecord): Subject | null;
-  beds(rec: EntityRecord): BedPoint[];
   readonly progression: Progression;
   readonly rules: Rules;
   readonly tribes: Tribes;
@@ -314,29 +301,26 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     c.sentProgress = rec.progVersion;
   }
 
-  // A dead session is sent its respawn choices once: the world's spawn points, then its tribe's beds, each with its wait.
-  if (c.state === SESSION_DEAD && !c.sentRespawn) {
-    const w = game.beginOwn(OWN_RESPAWN);
-    const spawns = ctx.world.spawns;
-    const beds = ctx.beds(rec).slice(0, MAX_RESPAWN_POINTS - spawns.length);
+  // A session without a body is sent where it may rise, and again whenever a bed changes: the map's spawn points, then its
+  // tribe's beds, each with the tick it is ready from. Why it chooses comes first.
+  if (c.state === SESSION_DEAD && c.sentPlaces !== ctx.beds.version) {
+    const places = ctx.beds.places(rec, c.why);
     c.respawnAt.length = 0;
-    w.u8(spawns.length + beds.length);
-    for (const p of spawns) {
-      w.string(p.name);
+    c.respawnAt.push(...places);
+    c.placesList = (c.placesList + 1) & 0xff;
+    const w = game.beginOwn(OWN_RESPAWN);
+    w.u8(c.why);
+    w.u8(c.placesList);
+    w.u8(places.length);
+    for (const p of places) {
+      w.u16(p.kind);
+      w.string(fitBytes(p.name, MAX_PLACE_NAME_BYTES));
       w.f32(p.x);
       w.f32(p.z);
-      w.u16(0);
-      c.respawnAt.push({ x: p.x, y: NaN, z: p.z, yaw: p.yaw, bed: -1 });
-    }
-    for (const b of beds) {
-      w.string(b.name);
-      w.f32(b.x);
-      w.f32(b.z);
-      w.u16(b.wait);
-      c.respawnAt.push({ x: b.x, y: b.y, z: b.z, yaw: b.yaw, bed: b.ref });
+      w.u32(p.readyAt);
     }
     game.endOwn(c);
-    c.sentRespawn = true;
+    c.sentPlaces = ctx.beds.version;
   }
 }
 
@@ -388,7 +372,8 @@ export function addOwnCommands(ctx: OwnContext): void {
 
   ctx.game.handle(CMD_RESPAWN, (c: Client, r: BitReader) => {
     const index = r.u8();
-    return r.overflow ? RESULT_INVALID : ctx.respawn(c, index);
+    const list = r.u8();
+    return r.overflow || c.state !== SESSION_DEAD ? RESULT_INVALID : ctx.beds.choose(c, index, list);
   });
 
   const mine = (c: Client): EntityRecord | null => (c.ent >= 0 ? (ctx.records.byPid.get(c.pid) ?? null) : null);

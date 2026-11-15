@@ -13,7 +13,7 @@ import { compileContent, type Registry } from "../content/registry.ts";
 import { deriveRegistry, type Tuning } from "../content/tuning.ts";
 import { TICK_DT } from "../coords.ts";
 import { Rng } from "../rng.ts";
-import { BTN_CROUCH, BTN_PRONE, Body, MODE_GHOST, MODE_SWIM, MODE_WALK, stepBody } from "./character.ts";
+import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stepBody } from "./character.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world/proving.ts";
 import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
@@ -68,7 +68,10 @@ export function tunedHash(base: Registry): string {
   return (h >>> 0).toString(16).padStart(8, "0") + simHash(reg, 600);
 }
 
-/** `ground` is the proving ground from elsewhere, such as its map file. Without it the proving ground is built here. */
+/**
+ * Survivors walking, jumping, crouching and swimming over the proving ground, one a ghost, and pteranodons flying over it.
+ * `ground` is the proving ground from elsewhere, such as its map file. Without it the proving ground is built here.
+ */
 export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; structs: StructureStore } | null = null): string {
   const hf = ground ? ground.hf : buildProvingHeightfield();
   const structs = ground ? ground.structs : new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -92,10 +95,42 @@ export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; 
     return b;
   });
   const input = bodies.map(() => [0, 0, 0, 0, 0]);
+  // Pteranodons, wild and tamed, from the plaza, the pool's shore and the slopes, on their own stream of inputs: in the air
+  // while their jump is held, climbing and diving by the look, sprinting, braking and rolling, let down to land, and now and
+  // then knocked out, caught by a bola or too heavy, as the server sets them. One tires within seconds and is put down.
+  const ptera = reg.index.get("core:pteranodon");
+  const flyers = ptera === undefined ? [] : [[256, 236], [196, 256], [290, 262], [230, 292]].map(([x, z], i) => {
+    const b = new Body();
+    b.x = x!;
+    b.z = z!;
+    b.y = hf.heightAt(b.x, b.z);
+    b.grounded = true;
+    b.kind = ptera;
+    b.staminaMax = i === 1 ? 20 : 150;
+    b.stamina = b.staminaMax * STAMINA_UNITS;
+    return b;
+  });
+  const flies = ptera === undefined ? [] : [reg.move[ptera]!, reg.tamedMove[ptera]!];
+  const air = new Rng(20261115);
+  const flown = flyers.map(() => [127, 0, 0, BTN_JUMP]);
   const f = new Float32Array(6);
   const bytes = new Uint8Array(f.buffer);
   let h1 = 0x811c9dc5;
   let h2 = 0x9747b28c;
+  const mix = (b: Body): void => {
+    f[0] = b.x;
+    f[1] = b.y;
+    f[2] = b.z;
+    f[3] = b.vx;
+    f[4] = b.vy;
+    f[5] = b.vz;
+    for (let k = 0; k < 24; k++) {
+      h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
+      h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
+    }
+    h1 = Math.imul(h1 ^ ((b.grounded ? 1 : 0) | (b.mode << 1) | (b.mflags << 4) | (b.stance << 8)), 0x01000193);
+    h2 = Math.imul(h2 + b.stamina, 0x85ebca6b) ^ (h2 >>> 13);
+  };
   for (let t = 0; t < ticks; t++) {
     for (let i = 0; i < bodies.length; i++) {
       const b = bodies[i]!;
@@ -109,18 +144,23 @@ export function simHash(reg: Registry, ticks = 3000, ground: { hf: Heightfield; 
         inp[4] = rng.int(32769) - 16384;
       }
       stepBody(world, b, inp[0]!, inp[1]!, inp[2]!, inp[4]!, inp[3]!, p, TICK_DT);
-      f[0] = b.x;
-      f[1] = b.y;
-      f[2] = b.z;
-      f[3] = b.vx;
-      f[4] = b.vy;
-      f[5] = b.vz;
-      for (let k = 0; k < 24; k++) {
-        h1 = Math.imul(h1 ^ bytes[k]!, 0x01000193);
-        h2 = Math.imul(h2 + bytes[k]!, 0x85ebca6b) ^ (h2 >>> 13);
+      mix(b);
+    }
+    for (let i = 0; i < flyers.length; i++) {
+      const b = flyers[i]!;
+      const inp = flown[i]!;
+      if (air.int(20) === 0) {
+        inp[0] = air.int(255) - 127;
+        inp[1] = air.int(65536);
+        inp[2] = air.int(32769) - 16384;
+        inp[3] = (air.int(5) === 0 ? 0 : BTN_JUMP) | (air.int(2) === 0 ? BTN_SPRINT : 0) | (air.int(8) === 0 ? BTN_BRAKE : 0) | (air.int(8) === 0 ? BTN_ROLL : 0);
+        const r = air.int(40);
+        b.mflags = (b.mflags & MF_WINDED) | (r === 0 ? MF_OUT : r === 1 ? MF_ROOTED | MF_NO_SPRINT : r === 2 ? MF_ROOTED | MF_NO_SPRINT | MF_NO_JUMP : 0);
       }
-      h1 = Math.imul(h1 ^ ((b.grounded ? 1 : 0) | (b.mode << 1) | (b.mflags << 4) | (b.stance << 8)), 0x01000193);
-      h2 = Math.imul(h2 + b.stamina, 0x85ebca6b) ^ (h2 >>> 13);
+      stepBody(world, b, 0, inp[0]!, inp[1]!, inp[2]!, inp[3]!, flies[i % 2]!, TICK_DT);
+      mix(b);
+      h1 = Math.imul(h1 ^ (b.yaw | (b.regenWait << 16)), 0x01000193);
+      h2 = Math.imul(h2 + b.rollWait, 0x85ebca6b) ^ (h2 >>> 13);
     }
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
@@ -183,11 +223,13 @@ export function poseHash(anim: HumanAnim): string {
 export const TRIANGLE_HALF = 0.1875;
 export const ROOF_RISE = 1.5;
 export const ROOF_THICK = 0.2;
+export const RAMP_LIP = 0.06;
 
 const H = 1.5;
 const pieceShapes: readonly ShapeDef[] = [
-  // Rises a storey over a side, toward +Z: 45 degrees.
-  { type: "shape", id: "test:shape_ramp", role: "stairs", boxes: [], hulls: [{ corners: [[-H, -H, -H], [H, -H, -H], [-H, -H, H], [H, -H, H], [-H, H, H], [H, H, H]] }] },
+  // Rises a storey over a side, toward +Z, short of it by RAMP_LIP: 44.4 degrees, as ARK's ramp measures, under the steepest a
+  // survivor stands on. A full storey would be 45.
+  { type: "shape", id: "test:shape_ramp", role: "stairs", boxes: [], hulls: [{ corners: [[-H, -H, -H], [H, -H, -H], [-H, -H, H], [H, -H, H], [-H, H - RAMP_LIP, H], [H, H - RAMP_LIP, H]] }] },
   // Its origin is a corner, and its sides run 3 m along the first axis and 3 m along the second, 60 degrees on.
   {
     type: "shape",

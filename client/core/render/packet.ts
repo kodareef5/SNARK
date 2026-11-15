@@ -399,9 +399,11 @@ export class FramePacket {
     this.texDrops.length = 0;
     this.skipped = 0;
     this.dropped = 0;
-    this.drawFade.fill(0, 0, this.drawCount);
-    this.drawHand.fill(0, 0, this.drawCount);
-    this.drawLayer.fill(0, 0, this.drawCount);
+    // Draws that leave these alone take 0. Every row is cleared, not the last count's: a picture tool cuts the count of a
+    // frame it does not keep, and a row past it kept a far draw's fade for a near draw to take in the next frame.
+    this.drawFade.fill(0);
+    this.drawHand.fill(0);
+    this.drawLayer.fill(0);
     this.drawCount = 0;
     this.atlasRows = 0;
     this.tileCount = 0;

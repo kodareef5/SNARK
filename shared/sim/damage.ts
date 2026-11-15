@@ -52,6 +52,16 @@ export const hit = {
   zone: 1,
   /** The rating, already scaled (see PIECE_SCALE). */
   armor: 0,
+  /**
+   * The share of that rating the round goes through, 0 to 1 (weapons-plan.md, M12): armor counts as `armor × (1 − pierce)`.
+   * ARK's metal arrow is "a -90% armor bypass" (Metal Arrow), 0.9.
+   */
+  pierce: 0,
+  /**
+   * The weapon's own factor against something built (weapons-plan.md, M8; D435): ARK gives each explosive its own damage to
+   * structures beside its damage to bodies (Table of explosives). 1 for a body.
+   */
+  structures: 1,
   /** The victim's buffs, and the server's rule for this pairing. */
   resist: 1,
   rule: 1,
@@ -74,14 +84,15 @@ export function resetHit(): void {
   hit.base = 0;
   hit.type = DMG_MELEE;
   hit.quality = hit.draw = hit.attack = hit.far = hit.takes = hit.zone = hit.resist = hit.rule = 1;
-  hit.armor = 0;
+  hit.armor = hit.pierce = 0;
+  hit.structures = 1;
   hit.torporInstant = hit.torporOver = 0;
 }
 
 export function resolveDamage(): void {
   const draw = hit.draw >= 1 ? 1 : DRAW_MIN + (1 - DRAW_MIN) * (hit.draw > 0 ? hit.draw : 0);
-  const raw = hit.base * hit.quality * draw * hit.attack * hit.far * hit.takes * hit.zone * hit.resist * hit.rule;
-  const armor = hit.armor > 0 ? hit.armor : 0;
+  const raw = hit.base * hit.structures * hit.quality * draw * hit.attack * hit.far * hit.takes * hit.zone * hit.resist * hit.rule;
+  const armor = hit.armor > 0 ? hit.armor * (hit.pierce > 0 ? 1 - (hit.pierce < 1 ? hit.pierce : 1) : 1) : 0;
   const through = raw > 0 ? (raw * 100) / (100 + armor) : 0;
   harm.health = through;
   harm.blocked = raw > 0 ? raw - through : 0;

@@ -7,6 +7,7 @@ import { Rng } from "../rng.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
 import { nodeLayers, type NodeLayer } from "./mapfile.ts";
 import type { NodeSource } from "./nodes.ts";
+import { obeliskStatics, type ObeliskPlace } from "./obelisks.ts";
 import type { StructureStore } from "./structures.ts";
 
 export const PROVING_ID = "proving:1";
@@ -29,6 +30,12 @@ export const PROVING_POOL = { x: 172, z: 256 };
 export const PROBE_CREATURE = { x: 259, z: 254, color: 6 };
 /** Where the probe server stands one body with bones, for the self-check. */
 export const PROBE_BODY = { x: 253.5, z: 247 };
+/**
+ * The obelisk, on the flat south-east of the plaza short of the hill, its terminal turned to the Plaza spawn point 90 m
+ * off. From that point it is out of view looking north or south, and it is alone in its chunk, so every other piece keeps
+ * its slot.
+ */
+export const PROVING_OBELISK: ObeliskPlace = { name: "Plaza", x: 340, z: 208, yaw: 53248 };
 
 /** Slope strips west to east, 10 to 60 degrees. Entries are tan(angle). */
 export const SLOPE_TANS = [0.17632698, 0.36397023, 0.57735027, 0.83909963, 1.19175359, 1.73205081];
@@ -175,6 +182,8 @@ export function populateProving(structs: StructureStore, hf: Heightfield, reg: R
 
   // Distance markers every 50 m to the north.
   for (let z = 350; z <= 500; z += 50) put(pillar, 256, hf.heightAt(256, z) + 3, z);
+
+  for (const s of obeliskStatics(reg, PROVING_OBELISK, (x, z) => hf.heightAt(x, z))) put(k(s.kind), s.x, s.y, s.z, s.yaw);
 }
 
 /** Node slots per chunk of the first layer, the trees, rocks and bushes it has always had. About a third end up holding a node. */

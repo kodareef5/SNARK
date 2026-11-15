@@ -6,5 +6,7 @@
   way["man_made"="pier"];
   way["man_made"="breakwater"];
   way["man_made"="groyne"];
+  way["man_made"="tower"]["tower:type"="bridge"];
+  way["highway"="steps"];
 );
 out tags geom;

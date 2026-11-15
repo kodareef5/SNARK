@@ -2,14 +2,15 @@
 // with Extended Position Based Dynamics", 2020), stepped in short substeps with one pass of the constraints each. A body
 // is a bone carrying a hit capsule. Every bone the asset does not list stays rigid with the nearest body above it, as it
 // was when the body went limp. A joint keeps a body within the swing and twist its asset allows from the rest pose, then
-// holds its joint to its parent body. Bodies meet the terrain and the boxes of structures and nodes, with friction and
-// rolling resistance.
+// holds its joint to its parent body. Bodies meet the terrain and the boxes and convex parts of structures and nodes, with
+// friction and rolling resistance.
 // Only a client runs it, so it need not agree across engines; the same steps give the same result.
 
 import { chunkAt } from "../coords.ts";
 import { detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatRotate, quatUnrotate } from "../math/quat.ts";
 import type { CollisionWorld } from "../world/collide.ts";
+import { capsuleHull, hullPush } from "../world/convex.ts";
 import { frame, frameOf } from "../world/frame.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { Found, type StructureStore } from "../world/structures.ts";
@@ -48,6 +49,9 @@ const PUSH_OUT = 3;
 /** Under water a body weighs this share of what it does in air, and its motion dies away this much faster. */
 const SINKS = 0.25;
 const WATER_DAMP = 3;
+/** What a body under water is pulled down by, in metres a second each second, and the share of its speed it loses a second. */
+export const WET_GRAVITY = GRAVITY * SINKS;
+export const WET_DAMP = DAMP + WATER_DAMP;
 /**
  * It sleeps once, for SLEEP_AFTER seconds, no body has moved more than SLEEP_MOVE of the widest capsule's radius or turned
  * more than SLEEP_TURN (the cosine of half that angle, 6 degrees). Measured by place and not by speed, so the shiver of a
@@ -117,7 +121,7 @@ export class Ragdoll {
   private stillMove = 0;
   private readonly stillX: Float64Array;
   private readonly stillQ: Float64Array;
-  /** The structures and nodes near it, gathered once a call: the ref, and 1 for a node. */
+  /** The structures and nodes near it, gathered once a call: the ref, and 1 for a node, 2 for a structure with convex parts. */
   private readonly refs = new Uint32Array(MOST_REFS);
   private readonly refStore = new Uint8Array(MOST_REFS);
   private nRefs = 0;
@@ -414,9 +418,11 @@ export class Ragdoll {
       for (let k = 0; k < m && this.nRefs < MOST_REFS; k++) {
         const ref = found.refs[k]!;
         const t = structs.chunks[Math.floor(ref / 65536)]!;
-        if (structs.isSoft(t.kind[ref & 0xffff]!)) continue;
+        const kind = t.kind[ref & 0xffff]!;
+        if (structs.isSoft(kind)) continue;
+        const hulls = structs.parts.hulls;
         this.refs[this.nRefs] = ref;
-        this.refStore[this.nRefs++] = store;
+        this.refStore[this.nRefs++] = store === 0 && hulls !== undefined && hulls.start[kind + 1]! > hulls.start[kind]! ? 2 : store;
       }
     }
   }
@@ -443,7 +449,11 @@ export class Ragdoll {
     this.nc = 0;
     for (let i = 0; i < n; i++) {
       this.terrain(world.hf, i);
-      for (let k = 0; k < this.nRefs; k++) this.boxes(this.refStore[k] === 0 ? world.structs : world.nodes!, this.refs[k]!, i);
+      for (let k = 0; k < this.nRefs; k++) {
+        const store = this.refStore[k]!;
+        this.boxes(store === 1 ? world.nodes! : world.structs, this.refs[k]!, i);
+        if (store === 2) this.parts(world.structs, this.refs[k]!, i);
+      }
     }
     this.velocities(h);
     for (let c = 0; c < this.nc; c++) this.slide(c, h);
@@ -686,6 +696,49 @@ export class Ragdoll {
     }
   }
 
+  /**
+   * Pushes body `i` out of the convex parts of one structure as out of its boxes: as spheres at the ends of its capsule and at
+   * the point of it nearest each part. A part is placed in the world's axes about the structure's middle, so the capsule is
+   * measured from there unturned.
+   */
+  private parts(structs: StructureStore, ref: number, i: number): void {
+    const t = structs.chunks[Math.floor(ref / 65536)];
+    const hulls = structs.parts.hulls;
+    if (!t || !hulls) return;
+    const slot = ref & 0xffff;
+    const kind = t.kind[slot]!;
+    const yaw = t.yaw[slot]!;
+    const r = this.rad[i]!;
+    quatRotate(this.q, i * 4, this.seg[i * 3]!, this.seg[i * 3 + 1]!, this.seg[i * 3 + 2]!, u3, 0);
+    const wx = u3[0]!, wy = u3[1]!, wz = u3[2]!;
+    const ex = this.x[i * 3]! - t.x[slot]!, ey = this.x[i * 3 + 1]! - t.y[slot]!, ez = this.x[i * 3 + 2]! - t.z[slot]!;
+    const len = wx * wx + wy * wy + wz * wz;
+    const reach = Math.sqrt(len) + r;
+    for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
+      if (!capsuleHull(hulls, p, yaw, ex, ez, ey, ey, reach, reach)) continue;
+      for (let k = 0; k < 3; k++) {
+        let tt = k === 0 ? -1 : 1;
+        if (k === 2) {
+          tt = 0;
+          for (let it = 0; it < 3 && len > 1e-12; it++) {
+            const ay = ey + wy * tt;
+            // With no radius the push reaches from the point to the part's nearest point. A point inside stays where it is.
+            capsuleHull(hulls, p, yaw, ex + wx * tt, ez + wz * tt, ay, ay, 0, Infinity);
+            if (hullPush.depth > 0) break;
+            tt += (hullPush.x * wx + hullPush.y * wy + hullPush.z * wz) / len;
+            tt = tt < -1 ? -1 : tt > 1 ? 1 : tt;
+          }
+          if (tt <= -0.95 || tt >= 0.95) continue;
+        }
+        const ay = ey + wy * tt;
+        if (!capsuleHull(hulls, p, yaw, ex + wx * tt, ez + wz * tt, ay, ay, r, r)) continue;
+        const deep = hullPush.depth;
+        const nx = hullPush.x / deep, ny = hullPush.y / deep, nz = hullPush.z / deep;
+        this.contact(i, wx * tt - nx * r, wy * tt - ny * r, wz * tt - nz * r, nx, ny, nz, deep);
+      }
+    }
+  }
+
   /** Body `i`'s point (rx, ry, rz) from its centre is `deep` into the world along the normal (nx, ny, nz). */
   private contact(i: number, rx: number, ry: number, rz: number, nx: number, ny: number, nz: number, deep: number): void {
     if (this.probing) {
@@ -807,14 +860,18 @@ export class Ragdoll {
     v[o + 2]! -= tz * slow;
   }
 
-  /** The deepest any of its capsules is under the ground or inside a box of the world, in metres. 0 when clear. */
+  /** The deepest any of its capsules is under the ground or inside a box or part of the world, in metres. 0 when clear. */
   deepest(world: CollisionWorld): number {
     this.probing = true;
     this.worst = 0;
     this.gather(world, 0);
     for (let i = 0; i < this.n; i++) {
       this.terrain(world.hf, i);
-      for (let k = 0; k < this.nRefs; k++) this.boxes(this.refStore[k] === 0 ? world.structs : world.nodes!, this.refs[k]!, i);
+      for (let k = 0; k < this.nRefs; k++) {
+        const store = this.refStore[k]!;
+        this.boxes(store === 1 ? world.nodes! : world.structs, this.refs[k]!, i);
+        if (store === 2) this.parts(world.structs, this.refs[k]!, i);
+      }
     }
     this.probing = false;
     return this.worst;

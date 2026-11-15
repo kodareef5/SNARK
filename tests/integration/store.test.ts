@@ -209,7 +209,7 @@ test("at its limit the world refuses a creature and says so, leaves no record of
   h.run(300);
   const cache = [...h.host.records.byPid.values()].find((r) => r.name === "bob's cache")!;
   expect([h.client(bob)!.ent, h.host.records.entOf.has(cache.pid), ents.count]).toEqual([-1, false, 47]);
-  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  bob.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(bob.placesList)));
   h.run(300);
   expect([h.client(bob)!.ent >= 0, ents.count]).toEqual([true, 48]);
 });

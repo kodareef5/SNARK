@@ -17,8 +17,12 @@ export interface CollisionWorld {
   readonly nodes?: StructureStore;
 }
 
-/** The shortest push out, in world space, from the last capsuleBox call that returned true, and whether it is out of a convex part. */
-export const push = { x: 0, y: 0, z: 0, depth: 0, hull: false };
+/**
+ * The shortest push out, in world space, from the last capsuleBox call that returned true, whether it is out of a convex part,
+ * whether it is out through one of a part's faces, along its normal, rather than off an edge or a box, and the upward part of
+ * the normal of the most level face where it touches (convex.ts hullPush), 1 for a box, whose top is level.
+ */
+export const push = { x: 0, y: 0, z: 0, depth: 0, hull: false, face: false, up: 1 };
 
 const found = new Found();
 /** Metres added to a cheap reject, so that rounding never rejects a touch. */
@@ -140,11 +144,15 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
     bz = oz;
   }
   let hull = false;
+  let face = false;
+  let up = 1;
   const hulls = parts.hulls;
   for (let p = hulls ? hulls.start[kind]! : 0, end = hulls ? hulls.start[kind + 1]! : 0; p < end; p++) {
     if (!capsuleHull(hulls!, p, syaw, dx, dz, fy0, fy1, r, reach) || (found && hullPush.depth <= deepest)) continue;
     found = true;
     hull = true;
+    face = hullPush.face;
+    up = hullPush.up;
     deepest = hullPush.depth;
     bx = hullPush.x;
     by = hullPush.y;
@@ -157,16 +165,21 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
   push.z = hull ? bz : -s * bx + c * bz;
   push.depth = deepest;
   push.hull = hull;
+  push.face = face;
+  push.up = up;
   return true;
 }
 
-/** Filled by groundUnder: the unit normal of the ground where the body touches it. */
-export const ground = { nx: 0, ny: 1, nz: 0 };
+/**
+ * Filled by groundUnder: the unit normal of the ground where the body touches it, and the upward part of the normal of the most
+ * level face there, the normal's own on a face, as `push.up` is of a part.
+ */
+export const ground = { nx: 0, ny: 1, nz: 0, up: 1 };
 
 // The last groundUnder call, which movement asks again at the same place several times a substep: its ground, and its x, z, r,
-// answer and normal.
+// answer, normal and most level face.
 let lastHf: Heightfield | null = null;
-const last = new Float64Array([NaN, NaN, NaN, 0, 0, 1, 0]);
+const last = new Float64Array([NaN, NaN, NaN, 0, 0, 1, 0, 1]);
 /** While groundUnder runs, per face under the sphere: the most its plane could hold the centre up, or -Infinity where it misses. */
 let faceTop = new Float64Array(32);
 /** While groundUnder tries edges: the height the sphere's centre must reach so far, and where it touches, from the centre. */
@@ -181,6 +194,7 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
     ground.nx = last[4]!;
     ground.ny = last[5]!;
     ground.nz = last[6]!;
+    ground.up = last[7]!;
     return last[3]!;
   }
   const cell = hf.cell;
@@ -289,6 +303,7 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
   }
   // No edge holds the centre higher than either face beside it could, so edges are tried only when the face that could hold it
   // highest does not, and only those whose faces both could beat the best so far.
+  let faced = best;
   if (!topOn) {
     if (best === -Infinity) {
       // The ground straight under the axis touches the sphere's lowest point, so the centre is at least that high.
@@ -301,6 +316,7 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
     held[1] = cx;
     held[2] = cy;
     held[3] = cz;
+    faced = best;
     const diagonal = cell * Math.SQRT2;
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
@@ -339,7 +355,125 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
   last[4] = ground.nx = -cx / r;
   last[5] = ground.ny = -cy / r;
   last[6] = ground.nz = -cz / r;
+  // On an edge or a corner.
+  last[7] = ground.up = best > faced ? levelAt(hf, x + cx, z + cz) : ground.ny;
   return best - r;
+}
+
+/** The upward part of the normal of the most level face with (x, z) on it or on its edge. */
+function levelAt(hf: Heightfield, x: number, z: number): number {
+  const perCell = 1 / hf.cell;
+  const nx = hf.nx;
+  const hts = hf.heights;
+  const rise = hf.stepY * perCell;
+  const fx = x * perCell;
+  const fz = z * perCell;
+  const e = 1e-6;
+  let up = 0;
+  for (let j = Math.max(0, Math.floor(fz - e)), j1 = Math.min(hf.nz - 2, Math.floor(fz + e)); j <= j1; j++) {
+    for (let i = Math.max(0, Math.floor(fx - e)), i1 = Math.min(nx - 2, Math.floor(fx + e)); i <= i1; i++) {
+      const k = j * nx + i;
+      const u = fx - i;
+      const v = fz - j;
+      for (let upper = 0; upper < 2; upper++) {
+        if (upper === 1 ? !(u >= -e && u <= v + e && v <= 1 + e) : !(v >= -e && v <= u + e && u <= 1 + e)) continue;
+        const gx = (upper === 1 ? hts[k + nx + 1]! - hts[k + nx]! : hts[k + 1]! - hts[k]!) * rise;
+        const gz = (upper === 1 ? hts[k + nx]! - hts[k]! : hts[k + nx + 1]! - hts[k + 1]!) * rise;
+        const ny = 1 / Math.sqrt(1 + gx * gx + gz * gz);
+        if (ny > up) up = ny;
+      }
+    }
+  }
+  return up;
+}
+
+/**
+ * Whether a walker of `slopeCos` may stand on the ground where the last groundUnder call touched it: the way out and its most
+ * level face there are both within its angle, as on a part.
+ */
+export function groundStands(slopeCos: number): boolean {
+  return ground.ny >= slopeCos && ground.up >= slopeCos;
+}
+
+/**
+ * Whether a body with its feet at `y` over (x, z) is in ground it cannot stand on where it touches it. If it is, `push` is the
+ * way out along the ground's normal there, as out of a part's face.
+ */
+export function steepGround(hf: Heightfield, x: number, y: number, z: number, r: number, slopeCos: number): boolean {
+  const h = groundUnder(hf, x, z, r);
+  if (!(y < h) || groundStands(slopeCos)) return false;
+  const d = (h - y) * ground.ny;
+  push.x = ground.nx * d;
+  push.y = ground.ny * d;
+  push.z = ground.nz * d;
+  push.depth = d;
+  push.hull = false;
+  push.face = true;
+  push.up = ground.up;
+  return true;
+}
+
+/** Most surfaces groundNear lists. */
+const NEAR_MOST = 8;
+/** Filled by groundNear: per surface its unit normal and the upward part of its most level face's, as `ground` has them. */
+export const groundN = new Float64Array(4 * NEAR_MOST);
+
+/**
+ * The ground within `probe` under a body with its feet at `y` over (x, z), in groundN, and how many surfaces: where its lower
+ * sphere touches it, as groundUnder says, and each other face whose plane it would touch on the face, as the other side of a
+ * crease. None if it is more than `probe` above the ground.
+ */
+export function groundNear(hf: Heightfield, x: number, y: number, z: number, r: number, probe: number): number {
+  const under = groundUnder(hf, x, z, r);
+  if (y - under > probe) return 0;
+  const out = groundN;
+  out[0] = ground.nx;
+  out[1] = ground.ny;
+  out[2] = ground.nz;
+  out[3] = ground.up;
+  let count = 1;
+  const cell = hf.cell;
+  const perCell = 1 / cell;
+  const nx = hf.nx;
+  const hts = hf.heights;
+  const i0 = Math.max(0, Math.floor((x - r) * perCell));
+  const j0 = Math.max(0, Math.floor((z - r) * perCell));
+  const i1 = Math.min(nx - 2, Math.floor((x + r) * perCell));
+  const j1 = Math.min(hf.nz - 2, Math.floor((z + r) * perCell));
+  // The height the centre would be at, lowered by `probe`.
+  const low = y - probe + r;
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const k = j * nx + i;
+      const h00 = hf.minY + hts[k]! * hf.stepY;
+      const h10 = hf.minY + hts[k + 1]! * hf.stepY;
+      const h01 = hf.minY + hts[k + nx]! * hf.stepY;
+      const h11 = hf.minY + hts[k + nx + 1]! * hf.stepY;
+      const dx = x - i * cell;
+      const dz = z - j * cell;
+      for (let upper = 0; upper < 2 && count < NEAR_MOST; upper++) {
+        const gx = (upper === 1 ? h11 - h01 : h10 - h00) * perCell;
+        const gz = (upper === 1 ? h01 - h00 : h11 - h10) * perCell;
+        const s = Math.sqrt(1 + gx * gx + gz * gz);
+        if (h00 + gx * dx + gz * dz + r * s <= low) continue;
+        const u = (dx + (gx * r) / s) * perCell;
+        const v = (dz + (gz * r) / s) * perCell;
+        if (!(upper === 1 ? u >= 0 && u <= v && v <= 1 : v >= 0 && v <= u && u <= 1)) continue;
+        const ux = -gx / s;
+        const uy = 1 / s;
+        const uz = -gz / s;
+        let seen = false;
+        for (let n = 0; n < count && !seen; n++) seen = ux * out[n * 4]! + uy * out[n * 4 + 1]! + uz * out[n * 4 + 2]! > 1 - 1e-9;
+        if (seen) continue;
+        out[count * 4] = ux;
+        out[count * 4 + 1] = uy;
+        out[count * 4 + 2] = uz;
+        out[count * 4 + 3] = uy;
+        count++;
+      }
+    }
+  }
+  return count;
 }
 
 /**
@@ -410,10 +544,11 @@ export const SETTLE_MARGIN = SKIN * 0.75;
 
 /**
  * Where a body that capsuleFree accepts at `top` over (x, z) comes to rest when lowered toward `low`. NaN if it is free at `low`
- * and needs no step, or if a structure or node holds it higher than `top`: raised by a step, its lower sphere passes over an
- * edge up to a radius above its feet, so a step is judged by what it would stand on.
+ * and needs no step, if a structure or node holds it higher than `top`, or if all that holds it, the ground too, is too steep
+ * for `slopeCos` where it touches (push.up, ground.ny): raised by a step, its lower sphere passes over an edge up to a radius above its feet, so a step
+ * is judged by what it would stand on.
  */
-export function stepOnto(w: CollisionWorld, x: number, z: number, low: number, top: number, r: number, h: number): number {
+export function stepOnto(w: CollisionWorld, x: number, z: number, low: number, top: number, r: number, h: number, slopeCos: number): number {
   if (capsuleFree(w, x, low - SETTLE_MARGIN, z, r, h)) return NaN;
   let lo = low;
   let hi = top;
@@ -426,31 +561,142 @@ export function stepOnto(w: CollisionWorld, x: number, z: number, low: number, t
   // centre, reaches the sphere's surface.
   const y = lo - SETTLE_MARGIN;
   const high = y + (h > 2 * r ? h : 2 * r) + PAD;
+  let held = y < groundUnder(w.hf, x, z, r) - SKIN && groundStands(slopeCos);
   for (let pass = 0; pass < 2; pass++) {
     const store = pass === 0 ? w.structs : w.nodes;
     if (!store) continue;
     const n = store.query(x - r, z - r, x + r, z + r, found, y - PAD, high);
     for (let i = 0; i < n; i++) {
-      if (capsuleBox(store, found.refs[i]!, x, y, z, r, h, SKIN) && y + r - (push.y * (r - push.depth)) / push.depth > top + SKIN) return NaN;
+      if (!capsuleBox(store, found.refs[i]!, x, y, z, r, h, SKIN)) continue;
+      if (y + r - (push.y * (r - push.depth)) / push.depth > top + SKIN) return NaN;
+      held ||= push.y > 0 && push.up > slopeCos;
     }
   }
-  return hi;
+  return held ? hi : NaN;
 }
 
-/** True when lowering the capsule by `probe` meets an upward push from a structure or node. */
-export function restsOnStructure(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, probe: number): boolean {
-  const low = y - probe - PAD;
-  const top = y - probe + (h > 2 * r ? h : 2 * r) + PAD;
-  const n = w.structs.query(x - r, z - r, x + r, z + r, found, low, top);
-  for (let i = 0; i < n; i++) {
-    if (capsuleBox(w.structs, found.refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
+/**
+ * Where a body over (x, z) that capsuleFree accepts at `high` comes to rest lowered toward `lowest`, or NaN. Down to `low` it
+ * may rest on anything not too steep for `slopeCos` where it touches, the ground too, as a step down; below that, only on a
+ * part's face it can stand on, so a body follows a ramp down however fast it goes and still drops off a ledge.
+ */
+export function settleOnto(w: CollisionWorld, x: number, z: number, lowest: number, low: number, high: number, r: number, h: number, slopeCos: number): number {
+  if (capsuleFree(w, x, lowest, z, r, h)) return NaN;
+  let lo = lowest;
+  let hi = high;
+  for (let k = 0; k < SETTLE_ITERATIONS; k++) {
+    const mid = (lo + hi) * 0.5;
+    if (capsuleFree(w, x, mid - SETTLE_MARGIN, z, r, h)) hi = mid;
+    else lo = mid;
   }
-  const nodes = w.nodes;
-  if (nodes) {
-    const m = nodes.query(x - r, z - r, x + r, z + r, found, low, top);
-    for (let i = 0; i < m; i++) {
-      if (capsuleBox(nodes, found.refs[i]!, x, y - probe, z, r, h, 0) && push.y > 0.7 * push.depth) return true;
+  const y = lo - SETTLE_MARGIN;
+  const step = y >= low - SETTLE_MARGIN;
+  if (step && y < groundUnder(w.hf, x, z, r) - SKIN && groundStands(slopeCos)) return hi;
+  const top = y + (h > 2 * r ? h : 2 * r) + PAD;
+  for (let pass = 0; pass < 2; pass++) {
+    const store = pass === 0 ? w.structs : w.nodes;
+    if (!store) continue;
+    const n = store.query(x - r, z - r, x + r, z + r, found, y - PAD, top);
+    for (let i = 0; i < n; i++) {
+      if (!capsuleBox(store, found.refs[i]!, x, y, z, r, h, SKIN) || push.y <= 0) continue;
+      if (push.up > slopeCos && (step || push.face)) return hi;
     }
   }
-  return false;
+  return NaN;
+}
+
+/** Most surfaces restingAt weighs that hold a body up too steeply to stand on. */
+const STEEP_MOST = 8;
+const steepN = new Float64Array(3 * STEEP_MOST);
+/** A way down along what holds a body falls at least this much a metre, or the body is held. */
+const DITCH = 0.02;
+
+/**
+ * Where the capsule at `y` over (x, z) rests on the structures, nodes and ground within `probe` below it, or NaN if it does not:
+ * on an upward push no steeper than `slopeCos` allows, from a surface no steeper either, or held by steeper ones that leave it
+ * no way down, as in a notch between two slabs, or a slab and a bank, or two banks. It rests where it is, but on faces alone, parts' or boxes' tops, it rests on the
+ * highest of them, so it does not hover down a ramp or off one.
+ */
+export function restingAt(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, probe: number, slopeCos: number): number {
+  const low = y - probe - PAD;
+  const top = y - probe + (h > 2 * r ? h : 2 * r) + PAD;
+  let steep = 0;
+  let stands = false;
+  let faces = true;
+  let on = -Infinity;
+  for (let pass = 0; pass < 2; pass++) {
+    const store = pass === 0 ? w.structs : w.nodes;
+    if (!store) continue;
+    const n = store.query(x - r, z - r, x + r, z + r, found, low, top);
+    for (let i = 0; i < n; i++) {
+      if (!capsuleBox(store, found.refs[i]!, x, y - probe, z, r, h, 0) || push.y <= 0) continue;
+      const up = push.y > slopeCos * push.depth && push.up > slopeCos;
+      // A part's face, or a box's top, which pushes straight up.
+      if (up && (push.face || (push.x === 0 && push.z === 0))) {
+        // Raised this much, it would just touch the face.
+        const touch = y - probe + (push.depth * push.depth) / push.y;
+        if (touch > on) on = touch;
+        stands = true;
+        continue;
+      }
+      faces = false;
+      if (up) stands = true;
+      // Past the most it weighs it is not held, whatever order the pieces came in.
+      else if (steep < STEEP_MOST) {
+        steepN[steep * 3] = push.x / push.depth;
+        steepN[steep * 3 + 1] = push.y / push.depth;
+        steepN[steep * 3 + 2] = push.z / push.depth;
+        steep++;
+      } else steep = STEEP_MOST + 1;
+    }
+  }
+  // The ground within the probe is one more surface, one it stands on where it is walkable, as everywhere else.
+  for (let i = 0, n = groundNear(w.hf, x, y, z, r, probe); i < n; i++) {
+    faces = false;
+    if (groundN[i * 4 + 1]! >= slopeCos && groundN[i * 4 + 3]! >= slopeCos) stands = true;
+    else if (steep < STEEP_MOST) {
+      steepN[steep * 3] = groundN[i * 4]!;
+      steepN[steep * 3 + 1] = groundN[i * 4 + 1]!;
+      steepN[steep * 3 + 2] = groundN[i * 4 + 2]!;
+      steep++;
+    } else steep = STEEP_MOST + 1;
+  }
+  // A piece of several boxes or parts tells only of the one it is deepest in, so the others are asked before it is lowered.
+  if (stands) return faces && on < y && capsuleFree(w, x, on, z, r, h) ? on : y;
+  return steep > 1 && steep <= STEEP_MOST && noWayDown(steep) ? y : NaN;
+}
+
+/**
+ * Whether no way down is left along the first `count` normals of `steepN`: down none of them, nor down the crease of any two,
+ * without going into another. The way a falling body slides is one of these, so it is held where none is.
+ */
+function noWayDown(count: number): boolean {
+  const n = steepN;
+  for (let i = 0; i < count; i++) {
+    const ny = n[i * 3 + 1]!;
+    // Straight down, less its part into this surface, falls as steeply as the surface's horizontal part is long.
+    if (open(count, i, i, n[i * 3]! * ny, ny * ny - 1, n[i * 3 + 2]! * ny)) return false;
+    for (let j = i + 1; j < count; j++) {
+      let cx = n[i * 3 + 1]! * n[j * 3 + 2]! - n[i * 3 + 2]! * n[j * 3 + 1]!;
+      let cy = n[i * 3 + 2]! * n[j * 3]! - n[i * 3]! * n[j * 3 + 2]!;
+      let cz = n[i * 3]! * n[j * 3 + 1]! - n[i * 3 + 1]! * n[j * 3]!;
+      const l = Math.sqrt(cx * cx + cy * cy + cz * cz);
+      if (l < 1e-9) continue;
+      const k = cy > 0 ? -1 / l : 1 / l;
+      cx *= k;
+      cy *= k;
+      cz *= k;
+      if (cy < -DITCH && open(count, i, j, cx, cy, cz)) return false;
+    }
+  }
+  return true;
+}
+
+/** Whether the way (dx, dy, dz) falls more than DITCH a metre and goes into none of the surfaces but `a` and `b`. */
+function open(count: number, a: number, b: number, dx: number, dy: number, dz: number): boolean {
+  if (dy >= -DITCH * Math.sqrt(dx * dx + dy * dy + dz * dz)) return false;
+  for (let k = 0; k < count; k++) {
+    if (k !== a && k !== b && dx * steepN[k * 3]! + dy * steepN[k * 3 + 1]! + dz * steepN[k * 3 + 2]! < -1e-9) return false;
+  }
+  return true;
 }

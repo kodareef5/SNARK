@@ -1,7 +1,8 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
+// --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -57,6 +58,10 @@ import { encodePng } from "./snap/png.ts";
 import { PICK_SKY, Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
 import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
+import { slopesScene } from "./snap/slopes.ts";
+import { atLevel, saddlesScene } from "./snap/saddles.ts";
+import { saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
+import { frozenPack } from "../tests/fixtures/pack.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
 export function houseScene(view: ProvingView, tier: string): void {
@@ -895,8 +900,9 @@ if (import.meta.main) {
   if (args.includes("--fight")) {
     // A survivor faces a dummy in flak six metres off. --fight takes "punch" or "club" (up close, as the blow lands), "bow" or
     // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air), "rifle" (the round's tracer) or
-    // "shotgun" (a shell's ten tracers).
+    // "shotgun" (a shell's ten tracers) or "flare" (the flare gun's flare two seconds up, the view raised to it).
     const what = arg("fight") ?? "bow";
+    const flare = what === "flare";
     const close = what === "punch" || what === "club";
     const sling = what === "slingshot" || what === "slung";
     const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
@@ -912,10 +918,10 @@ if (import.meta.main) {
       hh.host.refreshBody(drec);
       const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
       const gun = what === "rifle" || what === "shotgun";
-      const weapon = gun ? what : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
+      const weapon = gun ? what : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : flare ? "flare_gun" : "bow";
       if (weapon !== "") {
         hh.host.items.mint(rec, k(weapon), 1);
-        if (weapon !== "club") hh.host.items.mint(rec, k(gun ? `round_${weapon}` : sling ? "stone" : "arrow_stone"), 20);
+        if (weapon !== "club" && !flare) hh.host.items.mint(rec, k(gun ? `round_${weapon}` : sling ? "stone" : "arrow_stone"), 20);
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
@@ -926,11 +932,15 @@ if (import.meta.main) {
       }
       app.view.thirdPerson = args.includes("--third");
       app.controls.yaw = args.includes("--third") ? 0.5 : 0;
-      app.controls.pitch = close ? 0.02 : -0.02;
+      app.controls.pitch = close ? 0.02 : flare ? 0.9 : -0.02;
       run(200);
       app.controls.mouseButton(0, true);
       if (close) run(260);
-      else if (gun) run(1000 / 60);
+      else if (flare) {
+        run(1000 / 10);
+        app.controls.mouseButton(0, false);
+        run(2000);
+      } else if (gun) run(1000 / 60);
       else {
         run(1400);
         if (what === "loosed" || what === "slung") {
@@ -1079,6 +1089,7 @@ if (import.meta.main) {
       houseScene(view, arg("house") ?? "wood");
       houseView(view, arg("house") ?? "wood", look);
     }
+    if (args.includes("--slopes")) sceneLabels.splice(0, sceneLabels.length, ...slopesScene(view, arg("slopes") ?? "scene", arg("from") === "far" ? "far" : "near"));
     if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
     if (args.includes("--ragdoll")) ragdollScene(view, Number(arg("ragdoll") ?? 4));
     if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
@@ -1093,6 +1104,12 @@ if (import.meta.main) {
       statesScene(view, arg("states") ?? "knockout", Number(arg("tick") ?? 400), (Number(arg("face") ?? -90) * Math.PI) / 180, dodo?.kind === "creature" ? dodo.regions.map((region) => region.sample) : []);
     }
     if (args.includes("--poses")) posesScene(view, Number(arg("tick") ?? 0), Number(arg("poses") ?? 0) || 0, (Number(arg("face") ?? 90) * Math.PI) / 180);
+    if (saddles) {
+      // In the colours its asset is reviewed in.
+      const own = (await findAssets(source)).find((a) => a.id === species)?.spec;
+      const colors = own?.kind === "creature" ? own.regions.map((region) => region.sample) : [];
+      sceneLabels.splice(0, sceneLabels.length, ...saddlesScene(view, species, saddleOf(view.reg), Number(arg("tick") ?? 200), args.includes("--close") || args.includes("--levels") ? (arg("close")?.startsWith("--") === false ? arg("close")! : "ridden, biting") : "", colors));
+    }
     const used = arg("used")?.split(",").map(Number);
     if (used) useUp(view, used[0]!, used[1]!);
     const grow = arg("grow")?.split(",") ?? [];
@@ -1102,6 +1119,41 @@ if (import.meta.main) {
   };
   const graphics = arg("graphics");
   const sequence = arg("details");
+  // A creature in its saddle: the raptor's made in code, or with "own" whatever its species' asset made.
+  const saddles = arg("saddles");
+  if (saddles !== undefined && !["worn", "saddled", "both", "own"].includes(saddles)) throw new Error(`--saddles takes worn, saddled, both or own, not "${saddles}"`);
+  const species = arg("species") ?? "core:raptor";
+  const saddleOf = (reg: Registry): string => reg.ids[reg.saddleFits.findIndex((fits) => fits === reg.index.get(species))] ?? "";
+  const extra = saddles === undefined || saddles === "own" ? [] : saddleMeshes(frozenPack(), saddles as Ways);
+  if (saddles !== undefined && args.includes("--levels")) {
+    // The one near, ridden, at each level of its mesh in turn, side by side, on one tier.
+    const tier = graphics ?? "medium";
+    const files = await gameFiles(source, undefined, extra);
+    // The saddled model where the pack has one, which is drawn in place of the body; else the body, with its worn saddle.
+    const meshId = files.manifest.meshes.some((m) => m.id === `${species}/saddled`) ? `${species}/saddled` : species;
+    const mesh = files.manifest.meshes.findIndex((m) => m.id === meshId);
+    const count = files.manifest.meshes[mesh]!.levels.length;
+    const [W, H] = [w! * count, h!];
+    const pixels = new Uint8ClampedArray(W * H * 4);
+    for (let level = 0; level < count; level++) {
+      const view = provingView(w, h, {}, files, mapFile);
+      view.scene.assets.tier = tierOf(tier);
+      view.scene.viewHeight = h!;
+      await setup(view);
+      atLevel(view.scene.assets, view, mesh, level, h!);
+      settle(view);
+      const p = view.scene.packet;
+      const drawnAt = [...Array(p.drawCount).keys()].filter((d) => p.drawMesh[d] === mesh).map((d) => p.drawLod[d]!);
+      for (let y = 0; y < h!; y++) pixels.set(view.raster.color.subarray(y * w! * 4, (y + 1) * w! * 4), (y * W + level * w!) * 4);
+      label(pixels, W, `level ${drawnAt[0] ?? "-"}, ${files.manifest.meshes[mesh]!.levels[drawnAt[0] ?? 0]!.tris} triangles`, level * w! + 8, 8);
+    }
+    label(pixels, W, `${meshId} with ${saddles === "own" ? "its own saddle" : saddles}, ${tier}`, 8, H - 22);
+    const out = resolve(arg("out") ?? `artifacts/saddles-${saddles}-levels-${tier}.png`);
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(W, H, pixels));
+    console.log(out);
+    process.exit(0);
+  }
   if (sequence !== undefined) {
     // A dodo's details as they play, frames at moments after the occasion, from 3 m and from 20 m, on one tier.
     if (!(DETAIL_SEQUENCES as readonly string[]).includes(sequence)) throw new Error(`--details takes ${DETAIL_SEQUENCES.join(", ")}, not "${sequence}"`);
@@ -1140,7 +1192,7 @@ if (import.meta.main) {
     const names = graphics === "all" ? TIERS.map((t) => t.name) : [graphics];
     for (const name of names) if (!TIERS.some((t) => t.name === name)) throw new Error(`--graphics takes ${TIERS.map((t) => t.name).join(", ")} or all, not "${name}"`);
     const t0 = performance.now();
-    const files = await gameFiles(source);
+    const files = await gameFiles(source, undefined, extra);
     console.log(`asset files from ${relative(process.cwd(), source) || "."}: ${files.manifest.textures?.length ?? 0} textures, ${(files.files.reduce((n, f) => n + f.length, 0) / 1048576).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms`);
     const across = names.length > 1 ? 2 : 1;
     const [W, H] = [w! * across, h! * Math.ceil(names.length / across)];
@@ -1162,7 +1214,10 @@ if (import.meta.main) {
         if (cw <= 0.05) continue;
         const px = (((m[0]! * rx + m[4]! * ry + m[8]! * rz) / cw) * 0.5 + 0.5) * w!;
         const py = (0.5 - ((m[1]! * rx + m[5]! * ry + m[9]! * rz) / cw) * 0.5) * h!;
-        label(pixels, W, text, Math.round(ox + px - text.length * (GLYPH_WIDTH + 1)), Math.round(oy + py));
+        // Words that would fall off the picture are left out.
+        const lx = Math.round(ox + px - text.length * (GLYPH_WIDTH + 1));
+        if (lx < ox + 2 || lx + text.length * (GLYPH_WIDTH + 1) * 2 > ox + w! - 2 || py < 2 || py + (GLYPH_HEIGHT + 2) * 2 > h!) continue;
+        label(pixels, W, text, lx, Math.round(oy + py));
       }
       const p = view.scene.packet;
       const r = view.scene.assets.residency;
