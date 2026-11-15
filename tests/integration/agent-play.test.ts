@@ -276,15 +276,17 @@ test("attack knocks a dodo out with bare hands and then kills it, and the dead o
   expect(await rows(p, "body")).toEqual([]);
 });
 
-test("a tame dodo is picked up, put down and ordered, and an egg is taken up", async () => {
+test("a dodo, wild or tame, is picked up and put down, a tame one is ordered, and an egg is taken up", async () => {
   const p = play();
   for (const line of ["enablecheats", "destroywilddinos", "spawn dodo 1"]) expect((await p.call("console", { line })).state).toBe("done");
   p.run(300);
   const id = (await rows(p, "creature"))[0]![0] as string;
   const e = Number(id.slice(1));
   const rec = p.h.host.records.byPid.get(p.h.world.ents.pid[e]!)!;
-  // A wild one is not picked up. Tamed, as forcetame tames the one looked at, it is.
-  expect((await p.call("pick_up", { id })).state).toBe("blocked");
+  // A wild one is picked up and set down as a tame one is. Tamed, as forcetame tames the one looked at, it is hers to order.
+  expect(await p.call("pick_up", { id })).toMatchObject({ state: "done", holding: "dodo" });
+  p.run(300);
+  expect(await p.call("put_down")).toMatchObject({ state: "done", set_down: true });
   expect(p.h.host.taming.give(rec, p.rec, 0, "forced")).toBe(true);
   p.run(300);
   expect((await rows(p, "creature"))[0]!.slice(6)).toEqual(["level 1", "yours"]);
