@@ -377,7 +377,7 @@ const NEAR = 4;
 const CLEAR_OF = 12;
 
 /** The sky material's textures as the rgba variant sends them, in the frame given: every picture, as `fill` in the shell takes them. */
-function sendPictures(p: FramePacket, pack: Uint8Array): void {
+export function sendPictures(p: FramePacket, pack: Uint8Array): void {
   const parsed = parsePack(pack);
   const manifest = describePack(parsed, { name: "", bytes: pack.length });
   const pictures = skyPictures(RGBA_TOP);
@@ -415,7 +415,7 @@ function rayOf(cam: Camera): (x: number, y: number) => number[] {
 }
 
 /** A frame's light shown as the GPU shows it, from the rasterizer's colour at a pixel `rel` metres off: the colour back to light, the twin's air, and shown again. Null over the tone curve's knee. */
-function hazedShown(c: ArrayLike<number>, rel: number[], block: Float32Array): number[] | null {
+export function hazedShown(c: ArrayLike<number>, rel: number[], block: Float32Array): number[] | null {
   const e = block[FRAME.exposure]!;
   const lin = [0, 1, 2].map((k) => srgbToLinear(c[k]! / 255));
   if (Math.max(...lin) >= KNEE) return null;

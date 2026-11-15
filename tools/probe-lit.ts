@@ -17,11 +17,12 @@ import { shadowCheck } from "./probe-lit/shadow.ts";
 import { topFirst, type Device, type LitCheck, type Readback, type Shot } from "./probe-lit/shot.ts";
 import { skyCheck } from "./probe-lit/sky.ts";
 import { terrainCheck } from "./probe-lit/terrain.ts";
+import { waterCheck } from "./probe-lit/water.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck, skyCheck, shadowCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck, skyCheck, shadowCheck, waterCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
@@ -126,10 +127,10 @@ function groundBytes(hf: Heightfield): Uint8Array {
   return out;
 }
 
-/** Runs every check's shots in Chrome and judges them. True if everything passed. */
-export async function litProbe(chrome: string): Promise<boolean> {
+/** Runs the checks' shots in Chrome, every check's unless `checks` says which, and judges them. True if everything passed. */
+export async function litProbe(chrome: string, checks: readonly LitCheck[] = CHECKS): Promise<boolean> {
   const shots: Shot[] = [];
-  for (const check of CHECKS) {
+  for (const check of checks) {
     const t0 = performance.now();
     const made = await check.shots();
     shots.push(...made);
@@ -186,7 +187,7 @@ export async function litProbe(chrome: string): Promise<boolean> {
   for (const e of report.errors) console.log(`page error: ${e}`);
   let ok = report.errors.length === 0;
   const back: Readback = { pixels: (key, frame) => pixels.get(`${key}/${frame}`) ?? null, device: d };
-  for (const check of CHECKS) {
+  for (const check of checks) {
     const j = check.judge(back);
     console.log(`\n${check.name}: ${j.ok ? "ok" : "FAIL"}`);
     for (const line of j.lines) console.log(`  ${line}`);
