@@ -9,7 +9,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import raptor from "../../assets/source/core/creatures/raptor/asset.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE, defaultPalette } from "../../shared/pack/palette.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -32,6 +31,16 @@ export const SADDLE_OBJECT = "Saddle";
 export const SADDLED_OBJECT = "Velociraptor_saddled";
 /** What a pack may hold of the raptor's saddle: its worn mesh, its saddled model, or both, where the saddled model wins. */
 export type Ways = "worn" | "saddled" | "both";
+
+/**
+ * The raptor's asset.ts as far as these need it (assets/source/core/creatures/raptor/asset.ts and dino.ts): its skeleton
+ * as its pack has it, its colour regions by the materials that take them, and its triangle budgets.
+ */
+const raptor = {
+  skeleton: { id: "dino", root: "Body", drop: /^root$|_end$/, reparent: { "BackFoot.L": "BackLowLeg.L", "BackFoot.R": "BackLowLeg.R" } },
+  regions: [{ name: "back", material: "Brown", sample: 5 }, { name: "belly", material: "LightBrown", sample: 15 }, { name: "claws", material: "Black", sample: 11 }],
+  budgets: { triangles: [1500, 750, 375, 190, 95] },
+} satisfies Partial<CreatureAsset>;
 
 const linear = (byte: number): number => (byte / 255 <= 0.04045 ? byte / 255 / 12.92 : Math.pow((byte / 255 + 0.055) / 1.055, 2.4));
 const material = (name: string, rgb: readonly [number, number, number]) => ({ name, pbrMetallicRoughness: { baseColorFactor: [...rgb.map(linear), 1] } });
@@ -130,6 +139,7 @@ export function saddleGlb(pack: Pack, saddles = true): Uint8Array {
 /** The raptor's asset.ts as an art maker would write it for `ways`: in metres, the model above, and nothing but its saddle besides. */
 export function saddleAsset(ways: Ways): CreatureAsset {
   return {
+    kind: "creature",
     ...raptor,
     source: { scripts: [] },
     scale: 1,
@@ -139,7 +149,6 @@ export function saddleAsset(ways: Ways): CreatureAsset {
     clips: [],
     gaits: {},
     feet: [],
-    ragdoll: undefined,
     ...(ways !== "saddled" ? { worn: [{ item: SADDLE, object: SADDLE_OBJECT, budgets: { triangles: [60] } }] } : {}),
     ...(ways !== "worn" ? { saddled: { objects: [SADDLED_OBJECT], budgets: raptor.budgets } } : {}),
   };

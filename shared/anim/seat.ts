@@ -1,6 +1,7 @@
 // Where a rider sits on its mount: in the seat socket's whole frame on the mount as it is posed, so a rider leans,
 // pitches and banks as the seat does. The client draws a rider so (client/core/render/characters.ts).
 
+import { detCos, detSin } from "../math/scalar.ts";
 import type { Socket } from "./human.ts";
 import { boneToModel, type Solved } from "./skeleton.ts";
 
@@ -29,8 +30,8 @@ export function seatFrame(solved: Solved, socket: Socket, x: number, y: number, 
   const mx = socketAt[0]! - r01 * SEAT_DROP;
   const my = socketAt[1]! - r11 * SEAT_DROP;
   const mz = socketAt[2]! - r21 * SEAT_DROP;
-  const s = Math.sin(yaw);
-  const c = Math.cos(yaw);
+  const s = detSin(yaw);
+  const c = detCos(yaw);
   out[0] = x + c * mx + s * mz;
   out[1] = y + my;
   out[2] = z + c * mz - s * mx;

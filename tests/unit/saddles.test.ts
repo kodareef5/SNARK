@@ -10,7 +10,6 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_ONE_BONE, DRAW_SKINNED, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene, bodySeed } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
-import { DINO } from "../../assets/source/core/creatures/dino.ts";
 import { creaturePose } from "../../shared/anim/creature.ts";
 import { B_HIPS } from "../../shared/anim/human.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
@@ -59,8 +58,16 @@ function convert(glb: Uint8Array, spec: CreatureAsset): Built {
 test("an asset names a worn saddle and a saddled model, and the build makes each a mesh of its own on the body's rig, with its own levels and colours", () => {
   const pack = frozenPack();
   const raptor = unpackMeshes(pack).find((m) => m.id === RAPTOR)!;
-  // The raptor's own zones and seat, where the joints they name are in the model as the pack has it.
-  const fitted = { zones: DINO.zones.filter((z) => !("to" in z) || !z.to?.endsWith("_end")), sockets: DINO.sockets.filter((s) => s.name === "seat") };
+  // Some of the raptor's own zones and its seat (assets/source/core/creatures/dino.ts), fitted to its trunk, which the saddle lies on.
+  const trunk = ["Body", "Back", "Hips", "Torso", "Shoulders"];
+  const fitted: Partial<CreatureAsset> = {
+    zones: [
+      { zone: "torso", on: "Body", from: "Tail1", to: "Shoulders", covers: [...trunk, "BackLeg.L", "BackLeg.R", "FrontLeg.L", "FrontLeg.R"] },
+      { zone: "torso", on: "Neck", from: "Neck", to: "Head", covers: ["Neck"] },
+      { zone: "legL", on: "BackUpLeg.L", from: "BackUpLeg.L", to: "BackFoot.L", covers: ["BackUpLeg.L", "BackLowLeg.L", "BackFoot.L"] },
+    ],
+    sockets: [{ name: "seat", bone: "Torso", of: trunk, at: "top" }],
+  };
   const bare = convert(saddleGlb(pack, false), { ...saddleAsset("both"), worn: undefined, saddled: undefined, ...fitted });
   const both = convert(saddleGlb(pack), { ...saddleAsset("both"), ...fitted });
   expect([bare.faults, both.faults, both.warnings]).toEqual([[], [], []]);
