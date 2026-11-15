@@ -13,6 +13,12 @@ the cycle and the upstroke the rest, so the engine can blend fly, fly_fast and h
 together. The shoulder never lifts more than 40 degrees on the upstroke, the rest of the lift is at the elbow and in
 the finger's curl, and the head pitches no more than 15 degrees above the chest, so a seated rider keeps clear
 (ref/DESIGN.md, "The rider"). Each clip reports how far it stretches the neck, legs and planted arms.
+
+Ground clips start and end on STANCE, its hands planted where rig.py plants them; air clips leave and join the rest
+pose or the beat. A hand goes between the ground and the air through `free_hand`: its planted target is moved to
+where the free arm has the hand, and only there does the arm's reach let go or take hold, so nothing jumps. The neck
+and legs rest nearly straight, so a pose keeps the head a little closer than its rest place (`within_neck`) and the
+feet a little nearer the hips (`trailing`). ref/clips_move/preview.py draws every clip.
 """
 
 import math
@@ -46,17 +52,8 @@ STANCE_HAND = {}
 STANCE_ELBOW = {}
 _r = None
 
-# How the engine lifts a flyer as it takes off (shared/sim/character.ts, D497): it leaves the ground at
-# sqrt(2 x 12 x 1.5) = 6 m/s and slows at its 12 m/s2 flying acceleration to a hover 1.5 m up, in half a second.
-TAKE_OFF_SPEED = 6.0
-TAKE_OFF_RISE = 1.5
-
-
-def rise(f):
-    """How far the engine has lifted the body f frames into a take-off."""
-    a = TAKE_OFF_SPEED * TAKE_OFF_SPEED / (2.0 * TAKE_OFF_RISE)
-    t = min(f / rig.FPS, TAKE_OFF_SPEED / a)
-    return TAKE_OFF_SPEED * t - 0.5 * a * t * t
+# How far the engine has lifted the body f frames into a take-off.
+rise = rig.take_off_lift
 
 
 # =====================================================================================================================
@@ -195,8 +192,23 @@ def mrot(r3, side):
     return tuple(r3) if side == LEFT else (r3[0], -r3[1], -r3[2])
 
 
-def wing(fold=0.0, flap=0.0, sweep=0.0, twist=0.0, curl=0.0):
-    return {"fold": fold, "flap": flap, "sweep": sweep, "twist": twist, "curl": curl}
+def wing(fold=0.0, flap=0.0, sweep=0.0, twist=0.0, curl=0.0, via=None, skip=None):
+    """A wing as rig.Clip.wing takes it. With `via`, a fold past that value goes straight from the wing folded that
+    far to FOLD instead of on through TUCK: on the ground, from wings raised a quarter folded, the finger stays up
+    and folds onto the arm, where through TUCK it would swing down and back along the body first. With `skip`
+    (lo, hi), a fold between the two goes straight from one to the other, leaving TUCK out of the way."""
+    w = {"fold": fold, "flap": flap, "sweep": sweep, "twist": twist, "curl": curl}
+    if via is not None:
+        w["via"] = via
+    if skip is not None:
+        w["skip"] = skip
+    return w
+
+
+# Near the ground the wings open and fold this way: from FOLD to three quarters through TUCK, then straight to the
+# raised V of a little under a third and on, so the fingers rise and spread above the back and never cross over it,
+# and the skin never swings under the belly as it does through TUCK at three quarters.
+OPEN = (0.3, 0.75)
 
 
 def lift_tuck(p, side):
@@ -204,7 +216,14 @@ def lift_tuck(p, side):
     wing passing through it is turned leading edge down at the shoulder so the finger lies about level. Nothing at
     spread or fully folded, so a planted hand still finds its place."""
     w = p["wing_" + side]
-    w["twist"] -= max(0.0, chest_pitch(p) + 8.0) * math.sin(math.pi * min(1.0, max(0.0, w["fold"])))
+    fold, via, skip = min(1.0, max(0.0, w["fold"])), w.get("via"), w.get("skip")
+    if via is not None and fold > via:
+        tucked = math.sin(math.pi * via) * (1.0 - (fold - via) / (1.0 - via))
+    elif skip is not None and skip[0] < fold < skip[1]:
+        tucked = lerp(math.sin(math.pi * skip[0]), math.sin(math.pi * skip[1]), (fold - skip[0]) / (skip[1] - skip[0]))
+    else:
+        tucked = math.sin(math.pi * fold)
+    w["twist"] -= max(0.0, chest_pitch(p) + 8.0) * tucked
 
 
 def air(**over):
@@ -259,6 +278,13 @@ def _mix(a, b, s):
     if a is None or b is None:
         return b if s >= 0.5 else a
     if isinstance(a, dict):
+        paths = ("via", "skip")
+        if any(k in a or k in b for k in paths):
+            out = _mix({k: v for k, v in a.items() if k not in paths}, {k: v for k, v in b.items() if k not in paths}, s)
+            for k in paths:
+                if (a if s < 0.5 else b).get(k) is not None:
+                    out[k] = (a if s < 0.5 else b)[k]
+            return out
         return {k: _mix(a[k] if k in a else _zero(b[k]), b[k] if k in b else _zero(a[k]), s) for k in set(a) | set(b)}
     if isinstance(a, Vector):
         return a.lerp(b, s)
@@ -316,6 +342,17 @@ def on_neck(p, lean, ext, heading=0.0):
     return chain(p)["neck"] + d * (ext * NECK_LENGTH)
 
 
+def head_on_chest(p, lean, ext, heading=0.0, pitch=0.0, yaw=0.0, roll=0.0):
+    """The head placed and turned as on_neck and head_rot would place it, but in the chest's frame rather than the
+    root's: for a body that rolls and pitches about, so the neck does not have to make up the difference."""
+    c = chain(p)
+    a, h = math.radians(lean), math.radians(heading)
+    d = Vector((math.sin(a) * math.sin(h), math.cos(a), math.sin(a) * math.cos(h)))
+    p["head"] = c["neck"] + turned(c["turn"], d) * (ext * NECK_LENGTH)
+    e = (c["turn"] @ rot(pitch, yaw, roll)).to_euler("YXZ")
+    p["head_rot"] = (-math.degrees(e.x), math.degrees(e.z), math.degrees(e.y))
+
+
 def within_neck(p, head, lo=0.82, hi=0.975):
     """`head` moved along the line to the base of the neck so the neck reaches between `lo` and `hi` of its length:
     it neither folds on itself nor pulls straight. The neck rests nearly straight, so an air pose's head sits a
@@ -326,6 +363,21 @@ def within_neck(p, head, lo=0.82, hi=0.975):
     if lo <= reach <= hi:
         return Vector(head)
     return base + v.normalized() * (min(hi, max(lo, reach)) * NECK_LENGTH)
+
+
+def carried(p, point):
+    """Where a point that holds still against the chest in STANCE lies in pose p, and the chest's turn since STANCE:
+    a planted arm's elbow pole carried so, while the hand follows free_hand, bends the arm as the free arm is bent."""
+    cs, cp = chain(ground()), chain(p)
+    d = cp["turn"] @ cs["turn"].inverted()
+    return cp["chest"] + turned(d, Vector(point) - cs["chest"]), d
+
+
+def between_hands(a, b, s):
+    """A hand target (position, turn) moved from a toward b by s, the turn by the shortest way."""
+    q = rot(*a[1]).to_quaternion().slerp(rot(*b[1]).to_quaternion(), min(1.0, max(0.0, s)))
+    e = q.to_matrix().to_euler("YXZ")
+    return a[0].lerp(b[0], s), (-math.degrees(e.x), math.degrees(e.z), math.degrees(e.y))
 
 
 def lean_of(p, head):
@@ -363,17 +415,29 @@ def knee_ahead(p, side, foot, ahead=0.6, up=0.05):
 # Keying
 # =====================================================================================================================
 
-def key_wing(c, f, side, w, extra):
-    """rig.Clip.wing's fold, flap, sweep, twist and curl, then `extra` turns of single bones (as for the left wing; the
-    right is mirrored), each about its parent's rest axes."""
+def wing_turns(side, w, extra):
+    """Each wing bone's turn relative to its parent, by name without its side: rig.Clip.wing's fold, flap, sweep,
+    twist and curl, then `extra` turns of single bones (as for the left wing; the right is mirrored), each about its
+    parent's rest axes."""
     sign = 1.0 if side == LEFT else -1.0
     stroke = rot(roll=-w["flap"] * sign) @ rot(yaw=-w["sweep"] * sign) @ rot(pitch=w["twist"])
     fold = w["fold"]
+    via = w.get("via")
+    out = {}
+
+    def along(name, f):
+        if f <= 0.5:
+            return Quaternion().slerp(_r.tuck[name], f * 2.0)
+        return _r.tuck[name].slerp(_r.fold[name], f * 2.0 - 1.0)
+
+    skip = w.get("skip")
     for name in rig._WING_L:
-        if fold <= 0.5:
-            q = Quaternion().slerp(_r.tuck[name], fold * 2.0)
+        if via is not None and fold > via:
+            q = along(name, via).slerp(_r.fold[name], (fold - via) / (1.0 - via))
+        elif skip is not None and skip[0] < fold < skip[1]:
+            q = along(name, skip[0]).slerp(along(name, skip[1]), (fold - skip[0]) / (skip[1] - skip[0]))
         else:
-            q = _r.tuck[name].slerp(_r.fold[name], fold * 2.0 - 1.0)
+            q = along(name, fold)
         m = q.to_matrix()
         if side == RIGHT:
             m = rig._mirror_turn(m)
@@ -385,7 +449,32 @@ def key_wing(c, f, side, w, extra):
         e = extra.get(base)
         if e:
             m = rot(e[0], e[1] * sign, e[2] * sign) @ m
+        out[base] = m
+    return out
+
+
+def key_wing(c, f, side, w, extra):
+    for base, m in wing_turns(side, w, extra).items():
         c._rotate(f, base + "_" + side, m)
+
+
+def free_hand(p, side):
+    """Where the free arm of pose p puts the hand: (knuckle, (pitch, yaw, roll)) as a planted hand's target, so a
+    hand can be lifted from the ground or set down on it with no jump: its target moves between the ground and here,
+    and the reach lets go or takes hold only where the two are the same."""
+    turns = wing_turns(side, p["wing_" + side], p["wing_extra_" + side])
+    c = chain(p)
+    m = c["turn"]
+    pos = chest_point(p, _J["upper_arm_" + side])
+    for name, nxt in (("upper_arm", "forearm"), ("forearm", "hand")):
+        m = m @ turns[name]
+        pos = pos + turned(m, _J[nxt + "_" + side] - _J[name + "_" + side])
+    m = m @ turns["hand"]
+    knuckle = pos + turned(m, _T["hand_" + side] - _J["hand_" + side])
+    folded = _r.fold_world["hand_l"].to_matrix()
+    d = m @ (folded if side == LEFT else rig._mirror_turn(folded)).inverted()
+    e = d.to_euler("YXZ")
+    return knuckle, (-math.degrees(e.x), math.degrees(e.z), math.degrees(e.y))
 
 
 def key_hand(c, f, side, target, plant):
@@ -489,15 +578,17 @@ def make(r, name, frames, pose_at):
 # the cycle the downstroke takes; sweep: the wing's sweep forward (+) at the bottom of the stroke and back at the top,
 # about `swept`; flex: how far the wing folds at the middle of the upstroke, about `flexed`; twist: the leading edge's
 # turn down on the downstroke and up on the upstroke; lag: the share of the cycle the finger trails the arm by, and
-# curl how much of that it bends; elbow: degrees the forearm lifts the outer wing at the top of the upstroke; bob and
-# nod: the body's rise on the downstroke (metres) and its pitch (degrees).
+# curl how much of that it bends, `upcurl` times more on the way up, where the elbow leads and the finger follows;
+# elbow: degrees the forearm lifts the outer wing near the top of the upstroke, highest at `elbow_at`; lead: the share
+# of the cycle before the bottom that the wrist begins to fold; back: how much further than forward the wing sweeps
+# back as it recovers; bob and nod: the body's rise on the downstroke (metres) and its pitch (degrees).
 BEATS = {
-    "fly": dict(top=36.0, bottom=-38.0, down=0.55, sweep=5.0, swept=0.0, flex=0.12, flexed=0.0, twist=8.0, lag=0.09,
-                curl=0.55, elbow=16.0, bob=0.028, nod=2.0),
-    "fly_fast": dict(top=26.0, bottom=-30.0, down=0.5, sweep=3.0, swept=-9.0, flex=0.08, flexed=0.07, twist=6.0,
-                     lag=0.1, curl=0.45, elbow=10.0, bob=0.018, nod=1.2),
-    "hover": dict(top=38.0, bottom=-42.0, down=0.55, sweep=11.0, swept=0.0, flex=0.22, flexed=0.0, twist=14.0,
-                  lag=0.09, curl=0.5, elbow=20.0, bob=0.035, nod=3.0),
+    "fly": dict(top=36.0, bottom=-38.0, down=0.55, sweep=5.0, swept=0.0, flex=0.13, flexed=0.0, twist=8.0, lag=0.09,
+                curl=0.55, upcurl=0.8, elbow=16.0, elbow_at=0.86, lead=0.0, back=1.0, bob=0.055, nod=3.0),
+    "fly_fast": dict(top=18.0, bottom=-32.0, down=0.55, sweep=3.0, swept=-14.0, flex=0.08, flexed=0.12, twist=6.0,
+                     lag=0.1, curl=0.45, upcurl=0.5, elbow=4.0, elbow_at=0.88, lead=0.0, back=1.0, bob=0.035, nod=2.0),
+    "hover": dict(top=38.0, bottom=-42.0, down=0.55, sweep=11.0, swept=0.0, flex=0.32, flexed=0.0, twist=14.0,
+                  lag=0.09, curl=0.5, upcurl=0.6, elbow=20.0, elbow_at=0.9, lead=0.08, back=1.8, bob=0.06, nod=4.0),
 }
 
 
@@ -509,12 +600,15 @@ def beat(u, b):
     f = shoulder(u)
     slope = (shoulder(u + 0.01) - shoulder(u - 0.01)) / 0.02
     peak = 1.5 * (b["top"] - b["bottom"]) / b["down"]
-    curl = b["curl"] * (f - shoulder(u - b["lag"]))
+    rising = min(1.0, max(0.0, 2.0 * slope / peak))
+    curl = b["curl"] * (1.0 + b["upcurl"] * rising) * (f - shoulder(u - b["lag"]))
     twist = b["twist"] * slope / peak
-    sweep = b["swept"] + b["sweep"] * math.sin(2.0 * math.pi * (u - 0.05))
-    up = 0.0 if u < b["down"] else math.sin(math.pi * (u - b["down"]) / (1.0 - b["down"]))
+    swing = math.sin(2.0 * math.pi * (u - 0.05))
+    sweep = b["swept"] + b["sweep"] * swing * (b["back"] if swing < 0.0 else 1.0)
+    start = b["down"] - b["lead"]
+    up = 0.0 if u < start else math.sin(math.pi * (u - start) / (1.0 - start))
     flex = b["flexed"] + b["flex"] * up ** 1.5
-    elbow = b["elbow"] * Keys([(0.0, 0.55), (0.18, 0.0), (b["down"], -0.15), (0.93, 1.0)], period=1.0)(u)
+    elbow = b["elbow"] * Keys([(0.0, 0.55), (0.18, 0.0), (b["down"], -0.15), (b["elbow_at"], 1.0)], period=1.0)(u)
     extra = {"forearm": (0.0, 0.0, -elbow)}
     rise_ = b["bob"] * Keys([(0.08, -1.0), (b["down"] + 0.07, 1.0)], period=1.0)(u)
     nod = b["nod"] * Keys([(0.12, -1.0), (b["down"], 1.0)], period=1.0)(u)
@@ -526,37 +620,52 @@ def beat(u, b):
 # =====================================================================================================================
 
 def glide(r):
-    """Wings flat and still in the shallow M, the tips drooping a little and lifting with each gust; the body rides
-    small bumps, rolls and pitches, which the wings answer by twisting one against the other; the head holds level
-    and looks about, the legs trail."""
+    """Wings broad and still in the shallow M, riding the air: one gust rolls it, the wings answer and it settles and
+    holds; later it looks down to one side, holds the look and looks ahead again. The head holds level against the
+    roll, the legs trail."""
     name = "glide"
     N = rig.CLIPS[name]["frames"]
 
+    # A gust under the right wing rolls it over to the left; the wings answer, the left twisting up and its tip lifting,
+    # and it is level again and still by 30. Later it looks down to its left, holds, and looks ahead again.
+    gust_roll = Keys([(0, 0.0), (14, 0.0), (18, 4.0), (22, 1.2), (26, -0.4), (30, 0.0), (N - 1, 0.0)], period=N)
+    look = Keys([(0, 0.0), (58, 0.0), (63, 24.0), (73, 26.0), (79, 0.0), (N - 1, 0.0)], period=N)
+    look_down = Keys([(0, 0.0), (58, 0.0), (63, 1.0), (73, 1.0), (79, 0.0), (N - 1, 0.0)], period=N)
+
     def roll_at(t):
-        return loop_sine(t, N, [(2.4, 1, 0.0), (0.9, 3, 0.0), (0.4, 5, 0.0)])
+        return gust_roll(t) + loop_sine(t, N, [(0.8, 1, 0.0)])
+
+    # The neck rests nearly straight, where the smallest move of the head swings it about: from the rest pose at the
+    # loop's seam it eases the head in a little, and out again.
+    rest_base = chain(air())["neck"]
+    rest_reach = (REST_HEAD - rest_base).length / NECK_LENGTH
+    ease = Keys([(0, 0.0), (12, 1.0), (N - 12, 1.0)], period=N)
 
     def at(t):
         roll = roll_at(t)
-        pitch = loop_sine(t, N, [(1.2, 2, 0.0), (0.5, 5, 0.0)])
-        gust = loop_sine(t, N, [(1.0, 3, 0.0), (0.6, 4, 0.0)])
+        pitch = loop_sine(t, N, [(0.6, 2, 0.0)]) + 0.8 * gust_roll(t - 2.0) / 4.0
+        bump = loop_sine(t, N, [(1.0, 3, 0.0)])
         p = air()
-        p["body"] = REST_BODY + Vector((0.0, 0.012 * gust, 0.0))
-        p["body_rot"] = (pitch, loop_sine(t, N, [(1.0, 1, 0.0)]), roll)
-        # The wing on the dropping side twists its leading edge up to lift itself, the other down.
-        steer = 6.0 * (roll_at(t + 2.0) - roll_at(t - 2.0)) / 4.0
-        droop = 1.5 * (1.0 - math.cos(4.0 * math.pi * t / N))
+        p["body"] = REST_BODY + Vector((0.0, 0.006 * bump + 0.01 * gust_roll(t - 1.0) / 4.0, 0.0))
+        p["body_rot"] = (pitch, loop_sine(t, N, [(0.6, 1, 0.0)]), roll)
+        # The wing on the dropping side twists its leading edge up to lift itself, the other down, and its tip lifts.
+        steer = 8.0 * (roll_at(t + 2.0) - roll_at(t - 2.0)) / 4.0
+        droop = 1.2 * (1.0 - math.cos(2.0 * math.pi * t / N))
         for s in "lr":
             sign = 1.0 if s == LEFT else -1.0
-            p["wing_" + s] = wing(flap=1.5 * gust - 0.6 * sign * roll, twist=sign * steer + 0.5 * gust,
-                                  curl=droop - 2.0 * gust, sweep=loop_sine(t, N, [(1.2, 2, 0.0)]))
+            correct = max(0.0, sign * gust_roll(t - 1.0)) / 4.0
+            p["wing_" + s] = wing(flap=0.8 * bump - 0.6 * sign * roll, twist=sign * steer, curl=droop - 5.0 * correct,
+                                  sweep=loop_sine(t, N, [(0.8, 2, 0.0)]))
             # The legs rest straight, so they ride with the hips; the feet trim a little.
             p["foot_" + s] = body_point(p, REST_FOOT[s])
-            p["foot_rot_" + s] = (pitch + 3.0 * gust, 0.0, 0.0)
-        # The head holds level against the roll and looks about.
-        look = loop_sine(t, N, [(9.0, 1, 0.0), (3.0, 2, 0.0)])
-        p["head"] = within_neck(p, REST_HEAD + Vector((0.004 * look, -0.012 * gust, 0.0)), hi=0.997)
-        p["head_rot"] = (-pitch, look, -0.8 * roll)
-        p["neck"] = [(0.0, 0.15 * look, -0.2 * roll)] * 4
+            p["foot_rot_" + s] = (pitch + 2.0 * bump, 0.0, 0.0)
+        # The head holds level against the roll, and turns more than the neck does when it looks.
+        lk = look(t)
+        d = turned(rot(yaw=0.1 * lk), REST_HEAD - rest_base).normalized()
+        p["head"] = chain(p)["neck"] + d * (lerp(rest_reach, 0.972, ease(t)) * NECK_LENGTH)
+        p["head_rot"] = (-pitch - 12.0 * look_down(t), lk, -0.8 * roll + 0.25 * lk)
+        p["neck"] = [(-3.0 * ease(t), 0.08 * lk, -0.2 * roll), (-2.0 * ease(t), 0.08 * lk, -0.2 * roll),
+                     (2.0 * ease(t), 0.08 * lk, -0.2 * roll), (3.0 * ease(t), 0.08 * lk, -0.2 * roll)]
         p["tail"] = (-1.0 * pitch, 0.0)
         return p
 
@@ -601,9 +710,10 @@ def fly_fast(r):
     def at(t):
         p = flapping(t, N, BEATS[name])
         a, y, r3 = p["body_rot"]
-        p["body_rot"] = (a - 3.0, y, r3)
-        p["head"] = within_neck(p, REST_HEAD + Vector((0.0, -0.06, 0.05)))
-        p["head_rot"] = (-6.0, 0.0, 0.0)
+        p["body_rot"] = (a - 5.0, y, r3)
+        p["head"] = within_neck(p, REST_HEAD + Vector((0.0, -0.10, 0.16)))
+        p["neck"] = [(6.0, 0.0, 0.0), (4.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (-4.0, 0.0, 0.0)]
+        p["head_rot"] = (-7.0, 0.0, 0.0)
         for s in "lr":
             p["foot_" + s] = trailing(p, s, reach=0.975, droop=-6.0, splay=-2.0)
         return p
@@ -629,9 +739,9 @@ def hover_at(u, lift=0.0):
         p["wing_" + s] = dict(w)
         p["wing_extra_" + s] = dict(extra)
         lag = beat(u - 0.12, b)[2]
-        foot = leg_hanging(p, s, 0.50, 0.10, 0.06) + Vector((0.0, -0.4 * lag, 0.0))
+        foot = leg_hanging(p, s, 0.46, 0.10, 0.06) + Vector((0.0, -0.9 * lag, 0.0))
         p["foot_" + s] = foot
-        p["foot_rot_" + s] = (80.0 + 60.0 * lag, 0.0, 0.0)
+        p["foot_rot_" + s] = (80.0 + 120.0 * lag, 0.0, 0.0)
         p["knee_" + s] = knee_ahead(p, s, foot)
         p["talons_" + s] = 0.25
     p["neck"] = [(-12.0, 0.0, 0.0), (-6.0, 0.0, 0.0), (8.0, 0.0, 0.0), (10.0, 0.0, 0.0)]
@@ -651,8 +761,9 @@ def hover(r):
 
 
 def dive(r):
-    """A steep dive: the wings half folded, swept back and raised in a narrow W, the finger tips quivering in the
-    rushing air; the head stretched along the line of the dive; the legs pressed back."""
+    """A steep dive: the wings flexed at the wrist, swept back and raised into an arrow, the finger tips quivering in
+    the rushing air; the head stretched along the line of the dive; the legs pressed back. The engine pitches the root
+    down the dive; the clip adds only a little."""
     name = "dive"
     N = rig.CLIPS[name]["frames"]
 
@@ -664,7 +775,10 @@ def dive(r):
         p["body_rot"] = (-10.0 + loop_sine(t, N, [(0.8, 2, 0.0)]), 0.0, roll)
         for s in "lr":
             sign = 1.0 if s == LEFT else -1.0
-            p["wing_" + s] = wing(fold=0.40, flap=12.0 - sign * 0.8 * roll, sweep=-16.0, twist=-2.0 + sign * 0.5 * roll, curl=-4.0 + 1.5 * q)
+            p["wing_" + s] = wing(fold=0.08, flap=4.0 - sign * 0.8 * roll, sweep=-10.0, twist=-3.0 + sign * 0.5 * roll,
+                                  curl=-2.0 + 1.5 * q)
+            # The elbows and wrists draw the span in and back, so the tips trail behind like an arrow's fletching.
+            p["wing_extra_" + s] = {"forearm": (0.0, 28.0, 0.0), "hand": (0.0, 30.0, 0.0)}
             p["foot_" + s] = trailing(p, s, reach=0.975, droop=-8.0, splay=-3.0)
             p["knee_" + s] = body_point(p, REST_KNEE[s])
             p["foot_rot_" + s] = (-10.0, 0.0, 0.0)
@@ -678,29 +792,36 @@ def dive(r):
 
 
 def take_off(r):
-    """From the crouch: it sinks onto its arms, kicks off with the legs, vaults on the arms, and the wings snap open
-    above it and give one deep stroke that carries it up into the hover. The engine lifts the body 1.5 m from its
-    first tick (rise: 0.37 m by frame 2, 0.96 by frame 6, all of it by frame 15), so the push is quick and the clip's
-    own lift, from the crouch to the hover's height, comes on top of it."""
+    """A quadrupedal launch from the crouch: the body loads down onto the arms, the legs kick it forward and up, the
+    arms straighten and vault it off the ground last, and the wings open up over the back and give the deepest stroke
+    of all, which lifts it past the hover's height; it settles into the hover. The engine lifts the body 1.5 m from
+    its first tick (rig.take_off_lift: 0.37 m by frame 2, 0.96 by frame 6, all of it by frame 15): the hands and feet
+    hold the ground it leaves for the push, so in the clip that ground falls away under it as it rises. It starts
+    exactly on STANCE, so it needs no fade from what played before, and the planted hands and feet hold only if it
+    has none."""
     name = "take_off"
     N = rig.CLIPS[name]["frames"]
-    g = lambda t: 0.0  # noqa: E731  the clip never goes under its ground (rig.check_clip)
-    # The first stroke lifts it past the engine's hover height, and it settles into the hover as the wings rise.
-    world_y = Keys([(0, STANCE_BODY.y), (2, STANCE_BODY.y + 0.03), (4, 0.56), (6, 0.66), (9, 0.72), (12, 0.82),
-                    (17, 1.18), (21, 1.34), (26, 1.26), (31, 1.0), (N - 1, HOVER_BODY.y)])
-    body_z = Keys([(0, STANCE_BODY.z), (2, STANCE_BODY.z - 0.02), (6, -0.30), (12, -0.38), (N - 1, HOVER_BODY.z)])
-    pitch = Keys([(0, S["body"]["pitch"]), (2, S["body"]["pitch"] + 2.0), (6, 50.0), (10, 52.0), (16, 48.0),
-                  (N - 1, HOVER_PITCH)])
-    flat = Keys([(0, 0.0), (2, 0.0), (10, 1.0)])
-    fold = Keys([(0, 1.0), (4, 1.0), (8, 0.45), (11, 0.1), (13, 0.02)])
-    open_flap = Keys([(0, 0.0), (4, 4.0), (9, 30.0), (12, 38.0)])
-    feet_off, hands_off, stroke0 = 3.0, 5.0, 12.0
+    g = rise
+    # The pelvis over the ground it leaves; in the clip, that less the engine's lift.
+    world_y = Keys([(0, STANCE_BODY.y), (2, STANCE_BODY.y - 0.04), (4, 0.45), (6, 0.66), (8, 0.99), (11, 1.52),
+                    (14, 1.98), (17, 2.32), (21, 2.62), (25, 2.76), (29, 2.64), (33, 2.42),
+                    (N - 1, HOVER_BODY.y + rig.TAKE_OFF["rise"])])
+    body_z = Keys([(0, STANCE_BODY.z), (2, STANCE_BODY.z - 0.03), (4, STANCE_BODY.z + 0.04), (8, -0.30), (14, -0.40),
+                   (N - 1, HOVER_BODY.z)])
+    pitch = Keys([(0, S["body"]["pitch"]), (2, S["body"]["pitch"] - 2.0), (4, 46.0), (6, 52.0), (10, 54.0), (17, 50.0),
+                  (25, 46.0), (N - 1, HOVER_PITCH)])
+    flat = Keys([(0, 0.0), (3, 0.0), (12, 1.0)])
+    # The feet leave the ground first, at feet_off; the arms push on until hands_off, then the hands follow the free
+    # arms, which take over at `free`. The wings open from hands_off up over the back (OPEN), spread by stroke0.
+    feet_off, hands_off, free, stroke0 = 3.0, 6.0, 10.0, 16.0
+    fold = Keys([(0, 1.0), (hands_off, 1.0), (11, 0.5), (stroke0, 0.04)])
+    open_flap = Keys([(0, 0.0), (hands_off, 2.0), (11, 22.0), (stroke0, 38.0)])
     lean0, ext0 = lean_of(ground(), STANCE_HEAD)
     hv0 = hover_at(0.0)
     lean1, ext1 = lean_of(hv0, hv0["head"])
-    lean = Keys([(0, lean0), (2, lean0 + 6.0), (7, lean0 - 4.0), (16, lean1 + 3.0), (N - 1, lean1)])
-    ext = Keys([(0, ext0), (2, ext0 - 0.04), (7, 0.95), (16, ext1), (N - 1, ext1)])
-    into = Keys([(0, 0.0), (stroke0 + 2, 0.0), (20, 0.25), (26, 0.5), (N - 2, 1.0)])
+    lean = Keys([(0, lean0), (2, lean0 + 8.0), (6, lean0 - 4.0), (20, lean1 + 3.0), (N - 1, lean1)])
+    ext = Keys([(0, ext0), (2, ext0 - 0.04), (7, 0.95), (20, ext1), (N - 1, ext1)])
+    into = Keys([(0, 0.0), (stroke0 + 2, 0.0), (26, 0.3), (N - 3, 1.0)])
 
     def body_at(t):
         h = 1.0 - flat(t)
@@ -711,51 +832,53 @@ def take_off(r):
         p["chest"] = (S["chest"]["pitch"] * h - 8.0 * (1 - h), 0.0, 0.0)
         return p
 
-    shoulder0 = {s: chest_point(ground(), _J["upper_arm_" + s]) for s in "lr"}
-
     def at(t):
         p = body_at(t)
+        down = Vector((0.0, -g(t), 0.0))
         p["head"] = on_neck(p, lean(t), ext(t))
         p["head_rot"] = (-6.0 * smooth(t / 2.0) * (1.0 - smooth((t - 3.0) / 4.0)), 0.0, 0.0)
         p["neck"] = [(-6.0 * flat(t), 0.0, 0.0)] * 2 + [(6.0 * flat(t), 0.0, 0.0)] * 2
         for s in "lr":
             # The feet push until feet_off, rolling up onto the toes; then the legs, kicked out straight, swing down
             # and hang.
-            heel = smooth((t - 1.5) / 2.5)
+            heel = smooth((t - 1.0) / 2.0)
             planted = STANCE_FOOT[s] + Vector((0.0, -g(min(t, feet_off)) + 0.10 * heel, -0.03 * heel))
             if t <= feet_off:
                 p["foot_" + s] = planted
                 p["foot_rot_" + s] = (STANCE_FOOT_PITCH - 34.0 * heel, 0.0, 0.0)
-                p["knee_" + s] = STANCE_KNEE[s] + Vector((0.0, -g(t), 0.0))
+                p["knee_" + s] = STANCE_KNEE[s] + down
             else:
                 off = body_at(feet_off)
                 kick = planted - hip(off, s)
                 kick = kick.normalized() * min(kick.length, 0.95 * LEG_LENGTH)
-                s_ = smooth((t - feet_off) / 10.0)
-                hang = leg_hanging(p, s, 0.50, 0.10, 0.06)
+                s_ = smooth((t - feet_off) / 12.0)
+                hang = leg_hanging(p, s, 0.46, 0.10, 0.06)
                 p["foot_" + s] = (hip(p, s) + kick).lerp(hang, s_)
-                p["foot_rot_" + s] = (lerp(STANCE_FOOT_PITCH - 34.0, 80.0, smooth((t - feet_off) / 6.0)), 0.0, 0.0)
+                p["foot_rot_" + s] = (lerp(STANCE_FOOT_PITCH - 34.0, 80.0, smooth((t - feet_off) / 7.0)), 0.0, 0.0)
                 knee0 = STANCE_KNEE[s] + Vector((0.0, -g(feet_off), 0.0)) + (hip(p, s) - hip(off, s))
                 p["knee_" + s] = knee0.lerp(knee_ahead(p, s, p["foot_" + s]), s_)
-            # The hands hold the ground until hands_off and let go over three frames as the wings open.
-            moved = chest_point(p, _J["upper_arm_" + s]) - shoulder0[s]
-            held = STANCE_HAND[s] + Vector((0.0, -g(min(t, hands_off)), 0.0))
-            if t > hands_off:
-                held = held + moved - (chest_point(body_at(hands_off), _J["upper_arm_" + s]) - shoulder0[s])
-            p["hand_" + s] = (held, (0.0, 0.0, 0.0))
-            p["plant_" + s] = 1.0 - smooth((t - (hands_off - 0.5)) / 3.0)
-            p["elbow_" + s] = STANCE_ELBOW[s] + moved
-            p["wing_" + s] = wing(fold=fold(t), flap=open_flap(t),
-                                  curl=-10.0 * smooth((t - 6) / 4) * (1 - smooth((t - 12) / 4)))
+            p["wing_" + s] = wing(fold=fold(t), flap=open_flap(t), skip=OPEN,
+                                  curl=-10.0 * smooth((t - hands_off - 2.0) / 4) * (1 - smooth((t - stroke0) / 4)))
             lift_tuck(p, s)
+            # The hands hold the ground it leaves until hands_off, then follow the free arm, which takes over at
+            # `free`.
+            held = (STANCE_HAND[s] + Vector((0.0, -g(min(t, hands_off)), 0.0)), (0.0, 0.0, 0.0))
+            if t > hands_off:
+                # Off the ground, the straight arm rises with the shoulder before it folds.
+                pushed = body_at(hands_off)
+                held = (held[0] + chest_point(p, _J["upper_arm_" + s]) - chest_point(pushed, _J["upper_arm_" + s]), held[1])
+            k = smooth((t - hands_off) / (free - hands_off))
+            p["hand_" + s] = between_hands(held, free_hand(p, s), k)
+            p["elbow_" + s] = (STANCE_ELBOW[s] + down).lerp(carried(p, STANCE_ELBOW[s])[0], k)
+            p["plant_" + s] = 1.0 - smooth((t - free + 2.0) / 4.0)
             p["talons_" + s] = 0.25 * smooth((t - feet_off) / 8.0)
         if t >= stroke0:
-            # One stroke from the top, where the wings snap open, to the top again at the end, where the hover takes
-            # over: deeper and quicker than the hover's own.
+            # One stroke from the top, where the wings are open, to the top again at the end, where the hover takes
+            # over: quicker and deeper than the hover's own, the hardest pull of all.
             u = (t - stroke0) / (N - 1 - stroke0)
-            hv = hover_at(u, lift=world_y(t) - HOVER_BODY.y)
+            hv = hover_at(u, lift=world_y(t) - g(t) - HOVER_BODY.y)
             k = into(t)
-            w, extra, dy, nod = beat(u, dict(BEATS["hover"], down=0.42, bottom=-28.0))
+            w, extra, dy, nod = beat(u, dict(BEATS["hover"], down=0.42, bottom=-40.0))
             first = {s: mix(p["wing_" + s], w, smooth((t - stroke0) / 2.0)) for s in "lr"}
             p = mix(p, hv, k)
             for s in "lr":
@@ -768,47 +891,60 @@ def take_off(r):
 
 
 def land(r):
-    """Feet first at the moment it touches down: the legs reach forward with the heels down and skid, the wings flare
-    up and forward against the speed and fold fast as the body pitches forward onto the arms, the hands come down,
-    and it settles into the crouch with a dip and a look round."""
+    """Feet first at the moment it touches down: the legs reach forward with the heels down, take the weight deep and
+    skid, the chest carrying on forward over them; the wings flare up and forward against the speed, rise and fold as
+    the body pitches forward onto the arms; the hands come down, the shoulders settle onto them and the elbows give,
+    and it rises a little into the crouch, the head following a beat behind."""
     name = "land"
     N = rig.CLIPS[name]["frames"]
-    down = 12.0  # the frame the hands plant: the body is in STANCE and the wings folded
-    body_y = Keys([(0, 0.53), (3, 0.43), (6, 0.36), (9, 0.37), (down, STANCE_BODY.y), (16, STANCE_BODY.y - 0.035),
-                   (22, STANCE_BODY.y + 0.008), (28, STANCE_BODY.y), (35, STANCE_BODY.y)])
-    body_z = Keys([(0, -0.78), (3, -0.64), (6, -0.50), (down, STANCE_BODY.z), (16, STANCE_BODY.z + 0.02),
-                   (22, STANCE_BODY.z - 0.005), (28, STANCE_BODY.z), (35, STANCE_BODY.z)])
-    pitch = Keys([(0, 30.0), (3, 34.0), (7, 41.0), (down, S["body"]["pitch"]), (16, S["body"]["pitch"] - 3.0),
-                  (22, S["body"]["pitch"] + 0.8), (35, S["body"]["pitch"])])
-    bend = Keys([(0, 0.6), (5, 0.8), (down, 1.0), (35, 1.0)])
-    fold = Keys([(0, 0.0), (3, 0.04), (6, 0.25), (8, 0.5), (down, 1.0), (35, 1.0)])
-    flap = Keys([(0, 22.0), (2, 8.0), (5, 30.0), (8, 24.0), (down, 0.0)])
-    sweep = Keys([(0, 12.0), (3, 10.0), (7, 0.0), (down, 0.0)])
-    twist = Keys([(0, 14.0), (4, 6.0), (7, 0.0), (down, 0.0)])
+    # The free arms reach down as the wings fold; the hands take hold of the ground at `hold`, where the free arm has
+    # put them, and are on it at `down`.
+    hold, down = 16.0, 21.0
+    body_y = Keys([(0, 0.53), (3, 0.40), (6, 0.335), (9, 0.36), (12, 0.40), (hold, 0.42), (down, STANCE_BODY.y),
+                   (N - 1, STANCE_BODY.y)])
+    body_z = Keys([(0, -0.78), (3, -0.62), (6, -0.49), (9, -0.45), (down, STANCE_BODY.z + 0.02), (25, STANCE_BODY.z - 0.005),
+                   (30, STANCE_BODY.z), (N - 1, STANCE_BODY.z)])
+    pitch = Keys([(0, 30.0), (3, 36.0), (6, 40.0), (hold, 43.0), (down, S["body"]["pitch"]), (N - 1, S["body"]["pitch"])])
+    # The shoulders settle onto the planted arms, which give and then hold.
+    settle = Keys([(0, 0.0), (down - 1.0, 0.0), (down + 2.0, 1.0), (down + 6.0, -0.25), (down + 10.0, 0.05),
+                   (N - 1, 0.0)])
+    head_lag = lagging(lambda t: body_y(t) - 0.035 * settle(t), N - 1, False, 2.2, 0.45)
+    bend = Keys([(0, 0.6), (5, 0.8), (hold, 1.0), (N - 1, 1.0)])
+    fold = Keys([(0, 0.0), (3, 0.04), (7, 0.22), (12, 0.55, 0.075), (18, 1.0), (N - 1, 1.0)])
+    flap = Keys([(0, 22.0), (2, 8.0), (6, 30.0), (12, 18.0), (18, 0.0)])
+    sweep = Keys([(0, 12.0), (3, 10.0), (9, 0.0), (18, 0.0)])
+    twist = Keys([(0, 14.0), (4, 6.0), (9, 0.0), (18, 0.0)])
     skid = Keys([(0, -0.24), (2, -0.12), (5, -0.03), (8, 0.0)])
-    nod = Keys([(0, 0.0), (5, 0.0), (9, -1.0), (14, 0.5), (19, 0.0), (26, 0.0)])
-    look = Keys([(0, 0.0), (20, 0.0), (25, 22.0), (30, 20.0), (35, 0.0)])
+    nod = Keys([(0, 0.0), (7, 0.0), (12, -1.0), (down, 0.5), (24, 0.0), (28, 0.0)])
+    look = Keys([(0, 0.0), (23, 0.0), (28, 20.0), (31, 18.0), (N - 1, 0.0)])
 
     def at(t):
         b = bend(t)
+        st = settle(t)
         p = ground()
-        p["body"] = Vector((0.0, body_y(t), body_z(t)))
-        p["body_rot"] = (pitch(t), 0.0, 0.0)
+        p["body"] = Vector((0.0, body_y(t) - 0.035 * st, body_z(t)))
+        p["body_rot"] = (pitch(t) - 1.5 * st, 0.0, 0.0)
         p["spine"] = (S["spine"]["pitch"] * b, 0.0, 0.0)
-        p["chest"] = (S["chest"]["pitch"] * b + 6.0 * (1 - b), 0.0, 0.0)
+        p["chest"] = (S["chest"]["pitch"] * b + 6.0 * (1 - b) - 2.5 * st, 0.0, 0.0)
         n = nod(t)
         lk = look(t)
-        p["head"] = within_neck(p, STANCE_HEAD + Vector((0.0, -0.06 * n + 0.10 * (1 - b), 0.03 * n - 0.10 * (1 - b))))
+        lag = head_lag[min(int(round(t)), N - 1)]
+        p["head"] = within_neck(p, STANCE_HEAD + Vector((0.0, -0.06 * n + 0.10 * (1 - b) + 0.6 * lag,
+                                                         0.03 * n - 0.10 * (1 - b))))
         p["head_rot"] = (-5.0 * max(0.0, n), lk, 0.0)
         p["neck"] = [(0.0, 0.15 * lk, 0.0)] * 4
         for s in "lr":
             p["foot_" + s] = STANCE_FOOT[s] + Vector((0.0, 0.0, skid(t)))
             p["foot_rot_" + s] = (STANCE_FOOT_PITCH + 8.0 * (1.0 - smooth(t / 4.0)), 0.0, 0.0)
-            p["wing_" + s] = wing(fold=fold(t), flap=flap(t), sweep=sweep(t), twist=twist(t))
+            p["wing_" + s] = wing(fold=fold(t), flap=flap(t), sweep=sweep(t), twist=twist(t), skip=OPEN)
             lift_tuck(p, s)
-            p["plant_" + s] = smooth((t - (down - 2.0)) / 2.0)
-            if t < down - 2.0:
-                p["hand_" + s] = None
+            k = smooth((t - hold) / (down - hold))
+            if t < hold - 2.0:
+                p["hand_" + s], p["plant_" + s] = None, 0.0
+            else:
+                p["hand_" + s] = between_hands(free_hand(p, s), (STANCE_HAND[s], (0.0, 0.0, 0.0)), k)
+                p["elbow_" + s] = carried(p, STANCE_ELBOW[s])[0].lerp(STANCE_ELBOW[s], k)
+                p["plant_" + s] = smooth((t - hold + 2.0) / 2.0)
         p["tail"] = (10.0 * (1 - b), 0.0)
         return p
 
@@ -895,25 +1031,27 @@ def walk(r):
                      (td["foot_l"] + 6.5 - N, 1.0)], period=N)(t)
 
     def roll(t):
-        return 2.5 * math.cos(2.0 * math.pi * (t - 1.0) / N)
+        return 4.0 * math.cos(2.0 * math.pi * (t - 1.0) / N)
 
     def yaw(t):
-        return -3.0 * math.cos(2.0 * math.pi * (t - 1.5) / N)
+        return -4.0 * math.cos(2.0 * math.pi * (t - 1.5) / N)
 
-    ly = lagging(lambda t: 0.012 * bob(t), N, True, 2.5, 0.35)
+    ly = lagging(lambda t: 0.022 * bob(t), N, True, 2.5, 0.35)
+    # The shoulders drop onto each hand as it takes the weight, and are pushed up off it.
+    yield_ = Keys([(0, 0.0), (2, 1.0), (6, -0.3), (9, 0.0), (10, 0.0), (12, 1.0), (16, -0.3), (19, 0.0)], period=N)
 
     def at(t):
         f = int(round(t)) % N
         p = ground()
         b = bob(t)
-        p["body"] = WALK_BODY + Vector((-0.012 * roll(t) / 2.5, 0.012 * b, 0.0))
-        p["body_rot"] = (S["body"]["pitch"] - 3.0 + 1.2 * b, yaw(t), roll(t))
+        p["body"] = WALK_BODY + Vector((-0.014 * roll(t) / 4.0, 0.022 * b - 0.012 * yield_(t), 0.0))
+        p["body_rot"] = (S["body"]["pitch"] - 3.0 + 1.5 * b - 1.0 * yield_(t), yaw(t), roll(t))
         p["spine"] = (S["spine"]["pitch"], -0.3 * yaw(t), -0.3 * roll(t))
-        p["chest"] = (S["chest"]["pitch"] + 2.0 + 60.0 * ly[f], -0.4 * yaw(t), -0.5 * roll(t))
+        p["chest"] = (S["chest"]["pitch"] + 2.0 + 40.0 * ly[f] - 2.5 * yield_(t), -0.4 * yaw(t), -0.5 * roll(t))
         for side in "lr":
             sign = 1.0 if side == LEFT else -1.0
             ph = (t - td["hand_" + side]) % N
-            knuckle, hrot = gait_hand(ph, N, hand_stance, hand_z, STANCE_HAND[side].x + 0.02 * sign, 0.15, side)
+            knuckle, hrot = gait_hand(ph, N, hand_stance, hand_z, STANCE_HAND[side].x + 0.02 * sign, 0.20, side)
             p["hand_" + side] = (knuckle, mrot(hrot, side))
             ph = (t - td["foot_" + side]) % N
             ankle, pitch, talons = gait_foot(ph, N, foot_stance, foot_z, STANCE_FOOT[side].x, 0.12, 55.0, 25.0)
@@ -925,10 +1063,10 @@ def walk(r):
             p["elbow_" + side] = STANCE_ELBOW[side] + shoulder + Vector((0.0, 0.0, 0.3 * (knuckle.z - STANCE_HAND[side].z)))
         # The head rides level and steady, a little forward of the stance, swaying less than the shoulders.
         base = chain(p)["neck"]
-        p["head"] = within_neck(p, Vector((0.35 * base.x, STANCE_HEAD.y - 0.02 + 0.25 * 0.012 * b, STANCE_HEAD.z + 0.05)))
-        p["head_rot"] = (-2.0 + 30.0 * ly[f], 0.0, -0.3 * roll(t))
+        p["head"] = within_neck(p, Vector((0.35 * base.x, STANCE_HEAD.y - 0.02 + 0.25 * 0.022 * b, STANCE_HEAD.z + 0.05)))
+        p["head_rot"] = (-2.0 + 18.0 * ly[f], 0.0, -0.2 * roll(t))
         p["neck"] = [(0.0, -0.2 * yaw(t), 0.0)] * 4
-        p["tail"] = (2.0 + 200.0 * ly[f], -0.8 * yaw(t))
+        p["tail"] = (2.0 + 120.0 * ly[f], -0.8 * yaw(t))
         return p
 
     return make(r, name, N, at)
@@ -958,33 +1096,39 @@ def look_head(p, yaw, pitch=0.0, roll=0.0, lean=None, ext=None):
 
 
 def idle(r):
-    """Sitting up on its folded wings, breathing slowly, the weight shifting from side to side; it turns its head a
-    little one way, holds, glances the other, clacks its beak once, and settles its folded wings with a shrug."""
+    """Sitting up on its folded wings, breathing slowly, the weight shifting from side to side, and watchful as a
+    seabird is: the head flicks to look one way, holds still, flicks to the other and holds, tipped to look with one
+    eye, comes back and looks up; it clacks its beak twice, and settles its folded wings with a shiver and a shrug."""
     name = "idle"
     N = rig.CLIPS[name]["frames"]
     sway = Keys([(0, 0.0), (30, 1.0), (90, -1.0)], period=N)
-    yaw = Keys([(0, 0.0), (14, 0.0), (26, 16.0), (48, 18.0), (58, 17.0), (66, -9.0), (84, -11.0), (98, 0.0), (119, 0.0)],
-               period=N)
-    tilt = Keys([(0, 0.0), (14, 0.0), (28, 5.0), (50, 4.0), (66, -3.0), (84, -2.0), (98, 0.0)], period=N)
-    nod = Keys([(0, 0.0), (20, 0.0), (26, 2.5), (34, 0.0), (66, 0.0), (70, 3.0), (78, 0.0)], period=N)
-    clack = Keys([(0, 0.0), (86, 0.0), (88, 0.12), (90, 0.0), (92, 0.08), (94, 0.0)], period=N)
-    shrug = Keys([(0, 0.0), (102, 0.0), (106, 1.0), (110, -0.3), (114, 0.1), (118, 0.0)], period=N)
+    # Quick turns of a few frames and still holds between, as a bird's head moves.
+    yaw = Keys([(0, 0.0), (10, 0.0), (14, 30.0), (32, 32.0), (36, -24.0), (54, -26.0), (58, 2.0), (66, 0.0),
+                (119, 0.0)], period=N)
+    tilt = Keys([(0, 0.0), (10, 0.0), (14, 10.0), (32, 10.0), (36, -8.0), (54, -9.0), (58, 0.0)], period=N)
+    nod = Keys([(0, 0.0), (58, 0.0), (61, 7.0), (72, 7.0), (76, 0.0)], period=N)
+    clack = Keys([(0, 0.0), (64, 0.0), (66, 0.16), (68, 0.0), (70, 0.12), (72, 0.0)], period=N)
+    shrug = Keys([(0, 0.0), (92, 0.0), (96, 1.0), (102, 0.8), (106, -0.3), (110, 0.1), (114, 0.0)], period=N)
+    shiver = Keys([(0, 0.0), (94, 0.0), (96, 1.0), (104, 0.0)], period=N)
     lw = lagging(lambda t: 0.6 * shrug(t), N, True, 3.0, 0.3)
 
     def at(t):
         f = int(round(t)) % N
         w = sway(t)
+        sv = shiver(t) * math.sin(2.0 * math.pi * t / 3.0)
         p = ground()
-        p["body"] = STANCE_BODY + Vector((0.010 * w, 0.003 * shrug(t), 0.0))
-        p["body_rot"] = (S["body"]["pitch"], 0.6 * w, 1.2 * w)
+        p["body"] = STANCE_BODY + Vector((0.010 * w, 0.004 * shrug(t), 0.0))
+        p["body_rot"] = (S["body"]["pitch"], 0.6 * w + 0.03 * yaw(t), 1.2 * w + 1.2 * sv)
         p["spine"] = (S["spine"]["pitch"], 0.0, -0.4 * w)
-        p["chest"] = (S["chest"]["pitch"] + 1.2 * shrug(t), 0.0, -0.6 * w)
+        # The left shoulder hunches up and settles; the right barely follows.
+        p["chest"] = (S["chest"]["pitch"] + 1.5 * shrug(t), 0.04 * yaw(t), -0.6 * w - 1.5 * sv - 3.0 * shrug(t))
         breathe(p, breath(t, N / 2.0))
         look_head(p, yaw(t), pitch=nod(t), roll=tilt(t))
         p["beak"] = clack(t)
         for s in "lr":
             # The folded finger lifts off the arm and settles back as the shoulders shrug.
-            p["wing_extra_" + s] = {"wing_1": (0.0, 0.0, -3.0 * shrug(t) - 4.0 * lw[f])}
+            k = 1.0 if s == LEFT else 0.35
+            p["wing_extra_" + s] = {"wing_1": (0.0, 0.0, -k * (5.0 * shrug(t) + 6.0 * lw[f]))}
         p["tail"] = (1.5 * w, 2.0 * w)
         return p
 
@@ -1019,16 +1163,18 @@ def idle_stretch(r):
     the skin ripples, folds them back and comes down onto its hands again."""
     name = "idle_stretch"
     N = rig.CLIPS[name]["frames"]
-    down = 74.0  # the hands are planted again: STANCE, wings folded
-    rock = Keys([(0, 0.0), (6, 0.15), (16, 1.0), (60, 1.0), (down - 4, 0.2), (down, 0.0), (89, 0.0)])
-    fold = Keys([(0, 1.0), (12, 1.0), (24, 0.32), (52, 0.32), (down - 4, 1.0), (89, 1.0)])
-    raise_ = Keys([(0, 0.0), (12, 0.0), (26, 34.0), (50, 32.0), (down - 6, 4.0), (down, 0.0)])
+    # The hands lift off the ground from 2 and the free arms take over at `free`; they take hold again at `hold`,
+    # where the free arms have put them, and are on the ground at `down`.
+    free, hold, down = 9.0, 66.0, 73.0
+    rock = Keys([(0, 0.0), (6, 0.15), (16, 1.0), (60, 1.0), (hold, 0.4), (down, 0.0), (89, 0.0)])
+    fold = Keys([(0, 1.0), (12, 1.0), (24, 0.32), (52, 0.32), (hold - 2, 1.0), (89, 1.0)])
+    raise_ = Keys([(0, 0.0), (12, 0.0), (26, 34.0), (50, 32.0), (hold - 2, 4.0), (down, 0.0)])
     shake = Keys([(0, 0.0), (30, 0.0), (33, 1.0), (46, 0.8), (52, 0.0)])
     settle = Keys([(0, 0.0), (down, 0.0), (down + 4, -1.0), (down + 10, 0.3), (89, 0.0)])
 
     def at(t):
         k = rock(t)
-        sh = shake(t) * math.sin(2.0 * math.pi * (t - 30.0) / 5.0)
+        sh = shake(t) * math.sin(2.0 * math.pi * (t - 30.0) / 6.0)
         p = ground()
         p["body"] = STANCE_BODY + Vector((0.0, -0.03 * k + 0.012 * settle(t), -0.06 * k))
         p["body_rot"] = (S["body"]["pitch"] + 14.0 * k + 1.5 * sh, 0.0, 0.0)
@@ -1038,14 +1184,22 @@ def idle_stretch(r):
         look_head(p, 0.0, pitch=-6.0 * k + 2.0 * sh, lean=lean0 + 8.0 * k, ext=ext0 - 0.02 * k)
         p["beak"] = 0.1 * shake(t)
         for s in "lr":
-            sign = 1.0 if s == LEFT else -1.0
-            p["wing_" + s] = wing(fold=fold(t), flap=raise_(t) + 9.0 * sh, sweep=-6.0 * k + 3.0 * sh,
-                                  twist=5.0 * sh * sign * 0.0 + 6.0 * sh, curl=-8.0 * k + 10.0 * sh)
+            p["wing_" + s] = wing(fold=fold(t), flap=raise_(t) + 6.0 * sh, skip=OPEN, sweep=-6.0 * k + 2.0 * sh,
+                                  twist=5.0 * sh, curl=-8.0 * k + 8.0 * sh)
             lift_tuck(p, s)
-            # The hands leave the ground while the body is still in STANCE, and come down when it is again.
-            p["plant_" + s] = 1.0 - smooth(t / 6.0) + smooth((t - (down - 3.0)) / 3.0)
-            if 6.0 <= t <= down - 3.0:
-                p["hand_" + s] = None
+            planted = (STANCE_HAND[s], (0.0, 0.0, 0.0))
+            if t <= free:
+                k_ = smooth((t - 2.0) / (free - 2.0))
+                p["hand_" + s] = between_hands(planted, free_hand(p, s), k_)
+                p["elbow_" + s] = STANCE_ELBOW[s].lerp(carried(p, STANCE_ELBOW[s])[0], k_)
+                p["plant_" + s] = 1.0 - smooth((t - free + 1.0) / 1.0)
+            elif t >= hold - 1.0:
+                k_ = smooth((t - hold) / (down - hold))
+                p["hand_" + s] = between_hands(free_hand(p, s), planted, k_)
+                p["elbow_" + s] = carried(p, STANCE_ELBOW[s])[0].lerp(STANCE_ELBOW[s], k_)
+                p["plant_" + s] = smooth((t - hold + 1.0) / 1.0)
+            else:
+                p["hand_" + s], p["plant_" + s] = None, 0.0
         p["tail"] = (6.0 * k, 0.0)
         return p
 
@@ -1180,8 +1334,8 @@ def swim(r):
         for s in "lr":
             # Forward and up out of the water, then down and back through it.
             power = 1.0 if u < 0.45 else 0.0
-            p["wing_" + s] = wing(fold=0.30 - 0.08 * k, flap=6.0 + 8.0 * (1.0 - power) * math.sin(math.pi * (u - 0.45) / 0.55),
-                                  sweep=14.0 * k, twist=-6.0 * power, curl=-4.0)
+            p["wing_" + s] = wing(fold=0.14 - 0.04 * k, flap=-2.0 + 10.0 * (1.0 - power) * math.sin(math.pi * (u - 0.45) / 0.55),
+                                  sweep=12.0 * k, twist=-6.0 * power, curl=-3.0)
             ph = 2.0 * math.pi * (t / N + (0.0 if s == LEFT else 0.5))
             p["foot_" + s] = p["foot_" + s] + Vector((0.0, 0.03 * math.sin(ph), 0.10 * math.cos(ph)))
             p["foot_rot_" + s] = (75.0 - 30.0 * math.sin(ph), 0.0, 0.0)
@@ -1210,13 +1364,15 @@ def fall(r):
                                   sweep=10.0 * math.sin(a + off + 1.0), twist=12.0 * math.sin(2 * a + off + 0.5),
                                   curl=10.0 * math.sin(2 * a + off + 1.2))
             ph = a + (0.0 if s == LEFT else math.pi)
-            p["foot_" + s] = hip(p, s) + turned(rot(*p["body_rot"]), mx(Vector((0.08, -0.30 + 0.08 * math.sin(ph), -0.30 + 0.14 * math.cos(ph))), s))
+            kick = Vector((0.08, -0.30 + 0.10 * math.sin(ph), -0.30 + 0.05 * math.cos(ph)))
+            p["foot_" + s] = hip(p, s) + turned(rot(*p["body_rot"]), mx(kick, s))
             p["foot_rot_" + s] = (60.0 + 25.0 * math.sin(ph), 0.0, 0.0)
             p["knee_" + s] = knee_ahead(p, s, p["foot_" + s])
             p["talons_" + s] = 0.4 + 0.3 * math.sin(ph + 1.0)
-        p["head"] = within_neck(p, on_neck(p, 40.0 + 15.0 * math.sin(a + 2.0), 0.9, heading=25.0 * math.sin(a + 0.8)))
-        p["head_rot"] = (10.0 * math.sin(a + 2.5), 30.0 * math.sin(a + 0.8), -0.6 * p["body_rot"][2])
-        p["neck"] = [(-8.0, 8.0 * math.sin(a + 0.8), 0.0)] * 4
+        # The head thrashes on the neck, in the body's frame, so the neck only has its own twisting to do.
+        head_on_chest(p, 32.0 + 8.0 * math.sin(a + 2.0), 0.92, heading=5.0 * math.sin(a + 0.8),
+                      pitch=-14.0 + 12.0 * math.sin(a + 2.5), yaw=10.0 * math.sin(a + 0.8), roll=10.0 * math.sin(a))
+        p["neck"] = [(-8.0, 0.0, 0.0)] * 4
         p["beak"] = 0.55 + 0.15 * math.sin(2 * a)
         p["tail"] = (8.0 * math.sin(2 * a), 6.0 * math.sin(a))
         return p
