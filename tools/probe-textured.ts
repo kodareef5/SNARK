@@ -57,7 +57,7 @@ const BAND = 7;
 const HOUSE = [PROVING_SPAWN.x - 24, PROVING_SPAWN.z - 2] as const;
 
 /** Bytes sent to the page in one piece. Each run starts on a multiple of 4, so the page can view it as an array of any type. */
-class Bytes {
+export class Bytes {
   private readonly parts: Uint8Array[] = [];
   length = 0;
 
@@ -211,8 +211,8 @@ function judgeCards(cards: Card[], got: Uint8Array): { ok: boolean; lines: strin
 // ---- The house ----
 
 /** A frame as the page rebuilds it: its numbers, its arrays as far as they are used, and its uploads, with where their bytes are. */
-interface Frame {
-  scalars: Record<string, number>;
+export interface Frame {
+  scalars: Record<string, number | boolean>;
   arrays: [string, number, number][];
   uploads: number[][];
   drops: number[];
@@ -224,7 +224,7 @@ interface Frame {
 
 const DRAW_ARRAYS = ["drawMesh", "drawLod", "drawSlot", "drawBuffer", "drawFirst", "drawInstances", "drawFlags", "drawMaterial", "drawFirstIndex", "drawIndexCount"] as const;
 
-function packFrame(p: FramePacket, out: Bytes): Frame {
+export function packFrame(p: FramePacket, out: Bytes): Frame {
   const ref = (data: Uint8Array): [number, number] => [out.add(data), data.length];
   const arrays: [string, number, number][] = [];
   const put = (name: string, count: number): void => void arrays.push([name, out.add((p[name as keyof FramePacket] as Uint8Array).subarray(0, count)), count]);
@@ -232,15 +232,16 @@ function packFrame(p: FramePacket, out: Bytes): Frame {
   put("nearViewProj", 16);
   put("sky", 3);
   put("sun", 3);
+  put("frame", p.frame.length);
   for (const name of DRAW_ARRAYS) put(name, p.drawCount);
   put("drawOffset", p.drawCount * 3);
   put("tiles", p.tileCount * 4);
   put("tileOrigin", p.tileCount * 2);
   put("transient", p.transientCount * INSTANCE_BYTES);
   put("bones", p.boneCount * BONE_FLOATS);
-  const { camX, camY, camZ, light, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount } = p;
+  const { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount } = p;
   return {
-    scalars: { camX, camY, camZ, light, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount },
+    scalars: { camX, camY, camZ, light, lit, fogStart, fogEnd, drawCount, tileCount, transientCount, boneCount },
     arrays,
     uploads: p.uploads.map((u) => [u.buffer, ...ref(u.data)]),
     drops: [...p.drops],
@@ -374,7 +375,7 @@ function house(manifest: Manifest, files: Uint8Array[], format: TextureFormat, t
   return { width, height, loseAt, frames, bytes: out.join(), raster, draws: p!.drawCount, textured, flat, cut, both };
 }
 
-interface Spread {
+export interface Spread {
   points: number;
   mean: number;
   p95: number;
@@ -382,7 +383,7 @@ interface Spread {
   worst: number;
 }
 
-function spread(values: number[]): Spread {
+export function spread(values: number[]): Spread {
   const sorted = [...values].sort((a, b) => a - b);
   const at = (q: number): number => sorted[Math.floor((sorted.length - 1) * q)] ?? 0;
   return { points: sorted.length, mean: sorted.reduce((s, v) => s + v, 0) / Math.max(1, sorted.length), p95: at(0.95), p99: at(0.99), worst: at(1) };
