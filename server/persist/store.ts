@@ -33,7 +33,7 @@ const MIGRATIONS: ((db: Database) => void)[] = [
   },
   // Schema 3 adds what left this world for another of its cluster, and what came (server/cluster/cluster.ts).
   (db) => {
-    db.exec("CREATE TABLE transfers (id TEXT NOT NULL, dir INTEGER NOT NULL, pid INTEGER NOT NULL, name TEXT NOT NULL, hop INTEGER NOT NULL, peer INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, dir)) WITHOUT ROWID");
+    db.exec("CREATE TABLE IF NOT EXISTS transfers (id TEXT NOT NULL, dir INTEGER NOT NULL, pid INTEGER NOT NULL, name TEXT NOT NULL, hop INTEGER NOT NULL, peer INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, dir)) WITHOUT ROWID");
   },
 ];
 

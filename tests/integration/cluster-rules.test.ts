@@ -209,6 +209,28 @@ test("a destination that will not take a survivor refuses before it leaves where
   for (const s of [a, b, c, d]) s.h.host.shutdown();
 });
 
+test("each server's switches say what may leave it and what may come: survivors, and what they carry", () => {
+  const clock = { ms: Date.now() };
+  const a = t.server("Island", "switches", clock, { argv: ["?PreventUploadItems=True"] });
+  const b = t.server("Miami", "switches", clock, { argv: ["?PreventDownloadItems=True"] });
+  const c = t.server("Tampa", "switches", clock, { argv: ["?noTributeDownloads=True"] });
+  const d = t.server("Keys", "switches", clock, { argv: ["?PreventUploadSurvivors=True"] });
+  const ada = t.survivor(a, "ada");
+  const cy = t.survivor(c, "cy");
+  beat(a, b, c, d);
+  const leave = (s: typeof a, who: typeof ada, to: number): string => s.h.host.cluster!.leave(s.h.client(who.session)!, to);
+  expect(leave(a, ada, b.world)).toBe("this server does not let things leave it: drop what you carry and try again");
+  expect(leave(c, cy, b.world)).toBe("Miami takes no things from other servers: drop what you carry and try again");
+  const inv = a.h.host.items.inv(ada.me);
+  for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) a.h.host.items.burn(ada.me, s, inv.count[s]!);
+  expect(leave(a, ada, c.world)).toBe("Tampa takes no survivors from other servers");
+  expect(d.h.host.cluster!.destinations().map((x) => x.why)).toEqual(Array(3).fill("this server does not let survivors leave it"));
+  // Carrying nothing, it may go where things may not.
+  expect(leave(a, ada, b.world)).toBe("");
+  expect(t.audit(a, b, c, d)).toEqual([]);
+  for (const s of [a, b, c, d]) s.h.host.shutdown();
+});
+
 test("an operator asks a running server whether the cluster balances, and is told what does not", () => {
   const clock = { ms: Date.now() };
   const a = t.server("Island", "audit", clock);

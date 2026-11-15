@@ -133,7 +133,6 @@ export class Cluster {
       if (!had && was !== null) throw new Error(`this save is world ${world} of the cluster ${id}, and the folder ${root} does not know it, so what left this world is not there: start it with the folder it used (-ClusterDirOverride)`);
       const lock = folder.hold(world);
       if (!had) folder.announce(blank(world), true);
-      store.setMeta("cluster", id);
       return new Cluster(folder, id, world, lock, store, !had);
     }
     for (let world = 1; world <= MAX_TEAM_WORLD; world++) {
@@ -150,7 +149,6 @@ export class Cluster {
         continue;
       }
       folder.announce(blank(world), true);
-      store.setMeta("cluster", id);
       return new Cluster(folder, id, world, lock, store, true);
     }
     throw new Error(`the cluster in ${root} has no world id left for a new save`);
@@ -162,6 +160,8 @@ export class Cluster {
    */
   start(ctx: ClusterContext, fresh: boolean): void {
     this.ctx = ctx;
+    // The save keeps the cluster it is in from its next commit on (Cluster.open).
+    ctx.persistence.sidecar("cluster", { dirty: true, serialize: () => this.id });
     // What a loaded save holds resumes with the rest of it. A new world resumes nothing, so what comes into it now is put in.
     this.resumes = !fresh;
     if (this.first && !fresh) this.checkTeams();
