@@ -19,10 +19,11 @@ export const EXPLOSIVES: readonly Def[] = [
   // use; made in the hand at level 9 for 8 points of 10 thatch, 3 stone, 15 fiber and 3 hide. "The minimum holding duration
   // is roughly 0.4 seconds" and "charging up the Bola will increase its velocity, but not its immobilization time": a
   // quarter of the 1.6 s draw is 0.4 s (DEV127), and the draw buys speed only. Its speed, the craft's 3 s and a miss being
-  // lost are ours (DEV131). Its meshes are the grenade's until W9's thrown asset gives it `core:bola` and `core:bola_thrown`.
+  // lost are ours (DEV131). It is held and lies as `core:bola` (core:thrown, D445); in flight it is the thrown grenade's mesh
+  // until that asset gives it a `core:bola_thrown`.
   {
     type: "item", class: "weapon", id: id("bola"), label: "snare stones", stack: 10, weight: 0.5, color: 15,
-    weapon: { kind: "thrown", draw: 1.6, uses: 1, mesh: id("grenade"), hold: "tool" },
+    weapon: { kind: "thrown", draw: 1.6, uses: 1, mesh: id("bola"), hold: "tool" },
     ammo: { damage: 0, type: "melee", speed: 28, gravity: 9.81, buff: id("entangled"), mesh: id("grenade_thrown") },
   },
   // Rooted 30 s, a survivor 25 s (Bola). The species are ARK's list by our ids (D434): of its 67 the Human, Dodo, Parasaur and
