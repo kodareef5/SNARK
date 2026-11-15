@@ -77,7 +77,8 @@ test("the ranged gear lives in content/items, each piece once, and is in the cor
   // Each moved item brought its engram and the rename of its old recipe id, and is made as before.
   expect([...WEAPONS, ...AMMO, ...EXPLOSIVES].filter((d) => d.type === "engram").length).toBe(16);
   const pistol = CORE_CONTENT.find((d) => d.id === "core:pistol" && d.type === "item")!;
-  expect(pistol).toMatchObject({ weight: 3, weapon: { clip: 6, reload: 2.2, interval: 0.35, uses: 60 }, craft: { seconds: 12, xp: 11, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
+  // W8 brought its numbers to the wiki's since (tests/unit/ark-weapons.test.ts).
+  expect(pistol).toMatchObject({ weight: 5, weapon: { clip: 6, reload: 3.33, interval: 1 / 2.1, uses: 300 }, craft: { seconds: 12, xp: 100.8, needs: [{ item: "core:ingot", count: 60 }, { item: "core:wood", count: 5 }, { item: "core:hide", count: 15 }] } });
 });
 
 test("the weapon and ammo facets' stubs, the bola's buff fields and the cloud class wait, as the plan has them", () => {

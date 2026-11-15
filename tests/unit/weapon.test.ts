@@ -37,7 +37,7 @@ test("content compiles into weapon timings: a swing, a draw, a reload and a clip
   expect(params("bow")).toEqual({ kind: W_BOW, hold: HOLD_BOW, swingTicks: 6, strikeTick: 2, drawTicks: 36, minDrawTicks: 9, reloadTicks: 20, clip: 1, wet: false });
   expect(params("rifle")).toMatchObject({ kind: W_GUN, hold: HOLD_RIFLE, reloadTicks: 135, clip: 1, wet: false });
   expect(params("crossbow")).toMatchObject({ kind: W_GUN, wet: true, reloadTicks: 78 });
-  expect(params("pistol")).toMatchObject({ kind: W_GUN, hold: HOLD_PISTOL, clip: 6, swingTicks: 11 });
+  expect(params("pistol")).toMatchObject({ kind: W_GUN, hold: HOLD_PISTOL, clip: 6, swingTicks: 14, reloadTicks: 100 });
   expect(params("grenade")).toMatchObject({ kind: W_THROWN, hold: HOLD_THROW });
   expect(FISTS.hold).toBe(HOLD_HANDS);
   // An item that is not a weapon has no timings, and bare hands stand in.
