@@ -5,15 +5,6 @@
 import { CHUNK_SIZE, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import type { BitReader } from "../../shared/net/codec.ts";
 import { FarCells, TACTICAL_CELL, readFar } from "../../shared/world/tactical.ts";
-import type { Tier } from "./assets/tiers.ts";
-
-/** How far each tier draws bases, in metres, until the tiers carry it themselves (round 8's contracts). */
-const BASE_REACH: Record<Tier["name"], number> = { lowpoly: 1024, medium: 2048, high: 2048, ultra: 2048 };
-
-/** The metres of far cells a client asks for: as far as its tier draws bases. */
-export function baseReach(tier: Tier): number {
-  return BASE_REACH[tier.name];
-}
 
 export class FarStore {
   /** A chunk with no filled cell has no entry. */
