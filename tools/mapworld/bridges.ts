@@ -21,13 +21,15 @@ export function makeBridges(site: Site, accept: (m: Mason) => boolean): { record
   const size = (site.ground.n - 1) * 2;
   const { paths, outlines } = pathsOf(readWays(site.source), size / 2);
   const at = (x: number, z: number): number => Math.max(0, Math.min(site.ground.n - 1, Math.round((size - z) / 2))) * site.ground.n + Math.max(0, Math.min(site.ground.n - 1, Math.round((size - x) / 2)));
-  const wet = (p: Point): boolean => site.ground.water[at(p[0], p[1])] === 1;
+  const wet = (p: Point): boolean => site.ground.water[at(p[0], p[1])] === 1 || (site.ground.lakes?.body[at(p[0], p[1])] ?? 0) !== 0;
   const nodes = new Map<string, { height: number; degree: number; p: Point; terminal: boolean }>();
   const edges: { a: string; b: string; length: number; grade: number }[] = [];
   const nominal = (p: Path, point: Point): number => {
     const ground = site.groundAt(...point);
-    if (p.way.kind === "breakwater") return Math.max(1.2, ground + .2);
-    if (p.way.kind === "pier") return Math.max(2, ground + .2);
+    // Over the sea's water or a lake's surface.
+    const water = site.waterAt(...point);
+    if (p.way.kind === "breakwater") return Math.max(water + 1.2, ground + .2);
+    if (p.way.kind === "pier") return Math.max(water + 2, ground + .2);
     const rail = p.way.kind === "rail_bridge";
     const level = Math.max(1, Math.min(4, p.way.layer ?? 1));
     const base = rail ? p.way.class === "monorail" ? 12 : 16 : /motorway|trunk/.test(p.way.class ?? "") ? 8 : 5;
