@@ -1,56 +1,56 @@
 {
  "top": {
-  "iou": 0.938,
-  "concept_missed": 0.027,
-  "blockout_extra": 0.037,
+  "iou": 1.0,
+  "concept_missed": 0.0,
+  "blockout_extra": 0.0,
   "farthest_cm": [
-   36.3,
-   12.0
+   1.6,
+   1.6
   ]
  },
  "underside": {
-  "iou": 0.937,
-  "concept_missed": 0.027,
-  "blockout_extra": 0.037,
+  "iou": 1.0,
+  "concept_missed": 0.0,
+  "blockout_extra": 0.0,
   "farthest_cm": [
-   35.9,
-   13.8
+   1.6,
+   1.6
   ]
  },
  "front": {
-  "iou": 0.567,
-  "concept_missed": 0.42,
-  "blockout_extra": 0.037,
+  "iou": 1.0,
+  "concept_missed": 0.0,
+  "blockout_extra": 0.0,
   "farthest_cm": [
-   17.5,
-   17.5
+   1.3,
+   1.3
   ]
  },
  "side": {
-  "iou": 0.646,
-  "concept_missed": 0.164,
-  "blockout_extra": 0.26,
+  "iou": 0.998,
+  "concept_missed": 0.002,
+  "blockout_extra": 0.0,
   "farthest_cm": [
-   11.2,
-   11.2
+   4.5,
+   1.5
   ]
  },
  "folded_side": {
-  "iou": 0.305,
-  "concept_missed": 0.459,
-  "blockout_extra": 0.589,
+  "iou": 0.999,
+  "concept_missed": 0.001,
+  "blockout_extra": 0.0,
   "farthest_cm": [
-   46.5,
-   45.2
+   4.5,
+   2.0
   ]
  },
  "folded_front": {
-  "iou": 0.499,
-  "concept_missed": 0.224,
-  "blockout_extra": 0.418,
+  "iou": 1.0,
+  "concept_missed": 0.0,
+  "blockout_extra": 0.0,
   "farthest_cm": [
-   17.4,
-   31.5
+   2.2,
+   2.2
   ]
  }
 }
