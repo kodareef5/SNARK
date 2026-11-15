@@ -230,8 +230,12 @@ function place(t: HullTable, p: number, yaw: number): void {
   }
 }
 
-/** The shortest push out of the last part capsuleHull found an overlap with, in world space, and how deep it was. */
-export const hullPush = { x: 0, y: 0, z: 0, depth: 0 };
+/**
+ * The shortest push out of the last part capsuleHull found an overlap with, in world space, how deep it was, whether it is out
+ * through a face, along the face's normal, rather than off an edge or a corner, and the upward part of the normal of the most
+ * level face there: the face's own, or of those that meet at the edge or corner.
+ */
+export const hullPush = { x: 0, y: 0, z: 0, depth: 0, face: false, up: 0 };
 
 /**
  * An upright capsule against part `p` of a piece turned `yaw`. (dx, dz) is its axis from the piece's origin, y0 and y1 the
@@ -256,7 +260,7 @@ export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz
   }
   // The axis segment clipped by the planes. If any of it is left, the segment passes through the part, and the body leaves by
   // the face it is least deep behind, as a box's does.
-  if (clipUpright(faces, -1, dx, dz, y0, y1)) return pushed(planes[first * 4]!, planes[first * 4 + 1]!, planes[first * 4 + 2]!, r - most);
+  if (clipUpright(faces, -1, dx, dz, y0, y1)) return pushed(planes[first * 4]!, planes[first * 4 + 1]!, planes[first * 4 + 2]!, r - most, true);
   // Else no face is nearer than the farthest of their planes, so if the nearest point of that plane is on its face, that is
   // the distance. Otherwise the nearest point is on an edge.
   for (let f = 0, o = 0; f < faces; f++, o += 4) {
@@ -266,7 +270,7 @@ export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz
     const nx = planes[o]!;
     const nz = planes[o + 2]!;
     const on = ny === 0 ? clipUpright(faces, f, dx - e * nx, dz - e * nz, y0, y1) : onFace(faces, f, dx - e * nx, (ny > 0 ? y0 : y1) - e * ny, dz - e * nz);
-    if (on) return pushed(nx, ny, nz, r - e);
+    if (on) return pushed(nx, ny, nz, r - e, true);
   }
   const ec = t.edgeCorners;
   const length = y1 - y0;
@@ -274,6 +278,10 @@ export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz
   let bx = 0;
   let by = 0;
   let bz = 0;
+  // Where on the part the nearest point is.
+  let px = 0;
+  let py = 0;
+  let pz = 0;
   for (let e = t.edge[p]!, end = t.edge[p + 1]!; e < end; e++) {
     const i = ec[e * 2]! * 3;
     const j = ec[e * 2 + 1]! * 3;
@@ -316,19 +324,30 @@ export function capsuleHull(t: HullTable, p: number, yaw: number, dx: number, dz
     bx = ox;
     by = oy;
     bz = oz;
+    px = qx + ex * u;
+    py = qy + ey * u;
+    pz = qz + ez * u;
   }
   if (best >= reach * reach) return false;
   const d = Math.sqrt(best);
   // Touching an edge exactly, the way out is through the nearest face.
-  if (d <= 1e-9) return pushed(planes[first * 4]!, planes[first * 4 + 1]!, planes[first * 4 + 2]!, r - most);
-  return pushed(bx / d, by / d, bz / d, r - d);
+  if (d <= 1e-9) return pushed(planes[first * 4]!, planes[first * 4 + 1]!, planes[first * 4 + 2]!, r - most, true, planes[first * 4 + 1]!);
+  // Off an edge or a corner, the surface there is as level as the most level face that meets at it.
+  let up = -1;
+  for (let f = 0, o = 0; f < faces; f++, o += 4) {
+    const off = planes[o]! * px + planes[o + 1]! * py + planes[o + 2]! * pz - planes[o + 3]!;
+    if (off < 1e-6 && off > -1e-6 && planes[o + 1]! > up) up = planes[o + 1]!;
+  }
+  return pushed(bx / d, by / d, bz / d, r - d, false, up);
 }
 
-function pushed(nx: number, ny: number, nz: number, depth: number): boolean {
+function pushed(nx: number, ny: number, nz: number, depth: number, face: boolean, up = ny): boolean {
   hullPush.x = nx * depth;
   hullPush.y = ny * depth;
   hullPush.z = nz * depth;
   hullPush.depth = depth;
+  hullPush.face = face;
+  hullPush.up = up;
   return true;
 }
 
