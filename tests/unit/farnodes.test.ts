@@ -11,6 +11,7 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { SIZE_UNITS, formOf, mix, scatterNodes, type NodeForms, type NodeSource } from "../../shared/world/nodes.ts";
 import { FarCells, farTopByte } from "../../shared/world/tactical.ts";
 import { HELD, WOOD, nodeWorld, type NodeWorld } from "../fixtures/nodeworld.ts";
+import { corePack } from "../fixtures/pack.ts";
 
 /** A node as a draw of a frame draws it: its mesh, level, place in the world, turn and size, which store, and its hand-over. */
 interface Drawn {
@@ -139,6 +140,38 @@ test("a wood looks the same whichever store holds it: the camera still, the near
       else expect(changed).toBeGreaterThan(nodes * 0.05);
     }
   }
+});
+
+test("a used-up node's stump is the near store's alone: drawn short of the band, fading out over it, and by neither store past it", () => {
+  // The core pack, whose trees and rocks leave stumps and broken bases.
+  const w = nodeWorld({ chunksX: 16, chunksZ: 8, kinds: ["core:tree", "core:tree", "core:rock"], pack: corePack() });
+  const z = 4 * CHUNK_SIZE + 10;
+  const [from, to] = tierOf("medium").nodes.band;
+  w.stand(CHUNK_SIZE + 20, z);
+  w.look(CHUNK_SIZE + 20, 24, z, Math.PI / 2, -0.05);
+  w.scene.nodesFar!.makes = Infinity;
+  // Every node of the row of chunks the camera looks along is used up, from 44 m to 300 m ahead.
+  const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
+  const used = new Set<number>();
+  for (let cx = 2; cx <= 5; cx++) {
+    const chunk = chunkAt(w.dims, cx * CHUNK_SIZE + 1, z);
+    const slots = [...Array(w.source.perChunk).keys()].filter((i) => (w.source.at(chunk, i, spot), spot.kind !== 0));
+    w.tell(chunk, slots);
+    for (const i of slots) used.add(chunk * 65536 + i);
+  }
+  w.frame();
+  const drawn = drawnNodes(w, w.frame());
+  let [short, band, past] = [0, 0, 0];
+  for (const key of used) {
+    const draws = drawn.get(key) ?? [];
+    expect(draws.every((n) => !n.far && w.field.forms.depleted[w.field.store.chunks[Math.floor(key / 65536)]!.kind[key % 65536]!] === 1)).toBe(true);
+    if (draws.length === 0) continue;
+    const d = off(w, draws[0]!);
+    if (d < from) short++;
+    else if (d < to) band += draws[0]!.hand === HAND_NEAR ? 1 : 0;
+    else past += shown(w, draws).length;
+  }
+  expect([short > 20, band > 5, past]).toEqual([true, true, 0]);
 });
 
 test("over a 2 km walk across chunk borders a node in view is drawn by the near store short of the band, by the far store past it, and by both, fading, in it; past it a chunk changing hands changes nothing drawn", () => {
