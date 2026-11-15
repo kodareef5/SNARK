@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { Corpses as Drawn } from "../../client/core/ragdoll.ts";
 import { RemoteSample, type ClientSession } from "../../client/core/session.ts";
 import { CORPSE_TICKS, type Body } from "../../server/corpses.ts";
+import { FALLING } from "../../shared/anim/corpse.ts";
 import { createHost, type HostOptions } from "../../server/host.ts";
 import type { EntityRecord } from "../../server/records.ts";
 import { loadConfig } from "../../server/settings/config.ts";
@@ -592,4 +593,102 @@ test("killing the process at any moment of a harvest loses nothing: each body's 
     }
     host.shutdown();
   }
+});
+
+// Bodies from the sky (planning/reference/flyers-plan.md, FL7): the pteranodon stand-in and a body with bones, killed,
+// knocked out or bola'd 100 m up. Nothing flies yet, so each is put there and let go.
+
+/** Puts entity `e` `high` metres over the ground under it, still and off the ground. Returns the ground's height. */
+function aloft(h: Harness, e: number, high: number): number {
+  const ents = h.world.ents;
+  const ground = h.world.hf.heightAt(ents.x[e]!, ents.z[e]!);
+  ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
+  ents.setPosition(e, ents.x[e]!, ground + high, ents.z[e]!);
+  ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
+  return ground;
+}
+
+/** The body each session draws and samples, followed every frame: its Drawn bodies, and where it samples entity `e` now. */
+function watchers(h: Harness, at: { x: number; z: number }) {
+  const drawn = new Map<ClientSession, Drawn>();
+  const r = new RemoteSample();
+  const follow = (): void => {
+    for (const s of h.sessions) {
+      if (!s.world) continue;
+      let d = drawn.get(s);
+      if (!d) drawn.set(s, (d = new Drawn(h.world.anims)));
+      s.sampleRemote(r);
+      d.update(r, s.world, at.x, at.z, new Map());
+    }
+  };
+  /** Where `s` samples entity `e`, or null where it has none. */
+  const sampled = (s: ClientSession, e: number): [number, number, number] | null => {
+    s.sampleRemote(r);
+    for (let i = 0; i < r.count; i++) if (r.id[i] === e) return [r.x[i]!, r.y[i]!, r.z[i]!];
+    return null;
+  };
+  return { drawn, follow, sampled, run: (ms: number): void => h.run(ms, follow) };
+}
+
+/** Each session's drawn body for `b` lies as the server's does, to the bit. `joined` came after it lay. */
+function sameEverywhere(h: Harness, drawn: Map<ClientSession, Drawn>, b: Body, joined: ClientSession): void {
+  const id = h.reg.ids[b.kind];
+  expect([id, b.fall!.still]).toEqual([id, true]);
+  for (const s of h.sessions) {
+    const c = drawn.get(s)!.list.find((x) => x.id === b.e)!;
+    expect([id, s === joined ? !c.watched : c.watched, c.falling, c.fall!.still, c.x, c.y, c.z, c.yaw]).toEqual([id, true, false, true, b.x, b.y, b.z, b.yaw]);
+    expect([id, Array.from(c.solved.pos), Array.from(c.solved.rot)]).toEqual([id, Array.from(b.pose!.pos), Array.from(b.pose!.rot)]);
+  }
+}
+
+test("a stand-in killed 100 m up falls to the ground in 3.2 s and lies there the same for the server, two clients that watched and one that joined after, and is harvested there", () => {
+  const { h, ada, at, me, id, have } = camp();
+  const bob = h.join("bob");
+  h.run(500);
+  h.say(bob, "enablecheats");
+  h.say(bob, `tp ${(at.x + 2).toFixed(3)} ${at.z.toFixed(3)}`);
+  const w = watchers(h, at);
+  w.run(500);
+  const ents = h.world.ents;
+  // The pteranodon is a box; the raptor has bones and a ragdoll, which shows the pose too lies the same.
+  const recs = ["core:pteranodon", "core:raptor"].map((kind, k) => {
+    const e = h.host.spawnCreature(kind, at.x - 3 + k * 6, at.z + 6, 1);
+    h.host.creatures.mind.stay(e, 0xffffffff);
+    return h.host.records.byPid.get(ents.pid[e]!)!;
+  });
+  w.run(500);
+  const before = new Set(h.host.corpses.bodies.keys());
+  const ground = recs.map((rec) => aloft(h, h.host.records.entOf.get(rec.pid)!, 100));
+  for (const rec of recs) h.host.survival.hurt(rec, 1e6, me.pid);
+  const [ptero, raptor] = since(h, before);
+  expect([ptero!.kind, raptor!.kind]).toEqual([id("core:pteranodon"), id("core:raptor")]);
+  for (const [k, b] of [ptero!, raptor!].entries()) expect([b.drop !== null, ents.anim[b.e], b.y - ground[k]!, b.fall]).toEqual([true, FALLING, 100, null]);
+  // Bob sees each fall through the air, not appear on the ground.
+  const heights: number[][] = [[], []];
+  const t0 = h.world.tick;
+  while (h.host.corpses.falling > 0 && h.world.tick - t0 < 200) {
+    w.run(1000 / 30);
+    for (const [k, b] of [ptero!, raptor!].entries()) heights[k]!.push(w.sampled(bob, b.e)![1] - ground[k]!);
+  }
+  // The step falls at 20 m/s2 to 60 m/s, which it reaches at 91 m: 100 m takes 94.5 ticks.
+  expect(h.world.tick - t0).toBeGreaterThanOrEqual(94);
+  expect(h.world.tick - t0).toBeLessThanOrEqual(96);
+  for (const seen of heights) expect([seen.some((y) => y > 70 && y < 90), seen.some((y) => y > 10 && y < 30)]).toEqual([true, true]);
+  w.run(6000);
+  const cat = h.join("cat");
+  w.run(1500);
+  for (const [k, b] of [ptero!, raptor!].entries()) {
+    expect([b.drop, ents.anim[b.e], Math.abs(b.y - ground[k]!) < 0.01, b.rec.x === b.x && b.rec.y === b.y && b.rec.z === b.z]).toEqual([null, 0, true, true]);
+    // Every client is sent it where the server has it.
+    for (const s of h.sessions) expect(w.sampled(s, b.e)).toEqual([b.x, b.y, b.z]);
+  }
+  sameEverywhere(h, w.drawn, raptor!, cat);
+  // Harvested where it lies, with a swing of a hatchet.
+  h.say(ada, "give core:hatchet 1");
+  takeInHand(h, ada, id("core:hatchet"));
+  face(h, ada, ptero!);
+  const blows = h.host.corpses.blows;
+  swing(h, h.pilots[0]!, 1, SWING_TICKS);
+  expect([h.host.corpses.blows - blows, ptero!.left < ptero!.max, have("core:hide") + have("core:meat") > 0]).toEqual([1, true, true]);
+  expect(h.host.items.audit()).toEqual([]);
 });

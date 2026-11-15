@@ -10,7 +10,7 @@
 
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT, hurtStage } from "../shared/anim/pose.ts";
 import { FALLING, Fall, corpseSize, layCorpse, sizeSpan, wireX, wireY, yawOf16 } from "../shared/anim/corpse.ts";
-import { DAMP, SINKS, WATER_DAMP } from "../shared/anim/ragdoll.ts";
+import { WET_DAMP, WET_GRAVITY } from "../shared/anim/ragdoll.ts";
 import { Solved, rayZones, zoneHit } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
@@ -55,7 +55,7 @@ export const DROP_TICKS = 5 * 60 * TICK_RATE;
 /** Metres under a body within which the ground, or something it could stand on, holds it where it is: the step's own probe. */
 const PROBE = 0.02;
 /** Of its speed, what a body sinking keeps each tick, as a ragdoll's bodies under water do. */
-const WET_KEEP = 1 - (DAMP + WATER_DAMP) * TICK_DT;
+const WET_KEEP = 1 - WET_DAMP * TICK_DT;
 
 const HARVEST = event("harvest");
 
@@ -127,7 +127,7 @@ export class Corpses {
   private readonly dropping: Body[] = [];
   /** Loaded from a save, to be asked once the world is whole whether anything holds them up. */
   private readonly loaded: Body[] = [];
-  /** By kind, what a body sinks by in water: its kind's capsule, weighing a quarter. */
+  /** By kind, what a body sinks by in water: its kind's capsule, pulled down as a ragdoll's bodies are there. */
   private readonly sunk: (MoveParams | undefined)[] = [];
   /** Made by `fell`, waiting for the creature's entity to go. */
   private readonly laid = new Map<number, Body>();
@@ -325,7 +325,7 @@ export class Corpses {
     m.grounded = false;
     m.mflags = MF_ROOTED;
     const [x, y, z] = [m.x, m.y, m.z];
-    stepBody(world, m, 0, 0, m.yaw, 0, 0, wet ? (this.sunk[b.kind] ??= { ...p, gravity: p.gravity * SINKS }) : p, TICK_DT);
+    stepBody(world, m, 0, 0, m.yaw, 0, 0, wet ? (this.sunk[b.kind] ??= { ...p, gravity: WET_GRAVITY }) : p, TICK_DT);
     b.dropped++;
     const stuck = m.x === x && m.y === y && m.z === z;
     if (!stuck && !(m.vy <= 0 && rests(world, m.x, m.y, m.z, p)) && b.dropped < DROP_TICKS) {
