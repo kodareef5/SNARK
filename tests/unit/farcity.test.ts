@@ -104,7 +104,8 @@ test("the cell rule of what the far feed shows gone is the far feed's own: a cit
   const reg = farRegistry();
   const rng = new Rng(7);
   const dims = { chunksX: 4, chunksZ: 4 };
-  const kinds = [FLOOR, PIER, BEAM, WALL, "core:zruin_container_rust", "core:zruin_floor16_concrete"];
+  // Sloped pieces among them: the feed, and so this, sees each by the box that holds it.
+  const kinds = [FLOOR, PIER, BEAM, WALL, "core:zruin_container_rust", "core:zruin_floor16_concrete", ...SLOPED.map(slopeKind)];
   const statics: MapStatic[] = Array.from({ length: 400 }, () => ({ kind: kinds[Math.floor(rng.float() * kinds.length)]!, x: 64 + rng.float() * 128, y: 1 + rng.float() * 30, z: 64 + rng.float() * 128, yaw: Math.floor(rng.float() * 65536) }));
   const w = cityWorld({ chunks: 4, statics, ground: (x, z) => 3 * Math.sin(x / 20) + 2 * Math.cos(z / 13) });
   const city = new CityStatics(dims, asWritten(statics), reg);

@@ -770,7 +770,7 @@ const SMALL_HALF = TACTICAL_CELL / 2;
 /**
  * Calls `each` with each far feed cell of its chunk piece `i` fills and the top byte it gives that cell, by
  * tactical.ts bakeChunk's rule: a narrow piece its centre's cell, a wide one every cell whose centre its turned box,
- * grown by half a cell, reaches.
+ * grown by half a cell, reaches. A sloped piece is the box that holds it, as the feed has it.
  */
 function pieceCells(city: CityStatics, i: number, x0: number, z0: number, hf: Heightfield, each: (cell: number, top: number) => void): void {
   const k = city.kind[i]!;
