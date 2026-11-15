@@ -319,7 +319,10 @@ export interface WeaponFacet {
   readonly power?: number;
   /** Rounds it holds. Defaults to 1. */
   readonly clip?: number;
-  /** Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. */
+  /**
+   * Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. A thrown
+   * weapon with a draw is a charged throw: held as a bow is drawn, it leaves on release, its draw how long it was held.
+   */
   readonly reload?: number;
   readonly draw?: number;
   readonly interval?: number;
@@ -336,25 +339,31 @@ export interface WeaponFacet {
   /** Mesh held in the hand, and how the body holds it. */
   readonly mesh?: string;
   readonly hold: "tool" | "bow" | "rifle" | "pistol" | "spear";
-  // Stubs of planning/reference/weapons-plan.md: declared, checked and compiled, and read by nothing until the project
-  // named builds them (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
-  /** W2: holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
+  // Fire modes and the blow (planning/reference/weapons-plan.md, M4, built by W2). Omitted, a weapon fires once a press,
+  // reloads its whole clip in one go and strikes with bare hands.
+  /** Holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
   readonly auto?: boolean;
-  /** W2: a reload loads one round each `reload` seconds until full, and the primary button ends it after the round under way. */
+  /**
+   * A reload loads one round each `reload` seconds (at most 4) until full, and a press of the primary button ends it after
+   * the round under way, firing then if the button is still down.
+   */
   readonly reloadEach?: boolean;
   /**
-   * W2: a bow's or gun's blow with the melee button: damage at primitive quality, torpor as a multiple of it, reach in metres
+   * A bow's or gun's blow with the melee button: damage at primitive quality, torpor as a multiple of it, reach in metres
    * (2.6 where not given), and the seconds a blow takes (a swing's where not given). ARK's is 10 and 14 torpor (Base Damage).
    */
   readonly melee?: { readonly damage: number; readonly torpor?: number; readonly reach?: number; readonly interval?: number };
+  // Where a shot goes (planning/reference/weapons-plan.md, M1 and M2, built by W1). Omitted, a shot goes along the look.
   /**
    * The cone a shot leaves within (shared/sim/aim.ts), as half angles in degrees: from the hip and aimed at rest, what a
    * sprint adds, what each shot adds, and the degrees a second it narrows back; and the degrees the aim sways through a
-   * scope, standing. Our own numbers, as ARK publishes none (DEV124, DEV126).
+   * scope, standing. Our own numbers, as ARK publishes none (DEV128, DEV130).
    */
   readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number; readonly sway?: number };
-  /** The degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick (DEV125). */
+  /** The degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick (DEV129). */
   readonly recoil?: { readonly kick: number; readonly recover: number };
+  // Stubs of the same plan: declared, checked and compiled, and read by nothing until the project named builds them
+  // (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
   /** W6: what its damage is multiplied by against a structure. 1 where not given. ARK's grenade is 4.5 (Table of explosives). */
   readonly structures?: number;
   /**

@@ -38,7 +38,7 @@ function tick(b: Body, w: WeaponParams, buttons: number, pressed: number, t: num
   stepAim(b, w, t);
 }
 
-test("today's ranged weapons have a cone and a kick, chosen (DEV124 to DEV126), and nothing else has either", () => {
+test("today's ranged weapons have a cone and a kick, chosen (DEV128 to DEV130), and nothing else has either", () => {
   const near = (v: number | undefined): number => Math.round((v ?? -1) * 1e6) / 1e6;
   const aim = (name: string): number[] => {
     const w = params(name);

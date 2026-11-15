@@ -29,12 +29,12 @@ export const UNITS_PER_DEGREE = YAW_UNITS / 360;
 const PITCH_LIMIT = 16384;
 /** The widest a cone is drawn, whatever adds up. */
 export const MAX_CONE = 45;
-/** What a stance multiplies the cone by: standing, crouched, prone. Our numbers (DEV124). */
+/** What a stance multiplies the cone by: standing, crouched, prone. Our numbers (DEV128). */
 export const STANCE_CONE: readonly number[] = [1, 0.8, 0.6];
-/** Aimed, speed opens the cone by this share of what it does from the hip (DEV124). */
+/** Aimed, speed opens the cone by this share of what it does from the hip (DEV128). */
 export const AIM_MOVE = 0.5;
 /**
- * Sway through a scope (DEV126). What a stance multiplies it by: "less crouched, much less prone, never none" (Longneck
+ * Sway through a scope (DEV130). What a stance multiplies it by: "less crouched, much less prone, never none" (Longneck
  * Rifle). Its two periods, in ticks (3.8 and 2.4 s), share no factor, so its figure comes round only every 4.5 minutes.
  */
 export const STANCE_SWAY: readonly number[] = [1, 0.55, 0.2];
