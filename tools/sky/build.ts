@@ -64,7 +64,8 @@ export class SkyBuilder {
   sun = 1;
   sky = 1;
   /** What the card's exposure is at noon, which every exposure is divided by. */
-  private readonly noon: number;
+  private noon = 1;
+  private readonly horizon: number | undefined;
   private readonly skies = new Map<number, Float64Array>();
   private readonly c = new Float64Array(3);
   private readonly m = new Float64Array(3);
@@ -72,8 +73,13 @@ export class SkyBuilder {
   constructor(air: Air = AIR, grades: readonly Grade[] = GRADES, horizon: number | undefined = HORIZON_ANCHOR) {
     this.atm = new Atmosphere(air);
     this.grades = grades;
-    this.anchor(horizon);
-    this.noon = this.cardExposure(NOON, this.light(NOON));
+    this.horizon = horizon;
+    this.anchor();
+  }
+
+  /** The exposure at a sun height, as its slice has it. */
+  exposureAt(height: number, g: Grade = gradeAt(height, this.grades)): number {
+    return this.cardExposure(height, this.light(height, g)) / this.noon;
   }
 
   private cardExposure(height: number, l: Light): number {
@@ -107,7 +113,8 @@ export class SkyBuilder {
   private graded(p: Float64Array, at: number, height: number, g: Grade, elevation: number, around: number, out: Float64Array): void {
     for (let k = 0; k < 3; k++) out[k] = p[at + k]! * this.dome;
     const v = toward(elevation, around);
-    gradeDome(out, g, elevation, v[0]! * Math.cos(height * DEG) + v[1]! * Math.sin(height * DEG));
+    const cos = v[0]! * Math.cos(height * DEG) + v[1]! * Math.sin(height * DEG);
+    gradeDome(out, g, elevation, Math.acos(Math.max(-1, Math.min(1, cos))) / DEG);
   }
 
   /** The dome before exposure at `elevation` and `around` degrees, for tools that look at it between texels. */
@@ -151,15 +158,18 @@ export class SkyBuilder {
   }
 
   /**
-   * The anchors, at noon after the noon grade, for a grey 128 card lit as surface.ts's `lit` lights it, fully rough:
-   * sunlit and seen head on it shows 128, white, and standing in its own shade, seen square on, 70 (D155). With
-   * `horizon` given, the dome 3 degrees up away from the sun has that luminance and the sky's light is scaled to fit;
-   * without, the sky's light on a surface is the dome's own, summed, with no scale of its own, and the shade sets how
-   * bright the dome is. The white balance makes the first white. It applies to the light and not to the dome, which
-   * keeps the colours the air gives it, as the haze over the land does.
+   * The anchors at noon. The physical dome 3 degrees up away from the sun has `horizon`'s luminance, before any grade,
+   * which may then make it brighter or darker. Then, after the noon grade, a grey 128 card lit as surface.ts's `lit`
+   * lights it, fully rough, shows 128 sunlit and seen head on, white, and 70 standing in its own shade, seen square on
+   * (D155): the sun's light and the sky's are scaled to that. Without `horizon`, the sky's light on a surface is the
+   * dome's own, summed, with no scale of its own, and the shade sets how bright the dome is. The white balance makes
+   * the first white. It applies to the light and not to the dome, which keeps the colours the air gives it, as the
+   * haze over the land does.
    */
-  private anchor(horizon?: number): void {
+  anchor(): void {
+    const horizon = this.horizon;
     const g = gradeAt(NOON, this.grades);
+    this.balance.fill(1);
     const s = Math.sin(NOON * DEG);
     const l = [Math.cos(NOON * DEG), s, 0];
     // Head on, and in the shade: the card upright, facing away from the sun.
@@ -170,11 +180,7 @@ export class SkyBuilder {
     const point = new Float64Array(3);
     this.physical(NOON, toward(3, 180), point);
     for (let pass = 0; pass < 8; pass++) {
-      this.dome = 1;
-      if (horizon !== undefined) {
-        this.graded(point, 0, NOON, g, 3, 180, this.c);
-        this.dome = horizon / luminance(this.c);
-      }
+      this.dome = horizon === undefined ? 1 : horizon / luminance(point);
       const dome = this.dome;
       this.sun = 1;
       this.sky = 1;
@@ -195,6 +201,7 @@ export class SkyBuilder {
       const y = luminance(on);
       for (let k = 0; k < 3; k++) this.balance[k]! *= y / on[k]!;
     }
+    this.noon = this.cardExposure(NOON, this.light(NOON, g));
   }
 
   /** Slice `z` of the table: its texels, its light and its exposure. */
