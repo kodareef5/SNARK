@@ -16,7 +16,8 @@ const bytes = new Uint8Array(readFileSync(path));
 const map = parseMap(bytes);
 const t0 = performance.now();
 const h = new Harness({}, 1, 30, { map: bytes, wild: true });
-console.log(`host on ${map.id} in ${(performance.now() - t0).toFixed(0)} ms, ${h.host.spawner?.regions.length ?? 0} spawn regions`);
+const memory = (): string => `${(process.memoryUsage().rss / 1048576).toFixed(0)} MB resident, ${(process.memoryUsage().heapUsed / 1048576).toFixed(0)} MB of heap`;
+console.log(`host on ${map.id} in ${(performance.now() - t0).toFixed(0)} ms, ${h.host.spawner?.regions.length ?? 0} spawn regions; ${memory()}`);
 const s = h.join("walker");
 h.run(3000);
 const ents = h.world.ents;
@@ -57,5 +58,5 @@ for (let i = 0; i < map.spawns.length; i++) {
   if (!ok) failed++;
   console.log(`${ok ? "ok  " : "FAIL"} ${p.name.padEnd(14)} arrived ${off.toFixed(1)} m from its point at y ${y0.toFixed(1)}; walked ${legs.join(", ")}`);
 }
-console.log(`${h.host.spawner?.count ?? 0} wild creatures after ${(h.now / 1000).toFixed(0)} s of virtual time`);
+console.log(`${h.host.spawner?.count ?? 0} wild creatures after ${(h.now / 1000).toFixed(0)} s of virtual time; ${memory()}, server and client in one process`);
 process.exit(failed > 0 ? 1 : 0);
