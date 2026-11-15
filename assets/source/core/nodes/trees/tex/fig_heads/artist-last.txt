@@ -1,0 +1,7 @@
+Created all four maps, generated sources/prompts, build scripts and review sheets in `fig_heads/`.
+
+**109 checks pass; all four maps rebuild byte-for-byte.**
+
+[Report](REPORT.md) · [60/25/12px review](checks/purpose_distance.png) · [With existing sprays](checks/assembly_distance.png)
+
+Followed the brief’s 10–14 cm leaves; the report documents the existing cards’ larger 14–20 cm scale.
