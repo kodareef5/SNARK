@@ -117,8 +117,8 @@ export function addAdminCommands(con: Console): void {
     },
     {
       name: "spawn",
-      usage: "<species> [level]",
-      help: "Put a wild creature four metres in front of you. It may be named without its pack: raptor for core:raptor.",
+      usage: "<species> [level] [count]",
+      help: "Put a wild creature four metres in front of you, or up to 64 of them in a flock from there. It may be named without its pack: raptor for core:raptor.",
       admin: true,
       run(ctx, args) {
         const c = ctx.client;
@@ -130,9 +130,22 @@ export function addAdminCommands(con: Console): void {
         const id = reg.ids[kind]!;
         const level = args[1] === undefined ? 1 : parseNumber(args[1]);
         if (!Number.isInteger(level) || level < 1 || level > 1000) return "level must be a whole number from 1 to 1000";
+        const count = args[2] === undefined ? 1 : parseNumber(args[2]);
+        if (!Number.isInteger(count) || count < 1 || count > 64) return "count must be a whole number from 1 to 64";
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
-        const e = ctx.host.spawnCreature(id, c.body.x + Math.sin(a) * 4, c.body.z + Math.cos(a) * 4, level, "admin");
-        return e < 0 ? "no room for it there" : `spawned ${id} level ${world.ents.level[e]}`;
+        // A flock is a disc of them about two metres apart, its near edge four metres ahead.
+        const spread = count === 1 ? 0 : 2 * Math.sqrt(count);
+        let e = -1;
+        let made = 0;
+        for (let k = 0; k < count; k++) {
+          const r = count === 1 ? 0 : 2 * Math.sqrt(k + 0.5);
+          const turn = k * 2.39996;
+          const at = 4 + spread;
+          const one = ctx.host.spawnCreature(id, c.body.x + Math.sin(a) * at + Math.sin(turn) * r, c.body.z + Math.cos(a) * at + Math.cos(turn) * r, level, "admin");
+          if (one >= 0) [e, made] = [one, made + 1];
+        }
+        if (e < 0) return "no room for it there";
+        return count === 1 ? `spawned ${id} level ${world.ents.level[e]}` : `spawned ${made} of ${count} ${id} level ${level}`;
       },
     },
     {

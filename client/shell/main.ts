@@ -21,6 +21,7 @@ import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
+import { SoundIo } from "../sound/sound.ts";
 import { UiView } from "./ui.ts";
 
 const params = new URLSearchParams(location.search);
@@ -92,10 +93,12 @@ async function boot(): Promise<void> {
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
-  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
+  // The world's sounds and the voices share one audio context.
+  const sound = SoundIo.supported ? new SoundIo(app.ui.settings.touchFirst) : null;
+  app.sound = sound;
+  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.context() : null);
   app.voice = voice;
-  addEventListener("pointerdown", () => voice.unlock());
-  addEventListener("keydown", () => voice.unlock());
+  for (const gesture of ["pointerdown", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
   const voiceCheck = selfcheck && params.get("voice") === "1";
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
@@ -183,6 +186,7 @@ async function boot(): Promise<void> {
         restored,
         assets: { ...app.scene?.assets.residency.stats, kept: port.cache },
         ...(voiced ? { voice: voice.report } : {}),
+        ...(app.sounds ? { sound: app.sounds.line() } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,
         textures: { format: renderer.format, takes: renderer.formats, errors: renderer.errors },

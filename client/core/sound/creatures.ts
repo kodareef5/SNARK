@@ -33,9 +33,12 @@ export const O_EAT = 7;
 /** The thump of a body that has gone down, knocked out or dead. */
 export const O_THUMP = 8;
 const OCCASIONS: readonly (readonly string[])[] = [["startled", "alarm", "hurt"], ["hurt", "pain"], ["attack", "peck", "bite"], ["land", "thump"], ["death", "hurt"], ["torpor_in", "hurt"], ["torpor_out"], ["eat"], ["thump", "land"]];
-/** How each occasion is heard: from its mouth, its feet or its body, and how much it weighs when voices are short. */
+/**
+ * How each occasion is heard: from its mouth, its feet or its body, and how much it weighs when voices are short. A
+ * startle outweighs the pain of the blow that startled it, which comes in the same snapshot, so the alarm is heard.
+ */
 const KIND: readonly number[] = [KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT];
-const WEIGHT: readonly number[] = [0.9, 0.9, 0.5, 0.6, 1, 0.8, 0.5, 0.3, 0.6];
+const WEIGHT: readonly number[] = [0.95, 0.9, 0.5, 0.6, 1, 0.8, 0.5, 0.3, 0.6];
 /** Pitch of a sound that stands in by a later name: a death cried with its pain is lower, and going down groggier still. */
 const STAND_IN_RATE: readonly number[] = [1.05, 1, 1, 1, 0.88, 0.8, 1, 1, 1];
 const CALL_WEIGHT = 0.4;
@@ -64,7 +67,8 @@ export class Book {
   readonly height: number;
   readonly anim: CreatureAnim;
 
-  constructor(owner: string, anim: CreatureAnim, height: number, lib: SoundLibrary) {
+  /** `lands` is the tick of its bite at which the blow lands, where its content says, else it is read from the clip. */
+  constructor(owner: string, anim: CreatureAnim, height: number, lib: SoundLibrary, lands: number | null = null) {
     this.anim = anim;
     this.height = height;
     const find = (name: string): number => lib.index.get(`${owner}/sound/${name}`) ?? -1;
@@ -87,7 +91,7 @@ export class Book {
       const pecks = groundPecks(rig, clip);
       return pecks.length > 0 ? pecks : [mouthOpens(rig, clip)];
     });
-    this.strike = strikeAt(rig, anim.attack);
+    this.strike = lands !== null ? lands / TICK_RATE : strikeAt(rig, anim.attack);
     this.down = bodyDown(rig, anim.torporIn ?? anim.death);
     this.dies = bodyDown(rig, anim.death);
     let reach = 0;
@@ -132,7 +136,7 @@ export class CreatureSounds {
       if (d?.type !== "species") return null;
       const anim = animOf(kind);
       if (!anim) return null;
-      const book = new Book(d.id, anim, reg.bodyHeight[kind]!, lib);
+      const book = new Book(d.id, anim, reg.bodyHeight[kind]!, lib, d.bite ? (reg.weapon[kind]?.strikeTick ?? null) : null);
       return book.reach > 0 ? book : null;
     });
   }

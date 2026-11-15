@@ -2,14 +2,11 @@
 // what a creature is heard doing, from the state its snapshots carry.
 
 import { expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { CreatureAnim } from "../../shared/anim/creature.ts";
 import { AnimState, CUE_LAND, CUE_STARTLE, CUE_TORPOR, LAYER_FLINCH, bodySeed } from "../../shared/anim/pose.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
+import { parseManifest } from "../../shared/pack/manifest.ts";
 import { decodeTake, encodeTake, takeBytes, type ManifestSound } from "../../shared/pack/sound.ts";
 import { ACT_SWING } from "../../shared/sim/weapon.ts";
 import { buildProvingHeightfield, PROVING_POOL } from "../../shared/world/proving.ts";
@@ -22,28 +19,16 @@ import { distanceGain, earAxes, lowpassAt } from "../../client/core/sound/place.
 import { Sounds } from "../../client/core/sound/sounds.ts";
 import { SOUND_SLOT, SplitPort } from "../../client/core/sound/split.ts";
 import { bodyDown, groundPecks, mouthOpens, strikeAt } from "../../client/core/sound/timing.ts";
-import { buildSounds, codingSnr, loudness, prepareTake, readWav, toPcm16, writeWav } from "../../tools/pack/sound.ts";
+import { codingSnr, loudness, prepareTake, readWav, toPcm16, writeWav } from "../../tools/pack/sound.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { corePack } from "../fixtures/pack.ts";
+import { builtSounds, chirp } from "../fixtures/sounds.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
 const DODO = reg.index.get("core:dodo")!;
 const rig = buildRigs(corePack().header.rigs, corePack().clips).get("core:dodo")!;
 const anim = new CreatureAnim(rig, reg.runAt[DODO]!, reg.move[DODO]?.swimSpeed ?? 0);
-
-/** A rising chirp with a little noise, as a take might be. */
-function chirp(seconds: number, rate: number, amp = 0.5): Float32Array {
-  const out = new Float32Array(Math.round(seconds * rate));
-  let seed = 7;
-  for (let i = 0; i < out.length; i++) {
-    const t = i / rate;
-    seed = (seed * 1103515245 + 12345) >>> 0;
-    const env = Math.sin((Math.PI * i) / out.length);
-    out[i] = amp * env * (Math.sin(2 * Math.PI * (300 + 400 * t) * t) + 0.05 * (seed / 2 ** 31 - 1));
-  }
-  return out;
-}
 
 test("a take coded as IMA ADPCM comes back within 30 dB of what went in, and a short or broken one is refused", () => {
   const pcm = toPcm16(chirp(0.5, 32000));
@@ -104,36 +89,8 @@ test("a WAV of 16, 24 or 32 bits, or of floats, reads back; a take is cut, level
   expect(Math.max(...loud.samples.map(Math.abs))).toBeLessThanOrEqual(10 ** (-1 / 20) + 1e-6);
 });
 
-/** A sound file built from a sheet of chirps in a folder of its own, as the build makes it from the assets. */
-function builtSounds(): { manifest: Manifest; file: Uint8Array } {
-  const root = mkdtempSync(join(tmpdir(), "snark-sound-"));
-  try {
-    const dir = join(root, "core", "creatures", "dodo", "sound");
-    mkdirSync(join(dir, "takes"), { recursive: true });
-    writeFileSync(join(dir, "takes", "a.wav"), writeWav(chirp(0.4, 44100), 44100));
-    writeFileSync(join(dir, "takes", "b.wav"), writeWav(chirp(0.25, 48000, 0.3), 48000));
-    const take = (file: string, from: string) => ({ file: `takes/${file}`, from });
-    const sheet = {
-      sounds: {
-        call: { range: 40, level: -20, vary: 1, takes: [take("a.wav", "moss"), take("b.wav", "stable")] },
-        startled: { range: 60, level: -14, takes: [take("b.wav", "moss")] },
-        hurt: { range: 45, level: -16, takes: [take("b.wav", "moss")] },
-        peck: { range: 15, level: -24, takes: [take("a.wav", "moss")] },
-        land: { range: 25, level: -20, takes: [take("a.wav", "moss")] },
-        "step/grass": { range: 20, level: -28, takes: [{ ...take("a.wav", "moss"), start: 0, end: 0.1 }, { ...take("a.wav", "moss"), start: 0.1, end: 0.2 }] },
-        "step/sand": { range: 20, level: -28, takes: [{ ...take("b.wav", "moss"), start: 0, end: 0.1 }] },
-      },
-    };
-    writeFileSync(join(dir, "sounds.json"), JSON.stringify(sheet));
-    const built = buildSounds(1, root, null)!;
-    const manifest = parseManifest(JSON.stringify({ version: 3, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: built.bytes.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: built.sounds }));
-    return { manifest, file: built.bytes };
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-}
-
-const built = builtSounds();
+const made = builtSounds();
+const built = { file: made.file, manifest: parseManifest(JSON.stringify({ version: 3, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: made.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: made.sounds })) };
 
 test("the build names each sound by its owner and occasion, and a manifest that says a wrong thing of one is refused", () => {
   const ids = built.manifest.sounds!.map((s) => s.id);
