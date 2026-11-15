@@ -128,6 +128,16 @@ export class Stations {
     const lanes = (): Refined[] => refining(this.world.reg).byBase.get(this.world.reg.stationBase[this.rec!.kind]!) ?? [];
     this.hearth = {
       settle: (t) => items.spoilTo(this.rec!, t),
+      spoils: () => {
+        // Settled to the fire's tick, every clock still set is after it.
+        const inv = this.rec!.inv!;
+        let next = 0;
+        for (let s = 0; s < inv.cap; s++) {
+          const at = inv.spoilAt[s]!;
+          if (at !== 0 && inv.item[s] !== 0 && (next === 0 || at < next)) next = at;
+        }
+        return next;
+      },
       feed: () => {
         const fuel = this.fuelOf(this.rec!);
         const s = first(fuel);

@@ -198,3 +198,46 @@ test("a blueprint of sparkpowder in a forge is no fuel: lit with one ahead of wo
     h.host.shutdown();
   }
 });
+
+test("a full forge read every tick and one read by nobody come out the same when a berry in them spoils mid-piece and frees a slot: the waiting ingot is made at that tick", () => {
+  const { h, me, at } = smithy();
+  try {
+    const items = h.host.items;
+    const forges = [0, 1].map((k) => {
+      const ref = h.world.structs.add(FORGE, at.x + 13 + 3 * k, at.y + reg.halfY[FORGE]!, at.z + 14, 0, me.team, 2500);
+      return { ref, rec: h.host.fixtures.ensure(ref) };
+    });
+    // A berry minted now spoils in 600 s. Each forge is lit 1,000 ticks before that, full: 10 ore, 2 sparkpowder, the berry
+    // and 21 stacks of stone, so its first ingot, done 20 s after lighting, waits for room until the berry is gone.
+    const t0 = h.world.tick;
+    for (const { rec } of forges) items.mint(rec, id("berry"), 1);
+    h.world.tick = t0 + reg.spoilTicks[id("berry")]! - 1000;
+    for (const { rec } of forges) {
+      items.mint(rec, id("ore"), 10);
+      items.mint(rec, id("sparkpowder"), 2);
+      items.mint(rec, id("stone"), 21 * reg.stack[id("stone")]!);
+      expect(rec.inv!.free()).toBe(-1);
+    }
+    expect(forges.map(({ ref }) => h.host.stations.toggle(ref))).toEqual([RESULT_OK, RESULT_OK]);
+    const lit = h.world.tick;
+    const [a, b] = forges as [(typeof forges)[0], (typeof forges)[0]];
+    // One is read every tick, the other is left alone until both have gone out. Nothing else runs.
+    while (h.world.tick < lit + 130 * SECOND) {
+      h.world.tick++;
+      items.inv(a.rec);
+    }
+    items.inv(b.rec);
+    const slots = (rec: typeof a.rec): number[][] => {
+      const out: number[][] = [];
+      for (let s = 0; s < rec.inv!.cap; s++) if (rec.inv!.item[s] !== 0) out.push([rec.inv!.item[s]!, rec.inv!.count[s]!]);
+      return out.sort((x, y) => x[0]! - y[0]! || x[1]! - y[1]!);
+    };
+    expect([b.rec.kind, b.rec.fire, slots(b.rec)]).toEqual([a.rec.kind, a.rec.fire, slots(a.rec)]);
+    // The berry spoiled 1,000 ticks after lighting, and an ingot was made then and every 20 s after: five, all the ore,
+    // before the second sparkpowder ended at 120 s.
+    expect([a.rec.kind, a.rec.inv!.total(id("ingot")), a.rec.inv!.total(id("ore")), a.rec.inv!.total(id("berry"))]).toEqual([FORGE, 5, 0, 0]);
+    expect(items.audit()).toEqual([]);
+  } finally {
+    h.host.shutdown();
+  }
+});
