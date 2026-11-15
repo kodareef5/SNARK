@@ -54,3 +54,15 @@ test("the pistol gives 100.8 experience and the long rifle 330, at levels 34 and
   expect([made("pistol"), engram("pistol")]).toEqual([{ needs: "60 ingot, 5 wood, 15 hide", seconds: 12, xp: 100.8, count: 1, at: "hand" }, [34, 15]]);
   expect([made("rifle"), engram("rifle")]).toEqual([{ needs: "95 ingot, 20 wood, 25 hide", seconds: 15, xp: 330, count: 1, at: "hand" }, [35, 18]]);
 });
+
+test("a stone arrow is one a crafting in half a second for 2 points; a tranquilizer arrow takes 1 s; each weighs 0.2 (Stone Arrow, Tranq Arrow, Flame Arrow, Bow)", () => {
+  expect([carried("arrow_stone"), carried("arrow_tranq"), carried("arrow_flame")]).toEqual([[0.2, 100], [0.2, 100], [0.2, 100]]);
+  expect([reg.damage[at("arrow_stone")], reg.damage[at("arrow_tranq")], reg.damage[at("arrow_flame")]]).toEqual([55, 20, 55]);
+  expect([made("arrow_stone"), engram("arrow_stone")]).toEqual([{ needs: "2 thatch, 2 fiber, 1 flint", seconds: 0.5, xp: 0.096, count: 1, at: "hand" }, [10, 2]]);
+  expect([made("arrow_tranq"), engram("arrow_tranq")]).toEqual([{ needs: "1 arrow_stone, 1 narcotic", seconds: 1, xp: 0.1, count: 1, at: "hand" }, [21, 8]]);
+});
+
+test("a flame arrow is a stone arrow and one more thing, at level 26, in 1 s; gunpowder stands for propellant (Flame Arrow)", () => {
+  // DEV128: ARK's is 1 stone arrow and 1 propellant, Scorched Earth's.
+  expect([made("arrow_flame"), engram("arrow_flame")]).toEqual([{ needs: "1 arrow_stone, 1 gunpowder", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [26, 15]]);
+});
