@@ -105,7 +105,7 @@ export const CMD_USE = 3;
 
 /** Closes the open container. No arguments. */
 export const CMD_CLOSE = 4;
-/** Index u8 into the places OWN_RESPAWN listed. */
+/** Index u8 into the places OWN_RESPAWN listed, then that list's number u8. A place from a list since replaced is STALE. */
 export const CMD_RESPAWN = 5;
 
 /** Stat u8. It gets one level-up point. */
@@ -263,8 +263,16 @@ export const SLOT_ON = 2;
 export const OWN_OPEN = 4;
 /** count u8, then per marker: kind u8, x f32, y f32, z f32, tick u32. Oldest first. */
 export const OWN_MARKERS = 5;
-/** count u8, then per place: name string, x f32, z f32, wait u16 (seconds until a bed is ready, 0 for a spawn point). */
+/**
+ * The places a survivor without a body may rise at, sent whenever they change while it chooses: why it chooses (CHOOSE_), the
+ * list's number u8 (CMD_RESPAWN names it), count u8, then per place: the bed's structure kind u16 (0 for one of the map's spawn
+ * points), name string, x f32, z f32, and the tick it is ready from u32 (0 for now).
+ */
 export const OWN_RESPAWN = 6;
+/** Why a survivor has no body and chooses where to rise: it died, it arrived from another server, it travels from a bed. */
+export const CHOOSE_DIED = 0;
+export const CHOOSE_ARRIVED = 1;
+export const CHOOSE_TRAVEL = 2;
 
 /**
  * experience u32, level u16, unspent stat points u16, unspent engram points varint, learned engrams (count varint, content

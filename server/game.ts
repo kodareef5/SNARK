@@ -38,6 +38,7 @@ import {
   SESSION_ALIVE,
   SESSION_CREATING,
   SESSION_DEAD,
+  CHOOSE_DIED,
   SESSION_SPECTATING,
   S_CHUNK,
   S_CHUNK_DROP,
@@ -68,6 +69,7 @@ import { Guesses } from "./guesses.ts";
 import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
+import type { Place } from "./beds.ts";
 
 export interface GameOptions {
   /** In ticks. */
@@ -258,12 +260,17 @@ export class Client {
   sentVitals = -1;
   sentInv = -1;
   sentMarkers = -1;
-  sentRespawn = false;
   /** What was last sent of the creature it has open, packed into one number, and when. */
   sentSubject = -1;
   sentSubjectAt = 0;
-  /** Respawn choices in the order sent. bed is a structure ref, or -1. */
-  readonly respawnAt: { x: number; y: number; z: number; yaw: number; bed: number }[] = [];
+  /**
+   * Without a body, why it chooses where to rise (CHOOSE_). The places it was last sent (server/beds.ts), in their order, the
+   * list's number, and the version of the beds they were made from (-1 for none sent).
+   */
+  why = CHOOSE_DIED;
+  readonly respawnAt: Place[] = [];
+  placesList = 0;
+  sentPlaces = -1;
   sentLook: Uint8Array | null = null;
   sentHeld = -2;
   sentBuffs = -1;
@@ -317,7 +324,7 @@ export class Client {
     this.left = "left";
     this.ownDirty = false;
     this.sentVitals = this.sentInv = this.sentMarkers = this.sentOpenVersion = -1;
-    this.sentRespawn = false;
+    this.sentPlaces = -1;
     this.sentLook = null;
     this.sentHeld = -2;
     this.sentBuffs = -1;

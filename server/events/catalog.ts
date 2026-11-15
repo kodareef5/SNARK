@@ -63,7 +63,7 @@ ev("session.presence", "after", "pid connected", "", "server/host.ts", "wired", 
 ev("session.leave", "after", "pid why", "logout and kick", "server/host.ts", "wired", "A session ended.");
 ev("session.create", "before", "name", "the create-character request", "server/own.ts", "wired", "A survivor is about to be made.");
 ev("session.spawn", "after", "pid first why", "the first spawn, and taking a body", "server/host.ts", "wired", "A survivor's body entered the world.");
-ev("session.respawn", "before", "pid bed wait!", "the respawn-at-point request", "server/host.ts", "wired", "A dead survivor is about to come back.");
+ev("session.respawn", "before", "pid bed wait!", "the respawn-at-point request", "server/beds.ts", "wired", "A dead survivor is about to come back.");
 ev("session.admin", "after", "pid", "the admin-detected notice", "server/commands/core.ts", "wired", "A session enabled cheats.");
 ev("zone.enter", "after", "pid zone", "an actor overlap beginning", "server/host.ts", "limits", "A body entered a zone.");
 ev("zone.leave", "after", "pid zone", "an actor overlap ending", "server/host.ts", "limits", "A body left a zone.");

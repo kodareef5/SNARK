@@ -358,7 +358,7 @@ test("round 4, building: two of a tribe make and build a two-floor house on a sl
   expect(ada.respawnPoints.length).toBe(spawns + 1);
   code = -1;
   ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
-  ada.command(CMD_RESPAWN, (w: BitWriter) => w.u8(spawns));
+  ada.command(CMD_RESPAWN, (w: BitWriter) => (w.u8(spawns), w.u8(ada.placesList)));
   h.run(600);
   expect([code, ada.sessionState]).toEqual([RESULT_OK, SESSION_ALIVE]);
   expect([Math.abs(ada.own.x - rowOf(upSW)[1]! / U) < 0.5, Math.abs(ada.own.y - bedTop) < 0.1, bedTop - floor > 3]).toEqual([true, true, true]);

@@ -43,6 +43,7 @@ import {
   OWN_STATION,
   OWN_PROGRESSION,
   OWN_RESPAWN,
+  CHOOSE_DIED,
   OWN_SESSION,
   OWN_SLOTS,
   OWN_VITALS,
@@ -347,8 +348,14 @@ export class ClientSession {
   station: { kind: number; jobs: { item: number; left: number; doneAt: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
-  /** The world's respawn points, then the tribe's beds. wait is in seconds. */
-  readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
+  /**
+   * While the survivor has no body: the map's spawn points, then its tribe's beds. `kind` is the bed's structure kind (0 for a
+   * spawn point), `readyAt` the tick it may be risen at from (0 for now). `choosing` says why (CHOOSE_), and `placesList` is the
+   * list's number, which a choice names.
+   */
+  readonly respawnPoints: { kind: number; name: string; x: number; z: number; readyAt: number }[] = [];
+  choosing = CHOOSE_DIED;
+  placesList = 0;
   /** The map beyond the view: structure cells and marks, as the server sends them. */
   readonly tactical = new MapStore();
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
@@ -975,10 +982,14 @@ export class ClientSession {
       p.jobs = jobs;
       p.version++;
     } else if (component === OWN_RESPAWN) {
+      const why = r.u8();
+      const number = r.u8();
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), wait: r.u16() });
+      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
       if (r.overflow) return;
+      this.choosing = why;
+      this.placesList = number;
       this.respawnPoints.length = 0;
       this.respawnPoints.push(...list);
     }

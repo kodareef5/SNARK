@@ -11,7 +11,8 @@ import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand } from "./hud.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { UiFrame } from "./nodes.ts";
-import { RespawnScreen, buildMap } from "./screens.ts";
+import { buildMap } from "./screens.ts";
+import { ChoosingScreen } from "./choosing.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsClick } from "./settings.ts";
 import { StructMenu } from "./structure.ts";
@@ -28,7 +29,7 @@ export class Ui {
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
   readonly sheet = new CharacterScreen();
-  readonly respawn = new RespawnScreen();
+  readonly choosing = new ChoosingScreen();
   readonly structure = new StructMenu();
   readonly naming = new NamePrompt();
   /** The session is in the creator, which is then the whole interface. */
@@ -38,7 +39,7 @@ export class Ui {
   character = false;
   options = false;
   readonly settings = new Settings();
-  /** The session is dead and choosing where to respawn, so the mouse is free. */
+  /** The session has no body and chooses where to rise, so the mouse is free. */
   private dead = false;
   /** The app sets both once it has them. */
   registry: Registry | null = null;
@@ -131,17 +132,17 @@ export class Ui {
   }
 
   /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
-  pointer(kind: number, key: number, _x: number, _y: number, button: number, session: ClientSession | null): void {
+  pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null): void {
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_TAG) {
       this.chat.cycle(session);
       return;
     }
     if (this.creating) {
-      this.creator.pointer(kind, key, _x, session);
+      this.creator.pointer(kind, key, x, session);
       return;
     }
-    if (kind === 0 && this.respawn.click(key, session)) return;
+    if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
@@ -176,7 +177,7 @@ export class Ui {
     if (this.dead || this.creating) this.structure.close();
     if (!this.console.open && !this.chat.open) {
       if (this.creating && session) this.creator.build(f, this.palette, session.name);
-      else if (this.dead && session) this.respawn.build(f, session);
+      else if (this.dead && session) this.choosing.build(f, session, hud);
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);

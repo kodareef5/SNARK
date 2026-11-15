@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -12,6 +12,7 @@ import { addCreatureCommands } from "./commands/creatures.ts";
 import { addSettingsCommands } from "./commands/settings.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
+import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Entangle } from "./entangle.ts";
@@ -27,7 +28,6 @@ import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
-import type { BedPoint } from "./own.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
@@ -219,8 +219,6 @@ export interface Host {
   shutdown(): void;
 }
 
-/** In ticks. After a respawn at a bed, nobody may respawn there for this long. */
-export const BED_WAIT_TICKS = 5 * 60 * TICK_RATE;
 /** One minute, in ticks. */
 const DECAY_SAVE_TICKS = 1800;
 /** How long commits have failed, in ticks, before sessions are told and before logins are refused. */
@@ -261,7 +259,6 @@ const SESSION_JOIN = event("session.join");
 const SESSION_PRESENCE = event("session.presence");
 const SESSION_LEAVE = event("session.leave");
 const SESSION_SPAWN = event("session.spawn");
-const SESSION_RESPAWN = event("session.respawn");
 const DEATH = event("death");
 const BODY_OUT = event("body.out");
 
@@ -887,46 +884,15 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
     const rec = records.byPid.get(c.pid);
     if (rec) survival.landed(rec, speed);
   };
+  const beds = new Beds({ world, records, tribes, fixtures, bus, rise: (c, p) => death.respawn(c, p.x, p.z, p.yaw, Number.isNaN(p.y) ? undefined : p.y) });
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, tribes, voice,
     use: new Use({ world, game, records, items, survival, buffs }),
     online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),
-    respawn: (c, index) => {
-      const p = c.respawnAt[index];
-      if (!p) return RESULT_INVALID;
-      // A module may refuse the place, or make the survivor wait: `wait` is seconds, and more than none refuses for now.
-      const asked = { pid: c.pid, bed: p.bed, wait: p.bed >= 0 ? Math.max(0, Math.ceil(((fixtures.find(p.bed)?.readyAt ?? 0) - world.tick) / TICK_RATE)) : 0 };
-      if (bus.before(SESSION_RESPAWN, asked) !== "") return RESULT_DENIED;
-      if (asked.wait > 0) return RESULT_WAIT;
-      if (p.bed < 0) return death.respawn(c, p.x, p.z, p.yaw);
-      // The bed must still stand and still belong to its tribe.
-      const bed = fixtures.find(p.bed);
-      const t = world.structs.chunks[Math.floor(p.bed / 65536)];
-      const slot = p.bed & 0xffff;
-      if (!bed || !t || world.reg.isBed[t.kind[slot]!] !== 1 || !tribes.may(records.byPid.get(c.pid), t.owner[slot]!)) return RESULT_INVALID;
-      if (bed.readyAt > world.tick) return RESULT_WAIT;
-      const code = death.respawn(c, p.x, p.z, p.yaw, p.y);
-      if (code === RESULT_OK) {
-        bed.readyAt = world.tick + BED_WAIT_TICKS;
-        records.dirty.add(bed.pid);
-      }
-      return code;
-    },
+    beds,
     subject: (rec) => taming.subject(rec),
-    beds: (rec) => {
-      const out: BedPoint[] = [];
-      fixtures.each((ref, bed) => {
-        const t = world.structs.chunks[Math.floor(ref / 65536)]!;
-        const slot = ref & 0xffff;
-        const kind = t.kind[slot]!;
-        if (world.reg.isBed[kind] !== 1 || !tribes.may(rec, t.owner[slot]!)) return;
-        // The respawn point is on top of the bed, facing the way it does.
-        out.push({ ref, name: `bed at ${Math.round(t.x[slot]!)}, ${Math.round(t.z[slot]!)}`, x: t.x[slot]!, y: t.y[slot]! + world.reg.halfY[kind]!, z: t.z[slot]!, yaw: (t.yaw[slot]! / 65536) * 2 * Math.PI, wait: Math.max(0, Math.ceil((bed.readyAt - world.tick) / TICK_RATE)) });
-      });
-      return out;
-    },
     refresh: (rec) => refreshBody(rec),
     mend: (rec, points) => {
       // Health from food comes over time, at the rate of the buff that shows it, and one meal at a time.

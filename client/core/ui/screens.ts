@@ -1,4 +1,4 @@
-import { CMD_RESPAWN, MARKER_DEATH, SESSION_DEAD } from "../../../shared/net/protocol.ts";
+import { MARKER_DEATH } from "../../../shared/net/protocol.ts";
 import { latLonText, latOf, lonOf } from "../../../shared/world/coords.ts";
 import { MAX_MARKERS, type HudModel } from "../hud.ts";
 import type { ClientSession } from "../session.ts";
@@ -7,14 +7,6 @@ import { IMAGE_MAP, MARKER_STYLE, MARKER_TINT } from "./hud.ts";
 import { K_BUTTON, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUTTON, S_FRAME, S_LABEL, S_MARK_DEATH, S_MARK_SELF, S_PANEL, S_TITLE } from "./style.ts";
 
-export const KEY_RESPAWN_PANEL = 900;
-export const KEY_RESPAWN_TITLE = 901;
-/** One for each row of the page shown. */
-export const KEY_RESPAWN_BUTTON = 910;
-/** Previous page, next page, and "page 2 of 5". */
-export const KEY_RESPAWN_PAGE = 930;
-/** Places listed at once: as many as fit under the title with the pager below them. */
-const RESPAWN_ROWS = 10;
 export const KEY_MAP_PANEL = 950;
 export const KEY_MAP_IMAGE = 951;
 export const KEY_MAP_TITLE = 952;
@@ -27,60 +19,6 @@ export const KEY_MAP_LINE = 980;
 export const KEY_MAP_MARK = 4300;
 /** The most pixels a side the map screen's picture is made at. */
 const MAP_PIXELS = 1024;
-
-/** Shown while dead. A click sends the choice, and the server decides. A tribe may have more beds than the panel has rows, so the list is paged. */
-export class RespawnScreen {
-  page = 0;
-  /** As of the last build. */
-  pages = 1;
-
-  build(f: UiFrame, session: ClientSession): void {
-    if (session.sessionState !== SESSION_DEAD) return;
-    const points = session.respawnPoints;
-    this.pages = Math.max(1, Math.ceil(points.length / RESPAWN_ROWS));
-    if (this.page >= this.pages) this.page = this.pages - 1;
-    const first = this.page * RESPAWN_ROWS;
-    const rows = Math.min(RESPAWN_ROWS, points.length - first);
-    const w = 280;
-    const rowH = 34;
-    const h = 56 + (rows + (this.pages > 1 ? 1 : 0)) * (rowH + 6) + 8;
-    const x = Math.round((f.width - w) / 2);
-    const y = Math.round(f.height * 0.3);
-    f.add(KEY_RESPAWN_PANEL, K_PANEL, x, y, w, h, S_PANEL);
-    f.text(KEY_RESPAWN_TITLE, x + 16, y + 14, w - 32, S_TITLE, "Return to life at");
-    for (let i = 0; i < rows; i++) {
-      const p = points[first + i]!;
-      const b = f.add(KEY_RESPAWN_BUTTON + i, K_BUTTON, x + 16, y + 52 + i * (rowH + 6), w - 32, rowH, S_BUTTON);
-      // A bed that someone has just risen from has a wait.
-      b.text = p.wait > 0 ? `${p.name}  (in ${p.wait} s)` : p.name;
-      b.interactive = true;
-    }
-    if (this.pages > 1) {
-      const py = y + 52 + rows * (rowH + 6);
-      const prev = f.add(KEY_RESPAWN_PAGE, K_BUTTON, x + 16, py, 44, rowH, S_BUTTON);
-      prev.text = "<";
-      prev.interactive = true;
-      const next = f.add(KEY_RESPAWN_PAGE + 1, K_BUTTON, x + w - 16 - 44, py, 44, rowH, S_BUTTON);
-      next.text = ">";
-      next.interactive = true;
-      f.text(KEY_RESPAWN_PAGE + 2, x + 16 + 44 + 8, py + 9, w - 32 - 88 - 16, S_LABEL, `page ${this.page + 1} of ${this.pages}`);
-    }
-  }
-
-  /** Returns true if the key was one of this screen's buttons. */
-  click(key: number, session: ClientSession): boolean {
-    if (session.sessionState !== SESSION_DEAD) return false;
-    if (key === KEY_RESPAWN_PAGE || key === KEY_RESPAWN_PAGE + 1) {
-      this.page = Math.max(0, Math.min(this.pages - 1, this.page + (key === KEY_RESPAWN_PAGE ? -1 : 1)));
-      return true;
-    }
-    const row = key - KEY_RESPAWN_BUTTON;
-    const i = this.page * RESPAWN_ROWS + row;
-    if (row < 0 || row >= RESPAWN_ROWS || i >= session.respawnPoints.length) return false;
-    session.command(CMD_RESPAWN, (w) => w.u8(i));
-    return true;
-  }
-}
 
 /** The map screen: a window on the map at one of its zooms, moved by the arrows or a click and zoomed by Minus and Equal or its buttons. */
 export function buildMap(f: UiFrame, session: ClientSession, hud: HudModel): void {

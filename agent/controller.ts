@@ -403,8 +403,8 @@ export class Controller {
         fresh.push("you died");
       } else if (now >= this.wakeAt && s.respawnPoints.length > 0) {
         // It wakes at the first place that is ready, as a player who presses the first button would.
-        const ready = s.respawnPoints.findIndex((p) => p.wait === 0);
-        this.commands.send(CMD_RESPAWN, (w) => w.u8(ready < 0 ? 0 : ready));
+        const ready = s.respawnPoints.findIndex((p) => p.readyAt <= s.serverTick);
+        this.commands.send(CMD_RESPAWN, (w) => (w.u8(ready < 0 ? 0 : ready), w.u8(s.placesList)));
         this.wakeAt = now + CHECK_MS;
       }
       this.hunters.clear();

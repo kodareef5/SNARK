@@ -175,7 +175,7 @@ test("every bed of the tribe is offered to its dead, thirty as surely as two, an
   expect(ada.respawnPoints.slice(0, spawns).map((p) => p.name)).toEqual(h.world.spawns.map((p) => p.name));
   let code = -1;
   ada.onResult = (seq, c) => void (seq !== 0 && (code = c));
-  ada.command(CMD_RESPAWN, (w: BitWriter) => w.u8(spawns + 29));
+  ada.command(CMD_RESPAWN, (w: BitWriter) => (w.u8(spawns + 29), w.u8(ada.placesList)));
   h.run(500);
   expect([code, ada.sessionState, Math.abs(ada.own.x - (g.x + 3 + 29 * 2.2)) < 0.5]).toEqual([RESULT_OK, SESSION_ALIVE, true]);
 });
@@ -201,7 +201,7 @@ test("a bed is where its tribe returns to life: listed for them and nobody else,
   const respawn = (s: ClientSession, index: number): number => {
     let code = -1;
     s.onResult = (seq, c) => void (seq !== 0 && (code = c));
-    s.command(CMD_RESPAWN, (w: BitWriter) => w.u8(index));
+    s.command(CMD_RESPAWN, (w: BitWriter) => (w.u8(index), w.u8(s.placesList)));
     h.run(300);
     return code;
   };
