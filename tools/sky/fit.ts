@@ -110,7 +110,22 @@ function model(b: SkyBuilder, key: BaseKey, g: Grade, height: number): Record<st
 }
 
 /** A grade from the numbers the search moves. */
-function gradeOf(base: Grade, x: number[], light: boolean): Grade {
+/**
+ * Bounds that keep a grade gentle, the art director's measure's own: each tint within a factor of 4, saturation within
+ * 2, the horizon lifted at most 2.5 times or lowered to a third, the glow round the light at most halved.
+ */
+const BOUNDS: readonly (readonly [number, number])[] = [
+  [-Math.log(4), Math.log(4)], [-Math.log(4), Math.log(4)], [-Math.log(4), Math.log(4)],
+  [-Math.log(2), Math.log(2)],
+  [Math.log(1 / 3), Math.log(2.5)],
+  [Math.log(0.5), Math.log(2.5)],
+  [Math.log(1 / 3), Math.log(2.5)],
+  [-Math.log(4), Math.log(4)], [-Math.log(4), Math.log(4)], [-Math.log(4), Math.log(4)],
+  [-Math.log(2), Math.log(2)],
+];
+
+function gradeOf(base: Grade, raw: number[], light: boolean): Grade {
+  const x = raw.map((v, i) => Math.max(BOUNDS[i]![0], Math.min(BOUNDS[i]![1], v)));
   return {
     ...base,
     tint: [Math.exp(x[0]!), Math.exp(x[1]!), Math.exp(x[2]!)],
@@ -118,8 +133,9 @@ function gradeOf(base: Grade, x: number[], light: boolean): Grade {
     horizon: x[4]!,
     glow: base.name === "night" ? 0 : x[5]!,
     moonGlow: base.name === "night" ? x[5]! : 0,
-    sun: light ? [Math.exp(x[6]!), Math.exp(x[7]!), Math.exp(x[8]!)] : base.sun,
-    sky: light ? Math.exp(x[9]!) : base.sky,
+    farHorizon: x[6]!,
+    sun: light ? [Math.exp(x[7]!), Math.exp(x[8]!), Math.exp(x[9]!)] : base.sun,
+    sky: light ? Math.exp(x[10]!) : base.sky,
   };
 }
 
@@ -175,13 +191,15 @@ export function fit(paint: Record<string, Record<string, number[]>>, names: read
       for (const p of SKY_POINTS) sum += apart(m[p]!, target[p]!) ** 2;
       for (const p of CARDS) sum += 0.5 * apart(m[p]!, target[p]!) ** 2;
       // Numbers the key says little about stay near the physical sky's.
-      for (let i = 0; i < x.length; i++) sum += (i < 6 ? 2 : 8) * x[i]! * x[i]!;
+      for (let i = 0; i < x.length; i++) sum += (i < 7 ? 2 : 8) * x[i]! * x[i]!;
       return sum;
     };
-    const start = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const start = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     const best = simplex(cost, start, 0.3, 700);
     cost(best);
-    console.log(`${name.padEnd(9)} fitted at ${height.toFixed(2)} degrees: ${SKY_POINTS.map((p) => `${p} ${apart(model(b, key, grades[at]!, height)[p]!, target[p]!).toFixed(1)}`).join(", ")}; cards ${CARDS.map((p) => apart(model(b, key, grades[at]!, height)[p]!, target[p]!).toFixed(1)).join(", ")}`);
+    const m = model(b, key, grades[at]!, height);
+    console.log(`${name.padEnd(9)} fitted at ${height.toFixed(2)} degrees: ${[...SKY_POINTS, ...CARDS].map((p) => `${p} ${apart(m[p]!, target[p]!).toFixed(1)}`).join(", ")}`);
+    if (process.argv.includes("--verbose")) for (const p of [...SKY_POINTS, ...CARDS]) console.log(`    ${p.padEnd(7)} key ${target[p]!.map(Math.round).join(",")}  table ${m[p]!.map(Math.round).join(",")}`);
   }
   return grades;
 }
@@ -190,7 +208,7 @@ const r = (v: number): string => String(+v.toFixed(3));
 
 /** Grades as grade.ts writes them. */
 export function gradesText(grades: readonly Grade[]): string {
-  return grades.map((g) => `  { name: "${g.name}", height: ${g.height}, tint: [${g.tint.map(r).join(", ")}], saturation: ${r(g.saturation)}, horizon: ${r(g.horizon)}, glow: ${r(g.glow)}, moonGlow: ${r(g.moonGlow)}, sun: [${g.sun.map(r).join(", ")}], sky: ${r(g.sky)} },`).join("\n");
+  return grades.map((g) => `  { name: "${g.name}", height: ${g.height}, tint: [${g.tint.map(r).join(", ")}], saturation: ${r(g.saturation)}, horizon: ${r(g.horizon)}, farHorizon: ${r(g.farHorizon)}, glow: ${r(g.glow)}, moonGlow: ${r(g.moonGlow)}, sun: [${g.sun.map(r).join(", ")}], sky: ${r(g.sky)} },`).join("\n");
 }
 
 if (import.meta.main) {

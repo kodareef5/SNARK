@@ -131,24 +131,28 @@ export class SkyBuilder {
   }
 
   /**
-   * The light of one sun height as a frame block takes it, white-balanced. The sky's above is the graded dome over the
-   * upper half, each direction by how squarely it falls on a surface facing up. A surface facing down sees the ground,
-   * which sends back GROUND of all the light falling on it.
+   * The light of one sun height as a frame block takes it, white-balanced. The sky's above is the dome over the upper
+   * half, each direction by how squarely it falls on a surface facing up: its colour the graded dome's, its strength
+   * the physical dome's, so a grade that brightens the dome brightens it against the land. A surface facing down sees
+   * the ground, which sends back GROUND of all the light falling on it.
    */
   light(height: number, g: Grade = gradeAt(height, this.grades)): Light {
     const s = this.skyFor(height);
     const above: Rgb = [0, 0, 0];
+    let plain = 0;
     let i = SKY_SIZE * SKY_SIZE * 3;
     for (let r = 0; r < RINGS; r++) {
       const e = ((r + 0.5) / RINGS) * 90;
       // A cell is a ring's height by its share of half the circle, and the other half mirrors it.
-      const w = 2 * Math.sin(e * DEG) * Math.cos(e * DEG) * (Math.PI / 2 / RINGS) * (Math.PI / ROUND) * this.sky * g.sky;
+      const w = 2 * Math.sin(e * DEG) * Math.cos(e * DEG) * (Math.PI / 2 / RINGS) * (Math.PI / ROUND);
       for (let q = 0; q < ROUND; q++, i += 3) {
+        plain += luminance(s.subarray(i, i + 3)) * this.dome * w;
         this.graded(s, i, height, g, e, ((q + 0.5) / ROUND) * 180, this.c);
         for (let k = 0; k < 3; k++) above[k] += this.c[k]! * w;
       }
     }
-    for (let k = 0; k < 3; k++) above[k] *= this.balance[k]!;
+    const strength = (plain / Math.max(luminance(above), 1e-30)) * this.sky * g.sky;
+    for (let k = 0; k < 3; k++) above[k] *= strength * this.balance[k]!;
     const sun = this.sunlight(height, g, false);
     const moon = this.sunlight(-height, g, true);
     const up = Math.max(0, Math.sin(height * DEG));

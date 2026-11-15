@@ -1,7 +1,8 @@
 // The eight key panoramas with the sky the table gives in place of today's flat one, the land drawn as low poly draws
-// it, and three swatches at the bottom left: a grey 128 card under the table's light, sunlit head on, standing in its
-// own shade, and lying face up. With --sheet, the eight halved and laid out two across in one picture.
-// Run: bun tools/sky/preview.ts [--out DIR] [--sheet FILE]
+// it, and three swatches at the bottom left: a grey 128 card under the table's light, upright toward the light,
+// upright away from it, and lying face up. With --sheet, the eight halved and laid out two across in one picture.
+// With --points, the colours at every key's points as the game shows them, for the art director's measure.
+// Run: bun tools/sky/preview.ts [--out DIR] [--sheet FILE] [--points FILE]
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -9,6 +10,7 @@ import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
 import { cardTakes, domeLight, shownSky, skyFrame, sunDirection, sunHeight, theSky, type Sky } from "../../client/core/render/sky.ts";
 import { encodePng } from "../snap/png.ts";
 import { HEIGHT, KEYS, WIDTH, render } from "./base.ts";
+import { basePoints, tableAt } from "./fit.ts";
 
 /**
  * What the base pictures' grey 128 cards show under the sky's light at an hour: upright toward the light's heading,
@@ -70,4 +72,26 @@ if (import.meta.main) {
     console.log(`${key.name.padEnd(10)} sun ${sunHeight(key.hour).toFixed(1)}  cards lit ${cards.lit.map(Math.round)} shaded ${cards.shaded.map(Math.round)} up ${cards.up.map(Math.round)}`);
   }
   if (sheetFile) writeFileSync(resolve(sheetFile), encodePng(W * 2, H * 4, sheet));
+  const pointsFile = arg("points");
+  if (pointsFile) {
+    const keys: Record<string, unknown> = {};
+    for (const key of basePoints()) {
+      const frame = new Float32Array(FRAME_FLOATS);
+      skyFrame(key.hour, sky, frame);
+      const moon = key.lightBy === "moon";
+      const dome = tableAt(sky, key);
+      const cards = cardColours(sky, key.hour, moon);
+      const round = (c: readonly number[]): number[] => c.map((v) => Math.round(v));
+      keys[key.name] = {
+        hour: key.hour,
+        lightHeight: moon ? -sunHeight(key.hour) : sunHeight(key.hour),
+        exposure: +frame[F.exposure]!.toFixed(4),
+        ...Object.fromEntries(Object.entries(dome).map(([n, c]) => [n, round(c)])),
+        lit: round(cards.lit),
+        shaded: round(cards.shaded),
+        up: round(cards.up),
+      };
+    }
+    writeFileSync(resolve(pointsFile), JSON.stringify({ about: "The sky table at each key's points as the game shows it, through the tone curve, in sRGB, and the grey cards under its light; from tools/sky/preview.ts.", keys }, null, 2) + "\n");
+  }
 }
