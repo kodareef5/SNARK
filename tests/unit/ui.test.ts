@@ -1093,7 +1093,7 @@ test("a creature of one's own, looked into, is told to follow or stay, to change
     ui.registry = reg;
     ui.build(aspect, fullHud(), session);
     const f = ui.frame;
-    expect([f.find(KEY_OPEN_ORDER)!.text, f.find(KEY_OPEN_ORDER + 1)!.text, f.find(KEY_OPEN_LEVEL + 6) !== null], name).toEqual(["Follow me", "It is neutral", true]);
+    expect([f.find(KEY_OPEN_ORDER)!.text, f.find(KEY_OPEN_ORDER + 1)!.text, f.find(KEY_OPEN_LEVEL + 6) !== null], name).toEqual(["Follow me", "neutral", true]);
     for (let i = 0; i < f.count; i++) {
       const n = f.nodes[i]!;
       if (n.key < KEY_OPEN_ORDER || n.key >= KEY_OPEN_LEVEL + 7) continue;
@@ -1110,7 +1110,7 @@ test("a creature of one's own, looked into, is told to follow or stay, to change
     // While it follows, the button offers the other order. With no levels to spend there are no level buttons.
     Object.assign(subject, { following: true, points: 0, stance: 2 });
     ui.build(aspect, fullHud(), session);
-    expect([f.find(KEY_OPEN_ORDER)!.text, f.find(KEY_OPEN_ORDER + 1)!.text, f.find(KEY_OPEN_LEVEL)]).toEqual(["Stay here", "It is aggressive", null]);
+    expect([f.find(KEY_OPEN_ORDER)!.text, f.find(KEY_OPEN_ORDER + 1)!.text, f.find(KEY_OPEN_LEVEL)]).toEqual(["Stay here", "aggressive", null]);
     ui.pointer(0, KEY_OPEN_ORDER, 0, 0, 0, session);
     expect(sent[3]!.bytes[4]).toBe(ORDER_STAY);
     // A wild creature being tamed has none of these.
@@ -1132,7 +1132,7 @@ test("one that breeds says its sex and how its mating goes, and has a button for
     const f = ui.frame;
     const said = (): string => f.find(KEY_OPEN_SUBJECT)!.text;
     expect(said(), name).toBe("level 12  female  torpor 0%  food 70%".slice(0, said().length));
-    // Saddled and able to mate, it has four buttons in its row.
+    // Saddled and able to mate, it has five buttons in its row.
     expect([f.find(KEY_OPEN_MATE)!.text, f.find(KEY_OPEN_UNSADDLE) !== null], name).toEqual(["Mating off".slice(0, f.find(KEY_OPEN_MATE)!.text.length), true]);
     for (let i = 0; i < f.count; i++) {
       const n = f.nodes[i]!;

@@ -6,8 +6,32 @@ import { TICK_RATE } from "../coords.ts";
 /** A willing pair must stay together this long before there is an egg. Chosen, because the reference publishes none. */
 export const MATE_SECONDS = 30;
 export const MATE_TICKS = MATE_SECONDS * TICK_RATE;
-/** Horizontal metres. Also chosen. */
-export const MATE_RANGE = 8;
+/**
+ * ARK's mating range is "loosely based on the size of the adult creature" and given for none. Chosen: two metres, and two
+ * body widths of the adult more, between the middles of the pair. A dodo's is 2.9 m, a raptor's 4.4 m, a parasaur's 6.4 m.
+ */
+export const MATE_REACH = 2;
+export const MATE_WIDTHS = 2;
+
+/** Horizontal metres between a pair of a species whose adult body has radius `radius`. */
+export function mateRange(radius: number): number {
+  return MATE_REACH + MATE_WIDTHS * 2 * radius;
+}
+
+/** ARK's dodo defecates every 100 to 300 seconds, picked evenly. ARK says only that others go as they eat, so all go so. */
+export const FECES_MIN = 100;
+export const FECES_MAX = 300;
+/**
+ * ARK keeps at most 6 unfertilised eggs within a range it does not give. Chosen: of the same egg, within 10 m of where the
+ * next would lie. Fertilised eggs are not counted, as in ARK.
+ */
+export const EGG_LIMIT = 6;
+export const EGG_LIMIT_RANGE = 10;
+
+/** In seconds. `draw` is uniform in [0, 1). */
+export function fecesWait(draw: number): number {
+  return FECES_MIN + (FECES_MAX - FECES_MIN) * draw;
+}
 /** Seconds a female waits after an egg before mating again, picked evenly between these (18 and 48 hours). */
 export const MATE_WAIT_MIN = 18 * 3600;
 export const MATE_WAIT_MAX = 48 * 3600;

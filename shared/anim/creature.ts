@@ -20,7 +20,7 @@ import { footStart, gaitClip, gaitShares, playGaits, tickPhase, type Gait, type 
 import { HUMAN } from "./human.ts";
 import { CUE_LAND, CUE_STARTLE, CUE_TORPOR, DIR_STEPS, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, SPEED_STEP, type AnimState } from "./pose.ts";
 import type { Rig, RigClip } from "./rigs.ts";
-import { rayZones, solve, zoneHit } from "./skeleton.ts";
+import { boneToModel, rayZones, solve, zoneHit } from "./skeleton.ts";
 
 /** Below this speed, in metres per second, a walk with no stride is blended with the idle so that starting off is not a jump. */
 const EASE_IN = 1.2;
@@ -56,6 +56,11 @@ export class CreatureAnim {
   readonly torporEat: Clip | null;
   readonly torporOut: Clip | null;
   readonly death: Clip | null;
+  /** In a survivor's arms, and hanging from a creature that carries it. */
+  readonly held: Clip | null;
+  readonly carried: Clip | null;
+  /** Its hold_point socket as it is held, in its model space: where a survivor's palms take it. Null without the socket. */
+  readonly holdAt: Float64Array | null;
   /**
    * Its idle's variants, the clips named "idle_" and a word, and its call. In each `slot` ticks of standing, from a whole
    * turn of its idle, one of them may play.
@@ -68,9 +73,10 @@ export class CreatureAnim {
   readonly swimGait: GaitClip | null;
   /** Every moving clip it has, slowest first, when all of them have a stride and so blend in step. Otherwise empty. */
   readonly gaits: readonly GaitClip[];
-  /** The bones a flinch and a gulp turn: of those each clip turns, the ones above its legs. */
+  /** The bones a flinch, a gulp and a bite turn: of those each clip turns, the ones above its legs. */
   readonly flinchBones: Uint8Array;
   readonly eatBones: Uint8Array;
+  readonly biteBones: Uint8Array;
   /** Radians a second at which its turn plays at its own rate. */
   readonly spinAt: number;
 
@@ -95,6 +101,8 @@ export class CreatureAnim {
     this.torporEat = named("torpor_eat");
     this.torporOut = named("torpor_out");
     this.death = named("death");
+    this.held = named("held");
+    this.carried = named("carried");
     const idles = [...rig.clips.keys()].filter((n) => /^idle_\w+$/.test(n)).sort().map((n) => rig.clips.get(n)!);
     const call = named("call");
     if (call) idles.push(call);
@@ -114,6 +122,16 @@ export class CreatureAnim {
     const legs = legBones(rig);
     this.flinchBones = this.flinch ? turnedBones(this.flinch, legs) : new Uint8Array(0);
     this.eatBones = this.torporEat ? turnedBones(this.torporEat, legs) : new Uint8Array(0);
+    this.biteBones = this.attack ? turnedBones(this.attack, legs) : new Uint8Array(0);
+    const socket = rig.sockets.get("hold_point");
+    const held = this.held ?? this.idle;
+    if (socket) {
+      if (held) sampleClip(held, 0, rig.a);
+      else rig.a.rest();
+      solve(rig, rig.a, rig.solved);
+      this.holdAt = new Float64Array(3);
+      boneToModel(rig.solved, socket.bone, socket.x, socket.y, socket.z, this.holdAt);
+    } else this.holdAt = null;
     this.spinAt = this.turn ? QUARTER / (Math.max(1, this.turn.frames - 1) / TICK_RATE) : 1;
   }
 }
@@ -360,7 +378,9 @@ function strike(a: CreatureAnim, st: AnimState, tick: number, out: Pose): boolea
  */
 export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: Pose, gait: Gait | null = null): void {
   const rig = a.rig;
-  steady(a, st, tick, out, gait, st.out);
+  // Held, nothing that plays on its feet plays, unless it is knocked out.
+  if (st.held && !st.out) inArms(a, st, tick, out);
+  else steady(a, st, tick, out, gait, st.out);
   if (st.out) {
     // Going down, from what it was doing into lying. Without its own clip it falls as it dies.
     const clip = a.torporIn ?? a.death;
@@ -369,7 +389,7 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
       if (s < FADE) steady(a, st, tick, rig.e, gait, false);
       oneShot(rig, clip, s, out, rig.e);
     }
-  } else if (!strike(a, st, tick, out)) {
+  } else if (!st.held && !strike(a, st, tick, out)) {
     if (st.cue === CUE_TORPOR) gettingUp(a, st, tick, out);
     else if (st.cue === CUE_STARTLE || st.cue === CUE_LAND) {
       const clip = st.cue === CUE_STARTLE ? a.startled : a.land;
@@ -385,6 +405,23 @@ export function creaturePose(a: CreatureAnim, st: AnimState, tick: number, out: 
   const clip = st.layer === LAYER_FLINCH ? a.flinch : st.layer === LAYER_EAT ? a.torporEat : null;
   const s = clip ? since(tick, st.layerStart) : 0;
   if (clip && s < clip.frames - 1) layer(out, clip, s, st.layer === LAYER_FLINCH ? a.flinchBones : a.eatBones);
+}
+
+/** In a survivor's arms: its clip for that, and its bite over the bones above its legs, so it pecks from the arms. */
+function inArms(a: CreatureAnim, st: AnimState, tick: number, out: Pose): void {
+  const clip = a.held ?? a.idle;
+  if (clip) sampleClip(clip, tick + st.seed, out);
+  else out.rest();
+  if ((st.action & 7) === ACT_NONE || !a.attack) return;
+  const end = a.attack.frames - 1;
+  const s = since(tick, st.actionStart);
+  // In over two ticks and out over three, as a survivor's swing.
+  const k = Math.min(1, s / 2, (end - s) / 3);
+  if (k <= 0) return;
+  const f = a.rig.f;
+  sampleClip(a.attack, s, f);
+  const bones = a.biteBones;
+  for (let i = 0; i < bones.length; i++) quatNlerp(out.rot, bones[i]! * 4, out.rot, bones[i]! * 4, f.rot, bones[i]! * 4, k);
 }
 
 /** Getting up, from lying into what it does now. Without its own clip it rises over GET_UP ticks. */

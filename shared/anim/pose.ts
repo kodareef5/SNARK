@@ -11,7 +11,8 @@ import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
 import { MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
-import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
+import { cradle } from "./hold.ts";
 
 /** The three parts of a packed AnimState. Replication sends each part only when it changes. */
 export const ANIM_MOTION_BITS = 12;
@@ -389,7 +390,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     }
   }
 
-  if (act === ACT_SWING) {
+  if (act === ACT_SWING && hold !== HOLD_CARRY) {
     const clip = hold === HOLD_HANDS ? ((st.actionStart & 1) !== 0 ? (anim.punchCross ?? anim.punch) : anim.punch) : hold === HOLD_THROW ? anim.throwing : anim.toolSwing;
     const k = e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT;
     if (clip && k > 0) {
@@ -422,6 +423,8 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     turn(out, B_SHOULDER_L, 1, 0, 0, -lift);
     turn(out, B_SHOULDER_R, 1, 0, 0, -lift);
   }
+  // Arms round a creature hold it where they hold it, however the back has turned.
+  if (hold === HOLD_CARRY) cradle(out, st.stance);
 }
 
 /** Turns the whole body about an axis through (0, pivotY, 0) in model space. */

@@ -527,6 +527,50 @@ test("no stone taller than a survivor's waist has a box that rises a step or les
   }
 });
 
+/** From how many of eight sides a body of species `who`, walking at the middle of a node of `form` on level ground, steps onto it and on past it. */
+function overFrom(form: number, who: string): number {
+  const w = flatWorld(2);
+  const nodes = new StructureStore(w.dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+  const [cx, cz] = [32, 32];
+  nodes.put(0, 0, form, cx, 0, cz, 0, 0, 1, 1);
+  const world = { hf: w.hf, structs: w.structs, nodes };
+  const p = reg.move[kind(who)]!;
+  const box = forms.parts.box;
+  const first = forms.parts.start[form]! * 6;
+  const from = Math.max(box[first + 3]!, box[first + 5]!) + p.radius + 1;
+  let over = 0;
+  for (let side = 0; side < 8; side++) {
+    const yaw = Math.round((side * 65536) / 8) & 0xffff;
+    const [ux, uz] = [Math.sin((yaw / 65536) * TAU), Math.cos((yaw / 65536) * TAU)];
+    const b = new Body();
+    [b.x, b.y, b.z, b.yaw, b.grounded] = [cx - ux * from, 0, cz - uz * from, yaw, true];
+    let rose = 0;
+    for (let t = 0; t < Math.ceil(((3 * from) / p.walkSpeed) * 30); t++) {
+      stepBody(world, b, 0, 127, yaw, 0, 0, p, TICK_DT);
+      if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`${who} in ${forms.mesh[form]} from side ${side}`);
+      rose = Math.max(rose, b.y);
+    }
+    if (rose > 0.05 && (b.x - cx) * ux + (b.z - cz) * uz > from - 0.5) over++;
+  }
+  return over;
+}
+
+test("every tree's stump but a mangrove's, at its least and largest size, is stepped onto and over by a survivor and every creature from every side, and a mangrove's cage of roots bars the way", () => {
+  const walkers = ["core:survivor", ...reg.ids.filter((id, k) => (reg.defs[k] as { class?: string } | undefined)?.class === "creature" && reg.move[k])];
+  expect(walkers.length).toBeGreaterThan(3);
+  for (const id of ["core:tree", "core:palm", "core:oak", "core:fig", "core:banyan", "core:mangrove"]) {
+    const k = kind(id);
+    const steps = forms.steps[k]!;
+    for (let v = 0; v < forms.sums[k]!.length; v++) {
+      for (const step of [0, steps - 1]) {
+        const stump = forms.left[forms.first[k]! + v * steps + step]!;
+        const caged = id === "core:mangrove";
+        for (const who of caged ? ["core:survivor"] : walkers) expect([forms.mesh[stump], who, overFrom(stump, who)]).toEqual([forms.mesh[stump], who, caged ? 0 : 8]);
+      }
+    }
+  }
+});
+
 test("a pick's swing meets every stone and broken base from where a survivor stands at it", () => {
   for (const id of ["core:rock", "core:rubble", "core:metal_rock"]) {
     const k = kind(id);

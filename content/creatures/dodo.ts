@@ -1,4 +1,4 @@
-import type { Def } from "../../shared/content/defs.ts";
+import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 
 // The dodo. Its numbers are ARK's at 1x, as the ARK wiki (ark.wiki.gg) gave them on 2026-11-14 on the Dodo page and in
@@ -33,6 +33,30 @@ const REGIONS = [
 /** The default bird, region by region. Its asset draws the review sheet in these. */
 export const DODO_DYES: readonly number[] = REGIONS.map((r) => r.colors[0]![0]);
 
+/**
+ * The egg in the hand, as the wiki's Dodo Egg item gives it: spoils in 8 days, decomposes on the ground in 30 minutes,
+ * and eaten gives 20 food and 20 health (its 25 stamina has no field).
+ */
+export const DODO_EGG: ItemDef = {
+  type: "item", class: "egg",
+  id: "core:dodo_egg",
+  label: "dodo egg",
+  color: tone(0xe6e3dc),
+  stack: 100,
+  weight: 3,
+  eat: { food: 20, health: 20 },
+  spoilHours: (8 * 24 * 3600) / 140,
+  decomposeHours: (30 * 60) / 140,
+};
+
+/**
+ * Fertilised, it is one of a kind and keeps its young. The wiki says only that such eggs spoil "incredibly slowly" in an
+ * inventory; an Ascended data site gives 192 hours, the same 8 days, which is taken. It eats as the other does (ARK warns
+ * first). It does not decompose: it lies until it hatches.
+ */
+const { decomposeHours: _, ...kept } = DODO_EGG;
+export const DODO_EGG_FERTILE: ItemDef = { ...kept, id: "core:dodo_egg_fertile", label: "fertilised dodo egg", stack: 1 };
+
 export const DODO: readonly Def[] = [
   {
     type: "species", class: "creature",
@@ -56,8 +80,8 @@ export const DODO: readonly Def[] = [
     // Chosen: ARK's turning rate is not published.
     turn: 180,
     strafe: false,
-    // Running costs 4 a second. Recovery and jumping are the engine's defaults.
-    stamina: { sprint: 4, regen: 8, jump: 6 },
+    // Running costs 4 a second and walking 0.025, a unit a tick, which is 0.03. Recovery and jumping are the engine's defaults.
+    stamina: { sprint: 4, regen: 8, jump: 6, walk: 0.025 },
     // The peck: 5, once every half second, landing at tick 6 of its 15 as its clip does. Its reach is the beak's: at that
     // frame the beak's tip is 0.40 m ahead of the middle of the body and 0.31 m below the eye, 0.50 m from it. ARK's
     // attack range is 1.1 m, measured from a point the wiki does not give.
@@ -70,9 +94,9 @@ export const DODO: readonly Def[] = [
     carriable: true,
     drag: 25,
     mass: 50,
-    // ARK's rule for the dodo alone: an egg in place of a female's feces 13 times in 100. ARK's dodo leaves small feces,
-    // and `feces` will name that item when there is one.
+    // ARK's rule for the dodo alone: an egg in place of a female's feces 13 times in 100. ARK's dodo leaves small feces.
     eggChance: 0.13,
+    feces: "core:feces_small",
     // ARK has no slot limit for a creature but its weight, and holds 300 stacks at most in any inventory (patches 176.0
     // and 184.0).
     slots: 300,
@@ -97,23 +121,8 @@ export const DODO: readonly Def[] = [
     // Ascended have it; the Dodo page says 3% and its data module 2.5%.
     stats: { health: [40, 0.2, 0.054], stamina: [100, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [450, 0.1, 0.1], weight: [50, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [30, 0.06, 0] },
   },
-  // The egg every species has, drawn at a fifth of its size, 14 cm tall: ARK's is an extra small egg, off-white, and no
-  // measure is given. Its body is still as large as theirs.
-  { type: "prop", class: "egg", id: "core:egg_dodo", mesh: "core:egg", color: tone(0xe6e3dc), radius: 0.3, height: 0.7, size: 0.2 },
+  // ARK's is an extra small egg, off-white, and no measure is given: the extra small mesh, 11 cm tall.
+  { type: "prop", class: "egg", id: "core:egg_dodo", mesh: "core:egg_xs", color: tone(0xe6e3dc), radius: 0.04, height: 0.11, item: "core:dodo_egg", fertile: "core:dodo_egg_fertile" },
+  DODO_EGG,
+  DODO_EGG_FERTILE,
 ];
-
-/**
- * The egg in the hand, as the wiki's Dodo Egg item gives it: spoils in 8 days, decomposes on the ground in 30 minutes,
- * and eaten gives 20 food and 20 health (its 25 stamina has no field). It is not among DODO while item/egg is a stub class.
- */
-export const DODO_EGG: Def = {
-  type: "item", class: "egg",
-  id: "core:dodo_egg",
-  label: "dodo egg",
-  color: tone(0xe6e3dc),
-  stack: 100,
-  weight: 3,
-  eat: { food: 20, health: 20 },
-  spoilHours: (8 * 24 * 3600) / 140,
-  decomposeHours: (30 * 60) / 140,
-};

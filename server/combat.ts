@@ -13,7 +13,7 @@ import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shar
 import { Rng } from "../shared/rng.ts";
 import { stanceEye } from "../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
-import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
+import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, QUALITY_MUL } from "../shared/sim/items.ts";
 import { W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
@@ -398,7 +398,7 @@ export class Combat {
         const fz = mz - dz * along;
         if (fx * fx + fz * fz > (CHUNK_REACH + pad) * (CHUNK_REACH + pad)) continue;
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
-          if (i === self || i === this.spare || (ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
+          if (i === self || i === this.spare || (ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
           const kind = ents.kind[i]!;
           // A sphere that holds the body in any pose. A larger box gets a larger sphere.
           const h = reg.bodyHeight[kind]!;
@@ -794,7 +794,7 @@ export class Combat {
     for (let cz = z0; cz <= z1; cz++) {
       for (let cx = x0; cx <= x1; cx++) {
         for (let i = ents.chunkHead[cz * dims.chunksX + cx]!; i >= 0; i = ents.next[i]!) {
-          if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
+          if ((ents.flags[i]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE) continue;
           const kind = ents.kind[i]!;
           const mx = ents.x[i]! - x;
           const my = ents.y[i]! + reg.bodyHeight[kind]! * 0.5 - y;

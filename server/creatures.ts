@@ -3,14 +3,15 @@
 
 import { AnimState, CUE_LAND, CUE_NONE, CUE_OUT, CUE_STARTLE, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
 import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { Body, MF_OUT, MODE_SWIM, stepBody, stepOut } from "../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SPRINT, Body, MF_OUT, MF_WINDED, MODE_SWIM, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
 import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
-import { Behavior, MIND_FLEE } from "./behavior.ts";
+import { Behavior } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
 import { F_ALIVE, F_AWAKE, F_GROUNDED, F_HELD, F_PLAYER, F_PROP, wider } from "../shared/sim/entities.ts";
 import { rollWild } from "../shared/sim/genome.ts";
 import { Rng } from "../shared/rng.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
+import { groundUnder } from "../shared/world/collide.ts";
+import { placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import { refreshMods, type Survival } from "./survival.ts";
 import type { ServerWorld } from "./world.ts";
@@ -52,6 +53,8 @@ export class Creatures {
   /** Creatures with a cue still to clear (EntityStore.cue). */
   private readonly cued = new Set<number>();
   private readonly cues = new AnimState();
+  /** By entity index: 1 while its eyes are under water, as Survival was last told. */
+  private wet: Uint8Array;
 
   constructor(world: ServerWorld, game: GameServer, records: Records, survival: Survival, seed: number, wakeRadius = 3) {
     this.world = world;
@@ -61,30 +64,36 @@ export class Creatures {
     this.wakeRadius = wakeRadius;
     this.awake = new Int32Array(world.ents.cap);
     this.awakeSlot = new Int32Array(world.ents.cap).fill(-1);
+    this.wet = new Uint8Array(world.ents.cap);
     world.ents.onGrow.push((cap) => {
       this.awake = wider(this.awake, cap);
       this.awakeSlot = wider(this.awakeSlot, cap, -1);
+      this.wet = wider(this.wet, cap);
     });
     this.chunkRefs = new Uint16Array(chunkCount(world.dims));
     this.mind = new Behavior(world, game, seed + 7);
     this.mind.herd = this;
+    // One that takes fright is startled before it runs.
+    this.mind.onStartle = (e) => this.cue(e, CUE_STARTLE, false);
+    game.onMountLand = (e, speed) => this.landed(e, speed);
     this.still = Uint8Array.from(world.reg.defs, (d) => (d?.type === "species" && d.still ? 1 : 0));
   }
 
   /** Something at (x, z) hurt `e`. `by` is the entity that did it, or -1. */
   provoke(e: number, x: number, z: number, by = -1): void {
     const ents = this.world.ents;
-    // The victim may be a survivor. Its tribe's creatures near it may come to help.
+    // The victim may be a survivor. Its tribe's creatures near it may come to help, and those of the attacker's tribe set
+    // to attack its target join in.
     this.mind.alert(ents.team[e]!, e, by);
+    this.mind.assist(by, e);
     const anim = this.world.anims[ents.kind[e]!];
     const conscious = anim && (ents.mflags[e]! & MF_OUT) === 0 ? anim : null;
     // It flinches, unless it is still flinching from the last blow.
     if (conscious?.flinch && !this.cueing(e, LAYER_FLINCH, conscious.flinch.frames - 1)) this.cue(e, LAYER_FLINCH, true);
     if (this.awakeSlot[e]! < 0 || this.still[ents.kind[e]!] || ents.driven[e] !== 0) return;
-    const was = this.mind.mind[e];
     this.mind.provoke(e, x, z, by);
-    // One that takes fright is startled before it runs.
-    if (conscious?.startled && was !== MIND_FLEE && this.mind.mind[e] === MIND_FLEE) this.cue(e, CUE_STARTLE, false);
+    // Others of a wild one's kind near it take fright with it.
+    if (ents.team[e] === 0) this.mind.alarm(e, x, z, by);
   }
 
   /** `e` went out cold, or came round: it goes down, or gets up. */
@@ -153,7 +162,7 @@ export class Creatures {
     const p = world.reg.move[kind];
     if (!p) return -1;
     const y = groundUnder(world.hf, x, z, p.radius);
-    if (!capsuleFree(world, x, y, z, p.radius, p.height)) return -1;
+    if (!placeFree(world, x, y, z, p.radius, p.height)) return -1;
     let colours = "";
     if (this.bus.n[CREATURE_SPAWN] !== 0) {
       const asked = { kind: world.reg.ids[kind]!, why, x, z, level, colours };
@@ -182,6 +191,7 @@ export class Creatures {
     if (e < 0) return -1;
     ents.yaw[e] = rec.yaw;
     ents.pid[e] = rec.pid;
+    this.wet[e] = 0;
     refreshMods(this.world.reg, ents, e, rec.genome, 0, 1, false, false, this.swimGain);
     ents.setLook(e, rec.genome ? rec.genome.level : 1, rec.genome ? rec.genome.colors : null, rec.name);
     this.records.entOf.set(rec.pid, e);
@@ -189,6 +199,7 @@ export class Creatures {
     if (rec.out && this.world.anims[rec.kind]) ents.cue[e] = CUE_OUT;
     this.mind.reset(e);
     this.mind.stance[e] = rec.stance;
+    this.mind.wanders[e] = rec.team !== 0 && rec.wander ? 1 : 0;
     ents.setTeam(e, rec.team);
     if (rec.grown !== 0) ents.setYoung(e, rec.span, rec.grown);
     // A new body starts full. A loaded one keeps its vitals and gets its deadline back.
@@ -200,6 +211,8 @@ export class Creatures {
 
   /** The caller deletes its record. */
   remove(e: number): void {
+    // Its record goes with it, and may be dying: Survival is not told it left the water.
+    this.wet[e] = 0;
     this.sleep(e);
     this.records.entOf.delete(this.world.ents.pid[e]!);
     this.world.ents.destroy(e);
@@ -209,11 +222,18 @@ export class Creatures {
     return this.chunkRefs[chunk]! > 0;
   }
 
-  /** `from` is -1 on entry and `to` is -1 on exit. */
-  playerMoved(from: number, to: number): void {
+  /** `from` is -1 on entry and `to` is -1 on exit. Each chunk that wakes is added to `woke`. */
+  playerMoved(from: number, to: number, woke?: number[]): void {
     // Add the new neighbourhood before removing the old, so shared chunks never dip to zero.
-    if (to >= 0) this.adjust(to, 1);
+    if (to >= 0) this.adjust(to, 1, woke);
     if (from >= 0) this.adjust(from, -1);
+  }
+
+  /** `e` was set somewhere else. It wakes or sleeps as the chunk it is now in does. */
+  relocated(e: number): void {
+    const awake = this.chunkRefs[this.world.ents.chunk[e]!]! > 0;
+    if (awake && this.awakeSlot[e]! < 0) this.wake(e);
+    else if (!awake && this.awakeSlot[e]! >= 0) this.sleep(e);
   }
 
   step(tick: number): void {
@@ -227,8 +247,11 @@ export class Creatures {
     let stepped = 0;
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
-      // A driven creature is stepped with its session's body, and a held one moves with whoever holds it.
-      if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0) continue;
+      // A driven creature is stepped with its session's body, and breathes as it goes. A held one moves with whoever holds it.
+      if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0) {
+        if (ents.driven[e] !== 0) this.breathe(e, world.reg.tamedMove[ents.kind[e]!]!);
+        continue;
+      }
       const kind = ents.kind[e]!;
       // Once a second, an owned creature with no leader checks whether the entity its record says to follow is back in the world.
       if (ents.team[e] !== 0 && mind.leader[e]! < 0 && (tick + e) % 30 === 0) this.relink(e);
@@ -239,15 +262,31 @@ export class Creatures {
       const flags = ents.flags[e]!;
       const move = mind.move[e]!;
       const pressed = mind.pressed[e]!;
-      // At rest on the ground or afloat with no input, nothing would change, so the step is skipped.
-      if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (ents.mode[e] === MODE_SWIM && ents.vy[e] === 0))) continue;
+      // A tame runs at its tamed speed.
+      const p = (ents.team[e] !== 0 ? world.reg.tamedMove : world.reg.move)[kind]!;
+      const swims = ents.mode[e] === MODE_SWIM;
+      const cold = (ents.mflags[e]! & MF_OUT) !== 0;
+      // At rest on the ground or afloat with no input, with its head above water or out cold, nothing would change but its
+      // stamina, so the step is skipped and the stamina got back as the step would give it.
+      if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0)) && (this.wet[e] === 0 || cold)) {
+        const cap = ents.staminaMax[e]! * STAMINA_UNITS;
+        const had = ents.stamina[e]!;
+        if (had < cap) {
+          const now = had + p.staminaRegen < cap ? had + p.staminaRegen : cap;
+          ents.stamina[e] = now;
+          if ((ents.mflags[e]! & MF_WINDED) !== 0 && now * 4 >= cap) ents.mflags[e] = ents.mflags[e]! & ~MF_WINDED;
+        }
+        continue;
+      }
       ents.loadBody(e, b);
-      const buttons = mind.buttons[e]! | pressed;
+      let buttons = mind.buttons[e]! | pressed;
+      // In water it swims at its swim speed and comes up for air.
+      if (swims) buttons = (buttons & ~BTN_SPRINT) | (this.under(e, p) ? BTN_JUMP : 0);
       const x0 = b.x;
       const z0 = b.z;
-      const p = world.reg.move[kind]!;
       stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT);
-      if (stepOut.landSpeed >= LAND_SPEED && (b.mflags & MF_OUT) === 0 && world.anims[kind]?.land) this.cue(e, CUE_LAND, false);
+      const landing = stepOut.landSpeed;
+      if (landing >= LAND_SPEED && (b.mflags & MF_OUT) === 0 && world.anims[kind]?.land) this.cue(e, CUE_LAND, false);
       mind.moved(e, b.x - x0, b.z - z0, p.walkSpeed * (b.speedQ / 1000) * TICK_DT);
       // A bite goes through the same action step as any blow.
       const jaws = world.reg.weapon[kind];
@@ -262,12 +301,36 @@ export class Creatures {
       ents.pitch[e] = mind.pitch[e]!;
       ents.pose(e, tick);
       if (struck) this.onStrike?.(e);
-      if (crossed && this.chunkRefs[ents.chunk[e]!] === 0) this.sleep(e);
+      this.breathe(e, p);
+      // The landing may kill it, which takes it out of the world.
+      if (landing > 0) this.landed(e, landing);
+      if ((ents.flags[e]! & F_ALIVE) !== 0 && crossed && this.chunkRefs[ents.chunk[e]!] === 0) this.sleep(e);
     }
     this.stepped = stepped;
   }
 
-  private adjust(center: number, delta: number): void {
+  /** Whether the eyes of `e`, stepped with `p`, are under water. */
+  private under(e: number, p: MoveParams): boolean {
+    const ents = this.world.ents;
+    return ents.y[e]! + stanceEye(p, ents.stance[e]!) < this.world.hf.seaLevel;
+  }
+
+  /** Tells Survival when the head of `e` goes under water or comes up, so it loses its oxygen and then drowns as a survivor does. */
+  private breathe(e: number, p: MoveParams): void {
+    const under = this.under(e, p) ? 1 : 0;
+    if (under === this.wet[e]) return;
+    this.wet[e] = under;
+    const rec = this.records.byPid.get(this.world.ents.pid[e]!);
+    if (rec) this.survival.setSubmerged(rec, under === 1);
+  }
+
+  /** `e` touched down at `speed` metres a second, on its own or ridden. Too fast hurts it, as it hurts a survivor. */
+  private landed(e: number, speed: number): void {
+    const rec = this.records.byPid.get(this.world.ents.pid[e]!);
+    if (rec) this.survival.landed(rec, speed);
+  }
+
+  private adjust(center: number, delta: number, woke?: number[]): void {
     const dims = this.world.dims;
     const ents = this.world.ents;
     const cx = chunkCx(dims, center);
@@ -279,6 +342,7 @@ export class Creatures {
         const before = this.chunkRefs[chunk]!;
         this.chunkRefs[chunk] = before + delta;
         if (before === 0 && delta > 0) {
+          woke?.push(chunk);
           for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.wake(e);
         } else if (before === 1 && delta < 0) {
           for (let e = ents.chunkHead[chunk]!; e >= 0; e = ents.next[e]!) this.sleep(e);
@@ -289,7 +353,9 @@ export class Creatures {
 
   /** Call after a creature's team changes, so Behavior's owned set stays current. */
   claimed(e: number): void {
-    if (this.awakeSlot[e]! >= 0 && this.world.ents.team[e] !== 0) this.mind.owned.add(e);
+    const owned = this.world.ents.team[e] !== 0;
+    if (owned && this.records.byPid.get(this.world.ents.pid[e]!)?.follow === 0) this.mind.claim(e);
+    if (this.awakeSlot[e]! >= 0 && owned) this.mind.owned.add(e);
     else this.mind.owned.delete(e);
   }
 
@@ -315,6 +381,9 @@ export class Creatures {
     this.awake[this.awakeCount++] = e;
     ents.flags[e] = flags | F_AWAKE;
     this.world.history.track(e);
+    // One that wakes under water loses its breath from now.
+    const p = this.world.reg.move[ents.kind[e]!];
+    if (p) this.breathe(e, p);
   }
 
   private sleep(e: number): void {
@@ -325,6 +394,11 @@ export class Creatures {
     // Asleep it is no longer saved a slice at a time, so where it stopped is saved now.
     const rec = this.records.byPid.get(ents.pid[e]!);
     if (rec && (rec.x !== ents.x[e] || rec.y !== ents.y[e] || rec.z !== ents.z[e])) this.records.dirty.add(rec.pid);
+    // Nothing near, it does not drown, as nothing near is stepped.
+    if (this.wet[e] !== 0) {
+      this.wet[e] = 0;
+      if (rec) this.survival.setSubmerged(rec, false);
+    }
     // One that goes while its turn is still to come gives its slot to the next in turn, and the one being stepped moves
     // down beside it. The last of the list, which has been stepped, then fills the slot above them and is not stepped again.
     if (slot < this.cursor) {

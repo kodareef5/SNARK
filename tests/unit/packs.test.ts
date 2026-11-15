@@ -109,7 +109,7 @@ test("two packs add to one list without knowing of each other, and a remap chang
   expect(def("core:bow").weapon.ammo).toEqual(["core:arrow_stone", "core:arrow_tranq", "core:arrow_flame", "core:dart_tranq"]);
   expect(def("orchard:bow_long").weapon.ammo).toEqual(def("core:bow").weapon.ammo);
   // A bush gives the new berry and no fiber. Both are still defined, so what a save holds of them loads.
-  expect(def("core:bush").yields).toEqual([{ item: "marsh:berry", min: 3, max: 6 }]);
+  expect(def("core:bush").yields).toEqual([{ item: "marsh:berry", min: 3, max: 6 }, { item: "core:narcoberry", min: 0, max: 2 }]);
   expect([reg.index.has("core:berry"), reg.index.has("core:fiber")]).toEqual([true, true]);
   // What is made of fiber is still made of fiber: a remap reaches the open lists and nothing else.
   expect(def("core:spear").craft.needs.map((n: { item: string }) => n.item)).toContain("core:fiber");

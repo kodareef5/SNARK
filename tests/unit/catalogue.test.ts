@@ -114,8 +114,6 @@ const STUBS: ContentPack = {
   name: "stub",
   requires: ["core"],
   defs: [
-    { id: "stub:egg", type: "item", class: "egg", stack: 100, eat: { food: 10 }, spoilHours: 48, spoilsInto: "core:stone" },
-    { id: "stub:dung", type: "item", class: "feces", stack: 100, weight: 0.1, spoilHours: 48, decomposeHours: 12 },
     { id: "stub:shield", type: "item", class: "shield", stack: 1, description: "Blocks.", folder: "Armor/Shields", blueprint: true, craft: { needs: [{ item: "core:wood", count: 20 }], seconds: 8, xp: 4, at: "core:campfire", level: 80 } },
     { id: "stub:hat", type: "item", class: "costume", stack: 1 },
     { id: "stub:skin", type: "item", class: "skin", stack: 1 },

@@ -79,11 +79,12 @@ export class EntityRecord {
   tame: { affinity: number; sum: number; by: number; seen: number; due: number } | null = null;
   te = 0;
   /**
-   * For an owned creature: a STANCE_ of server/behavior.ts, the record id it follows (0 to stay), and the tick it
-   * is next due to eat from what it carries (0 for none).
+   * For an owned creature: a STANCE_ of server/behavior.ts, the record id it follows (0 to stay), whether it wanders (it
+   * follows nobody then), and the tick it is next due to eat from what it carries (0 for none).
    */
   stance = 1;
   follow = 0;
+  wander = false;
   mealDue = 0;
   /** Content index of its saddle, or 0. */
   saddle = 0;
@@ -99,7 +100,9 @@ export class EntityRecord {
   growDue = 0;
   /**
    * For an egg: the species that hatches (a content index), the ticks hatching takes, the tick it hatches, and the record
-   * id of a mother carrying unborn young (0 for a laid egg). The hatchling gets this record's genome.
+   * id of a mother carrying unborn young (0 for a laid egg). The hatchling gets this record's genome. An egg held as an
+   * item is carried by itself, and its hatchAt is the ticks it has left; an unfertilised one has no genome and span 0
+   * (server/breeding.ts, server/eggs.ts).
    */
   egg: { species: number; span: number; hatchAt: number; carrier: number } | null = null;
   /** For a bed, the tick from which a survivor may next respawn at it. */

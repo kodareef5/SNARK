@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BIRTH_HUNGER, BIRTH_SCALE, BIRTH_SHARE, GROWN, MATE_RANGE, MATE_SECONDS, STAGES, growthStep, leftAtPeriod, leftAtSpeed, litter, mateWait, maturity, regrow, stageOf, stepTick, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
+import { BIRTH_HUNGER, BIRTH_SCALE, BIRTH_SHARE, EGG_LIMIT, EGG_LIMIT_RANGE, GROWN, MATE_SECONDS, STAGES, fecesWait, mateRange, growthStep, leftAtPeriod, leftAtSpeed, litter, mateWait, maturity, regrow, stageOf, stepTick, youngHunger, youngScale, youngShare } from "../../shared/sim/breeding.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 test("one mating in ten gives twins and one in fifty triplets; a female then waits between eighteen and forty-eight hours", () => {
@@ -23,8 +23,18 @@ test("one mating in ten gives twins and one in fifty triplets; a female then wai
   expect(most).toBeLessThan(48 * 3600);
   expect(least).toBeLessThan(18.1 * 3600);
   expect(most).toBeGreaterThan(47.9 * 3600);
-  // The reference game does not publish these two, so the values are this project's choice.
-  expect([MATE_SECONDS, MATE_RANGE]).toEqual([30, 8]);
+  // The reference game does not publish these, so the values are this project's choice.
+  expect(MATE_SECONDS).toBe(30);
+});
+
+test("a pair mates within a range set by the size of its adults; a creature goes every 100 to 300 seconds; at most 6 eggs lie within 10 m", () => {
+  const reg = coreRegistry();
+  const range = (id: string): number => Math.round(mateRange(reg.bodyRadius[reg.index.get(id)!]!) * 100) / 100;
+  // ARK's range is "loosely based on the size of the adult creature" and given for none: these are chosen.
+  expect([range("core:dodo"), range("core:raptor"), range("core:parasaur")]).toEqual([2.88, 4.4, 6.4]);
+  // The dodo's interval, from the wiki's Eggs page, used for every species.
+  expect([fecesWait(0), fecesWait(0.5), fecesWait(0.999999)].map(Math.round)).toEqual([100, 200, 300]);
+  expect([EGG_LIMIT, EGG_LIMIT_RANGE]).toEqual([6, 10]);
 });
 
 test("growing up is a hundred steps, each beginning on a tick known from how long it takes and when it ends", () => {
