@@ -5,6 +5,8 @@ import { BTN_JUMP, BTN_SPRINT, MF_WINDED, MODE_FLY, MODE_GHOST, MODE_SWIM, MODE_
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { capsuleFree, groundUnder } from "../../shared/world/collide.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
+import { slopeKind } from "../../content/slopes.ts";
+import { flatGround } from "../fixtures/arena.ts";
 import { Harness } from "../fixtures/net.ts";
 
 function admin(link = {}) {
@@ -223,6 +225,68 @@ test("a ghost holding sprint ramps to 600 m/s and back to 12 alike on both sides
   pilot.moveZ = 0;
   h.run(1000);
   expect([s.own.x, s.own.y, s.own.z, s.stats.corrections - settled]).toEqual([ents.x[e]!, ents.y[e]!, ents.z[e]!, 0]);
+});
+
+test("walking sloped pieces is predicted exactly: a ramp, a stair flight, the seams between them and the floors, and a steep slab's face cost no corrections", () => {
+  const { h, s, pilot, ents, e } = admin({ latencyMs: 60 });
+  const g = flatGround(h, 40, 40);
+  const add = (id: string, x: number, base: number, z: number): number => {
+    const k = h.reg.index.get(id)!;
+    return h.world.structs.add(k, g.x + x, g.y + base + (id.startsWith("core:zslope_") ? h.reg.halfY[k]! : 0), g.z + z, 0, 0, 10000);
+  };
+  // West: a floor, rubble rising from it onto a solid flight and a deck. Middle: the ramp to a deck. East: the city's flight
+  // to a deck, and a slab leaning at 60 degrees, too steep to stand on.
+  add("core:slab", 8, 0.25, 6);
+  add(slopeKind("rubble"), 8, 0.5, 12);
+  add(slopeKind("stairs_solid"), 8, 2, 14 + 1.8);
+  add("core:slab", 8, 4.75, 21.6);
+  add(slopeKind("ramp"), 20, 0, 12);
+  add("core:slab", 20, 2.15, 19);
+  add(slopeKind("stairs"), 30, 0, 12);
+  add("core:slab", 30, 3.75, 18.75);
+  add(slopeKind("slab60"), 36, 0, 30);
+  expect(h.say(s, `tp ${(g.x + 8).toFixed(3)} ${(g.z + 1).toFixed(3)}`)[0]).toContain("at ");
+  h.run(1000);
+  const settled = s.stats.corrections;
+  const p = h.reg.move[ents.kind[e]!]!;
+  let inside = 0;
+  /** Walks to (x, z) from the ground's corner, at a sprint or not. Says how high it got, and whether it got there. */
+  const to = (x: number, z: number, buttons = 0): [number, boolean] => {
+    let high = 0;
+    let near = false;
+    pilot.buttons = buttons;
+    pilot.moveZ = 1;
+    for (let i = 0; i < 400 && !near; i++) {
+      const dx = g.x + x - ents.x[e]!;
+      const dz = g.z + z - ents.z[e]!;
+      near = Math.hypot(dx, dz) < 0.3;
+      pilot.yaw = Math.atan2(dx, dz);
+      h.run(1000 / 30, () => {
+        if (!capsuleFree(h.world, ents.x[e]!, ents.y[e]!, ents.z[e]!, p.radius, p.height)) inside++;
+        high = Math.max(high, ents.y[e]! - g.y);
+      });
+    }
+    pilot.moveZ = 0;
+    return [Math.round(high * 10) / 10, near];
+  };
+  // Up the rubble and the flight onto the deck and down again at a sprint, up the ramp at a sprint and back, up the city's
+  // flight and down it at a sprint, then to the foot of the slab.
+  const legs = [to(8, 23), to(8, 1, BTN_SPRINT), to(20, 4), to(20, 19, BTN_SPRINT), to(20, 4), to(30, 4), to(30, 19), to(30, 4, BTN_SPRINT), to(36, 26)];
+  expect(legs).toEqual([[5, true], [5, true], [0, true], [2.4, true], [2.4, true], [0, true], [4, true], [4, true], [0, true]]);
+  // Walked into and jumped at, it is slid off.
+  pilot.yaw = 0;
+  pilot.moveZ = 1;
+  let up = 0;
+  for (let i = 0; i < 6; i++) {
+    pilot.buttons = i % 2 === 0 ? BTN_JUMP : 0;
+    h.run(500, () => (up = Math.max(up, ents.y[e]! - g.y)));
+  }
+  pilot.moveZ = 0;
+  pilot.buttons = 0;
+  h.run(1000);
+  expect([up > 0.5, ents.y[e]! - g.y < 0.05]).toEqual([true, true]);
+  expect([inside, s.stats.corrections - settled]).toEqual([0, 0]);
+  expect([s.own.x, s.own.y, s.own.z]).toEqual([ents.x[e]!, ents.y[e]!, ents.z[e]!]);
 });
 
 test("a small correction is hidden by an offset that fades; the drawn position never jumps", () => {

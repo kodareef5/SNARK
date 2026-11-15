@@ -395,7 +395,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // the grey boxes'; the draws, triangles and uploads are as they were.
   // It was 3699520576 until the pack held the obelisk's and its terminal's grey boxes (content/terminals.ts); without them,
   // and the proving ground's obelisk, it is that again.
-  expect(hash).toBe(1227352852);
+  // It was 1227352852 until the sloped statics' grey boxes (content/slopes.ts) took mesh numbers; without them it is that again.
+  expect(hash).toBe(3382680890);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

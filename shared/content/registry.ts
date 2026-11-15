@@ -20,6 +20,8 @@ import { PIECE_ROLES, shapeHalf, type Def, type NodeShape, type RenameDef, type 
 export const MISSING = 0;
 export const MAX_STRUCTURE_HALF = 16;
 export const MAX_SHAPE_BOXES = 16;
+/** What a shape's look may draw: a flight's treads. */
+export const MAX_LOOK_PARTS = 64;
 /** The most a node kind may be drawn at, as a multiple of its modelled size, and the most variants it may have. */
 export const MOST_NODE_SIZE = 3.9;
 export const MAX_NODE_VARIANTS = 64;
@@ -30,7 +32,10 @@ const ID = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_\/-]*$/;
 const ALIAS = /^[A-Za-z0-9_.-]+$/;
 const TAG = /^[a-z][a-z0-9_]*$/;
 const GRAVITY = 20;
-const SLOPE_COS = 0.6427876096865394; // 50 degrees
+/** The steepest a survivor or a wild creature stands on, as a cosine: Unreal's WalkableFloorZ, which ARK keeps, 44.765 degrees. */
+const SLOPE_COS = 0.71;
+/** A tame's: TamedWalkableFloorZ on ARK's base creature, 53.13 degrees. */
+const TAMED_SLOPE_COS = 0.6;
 
 export interface Registry {
   /** Definitions by dense index. Entry 0 is null. */
@@ -403,13 +408,15 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (!PIECE_ROLES.includes(d.role)) errors.push(`${d.id}: role must be one of ${PIECE_ROLES.join(", ")}`);
       const parts = d.boxes.length + (d.hulls?.length ?? 0);
       if (parts < 1 || parts > MAX_SHAPE_BOXES) errors.push(`${d.id}: a shape has 1 to ${MAX_SHAPE_BOXES} boxes and convex parts`);
-      for (const b of d.boxes) {
+      const drawn = (d.look?.boxes?.length ?? 0) + (d.look?.hulls?.length ?? 0);
+      if (d.look !== undefined && (drawn < 1 || drawn > MAX_LOOK_PARTS)) errors.push(`${d.id}: a look has 1 to ${MAX_LOOK_PARTS} boxes and convex parts`);
+      for (const b of [...d.boxes, ...(d.look?.boxes ?? [])]) {
         for (let a = 0; a < 3; a++) {
           positive(d, `a box's half[${a}]`, b.half[a]!, MAX_STRUCTURE_HALF);
           if (!(Math.abs(b.at[a]!) + b.half[a]! <= MAX_STRUCTURE_HALF)) errors.push(`${d.id}: a box reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
         }
       }
-      for (const h of d.hulls ?? []) {
+      for (const h of [...(d.hulls ?? []), ...(d.look?.hulls ?? [])]) {
         const made = hullOf(h);
         if (typeof made === "string") errors.push(`${d.id}: ${made}`);
         if (shapeHalf([], [h]).some((v) => !(v <= MAX_STRUCTURE_HALF))) errors.push(`${d.id}: a convex part reaches further than ${MAX_STRUCTURE_HALF} m from the origin`);
@@ -528,7 +535,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "species" && d.breeds && !(d.breeds.incubate > 0 && d.breeds.mature > 0)) errors.push(`${d.id}: breeds needs incubate and mature above 0`);
     if (d.type === "structure" && d.shape !== undefined) {
       const shape = shapes.get(d.shape);
-      const holds = shape ? shapeHalf(shape.boxes, shape.hulls) : null;
+      const holds = shape ? shapeHalf(shape.boxes, shape.hulls, shape.look) : null;
       if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
     }
     if (d.type === "item" && d.places && d.places.length === 0) errors.push(`${d.id}: places must name at least one structure`);
@@ -662,7 +669,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
       // Collision parts are the shape's boxes, or else the one box.
       const shape = d.type === "structure" && d.shape !== undefined ? shapes.get(d.shape)! : null;
       if (shape) {
-        role[i] = PIECE_ROLES.indexOf(shape.role);
+        // A map's static is joined to nothing, so it is no building piece whatever its shape's role: nothing snaps to it,
+        // and it is never judged for support, as a static of one box is not.
+        if (d.type === "structure" && d.class !== "static") role[i] = PIECE_ROLES.indexOf(shape.role);
         if (shape.doorway) doorway[i] = 1;
         for (const b of shape.boxes) partBox.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
       } else partBox.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
@@ -686,7 +695,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
     } else if (d.type === "species" || d.type === "prop") {
       if (d.type === "species") {
         move[i] = moveParams(d);
-        tamedMove[i] = d.tamedSprintMul === undefined ? move[i] : { ...move[i]!, sprintMul: d.tamedSprintMul };
+        // A survivor's tamed numbers are its own. A creature once tamed stands on steeper ground, and may run at another speed.
+        const m = move[i]!;
+        tamedMove[i] = d.class === "creature" ? { ...m, sprintMul: d.tamedSprintMul ?? m.sprintMul, slopeCos: TAMED_SLOPE_COS } : m;
         damage[i] = d.fists ?? 8;
         meleeTorpor[i] = d.fistsTorpor ?? 0;
         reach[i] = FIST_REACH;

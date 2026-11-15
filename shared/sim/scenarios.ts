@@ -183,11 +183,13 @@ export function poseHash(anim: HumanAnim): string {
 export const TRIANGLE_HALF = 0.1875;
 export const ROOF_RISE = 1.5;
 export const ROOF_THICK = 0.2;
+export const RAMP_LIP = 0.06;
 
 const H = 1.5;
 const pieceShapes: readonly ShapeDef[] = [
-  // Rises a storey over a side, toward +Z: 45 degrees.
-  { type: "shape", id: "test:shape_ramp", role: "stairs", boxes: [], hulls: [{ corners: [[-H, -H, -H], [H, -H, -H], [-H, -H, H], [H, -H, H], [-H, H, H], [H, H, H]] }] },
+  // Rises a storey over a side, toward +Z, short of it by RAMP_LIP: 44.4 degrees, as ARK's ramp measures, under the steepest a
+  // survivor stands on. A full storey would be 45.
+  { type: "shape", id: "test:shape_ramp", role: "stairs", boxes: [], hulls: [{ corners: [[-H, -H, -H], [H, -H, -H], [-H, -H, H], [H, -H, H], [-H, H - RAMP_LIP, H], [H, H - RAMP_LIP, H]] }] },
   // Its origin is a corner, and its sides run 3 m along the first axis and 3 m along the second, 60 degrees on.
   {
     type: "shape",
