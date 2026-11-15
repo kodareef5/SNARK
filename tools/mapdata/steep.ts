@@ -1,7 +1,8 @@
 // A city's steepest streets and stairs on its built ground, and whether a survivor walks them: each street's grade over
-// 20 m and each mapped stair's over 6 m and from end to end, from the map file's own heights; then the real character
-// controller walks the steepest up and back down with the ground, the ruins and the plants in its way.
-// bun tools/mapdata/steep.ts <file.snmap> [count]   writes assets/source/maps/<name>/reports/steep.json
+// 30 m and each mapped stair's over 6 m and from end to end, from the map file's own heights; then the real character
+// controller walks the steepest up and back down with the ground, the ruins and the plants in its way (or without the
+// plants, to tell what stopped it).
+// bun tools/mapdata/steep.ts <file.snmap> [count] [--no-plants]   writes assets/source/maps/<name>/reports/steep[-no-plants].json
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -14,7 +15,8 @@ import { StructureStore } from "../../shared/world/structures.ts";
 
 type P = [number, number];
 const map = parseMap(new Uint8Array(readFileSync(process.argv[2] ?? "")));
-const count = Number(process.argv[3] ?? 12);
+const count = Number(process.argv.slice(3).find((a) => !a.startsWith("--")) ?? 12);
+const plants = !process.argv.includes("--no-plants");
 const city = `assets/source/maps/${map.id.split(":")[1]}`;
 const reg = compileContent(CORE_CONTENT).registry!;
 const hf = mapHeightfield(map);
@@ -22,7 +24,7 @@ const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, nu
 placeStatics(map, structs, reg);
 const source = mapNodes(map, hf, reg);
 const nodes = source ? new NodeField(map.dims, reg, source) : null;
-const world = { hf, structs, ...(nodes ? { nodes: nodes.store } : {}) };
+const world = { hf, structs, ...(nodes && plants ? { nodes: nodes.store } : {}) };
 const params = reg.move[reg.index.get("core:survivor")!]!;
 const size = map.dims.chunksX * 64;
 const half = size / 2;
@@ -73,7 +75,16 @@ function walk(pts: ReturnType<typeof profile>): { ok: boolean; message: string; 
         stepBody(world, b, 0, 100, yaw, 0, 0, params, TICK_DT);
       }
       ticks += t;
-      if (Math.hypot(b.x - p.x, b.z - p.z) > 1.2) { message = `stalled at ${b.x.toFixed(1)},${b.y.toFixed(1)},${b.z.toFixed(1)} short of ${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)}`; break; }
+      if (Math.hypot(b.x - p.x, b.z - p.z) > 1.2) {
+        // The ground's steepest 2 m step within 6 m of where it stopped: over the slope limit, the slope stopped it.
+        let local = 0;
+        for (let k = 1; k < path.length; k++) {
+          const [a, c] = [path[k - 1]!, path[k]!];
+          if (Math.hypot(c.x - b.x, c.z - b.z) < 6) local = Math.max(local, Math.abs(c.y - a.y) / Math.max(.5, c.s - a.s));
+        }
+        message = `stalled at ${b.x.toFixed(1)},${b.y.toFixed(1)},${b.z.toFixed(1)} short of ${p.x.toFixed(1)},${p.y.toFixed(1)},${p.z.toFixed(1)}, ground there ${degrees(local).toFixed(0)}°`;
+        break;
+      }
     }
     if (message) break;
   }
@@ -82,21 +93,24 @@ function walk(pts: ReturnType<typeof profile>): { ok: boolean; message: string; 
 }
 
 const roads = JSON.parse(readFileSync(`${city}/base/roads.geojson`, "utf8")) as { features: { geometry: { type: string; coordinates: P[] | P[][] }; properties: { name: string | null; mtfcc: string } }[] };
-const streets: { name: string; grade: number; degrees: number; rise: number; at: P; pts: ReturnType<typeof profile> }[] = [];
+// A street whose line crosses a cliff (a 4 m stretch steeper than 45°) is a paper street drawn up a bluff or a line
+// beside a retaining wall: it is counted apart and not walked.
+const streets: { name: string; grade: number; degrees: number; rise: number; at: P; cliff: number; pts: ReturnType<typeof profile> }[] = [];
 for (const f of roads.features) {
   if (!["S1400", "S1200"].includes(f.properties.mtfcc)) continue;
   const lines = f.geometry.type === "LineString" ? [f.geometry.coordinates as P[]] : (f.geometry.coordinates as P[][]);
   for (const line of lines) {
     const pts = profile(line.map(engine));
-    if (pts.length < 12) continue;
-    const s = steepest(pts, 20);
+    if (pts.length < 16) continue;
+    const s = steepest(pts, 30);
     const y = pts.map((p) => p.y);
-    streets.push({ name: f.properties.name ?? "(unnamed)", grade: s.grade, degrees: degrees(s.grade), rise: Math.max(...y) - Math.min(...y), at: [pts[s.at]!.x, pts[s.at]!.z], pts });
+    streets.push({ name: f.properties.name ?? "(unnamed)", grade: s.grade, degrees: degrees(s.grade), rise: Math.max(...y) - Math.min(...y), at: [pts[s.at]!.x, pts[s.at]!.z], cliff: steepest(pts, 4).grade, pts });
   }
 }
+const cliffs = streets.filter((s) => s.cliff > 1);
 // One row a street name: its steepest stretch.
 const byName = new Map<string, (typeof streets)[number]>();
-for (const s of streets.sort((a, b) => b.grade - a.grade)) if (!byName.has(s.name)) byName.set(s.name, s);
+for (const s of streets.filter((s) => s.cliff <= 1).sort((a, b) => b.grade - a.grade)) if (!byName.has(s.name)) byName.set(s.name, s);
 const topStreets = [...byName.values()].slice(0, count);
 
 const stairs = (JSON.parse(readFileSync(`${city}/blocks/stairs.json`, "utf8")) as { id: number; name: string | null; steps: number | null; length_m: number; points: P[] }[])
@@ -112,11 +126,13 @@ const topStairs = stairs.slice(0, count);
 
 const report = {
   map: map.id, mapHash: map.hash, slopeLimitDegrees: Number(((Math.acos(params.slopeCos) * 180) / Math.PI).toFixed(1)), stepUp: params.stepUp,
-  streets: topStreets.map((s) => ({ name: s.name, grade20m: Number((s.grade * 100).toFixed(1)), degrees: Number(s.degrees.toFixed(1)), riseM: Number(s.rise.toFixed(1)), at: s.at.map((v) => Math.round(v)), ...walk(s.pts) })),
+  streets: topStreets.map((s) => ({ name: s.name, grade30m: Number((s.grade * 100).toFixed(1)), degrees: Number(s.degrees.toFixed(1)), riseM: Number(s.rise.toFixed(1)), at: s.at.map((v) => Math.round(v)), ...walk(s.pts) })),
+  streetLines: streets.length, linesOverCliffs: cliffs.length, cliffNames: [...new Set(cliffs.map((s) => s.name))].sort(),
   stairs: { mapped: stairs.length, kmMapped: Number((stairs.reduce((a, s) => a + s.length_m, 0) / 1000).toFixed(1)),
     tallest: topStairs.map((s) => ({ id: s.id, name: s.name, steps: s.steps, riseM: Number(s.rise.toFixed(1)), runM: Number(s.run.toFixed(1)), grade: Number((s.grade * 100).toFixed(1)), degrees: Number(degrees(s.grade).toFixed(1)), steepest6mDegrees: Number(degrees(s.steepest6).toFixed(1)), at: [Math.round(s.pts[0]!.x), Math.round(s.pts[0]!.z)], ...walk(s.pts) })) },
 };
-writeFileSync(`${city}/reports/steep.json`, `${JSON.stringify(report, null, 2)}\n`);
-for (const s of report.streets) console.log(`${s.ok ? "ok  " : "FAIL"} street ${s.name.padEnd(28)} ${String(s.grade20m).padStart(5)}% (${s.degrees}°) over 20 m, rise ${s.riseM} m ${s.message}`);
+writeFileSync(`${city}/reports/steep${plants ? "" : "-no-plants"}.json`, `${JSON.stringify({ plants, ...report }, null, 2)}\n`);
+for (const s of report.streets) console.log(`${s.ok ? "ok  " : "FAIL"} street ${s.name.padEnd(28)} ${String(s.grade30m).padStart(5)}% (${s.degrees}°) over 30 m, rise ${s.riseM} m ${s.message}`);
+console.log(`${report.linesOverCliffs} of ${report.streetLines} street lines cross a cliff: ${report.cliffNames.join(", ")}`);
 for (const s of report.stairs.tallest) console.log(`${s.ok ? "ok  " : "FAIL"} stair  ${(s.name ?? String(s.id)).padEnd(28)} rise ${s.riseM} m over ${s.runM} m (${s.degrees}°, steepest 6 m ${s.steepest6mDegrees}°) ${s.message}`);
 process.exitCode = report.streets.some((s) => !s.ok) || report.stairs.tallest.some((s) => !s.ok) ? 1 : 0;
