@@ -88,7 +88,7 @@ export const PASS_FAR = 1;
 /**
  * The steps a frame is drawn in, in this order, which is the order of its draws: near opaque, far opaque, then the
  * dome (at `skyAt`), far see-through, near see-through, and the viewer's body over a depth clear. The opaque steps are
- * numbered as their ranges are.
+ * numbered as their ranges are. In an opaque step the draws with DRAW_CUTOUT come after the rest (scene.ts `cutoutsLast`).
  */
 export const STEP_NEAR = PASS_NEAR;
 export const STEP_FAR = PASS_FAR;

@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { AssetRequest } from "../../client/core/assets/port.ts";
-import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SIZE_REGION, TRANSIENT_BUFFER, type FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SIZE_REGION, TRANSIENT_BUFFER, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
 import type { OwnBody } from "../../client/core/render/scene.ts";
 import { Falling } from "../../client/core/rubble.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
@@ -119,9 +119,10 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   // The last frame: a draw for each section, with its material, its run of indices and what the material's flags ask.
   const [hide, horn, wood, plank, lattice] = ["test:tube/hide", "test:tube/horn", "test:club/wood", PANEL, `${PANEL}/lattice`].map((id) => material(slow, id));
   // The standing panels, the shard, which is on a bone of its own, and the falling panel are drawn with their
-  // materials. The one about to be built is see-through, and flat.
-  const panel = (pieces: number, flags = 0): number[][] => [[0, flags | DRAW_TEXTURED, pieces, plank, 0, 3], [0, flags | DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]];
-  expect(drawn(slow, p, PANEL)).toEqual([...panel(3), ...panel(1, BODY), ...panel(1), [0, DRAW_BLEND, 1]]);
+  // materials, their cut-out lattices after every opaque draw. The one about to be built is see-through, and flat.
+  const planks = (pieces: number, flags = 0): number[] => [0, flags | DRAW_TEXTURED, pieces, plank, 0, 3];
+  const lattices = (pieces: number, flags = 0): number[] => [0, flags | DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3];
+  expect(drawn(slow, p, PANEL)).toEqual([planks(3), planks(1, BODY), planks(1), lattices(3), lattices(1, BODY), lattices(1), [0, DRAW_BLEND, 1]]);
   // The post is the tube on no bones and the creature is the tube on its own, both now at its finest level. The loose
   // thing is far enough off for the second.
   const tube = (flags: number, level = 0): number[][] => [[level, flags | DRAW_TEXTURED, 1, hide, 0, 1152 >> (level * 2)], [level, flags | DRAW_TEXTURED | DRAW_TWO_SIDED, 1, horn, 1152 >> (level * 2), 384 >> (level * 2)]];
@@ -137,6 +138,29 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   // thing and the falling panel) and the standing panels.
   const seen = (kind: number, id: number): number => slow.raster.pickKind.reduce((n, k, i) => n + (k === kind && (id < 0 || slow.raster.pickId[i] === id) ? 1 : 0), 0);
   expect([seen(PICK_ENTITY, 100) > 100, seen(PICK_ENTITY, 101) > 100, seen(PICK_ENTITY, 102) > 100, seen(PICK_ENTITY, 0) > 600, seen(PICK_STRUCTURE, -1) > 600]).toEqual([true, true, true, true, true]);
+});
+
+test("a step's cut-out draws come after all its opaque ones; the order they were made in is a switch away, and draws the same picture", () => {
+  // Rows of panels, the nearer hiding the farther, a creature among them and one past the split. Panels are structures,
+  // made before the bodies, so as made a panel's lattice comes before the creatures.
+  const w = sceneWorld({}, { split: 30 });
+  for (let i = 0; i < 12; i++) w.structs.add(w.kind(PANEL), 27 + (i % 4) * 3, 0, 25 + Math.floor(i / 4) * 4, FACING, 0, 1);
+  w.place(TUBE, 33, 27, { yaw: Math.PI / 2 });
+  w.place(TUBE, 32, 60, { yaw: Math.PI / 2 });
+  for (let f = 0; f < 8; f++) w.frame();
+  const shot = (last: boolean) => {
+    w.scene.cutoutsLast = last;
+    const p = w.frame();
+    const draws = Array.from({ length: p.drawCount }, (_, d) => ({ step: stepOf(p, d), cut: (p.drawFlags[d]! & DRAW_CUTOUT) !== 0, what: [p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawFlags[d], p.drawMaterial[d], p.drawPass[d]].join() }));
+    return { draws, picture: w.raster.color.slice() };
+  };
+  const [made, ordered] = [shot(false), shot(true)];
+  /** Whether some cut-out draw comes before an opaque one of its step. */
+  const before = (draws: typeof made.draws): boolean => draws.some((a, i) => a.cut && draws.slice(i + 1).some((b) => b.step === a.step && !b.cut));
+  expect([made.draws.some((d) => d.cut), before(made.draws), before(ordered.draws)]).toEqual([true, true, false]);
+  expect(ordered.draws.map((d) => d.step)).toEqual(made.draws.map((d) => d.step).sort((a, b) => a - b));
+  expect(ordered.draws.map((d) => d.what).sort()).toEqual(made.draws.map((d) => d.what).sort());
+  expect(ordered.picture).toEqual(made.picture);
 });
 
 test("a body drawn with its materials and the same body drawn flat agree in mean colour, as near as the palette and the two ways of lighting allow", () => {
