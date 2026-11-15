@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 40 classes: 27 built, 4 partly built, and 9 stubs that
-wait for a feature. The core pack holds 281 definitions, and 79 renames of ids
+wait for a feature. The core pack holds 287 definitions, and 79 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -29,7 +29,7 @@ share a `tag`.
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
 | `item` | PrimalItem | a group |  |  |  |
-| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 11 |
+| `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `fuel`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 12 |
 | `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose`, `use` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `youngFor`, `use` | 8 |
 | `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `tool` | 10 |
 | `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 7 |
@@ -37,7 +37,7 @@ share a `tag`.
 | `item/equipment` | item type Equipment | a group |  |  |  |
 | `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 20 |
 | `item/saddle` | PrimalItemArmor_, DinoSaddle | built | `stack`, `saddle` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 2 |
-| `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 27 |
+| `item/structure` | PrimalItemStructure_ | built | `stack`, `places` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 28 |
 | `item/egg` | PrimalItemConsumable_Egg_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `eat`, `spoilHours`, `spoilsInto` | 6 |
 | `item/feces` | the feces items, small to massive | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `spoilHours`, `spoilsInto`, `fuel` | 4 |
 | `item/shield` | equipment type Shield | stub: cosmetics | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours` | 0 |
@@ -92,7 +92,7 @@ Packs may add to: `weapon`, `places`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 75 |
+| `engram` | EngramEntry_ | built | `label`, `level`, `cost`, `item` | `hidden`, `auto`, `requires`, `group`, `from` | 77 |
 
 - **`engram`** on shelf `engrams`. Learned with points at a level, for good. Its one item can then be made.
 
@@ -147,7 +147,7 @@ Packs may add to: `drops`, `eats`, `buffs`.
 | `structure` | APrimalStructure | a group |  |  |  |
 | `structure/piece` | a structure with snap points | built | `mesh`, `color`, `half`, `hp`, `shape`, `material` | `opens`, `locked`, `decayDays`, `falls` | 33 |
 | `structure/container` | an item container | built | `mesh`, `color`, `half`, `hp`, `slots` | `shape`, `material`, `decayDays`, `locked`, `falls` | 3 |
-| `structure/station` | a crafting inventory with its engrams and speed | partial: stations | `mesh`, `color`, `half`, `hp` | `shape`, `material`, `decayDays`, `locked`, `falls`, `slots`, `lights`, `lit` | 2 |
+| `structure/station` | a crafting inventory with its engrams and speed | partial: stations | `mesh`, `color`, `half`, `hp` | `shape`, `material`, `decayDays`, `locked`, `falls`, `slots`, `lights`, `lit` | 3 |
 | `structure/bed` | a bed | built | `mesh`, `color`, `half`, `hp`, `bed` | `shape`, `material`, `decayDays`, `falls` | 1 |
 | `structure/static` | level geometry, ours | built | `mesh`, `color`, `half`, `hp` | `material` | 8 |
 | `structure/defence` | turrets and spikes | stub: defences | `mesh`, `color`, `half`, `hp` | `shape`, `material`, `decayDays`, `falls`, `slots` | 0 |
@@ -155,7 +155,7 @@ Packs may add to: `drops`, `eats`, `buffs`.
 - **`structure`** on shelf `structures`. Anything built or standing in the world that is not alive.
 - **`structure/piece`** on shelf `structures/pieces`. A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up.
 - **`structure/container`** on shelf `structures/containers`. Holds stacks: a box, a vault.
-- **`structure/station`** on shelf `structures/stations`. Things are made or changed at it. Today that is fuel burning and food cooking.
+- **`structure/station`** on shelf `structures/stations`. Things are made or changed at it: fuel burns and food cooks, and an item whose craft names it in `at` is made from what lies in it. How fast it makes things waits.
 - **`structure/bed`** on shelf `structures/beds`. Its tribe may come back to life at it.
 - **`structure/static`** on shelf `structures/static`. Part of a map: set there with the world and joined to nothing.
 - **`structure/defence`** on shelf `structures/defences`. Harms what comes near it.
@@ -177,7 +177,7 @@ What names what: `shape` names a `shape`; `material` names a `material`; `opens`
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `shape` | snap points and collision | built | `role`, `boxes` | `doorway`, `hulls` | 14 |
+| `shape` | snap points and collision | built | `role`, `boxes` | `doorway`, `hulls` | 15 |
 
 - **`shape`** on shelf `shapes`. The form of a piece, shared by every material: what bodies walk on and what joins what.
 
@@ -342,7 +342,7 @@ built.
 
 ## The core pack by class
 
-**`item/resource`** (11): paste, fiber, stone, wood, thatch, flint, hide, chitin, ore, ingot, gunpowder.
+**`item/resource`** (12): paste, sparkpowder, fiber, stone, wood, thatch, flint, hide, chitin, ore, ingot, gunpowder.
 
 **`item/consumable`** (8): narcoberry, meat_prime, meat_prime_cooked, waterskin, berry, meat, meat_cooked, narcotic.
 
@@ -356,13 +356,13 @@ built.
 
 **`item/saddle`** (2): saddle_parasaur, saddle_raptor.
 
-**`item/structure`** (27): piece_foundation_thatch, piece_wall_thatch, piece_ceiling_thatch, piece_door_thatch, piece_foundation_wood, piece_wall_wood, piece_ceiling_wood, piece_door_wood, piece_pillar_wood, piece_stairs_wood, piece_foundation_stone, piece_wall_stone, piece_ceiling_stone, piece_door_stone, piece_pillar_stone, piece_stairs_stone, piece_foundation_metal, piece_wall_metal, piece_ceiling_metal, piece_door_metal, piece_pillar_metal, piece_stairs_metal, piece_storage_box, piece_storage_large, piece_vault, piece_campfire, piece_bed.
+**`item/structure`** (28): piece_foundation_thatch, piece_wall_thatch, piece_ceiling_thatch, piece_door_thatch, piece_foundation_wood, piece_wall_wood, piece_ceiling_wood, piece_door_wood, piece_pillar_wood, piece_stairs_wood, piece_foundation_stone, piece_wall_stone, piece_ceiling_stone, piece_door_stone, piece_pillar_stone, piece_stairs_stone, piece_foundation_metal, piece_wall_metal, piece_ceiling_metal, piece_door_metal, piece_pillar_metal, piece_stairs_metal, piece_storage_box, piece_storage_large, piece_vault, piece_campfire, piece_bed, piece_mortar.
 
 **`item/egg`** (6): dodo_egg, dodo_egg_fertile, parasaur_egg, parasaur_egg_fertile, raptor_egg, raptor_egg_fertile.
 
 **`item/feces`** (4): feces_small, feces_medium, feces_large, feces_massive.
 
-**`engram`** (75): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-club, engram-slingshot, engram-waterskin, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-bow, engram-arrow_stone, engram-ingot, engram-arrow_tranq, engram-gunpowder, engram-crossbow, engram-flashlight, engram-scope, engram-arrow_flame, engram-pistol, engram-round_pistol, engram-rifle, engram-round_rifle, engram-silencer, engram-grenade, engram-laser, engram-dart_tranq, engram-dart_shock, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
+**`engram`** (77): engram-piece_foundation_thatch, engram-piece_wall_thatch, engram-piece_ceiling_thatch, engram-piece_door_thatch, engram-piece_foundation_wood, engram-piece_wall_wood, engram-piece_ceiling_wood, engram-piece_door_wood, engram-piece_pillar_wood, engram-piece_stairs_wood, engram-piece_foundation_stone, engram-piece_wall_stone, engram-piece_ceiling_stone, engram-piece_door_stone, engram-piece_pillar_stone, engram-piece_stairs_stone, engram-piece_foundation_metal, engram-piece_wall_metal, engram-piece_ceiling_metal, engram-piece_door_metal, engram-piece_pillar_metal, engram-piece_stairs_metal, engram-piece_storage_box, engram-piece_storage_large, engram-piece_vault, engram-piece_campfire, engram-piece_bed, engram-paste, engram-saddle_parasaur, engram-saddle_raptor, engram-club, engram-slingshot, engram-waterskin, engram-piece_mortar, engram-sparkpowder, engram-pick, engram-hatchet, engram-spear, engram-narcotic, engram-bow, engram-arrow_stone, engram-ingot, engram-arrow_tranq, engram-gunpowder, engram-crossbow, engram-flashlight, engram-scope, engram-arrow_flame, engram-pistol, engram-round_pistol, engram-rifle, engram-round_rifle, engram-silencer, engram-grenade, engram-laser, engram-dart_tranq, engram-dart_shock, engram-cloth_hat, engram-cloth_shirt, engram-cloth_gloves, engram-cloth_pants, engram-cloth_boots, engram-hide_hat, engram-hide_shirt, engram-hide_gloves, engram-hide_pants, engram-hide_boots, engram-chitin_hat, engram-chitin_shirt, engram-chitin_gloves, engram-chitin_pants, engram-chitin_boots, engram-flak_hat, engram-flak_shirt, engram-flak_gloves, engram-flak_pants, engram-flak_boots.
 
 **`levels`** (1): levels.
 
@@ -376,13 +376,13 @@ built.
 
 **`structure/container`** (3): storage_box, storage_large, vault.
 
-**`structure/station`** (2): campfire, campfire_lit.
+**`structure/station`** (3): campfire, campfire_lit, mortar.
 
 **`structure/bed`** (1): bed.
 
 **`structure/static`** (8): block, crate, foundation, wall, ceiling, pillar, step, slab.
 
-**`shape`** (14): shape_foundation, shape_wall, shape_doorframe, shape_windowframe, shape_ceiling, shape_pillar, shape_door, shape_door_open, shape_stairs, shape_storage_box, shape_storage_large, shape_vault, shape_campfire, shape_bed.
+**`shape`** (15): shape_foundation, shape_wall, shape_doorframe, shape_windowframe, shape_ceiling, shape_pillar, shape_door, shape_door_open, shape_stairs, shape_storage_box, shape_storage_large, shape_vault, shape_campfire, shape_bed, shape_mortar.
 
 **`material`** (4): mat_thatch, mat_wood, mat_stone, mat_metal.
 

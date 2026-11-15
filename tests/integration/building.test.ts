@@ -5,6 +5,7 @@ import { DRAW_BLEND, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts
 import { KEY_AMMO, KEY_PROMPT } from "../../client/core/ui/hud.ts";
 import { BUILDING_CONTENT } from "../../content/building.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { ITEMS } from "../../content/items/index.ts";
 import type { EngramDef, ItemDef } from "../../shared/content/defs.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
@@ -416,8 +417,9 @@ test("what is shown is what is built: over two thousand looks with every piece, 
 });
 
 test("pieces are made as anything is: an engram at the reference's level, at its cost, and the thing in hand to set down", () => {
-  // The pack as assembled, where each piece carries how it is made.
-  const items = CORE_CONTENT.filter((d): d is ItemDef => d.type === "item" && d.places !== undefined);
+  // The pack as assembled, where each piece carries how it is made. The item program's stations are counted apart (content/items).
+  const program = new Set(ITEMS.map((d) => d.id));
+  const items = CORE_CONTENT.filter((d): d is ItemDef => d.type === "item" && d.places !== undefined && !program.has(d.id));
   // Four thatch pieces, six each of wood, stone and metal, and five things: three containers, a campfire and a bed.
   expect(items.length).toBe(4 + 6 + 6 + 6 + 5);
   const levels: Record<string, number[]> = {};

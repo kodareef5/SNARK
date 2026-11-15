@@ -15,11 +15,16 @@ export interface Marker {
   tick: number;
 }
 
-/** A run of making one item. `left` units remain, and the current one finishes at tick `doneAt`. */
+/**
+ * A run of making one item. `left` units remain, and the current one finishes at tick `doneAt`. The record a job is on gives
+ * the ingredients and takes the product. `by` is the record id of the survivor who queued it at a station, who gets the
+ * experience; it is absent for a job made in the hands.
+ */
 export interface Job {
   item: number;
   left: number;
   doneAt: number;
+  by?: number;
 }
 
 export class EntityRecord {
