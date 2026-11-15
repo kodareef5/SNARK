@@ -1,0 +1,23 @@
+{
+  "asset": "core/music",
+  "about": "Music in layers by intensity. Each track's base is made from its prompt; each further layer from the base, so all keep its tempo, bars and key, and the music director fades between them on a bar.",
+  "notes": "Prototype, v2: one dark symphonic metal track in four intensities, for the owner to hear before more are made.",
+  "tracks": {
+    "dread": {
+      "model": "medium",
+      "style": "TrackType: Music, VocalType: Instrumental, Genre: Symphonic Metal, Genre: Orchestral, Genre: Cinematic. A dark brooding piece for a survival game set among dinosaurs,",
+      "negative": "upbeat, happy, major key, pop, lo-fi, vocals with lyrics",
+      "bpm": 96,
+      "key": "D minor",
+      "seconds": 120,
+      "seed": 7001,
+      "base": "calm",
+      "layers": {
+        "calm": { "prompt": "quiet and ominous: low sustained strings, deep drones, a distant slow timpani, sparse dark piano notes, wide and cold.", "noise": 0 },
+        "tense": { "prompt": "growing tension: the same dark strings joined by pounding war drums, low brass ostinato and rising cellos, driving and tense.", "noise": 0.65, "seed": 1 },
+        "combat": { "prompt": "full battle: heavy down-tuned distorted metal guitars, thundering double kick drums, aggressive staccato strings and brass, relentless.", "noise": 0.8, "seed": 2 },
+        "climax": { "prompt": "the climax: a massive dark choir chanting long powerful notes over the full orchestra and metal band, epic, overwhelming.", "noise": 0.85, "seed": 3 }
+      }
+    }
+  }
+}
