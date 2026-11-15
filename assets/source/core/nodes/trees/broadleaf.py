@@ -791,10 +791,10 @@ INNER_GAP = 1.15
 INNER_SIZE = (0.6, 0.85)
 
 
-def heads_of(name, trunks, lobes, shade, spacing, **kw):
+def heads_of(name, trunks, lobes, shade, spacing, roof=False, **kw):
     """The heads of leaves a crown is built of (heads.py): laid over its billows, each on a twig from the nearest branch
-    up into its underside, so a limb runs into its leaves and none floats; and a layer of shade heads deeper in. Returns
-    the heads and the billows."""
+    up into its underside, so a limb runs into its leaves and none floats; and a layer of shade heads deeper in. A
+    `roof` (the banyan's) is closed beneath as well. Returns the heads and the billows."""
     balls = balls_of(lobes, None, 0)
     got = hd.place(balls, shade, name, spacing, **kw)
     rng = rng_for(name, "head twigs")
@@ -806,7 +806,8 @@ def heads_of(name, trunks, lobes, shade, spacing, **kw):
     small = [canopy.Ball(b.centre, b.r * INNER, b.squash, b.floor, b.lobe) for b in balls]
     deeper = hd.place(small, shade, f"{name} inner", spacing * INNER_GAP, tiers=(99.0, 99.0), size=INNER_SIZE, **kw)
     # Under the crown the outer heads are sparse and the sky shows between them, as it should: no inner head hangs there.
-    deeper = [c for c in deeper if c.normal[1] > -0.35]
+    if not roof:
+        deeper = [c for c in deeper if c.normal[1] > -0.35]
     for c in deeper:
         c.inner = True
     return got + deeper, balls
@@ -827,15 +828,15 @@ def gathered(heads, want, seed):
 # head's opaque core is drawn against the head, the rest of its reach being its sprays. `sprays`: how many cut-out
 # sprays from the leaf atlas radiate from an outer head's core, each `spray` of the head's radius long, only its
 # leaves' outer `cut` drawn.
-BOUGHS = (0.2, 0.5, 0.3)
-LEAVES_UP = 0.4
+BOUGHS = (0.15, 0.4, 0.45)
+LEAVES_UP = 0.5
 # A head is lit as leaves are, from above more than from the side: its own normals are pressed toward its axis by this.
 LEAFY = 0.55
 HEAD_LEVELS = {
-    0: {"own": 0.6, "rings": 0, "inner": 1, "core": 0.68, "jag": 1.0, "puff": 1.0, "sprays": 18, "spray": 1.12, "cut": 0.58, "coarse": False},
-    1: {"own": 0.6, "rings": 1, "inner": 2, "core": 0.68, "jag": 1.0, "puff": 1.0, "sprays": 12, "spray": 1.15, "cut": 0.58, "coarse": True},
-    2: {"own": 0.6, "rings": 2, "inner": 4, "core": 0.72, "jag": 1.0, "puff": 1.15, "sprays": 8, "spray": 1.0, "cut": 0.58, "coarse": "quad"},
-    3: {"own": 0.6, "rings": 4, "inner": 4, "core": 0.8, "jag": 1.0, "puff": 1.25, "sprays": 4, "spray": 1.0, "cut": 0.58, "coarse": "quad"},
+    0: {"own": 0.62, "rings": 0, "inner": 1, "core": 0.6, "jag": 1.0, "puff": 1.0, "sprays": 18, "loose": 0.7, "low": -0.9, "spray": 1.18, "cut": 0.58, "coarse": False},
+    1: {"own": 0.62, "rings": 1, "inner": 2, "core": 0.6, "jag": 1.0, "puff": 1.0, "sprays": 12, "loose": 0.5, "low": -0.9, "spray": 1.2, "cut": 0.58, "coarse": True},
+    2: {"own": 0.62, "rings": 2, "inner": 4, "core": 0.7, "jag": 1.0, "puff": 1.15, "sprays": 8, "loose": 0.0, "low": -0.5, "spray": 1.05, "cut": 0.5, "coarse": "quad"},
+    3: {"own": 0.62, "rings": 4, "inner": 4, "core": 0.8, "jag": 1.0, "puff": 1.25, "sprays": 4, "loose": 0.0, "low": -0.3, "spray": 1.05, "cut": 0.45, "coarse": True},
 }
 
 
@@ -866,23 +867,41 @@ def sprays(m, c, at, atlas, lit, rng, share=1.0):
     golden = math.pi * (3 - math.sqrt(5))
     turn = rng.uniform(0, 2 * math.pi)
     for k in range(count):
-        # Over the head from near its top to near its bottom, evenly, each a little off.
-        y = mix(0.96, -0.9, (k + rng.uniform(0.2, 0.8)) / count)
+        # Over the head from near its top down to the level's lowest, evenly, each a little off: farther off, where a
+        # crown's outline is its top and sides, none hang beneath.
+        y = mix(0.96, at["low"], (k + rng.uniform(0.2, 0.8)) / count)
         theta = math.acos(max(-1.0, min(1.0, y)))
         phi = turn + golden * k + rng.uniform(-0.3, 0.3)
         at_surface = c.point(theta, phi)
         own = c.light(theta, phi)
         radial = unit(sub(at_surface, c.centre))
-        # Out from the middle, toward the way the head faces there, the lower ones bending down.
+        # Out from the middle, toward the way the head faces there, the lower ones bending down, each turned off it a
+        # little, and of its own length and reach, mostly short and a few long, so no head's outline is a ring of alike.
         along = unit(add(add(mul(radial, 0.6), mul(c.own(theta, phi), 0.4)), (0.0, -0.25 * smooth((theta - 1.2) / 1.2), 0.0)))
-        s = c.r * at["spray"] * rng.uniform(0.85, 1.12)
+        aside = unit(cross(along, UP)) if abs(along[1]) < 0.95 else c.e1
+        along = unit(rotate(rotate(along, aside, rng.uniform(-0.4, 0.4)), unit(cross(along, aside)), rng.uniform(-0.4, 0.4)))
+        s = c.r * at["spray"] * (0.62 + 0.76 * rng.random() ** 1.6)
+        cut = at["cut"] * rng.uniform(0.85, 1.2)
         root = sub(at_surface, mul(along, s * 0.04))
         flat = sub(c.axis, mul(along, dot(c.axis, along)))
         flat = unit(flat) if length(flat) > 1e-3 else unit(cross(along, c.e1))
         normal = rotate(flat, along, rng.uniform(-math.pi / 2, math.pi / 2))
         sun = c.tier == 0 or (c.tier == 1 and theta < 1.4)
         cell = rng.choice(TOP if sun and theta < 1.9 else RIM)
-        card(m, atlas, cell, root, along, normal, s, lambda x, own=own: lit(x, own), coarse=at["coarse"], cut=at["cut"])
+        card(m, atlas, cell, root, along, normal, s, lambda x, own=own: lit(x, own), coarse=at["coarse"], cut=min(cut, 0.8))
+    # A few small sprays loose in the gaps round the head, whole twigs' ends standing off it.
+    want = at["loose"] * share
+    for _ in range(int(want) + (rng.random() < want - int(want))):
+        theta, phi = math.acos(rng.uniform(-0.2, 0.9)), rng.uniform(0, 2 * math.pi)
+        out = unit(sub(c.point(theta, phi), c.centre))
+        s = c.r * rng.uniform(0.42, 0.62)
+        root = add(c.point(theta, phi), mul(out, c.r * rng.uniform(0.05, 0.3)))
+        along = unit(add(out, (rng.uniform(-0.4, 0.4), rng.uniform(-0.2, 0.3), rng.uniform(-0.4, 0.4))))
+        flat = sub(UP, mul(along, dot(UP, along)))
+        flat = unit(flat) if length(flat) > 1e-3 else unit(cross(along, c.e1))
+        normal = rotate(flat, along, rng.uniform(-1.2, 1.2))
+        own = c.light(theta, phi)
+        card(m, atlas, rng.choice(TOP + RIM), add(root, mul(along, s * 0.5)), along, normal, s, lambda x, own=own: lit(x, own), coarse=at["coarse"])
 
 
 def head_crown(m, heads, lod, rng, atlas, material, shade, share=1.0):

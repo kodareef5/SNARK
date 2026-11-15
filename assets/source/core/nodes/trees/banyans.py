@@ -249,7 +249,7 @@ def banyan(name, lod):
     rng = rng_for(name, "level", lod)
     beams, pillars, stub, lobes = skeleton(spec)
     shade = bl.Shade(lobes)
-    heads, _ = bl.heads_of(name, beams, lobes, shade, SPACING)
+    heads, _ = bl.heads_of(name, beams, lobes, shade, SPACING, roof=True, under=1.1)
     if lod in (2, 3):
         heads = bl.gathered(heads, GATHERED[lod], name)
     wall = trunk_wall(spec)

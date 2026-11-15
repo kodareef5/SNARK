@@ -16,7 +16,7 @@ import bisect
 import math
 
 import canopy
-from kit import UP, add, cross, dot, length, mix, mul, rng_for, smooth, sub, unit
+from kit import UP, add, cross, dot, length, mix, mul, rng_for, rotate, smooth, sub, unit
 
 # Where a head's top ends and its underside begins, as the angle from its top.
 SEAM = math.radians(102)
@@ -29,7 +29,7 @@ LUMPS = 0.3
 # seam is always a ring.
 RINGS = {
     0: (3, (0.36, 0.72, 1.08, 1.42, SEAM, 2.15, 2.6)),
-    1: (2, (0.6, 1.2, SEAM, 2.4)),
+    1: (2, (0.5, 0.95, 1.38, SEAM, 2.3)),
     2: (1, (0.8, SEAM)),
     3: (1, (0.95, SEAM)),
     4: (1, (SEAM,)),
@@ -60,6 +60,8 @@ class Head:
         self.puff = 1.0
         self.turn = rng.uniform(0, 2 * math.pi)
         self.below = rng.randrange(2)
+        # Narrower one way than the other seen from above, so no two heads are the same round.
+        self.wide = rng.uniform(0.7, 1.0)
         k = rng.choice((5, 6, 6, 7))
         self.scallops = (k, rng.uniform(0, 2 * math.pi), rng.uniform(0.1, 0.16), rng.uniform(0, 2 * math.pi))
         # Clumps on the top, and sprays hanging under it: a direction from the middle, how far each swells the head and
@@ -95,7 +97,7 @@ class Head:
         tall = mix(self.under, self.top, smooth((c + 0.3) / 0.6)) * self.puff
         k = (self.swell(theta, phi) if lumpy else 1.0) * self.core
         s = math.sin(theta)
-        return (self.r * s * math.cos(phi) * k, tall * c * k, self.r * s * math.sin(phi) * k)
+        return (self.r * s * math.cos(phi) * k, tall * c * k, self.r * self.wide * s * math.sin(phi) * k)
 
     def point(self, theta, phi, lumpy=True):
         x, y, z = self.local(theta, phi, lumpy)
@@ -180,7 +182,7 @@ def mesh(m, c, lod, material, top, under, lit, paint=None):
                 emit(a, cc, d)
 
 
-def place(balls, shade, seed, spacing, under=1.5, size=(0.85, 1.3), cell=0.6, tiers=(0.72, 0.4), tall=(0.5, 0.64), low=(0.28, 0.36), sink=0.35, lean=0.4):
+def place(balls, shade, seed, spacing, under=1.5, size=(0.8, 1.32), cell=0.6, tiers=(0.72, 0.4), tall=(0.45, 0.8), low=(0.25, 0.45), sink=0.35, lean=0.4):
     """Heads laid over the outside of the union of `balls` (the billows), about `spacing` apart and sparser by `under`
     beneath, each as wide as `size` of the spacing, its top standing `tall` and its underside hanging `low` of its
     radius from its middle. A head stands on its spot turned partway from up toward the way the crown faces
@@ -233,7 +235,7 @@ def place(balls, shade, seed, spacing, under=1.5, size=(0.85, 1.3), cell=0.6, ti
         # The largest heads crown a lobe, the smaller hang at its edges.
         rel = (p[1] - lobe.centre[1]) / lobe.radii[1]
         crowning = smooth((rel + 0.4) / 1.1)
-        r = spacing * 0.5 * mix(size[0], size[1], crowning) * rng.uniform(0.88, 1.12) * (1.0 - 0.25 * crease)
+        r = spacing * 0.5 * mix(size[0], size[1], crowning) * rng.uniform(0.72, 1.3) * (1.0 - 0.25 * crease)
         top = r * rng.uniform(*tall)
         low_ = r * rng.uniform(*low)
         hor = (n[0], 0.0, n[2])
@@ -241,7 +243,7 @@ def place(balls, shade, seed, spacing, under=1.5, size=(0.85, 1.3), cell=0.6, ti
         axis = unit(add(add(mul(UP, 0.9 + 0.3 * n[1]), mul(hor, lean)), tilt))
         centre = sub(p, mul(n, top * (sink + 0.4 * crease)))
         ref = (1.0, 0.0, 0.0) if abs(axis[0]) < 0.9 else (0.0, 0.0, 1.0)
-        e1 = unit(cross(axis, ref))
+        e1 = rotate(unit(cross(axis, ref)), axis, rng.uniform(0, 2 * math.pi))
         depth = math.sqrt(sum(((p[k] - shade.mid[k]) / shade.radii[k]) ** 2 for k in range(3)))
         high = (p[1] - lo[1]) / max(hi[1] - lo[1], 1e-6)
         score = 0.45 * (depth - 0.55) / 0.45 + 0.45 * high + 0.3 * n[1] - 0.45 * crease + light + 0.2 * crowning + rng.uniform(-0.12, 0.12)
@@ -285,6 +287,6 @@ def merged(heads, count, seed):
         tier = round(sum(heads[i].tier * w[i] for i in g) / total)
         axis = unit(mean(lambda c: c.axis))
         h = Head(centre, axis, big.e1, r, big.top * k, big.under * k, tier, big.variant, site, unit(mean(lambda c: c.normal)), big.lobe, rng)
-        h.turn, h.below, h.scallops, h.clumps, h.inner = big.turn, big.below, big.scallops, big.clumps, big.inner
+        h.turn, h.below, h.scallops, h.clumps, h.inner, h.wide = big.turn, big.below, big.scallops, big.clumps, big.inner, big.wide
         out.append(h)
     return out
