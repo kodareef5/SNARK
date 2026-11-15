@@ -14,7 +14,7 @@ import { RemoteSample } from "../../client/core/session.ts";
 import { GROUND_GRASS, GROUND_SAND, GROUND_STONE, groundAt } from "../../client/core/sound/ground.ts";
 import { SoundLibrary } from "../../client/core/sound/library.ts";
 import { KIND_STEP, KIND_VOCAL, Mixer, VOICES } from "../../client/core/sound/mixer.ts";
-import { SoundPacket, type SoundSink } from "../../client/core/sound/packet.ts";
+import { START_FIELDS, SoundPacket, type SoundSink } from "../../client/core/sound/packet.ts";
 import { distanceGain, earAxes, lowpassAt } from "../../client/core/sound/place.ts";
 import { Sounds } from "../../client/core/sound/sounds.ts";
 import { SOUND_SLOT, SplitPort } from "../../client/core/sound/split.ts";
@@ -269,18 +269,18 @@ test("forty dodos startled at once are heard as the nearest five, the quietest s
   for (let k = 0; k < 12; k++) m.play(p, ear, 0, 2, 1, 0.2, 20, KIND_STEP, 0.25, -1, 3 + k, 0, 0, 0, 1, 1, 0);
   const steps = (): number[] => [...Array(VOICES).keys()].filter((v) => m.serial[v] !== 0 && m.kind[v] === KIND_STEP).map((v) => m.x[v]!);
   expect(steps().length).toBe(10);
-  expect(m.play(p, ear, 0, 2, 1, 0.2, 20, KIND_STEP, 0.25, -1, 19, 0, 0, 0, 1, 1, 0)).toBe(false);
-  expect(m.play(p, ear, 0, 2, 1, 0.2, 20, KIND_STEP, 0.25, -1, 1, 0, 0, 0, 1, 1, 0)).toBe(true);
+  expect(m.play(p, ear, 0, 2, 1, 0.2, 20, KIND_STEP, 0.25, -1, 19, 0, 0, 0, 1, 1, 0)).toBe(0);
+  expect(m.play(p, ear, 0, 2, 1, 0.2, 20, KIND_STEP, 0.25, -1, 1, 0, 0, 0, 1, 1, 0)).toBeGreaterThan(0);
   expect(steps()).toContain(1);
   expect(steps()).not.toContain(14);
   // Out of range is not started at all.
-  expect(m.play(p, ear, 0, 2, 1, 0.2, 20, KIND_STEP, 0.25, -1, 30, 0, 0, 0, 1, 1, 0)).toBe(false);
+  expect(m.play(p, ear, 0, 2, 1, 0.2, 20, KIND_STEP, 0.25, -1, 30, 0, 0, 0, 1, 1, 0)).toBe(0);
   // A call cut short by its creature's pain; a call is not let cut a cry.
   const before = p.stops.length;
-  expect(m.play(p, ear, 0, 3, 2, 1, 40, KIND_VOCAL, 0.4, 500, 5, 0, 0, 0, 1, 1, 0)).toBe(true);
-  expect(m.play(p, ear, 0, 4, 3, 1, 40, KIND_VOCAL, 0.9, 500, 5, 0, 0, 0, 1, 1, 0)).toBe(true);
+  expect(m.play(p, ear, 0, 3, 2, 1, 40, KIND_VOCAL, 0.4, 500, 5, 0, 0, 0, 1, 1, 0)).toBeGreaterThan(0);
+  expect(m.play(p, ear, 0, 4, 3, 1, 40, KIND_VOCAL, 0.9, 500, 5, 0, 0, 0, 1, 1, 0)).toBeGreaterThan(0);
   expect(p.stops.length).toBe(before + 1);
-  expect(m.play(p, ear, 0, 3, 2, 1, 40, KIND_VOCAL, 0.4, 500, 5, 0, 0, 0, 1, 1, 0)).toBe(false);
+  expect(m.play(p, ear, 0, 3, 2, 1, 40, KIND_VOCAL, 0.4, 500, 5, 0, 0, 0, 1, 1, 0)).toBe(0);
   // Voices end with their sound.
   m.expire(5000);
   expect(m.playing).toBe(0);
@@ -314,7 +314,7 @@ class Ears implements SoundSink {
   running = true;
   readonly starts: number[][] = [];
   apply(p: SoundPacket): void {
-    for (let i = 0; i < p.starts.length; i += 9) this.starts.push(p.starts.slice(i, i + 9));
+    for (let i = 0; i < p.starts.length; i += START_FIELDS) this.starts.push(p.starts.slice(i, i + START_FIELDS));
   }
 }
 
@@ -353,7 +353,7 @@ test("a dodo is heard as its state changes: startled, landing, hurt, pecking, kn
     remote.cue[0] = st.packCue();
     remote.tick = tick;
     ears.starts.length = 0;
-    sounds.frame(ears, now, remote, hf, ear, 1);
+    sounds.frame(ears, now, remote, hf, ear, { master: 1, effects: 1, ambience: 1, music: 1, interface: 1 });
     for (const s of ears.starts) heard.push(name(s[1]!));
   };
   st.seed = bodySeed(id);

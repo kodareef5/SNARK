@@ -46,6 +46,9 @@ import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
 import type { SoundSink } from "./sound/packet.ts";
 import { Sounds } from "./sound/sounds.ts";
+import type { SoundDecoder } from "./sound/library.ts";
+import { hearSession, soundView } from "./sound/view.ts";
+import { cueKey } from "../../shared/sound/cues.ts";
 import { soundCommand } from "./sound/command.ts";
 import { SplitPort } from "./sound/split.ts";
 
@@ -162,6 +165,10 @@ export class App {
   sound: SoundSink | null = null;
   /** Made with the scene, where there is a sink and the assets stream. */
   sounds: Sounds | null = null;
+  /** Decodes sounds off the main thread: the browser's worker, set before the first frame. Null decodes inline. */
+  soundDecoder: SoundDecoder | null = null;
+  /** Tames already heard of the session's queue, which the naming prompt empties. */
+  private tamedHeard = 0;
   talking = false;
   private talkMode = MODE_TALK;
   private volumeSet = -1;
@@ -552,7 +559,11 @@ export class App {
       // Sounds share the asset port, each side taking only what it asked for.
       const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
       this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
-      if (split) this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst);
+      if (split) {
+        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst, this.soundDecoder ?? undefined);
+        hearSession(session, this.sounds);
+        this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
+      }
       this.scene.shots = this.shots;
       this.scene.plainSky = this.plainSky;
       if (this.stress) {
@@ -654,6 +665,9 @@ export class App {
     this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     session.sampleRemote(this.remote);
+    // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
+    this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
+    this.tamedHeard = session.tamed.length;
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
@@ -687,7 +701,8 @@ export class App {
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     this.listen(hud);
-    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, this.ui.settings.soundVolume);
+    const vol = this.ui.settings;
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder;

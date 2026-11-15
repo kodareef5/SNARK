@@ -52,10 +52,38 @@ def write_cut(src, dst, start, end):
     return cut, round(start - a / rate, 3), round(end - a / rate, 3)
 
 
+def write_loop(src, dst, start, end, xfade=0.75):
+    """Cut start..end seconds of src to loop seamlessly: the stretch after `end` is crossfaded into its head, equal power."""
+    info = sf.info(str(src))
+    a = max(0, int(round(start * info.samplerate)))
+    n = int(round(xfade * info.samplerate))
+    b = min(info.frames - n, int(round(end * info.samplerate)))
+    if b - a < 4 * n:
+        raise SystemExit(f"{src}: {start}-{end} s is too short to loop with a {xfade} s crossfade")
+    x, rate = sf.read(str(src), start=a, stop=b + n, dtype="float64", always_2d=True)
+    m = x.mean(axis=1)
+    body = m[: b - a].copy()
+    t = (np.arange(n) + 0.5) / n
+    body[:n] = body[:n] * np.sin(t * np.pi / 2) + m[b - a:] * np.cos(t * np.pi / 2)
+    q = np.clip(np.round(body * FULL), -FULL, FULL - 1).astype(np.int32)
+    Path(dst).parent.mkdir(parents=True, exist_ok=True)
+    write24(dst, q, rate)
+    cut = {"source_file": Path(src).name, "source_frames": info.frames, "source_channels": info.channels,
+           "source_subtype": info.subtype, "frames": [a, b], "rate": rate, "stored_as": "mono PCM_24",
+           "loop_crossfade_frames": n}
+    return cut, 0.0, round((b - a) / rate, 3)
+
+
 def same_cut(made_source, kept, cut):
     """Whether a remade source, cut as the recipe says, holds the kept file's samples; and how far apart."""
     a, b = cut["frames"]
-    y, _ = mono24(made_source, a, b)
+    if "loop_crossfade_frames" in cut:
+        tmp = Path(made_source).with_suffix(".loop.wav")
+        write_loop(made_source, tmp, a / cut["rate"], b / cut["rate"], cut["loop_crossfade_frames"] / cut["rate"])
+        y, _ = read24(tmp)
+        tmp.unlink(missing_ok=True)
+    else:
+        y, _ = mono24(made_source, a, b)
     k, _ = read24(kept)
     if y.shape != k.shape:
         return False, {"same_shape": False}

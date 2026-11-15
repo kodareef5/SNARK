@@ -1,23 +1,47 @@
-// The voices playing, and which sound gets one. There are VOICES of them. Each kind of sound has a share of them, and
-// each sound a smaller share, so that forty dodos startled at once are a few squawks near and not forty. A sound that
-// finds no voice free takes the one heard least (its weight times its loudness where the ear is), if that is heard less
-// than it would be; otherwise it is dropped. Footsteps weigh least, so they go first, then calls, then pecks and thumps;
-// cries of pain and alarm weigh most. A creature has one mouth: a new cry from it ends its last unless the last weighs more.
+// The voices playing, and which sound gets one. There are VOICES of them in three pools: the world's, the interface's
+// and the beds' (with music), so that a fight never takes the click of a button or the bed under it. Each kind of sound
+// has a share of its pool, and each sound a smaller share, so that forty dodos startled at once are a few squawks near
+// and not forty. A sound that finds no voice free takes the one of its pool heard least (its weight times its loudness
+// where the ear is), if that is heard less than it would be; otherwise it is dropped. Footsteps weigh least, so they go
+// first, then calls, then pecks and thumps; cries of pain and alarm weigh most. A creature has one mouth: a new cry from
+// it ends its last unless the last weighs more. A sound at the ear is not placed and does not fade with distance; a
+// looping sound plays until it is stopped.
 
 import type { Rng } from "../../../shared/rng.ts";
 import type { SoundPacket } from "./packet.ts";
-import { distanceGain, lowpassAt } from "./place.ts";
+import { TOP_HZ, distanceGain, lowpassAt } from "./place.ts";
 
-export const VOICES = 32;
+export const VOICES = 48;
 /** A cry, call or squawk, from a creature's mouth. */
 export const KIND_VOCAL = 0;
 /** A footfall. */
 export const KIND_STEP = 1;
 /** A peck, a blow, a body landing. */
 export const KIND_HIT = 2;
+/** A swing, a shot, a blast. */
+export const KIND_WEAPON = 3;
+/** A piece placed, broken or opened. */
+export const KIND_BUILD = 4;
+/** Something used: eaten, equipped, picked. */
+export const KIND_ITEM = 5;
+/** The interface. */
+export const KIND_UI = 6;
+/** A bed of the world: wind, waves, a jungle. */
+export const KIND_BED = 7;
+export const KIND_MUSIC = 8;
+/** The cue kinds of shared/sound/cues.ts, by kind number. */
+export const KIND_NAMES: readonly string[] = ["vocal", "step", "hit", "weapon", "build", "item", "ui", "bed", "music"];
 /** Voices each kind may have at once, and each sound of that kind. */
-const KIND_VOICES: readonly number[] = [16, 10, 8];
-const SOUND_VOICES: readonly number[] = [5, 10, 4];
+const KIND_VOICES: readonly number[] = [16, 10, 8, 10, 6, 6, 4, 3, 1];
+const SOUND_VOICES: readonly number[] = [5, 10, 4, 4, 3, 3, 2, 1, 1];
+/** The pool each kind plays in, and the voices of each pool. */
+const KIND_POOL: readonly number[] = [0, 0, 0, 0, 0, 0, 1, 2, 2];
+const POOL_VOICES: readonly number[] = [40, 4, 4];
+/** The volume each kind answers to: 0 effects, 1 ambience, 2 music, 3 interface (packet.ts). */
+export const KIND_BUS: readonly number[] = [0, 0, 0, 0, 0, 0, 3, 1, 2];
+/** Flags of a start: not placed, at the ear; and plays until stopped. */
+export const FLAT = 1;
+export const LOOP = 2;
 /** Below this gain where the ear is, a sound is not started. */
 const INAUDIBLE = 0.004;
 /** Milliseconds a stopped voice takes to fade, as the device does it. */
@@ -49,6 +73,7 @@ export class Mixer {
   readonly level = new Float32Array(VOICES);
   readonly heard = new Float32Array(VOICES);
   readonly endMs = new Float64Array(VOICES);
+  readonly flags = new Uint8Array(VOICES);
   /** Counted since the start: voices started, sounds dropped for want of a voice or too quiet to hear, and voices taken over. */
   readonly stats = { started: 0, dropped: 0, quiet: 0, stolen: 0 };
   private next = 1;
@@ -73,18 +98,21 @@ export class Mixer {
 
   /**
    * Starts take `buffer` of `sound`, `seconds` long, at (x, y, z) with `lift` metres above it, following `entity` if it
-   * is not -1. `level` is its gain before distance, `rate` its playback rate, `delay` seconds from now. Returns false
-   * where it is dropped.
+   * is not -1. `level` is its gain before distance, `rate` its playback rate, `delay` seconds from now, `flags` FLAT and
+   * LOOP. Returns the voice's serial, or 0 where it is dropped.
    */
-  play(p: SoundPacket, ear: Ear, nowMs: number, sound: number, buffer: number, seconds: number, range: number, kind: number, weight: number, entity: number, x: number, y: number, z: number, lift: number, level: number, rate: number, delay: number): boolean {
-    const d = Math.hypot(x - ear.x, y + lift - ear.y, z - ear.z);
-    const heard = distanceGain(d, range) * level;
+  play(p: SoundPacket, ear: Ear, nowMs: number, sound: number, buffer: number, seconds: number, range: number, kind: number, weight: number, entity: number, x: number, y: number, z: number, lift: number, level: number, rate: number, delay: number, flags = 0): number {
+    const flat = (flags & FLAT) !== 0;
+    const d = flat ? 0 : Math.hypot(x - ear.x, y + lift - ear.y, z - ear.z);
+    const heard = (flat ? 1 : distanceGain(d, range)) * level;
     if (heard < INAUDIBLE) {
       this.stats.quiet++;
-      return false;
+      return 0;
     }
+    const pool = KIND_POOL[kind]!;
     const score = weight * heard;
     let free = -1;
+    let ofPool = 0;
     let ofKind = 0;
     let ofSound = 0;
     let least = -1;
@@ -100,12 +128,14 @@ export class Mixer {
       if (kind === KIND_VOCAL && entity >= 0 && this.kind[v] === KIND_VOCAL && this.entity[v] === entity) {
         if (this.weight[v]! > weight) {
           this.stats.dropped++;
-          return false;
+          return 0;
         }
         this.stop(v, p);
         if (free < 0) free = v;
         continue;
       }
+      if (KIND_POOL[this.kind[v]!] !== pool) continue;
+      ofPool++;
       if (least < 0 || s < this.weight[least]! * this.heard[least]!) least = v;
       if (this.kind[v] !== kind) continue;
       ofKind++;
@@ -118,11 +148,11 @@ export class Mixer {
     let take = free;
     if (ofSound >= SOUND_VOICES[kind]!) take = leastSound;
     else if (ofKind >= KIND_VOICES[kind]!) take = leastKind;
-    else if (free < 0) take = least;
+    else if (free < 0 || ofPool >= POOL_VOICES[pool]!) take = least;
     if (take !== free) {
       if (take < 0 || this.weight[take]! * this.heard[take]! >= score) {
         this.stats.dropped++;
-        return false;
+        return 0;
       }
       this.stop(take, p);
       this.stats.stolen++;
@@ -141,10 +171,27 @@ export class Mixer {
     this.weight[v] = weight;
     this.level[v] = level;
     this.heard[v] = heard;
-    this.endMs[v] = nowMs + (delay + seconds / rate) * 1000 + STOP_MS;
-    p.starts.push(serial, buffer, delay, rate, heard, x - ear.x, y + lift - ear.y, z - ear.z, lowpassAt(d, range));
+    this.flags[v] = flags;
+    this.endMs[v] = (flags & LOOP) !== 0 ? Infinity : nowMs + (delay + seconds / rate) * 1000 + STOP_MS;
+    if (flat) p.starts.push(serial, buffer, delay, rate, heard, 0, 0, 0, TOP_HZ, KIND_BUS[kind]!, flags);
+    else p.starts.push(serial, buffer, delay, rate, heard, x - ear.x, y + lift - ear.y, z - ear.z, lowpassAt(d, range), KIND_BUS[kind]!, flags);
     this.stats.started++;
-    return true;
+    return serial;
+  }
+
+  /** Changes a playing voice's gain before distance, as a bed fades in or out. False if the voice is gone. */
+  gain(serial: number, level: number): boolean {
+    for (let v = 0; v < VOICES; v++) {
+      if (this.serial[v] !== serial) continue;
+      this.level[v] = level;
+      return true;
+    }
+    return false;
+  }
+
+  /** Stops the voice with this serial, if it plays. */
+  end(serial: number, p: SoundPacket): void {
+    for (let v = 0; v < VOICES; v++) if (this.serial[v] === serial) this.stop(v, p);
   }
 
   /** Moves every voice to where its entity is now, as heard from `ear`, and stops those out of hearing. */
@@ -156,6 +203,11 @@ export class Mixer {
         this.x[v] = at[0]!;
         this.y[v] = at[1]!;
         this.z[v] = at[2]!;
+      }
+      if ((this.flags[v]! & FLAT) !== 0) {
+        this.heard[v] = this.level[v]!;
+        p.moves.push(this.serial[v]!, this.heard[v]!, 0, 0, 0, TOP_HZ);
+        continue;
       }
       const dx = this.x[v]! - ear.x;
       const dy = this.y[v]! + this.lift[v]! - ear.y;

@@ -66,7 +66,7 @@ export function benchSound(section: (title: string) => void, record: (name: stri
     }
     remote.tick = tick;
     const t0 = performance.now();
-    sounds.frame(sink, now, remote, hf, ear, 1);
+    sounds.frame(sink, now, remote, hf, ear, { master: 1, effects: 1, ambience: 1, music: 1, interface: 1 });
     return performance.now() - t0;
   };
   for (let k = 0; k < 120; k++) frame(false);

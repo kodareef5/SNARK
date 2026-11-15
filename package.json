@@ -19,7 +19,8 @@
     "art": "bun tools/art.ts",
     "settings": "bun tools/settings.ts",
     "catalogue": "bun tools/catalogue.ts",
-    "events": "bun tools/events.ts"
+    "events": "bun tools/events.ts",
+    "sounds": "bun tools/sounds.ts"
   },
   "devDependencies": {
     "@types/bun": "1.4.3",

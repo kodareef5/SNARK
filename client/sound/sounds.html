@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>SNARK sounds</title>
+    <title>SNARK sound board</title>
     <style>
       body { margin: 0; padding: 16px; background: #15181c; color: #d8dce2; font: 15px/1.4 system-ui, sans-serif; }
       h1 { font-size: 20px; margin: 0 0 4px; }
@@ -19,17 +19,33 @@
       button.moss { border-color: #4f7a5c; }
       button.stable { border-color: #6b5a8c; }
       button.any { font-weight: 600; }
+      h2 { font-size: 17px; margin: 22px 0 6px; }
+      h3.owner { font-size: 15px; margin: 18px 0 2px; color: #b9c3cf; }
+      .cue { display: grid; grid-template-columns: minmax(12em, 1.1fr) 7em 9em 2fr; gap: 2px 12px; padding: 6px 8px; border-top: 1px solid #2a3038; cursor: pointer; font-size: 13px; }
+      .cue:hover { background: #1f242a; }
+      .cue code { font-size: 13px; color: #e7ebf0; }
+      .cue small { grid-column: 1 / -1; color: #7f8893; }
+      .cue.shared { border-left: 3px solid #4f7a5c; }
+      .cue.own { border-left: 3px solid #8c7a3c; }
+      .cue.silent { border-left: 3px solid #8c3c3c; }
+      .cue.silent b { color: #e08080; }
+      #find { font: inherit; padding: 4px 8px; background: #262c33; color: #d8dce2; border: 1px solid #3a424c; border-radius: 4px; }
     </style>
   </head>
   <body>
-    <h1>Sounds</h1>
-    <p>Every sound of this build as the game plays it, decoded from the same file. A take is labelled by what made it. Where two makers made a sound, "any" plays one of theirs, another each time. The distance and the direction place it by the game's own rules: quieter and duller farther off, and from that side.</p>
+    <h1>Sound board</h1>
+    <p>Every occasion the game is heard on (shared/sound/cues.ts), with what it is heard by in this build: green, a shared sound every owner falls back to; amber, only owners' own sounds; red, nothing. Click an occasion to hear it. Below, every sound by owner, each take as the game plays it, decoded from the same file and labelled by what made it. The distance and the direction place it by the game's own rules: quieter and duller farther off, and from that side.</p>
     <p id="note"></p>
     <div class="controls">
       <label>Distance <input id="far" type="range" min="0" max="60" step="1" value="3" oninput="farOut.textContent = this.value + ' m'" /><output id="farOut">3 m</output></label>
       <label>From <select id="way"><option>ahead</option><option>right</option><option>behind</option><option>left</option></select></label>
       <label><input id="vary" type="checkbox" checked /> vary the pitch as the game does</label>
+      <label>Find <input id="find" type="search" placeholder="step, rex, waits:weather" /></label>
+      <label><input id="silent" type="checkbox" /> silent only</label>
     </div>
+    <h2>Occasions</h2>
+    <div id="cues"></div>
+    <h2>Sounds by owner</h2>
     <div id="sounds"></div>
     <script type="module" src="board.js"></script>
   </body>

@@ -1,6 +1,7 @@
 // Which sounds are held, asked for and let go. A sound is wanted while something that makes it is within its range, and
 // how urgently by how near. Its takes are fetched together through the asset port, checked there against their hashes,
-// decoded here, a take a frame so that no frame waits long, and handed to the audio device. Decoded takes are kept within a budget of bytes: when a sound wanted
+// decoded by a SoundDecoder (in the browser a worker of its own, since a long bed takes 90 ms to decode), and handed to
+// the audio device a few at a time, so that no frame waits long. Decoded takes are kept within a budget of bytes: when a sound wanted
 // does not fit, the least lately used of those not wanted are let go first, and while it still does not fit the farther
 // wanted sounds wait. A request that fails is asked again on the asset library's schedule.
 
@@ -25,8 +26,45 @@ const ABSENT = 0;
 const LOADING = 1;
 const RESIDENT = 2;
 const DEAD = 3;
-/** Arrived, and being decoded a take a frame. */
+/** Arrived, and being decoded. */
 const DECODING = 4;
+/** Samples handed to the audio device in one frame at most: copying them into its buffers is the main thread's cost. */
+export const LOAD_SAMPLES = 1 << 20;
+
+/** Decodes a sound's takes away from the frame. Answers arrive by `take`, in any order. */
+export interface SoundDecoder {
+  decode(s: number, data: Uint8Array, takes: readonly { samples: number; bytes: number }[]): void;
+  /** Sounds decoded since the last call: each take's samples, or null where any take did not decode. Returns how many. */
+  take(out: Decoded[]): number;
+}
+
+export interface Decoded {
+  s: number;
+  takes: Float32Array[] | null;
+}
+
+/** Decodes on the calling thread, one take a call: for tests, and where there are no workers. */
+export class InlineDecoder implements SoundDecoder {
+  private readonly queue: { s: number; data: Uint8Array; takes: readonly { samples: number; bytes: number }[]; done: Float32Array[]; at: number }[] = [];
+
+  decode(s: number, data: Uint8Array, takes: readonly { samples: number; bytes: number }[]): void {
+    this.queue.push({ s, data, takes, done: [], at: 0 });
+  }
+
+  take(out: Decoded[]): number {
+    const q = this.queue[0];
+    if (!q) return 0;
+    const t = q.takes[q.done.length]!;
+    const samples = new Float32Array(t.samples);
+    const ok = decodeTake(q.data.subarray(q.at, q.at + t.bytes), t.samples, samples);
+    q.at += t.bytes;
+    q.done.push(samples);
+    if (ok && q.done.length < q.takes.length) return 0;
+    this.queue.shift();
+    out[0] = { s: q.s, takes: ok ? q.done : null };
+    return 1;
+  }
+}
 
 export class SoundLibrary {
   readonly sounds: readonly ManifestSound[];
@@ -51,14 +89,19 @@ export class SoundLibrary {
   private readonly bytes: Float64Array;
   private readonly wants: number[] = [];
   private readonly arrivals: AssetArrival[] = [];
-  /** Sounds arrived and not yet decoded, oldest first, each with its bytes and the next take to decode. */
-  private readonly decoding: { s: number; data: Uint8Array; next: number; at: number }[] = [];
+  private readonly decoder: SoundDecoder;
+  private readonly decoded: Decoded[] = [];
+  /** Takes decoded and not yet on the device, oldest first. */
+  private readonly loading: { buffer: number; samples: Float32Array; rate: number }[] = [];
+  /** Sounds held whatever else is wanted: the interface and the player's own (Sounds.pin). */
+  private readonly pinned: Uint8Array;
   private readonly rng = new Rng(7);
   private nowMs = 0;
 
-  constructor(manifest: Pick<Manifest, "sounds">, port: AssetPort | null) {
+  constructor(manifest: Pick<Manifest, "sounds">, port: AssetPort | null, decoder: SoundDecoder = new InlineDecoder()) {
     this.sounds = manifest.sounds ?? [];
     this.port = port;
+    this.decoder = decoder;
     this.index = new Map(this.sounds.map((s, i) => [s.id, i]));
     const n = this.sounds.length;
     this.first = new Int32Array(n);
@@ -76,11 +119,17 @@ export class SoundLibrary {
     this.tries = new Uint8Array(n);
     this.rehashed = new Uint8Array(n);
     this.bytes = Float64Array.from(this.sounds, (s) => s.takes.reduce((sum, t) => sum + t.samples * 4, 0));
+    this.pinned = new Uint8Array(n);
+  }
+
+  /** Keeps the sound once held and never lets it go, and asks for it whenever nothing more urgent is wanted. */
+  pin(sound: number): void {
+    this.pinned[sound] = 1;
   }
 
   /** Whether the sound's takes are on the audio device. */
   ready(sound: number): boolean {
-    return this.state[sound] === RESIDENT;
+    return this.state[sound] === RESIDENT && (this.loading.length === 0 || this.onDevice(sound));
   }
 
   /** Says the sound is wanted now, as urgently as `urgency`: higher is sooner. */
@@ -97,7 +146,8 @@ export class SoundLibrary {
     this.nowMs = nowMs;
     this.wants.length = 0;
     if (!this.port) return;
-    this.decodeOne(p);
+    this.takeDecoded(p);
+    for (let s = 0; s < this.sounds.length; s++) if (this.pinned[s] === 1 && this.state[s] === ABSENT) this.want(s, 0);
     const n = this.port.take(this.arrivals);
     for (let i = 0; i < n; i++) {
       const a = this.arrivals[i]!;
@@ -107,7 +157,7 @@ export class SoundLibrary {
       this.flying--;
       if (a.data && a.data.length === this.sounds[s]!.takes.reduce((sum, t) => sum + t.bytes, 0)) {
         this.state[s] = DECODING;
-        this.decoding.push({ s, data: a.data, next: 0, at: 0 });
+        this.decoder.decode(s, a.data, this.sounds[s]!.takes);
         continue;
       }
       this.state[s] = ABSENT;
@@ -127,29 +177,40 @@ export class SoundLibrary {
     }
   }
 
-  /** Decodes the next take of the oldest sound arrived. A take that does not decode gives the sound up. */
-  private decodeOne(p: SoundPacket): void {
-    const d = this.decoding[0];
-    if (!d) return;
-    const sound = this.sounds[d.s]!;
-    const t = sound.takes[d.next]!;
-    const out = new Float32Array(t.samples);
-    if (!decodeTake(d.data.subarray(d.at, d.at + t.bytes), t.samples, out)) {
-      for (let k = 0; k < d.next; k++) p.unloads.push(this.first[d.s]! + k);
-      this.state[d.s] = DEAD;
-      this.stats.dead++;
-      this.decoding.shift();
-      return;
+  /** Takes in what the decoder finished, and hands the device at most LOAD_SAMPLES of it a frame. */
+  private takeDecoded(p: SoundPacket): void {
+    const n = this.decoder.take(this.decoded);
+    for (let i = 0; i < n; i++) {
+      const d = this.decoded[i]!;
+      this.decoded[i] = null!;
+      if (this.state[d.s] !== DECODING) continue;
+      if (!d.takes) {
+        // Bytes that pass their hash and do not decode: asking again would change nothing.
+        this.state[d.s] = DEAD;
+        this.stats.dead++;
+        continue;
+      }
+      const sound = this.sounds[d.s]!;
+      d.takes.forEach((samples, k) => this.loading.push({ buffer: this.first[d.s]! + k, samples, rate: sound.rate }));
+      this.state[d.s] = RESIDENT;
+      this.used += this.bytes[d.s]!;
+      this.tries[d.s] = 0;
+      this.rehashed[d.s] = 0;
+      this.stats.loaded++;
     }
-    p.loads.push({ buffer: this.first[d.s]! + d.next, samples: out, rate: sound.rate });
-    d.at += t.bytes;
-    if (++d.next < sound.takes.length) return;
-    this.decoding.shift();
-    this.state[d.s] = RESIDENT;
-    this.used += this.bytes[d.s]!;
-    this.tries[d.s] = 0;
-    this.rehashed[d.s] = 0;
-    this.stats.loaded++;
+    let budget = LOAD_SAMPLES;
+    while (this.loading.length > 0 && (budget > 0 || budget === LOAD_SAMPLES)) {
+      const l = this.loading.shift()!;
+      budget -= l.samples.length;
+      p.loads.push(l);
+    }
+  }
+
+  /** Whether every take of the sound has reached the device. */
+  private onDevice(s: number): boolean {
+    const first = this.first[s]!;
+    const last = first + this.sounds[s]!.takes.length;
+    return !this.loading.some((l) => l.buffer >= first && l.buffer < last);
   }
 
   /** A take of the sound is playing: it is not let go for a while. */
@@ -169,7 +230,7 @@ export class SoundLibrary {
   private room(bytes: number, p: SoundPacket): boolean {
     if (this.used + bytes <= this.budget) return true;
     const idle: number[] = [];
-    for (let s = 0; s < this.sounds.length; s++) if (this.state[s] === RESIDENT && this.nowMs - this.lastMs[s]! > SOUND_IDLE_MS) idle.push(s);
+    for (let s = 0; s < this.sounds.length; s++) if (this.state[s] === RESIDENT && this.pinned[s] === 0 && this.nowMs - this.lastMs[s]! > SOUND_IDLE_MS && this.onDevice(s)) idle.push(s);
     idle.sort((a, b) => this.lastMs[a]! - this.lastMs[b]! || a - b);
     for (const s of idle) {
       if (this.used + bytes <= this.budget) break;
@@ -182,7 +243,7 @@ export class SoundLibrary {
   end(p: SoundPacket): void {
     const now = this.nowMs;
     for (let s = 0; s < this.sounds.length; s++) {
-      if (this.state[s] === LOADING && now - this.lastMs[s]! > SOUND_IDLE_MS) {
+      if (this.state[s] === LOADING && this.pinned[s] === 0 && now - this.lastMs[s]! > SOUND_IDLE_MS) {
         this.port!.cancel(SOUND_SLOT + s);
         this.state[s] = ABSENT;
         this.flying--;

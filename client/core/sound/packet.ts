@@ -1,8 +1,13 @@
 // What the audio device must do this frame, as client/core decided it: takes to hold and to let go, voices to start,
 // move and stop, and where the ear is. client/sound carries it out with the browser's own audio and decides nothing.
 
-/** Numbers per voice in `starts`: voice, buffer, delay in seconds, playback rate, gain, x, y, z, low-pass in Hz. */
-export const START_FIELDS = 9;
+/**
+ * Numbers per voice in `starts`: voice, buffer, delay in seconds, playback rate, gain, x, y, z, low-pass in Hz, bus, and
+ * flags (mixer.ts: FLAT, not placed; LOOP, plays until stopped).
+ */
+export const START_FIELDS = 11;
+/** The buses a voice goes through, each with its own volume: effects, ambience, music, the interface. */
+export const BUSES = 4;
 /** Numbers per voice in `moves`: voice, gain, x, y, z, low-pass in Hz. */
 export const MOVE_FIELDS = 6;
 
@@ -20,6 +25,8 @@ export class SoundPacket {
   readonly ear = [0, 0, 1, 0, 1, 0];
   /** Gain over everything. */
   volume = 1;
+  /** Gain of each bus, under `volume`. */
+  readonly buses = [1, 1, 1, 1];
 
   clear(): void {
     this.loads.length = 0;

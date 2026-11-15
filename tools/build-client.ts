@@ -40,7 +40,7 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   rmSync(join(dist, "assets"), { recursive: true, force: true });
   mkdirSync(join(dist, "assets"), { recursive: true });
   // Workers and worklets run in their own threads, so each is bundled as a separate file.
-  const entrypoints = ["client/shell/main.ts", "client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts"].map((f) => join(root, f));
+  const entrypoints = ["client/shell/main.ts", "client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts"].map((f) => join(root, f));
   const result = await Bun.build({ entrypoints, outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
   if (!result.success) throw new Error(result.logs.map(String).join("\n"));
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));

@@ -1,6 +1,6 @@
 """Make candidate takes from a sound brief.
 
-    tools/sound/.venv/bin/python tools/sound/generate.py <brief.json> [--slot S] [--model M] [--prompt ID] [--force]
+    tools/sound/.venv/bin/python tools/sound/generate.py <brief.json>... [--slot S] [--model M] [--prompt ID] [--force]
 
 Each prompt entry in the brief makes `takes` files per model, seeds `seed`, `seed+1`, ...
 Takes land in tools/sound/.work/<asset>/takes/<slot>/<model>-<seed>.wav (<model>-pt-<seed>.wav from
@@ -509,7 +509,7 @@ def run_jobs(jobs):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("brief", nargs="?")
+    ap.add_argument("brief", nargs="*", help="one or more briefs, made in one run")
     ap.add_argument("--slot", action="append")
     ap.add_argument("--model", choices=list(models.MODELS))
     ap.add_argument("--prompt", action="append")
@@ -518,11 +518,10 @@ def main():
     a = ap.parse_args()
     if a.worker:
         return worker(a.worker)
-    brief = load_brief(a.brief)
     back = models.backend()
     if back == "torch" and a.model != "moss":
         raise SystemExit("on the torch backend only moss is ported: pass --model moss")
-    jobs = jobs_for(brief, a.slot, a.model, a.prompt, back)
+    jobs = [j for b in a.brief for j in jobs_for(load_brief(b), a.slot, a.model, a.prompt, back)]
     if not a.force:
         jobs = [j for j in jobs if not Path(j["out"]).exists()]
     print(f"{len(jobs)} takes to make", flush=True)

@@ -6,11 +6,12 @@
 //
 // The cue sheet:
 //
-//   { "sounds": { "<name>": { "range": metres, "level": dB, "vary": semitones, "rate"?: Hz, "highpass"?: Hz,
+//   { "sounds": { "<name>": { "range": metres, "level": dB, "vary": semitones, "rate"?: Hz, "highpass"?: Hz, "loop"?: true,
 //       "takes": [ { "file": "takes/...wav", "from": "<model>", "start"?: s, "end"?: s, "gain"?: dB } ] } } }
 //
 // `level` is the loudness, in dB of full scale, of the loud part of each take (the 10 ms windows within 30 dB of its
-// loudest), so that takes of one sound play alike. A take whose peak would then pass -1 dB is made quieter to fit.
+// loudest), so that takes of one sound play alike. A take whose peak would then pass -1 dB is made quieter to fit. A
+// sound that loops is not faded at its ends: its takes are cut to join their ends seamlessly (tools/sound/cut.py).
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -41,6 +42,7 @@ export interface SoundCue {
   vary?: number;
   rate?: number;
   highpass?: number;
+  loop?: boolean;
   takes: TakeCue[];
 }
 
@@ -226,7 +228,7 @@ export interface PreparedTake {
 }
 
 /** One take as it goes into the build, before coding. */
-export function prepareTake(wav: Wav, take: TakeCue, cue: Pick<SoundCue, "level" | "rate" | "highpass">): PreparedTake {
+export function prepareTake(wav: Wav, take: TakeCue, cue: Pick<SoundCue, "level" | "rate" | "highpass" | "loop">): PreparedTake {
   const frames = wav.channels[0]!.length;
   const mono = new Float32Array(frames);
   for (const ch of wav.channels) for (let i = 0; i < frames; i++) mono[i]! += ch[i]! / wav.channels.length;
@@ -237,8 +239,8 @@ export function prepareTake(wav: Wav, take: TakeCue, cue: Pick<SoundCue, "level"
   if (to - from < wav.rate / 100) throw new Error(`sound: take ${take.file} from ${take.start} to ${take.end} s is under 10 ms`);
   const rate = cue.rate ?? SOUND_RATE;
   const x = resample(mono.subarray(from, to), wav.rate, rate);
-  const fadeIn = Math.min(x.length >> 2, Math.round((rate * FADE_IN_MS) / 1000));
-  const fadeOut = Math.min(x.length >> 1, Math.round((rate * FADE_OUT_MS) / 1000));
+  const fadeIn = cue.loop ? 0 : Math.min(x.length >> 2, Math.round((rate * FADE_IN_MS) / 1000));
+  const fadeOut = cue.loop ? 0 : Math.min(x.length >> 1, Math.round((rate * FADE_OUT_MS) / 1000));
   for (let i = 0; i < fadeIn; i++) x[i]! *= Math.sin(((i + 0.5) / fadeIn) * (Math.PI / 2)) ** 2;
   for (let i = 0; i < fadeOut; i++) x[x.length - 1 - i]! *= Math.sin(((i + 0.5) / fadeOut) * (Math.PI / 2)) ** 2;
   const now = loudness(x, rate);
@@ -318,7 +320,7 @@ export function buildSounds(file: number, root: string = SOURCE, cache: string |
           const bytes = new Uint8Array(readFileSync(path));
           wavs.set(path, (wav = { bytes, hash: sha(bytes) }));
         }
-        const key = sha(tools + wav.hash + JSON.stringify([take.start, take.end, take.gain, cue.level, rate, cue.highpass]));
+        const key = sha(tools + wav.hash + JSON.stringify([take.start, take.end, take.gain, cue.level, rate, cue.highpass, cue.loop === true]));
         const kept = cache ? join(cache, key.slice(0, 2), key) : "";
         let coded: Uint8Array | null = null;
         let samples = 0;

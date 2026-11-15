@@ -2,9 +2,9 @@
 // snapshots carry (shared/anim/pose.ts), the deaths the server tells of, and the gait each is drawn with. Nothing here
 // is sent for sound, and nothing here touches the simulation.
 //
-// A species' sounds are found by name under its id, as `core:dodo/sound/startled`, each occasion trying a list of names
-// in turn, so a second creature needs only its sounds. A body is followed from when it comes within hearing; what it
-// was doing when first heard makes no sound.
+// A species' sounds are found by cue (shared/sound/cues.ts) under its id, as `core:dodo/sound/startled`, falling back as
+// the catalogue says, so a second creature needs only its sounds and is heard through shared ones until it has them.
+// A body is followed from when it comes within hearing; what it was doing when first heard makes no sound.
 
 import { CreatureAnim, advanceCreature, idleOf } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
@@ -17,7 +17,9 @@ import { ACT_NONE } from "../../../shared/sim/weapon.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { RemoteSample } from "../session.ts";
 import { GROUND_NAMES, groundAt } from "./ground.ts";
+import { cueKey } from "../../../shared/sound/cues.ts";
 import type { SoundLibrary } from "./library.ts";
+import type { Resolver } from "./resolve.ts";
 import { KIND_HIT, KIND_STEP, KIND_VOCAL } from "./mixer.ts";
 import { bodyDown, groundPecks, mouthOpens, strikeAt } from "./timing.ts";
 
@@ -32,15 +34,14 @@ export const O_TORPOR_OUT = 6;
 export const O_EAT = 7;
 /** The thump of a body that has gone down, knocked out or dead. */
 export const O_THUMP = 8;
-const OCCASIONS: readonly (readonly string[])[] = [["startled", "alarm", "hurt"], ["hurt", "pain"], ["attack", "peck", "bite"], ["land", "thump"], ["death", "hurt"], ["torpor_in", "hurt"], ["torpor_out"], ["eat"], ["thump", "land"]];
+/** The cue of each occasion; what stands in for a species without it is the catalogue's to say. */
+const OCCASIONS: readonly string[] = ["startled", "hurt", "attack", "land", "death", "torpor_in", "torpor_out", "eat", "thump"];
 /**
  * How each occasion is heard: from its mouth, its feet or its body, and how much it weighs when voices are short. A
  * startle outweighs the pain of the blow that startled it, which comes in the same snapshot, so the alarm is heard.
  */
 const KIND: readonly number[] = [KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT, KIND_VOCAL, KIND_VOCAL, KIND_VOCAL, KIND_HIT, KIND_HIT];
 const WEIGHT: readonly number[] = [0.95, 0.9, 0.5, 0.6, 1, 0.8, 0.5, 0.3, 0.6];
-/** Pitch of a sound that stands in by a later name: a death cried with its pain is lower, and going down groggier still. */
-const STAND_IN_RATE: readonly number[] = [1.05, 1, 1, 1, 0.88, 0.8, 1, 1, 1];
 const CALL_WEIGHT = 0.4;
 const STEP_WEIGHT = 0.25;
 /** An idle's sound under the clip's word alone (`peck` for `idle_peck`) is this much quieter. */
@@ -68,18 +69,16 @@ export class Book {
   readonly anim: CreatureAnim;
 
   /** `lands` is the tick of its bite at which the blow lands, where its content says, else it is read from the clip. */
-  constructor(owner: string, anim: CreatureAnim, height: number, lib: SoundLibrary, lands: number | null = null) {
+  constructor(owner: string, anim: CreatureAnim, height: number, lib: SoundLibrary, res: Resolver, lands: number | null = null) {
     this.anim = anim;
     this.height = height;
+    const o = res.owner(owner);
     const find = (name: string): number => lib.index.get(`${owner}/sound/${name}`) ?? -1;
-    OCCASIONS.forEach((names, o) => {
-      for (let k = 0; k < names.length && this.sound[o] === -1; k++) {
-        this.sound[o] = find(names[k]!);
-        if (k > 0) this.rate[o] = STAND_IN_RATE[o]!;
-      }
+    OCCASIONS.forEach((name, i) => {
+      this.sound[i] = res.peek(o, cueKey(name));
+      this.rate[i] = res.rate(o, cueKey(name));
     });
-    // Wading has no stand-in: a step on grass would be wrong there.
-    GROUND_NAMES.forEach((g, i) => (this.step[i] = (g === "water" ? [`step/${g}`] : [`step/${g}`, "step/grass", "step"]).map(find).find((s) => s >= 0) ?? -1));
+    GROUND_NAMES.forEach((g, i) => (this.step[i] = res.peek(o, cueKey(`step/${g}`))));
     const rig = anim.rig;
     const names = anim.idles.map((c) => c.id.slice(c.id.lastIndexOf("/") + 1));
     this.idle = Int32Array.from(names, (n) => (find(n) >= 0 ? find(n) : find(n.replace(/^idle_/, ""))));
@@ -130,13 +129,13 @@ export class CreatureSounds {
   /** Ids whose death has been heard, kept while the session still tells of them. */
   private readonly mourned = new Set<number>();
 
-  constructor(reg: Registry, lib: SoundLibrary, animOf: (kind: number) => CreatureAnim | null) {
+  constructor(reg: Registry, lib: SoundLibrary, res: Resolver, animOf: (kind: number) => CreatureAnim | null) {
     this.reg = reg;
     this.books = reg.defs.map((d, kind) => {
       if (d?.type !== "species") return null;
       const anim = animOf(kind);
       if (!anim) return null;
-      const book = new Book(d.id, anim, reg.bodyHeight[kind]!, lib, d.bite ? (reg.weapon[kind]?.strikeTick ?? null) : null);
+      const book = new Book(d.id, anim, reg.bodyHeight[kind]!, lib, res, d.bite ? (reg.weapon[kind]?.strikeTick ?? null) : null);
       return book.reach > 0 ? book : null;
     });
   }

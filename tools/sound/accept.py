@@ -26,7 +26,7 @@ def write_sounds(home, sounds):
     lines = ['{', '  "sounds": {']
     for n, (slot, s) in enumerate(sounds.items()):
         lines.append(f'    "{slot}": {{')
-        lines.append(f'      "range": {s["range"]}, "level": {s["level"]}, "vary": {s["vary"]},')
+        lines.append(f'      "range": {s["range"]}, "level": {s["level"]}, "vary": {s["vary"]},' + (' "loop": true,' if s.get("loop") else ""))
         lines.append('      "takes": [')
         lines.append(",\n".join(f'        {json.dumps(t)}' for t in s["takes"]))
         lines.append('      ]')
@@ -37,10 +37,10 @@ def write_sounds(home, sounds):
     (home / "sounds.json").write_text(text)
 
 
-def store(home, slot, src, rec, start, end):
-    """Cut src into the asset; return its sounds.json entry and its recipe."""
+def store(home, slot, src, rec, start, end, loop=False):
+    """Cut src into the asset (to loop seamlessly if `loop`); return its sounds.json entry and its recipe."""
     rel = f"takes/{slot}/{Path(rec['file']).stem}-{int(round(start * 1000)):05d}.wav"
-    c, s, e = cut.write_cut(src, home / rel, start, end)
+    c, s, e = (cut.write_loop if loop else cut.write_cut)(src, home / rel, start, end)
     r = dict(rec)
     r["source_sha256"] = rec.get("source_sha256", rec["sha256"])
     r["cut"] = c
@@ -89,13 +89,15 @@ def main():
                 evs = meas[slot][p["take"]]["events"]
                 e = evs[p["event"]] if "event" in p else max(evs, key=lambda e: e["peak_db"])
                 start, end = e["start"], e["end"]
-            rel, entry, rr = store(home, slot, src, rec, start, end)
+            rel, entry, rr = store(home, slot, src, rec, start, end, spec.get("loop", False))
             if any(t["file"] == rel for t in entries):
                 raise SystemExit(f"{rel} is accepted already")
             keep_recipes[rel] = rr
             entries.append(entry)
         if entries:
             sounds[slot] = {"range": spec["range"], "level": spec["level"], "vary": spec["vary"], "takes": entries}
+            if spec.get("loop"):
+                sounds[slot]["loop"] = True
             for t in entries:
                 keep_recipes.setdefault(t["file"], recipes.get(t["file"]))
 

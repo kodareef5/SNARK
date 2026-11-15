@@ -22,6 +22,7 @@ import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
 import { SoundIo } from "../sound/sound.ts";
+import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
 
 const params = new URLSearchParams(location.search);
@@ -96,6 +97,7 @@ async function boot(): Promise<void> {
   // The world's sounds and the voices share one audio context.
   const sound = SoundIo.supported ? new SoundIo(app.ui.settings.touchFirst) : null;
   app.sound = sound;
+  if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
   const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.context() : null);
   app.voice = voice;
   for (const gesture of ["pointerdown", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
