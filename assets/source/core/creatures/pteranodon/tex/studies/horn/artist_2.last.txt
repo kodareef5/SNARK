@@ -1,0 +1,6 @@
+Rebuilt `horn` and `head_side` with dark pits, soft growth bands and an opaque grooved nostril. Preserved the layout and band. Checks pass: means **0.500**, seams **≤1.14**.
+
+- [Game comparison at 0.5 m](tex/studies/horn/checks/horn_05m_compare.png)
+- [Relit head beside concept at 1,000 px/m](tex/studies/horn/checks/head_relit_vs_concept.png)
+- [Updated report](tex/studies/horn/REPORT.md)
+- [Saved built-in image-tool prompt](tex/studies/horn/source/horn_prompt.txt)
