@@ -369,10 +369,14 @@ class Hulls {
     return t.face[this.part[h]! + 1]! - t.face[this.part[h]!]!;
   }
 
-  /** Whether part `h` holds the world point (wx, wy, wz), within HELD of each of its faces. */
-  holds(h: number, wx: number, wy: number, wz: number): boolean {
+  /** Whether part `h` holds each of the `count` world points in `c`, within HELD of each of its faces. */
+  holdsAll(h: number, c: Float64Array, count: number): boolean {
     const P = this.planes;
-    for (let f = 0, o = h * PART_FACES * 4, n = this.faces(h); f < n; f++, o += 4) if (P[o]! * wx + P[o + 1]! * wy + P[o + 2]! * wz - P[o + 3]! > HELD) return false;
+    const faces = this.faces(h);
+    for (let m = 0; m < count; m++) {
+      const [x, y, z] = [c[m * 3]!, c[m * 3 + 1]!, c[m * 3 + 2]!];
+      for (let f = 0, o = h * PART_FACES * 4; f < faces; f++, o += 4) if (P[o]! * x + P[o + 1]! * y + P[o + 2]! * z - P[o + 3]! > HELD) return false;
+    }
     return true;
   }
 }
@@ -537,7 +541,17 @@ function faces(dims: MapDims, chunk: number, hf: Heightfield): CityPart {
       for (let m = 0; m < 4 && !above; m++) above = face[m * 3 + 1]! > hf.heightAt(face[m * 3]!, face[m * 3 + 2]!) + 0.05;
       if (!above) continue;
       // Held whole by one other box or part, found in the grid cell of the face's middle.
-      if (!heldWhole(q, face, 4, (face[0]! + face[6]!) / 2, (face[2]! + face[8]!) / 2, gx0, gz0)) out.quad(face, 0, boxes.color[q]!);
+      const gi = Math.floor(((face[0]! + face[6]!) / 2 - gx0) / GRID);
+      const gj = Math.floor(((face[2]! + face[8]!) / 2 - gz0) / GRID);
+      let held = false;
+      if (gi >= 0 && gj >= 0 && gi < GRID_SIDE && gj < GRID_SIDE) {
+        const cell = gj * GRID_SIDE + gi;
+        for (let e = gridCount[cell]!; e < gridCount[cell + 1]! && !held; e++) {
+          const h = gridList[e]!;
+          held = h !== q && (h < n ? holds(h, face[0]!, face[1]!, face[2]!) && holds(h, face[3]!, face[4]!, face[5]!) && holds(h, face[6]!, face[7]!, face[8]!) && holds(h, face[9]!, face[10]!, face[11]!) : hulls.holdsAll(h - n, face, 4));
+        }
+      }
+      if (!held) out.quad(face, 0, boxes.color[q]!);
     }
   }
   for (let q = 0; q < hulls.n; q++) {
@@ -587,11 +601,15 @@ function heldWhole(q: number, c: Float64Array, count: number, mx: number, mz: nu
   for (let e = gridCount[cell]!; e < gridCount[cell + 1]!; e++) {
     const h = gridList[e]!;
     if (h === q) continue;
-    let all = true;
-    for (let m = 0; m < count && all; m++) all = h < n ? holds(h, c[m * 3]!, c[m * 3 + 1]!, c[m * 3 + 2]!) : hulls.holds(h - n, c[m * 3]!, c[m * 3 + 1]!, c[m * 3 + 2]!);
-    if (all) return true;
+    if (h >= n ? hulls.holdsAll(h - n, c, count) : holdsAll(h, c, count)) return true;
   }
   return false;
+}
+
+/** Whether box `q` holds each of the `count` world points in `c`. */
+function holdsAll(q: number, c: Float64Array, count: number): boolean {
+  for (let m = 0; m < count; m++) if (!holds(q, c[m * 3]!, c[m * 3 + 1]!, c[m * 3 + 2]!)) return false;
+  return true;
 }
 
 // Scratch for a frame's boxes: least and most corners in the frame and a colour, seven numbers a box.
@@ -1132,13 +1150,31 @@ export function cellPart(city: CityStatics, chunk: number, hf: Heightfield, gone
             const sy = Math.max(0, Math.min(hy, y0 + tall) - Math.max(ly, y0));
             for (let i = spans[b * 6]!; i <= spans[b * 6 + 3]!; i++) {
               const cell = (k * ny + j) * nx + i;
+              const e = cell * 6;
               if (pass === 0) {
-                reaches(cell, lx, ly, lz, hx, hy, hz);
+                cellColour[cell] = 1;
+                if (hx > faceReach[e]!) faceReach[e] = hx;
+                if (-lx > faceReach[e + 1]!) faceReach[e + 1] = -lx;
+                if (hy > faceReach[e + 2]!) faceReach[e + 2] = hy;
+                if (-ly > faceReach[e + 3]!) faceReach[e + 3] = -ly;
+                if (hz > faceReach[e + 4]!) faceReach[e + 4] = hz;
+                if (-lz > faceReach[e + 5]!) faceReach[e + 5] = -lz;
                 continue;
               }
               const x0 = ox + i * size;
               const sx = Math.max(0, Math.min(hx, x0 + size) - Math.max(lx, x0));
-              shows(cell, lx, ly, lz, hx, hy, hz, sx, sy, sz, colour);
+              // What each face of the cell sees of the box: its extent across that face within the cell.
+              const show = (d: number, reach: number, area: number): void => {
+                if (reach < faceReach[e + d]! - FACE_DEPTH || area <= faceArea[e + d]!) return;
+                faceArea[e + d] = area;
+                faceColour[e + d] = colour;
+              };
+              show(0, hx, sy * sz);
+              show(1, -lx, sy * sz);
+              show(2, hy, sx * sz);
+              show(3, -ly, sx * sz);
+              show(4, hz, sx * sy);
+              show(5, -lz, sx * sy);
             }
           }
         }
