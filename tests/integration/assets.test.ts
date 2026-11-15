@@ -101,8 +101,8 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // reach cut to keep the ring it covers as large (farnodes.ts farReach). It was c56e26fc until the common tree grew at 0.85
   // to 1.15 of its models, not 0.4 to 0.75: 98 more instances a frame and 3,136 more triangles, in the same 122 draws. The
   // sizes alone give it, and its four young variants and the elders' boxes alone leave it c56e26fc. It was 9a45f2b0 until
-  // the pack held three meshes more, the wooden club, the slingshot and its stone, after all the others (9df72448 with
-  // those alone), and wild creatures wandered at their walking speed, not at 90/127 of it, so the scene's raptor, parasaur
-  // and grazer walk further between frames (ebea25a9 with that alone).
-  expect(hash.toString(16)).toBe("20ebd789");
+  // the pack held four meshes more, the wooden club, the slingshot and its stone (9df72448 with those alone) and the grey
+  // box of feces lying (b504d298 with that alone), and wild creatures wandered at their walking speed, not at 90/127 of
+  // it, so the scene's raptor, parasaur and grazer walk further between frames (ebea25a9 with that alone).
+  expect(hash.toString(16)).toBe("47b0fc09");
 });

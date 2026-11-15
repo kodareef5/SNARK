@@ -75,9 +75,9 @@ test("a survivor's spawn, an admin's teleport and creature, and an egg are never
   h.say(ada, "enablecheats");
   expect(h.say(ada, `tp ${B} ${B}`)).toEqual(["that spot is inside something"]);
 
-  // A dodo mother stands just far enough from B for an egg, facing away, so the egg she lays behind her would be inside it.
-  const egg = reg.breedEgg[reg.index.get("core:dodo")!]!;
-  const [er, eh] = [reg.bodyRadius[egg]!, reg.bodyHeight[egg]!];
+  // A dodo mother stands as near B as her own body is free, facing away, so the egg she lays behind her would be inside it.
+  const dodo = reg.index.get("core:dodo")!;
+  const [er, eh] = [reg.bodyRadius[dodo]!, reg.bodyHeight[dodo]!];
   const d = loaded(h, B, B, () => {
     let d = 0;
     while (!capsuleFree(h.world, B, groundUnder(hf, B, B + d, er), B + d, er, eh)) d += 0.05;
