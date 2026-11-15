@@ -8,7 +8,7 @@
 
 import { CreatureAnim, advanceCreature, idleOf } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
-import { AnimState, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
@@ -150,7 +150,8 @@ export class CreatureSounds {
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
       const book = this.books[kind];
-      if (!book || (remote.flags[i]! & 8) !== 0) continue;
+      // A dead creature's body is an entity of its own (client/core/ragdoll.ts): its death was heard as the living one left.
+      if (!book || (remote.flags[i]! & 8) !== 0 || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
       const id = remote.id[i]!;
       const x = remote.x[i]!;
       const y = remote.y[i]!;

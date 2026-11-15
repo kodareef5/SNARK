@@ -3,7 +3,7 @@
 
 import { expect, test } from "bun:test";
 import { CreatureAnim } from "../../shared/anim/creature.ts";
-import { AnimState, CUE_LAND, CUE_STARTLE, CUE_TORPOR, LAYER_FLINCH, bodySeed } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_HELD, CUE_LAND, CUE_STARTLE, CUE_TORPOR, LAYER_FLINCH, bodySeed } from "../../shared/anim/pose.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
@@ -425,4 +425,45 @@ test("a dodo is heard as its state changes: startled, landing, hurt, pecking, kn
   expect(heard).toEqual(["hurt", "land"]);
   frame(false);
   expect(heard.length).toBe(2);
+});
+
+/** A Sounds hearing one remote body, stepped a frame at a time, with the names of what it started. */
+function hearOne(kind: number, setup: (remote: RemoteSample, i: number) => void): { frame: (move?: () => void) => void; heard: string[]; st: AnimState; remote: RemoteSample } {
+  const net = new FakeNet([new Uint8Array(0), built.file], { latencyMs: 1, bytesPerSecond: 1e8 });
+  const sounds = new Sounds(built.manifest, net, reg, (k) => (k === DODO ? anim : null));
+  const lib = sounds.library;
+  const hf = buildProvingHeightfield();
+  const remote = new RemoteSample();
+  const ears = new Ears();
+  const st = new AnimState();
+  const heard: string[] = [];
+  let tick = 1000;
+  let now = 0;
+  remote.count = 1;
+  remote.id[0] = 91;
+  remote.kind[0] = kind;
+  remote.x[0] = 380;
+  remote.z[0] = 380;
+  remote.y[0] = hf.heightAt(380, 380);
+  st.seed = bodySeed(91);
+  setup(remote, 0);
+  const frame = (move?: () => void): void => {
+    now += 1000 / 30;
+    tick += 1;
+    net.advance(now);
+    move?.();
+    remote.anim[0] = st.pack();
+    remote.cue[0] = (remote.cue[0]! & (CUE_DEAD | CUE_HELD)) | st.packCue();
+    remote.tick = tick;
+    ears.starts.length = 0;
+    sounds.frame(ears, now, remote, hf, { x: remote.x[0]! - 3, y: remote.y[0]! + 1.6, z: 380, yaw: 0, pitch: 0 }, { master: 1, effects: 1, ambience: 1, music: 1, interface: 1 });
+    for (const s of ears.starts) heard.push(lib.sounds[[...lib.first].findLastIndex((f) => f <= s[1]!)]!.id.slice("core:dodo/sound/".length));
+  };
+  return { frame, heard, st, remote };
+}
+
+test("a dodo's body lying dead never calls or pecks, however long it lies in view", () => {
+  const { frame, heard } = hearOne(DODO, (remote) => (remote.cue[0] = CUE_DEAD));
+  for (let k = 0; k < 90 * TICK_RATE; k++) frame();
+  expect(heard).toEqual([]);
 });
