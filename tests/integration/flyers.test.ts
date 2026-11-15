@@ -134,6 +134,8 @@ test("a wild pteranodon in the air whose chunk goes to sleep is set down unhurt 
     ents.flags[f] = ents.flags[f]! & ~F_GROUNDED;
     ents.setPosition(f, ents.x[f]!, ents.y[f]! + 30, ents.z[f]!);
   }
+  // The tame is told to stay up there.
+  s.command(CMD_ORDER, (w) => (w.u32(tame), w.u8(ORDER_STAY)));
   h.run(2000);
   const health = h.host.survival.value(rec, V_HEALTH);
   expect([ents.mode[e], up() > 10]).toEqual([MODE_FLYER, true]);

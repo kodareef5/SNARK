@@ -272,6 +272,10 @@ class Flight {
   stalls = 0;
   /** Told to land (ORDER_LAND): it keeps to the ground until told to follow, stay or wander. */
   down = false;
+  /** A tame told to stay while it flew, or loaded in the air: it hovers there. Any other left in the air comes down. */
+  parked = false;
+  /** A wild one told to stand (Behavior.stay) holds still until this tick, unless something hurts it first. */
+  still = 0;
 }
 
 /** A way a creature follows. */
@@ -468,6 +472,8 @@ export class Behavior {
     f.at = 0;
     f.stalls = 0;
     f.down = false;
+    f.parked = aloft;
+    f.still = 0;
     if (aloft) this.waypoint(f);
   }
 
@@ -476,7 +482,11 @@ export class Behavior {
     if (whom !== this.leader[e] && this.mind[e] !== MIND_HUNT) this.lose(e);
     this.leader[e] = whom;
     this.wanders[e] = 0;
-    if (this.flightOf[e] !== 0) this.flight(e).down = false;
+    if (this.flightOf[e] !== 0) {
+      const f = this.flight(e);
+      f.down = false;
+      f.parked = whom < 0 && this.world.ents.mode[e] === MODE_FLYER;
+    }
     if (whom >= 0) this.leaderGen[e] = this.world.ents.gen[whom]!;
     else if (this.mind[e] !== MIND_HUNT) this.stay(e, 0);
   }
@@ -489,6 +499,7 @@ export class Behavior {
       const f = this.flight(e);
       f.homeX = this.world.ents.x[e]!;
       f.homeZ = this.world.ents.z[e]!;
+      f.parked = false;
     }
   }
 
@@ -500,7 +511,9 @@ export class Behavior {
   land(e: number): boolean {
     if (!this.reg.flies[this.world.ents.kind[e]!]) return false;
     if (this.mind[e] === MIND_HUNT) this.rest(e, this.world.tick, 0);
-    this.flight(e).down = true;
+    const f = this.flight(e);
+    f.down = true;
+    f.parked = false;
     this.alight(e);
     return true;
   }
@@ -608,8 +621,9 @@ export class Behavior {
     return count;
   }
 
-  /** Stands still until tick `until`, unless something hurts it first. */
+  /** Stands still until tick `until`, unless something hurts it first. A flyer in the air comes down to stand. */
   stay(e: number, until: number): void {
+    if (this.flightOf[e] !== 0) this.flight(e).still = until;
     this.mind[e] = MIND_WANDER;
     this.target[e] = -1;
     this.move[e] = 0;
@@ -743,6 +757,7 @@ export class Behavior {
     // A flyer flees by air (ARK's "will fly away when attacked"): it takes off where it stands and flies for longer. In the
     // air it is not startled.
     const flyer = this.flyer(e);
+    if (flyer) this.flight(e).still = 0;
     const clip = startle && this.mind[e] !== MIND_FLEE && (ents.mflags[e]! & MF_OUT) === 0 && !(flyer && ents.mode[e] === MODE_FLYER) ? this.world.anims[ents.kind[e]!]?.startled : null;
     // One hit again while still startled keeps standing.
     const hold = clip ? tick + clip.frames - 1 : this.mind[e] === MIND_FLEE && tick < this.calm[e]! ? this.calm[e]! : 0;
@@ -1046,6 +1061,11 @@ export class Behavior {
       else if (turn) this.stroll(e, tick);
       return;
     }
+    if (tick < f.still) {
+      if (mode === MODE_FLYER) this.alight(e);
+      else this.move[e] = this.buttons[e] = 0;
+      return;
+    }
     if (mode === MODE_SWIM && f.phase !== PHASE_APPROACH && !this.landing(e, f, tick)) this.cruise(f, tick);
     if (f.phase === PHASE_REST) {
       if (mode !== MODE_FLYER && tick < f.until) {
@@ -1229,8 +1249,9 @@ export class Behavior {
 
   /**
    * An owned flyer that follows or stays. It follows a flying leader through the air, behind and above it, and one on foot
-   * on foot, taking wing when it falls far behind and setting down once near. Told to stay, it hovers where it is if it is
-   * in the air (chosen: ARK's pages do not say) and stands if it is not. Told to land, it keeps to the ground.
+   * on foot, taking wing when it falls far behind and setting down once near. Told to stay while it flies, or loaded in the
+   * air, it hovers where it is (chosen: ARK's pages do not say); any other left in the air, as when water throws its rider
+   * off, comes down. Told to land, it keeps to the ground.
    */
   private attend(e: number, tick: number, turn: boolean, heading: boolean): void {
     const ents = this.world.ents;
@@ -1242,7 +1263,7 @@ export class Behavior {
       this.lose(e);
     }
     if (this.leader[e]! < 0) {
-      if (f.down) return this.alight(e);
+      if (!f.parked || f.down) return this.alight(e);
       this.move[e] = 0;
       this.buttons[e] = flying ? BTN_JUMP : 0;
       this.pitch[e] = 0;

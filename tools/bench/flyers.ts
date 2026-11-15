@@ -70,6 +70,7 @@ export function benchFlyers(section: Section, record: Row): void {
     ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
     ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
     ents.setPosition(e, ents.x[e]!, Math.max(ents.y[e]!, proving.h.world.hf.heightAt(ents.x[e]!, ents.z[e]!) + 20), ents.z[e]!);
+    proving.h.host.creatures.mind.follow(e, -1);
   }
   proving.h.run(3000);
   const hover = measure(proving.h, proving.list, 20);
