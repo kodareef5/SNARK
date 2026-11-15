@@ -830,7 +830,7 @@ section("A breeding base: 300 tames all told to mate, 150 young, 100 eggs, and t
   const place = rng;
   const put = (i: number, row: number): number => {
     // At its place in the rows, or as near as the trees and rocks allow.
-    for (let k = 0; k < 60; k++) {
+    for (let k = 0; k < 240; k++) {
       const wide = 0.4 + k * 0.05;
       const e = host.spawnCreature("core:parasaur", ox + (i % 20) * 4 + place.range(-wide, wide), oz + row * 4 + Math.floor(i / 20) * 4 + place.range(-wide, wide), 1 + place.int(60));
       if (e >= 0) return e;

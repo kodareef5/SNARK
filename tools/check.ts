@@ -46,6 +46,8 @@ const ZONES: Zone[] = [
 
 /** Directories where results must be bit-identical on JavaScriptCore and V8. */
 const DETERMINISTIC_DIRS = ["shared/sim", "shared/world", "shared/math", "shared/anim"];
+/** Files that make a pack's coarser levels, which are committed: a Mac and a Linux machine must make the same bytes. */
+const DETERMINISTIC_FILES = ["tools/pack/simplify.ts", "tools/pack/error.ts", "tools/pack/surface.ts"];
 const NONDETERMINISTIC = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log2|log10|log1p|pow|hypot|cbrt|random)\b|\*\*|\bDate\.now\b|\bperformance\.now\b/;
 /** Seeded randomness only, wherever game state is produced. */
 const SEEDED_ONLY_DIRS = ["shared", "server", "client/core", "content"];
@@ -142,7 +144,7 @@ function checkPolicy(): void {
       }
     }
 
-    if (DETERMINISTIC_DIRS.some((d) => rel.startsWith(d + "/"))) {
+    if (DETERMINISTIC_DIRS.some((d) => rel.startsWith(d + "/")) || DETERMINISTIC_FILES.includes(rel)) {
       const hit = src.match(NONDETERMINISTIC);
       if (hit) fail(`${rel}: "${hit[0]}" is not bit-reproducible across engines; use shared/math`);
     }
