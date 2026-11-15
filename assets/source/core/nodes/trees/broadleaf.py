@@ -832,10 +832,10 @@ LEAVES_UP = 0.4
 # A head is lit as leaves are, from above more than from the side: its own normals are pressed toward its axis by this.
 LEAFY = 0.55
 HEAD_LEVELS = {
-    0: {"own": 0.6, "inner": 1, "core": 0.68, "jag": 1.0, "puff": 1.0, "sprays": 18, "spray": 1.12, "cut": 0.58, "coarse": False},
-    1: {"own": 0.6, "inner": 2, "core": 0.68, "jag": 1.0, "puff": 1.0, "sprays": 12, "spray": 1.15, "cut": 0.58, "coarse": True},
-    2: {"own": 0.6, "inner": 4, "core": 0.72, "jag": 1.0, "puff": 1.15, "sprays": 8, "spray": 1.0, "cut": 0.58, "coarse": "quad"},
-    3: {"own": 0.6, "inner": 4, "core": 1.0, "jag": 1.2, "puff": 1.4, "sprays": 0, "spray": 1.0, "cut": 0.58, "coarse": True},
+    0: {"own": 0.6, "rings": 0, "inner": 1, "core": 0.68, "jag": 1.0, "puff": 1.0, "sprays": 18, "spray": 1.12, "cut": 0.58, "coarse": False},
+    1: {"own": 0.6, "rings": 1, "inner": 2, "core": 0.68, "jag": 1.0, "puff": 1.0, "sprays": 12, "spray": 1.15, "cut": 0.58, "coarse": True},
+    2: {"own": 0.6, "rings": 2, "inner": 4, "core": 0.72, "jag": 1.0, "puff": 1.15, "sprays": 8, "spray": 1.0, "cut": 0.58, "coarse": "quad"},
+    3: {"own": 0.6, "rings": 4, "inner": 4, "core": 0.8, "jag": 1.0, "puff": 1.25, "sprays": 4, "spray": 1.0, "cut": 0.58, "coarse": "quad"},
 }
 
 
@@ -893,7 +893,7 @@ def head_crown(m, heads, lod, rng, atlas, material, shade, share=1.0):
     lit_for = head_light(shade, at["own"])
     for c in heads:
         c.core, c.jag, c.puff = (1.0 if c.inner else at["core"]), at["jag"], at["puff"]
-        hd.mesh(m, c, at["inner"] if c.inner else lod, material, head_cell(material, c.tier, c.variant), under_cell(material, c.below), lit_for(c))
+        hd.mesh(m, c, at["inner"] if c.inner else at["rings"], material, head_cell(material, c.tier, c.variant), under_cell(material, c.below), lit_for(c))
     if at["sprays"]:
         for c in heads:
             if not c.inner:

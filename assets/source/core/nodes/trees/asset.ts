@@ -23,12 +23,12 @@ const picture = (name: string, more: Partial<MaterialSpec> = {}): MaterialSpec =
  * its error off (1,080 rows, a 70 degree view, 0.22 px), and the other tiers scale that; the engine takes errors at the
  * kind's largest size, about 1.2 times the modelled. A tree's finest level is for the tree being chopped and its
  * neighbours, to 14 m. A palm's second level carries it to 55 m, and its flat levels take over where it stands 55 and
- * then 20 pixels tall. A broadleaf tree's crown is one opaque surface with a fringe of cut-out leaves on the levels with
- * pictures; its second level stops at 40 m, and its flat ones begin where it stands 140 and then 24 pixels tall: the
- * first flat level is the same surface over gathered masses in three greens, which a wood's crowns read as from there.
- * On every tier the near store hands a tree to the far layer before it is drawn at its fourth level (D352: 152 to 184 m
- * on medium), so a broadleaf tree's far level meets its third. A stump's levels change at 8 m, 25 m and 60 m. The check
- * prints where each tier draws each.
+ * then 20 pixels tall. A broadleaf tree's crown is heads of leaves with cut-out sprays radiating from them (broadleaf.py)
+ * on its first three levels; its second level stops at 40 m, and its third and fourth begin where it stands 140 and then
+ * 24 pixels tall: the third is its heads gathered into a few dozen rounder ones, still with pictures and without sprays,
+ * the fourth the same in three flat greens. On every tier the near store hands a tree to the far layer before it is
+ * drawn at its fourth level (D352: 152 to 184 m on medium), so a broadleaf tree's far level meets its third, and is made
+ * to its fourth. A stump's levels change at 8 m, 25 m and 60 m. The check prints where each tier draws each.
  *
  * A tree's last level (far.py) is the far layer's, a few solids it draws out to kilometres. Its error of 0.6 m keeps the
  * near store and the shadow casters off it inside 2 km.
@@ -79,5 +79,5 @@ export default {
     mangrove_crown: picture("mangrove_crown"),
     mangrove_leaves: picture("mangrove_leaves", { cutout: true }),
   }).filter(([name]) => ONLY.length === 0 || ONLY.some((k) => USES[k]!.includes(name)))),
-  budgets: { triangles: [120000, 48000, 7000, 1600, 400, 16], texture: { top: 2048, megabytes: 240 } },
+  budgets: { triangles: [120000, 48000, 7000, 2000, 450, 16], texture: { top: 2048, megabytes: 240 } },
 } satisfies PiecesAsset;

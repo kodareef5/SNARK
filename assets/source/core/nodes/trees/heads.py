@@ -1,15 +1,16 @@
-# The heads of leaves a broadleaf crown is built of. A head is a rounded, closed puff of leaf sprays 1.5 to 3 m across:
-# a dome over a flatter underside, lumpy where its sprays bulge, in a ring of scallops round its widest and a few
-# clumps on its top. Heads lie over the outside of the crown's billows as shingles, their tops standing out of it, so
-# the crown is dozens of masses with dark folds between, and a core behind them closes the gaps (broadleaf.py).
+# The heads of leaves a broadleaf crown is built of. A head is a clump of leaf sprays 1.5 to 3 m across: a closed dome
+# over a flatter underside, lumpy where its sprays bulge, in a ring of scallops round its widest, a few clumps on its
+# top and a few hanging under it. Heads lie over the outside of the crown's billows as shingles, their tops standing out
+# of it, so the crown is dozens of masses with dark folds between, and a layer of shade heads deeper in fills the folds
+# (broadleaf.py). On the levels with pictures a head is drawn as a core, smaller than its reach, with cut-out sprays
+# radiating from it to its reach.
 #
 # A head wears a cell of its kind's crown picture (layout.py HEAD_CELLS): its top unrolled from its highest point onto
 # a disc, distance from the disc's middle being distance along the surface from the top, down to a ring a little below
 # its widest (SEAM); its underside likewise from its lowest point onto a disc of undersides. So the picture runs over a
-# head without a break but at that ring, which lies in the head's own shade. It is lit by its own shape mixed with the
-# crown's (broadleaf.py), so each head takes the sun on its top and falls into shade beneath, and the crown as a whole
-# has a lit side and a shaded one at any hour. Cut-out sprays stand out of its rim and hang under it, lit as the head is
-# where each leaves it, so its outline breaks into leaves.
+# head without a break but at that ring, which lies in the head's own shade. It is lit by its smooth shape, its lumps
+# taking a share (Head.light), mixed with the crown's normals (broadleaf.py): each head takes the sun on its top and
+# falls into shade beneath, and the crown as a whole has a lit side and a shaded one at any hour.
 
 import bisect
 import math
@@ -181,8 +182,8 @@ def mesh(m, c, lod, material, top, under, lit, paint=None):
 
 def place(balls, shade, seed, spacing, under=1.5, size=(0.85, 1.3), cell=0.6, tiers=(0.72, 0.4), tall=(0.5, 0.64), low=(0.28, 0.36), sink=0.35, lean=0.4):
     """Heads laid over the outside of the union of `balls` (the billows), about `spacing` apart and sparser by `under`
-    beneath, each `size` of half the spacing across... in radius, its top standing `tall` and its underside hanging
-    `low` of its radius from its middle. A head stands on its spot turned partway from up toward the way the crown faces
+    beneath, each as wide as `size` of the spacing, its top standing `tall` and its underside hanging `low` of its
+    radius from its middle. A head stands on its spot turned partway from up toward the way the crown faces
     there, its middle under the surface by `sink` of its top, so heads overlap as shingles and only their tops and rims
     stand out. Its tier is the light its spot has in the crown: high and outside, sun; low or deep in, shade."""
     rng = rng_for(seed, "heads")

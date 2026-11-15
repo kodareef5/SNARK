@@ -56,7 +56,7 @@ SPACING = 1.8
 GATHERED = {2: 0.5, 3: 14, 4: 9}
 # The share of each level's sprays a young tree's heads carry: it is the common tree, the wood a player walks in, so it
 # pays for fewer, and its smaller heads need fewer to break their outlines.
-SPRAYS = {0: 0.45, 1: 0.5, 2: 0.4, 3: 0.0}
+SPRAYS = {0: 0.45, 1: 0.5, 2: 0.4, 3: 0.75}
 
 
 def lean(spec):
