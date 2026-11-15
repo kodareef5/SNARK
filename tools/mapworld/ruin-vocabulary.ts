@@ -14,10 +14,11 @@ export interface Vocabulary {
   categories: Record<string, string>; recipes: Record<string, Recipe>;
   styles: Modifier[]; periods: Modifier[]; materials: Modifier[]; character: Modifier[];
   eras: { before: number; retain: number; feature: string; meaning: string }[];
-  districts: Record<string, { finish: RuinFinish[]; fallback: string; lowRiseFeature?: string; lowRiseBelow?: number; }>;
+  districts: Record<string, { finish: RuinFinish[]; fallback: string; lowRiseFeature?: string; lowRiseBelow?: number; wall?: number; holes?: number; infill?: RuinFinish; }>;
 }
 export interface Rule {
   recipe: string; height: number; finish: RuinFinish; feature: string; holes: number; wall: number; bay: number;
+  infill?: RuinFinish;
   matched: string[]; provisional: boolean;
 }
 export const vocabulary = (source: string): Vocabulary => JSON.parse(readFileSync(join(source, "ruins/vocabulary.json"), "utf8")) as Vocabulary;
@@ -51,6 +52,6 @@ export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts): Rule {
   if (style) apply(style, `style: ${style.match}`);
   if (!style && d.lowRiseFeature && facts.height <= (d.lowRiseBelow ?? 24)) feature = d.lowRiseFeature;
   const height = name === "park" ? 0 : Math.min(v.budgets.maxHeight, Math.max(4, Math.floor(facts.height * retain / 4) * 4));
-  return { recipe: name, height, finish, feature, holes: Math.min(.45, holes), wall: recipe.wall, bay: recipe.bay, matched,
-    provisional: facts.kindFrom !== "label" || !["osm", "usa_structures"].includes(facts.heightFrom) || !!p?.estimated?.length };
+  return { recipe: name, height, finish, feature, holes: Math.min(.45, d.holes ?? holes), wall: d.wall ?? recipe.wall, infill: d.infill, bay: recipe.bay, matched,
+    provisional: facts.kindFrom !== "label" || !["osm", "usa_structures", "reviewed_source"].includes(facts.heightFrom) || !!p?.estimated?.length };
 }

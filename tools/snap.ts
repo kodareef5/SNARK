@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 
@@ -56,6 +56,7 @@ import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./snap/font.ts";
 import { encodePng } from "./snap/png.ts";
 import { PICK_SKY, Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
+import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
 export function houseScene(view: ProvingView, tier: string): void {
@@ -893,8 +894,10 @@ if (import.meta.main) {
   }
   if (args.includes("--fight")) {
     // A survivor faces a dummy in flak six metres off. --fight takes "punch" or "club" (up close, as the blow lands), "bow" or
-    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air) or "rifle" (the round's tracer).
+    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air), "rifle" (the round's tracer) or
+    // "shotgun" (a shell's ten tracers) or "flare" (the flare gun's flare two seconds up, the view raised to it).
     const what = arg("fight") ?? "bow";
+    const flare = what === "flare";
     const close = what === "punch" || what === "club";
     const sling = what === "slingshot" || what === "slung";
     const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
@@ -909,25 +912,30 @@ if (import.meta.main) {
       for (const part of ["hat", "shirt", "gloves", "pants", "boots"]) dress(hh.host, drec, hh.reg.index.get(`core:flak_${part}`)!);
       hh.host.refreshBody(drec);
       const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
-      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
+      const gun = what === "rifle" || what === "shotgun";
+      const weapon = gun ? what : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : flare ? "flare_gun" : "bow";
       if (weapon !== "") {
         hh.host.items.mint(rec, k(weapon), 1);
-        if (weapon !== "club") hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : sling ? "stone" : "arrow_stone"), 20);
+        if (weapon !== "club" && !flare) hh.host.items.mint(rec, k(gun ? `round_${weapon}` : sling ? "stone" : "arrow_stone"), 20);
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
         s.command(CMD_MOVE, (wr) => (wr.bits(BOX_SELF, 1), wr.varint(from), wr.bits(BOX_SELF, 1), wr.varint(inv.hotbar), wr.u16(0), wr.u16(k(weapon))));
         run(150);
         s.command(CMD_SELECT, (wr) => wr.u8(0));
-        run(weapon === "rifle" ? 5400 : 1500);
+        run(gun ? 5400 : 1500);
       }
       app.view.thirdPerson = args.includes("--third");
       app.controls.yaw = args.includes("--third") ? 0.5 : 0;
-      app.controls.pitch = close ? 0.02 : -0.02;
+      app.controls.pitch = close ? 0.02 : flare ? 0.9 : -0.02;
       run(200);
       app.controls.mouseButton(0, true);
       if (close) run(260);
-      else if (what === "rifle") run(1000 / 60);
+      else if (flare) {
+        run(1000 / 10);
+        app.controls.mouseButton(0, false);
+        run(2000);
+      } else if (gun) run(1000 / 60);
       else {
         run(1400);
         if (what === "loosed" || what === "slung") {
@@ -1098,6 +1106,39 @@ if (import.meta.main) {
     if (chop) chopAt(view, chop[0]!, chop[1]!, chop[2]!, chop[3] ?? 8);
   };
   const graphics = arg("graphics");
+  const sequence = arg("details");
+  if (sequence !== undefined) {
+    // A dodo's details as they play, frames at moments after the occasion, from 3 m and from 20 m, on one tier.
+    if (!(DETAIL_SEQUENCES as readonly string[]).includes(sequence)) throw new Error(`--details takes ${DETAIL_SEQUENCES.join(", ")}, not "${sequence}"`);
+    const tier = graphics ?? "medium";
+    const [fw, fh] = (arg("size") ?? "320x240").split("x").map(Number) as [number, number];
+    const view = provingView(fw, fh, {}, await gameFiles(source), mapFile);
+    view.scene.assets.tier = tierOf(tier);
+    view.scene.viewHeight = fh;
+    const t0 = performance.now();
+    const seq = playDetails(view, sequence, fw, fh, { settle: (v) => void settle(v), zoom: Number(arg("zoom") ?? 1) });
+    // A sheet for each distance, four frames across.
+    const cols = 4;
+    const rows = Math.ceil(MOMENTS.length / cols);
+    const [W, H] = [cols * fw, rows * fh];
+    const base = arg("out") ?? `artifacts/details/${sequence}-${tier}`;
+    seq.frames.forEach((frames, j) => {
+      const pixels = new Uint8ClampedArray(W * H * 4);
+      frames.forEach((frame, i) => {
+        const [ox, oy] = [(i % cols) * fw, Math.floor(i / cols) * fh];
+        for (let y = 0; y < fh; y++) pixels.set(frame.subarray(y * fw * 4, (y + 1) * fw * 4), ((oy + y) * W + ox) * 4);
+        label(pixels, W, seq.labels[i]!, ox + 6, oy + 6);
+      });
+      label(pixels, W, `${sequence} on ${seq.ground}, ${tier}, ${j === 0 ? "near" : "20 m"}, a phone's pixels a metre`, 6, H - 22);
+      const out = resolve(`${base}-${j === 0 ? "near" : "far"}.png`);
+      mkdirSync(dirname(out), { recursive: true });
+      writeFileSync(out, encodePng(W, H, pixels));
+      console.log(out);
+    });
+    seq.counts.forEach((c, i) => console.log(`${seq.labels[i]!.padEnd(7)} ${c}`));
+    console.log(`${W}x${H}  ${(performance.now() - t0).toFixed(0)} ms`);
+    process.exit(0);
+  }
   if (graphics !== undefined) {
     // As a client on a graphics tier draws it, its assets read from disk where a client fetches them, once the card
     // holds all it wants. With "all", the four tiers side by side.
@@ -1160,6 +1201,18 @@ if (import.meta.main) {
     hud.nearby = view.remote.count;
     hud.clock = "06:30";
     hud.formatReadout();
+    // --cone DEGREES: the crosshair opened to a held weapon's cone (shared/sim/aim.ts).
+    const cone = arg("cone");
+    if (cone !== undefined) hud.cone = Math.tan((Number(cone) * Math.PI) / 180) / Math.tan(cam.fovY / 2);
+    // --sight scope|holo|dot: a scope's reticle, a holo-scope's tint and red crosshair, or a laser's dot below the middle
+    // (weapons-plan.md, M10). The view is not zoomed.
+    const sight = arg("sight");
+    if (sight === "scope") hud.scope = true;
+    else if (sight === "holo") [hud.holo, hud.tint, hud.crossTint] = [true, 0.22, 0xff3a30];
+    else if (sight === "dot") {
+      hud.dots[0] = { u: 0.5, v: 0.58, alpha: 1 };
+      hud.dotCount = 1;
+    }
     [1, 0.6, 0.8, 0.45].forEach((v, i) => (hud.vitals[i]!.fraction = v));
     hud.markers.push({ kind: "creature", u: mapU(view.hf, 259), v: mapV(view.hf, 254) }, { kind: "self", u: mapU(view.hf, cam.x), v: mapV(view.hf, cam.z) });
     ui.frame.images[IMAGE_MINIMAP] = { width: MINIMAP_SIZE, height: MINIMAP_SIZE, data: minimapImage(view.hf, view.pack.palette, MINIMAP_SIZE), version: 1 };

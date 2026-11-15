@@ -4,13 +4,15 @@
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
-import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { MOST_LOD, detailKeeps, shapeOf } from "../../client/core/render/detailtext.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DETAIL, DETAIL_FLOATS, DETAIL_LIT, DETAIL_PUFF, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { LAYER_LEVELS, NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear, wounded } from "../../client/core/render/surface.ts";
 import type { AssetUpload } from "../../client/core/assets/residency.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
-import { INSTANCE_BYTES, VERTEX_BYTES, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
+import { CELL, mipOffset } from "../../shared/pack/details.ts";
+import { INSTANCE_BYTES, VERTEX_BYTES, detailsAtlas, lodSkin, lodSurface, lodVertices, readIndices, type Pack } from "../../shared/pack/pack.ts";
 import { REGION_BASE } from "../../shared/pack/palette.ts";
 import { MAP_ROLES, TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
@@ -284,6 +286,8 @@ export class Rasterizer {
   // A textured triangle's corners, and its clip scratch: per vertex what it carries, then screen x, y, 1/w and NDC depth.
   private readonly corners = new Float64Array(3 * CARRIED);
   private readonly wide = new Float64Array(5 * (CARRIED + 4));
+  /** A particle's card: four corners, each its place and its corner of the card. */
+  private readonly quad = new Float64Array(4 * 5);
 
   constructor(width: number, height: number, pack: Pack, hf: Heightfield, manifest: Manifest | null = null) {
     this.width = width;
@@ -528,6 +532,7 @@ export class Rasterizer {
   private draw(p: FramePacket, d: number): void {
     this.drawing = d;
     [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
+    if ((p.drawFlags[d]! & DRAW_DETAILS) !== 0) return this.details(p, d);
     if ((p.drawFlags[d]! & DRAW_PULLED) !== 0) return this.pulled(p, d);
     if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) return this.textured(p, d);
     const meshIndex = p.drawMesh[d]!;
@@ -581,14 +586,169 @@ export class Rasterizer {
           out[v * 3 + 2] = -s * lx + c * lz + iz;
         }
       }
-      const kind = this.fade > 0 ? PICK_FAR : transient ? PICK_ENTITY : PICK_STRUCTURE;
-      const id = this.fade > 0 ? p.drawSlot[d]! : transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
-      for (let t = 0; t < lod.indices.length; t += 3) {
+      const kind = this.fade !== 0 ? PICK_FAR : transient ? PICK_ENTITY : PICK_STRUCTURE;
+      const id = this.fade !== 0 ? p.drawSlot[d]! : transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
+      const ranged = (p.drawFlags[d]! & DRAW_RANGED) !== 0;
+      const [from, end] = ranged ? [p.drawFirstIndex[d]!, p.drawFirstIndex[d]! + p.drawIndexCount[d]!] : [0, lod.indices.length];
+      if (end > lod.indices.length) throw new Error(`draw ${d} runs past the indices of its level`);
+      for (let t = from; t < end; t += 3) {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0);
+      }
+    }
+  }
+
+  /**
+   * A DRAW_DETAILS draw: each particle's card as the details program draws it (client/core/render/detailtext.ts). Its
+   * picture is read from the atlas at the level each pixel's footprint asks for. A cut-out pixel is kept by its middle,
+   * as any cut-out's is; `cover` is a half where the picture's edge crosses it.
+   */
+  private details(p: FramePacket, d: number): void {
+    const blend = (p.drawFlags[d]! & DRAW_BLEND) !== 0;
+    const [f, words] = [p.details, p.detailWords];
+    const side = this.pack.header.details?.atlas.side ?? CELL;
+    const atlas = detailsAtlas(this.pack);
+    const cells = side / CELL;
+    const [W, H, m] = [this.width, this.height, this.matrix];
+    const src = this.quad;
+    const poly = this.wide;
+    const texel = [0, 0, 0, 0];
+    const shape = [0, 0, 0];
+    const [right, below] = [[0, 0], [0, 0]];
+    const exposure = p.frame[FRAME.exposure]!;
+    for (let k = 0; k < p.drawInstances[d]!; k++) {
+      const o = (p.drawFirst[d]! + k) * DETAIL_FLOATS;
+      const misc = words[o + DETAIL.misc]!;
+      const [cell, flags, shows, grey] = [misc & 255, (misc >>> 8) & 255, ((misc >>> 16) & 255) / 255, (misc >>> 24) / 255];
+      const [a, b] = [words[o + DETAIL.colourA]!, words[o + DETAIL.colourB]!];
+      const half = Math.hypot(f[o + DETAIL.along]!, f[o + DETAIL.along + 1]!, f[o + DETAIL.along + 2]!);
+      // The corners in turn round the card, each its place and its corner.
+      [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([cx, cy], c) => {
+        for (let i = 0; i < 3; i++) src[c * 5 + i] = f[o + DETAIL.middle + i]! + cx! * f[o + DETAIL.across + i]! + cy! * f[o + DETAIL.along + i]!;
+        [src[c * 5 + 3], src[c * 5 + 4]] = [cx!, cy!];
+      });
+      const count = this.clip(src, 4, 5, 5, poly, 9);
+      if (count < 3) continue;
+      for (let i = 0; i < count; i++) {
+        const [x, y, z] = [poly[i * 9]!, poly[i * 9 + 1]!, poly[i * 9 + 2]!];
+        const w = m[3]! * x + m[7]! * y + m[11]! * z;
+        poly[i * 9 + 5] = (((m[0]! * x + m[4]! * y + m[8]! * z) / w) * 0.5 + 0.5) * W;
+        poly[i * 9 + 6] = (0.5 - ((m[1]! * x + m[5]! * y + m[9]! * z) / w) * 0.5) * H;
+        poly[i * 9 + 7] = 1 / w;
+        poly[i * 9 + 8] = (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / w;
+      }
+      // Its normal, turned to the eye.
+      const [ax, ay, az, bx, by, bz] = [f[o + DETAIL.along]!, f[o + DETAIL.along + 1]!, f[o + DETAIL.along + 2]!, f[o + DETAIL.across]!, f[o + DETAIL.across + 1]!, f[o + DETAIL.across + 2]!];
+      let [nx, ny, nz] = [by * az - bz * ay, bz * ax - bx * az, bx * ay - by * ax];
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      [nx, ny, nz] = [nx / nl, ny / nl, nz / nl];
+      for (let t = 1; t + 1 < count; t++) {
+        const [v0, v1, v2] = [0, t * 9, (t + 1) * 9];
+        const [px0, py0, px1, py1, px2, py2] = [poly[v0 + 5]!, poly[v0 + 6]!, poly[v1 + 5]!, poly[v1 + 6]!, poly[v2 + 5]!, poly[v2 + 6]!];
+        const area = (px1 - px0) * (py2 - py0) - (px2 - px0) * (py1 - py0);
+        if (area === 0) continue;
+        this.trianglesDrawn++;
+        for (let py = Math.max(0, Math.floor(Math.min(py0, py1, py2))); py <= Math.min(H - 1, Math.ceil(Math.max(py0, py1, py2))); py++) {
+          for (let px = Math.max(0, Math.floor(Math.min(px0, px1, px2))); px <= Math.min(W - 1, Math.ceil(Math.max(px0, px1, px2))); px++) {
+            const [fx, fy] = [px + 0.5, py + 0.5];
+            const e0 = ((px1 - fx) * (py2 - fy) - (px2 - fx) * (py1 - fy)) / area;
+            const e1 = ((px2 - fx) * (py0 - fy) - (px0 - fx) * (py2 - fy)) / area;
+            const e2 = 1 - e0 - e1;
+            if (e0 < 0 || e1 < 0 || e2 < 0) continue;
+            const at = py * W + px;
+            const z = this.stored(e0 * poly[v0 + 8]! + e1 * poly[v1 + 8]! + e2 * poly[v2 + 8]!);
+            if (z >= this.depth[at]!) continue;
+            const [q0, q1, q2] = [e0 * poly[v0 + 7]!, e1 * poly[v1 + 7]!, e2 * poly[v2 + 7]!];
+            const qs = 1 / (q0 + q1 + q2);
+            const carry = (j: number): number => (q0 * poly[v0 + j]! + q1 * poly[v1 + j]! + q2 * poly[v2 + j]!) * qs;
+            const [rx, ry, rz, cx, cy] = [carry(0), carry(1), carry(2), carry(3), carry(4)];
+            // The level the pixel's footprint in the picture asks for, from the corner a pixel right and a pixel down, as derivatives give it.
+            const corner = (gx: number, gy: number, out: number[]): void => {
+              const g0 = ((px1 - gx) * (py2 - gy) - (px2 - gx) * (py1 - gy)) / area;
+              const g1 = ((px2 - gx) * (py0 - gy) - (px0 - gx) * (py2 - gy)) / area;
+              const [w0, w1, w2] = [g0 * poly[v0 + 7]!, g1 * poly[v1 + 7]!, (1 - g0 - g1) * poly[v2 + 7]!];
+              const ws = 1 / (w0 + w1 + w2);
+              out[0] = (w0 * poly[v0 + 3]! + w1 * poly[v1 + 3]! + w2 * poly[v2 + 3]!) * ws;
+              out[1] = (w0 * poly[v0 + 4]! + w1 * poly[v1 + 4]! + w2 * poly[v2 + 4]!) * ws;
+            };
+            corner(fx + 1, fy, right);
+            corner(fx, fy + 1, below);
+            const footprint = (Math.max(Math.hypot(right[0]! - cx, right[1]! - cy), Math.hypot(below[0]! - cx, below[1]! - cy)) * CELL) / 2;
+            const level = Math.min(MOST_LOD, Math.max(0, Math.log2(Math.max(footprint, 1e-6))));
+            if (p.lit) this.detailTexel(atlas, side, cells, cell, cx, cy, level, texel);
+            else {
+              shapeOf(flags & 7, cx, cy, shape);
+              [texel[0], texel[1], texel[2], texel[3]] = [shape[2]!, shape[1]!, 0, shape[0]!];
+            }
+            let alpha = texel[3]!;
+            if (blend) {
+              alpha *= shows * ((flags & DETAIL_PUFF) !== 0 ? Math.min(1, Math.max(0, (ry - f[o + DETAIL.floor]!) / (0.5 * half))) : 1);
+              if (alpha < 0.004) continue;
+            } else if (!detailKeeps(shows, px, H - 1 - py) || alpha < 0.5) continue;
+            const dist = Math.hypot(rx, ry, rz);
+            const [vx, vy, vz] = [-rx / dist, -ry / dist, -rz / dist];
+            if ((flags & DETAIL_PUFF) !== 0) {
+              const l = Math.hypot(0.6 * vx, 1 + 0.6 * vy, 0.6 * vz);
+              [normal[0], normal[1], normal[2]] = [(0.6 * vx) / l, (1 + 0.6 * vy) / l, (0.6 * vz) / l];
+            } else {
+              const s = nx * vx + ny * vy + nz * vz < 0 ? -1 : 1;
+              [normal[0], normal[1], normal[2]] = [nx * s, ny * s, nz * s];
+            }
+            const mixed = (word: number, c: number): number => (word >>> (c * 8)) & 255;
+            if (p.lit) {
+              const shade = srgbToLinear(texel[0]!);
+              for (let c = 0; c < 3; c++) {
+                const dye = (srgbToLinear(mixed(a, c) / 255) * (1 - texel[1]!) + srgbToLinear(mixed(b, c) / 255) * texel[1]!) / grey;
+                albedo[c] = shade * (dye * (1 - texel[2]!) + texel[2]!);
+              }
+              [eye[0], eye[1], eye[2]] = [vx, vy, vz];
+              if ((flags & DETAIL_LIT) !== 0) lit(light, albedo, ROUGH, normal, eye, p.frame, NOTHING);
+              else for (let c = 0; c < 3; c++) light[c] = albedo[c]! / exposure;
+              shown(rgb, light, dist, p);
+              for (let c = 0; c < 3; c++) rgb[c]! *= 255;
+            } else {
+              const sun = (flags & DETAIL_LIT) !== 0 ? (AMBIENT + DIFFUSE * Math.max(0, normal[0]! * p.sun[0]! + normal[1]! * p.sun[1]! + normal[2]! * p.sun[2]!)) * p.light : 1;
+              let fog = (dist - p.fogStart) / (p.fogEnd - p.fogStart);
+              fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
+              for (let c = 0; c < 3; c++) rgb[c] = (mixed(a, c) * (1 - texel[1]!) + mixed(b, c) * texel[1]!) * texel[0]! * sun * (1 - fog) + p.sky[c]! * 255 * fog;
+            }
+            const o4 = at * 4;
+            if (blend) for (let c = 0; c < 3; c++) this.color[o4 + c] = this.color[o4 + c]! + (rgb[c]! - this.color[o4 + c]!) * alpha;
+            else {
+              for (let c = 0; c < 3; c++) this.color[o4 + c] = rgb[c]!;
+              this.depth[at] = z;
+              this.deferred[at] = 0;
+              this.pickKind[at] = PICK_ENTITY;
+              this.pickId[at] = 0;
+              this.pickBone[at] = 0;
+              this.pickDraw[at] = this.drawing;
+              this.cover[at] = Math.abs(alpha - 0.5) < 0.25 ? 0.5 : 1;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /** The atlas at corner (cx, cy) of `cell`, read between texels and between its two levels nearest `level`, as the card reads it. */
+  private detailTexel(atlas: Uint8Array, side: number, cells: number, cell: number, cx: number, cy: number, level: number, out: number[]): void {
+    const u = ((cell % cells) + cx * 0.5 + 0.5) / cells;
+    const v = (Math.floor(cell / cells) - cy * 0.5 + 0.5) / cells;
+    out.fill(0);
+    const whole = Math.floor(level);
+    for (const [l, weight] of [[whole, 1 - (level - whole)], [whole + 1, level - whole]] as const) {
+      if (weight <= 0) continue;
+      const s = side >> l;
+      const base = mipOffset(side, l);
+      const [x, y] = [u * s - 0.5, v * s - 0.5];
+      const [i, j] = [Math.floor(x), Math.floor(y)];
+      const [fx, fy] = [x - i, y - j];
+      for (const [di, dj, w] of [[0, 0, (1 - fx) * (1 - fy)], [1, 0, fx * (1 - fy)], [0, 1, (1 - fx) * fy], [1, 1, fx * fy]] as const) {
+        const at = base + (Math.min(s - 1, Math.max(0, j + dj)) * s + Math.min(s - 1, Math.max(0, i + di))) * 4;
+        for (let c = 0; c < 4; c++) out[c]! += (atlas[at + c]! / 255) * w * weight;
       }
     }
   }
@@ -869,7 +1029,7 @@ export class Rasterizer {
           const rz = (q0 * poly[v0 + 2]! + q1 * poly[v1 + 2]! + q2 * poly[v2 + 2]!) * qs;
           const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
           // A far draw drops its fragment as FAR_FADE does, before anything is kept of it. The pattern counts rows from the bottom.
-          if (this.fade > 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
+          if (this.fade !== 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
           if (this.hand !== 0 && nearKeeps(this.handAt, this.handFrom, this.handTo, px, H - 1 - py) !== this.hand > 0) continue;
           if (!blend) {
             this.depth[at] = z;

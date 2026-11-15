@@ -1,10 +1,10 @@
 // Builds one asset from its source: Blender where the source needs it, then the conversion for its kind.
 
 import { readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { B_PROP_L, B_PROP_R, HUMAN } from "../../shared/anim/human.ts";
-import { MOST_SECTIONS, parsePack, setTexture, textureOf, type PackMaterial, type PackRig, type PackTexture } from "../../shared/pack/pack.ts";
+import { MOST_SECTIONS, detailsAtlas, parsePack, setTexture, textureOf, type PackMaterial, type PackRig, type PackTexture } from "../../shared/pack/pack.ts";
 import { RAMP_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, TEXTURE_ROLES, stepSize } from "../../shared/pack/texture.ts";
 import { convertCreature, withMotion } from "../pack/creature.ts";
@@ -14,7 +14,8 @@ import { lying } from "../pack/lying.ts";
 import { withLevels, withSurfaceLevels } from "../pack/simplify.ts";
 import { spanOf, tangentsOf } from "../pack/surface.ts";
 import type { MaterialMaps } from "../pack/texture.ts";
-import { buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
+import { buildDetails } from "../pack/details.ts";
+import { buildPack, unpackMeshes, type SourceDetails, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import type { Asset } from "./assets.ts";
 import { RAW, blender, withScratch } from "./blender.ts";
 import { convertBodies, convertClipLibraries } from "./human.ts";
@@ -30,6 +31,8 @@ export interface Built {
   warnings: string[];
   /** What would draw wrong. An asset with any is not written. */
   faults: string[];
+  /** The details' atlas, effects and sheets, for the details asset alone. */
+  details?: SourceDetails;
 }
 
 const triangles = (m: SourceMesh): string => m.lods.map((l, i) => `${String(l.indices.length / 3).padStart(5)}${i < (m.flat ?? 0) ? "*" : " "}`).join("");
@@ -229,6 +232,10 @@ export function buildAsset(asset: Asset): Built {
       convertPieces({ ...asset, spec }, files, out);
     } else if (spec.kind === "sky" || spec.kind === "water") {
       convertSky({ ...asset, spec }, out);
+    } else if (spec.kind === "details") {
+      const made = buildDetails(dirname(dirname(asset.dir)));
+      out.details = made.details;
+      out.lines.push(...made.lines);
     } else if (spec.kind === "human-clips") {
       const made = convertClipLibraries(spec);
       out.clips.push(...made.clips);
@@ -247,7 +254,7 @@ export function buildAsset(asset: Asset): Built {
 }
 
 export function packOf(built: Built): Uint8Array {
-  return buildPack(built.meshes, defaultPalette(), built.clips, built.rigs);
+  return buildPack(built.meshes, defaultPalette(), built.clips, built.rigs, built.details ?? null);
 }
 
 /**
@@ -334,5 +341,5 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
   const rigs = pack.header.rigs.map((r) => (spec?.kind === "creature" && r.id === asset!.id ? withMotion(r, spec, pack.clips.clips, faults) : r));
   if (spec?.kind === "creature" && spec.materials) withLayers(meshes, asset as Asset & { spec: CreatureAsset }, palette, faults);
   if (faults.length > 0) throw new Error(`${asset!.id}: ${faults.join("; ")}`);
-  return buildPack(meshes, palette, pack.clips.clips, rigs);
+  return buildPack(meshes, palette, pack.clips.clips, rigs, pack.header.details ? { header: pack.header.details, atlas: detailsAtlas(pack).slice() } : null);
 }

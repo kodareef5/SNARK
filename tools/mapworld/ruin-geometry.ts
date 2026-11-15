@@ -57,9 +57,13 @@ export class Mason {
   readonly pieces: StaticPiece[] = [];
   readonly clear: { x: number; z: number; radius: number }[] = [];
   readonly routes: { x: number; y: number; z: number; yaw: number; floors: number }[] = [];
+  readonly entries: { x: number; y: number; z: number; yaw: number; coreX: number; coreZ: number }[] = [];
+  readonly escapes: { points: { x: number; y: number; z: number }[] }[] = [];
+  readonly wings: { tiles: number; height: number; u: number; v: number }[] = [];
   readonly frame: Frame;
   readonly base: number;
   constructor(frame: Frame, base: number) { this.frame = frame; this.base = base; }
+  point(u: number, v: number): Point { return worldPoint(this.frame, u, v); }
   put(shape: RuinShape, u: number, y: number, v: number, finish: RuinFinish = "concrete", turn = 0): void {
     const [x, z] = worldPoint(this.frame, u, v);
     this.pieces.push({ kind: ruinKind(shape, finish), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
@@ -75,6 +79,21 @@ export class Mason {
       y += h;
     }
   }
+  escape(t: Tile, floors: number, core: Tile): void {
+    const dir = floors % 2 === 0 ? -1 : 1;
+    const near = t.u < core.u ? 1 : -1;
+    const corners = [[near * 2, dir * 2], [-near * 2, dir * 2], [-near * 2, -dir * 2], [near * 2, -dir * 2]];
+    const points: { x: number; y: number; z: number }[] = [];
+    for (const [u, v] of [[core.u + (floors % 2 === 0 ? -1.5 : 1.5), core.v + dir * 5.5], [t.u + near * 2, t.v + dir * 5.5]]) {
+      const [x, z] = this.point(u!, v!); points.push({ x, y: this.base + floors * 4, z });
+    }
+    for (let step = 0; step <= floors * 2; step++) {
+      const [du, dv] = corners[step % 4]!; const y = floors * 4 - step * 2;
+      const u = t.u + du!; const v = t.v + dv!;
+      this.floor([u, v], y, 4); const [x, z] = this.point(u, v); points.push({ x, y: this.base + y, z });
+    }
+    this.escapes.push({ points }); this.cover(t.u, t.v, 16);
+  }
   stairs(t: Tile, floors: number): void {
     // Banyan prop roots reach beyond their planting cell into the stair approach.
     this.cover(t.u, t.v, 20);
@@ -82,7 +101,7 @@ export class Mason {
     for (let f = 0; f < floors; f++) {
       const dir = f % 2 === 0 ? 1 : -1;
       const u = t.u + (f % 2 === 0 ? -1.5 : 1.5);
-      for (let n = 0; n < 10; n++) this.put("step", u, f * 4 + (n + 1) * .4 - .2, t.v + dir * (-2.25 + n * .5));
+      for (let n = 0; n < 11; n++) this.put("step", u, f * 4 + (n + 1) * (4 / 11) - .2, t.v + dir * (-2.5 + n * .5));
       this.put("landing", t.u, (f + 1) * 4 - .2, t.v + dir * 3.25);
     }
     const [x, z] = worldPoint(this.frame, t.u, t.v);

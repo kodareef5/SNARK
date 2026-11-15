@@ -221,7 +221,10 @@ export class VehicleContacts {
     // Harm needs a live driver to answer to the rules. Crediting the car's own record would let an
     // unowned (team 0) car coast through PvE protection, so a driverless car only blocks.
     const driver = records.byPid.get(frame.by);
-    const by = driver && frame.byHandle !== 0 && ents.resolve(frame.byHandle) === records.entOf.get(frame.by) ? driver : null;
+    // Combat/projectiles run between capture and contact resolution; a bola, death
+    // or access change there must revoke impact authority in this same tick too.
+    const current = this.ctx.driverOf(car);
+    const by = driver && current?.pid === frame.by && frame.byHandle !== 0 && ents.resolve(frame.byHandle) === records.entOf.get(frame.by) ? driver : null;
     if (by && fresh && c.speed > MIN_HARM_SPEED && carNormal > MIN_HARM_SPEED) {
       const harmful = c.speed - MIN_HARM_SPEED;
       const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0,

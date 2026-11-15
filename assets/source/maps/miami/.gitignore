@@ -18,3 +18,13 @@ reports/ruins1/buildings.json
 reports/ruins1/labels.json
 reports/ruins1/circulation.json
 reports/ruins1/places.json
+
+# Regenerated round two inventories.
+reports/ruins2/buildings.json
+reports/ruins2/labels.json
+reports/ruins2/circulation.json
+reports/ruins2/places.json
+reports/ruins2/bridges.json
+reports/ruins2/bridge-walk.json
+!reports/ruins2/references/
+!reports/ruins2/references/**

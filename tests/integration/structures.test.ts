@@ -248,7 +248,7 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   expect(shots.bursts).toBe(1);
   expect([shots.thrownCount, live()]).toEqual([0, 0]);
   // Where it lay, to the float an event carries a place in.
-  expect(s.events.filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, Math.abs(ev.z - lie.z) < 0.001])).toEqual([[5, true]]);
+  expect(s.events.filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, Math.abs(ev.z - lie.z) < 0.001])).toEqual([[6, true]]);
   expect(h.host.combat.hits + h.host.combat.structureHits).toBe(0);
 
   const stone = structs.add(id("wall"), lie.x, at.y + 1.5, lie.z + 2.5, 0, 0, 1500);
@@ -274,20 +274,21 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   expect([hp(stone), hp(metal), health(near)]).toEqual([1500, 3000, full]);
   h.run(1400);
   expect(shots.bursts).toBe(2);
-  // Each wall is 2.4 m off at its nearest, which leaves 65% of the blast. A blast does more than twice as much to stone as to wood
+  // Each wall is 2.4 m off at its nearest, which leaves 72% of a blast reaching 6 m (Grenade). A blast does more than twice as much to stone as to wood
   // and under a third as much to metal.
-  const fade = (d: number): number => (d <= 1 ? 1 : 1 - (d - 1) / 4);
+  const fade = (d: number): number => (d <= 1 ? 1 : 1 - (d - 1) / 5);
   expect(1500 - hp(stone)).toBeCloseTo(788 * 2.3325 * fade(2.4), 0);
   expect(3000 - hp(metal)).toBeCloseTo(788 * 0.3008 * fade(2.4), 0);
   // Against a blast each of the five flak pieces of 100 counts once, so a sixth gets through and every piece is worn.
   const lostNear = full - health(near);
   const lostFar = full - health(far);
   const lostClad = full - health(clad);
-  // Distance runs from the blast to the body's middle, less its girth. At 1.4 m most of the blast lands, at 4.4 m a quarter.
+  // Distance runs from the blast to the body's middle, less its girth. At 1.4 m most of the blast lands, at 4.4 m two fifths.
+  // A body takes ARK's 175 (Grenade), and what is built 4.5 times that (D435).
   const reach = (level: number): number => fade(Math.hypot(level, 0.9 - (lie.y + 0.05 - at.y)) - 0.4);
-  expect(lostNear).toBeCloseTo(788 * reach(1.4), -0.5);
-  expect(lostFar).toBeCloseTo(788 * reach(4.4), -0.5);
-  expect(lostFar).toBeLessThan(lostNear * 0.3);
+  expect(lostNear).toBeCloseTo(175 * reach(1.4), -0.5);
+  expect(lostFar).toBeCloseTo(175 * reach(4.4), -0.5);
+  expect(lostFar).toBeLessThan(lostNear * 0.45);
   expect(lostClad).toBeCloseTo(lostNear / 6, -1);
   const cinv = h.host.items.inv(h.host.records.byPid.get(clad.pid)!);
   for (let k = 0; k < 5; k++) expect(cinv.dur[cinv.armor + k]).toBeLessThan(120);

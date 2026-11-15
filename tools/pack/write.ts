@@ -2,11 +2,13 @@
 
 import type { Clip } from "../../shared/anim/clip.ts";
 import {
-  CLIP_ROOT_BYTES, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
+  CLIP_ROOT_BYTES, MATERIAL_CUTOUT, MOST_SECTIONS, PACK_MAGIC, PACK_VERSION, VERTEX_BYTES, clipRotBytes, lodSkin, lodSurface, lodVertices, readIndices,
   setTexture, textureOf, type Pack, type PackHeader, type PackLod, type PackMaterial, type PackMesh, type PackRig, type PackTexture,
 } from "../../shared/pack/pack.ts";
+import type { PackDetails } from "../../shared/pack/details.ts";
 import { TEXTURE_ROLES, stepOf } from "../../shared/pack/texture.ts";
 import { surfaceError } from "./error.ts";
+import { rankSprays } from "./sprays.ts";
 import { decodeSkin, decodeSurface, encodeSkin, encodeSurface, tangentsOf, uvRange } from "./surface.ts";
 
 /** One level of detail before quantization. */
@@ -162,11 +164,18 @@ function inSections(lod: SourceLod, place: readonly number[]): { indices: Uint32
   return { indices, sections };
 }
 
-export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = []): Uint8Array {
+/** Small details as a build carries them: the header's numbers, whose atlas offset is set when written, and the atlas. */
+export interface SourceDetails {
+  header: PackDetails;
+  atlas: Uint8Array;
+}
+
+export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: readonly Clip[] = [], rigs: readonly PackRig[] = [], details: SourceDetails | null = null): Uint8Array {
   const blob = new PackBlob();
   const append = (bytes: Uint8Array): number => blob.append(bytes);
 
   const header: PackHeader = { paletteOffset: append(palette), meshes: [], rigs: [...rigs].sort(byId), clips: [] };
+  if (details) header.details = { ...details.header, atlas: { ...details.header.atlas, offset: append(details.atlas) } };
   const sorted = [...meshes].sort(byId);
   const { materials, textures } = pool(sorted);
   if (materials.length > 0) header.materials = materials;
@@ -210,8 +219,10 @@ export function buildPack(meshes: SourceMesh[], palette: Uint8Array, clips: read
         if (lod.bones) verts[v * VERTEX_BYTES + 7] = lod.bones[v]!;
       }
       if (mesh.skeleton && !lod.bones) throw new Error(`${mesh.id}: a mesh with a skeleton needs a bone for every vertex`);
-      // A level drawn with materials has its triangles sorted by material. A flat one keeps the order it came in.
+      // A level drawn with materials has its triangles sorted by material, a cut-out material's best seen first (sprays.ts).
+      // A flat one keeps the order it came in.
       const textured = level < flat ? inSections(lod, place) : null;
+      if (textured) rankSprays(lod.positions, textured.indices, textured.sections, (m) => (materials[m]!.flags & MATERIAL_CUTOUT) !== 0);
       const indices = textured ? textured.indices : lod.indices;
       const indexBytes = n > 65535 ? 4 : 2;
       const idx = new Uint8Array(indices.length * indexBytes);

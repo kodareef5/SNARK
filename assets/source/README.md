@@ -51,6 +51,9 @@ regions, materials, clips, the feet and the stride of each gait, its ragdoll,
 the triangle and texture budgets, and the first level drawn flat. Every field
 is described in `tools/art/spec.ts`.
 
+Its small details (feathers knocked loose, dust when it falls) are a sheet in its folder, `cues.json`, and a few
+pictures: [DETAILS.md](DETAILS.md) says how.
+
 ### Rest a chain with slack
 
 A chain a solver places by its end (a neck to a head, a leg to a foot) must not rest straight at full length. Straight, the end cannot move away at all, and moving it 2 mm closer bends the joints 8 to 9 degrees in a direction nothing decides. The dodo's neck rests that way (0.1817 m of reach on 0.1818 m of bone), and its animators each worked round it in their own file. Changing the rest pose afterwards was measured and refused: it moved the neck's surface about a centimetre in clips already approved and the head up to 6 cm in others. So give a new rig's chains a bent rest with about 5% of slack before anyone animates on it.
@@ -196,7 +199,10 @@ pieces: [{ id: "core:pick", object: "pick", hold: "prop_r", dropped: "auto", ico
   Blender's +Z is the engine's +Y and its -Y the engine's +Z, so in Blender
   the length runs along -Y and the top is up. The check fails a held piece
   whose bounds miss the origin by more than a centimetre on any axis, or whose
-  longest extent is not along +Z, reaching further forward than back.
+  longest extent is not along +Z, reaching further forward than back. The left
+  hand holds a bow as the boxes do: its limbs along Y either side of the grip,
+  shooting along +X, and the check holds a `prop_l` piece to its longest extent
+  along Y instead.
 - `dropped`: how it lies on the ground, where a bag of that one stack would
   be. `"auto"` lays the held piece down (`tools/pack/lying.ts`): turned a
   quarter turn so the thinnest axis of its bounds points up and its broadest

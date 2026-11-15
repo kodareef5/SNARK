@@ -39,6 +39,7 @@ test("a vehicle restores through the real Body wire and replays exactly from a m
 test("a seated passenger carries attachment identity through the ordinary snapshot", () => {
   const a = new Body(), b = new Body();
   a.seat = 20001; a.seatSlot = 2; a.seatGen = 4095;
+  a.bloom = 73; a.kick = 29; a.rounds = 6;
   const w = new BitWriter(128), r = new BitReader();
   writeBody(w, a); r.reset(w.bytes()); readBody(r, b);
   expect(b.equals(a)).toBe(true);
@@ -51,6 +52,7 @@ test("vehicle-only visual changes travel in entity deltas and preserve the occup
   const store = new EntityStore({ chunksX: 2, chunksZ: 2 }, 4);
   const car = store.create(1, 20, 0, 20, 0), person = store.create(2, 20, 0, 20, 0);
   store.setSeat(person, car, 2);
+  store.setGear(person, new Uint16Array([1, 2, 3, 4, 5, 6])); store.on[person] = 1;
   const cur = new SentView(), sent = new SentView(), seen = new EntityView();
   const pose = packVehiclePose(0.1, -0.08, 0.2);
   cur.push(car, store.gen[car]!, 1, 5120, 0, 5120, 0, 0, 0, 0, 0, pose, 200);
@@ -60,6 +62,7 @@ test("vehicle-only visual changes travel in entity deltas and preserve the occup
   r.reset(w.bytes()); expect(readViewDelta(r, null, seen)).toBe(true);
   expect(seen.vehiclePose[0]).toBe(pose);
   expect([seen.seat[1], seen.seatSlot[1], seen.seatGen[1]]).toEqual([car + 1, 2, store.gen[car]]);
+  expect(Array.from(seen.gear[1]!)).toEqual([1, 2, 3, 4, 5, 6]); expect(seen.on[1]).toBe(1);
   const changed = packVehiclePose(0.12, -0.1, -0.3);
   cur.vehiclePose[0] = changed; cur.vehicleWheel[0] = quantVehicleWheel(1.5);
   const next = new SentView(), updated = new EntityView(); w.reset();
@@ -68,6 +71,7 @@ test("vehicle-only visual changes travel in entity deltas and preserve the occup
   expect(updated.vehiclePose[0]).toBe(changed);
   expect(updated.vehicleWheel[0]).toBe(cur.vehicleWheel[0]);
   expect(updated.seatSlot[1]).toBe(2); expect(updated.seatGen[1]).toBe(store.gen[car]!);
+  expect(updated.on[1]).toBe(1);
   expect(unpackVehiclePitch(changed)).toBeCloseTo(0.12, 2);
   expect(unpackVehicleRoll(changed)).toBeCloseTo(-0.1, 2);
   expect(unpackVehicleSteering(changed)).toBeCloseTo(-0.3, 2);

@@ -170,3 +170,21 @@ test('a driverless car blocks but cannot harm, so an unowned car never carries d
     expect(ents.z[empty]).toBeLessThan(z + 0.3);
   } finally { h.host.shutdown(); }
 });
+
+test('a driver disabled after contact capture loses impact authority in the same tick', () => {
+  const s = setup(), { h, ents, x, z, car, tick, health } = s;
+  try {
+    const target = s.victim('core:dummy', x, z + 2.6), before = health(target), hits = h.host.combat.hits;
+    const beforeStep = h.server.onBeforeStep;
+    h.server.onBeforeStep = () => {
+      beforeStep?.(); // Captures the current authorized driver and vehicle frame.
+      expect(h.host.entangle.give(s.record, h.reg.index.get('core:entangled')!, 0)).toBe(true);
+      h.server.onBeforeStep = beforeStep;
+    };
+    s.placeCar(); tick();
+    expect(h.host.urban.riderOf(car)).toBeNull();
+    expect(health(target)).toBe(before); expect(h.host.combat.hits).toBe(hits);
+    expect(ents.vx[target]).toBe(0); expect(ents.vz[target]).toBe(0);
+    expect(ents.vz[car]).toBe(0);
+  } finally { h.host.shutdown(); }
+});

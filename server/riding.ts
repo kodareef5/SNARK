@@ -30,6 +30,8 @@ export interface RidingContext {
   readonly tribes: Tribes;
   /** Recomputes what derives from a record. Riding calls it for a mount's load when a rider gets on or off. */
   refresh(rec: EntityRecord): void;
+  /** Whether a bola holds the body (server/entangle.ts): "creatures cannot be mounted while immobilized by the Bola" (Bola), nor does a held survivor get on. */
+  tangled?(rec: EntityRecord): boolean;
 }
 
 /** A rider's session, and its mount as it stood when the rider was last pinned to it: the place it gets off at, though the mount be gone by then. */
@@ -77,7 +79,7 @@ export class Riding {
     if (!rec || rec.keyHash !== null || world.reg.defs[rec.kind]?.type !== "species") return RESULT_INVALID;
     if (rec.team === 0 || !tribes.may(me, rec.team)) return RESULT_NOT_YOURS;
     if (rec.saddle === 0) return RESULT_SHORT;
-    if (rec.out) return RESULT_DENIED;
+    if (rec.out || this.ctx.tangled?.(rec) || this.ctx.tangled?.(me)) return RESULT_DENIED;
     if (this.riders.has(e)) return RESULT_BUSY;
     const far = Math.hypot(ents.x[e]! - ents.x[c.ent]!, ents.z[e]! - ents.z[c.ent]!);
     if (far > MOUNT_REACH + world.reg.bodyRadius[rec.kind]!) return RESULT_FAR;

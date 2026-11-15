@@ -7,12 +7,12 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
-import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
+import { CityStatics } from "../../shared/world/city.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchJson, fetchText } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
-import { heldTo, probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
+import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
 import { BenchRun, PassClock } from "../core/passes.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
@@ -65,6 +65,7 @@ async function boot(): Promise<void> {
     ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
+    city: (content) => new CityStatics(map.dims, map.statics, content),
   });
   const app = new App(session, reg, pack, { manifest, port });
   session.prediction.enabled = selfcheck;
@@ -91,15 +92,12 @@ async function boot(): Promise<void> {
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
   const voiceListen = selfcheck && params.get("voice") === "listen";
   voice.loop = voiceCheck;
-  let frames = 0;
-  const times: number[] = [];
+  const progress = new SelfcheckProgress();
   const drivingCheck = driveCheck ? new VehicleSelfcheck() : null;
   const drive = drivingCheck?.data;
 
   let restored = 0;
-  let keptBefore = 0;
-  let still = 0;
-  if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames, still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive }) });
+  if (selfcheck) Object.assign(globalThis, { snarkProbe: () => ({ ...probeProgress(app), frames: progress.frames, still: progress.still, cache: port.cache, glErrors: renderer.errors, drawCalls: renderer.drawCalls, drive }) });
   canvas.addEventListener("webglcontextlost", (e) => e.preventDefault());
   canvas.addEventListener("webglcontextrestored", () => {
     renderer.init();
@@ -145,9 +143,8 @@ async function boot(): Promise<void> {
     const [ours, gpu] = [performance.now() - t0, clock?.take() ?? []];
     app.drawn(packet, ours, gpu);
     device?.frame(now, packet, t0, built);
-    if (frames === 30) loser?.loseContext();
-    if (frames === 45) loser?.restoreContext();
-    times.push(performance.now() - t0);
+    if (progress.frames === 30) loser?.loseContext();
+    if (progress.frames === 45) loser?.restoreContext();
     const r = app.scene!.assets.residency;
     const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent });
     if (result) document.title = `SNARK ${result.frameMs.median} ms`;
@@ -157,54 +154,12 @@ async function boot(): Promise<void> {
     // second of played voice, or for ten seconds to report that none was.
     const voiced = voiceCheck || voiceListen;
     // Parts are written to disk a little after they arrive. The report waits until that has been still for half a second.
-    still = port.cache.used === keptBefore ? still + 1 : 0;
-    keptBefore = port.cache.used;
-    if (selfcheck && frames >= 0 && ++frames >= 90 && still >= 30 && (!drive || drive.finished) && (!voiced || voice.report.played >= 50 || frames >= 690)) {
-      frames = -1;
-      const heard = !voiced || (voice.report.played >= 50 && voice.report.odd === 0 && voice.report.errors === 0 && (!voiceListen || voice.report.heard.length > 0));
-      // In the stress scene three rocks hang in the sky, each drawn at another level, and a level is all one colour.
-      const rocks = app.marks.map((m) => ({ ...m, drawn: app.scene!.things[m.thing]!.level }));
-      const at = [0, 0, 0];
-      const stressed = rocks.flatMap((m): Probe[] => (app.cam.project(m.x, m.y, m.z, at) ? [{ name: `rock at level ${m.level}`, sx: at[0]!, sy: at[1]!, rgb: [0, 1, 2].map((c) => pack.palette[LEVEL_COLOURS[m.level]! * 4 + c]!) as Probe["rgb"], mode: "hue" }] : []));
-      const probes = [...provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, params.has("creature"), packet), ...stressed].map((p) => {
-        const got = renderer.readPixel(p.sx, p.sy);
-        return { name: p.name, expected: heldTo(p, got[0], got[1], got[2]), got, ok: probePasses(p, got[0], got[1], got[2]) };
+    if (progress.advance(performance.now() - t0, port.cache.used, selfcheck, voiced, voice.report.played, !drive || drive.finished)) {
+      const report = selfcheckReport(app, pack, manifest, hf, packet, {
+        has: name => params.has(name), voiced, voiceListen, voice: voice.report,
+        driveCheck, drive, audio: vehicleAudio.report, restored, misplaced: view.misplaced(app.ui.frame),
+        cache: port.cache, userAgent: navigator.userAgent, width, height, times: progress.times, renderer,
       });
-      times.sort((x, y) => x - y);
-      const misplaced = view.misplaced(app.ui.frame);
-      const urban = params.has("urban") ? (() => {
-        const drawn = Array.from(packet.drawMesh.subarray(0, packet.drawCount), index => manifest.meshes[index]?.id ?? "");
-        const vehicles = drawn.filter(id => id.startsWith("urban:compact"));
-        const humans = drawn.filter(id => id.startsWith("core:human"));
-        const seats = Array.from(app.remote.seatSlot.subarray(0, app.remote.count)).filter(slot => slot > 0);
-        const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], audio: { ...vehicleAudio.report }, ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;
-        return { vehicles, humans, seats, ownKind: reg.ids[session.own.kind], ...(driving ? { driving } : {}), ok: vehicles.length > 0 && humans.length > 0 && seats.length > 0 && renderer.errors === 0 && (!driving || driving.ok) };
-      })() : null;
-      const report = {
-        // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (driveCheck || voiceListen || probes.every((p) => p.ok)) && (!urban || urban.ok) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
-        ...(urban ? { urban } : {}),
-        rocks: rocks.map((m) => [m.level, m.drawn]),
-        restored,
-        assets: { ...app.scene?.assets.residency.stats, kept: port.cache },
-        ...(voiced ? { voice: voice.report } : {}),
-        userAgent: navigator.userAgent,
-        renderer: renderer.rendererName,
-        textures: { format: renderer.format, takes: renderer.formats, errors: renderer.errors },
-        canvas: [width, height],
-        probes,
-        interface: { nodes: app.ui.frame.count, misplaced },
-        structures: session.world!.structs.count,
-        tiles: packet.tileCount,
-        draws: packet.drawCount,
-        entitiesDrawn: packet.transientCount,
-        drawCalls: renderer.drawCalls,
-        triangles: packet.triangles,
-        frameMsMedian: times[times.length >> 1],
-        snapshots: session.stats.snapshots,
-        corrections: session.stats.corrections,
-        progress: selfcheck ? probeProgress(app) : undefined,
-      };
       document.title = report.ok ? "SNARK self-check passed" : "SNARK self-check FAILED";
       void fetch("__selfcheck", { method: "POST", body: JSON.stringify(report) });
     }

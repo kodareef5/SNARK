@@ -12,6 +12,8 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { MAP_ROLES } from "../../shared/pack/texture.ts";
+import { dirname } from "node:path";
+import { detailInputs } from "../pack/details.ts";
 import { SLOW_MOST, slowSurfaceError, surfaceError } from "../pack/error.ts";
 import { boundsOf } from "../pack/lying.ts";
 import { spanOf } from "../pack/surface.ts";
@@ -575,6 +577,13 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
   const report: Report = { id: asset.id, kind: asset.spec.kind, meshes: [], clips: [], gaits: [], textures: [], megabytes: { textures: 0, budget: null }, pictures, notes: [], faults: [] };
   const meshes = unpackMeshes(pack);
   const spec = asset.spec;
+  if (spec.kind === "details") {
+    const d = pack.header.details;
+    if (!d) report.faults.push("the pack holds no details");
+    else if (d.inputs !== detailInputs(dirname(dirname(asset.dir)))) report.faults.push("the pack is older than the sheets and pictures it is made from: build it again");
+    else report.notes.push(`${d.pictures.length} pictures in a ${d.atlas.side} atlas, ${d.effects.length} effects, ${d.sheets.length} cue sheets`);
+    return report;
+  }
   if (spec.kind === "creature") checkCreature(asset, spec, pack, meshes, report);
   else if (spec.kind === "pieces") {
     for (const piece of spec.pieces) {
@@ -611,8 +620,8 @@ export function checkAsset(asset: Asset, pack: Pack, pictures = false): Report {
 
 /**
  * What is wrong with a held piece (tools/art/spec.ts, PieceSpec): it is on the human skeleton, every vertex on the prop
- * bone of its hand; its grip, the origin, is within its bounds; and its length runs along +Z, its longest extent and
- * reaching further forward than back.
+ * bone of its hand; its grip, the origin, is within its bounds; and in the right hand its length runs along +Z, its
+ * longest extent and reaching further forward than back, while in the left hand, a bow's, its limbs run along Y.
  */
 export function heldFaults(mesh: SourceMesh, hold: NonNullable<PieceSpec["hold"]>): string[] {
   const faults: string[] = [];
@@ -624,7 +633,14 @@ export function heldFaults(mesh: SourceMesh, hold: NonNullable<PieceSpec["hold"]
   const missed = [0, 1, 2].map((k) => Math.max(lo[k]!, -hi[k]!, 0));
   if (missed.some((m) => m > GRIP_SLACK)) faults.push(`${mesh.id}: its grip, the origin, lies ${cm(Math.max(...missed))} cm outside it, and a held piece is modelled with its grip at the origin (within ${cm(GRIP_SLACK)} cm)`);
   const size = [0, 1, 2].map((k) => hi[k]! - lo[k]!);
-  if (size[2]! < size[0]! || size[2]! < size[1]! || hi[2]! < -lo[2]!) faults.push(`${mesh.id}: its length does not run along +Z: it spans ${size.map((v) => cm(v)).join(", ")} cm across x, y and z, from ${cm(lo[2]!)} to ${cm(hi[2]!)} cm along z`);
+  const across = `it spans ${size.map((v) => cm(v)).join(", ")} cm across x, y and z`;
+  if (hold === "prop_l") {
+    // The left hand holds a bow as tools/pack/weapons.ts draws one: its limbs along Y, either side of the grip, and it
+    // shoots along +X. Its longest extent is along Y; which way it reaches is the bow's own.
+    if (size[1]! < size[0]! || size[1]! < size[2]!) faults.push(`${mesh.id}: held in the left hand, its limbs do not run along Y: ${across}`);
+  } else if (size[2]! < size[0]! || size[2]! < size[1]! || hi[2]! < -lo[2]!) {
+    faults.push(`${mesh.id}: its length does not run along +Z: ${across}, from ${cm(lo[2]!)} to ${cm(hi[2]!)} cm along z`);
+  }
   return faults;
 }
 

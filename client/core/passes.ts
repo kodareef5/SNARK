@@ -170,7 +170,7 @@ export class BenchRun {
  * Effects `?off=` names, comma separated, for a before and after. "band" draws the near nodes in the hand-over without
  * its discard, and "layers" draws hurt and dead bodies with the plain surface program, in the draws they have.
  */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "band", "layers"] as const;
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "farcity", "band", "layers"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -191,6 +191,7 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
     if (off.has("clouds")) copy = { ...copy, clouds: 0 };
     if (off.has("farblocks")) copy = { ...copy, reach: { ...copy.reach, bases: 0 } };
     if (off.has("farnodes")) copy = { ...copy, reach: { ...copy.reach, trees: 0, rocks: 0, bushes: 0 } };
+    if (off.has("farcity")) copy = { ...copy, reach: { ...copy.reach, city: 0 } };
     mine.set(key, copy);
   }
   return copy;

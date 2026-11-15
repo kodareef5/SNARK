@@ -2,9 +2,9 @@
 // what spoils into something mints it), so stacks sum to minted minus burned for every item. An edit marks each record it
 // touches in one tick, so a move lands in one commit.
 
-import type { SpeciesDef } from "../shared/content/defs.ts";
+import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
-import { FLAG_BLUEPRINT, GEAR_SLOTS, Inventory, QUALITY_MUL, carried, moveSlot, type ItemTable } from "../shared/sim/items.ts";
+import { FLAG_BLUEPRINT, FLAG_ON, GEAR_SLOTS, Inventory, QUALITY_MUL, carried, moveSlot, type ItemTable } from "../shared/sim/items.ts";
 import { leftAtPeriod } from "../shared/sim/breeding.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { ServerWorld } from "./world.ts";
@@ -203,7 +203,7 @@ export class Items {
    */
   burn(rec: EntityRecord, slot: number, n: number, raw = false): boolean {
     const inv = raw ? rec.inv! : this.inv(rec);
-    if (slot >= inv.cap || !(n > 0) || inv.count[slot]! < n || (!raw && inv.flags[slot] !== 0)) return false;
+    if (slot >= inv.cap || !(n > 0) || inv.count[slot]! < n || (!raw && (inv.flags[slot]! & FLAG_BLUEPRINT) !== 0)) return false;
     const item = inv.item[slot]!;
     const ref = inv.refOf(slot);
     // Loaded rounds and an attachment are burned with the weapon.
@@ -218,13 +218,15 @@ export class Items {
   }
 
   /**
-   * Loads `ammo` from the bag into the weapon in `slot`, up to `clip`. Rounds of another kind go back to the bag first.
-   * Returns the rounds it then holds, or -1 if that cannot be done.
+   * Loads `ammo` from the bag into the weapon in `slot`, up to `clip`. Rounds of another kind go back to the bag first, and
+   * so does an attachment if `ammo` is fired bare (AmmoFacet.bare: loaded with darts the Longneck "cannot use any
+   * attachments", Longneck Rifle). Returns the rounds it then holds, or -1 if that cannot be done.
    */
   load(rec: EntityRecord, slot: number, ammo: number, clip: number): number {
     const inv = this.inv(rec);
-    if (slot >= inv.cap || inv.item[slot] === 0 || inv.flags[slot] !== 0) return -1;
+    if (slot >= inv.cap || inv.item[slot] === 0 || (inv.flags[slot]! & FLAG_BLUEPRINT) !== 0) return -1;
     if (inv.ammo[slot] !== ammo && inv.loaded[slot]! > 0 && !this.unload(rec, slot)) return -1;
+    if (this.bare(ammo) && inv.attach[slot] !== 0 && inv.total(ammo) > 0 && !this.detach(rec, slot)) return -1;
     const want = clip - (inv.ammo[slot] === ammo ? inv.loaded[slot]! : 0);
     const n = Math.min(want, inv.total(ammo));
     const have = inv.ammo[slot] === ammo ? inv.loaded[slot]! : 0;
@@ -259,34 +261,83 @@ export class Items {
     return true;
   }
 
-  /** Fits the item in `from` to the weapon in `slot`. An attachment already fitted comes off into `from`. False unless `from` holds exactly one. */
+  /**
+   * Fits the item in `from` to the weapon in `slot`. An attachment already fitted comes off into `from`. False unless `from`
+   * holds exactly one, or while the weapon holds rounds fired bare (darts). A new attachment starts switched off.
+   */
   attach(rec: EntityRecord, slot: number, from: number): boolean {
     const inv = this.inv(rec);
-    if (slot >= inv.cap || from >= inv.cap || slot === from || inv.item[slot] === 0 || inv.count[from] !== 1 || inv.flags[slot] !== 0 || inv.flags[from] !== 0) return false;
+    if (slot >= inv.cap || from >= inv.cap || slot === from || inv.item[slot] === 0 || inv.count[from] !== 1 || (inv.flags[slot]! & FLAG_BLUEPRINT) !== 0 || inv.flags[from] !== 0) return false;
+    if (inv.loaded[slot]! > 0 && this.bare(inv.ammo[slot]!)) return false;
     const fitted = inv.item[from]!;
     const old = inv.attach[slot]!;
     inv.set(from, old, old === 0 ? 0 : 1, 0, 0, 0);
     inv.setGear(slot, inv.ammo[slot]!, inv.loaded[slot]!, fitted);
+    if ((inv.flags[slot]! & FLAG_ON) !== 0) inv.setFlags(slot, inv.flags[slot]! & ~FLAG_ON);
     this.changed(rec);
     return true;
   }
 
-  /** Moves the weapon's attachment to the bag. False if there is none or no room. */
+  /** Moves the weapon's attachment to the bag, and it is off. False if there is none or no room. */
   detach(rec: EntityRecord, slot: number): boolean {
     const inv = this.inv(rec);
     const old = inv.attach[slot]!;
     if (old === 0 || inv.room(old, 0, this.table) < 1) return false;
     inv.setGear(slot, inv.ammo[slot]!, inv.loaded[slot]!, 0);
+    if ((inv.flags[slot]! & FLAG_ON) !== 0) inv.setFlags(slot, inv.flags[slot]! & ~FLAG_ON);
     if (inv.add(old, 1, 0, 0, this.world.tick, this.table) !== 0) throw new Error("room was checked");
     this.changed(rec);
     return true;
   }
 
-  /** Returns the uses left. At 0 the item is broken. It stays in its slot and can be repaired. */
+  /** The kind of attachment (ItemDef.attachment) fitted to the weapon in `slot` of `inv`, or "" for none. */
+  attachmentOf(inv: Inventory, slot: number): string {
+    const fitted = slot >= 0 && slot < inv.cap ? inv.attach[slot]! : 0;
+    return fitted === 0 ? "" : ((this.reg.defs[fitted] as ItemDef | null)?.attachment ?? "");
+  }
+
+  /** Whether a round of `ammo` is fired with nothing fitted to its weapon (AmmoFacet.bare). */
+  bare(ammo: number): boolean {
+    return ammo !== 0 && (this.reg.defs[ammo] as ItemDef | null)?.ammo?.bare === true;
+  }
+
+  /**
+   * Switches the attachment of the weapon in `slot` on or off (FLAG_ON). Only a flashlight or a laser switches ("press N
+   * to turn the flashlight on", Flashlight Attachment; the laser "is turned on/off by pressing N", Laser Attachment); a
+   * scope or silencer works whenever it is fitted, and a worn-out weapon's stays off. Returns whether it is now on.
+   */
+  toggle(rec: EntityRecord, slot: number): boolean {
+    const inv = this.inv(rec);
+    if (slot < 0 || slot >= inv.cap || inv.item[slot] === 0) return false;
+    const kind = this.attachmentOf(inv, slot);
+    const was = (inv.flags[slot]! & FLAG_ON) !== 0;
+    const broken = this.reg.uses[inv.item[slot]!]! > 0 && inv.dur[slot] === 0;
+    const on = !was && (kind === "light" || kind === "laser") && !broken;
+    if (on === was) return on;
+    inv.setFlags(slot, on ? inv.flags[slot]! | FLAG_ON : inv.flags[slot]! & ~FLAG_ON);
+    this.changed(rec);
+    return on;
+  }
+
+  /** Switches off every attachment of `rec` but the one on the weapon in `keep` (-1 for none). */
+  switchOff(rec: EntityRecord, keep = -1): void {
+    const inv = rec.inv;
+    if (!inv) return;
+    let changed = false;
+    for (let s = 0; s < inv.cap; s++) {
+      if (s === keep || (inv.flags[s]! & FLAG_ON) === 0) continue;
+      inv.setFlags(s, inv.flags[s]! & ~FLAG_ON);
+      changed = true;
+    }
+    if (changed) this.changed(rec);
+  }
+
+  /** Returns the uses left. At 0 the item is broken. It stays in its slot and can be repaired, and its attachment goes off. */
   wear(rec: EntityRecord, slot: number, n: number): number {
     const inv = this.inv(rec);
     const left = inv.dur[slot]! - n;
     inv.setDur(slot, left > 0 ? left : 0);
+    if (left <= 0 && (inv.flags[slot]! & FLAG_ON) !== 0) inv.setFlags(slot, inv.flags[slot]! & ~FLAG_ON);
     this.changed(rec);
     return inv.dur[slot]!;
   }
@@ -312,7 +363,7 @@ export class Items {
     if (inv.ref) {
       // Last slots first, as Inventory.take goes, one slot at a time so that what each stood for goes with it.
       for (let s = inv.cap - 1; s >= 0 && n > 0; s--) {
-        if (inv.item[s] !== item || inv.flags[s] !== 0) continue;
+        if (inv.item[s] !== item || (inv.flags[s]! & FLAG_BLUEPRINT) !== 0) continue;
         const k = Math.min(n, inv.count[s]!);
         this.burn(rec, s, k, true);
         n -= k;
@@ -350,7 +401,7 @@ export class Items {
     // Each stack keeps its spoil time, scaled if the other keeps things longer, and an unstackable item keeps its rounds and attachment.
     const tick = this.world.tick;
     for (let s = src.cap - 1; s >= 0 && n > 0; s--) {
-      if (src.item[s] !== item || src.flags[s] !== 0) continue;
+      if (src.item[s] !== item || (src.flags[s]! & FLAG_BLUEPRINT) !== 0) continue;
       const k = Math.min(n, src.count[s]!);
       const spoilAt = carried(src.spoilAt[s]!, tick, src.keep, dst.keep);
       if (this.table.stack[item] === 1) {

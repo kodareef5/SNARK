@@ -15,12 +15,10 @@ import { baseMips, packedMips, readPicture } from "../pack/image.ts";
 import { partHash } from "../pack/manifest.ts";
 import { splitPack } from "../pack/split.ts";
 import { buildPack, PackBlob } from "../pack/write.ts";
+import { assertUrbanBuildIsolation, INTEGRATED_DIST, urbanBuildOptions, urbanBuildPaths, type UrbanBuildOptions } from "./build-config.ts";
 
 const ROOT=resolve(import.meta.dir,"../..");
-export const INTEGRATED_DIST=resolve(ROOT,"client/dist");
-export const DEFAULT_CORE_DIST="/home/user/Desktop/SNARK/client/dist";
-/** Task-owned immutable inode references on the core source filesystem; survives another checkout rebuilding dist. */
-export const CORE_ASSET_CACHE="/home/user/.cache/snark-gta-integration-20261115/assets";
+export { INTEGRATED_DIST } from "./build-config.ts";
 
 /** Atomic replacement avoids ever modifying a reused hardlink in place. */
 function writeOwn(path:string,bytes:Uint8Array|string):void {
@@ -43,7 +41,7 @@ function pinCoreAsset(source:string,cache:string,expectedBytes:number):string {
   if(!/\.[0-9a-f]{16}\./.test(name))throw new Error("only immutable content-addressed core files may be shared");
   mkdirSync(cache,{recursive:true});
   const sourceStat=statSync(source),cacheStat=statSync(cache),pinned=join(cache,name);
-  if(sourceStat.dev!==cacheStat.dev)throw new Error("core asset cache is on another filesystem; choose a task-owned cache on the source filesystem, no bulk copy performed");
+  if(sourceStat.dev!==cacheStat.dev)throw new Error("Core cache is on another filesystem. Pass --cache /path/on/core/filesystem or set SNARK_CORE_CACHE; no bulk copy performed.");
   if(sourceStat.size!==expectedBytes)throw new Error(`core asset size changed while building: ${name}`);
   let linked=false;
   try{linkSync(source,pinned);linked=true;}catch(error){if((error as NodeJS.ErrnoException).code!=="EEXIST")throw error;}
@@ -78,15 +76,19 @@ export interface IntegratedAssetReport {
   clipHash:number;
   dist:string;
   coreAssetCache:string;
+  baseDist:string;
+  /** Hash the exact input manifest so reviewers can identify the reused core artifact set. */
+  baseManifestHash:string;
 }
 
 /** Append compact assets without decoding, requantizing or regenerating the dodo, humans or any other core art. */
-export async function buildIntegratedAssets(opts:{baseDist?:string;dist?:string;cache?:string}={}):Promise<IntegratedAssetReport> {
-  const base=resolve(opts.baseDist??DEFAULT_CORE_DIST),dist=resolve(opts.dist??INTEGRATED_DIST);
-  if(base===dist)throw new Error("urban build needs an isolated destination");
-  const sourceAssets=join(base,"assets"),target=join(dist,"assets"),cache=resolve(opts.cache??CORE_ASSET_CACHE);mkdirSync(target,{recursive:true});
-  if(cache===sourceAssets||cache.startsWith(`${sourceAssets}/`))throw new Error("core cache must be owned by this task, outside the source dist");
-  const manifest=parseManifest(readFileSync(join(sourceAssets,"manifest.json"),"utf8"));
+export async function buildIntegratedAssets(opts:UrbanBuildOptions={}):Promise<IntegratedAssetReport> {
+  const paths=urbanBuildPaths(opts);assertUrbanBuildIsolation(paths);
+  const {baseDist:base,dist,cache}=paths,sourceAssets=join(base,"assets"),target=join(dist,"assets");
+  let sourceManifest:Uint8Array;
+  try{sourceManifest=new Uint8Array(readFileSync(join(sourceAssets,"manifest.json")));}
+  catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;throw new Error(`No core asset manifest at ${join(sourceAssets,"manifest.json")}. Point --base-dist or SNARK_CORE_DIST at an existing unmodified core client/dist; no asset build was started.`);}
+  const baseManifestHash=partHash(sourceManifest),manifest=parseManifest(new TextDecoder().decode(sourceManifest));
   if(manifest.meshes.some((m)=>m.id.startsWith("urban:")))throw new Error("core source already contains urban assets; choose the unmodified core dist");
   if(!manifest.meshes.some((m)=>m.id==="core:dodo")||!manifest.meshes.some((m)=>m.id.startsWith("core:human_m/")))throw new Error("core source must retain the actual dodo and current human art");
   const coreMeshes=manifest.meshes.length,coreTextures=manifest.textures?.length??0;
@@ -94,6 +96,9 @@ export async function buildIntegratedAssets(opts:{baseDist?:string;dist?:string;
   if(oldBoot.clips.hash!==manifest.clipHash)throw new Error("core boot and manifest clip hashes disagree");
   const palette=defaultPalette();
   if(oldBoot.palette.some((value,index)=>value!==palette[index]))throw new Error("core source palette differs from this checkout");
+  mkdirSync(cache,{recursive:true});
+  if(statSync(sourceAssets).dev!==statSync(cache).dev)throw new Error("Core cache is on another filesystem. Pass --cache /path/on/core/filesystem or set SNARK_CORE_CACHE; no asset encoding or bulk copy performed.");
+  mkdirSync(target,{recursive:true});
 
   const added=splitPack(buildPack([compactMesh(),compactMesh(COPPER_COMPACT),...grayboxMeshes(ROADS).filter(mesh=>mesh.id.startsWith("urban:"))],palette,[],[compactRig()]),"urban");
   // A GPU picks one variant globally. Encode all three for only these six small maps, on one worker.
@@ -156,8 +161,8 @@ export async function buildIntegratedAssets(opts:{baseDist?:string;dist?:string;
   // Keep every existing mesh/page/texture/icon index. Only appended records and original boot byte positions change.
   parseManifest(JSON.stringify(manifest));
   const json=JSON.stringify(manifest);writeOwn(join(target,"manifest.json"),json);writeOwn(join(target,"manifest.json.br"),brotli(new TextEncoder().encode(json),true));
-  const report={coreMeshes,totalMeshes:manifest.meshes.length,coreTextures,totalTextures:manifest.textures.length,reusedFiles,sourceReferences,encodedMegapixels:textures.report.megapixels,bootBytes:mergedBytes.length,addedBytes,clipHash:manifest.clipHash,dist,coreAssetCache:cache};
-  writeOwn(join(dist,"urban-build.json"),JSON.stringify({...report,baseDist:base},null,2)+"\n");
+  const report={coreMeshes,totalMeshes:manifest.meshes.length,coreTextures,totalTextures:manifest.textures.length,reusedFiles,sourceReferences,encodedMegapixels:textures.report.megapixels,bootBytes:mergedBytes.length,addedBytes,clipHash:manifest.clipHash,dist,coreAssetCache:cache,baseDist:base,baseManifestHash};
+  writeOwn(join(dist,"urban-build.json"),JSON.stringify(report,null,2)+"\n");
   return report;
 }
 
@@ -173,6 +178,7 @@ export async function bundleIntegratedClient(dist=INTEGRATED_DIST):Promise<{jsBy
 }
 
 if(import.meta.main){
-  if(!process.argv.includes("--bundle-only"))console.log(JSON.stringify(await buildIntegratedAssets({baseDist:process.env.SNARK_CORE_DIST})));
-  if(!process.argv.includes("--assets-only"))console.log(JSON.stringify(await bundleIntegratedClient()));
+  const args=process.argv.slice(2),opts=urbanBuildOptions(args);
+  if(!args.includes("--bundle-only"))console.log(JSON.stringify(await buildIntegratedAssets(opts)));
+  if(!args.includes("--assets-only"))console.log(JSON.stringify(await bundleIntegratedClient(opts.dist)));
 }

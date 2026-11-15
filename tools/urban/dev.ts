@@ -7,7 +7,8 @@ import { formatReport, loadConfigFolder } from "../../server/settings/config.ts"
 import { stopOnSignals } from "../../server/signals.ts";
 import type { Host } from "../../server/host.ts";
 import { seedUrbanRoads } from "./fixtures.ts";
-import { buildIntegratedAssets, bundleIntegratedClient, DEFAULT_CORE_DIST, INTEGRATED_DIST } from "./build-integrated.ts";
+import { buildIntegratedAssets, bundleIntegratedClient } from "./build-integrated.ts";
+import { argumentValue, INTEGRATED_DIST, urbanBuildOptions } from "./build-config.ts";
 
 /** Place a small development fixture in the real map, once per isolated save. Normal players/dinos/resources remain. */
 export function seedUrbanVehicles(host:Host):void {
@@ -35,15 +36,15 @@ export function seedUrbanVehicles(host:Host):void {
 
 if(import.meta.main){
   const args=process.argv.slice(2);
-  const value=(key:string):string|undefined=>{const at=args.indexOf(key);return at>=0?args[at+1]:undefined;};
-  const root=resolve(import.meta.dir,"../.."),baseDist=value("--base-dist")??process.env.SNARK_CORE_DIST??DEFAULT_CORE_DIST;
-  if(!args.includes("--bundle-only"))console.log(JSON.stringify(await buildIntegratedAssets({baseDist})));
-  console.log(JSON.stringify(await bundleIntegratedClient()));
+  const value=(key:string):string|undefined=>argumentValue(args,key),opts=urbanBuildOptions(args);
+  const root=resolve(import.meta.dir,"../.."),dist=resolve(opts.dist??INTEGRATED_DIST);
+  if(!args.includes("--bundle-only"))console.log(JSON.stringify(await buildIntegratedAssets(opts)));
+  console.log(JSON.stringify(await bundleIntegratedClient(dist)));
   const folder=value("--config")??DEV_CONFIG,{rules,report}=loadConfigFolder(folder,args);
   for(const line of formatReport(report,rules))console.log(line);
   const dbPath=resolve(value("--db")??resolve(root,"var/urban-v1/world.db"));mkdirSync(dirname(dbPath),{recursive:true});
   const live=liveFileOf(folder),map=value("--map");
-  const server=startServer({dev:true,hostname:value("--host")??"127.0.0.1",port:Number(value("--port")??process.env.PORT??8787),clientDir:INTEGRATED_DIST,dbPath,config:rules,...(live?{live}:{}),...(map?{map:resolve(map)}:{})});
+  const server=startServer({dev:true,hostname:value("--host")??"127.0.0.1",port:Number(value("--port")??process.env.PORT??8787),clientDir:dist,dbPath,config:rules,...(live?{live}:{}),...(map?{map:resolve(map)}:{})});
   try{seedUrbanVehicles(server.host);const roads=seedUrbanRoads(server.host);if(roads)console.log(`Added ${roads} native paving pieces southeast of spawn: asphalt, gravel, mud.`);}catch(error){server.stop();throw error;}
   stopOnSignals(()=>server.stop());
   console.log(`SNARK with compact vehicles: http://localhost:${server.port}`);

@@ -21,7 +21,7 @@ import { BODY_REACH } from "../../../shared/anim/zones.ts";
 import type { Pack } from "../../../shared/pack/pack.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import type { Assets } from "../assets/assets.ts";
-import { Corpses } from "../ragdoll.ts";
+import { Corpses, type Corpse } from "../ragdoll.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
@@ -290,12 +290,36 @@ export class Characters {
     return this.kinds[kind] != null || this.creatures[kind] != null;
   }
 
+  /** What a creature of this kind plays, or null for a kind not drawn on a rig of its own. */
+  creature(kind: number): CreatureAnim | null {
+    return this.creatures[kind]?.anim ?? null;
+  }
+
+  /** Bodies that died and lie or fall where they died, as they are drawn. */
+  get fallen(): readonly Corpse[] {
+    return this.dead.list;
+  }
+
   /** Whether this kind is on the humanoid skeleton. */
   human(kind: number): boolean {
     return this.kinds[kind] != null;
   }
 
   vehicle(kind: number): boolean { return this.creatures[kind]?.vehicle === true; }
+
+  /** Root on a seat, using the same body binding/proportions and pelvis solve as add(). Does not emit a draw. */
+  seatedOrigin(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: number[]): boolean {
+    const k = this.kinds[kind];
+    if (!k) return false;
+    const view = look ?? (k.sets.length > 1 ? PLAIN : null);
+    const set = k.sets[view && view[LOOK_SEX]! < k.sets.length ? view[LOOK_SEX]! : 0]!;
+    mountPose(this.mount, { role: seat.driver ? "drive" : "passenger", tick: 0, startTick: 0, durationTicks: 1, steering: seat.steering / .55 }, this.pose);
+    if (view) lookScales(view, this.scales);
+    solve(HUMAN, this.pose, this.solved, set.rest, view ? this.scales : null);
+    vehicleRotation(seat, this.rotation);
+    mountOrigin(this.solved, [seat.x, seat.y, seat.z], this.rotation, out);
+    return true;
+  }
 
   /** The farthest any part of a body of this kind gets from its origin, for culling. */
   reach(kind: number): number {
@@ -568,8 +592,9 @@ export class Characters {
     if (this.bySeed.size > 4096) this.bySeed.clear();
   }
 
+  /** The level a body `distance` off is drawn at: as the tier asks, but at the governor's last step coarser (Tier.bodyError). */
   private levelOf(id: number, errors: readonly number[], distance: number): number {
-    const level = this.assets.choose(errors, distance, this.last.get(id) ?? -1);
+    const level = this.assets.choose(errors, distance * this.assets.tier.bodyError, this.last.get(id) ?? -1);
     this.last.set(id, level);
     return level;
   }

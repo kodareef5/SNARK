@@ -1,4 +1,5 @@
 import { ACTION_DRAW, ACTION_NONE, MAX_MARKERS, MINIMAP_SIZE, type HudModel, type MarkerKind } from "../hud.ts";
+import { MAX_DOTS } from "../render/laser.ts";
 import { WHOLE_MAP } from "../tactical.ts";
 import { K_BAR, K_IMAGE, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
 import { S_BUFF, S_DARK, S_TORPOR, S_BANNER, S_CROSS, S_FOOD, S_FRAME, S_HEALTH, S_LABEL, S_MARK_CREATURE, S_MARK_DEATH, S_MARK_PLAYER, S_MARK_SELF, S_MARK_SPAWN, S_OXYGEN, S_PROMPT, S_SLOT, S_SLOT_TEXT, S_STAMINA, S_SWATCH, S_TEXT, S_TITLE, S_WATER } from "./style.ts";
@@ -17,6 +18,12 @@ export const KEY_TALKER = 70;
 /** One mark per buff. */
 export const KEY_BUFF = 180;
 export const KEY_CROSS = 30;
+/** Four strokes about the crosshair at the held weapon's cone. */
+export const KEY_CONE = 24;
+/** A holo-scope's tint over the view; a scope's reticle (eight panels); one mark per laser dot, MAX_DOTS at most. */
+export const KEY_TINT = 38;
+export const KEY_SIGHT = 5000;
+export const KEY_DOT = 5010;
 export const KEY_STATUS = 31;
 export const KEY_BANNER = 32;
 export const KEY_PROMPT = 33;
@@ -41,6 +48,42 @@ export const MARKER_STYLE: Record<MarkerKind, number> = { self: S_MARK_SELF, mat
 export const MARKER_TINT: Partial<Record<MarkerKind, number>> = { mate: 0x6fd0ff, tame: 0xe8d24a };
 
 const HOTBAR_CELL = 34;
+/** The cone's strokes: their length, and how near the dot they come, in canvas units. */
+const CONE_STROKE = 6;
+const CONE_MIN = 5;
+/** A holo-scope's night tint, a laser's dot and its size, in canvas units. */
+const HOLO_GREEN = 0x2f9a3c;
+const LASER_RED = 0xff2a22;
+const DOT = 4;
+
+/**
+ * A scope's reticle, the German post (Scope Attachment): the view masked to a square tube, thick posts in from the left,
+ * the right and the bottom that stop short of the middle, and a fine line across between the side posts. Eight panels.
+ */
+function buildReticle(f: UiFrame, W: number, H: number): void {
+  const side = Math.min(W, H);
+  const x0 = (W - side) / 2;
+  const y0 = (H - side) / 2;
+  const cx = W / 2;
+  const cy = H / 2;
+  const gap = side * 0.06;
+  const post = Math.max(3, Math.round(side * 0.012));
+  const fine = 1;
+  let k = KEY_SIGHT;
+  // The mask outside the tube, on whichever sides there is room.
+  if (x0 > 0) {
+    f.add(k++, K_PANEL, 0, 0, x0, H, S_DARK).alpha = 0.96;
+    f.add(k++, K_PANEL, W - x0, 0, x0, H, S_DARK).alpha = 0.96;
+  }
+  if (y0 > 0) {
+    f.add(k++, K_PANEL, x0, 0, side, y0, S_DARK).alpha = 0.96;
+    f.add(k++, K_PANEL, x0, H - y0, side, y0, S_DARK).alpha = 0.96;
+  }
+  f.add(k++, K_PANEL, x0, cy - post / 2, cx - gap - x0, post, S_DARK).alpha = 0.95;
+  f.add(k++, K_PANEL, cx + gap, cy - post / 2, x0 + side - cx - gap, post, S_DARK).alpha = 0.95;
+  f.add(k++, K_PANEL, cx - post / 2, cy, post, y0 + side - cy, S_DARK).alpha = 0.95;
+  f.add(k++, K_PANEL, cx - gap, cy - fine / 2, gap * 2, fine, S_DARK).alpha = 0.9;
+}
 
 /**
  * The band the HUD leaves free for the chat box: below what shows under the crosshair, and above the hotbar, the
@@ -56,8 +99,22 @@ export function buildHud(f: UiFrame, m: HudModel): void {
   const W = f.width;
   const H = f.height;
   const lh = lineHeight(S_TEXT);
-  // The dark panel goes first, under everything else.
+  // The dark panel goes first, under everything else, and a holo-scope's tint with it.
   if (m.out) f.add(KEY_OUT, K_PANEL, 0, 0, W, H, S_DARK).alpha = 0.82;
+  else if (m.tint > 0) {
+    const n = f.add(KEY_TINT, K_PANEL, 0, 0, W, H, S_DARK);
+    n.tint = HOLO_GREEN;
+    n.alpha = m.tint;
+  }
+  // Laser dots lie on the world, so under everything else; a scope's reticle over them, and under the readouts.
+  for (let i = 0; i < m.dotCount && i < MAX_DOTS; i++) {
+    const d = m.dots[i]!;
+    if (d.u < 0 || d.u > 1 || d.v < 0 || d.v > 1 || !(d.alpha > 0.02)) continue;
+    const n = f.add(KEY_DOT + i, K_PANEL, d.u * W - DOT / 2, d.v * H - DOT / 2, DOT, DOT, S_CROSS);
+    n.tint = LASER_RED;
+    n.alpha = d.alpha;
+  }
+  if (m.scope && m.banner === "") buildReticle(f, W, H);
   for (let i = 0; i < m.readout.length; i++) f.text(KEY_READOUT + i, MARGIN, 10 + i * lh, Math.min(W - MARGIN * 2, 400), S_TEXT, m.readout[i]!);
   if (m.voice !== "") {
     // A voice state is in capitals and is lit. Anything else is a sentence saying what is wrong, drawn plain.
@@ -149,8 +206,21 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     if (m.ammo !== "") f.text(KEY_AMMO, Math.max(MARGIN, W / 2 - 150), y0 - lineHeight(S_PROMPT) - 3, Math.min(300, W - MARGIN * 2), S_PROMPT, m.ammo);
   }
 
+  // Through a scope its reticle (built under the rest) stands in for the crosshair. A holo-scope's crosshair shows whatever
+  // the rules say of the crosshair, coloured by what it is on.
+  if (!(m.scope && m.banner === "") && (m.crosshair || (m.holo && m.banner === ""))) {
+    const cross = f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
+    if (m.holo) cross.tint = m.crossTint;
+    if (m.cone >= 0) {
+      // The strokes stand where the cone's edge is on the screen, and never on the dot.
+      const r = Math.min(H / 2 - CONE_STROKE, Math.max(CONE_MIN, (m.cone * H) / 2));
+      f.add(KEY_CONE, K_PANEL, W / 2 - 1, H / 2 - r - CONE_STROKE, 2, CONE_STROKE, S_CROSS);
+      f.add(KEY_CONE + 1, K_PANEL, W / 2 - 1, H / 2 + r, 2, CONE_STROKE, S_CROSS);
+      f.add(KEY_CONE + 2, K_PANEL, W / 2 - r - CONE_STROKE, H / 2 - 1, CONE_STROKE, 2, S_CROSS);
+      f.add(KEY_CONE + 3, K_PANEL, W / 2 + r, H / 2 - 1, CONE_STROKE, 2, S_CROSS);
+    }
+  }
   if (m.crosshair) {
-    f.add(KEY_CROSS, K_PANEL, W / 2 - 2, H / 2 - 2, 4, 4, S_CROSS);
     if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, m.prompt.slice(0, 38));
     if (m.actionKind !== ACTION_NONE) f.add(KEY_ACTION, K_BAR, W / 2 - 40, H / 2 + 38, 80, 5, m.actionKind === ACTION_DRAW ? S_STAMINA : S_OXYGEN).value = m.actionFraction;
   }

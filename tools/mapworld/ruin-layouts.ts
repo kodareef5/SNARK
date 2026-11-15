@@ -12,8 +12,16 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   const keys = new Set(tiles.map((t) => tileKey(t.i, t.j)));
   const floors = Math.round(height / 4);
   const playable = Math.min(floors, opts.playable);
-  const core = bay === 8 ? [...tiles].filter((t) => has(keys, t, 0, 1) && has(keys, t, 0, -1)).sort((a, b) => (a.u - (opts.coreU ?? 0)) ** 2 + a.v ** 2 - (b.u - (opts.coreU ?? 0)) ** 2 - b.v ** 2)[0] : undefined;
-  const safe = (t: Tile): boolean => core !== undefined && Math.abs(t.u - core.u) <= bay && Math.abs(t.v - core.v) <= bay;
+  const candidates = bay === 8 ? [...tiles].filter((t) => has(keys, t, 0, 1) && has(keys, t, 0, -1)).sort((a, b) => (a.u - (opts.coreU ?? 0)) ** 2 + a.v ** 2 - (b.u - (opts.coreU ?? 0)) ** 2 - b.v ** 2) : [];
+  const cores: Tile[] = candidates.length ? [candidates[0]!] : [];
+  const wanted = Math.min(8, Math.max(1, Math.ceil(tiles.length * bay * bay / 3500)));
+  while (cores.length < wanted) {
+    const next = candidates.filter((t) => cores.every((c) => Math.hypot(c.u - t.u, c.v - t.v) >= 32)).sort((a, b) => Math.min(...cores.map((c) => Math.hypot(c.u - b.u, c.v - b.v))) - Math.min(...cores.map((c) => Math.hypot(c.u - a.u, c.v - a.v))))[0];
+    if (!next) break; cores.push(next);
+  }
+  const escape = cores.map((c) => tiles.find((t) => Math.abs(t.u - c.u) === bay && t.v === c.v && has(keys, t, 0, 1) && has(keys, t, 0, -1) && !cores.includes(t))).filter((t): t is Tile => !!t);
+  const safe = (t: Tile): boolean => cores.some((c) => Math.abs(t.u - c.u) <= bay && Math.abs(t.v - c.v) <= bay);
+  const entryLane = (t: Tile): boolean => cores.some((c) => t.i === c.i);
   const edge = (t: Tile): boolean => SIDES.some(([dx, dz]) => !has(keys, t, dx, dz));
   const court = rule.recipe === "mall" || rule.recipe === "school" || rule.recipe === "theatre";
   const xs = tiles.map((t) => t.u); const zs = tiles.map((t) => t.v);
@@ -31,7 +39,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     if (top === 0) continue;
     m.cover(t.u, t.v, bay * .75);
     for (let level = 1; level <= top; level++) {
-      if (core === t && level <= playable) continue;
+      if ((cores.includes(t) || escape.includes(t)) && level <= playable) continue;
       const isSafe = safe(t) && level <= playable;
       const roof = level === top;
       const hallGap = openHall && !edge(t) && !isSafe && !roof;
@@ -40,7 +48,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       if (!isSafe && rand3(opts.seed, t.i * 313 + t.j, level) < rule.holes) continue;
       m.floor([t.u, t.v], base + level * 4, bay);
     }
-    if (base === 0 && !safe(t) && rand3(opts.seed, t.i, t.j) < rule.holes * .65) {
+    if (base === 0 && !safe(t) && !entryLane(t) && rand3(opts.seed, t.i, t.j) < rule.holes * .65) {
       m.put("rubble4", t.u - 1, .55, t.v, "concrete", (hash3(t.i, t.j, opts.seed) % 7) * 13);
       if (opts.detail === 0) m.put("rubble", t.u + 1.5, .35, t.v + 1.5, "concrete", 27);
     }
@@ -67,22 +75,36 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
         const h = base + level * 4;
         const rnd = rand3(opts.seed + side, t.i * 313 + t.j, level);
         // The ground has a door at least every second bay; remaining bays have real window gaps.
-        const entry = level === 0 && (hash3(t.i, t.j, side) % 2 === 0 || safe(t));
+        const entry = level === 0 && (hash3(t.i, t.j, side) % 2 === 0 || safe(t) || entryLane(t));
         if (level > playable && level % (opts.detail > 0 ? 4 : 2) !== 0 && level !== top - 1) continue;
         m.put(beam, u, h + 3.7, z, "concrete", turn);
         if (!entry && rnd > rule.holes) {
-          if (rnd < rule.wall && opts.detail < 2) m.put(wall, u, h + 1.4, z, rule.finish, turn);
+          if (rand3(opts.seed + 73, t.i * 313 + t.j + side, level) < rule.wall && opts.detail < 2) m.put(wall, u, h + 1.4, z, rule.infill && (t.i + t.j + level) % 3 === 0 ? rule.infill : rule.finish, turn);
           else m.put(sill, u, h + .45, z, rule.finish, turn);
         }
         if ((rule.feature === "deco" || rule.feature === "balconies") && level <= playable && opts.detail < 2) m.put(trim, u + dx * .35, h + 3.15, z + dz * .35, rule.finish, turn);
       }
     }
-    if ((rule.feature === "rooms" || rule.recipe === "hotel" || rule.recipe === "hospital") && opts.detail === 0 && !safe(t) && !edge(t) && hash3(t.i, t.j, opts.seed) % 3 === 0) {
+    if ((rule.feature === "rooms" || rule.recipe === "hotel" || rule.recipe === "hospital") && opts.detail === 0 && !safe(t) && !entryLane(t) && !edge(t) && hash3(t.i, t.j, opts.seed) % 3 === 0) {
       for (let level = 0; level < Math.min(top, playable); level++) m.put("wall4", t.u - 1.6, base + level * 4 + 1.4, t.v + bay / 2, rule.finish);
     }
   }
   for (const p of posts.values()) m.post(p.u, base, p.v, p.top * 4);
-  if (core && base === 0) m.stairs(core, playable);
+  if (base === 0) for (const core of cores) {
+    m.stairs(core, playable);
+    const drop = escape.find((t) => Math.abs(t.u - core.u) === bay && t.v === core.v);
+    if (drop) m.escape(drop, playable, core);
+    let lo = core.j; let hi = core.j;
+    while (keys.has(tileKey(core.i, lo - 1))) lo--;
+    while (keys.has(tileKey(core.i, hi + 1))) hi++;
+    const column = tiles.filter((t) => t.i === core.i && t.j >= lo && t.j <= hi && (tops.get(tileKey(t.i, t.j)) ?? 0) > 0).sort((a, b) => a.v - b.v);
+    for (const t of column) m.cover(t.u, t.v, 9);
+    for (const [t, dir] of [[column[0]!, -1], [column.at(-1)!, 1]] as const) {
+      const [x, z] = m.point(t.u, t.v + dir * bay / 2);
+      m.entries.push({ x, y: m.base, z, yaw: m.frame.yaw, coreX: m.point(core.u, core.v)[0], coreZ: m.point(core.u, core.v)[1] });
+      m.cover(t.u, t.v + dir * bay / 2, 16);
+    }
+  }
   if (rule.feature === "deco" && opts.detail === 0) {
     const t = [...tiles].sort((a, b) => a.v - b.v || Math.abs(a.u) - Math.abs(b.u))[0]!;
     const fin = height >= 8 ? 8 : 4;
@@ -138,6 +160,7 @@ function arena(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions): void {
 export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: string): void {
   let bay = rule.bay;
   let tiles = tilesOf(m.frame, bay);
+  if (bay === 4 && tiles.length * 16 > 6000 && m.frame.width > 64 && m.frame.depth > 48) { bay = 8; tiles = tilesOf(m.frame, bay); }
   if (bay === 8 && tiles.length < 3) { bay = 4; tiles = tilesOf(m.frame, bay); }
   if (tiles.length === 0) {
     if (m.frame.width >= 4 && m.frame.depth >= 1) {
@@ -202,6 +225,21 @@ export function layout(m: Mason, rule: Rule, opts: LayoutOptions, special?: stri
   if (rule.recipe === "utility") {
     for (const t of tiles.filter((t) => t.i % 2 === 0 && t.j % 2 === 0)) {
       for (let k = 0; k < 8; k++) if (k !== 2) m.put("tank", t.u + Math.cos(k * Math.PI / 4) * 5, 2, t.v + Math.sin(k * Math.PI / 4) * 5, "concrete", -k * 45 + 90);
+    }
+    return;
+  }
+  if (!special && tiles.length * bay * bay > 6000 && m.frame.width > 64 && m.frame.depth > 48 && !["park", "utility"].includes(rule.recipe)) {
+    const groups = new Map<string, Tile[]>();
+    for (const t of tiles) {
+      if (t.i % 7 === 6 || t.j % 7 === 6) continue;
+      const k = `${Math.floor(t.i / 7)},${Math.floor(t.j / 7)}`;
+      if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(t);
+    }
+    for (const [k, wing] of groups) {
+      const [i, j] = k.split(",").map(Number); const factor = [.5, .75, 1][hash3(i!, j!, opts.seed) % 3]!;
+      const height = Math.max(4, Math.floor(rule.height * factor / 4) * 4);
+      stack(m, wing, bay, height, rule, opts, 0, ["shed", "hall"].includes(rule.recipe));
+      m.wings.push({ tiles: wing.length, height, u: wing.reduce((n, t) => n + t.u, 0) / wing.length, v: wing.reduce((n, t) => n + t.v, 0) / wing.length });
     }
     return;
   }
