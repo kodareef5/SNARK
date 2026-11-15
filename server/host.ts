@@ -651,8 +651,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   };
   survival.onInjured = (rec, on) => void (on ? buffs.give(rec, injured) : buffs.take(rec, injured));
   buffs.onChange = (rec) => refreshBody(rec);
+  const use = new Use({ world, game, records, items, survival, buffs });
+  // E with nothing else to use picks a bush, else drinks the water the survivor stands in.
+  death.onUse = (c) => void (harvest?.pick(c) || use.drink(c));
   if (harvest) {
-    death.onUse = (c) => void harvest.pick(c);
     if (persistence) {
       if (!loaded!.fresh) for (const row of persistence.store.loadBlobs(harvest.tag)) harvest.decode(row.chunk, row.data);
       persistence.blobs.push(harvest);
@@ -933,7 +935,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     for (const c of game.clients) {
       if (!c?.active || c.ent < 0) continue;
       const rec = records.byPid.get(c.pid);
-      if (rec) survival.setSubmerged(rec, world.ents.y[c.ent]! + stanceEye(survivorMove, world.ents.stance[c.ent]!) < world.hf.seaLevel);
+      if (rec) survival.setSubmerged(rec, world.ents.y[c.ent]! + stanceEye(survivorMove, world.ents.stance[c.ent]!) < world.hf.waterAt(world.ents.x[c.ent]!, world.ents.z[c.ent]!));
     }
     deadlines.run(tick, (kind, pid, stamp) => {
       if (kind === DEADLINE_VITALS) survival.due(pid, stamp);
@@ -1041,7 +1043,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   };
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, tribes, voice,
-    use: new Use({ world, game, records, items, survival, buffs }),
+    use,
     online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),

@@ -299,6 +299,9 @@ export class Stations {
     // the map's sea level is not lit.
     if (reg.dry[kind] === 1 && t!.y[ref & 0xffff]! - reg.halfY[kind]! < this.world.hf.seaLevel) return RESULT_DENIED;
     if (this.pile(rec) === 0) return RESULT_SHORT;
+    // A fire under water cannot be lit (ARK's Campfire and Swimming), in the sea or a lake.
+    const slot = ref & 0xffff;
+    if (t!.y[slot]! < this.world.hf.waterAt(t!.x[slot]!, t!.z[slot]!)) return RESULT_INVALID;
     void inv;
     rec.fire = { at: this.world.tick, fuel: 0, cook: 0, due: 0, out: 0 };
     this.world.structs.swap(ref, other);

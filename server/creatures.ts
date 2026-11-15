@@ -370,7 +370,7 @@ export class Creatures {
   /** Whether the eyes of `e`, stepped with `p`, are under water. */
   private under(e: number, p: MoveParams): boolean {
     const ents = this.world.ents;
-    return ents.y[e]! + stanceEye(p, ents.stance[e]!) < this.world.hf.seaLevel;
+    return ents.y[e]! + stanceEye(p, ents.stance[e]!) < this.world.hf.waterAt(ents.x[e]!, ents.z[e]!);
   }
 
   /** Tells Survival when the head of `e` goes under water or comes up, so it loses its oxygen and then drowns as a survivor does. */
@@ -463,7 +463,7 @@ export class Creatures {
     const under = Number.isNaN(top) ? groundAt(world, p, x, z) : GROUND_FREE;
     if (under !== GROUND_FREE && under !== GROUND_WATER) return;
     const mode = under === GROUND_WATER ? MODE_SWIM : MODE_WALK;
-    let to = !Number.isNaN(top) ? top : mode === MODE_SWIM ? world.hf.seaLevel - p.height * FLOAT_SHARE : ground;
+    let to = !Number.isNaN(top) ? top : mode === MODE_SWIM ? world.hf.waterAt(x, z) - p.height * FLOAT_SHARE : ground;
     let tx = x;
     let tz = z;
     if (!placeFree(world, x, to, z, p.radius, p.height)) {

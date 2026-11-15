@@ -651,6 +651,11 @@ export class Build {
     const ey = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!) - py;
     const ez = ents.z[e]! - pz;
     if (ex * ex + ey * ey + ez * ez > REACH * REACH) return RESULT_FAR;
+    // ARK's beds cannot be placed under water (Swimming): the sea's or a lake's.
+    if (reg.isBed[kind] === 1 && py < world.hf.waterAt(px, pz)) {
+      this.ctx.game.sendText(c, TEXT_NOTICE, "A bed cannot be placed under water.");
+      return RESULT_DENIED;
+    }
     if (tooHigh((gx, gz) => world.hf.heightAt(gx, gz), reg, kind, pose)) return RESULT_TOO_HIGH;
     if (obstructed(structs, reg.parts, kind, px, py, pz, pose.yaw) || this.bodyIn(kind, px, py, pz, pose.yaw)) return RESULT_OBSTRUCTED;
     if (this.enemyNear(rec.team, px, pz)) return RESULT_ENEMY_NEAR;

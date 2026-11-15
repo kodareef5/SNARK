@@ -268,7 +268,7 @@ export class Riding {
     const kind = ents.kind[e]!;
     if (world.reg.flies[kind] !== 1) return false;
     if (ents.mode[e] === MODE_SWIM) return true;
-    const sea = world.hf.seaLevel;
+    const sea = world.hf.waterAt(ents.x[e]!, ents.z[e]!);
     return ents.mode[e] === MODE_FLYER && ents.y[e]! <= sea + WET && groundUnder(world.hf, ents.x[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!) < sea;
   }
 }

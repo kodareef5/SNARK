@@ -12,7 +12,7 @@
 //
 //   map.json      { "id": "core:miami", "chunks": [125, 125], "minY": -32, "stepY": 0.00390625, "seaLevel": 0 }
 //                 The id is the map's name to the server, and that of its definition in the content, if it has one.
-//                 A height is minY + value * stepY metres. Without seaLevel the map has no water.
+//                 A height is minY + value * stepY metres. Without seaLevel the map has no sea.
 //   heights.png   16-bit greyscale, a pixel a sample. Or heights.u16: the same values, little-endian, with no header.
 //   tint.png      8-bit greyscale or indexed, a pixel a sample: its palette index (shared/pack/palette.ts).
 //                 Or tint.u8. Without either, index 0 everywhere.
@@ -38,6 +38,11 @@
 //                 DinoCountMultiplier of 1, and a circle, or a box given as "half": [half width, half depth]. Optional.
 //   vehicles.json [{ "kind": "core:compact", "x": 240, "z": 270, "yaw": 90 }]
 //                 Vehicles parked on the ground, owned by nobody: set down once, in a new world, and kept by its save. Optional.
+//   water.json    { "squares": "water.png", "bodies": [{ "name": "Stow Lake", "surface": 86 }] }
+//                 Water standing on its own surface apart from the sea: lakes, ponds, reservoirs, a river's reaches. The
+//                 picture is 16-bit greyscale of 1, 2, 4, 8, 16, 32 or 64 m a pixel, its value the number of the body
+//                 counting from 1, or 0 for the sea's water. A body's water is wherever the ground of one of its squares is
+//                 under its surface, which stands on the heights' lattice. Optional.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -62,7 +67,7 @@ export function describe(file: Uint8Array): string[] {
   const at = (h: number): string => (map.minY + h * map.stepY).toFixed(1);
   const lines = [
     `${map.id}, hash ${map.hash.toString(16).padStart(8, "0")}, ${file.length} bytes (${Bun.gzipSync(file as Uint8Array<ArrayBuffer>).length} compressed)`,
-    `${chunksX} by ${chunksZ} chunks, ${chunksX * CHUNK_SIZE} by ${chunksZ * CHUNK_SIZE} m, ground from ${at(low)} to ${at(high)} m, ${map.seaLevel === -Infinity ? "no water" : `sea at ${map.seaLevel} m`}`,
+    `${chunksX} by ${chunksZ} chunks, ${chunksX * CHUNK_SIZE} by ${chunksZ * CHUNK_SIZE} m, ground from ${at(low)} to ${at(high)} m, ${map.seaLevel === -Infinity ? "no sea" : `sea at ${map.seaLevel} m`}`,
     `${map.statics.length} static pieces`,
     ...map.nodes.map((layer) => {
       if ("first" in layer) return `${layer.kind.length} listed nodes`;
@@ -76,6 +81,13 @@ export function describe(file: Uint8Array): string[] {
     const parked = new Map<string, number>();
     for (const v of map.vehicles) parked.set(v.kind, (parked.get(v.kind) ?? 0) + 1);
     lines.push(`parked vehicles: ${[...parked].map(([id, n]) => `${n} of ${id}`).join(", ")}`);
+  }
+  const w = map.water;
+  if (w) {
+    let squares = 0;
+    for (const b of w.squares) if (b !== 0) squares++;
+    const names = [...new Set(w.bodies.map((b) => b.name).filter((n) => n !== ""))];
+    lines.push(`${w.bodies.length} bodies of water in ${squares} squares of ${w.cell} m over ${w.chunks().length} chunks, surfaces ${Math.min(...w.surface.subarray(1)).toFixed(2)} to ${Math.max(...w.surface.subarray(1)).toFixed(2)} m${names.length > 0 ? `: ${names.join(", ")}` : ""}`);
   }
   const known = registry().index;
   const named = new Set([...map.statics.kinds, ...map.nodes.flatMap((layer) => ("first" in layer ? layer.kinds : "zone" in layer ? layer.zones.flatMap((z) => z.kinds.map(([id]) => id)) : layer.kinds.map(([id]) => id))), ...(map.regions ?? []).map((r) => r.spawns!), ...(map.vehicles ?? []).map((v) => v.kind)]);

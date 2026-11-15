@@ -1139,11 +1139,11 @@ export class Behavior {
     const far = (p.walkSpeed * ticks) / TICK_RATE;
     const [x, z] = [ents.x[e]!, ents.z[e]!];
     const [s, c] = [Math.sin(a), Math.cos(a)];
-    let way = walks && hf.heightAt(x + s * (far / 2), z + c * (far / 2)) > hf.seaLevel + DRY && this.landable(p, x + s * far, z + c * far);
+    let way = walks && hf.heightAt(x + s * (far / 2), z + c * (far / 2)) > hf.waterAt(x + s * (far / 2), z + c * (far / 2)) + DRY && this.landable(p, x + s * far, z + c * far);
     for (let d = STROLL_STEP; way && d < far; d += STROLL_STEP) {
       const [px, pz] = [x + s * d, z + c * d];
       const py = groundUnder(hf, px, pz, p.radius);
-      way = py > hf.seaLevel + DRY && groundAt(this.world, p, px, pz) === GROUND_FREE && openSky(this.world, p.radius, px, py, pz);
+      way = py > hf.waterAt(px, pz) + DRY && groundAt(this.world, p, px, pz) === GROUND_FREE && openSky(this.world, p.radius, px, py, pz);
     }
     this.move[e] = way ? 127 : 0;
     this.look[e] = look;
@@ -1179,7 +1179,7 @@ export class Behavior {
     const ents = this.world.ents;
     const hf = this.world.hf;
     const p = this.reg.move[ents.kind[e]!]!;
-    const wet = hf.heightAt(f.homeX, f.homeZ) <= hf.seaLevel + DRY;
+    const wet = hf.heightAt(f.homeX, f.homeZ) <= hf.waterAt(f.homeX, f.homeZ) + DRY;
     if (!(!wet && this.spot(p, f, f.homeX, f.homeZ, LAND_RANGE)) && !this.spot(p, f, ents.x[e]!, ents.z[e]!, LAND_RANGE) && !(wet && this.shore(e, f) && this.spot(p, f, f.homeX, f.homeZ, LAND_RANGE / 2))) return false;
     f.phase = PHASE_APPROACH;
     f.until = tick + APPROACH_TICKS;
@@ -1213,7 +1213,7 @@ export class Behavior {
     const hf = world.hf;
     if (x < EDGE || z < EDGE || x > hf.sizeX - EDGE || z > hf.sizeZ - EDGE) return false;
     const y = groundUnder(hf, x, z, p.radius);
-    if (y < hf.seaLevel + DRY || world.unloaded?.meets(x, y, z, p.radius, p.height + p.stepUp) || !openSky(world, p.radius, x, y, z)) return false;
+    if (y < hf.waterAt(x, z) + DRY || world.unloaded?.meets(x, y, z, p.radius, p.height + p.stepUp) || !openSky(world, p.radius, x, y, z)) return false;
     // Standing ground there and MARGIN round it, so that coming down a hair off it does not set it on a slide.
     for (let k = 0; k < 5; k++) if (groundAt(world, p, x + (k === 1 ? MARGIN : k === 2 ? -MARGIN : 0), z + (k === 3 ? MARGIN : k === 4 ? -MARGIN : 0)) !== GROUND_FREE) return false;
     return true;
@@ -1227,7 +1227,7 @@ export class Behavior {
       for (let k = 0; k < 16; k++) {
         const x = ents.x[e]! + Math.sin((k * Math.PI) / 8) * d;
         const z = ents.z[e]! + Math.cos((k * Math.PI) / 8) * d;
-        if (x < EDGE || z < EDGE || x > hf.sizeX - EDGE || z > hf.sizeZ - EDGE || hf.heightAt(x, z) <= hf.seaLevel + DRY) continue;
+        if (x < EDGE || z < EDGE || x > hf.sizeX - EDGE || z > hf.sizeZ - EDGE || hf.heightAt(x, z) <= hf.waterAt(x, z) + DRY) continue;
         f.homeX = x;
         f.homeZ = z;
         return true;
@@ -1453,7 +1453,7 @@ export class Behavior {
 
   /**
    * The height of the top of what is under a flyer and ahead of it, at where it is and three points along its course: the
-   * ground, the sea, and the skyline of what is built or grows. It rises at once and falls at FLOOR_FALL a second.
+   * ground, the water, and the skyline of what is built or grows. It rises at once and falls at FLOOR_FALL a second.
    */
   private floorAhead(f: Flight, p: MoveParams, x: number, z: number, yaw: number, ahead: number): number {
     const hf = this.world.hf;
@@ -1463,7 +1463,7 @@ export class Behavior {
     for (let k = 0; k <= 3; k++) {
       const px = x + (s * ahead * k) / 3;
       const pz = z + (c * ahead * k) / 3;
-      top = Math.max(top, groundUnder(hf, px, pz, p.radius), this.sky.at(px, pz));
+      top = Math.max(top, groundUnder(hf, px, pz, p.radius), this.sky.at(px, pz), hf.waterAt(px, pz));
     }
     f.floor = Math.max(top, f.floor - (FLOOR_FALL * STEER_TICKS) / TICK_RATE);
     return f.floor;

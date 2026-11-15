@@ -7,6 +7,7 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { MapZone } from "../../shared/content/defs.ts";
 import type { MapData, MapSpawn, MapStatic, MapVehicle, NodeLayer as Layer } from "../../shared/world/mapfile.ts";
+import { MapWater } from "../../shared/world/water.ts";
 import { readGrey, writeGrey } from "./png.ts";
 
 /** A listed node's place in its chunk is a u16 of this many steps a metre. */
@@ -25,6 +26,7 @@ type Vehicle = Place & { kind: string };
 type Zone = { kinds: Record<string, number>; bare?: number };
 type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string } | { seed: number; perChunk: number; zones: Zone[]; zone: string } | { list: Node[] };
 type Region = { spawns: string; count: number; x: number; z: number; radius?: number; half?: [number, number] };
+type Water = { squares: string; bodies: { name: string; surface: number }[] };
 
 const toYaw = (degrees = 0): number => Math.round((degrees / 360) * YAW_UNITS) & (YAW_UNITS - 1);
 const toDegrees = (yaw: number): number => (yaw * 360) / YAW_UNITS;
@@ -100,6 +102,15 @@ export function readLayers(folder: string): MapData {
   });
   const regions = json<Region[]>("regions.json");
   const vehicles = json<Vehicle[]>("vehicles.json");
+  const lakes = json<Water>("water.json");
+  let water: MapWater | undefined;
+  if (lakes) {
+    const image = readGrey(need(file(lakes.squares), lakes.squares), lakes.squares);
+    const cell = sizeX / image.width;
+    if (image.height * cell !== sizeZ || image.data.BYTES_PER_ELEMENT !== 2) throw new Error(`${lakes.squares} is ${image.width} by ${image.height}, which is not this map at a whole number of metres a pixel in 16 bits`);
+    const bodies = lakes.bodies.map((b) => ({ name: b.name, level: Math.round((b.surface - about.minY) / about.stepY) }));
+    water = MapWater.fromGrid(dims, about.minY, about.stepY, cell, bodies, (image.data as Uint16Array).reverse());
+  }
 
   return {
     id: about.id,
@@ -114,7 +125,15 @@ export function readLayers(folder: string): MapData {
     spawns: need(json<Spawn[]>("spawns.json"), "spawns.json").map((s): MapSpawn => ({ name: s.name, x: s.x, z: s.z, yaw: toYaw(s.yaw) })),
     ...(regions ? { regions: regions.map((r): MapZone => ({ kind: "spawn", spawns: r.spawns, count: r.count, at: [r.x, r.z], ...(r.half ? { half: r.half } : { radius: r.radius ?? 0 }) })) } : {}),
     ...(vehicles ? { vehicles: vehicles.map((v): MapVehicle => ({ kind: v.kind, x: v.x, z: v.z, yaw: toYaw(v.yaw) })) } : {}),
+    ...(water ? { water } : {}),
   };
+}
+
+/** A map's water as the folder holds it: its bodies, and a picture of their squares north up, 16 bits, a body's number a pixel. */
+export function waterLayer(dims: MapData["dims"], minY: number, stepY: number, cell: number, bodies: readonly { name: string; surface: number }[], grid: Uint16Array): { json: string; png: Uint8Array } {
+  const side = (n: number): number => (n * CHUNK_SIZE) / cell;
+  const doc: Water = { squares: "water.png", bodies: bodies.map((b) => ({ name: b.name, surface: Math.round((b.surface - minY) / stepY) * stepY + minY })) };
+  return { json: `{\n  "squares": "water.png",\n  "bodies": [\n${doc.bodies.map((b) => `    ${JSON.stringify(b)}`).join(",\n")}\n  ]\n}\n`, png: writeGrey(side(dims.chunksX), side(dims.chunksZ), grid.slice().reverse()) };
 }
 
 /** Writes the folder `readLayers` reads the same map from. */
@@ -134,6 +153,18 @@ export function writeLayers(map: MapData, folder: string): void {
   put("spawns.json", lines(map.spawns.map((s): Spawn => ({ name: s.name, x: s.x, z: s.z, yaw: toDegrees(s.yaw) }))));
   if (map.vehicles && map.vehicles.length > 0) put("vehicles.json", lines(map.vehicles.map((v): Vehicle => ({ kind: v.kind, x: v.x, z: v.z, yaw: toDegrees(v.yaw) }))));
   if (map.regions && map.regions.length > 0) put("regions.json", lines(map.regions.map((r): Region => ({ spawns: r.spawns!, count: r.count!, x: r.at[0], z: r.at[1], ...(r.half ? { half: [r.half[0], r.half[1]] } : { radius: r.radius! }) }))));
+  const w = map.water;
+  if (w) {
+    const across = (chunksX * CHUNK_SIZE) / w.cell;
+    const grid = new Uint16Array(across * ((chunksZ * CHUNK_SIZE) / w.cell));
+    for (const c of w.chunks()) {
+      const [cx, cz] = [c % chunksX, Math.floor(c / chunksX)];
+      for (let j = 0; j < w.side; j++) for (let i = 0; i < w.side; i++) grid[(cz * w.side + j) * across + cx * w.side + i] = w.squares[w.block[c]! + j * w.side + i]!;
+    }
+    const layer = waterLayer(map.dims, map.minY, map.stepY, w.cell, w.bodies.map((b, k) => ({ name: b.name, surface: w.surface[k + 1]! })), grid);
+    put("water.json", layer.json);
+    put("water.png", layer.png);
+  }
   if (map.nodes.length === 0) return;
   const layers = map.nodes.map((layer, i): NodeLayer => {
     if ("first" in layer) {

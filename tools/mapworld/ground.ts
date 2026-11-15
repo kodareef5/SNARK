@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { cutBridgeWater, pathsOf, readWays } from "./ways.ts";
 import type { Base } from "./base.ts";
 import { makeHeaps, readBuildings, PART_COURT, PART_FLOOR, PART_HEAP, PART_POOL, PART_SPILL, PART_WALL, type Heaps } from "./heaps.ts";
+import { carveLakes, readLakes, type LakeRules, type Lakes } from "./lakes.ts";
 import { blur, distanceField, fbm, fillPolygon, hash3, regions, share } from "./raster.ts";
 
 /** What a sample's ground is, for its colour and for what lives on it. */
@@ -65,6 +66,8 @@ export interface World {
   /** Whether each footprint is raised into a heap of rubble (heaps.ts), the stand-in for block ruins. On unless false. */
   readonly heaps?: boolean;
   readonly containerHeaps?: boolean;
+  /** How the perched lakes are made water standing above the sea (lakes.ts); false leaves them marsh. */
+  readonly lakes?: LakeRules | false;
 }
 
 export interface Ground {
@@ -80,9 +83,12 @@ export interface Ground {
   readonly container: Uint8Array;
   /** Metres from each sample to the nearest real beach. */
   readonly sand: Float32Array;
+  /** The sea's water, 1 a sample. Lakes are in `lakes`. */
   readonly water: Uint8Array;
   readonly gaps: Uint8Array;
   readonly bridges: { standing: number; fords: number; gaps: number; cutSamples: number };
+  /** Water standing above the sea, or null where the map has none. */
+  readonly lakes: Lakes | null;
 }
 
 export function makeGround(base: Base, world: World, log: (line: string) => void): Ground {
@@ -159,6 +165,15 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     height[i] = h;
   }
   log(`ground: land and bed, ${pools} samples of marsh pool`);
+
+  // Lakes above the sea, their beds carved under their own surfaces where the lidar has them flat.
+  const built = base.bytes("buildings");
+  const lakes = readLakes(base, world.lakes, sea, world.minY, world.stepY, dem, (i) => built[i]! > 0);
+  if (lakes) {
+    const deepest = carveLakes(lakes, world.lakes, height, n, cell);
+    const left = lakes.made.filter((m) => m.left);
+    log(`ground: ${lakes.made.length - left.length} lakes as ${lakes.bodies.length} bodies of water, to ${deepest.toFixed(1)} m deep; ${left.length} left marsh${left.map((m) => ` (${m.name || m.id}: ${m.left})`).join("")}`);
+  }
 
   const ways = readWays(base.folder);
   let decks = 0; let fords = 0; let gapCount = 0; let cutSamples = 0;
@@ -344,6 +359,12 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
       surface[i] = h < -7 ? S.CHANNEL : sandy ? S.SHALLOW : h < -3 ? S.DEEP : h < -1.2 ? S.FLAT : S.SHALLOW;
       continue;
     }
+    const lake = lakes ? lakes.body[i]! : 0;
+    if (lake !== 0) {
+      const d = h - lakes!.bodies[lake - 1]!.surface;
+      surface[i] = d < -7 ? S.CHANNEL : d < -3 ? S.DEEP : d < -1.2 ? S.FLAT : S.SHALLOW;
+      continue;
+    }
     if (h < 0) {
       surface[i] = S.POOL;
       continue;
@@ -388,5 +409,5 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     }
   }
   log(`ground: ${Math.round(stacks * 4)} square metres of container stacks`);
-  return { n, height, surface, district, heaps, shore, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples } };
+  return { n, height, surface, district, heaps, shore, container, sand, water, gaps, bridges: { standing: decks, fords, gaps: gapCount, cutSamples }, lakes };
 }
