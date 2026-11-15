@@ -6,6 +6,7 @@
 // pages it shows in devicetext.ts. What only a browser can say comes from the shell (client/shell/device.ts).
 
 import { HumanAnim } from "../../shared/anim/pose.ts";
+import { creatureAnims } from "../../shared/anim/creature.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -348,7 +349,8 @@ export function formatsOf(extensions: readonly string[]): string[] {
 export function deviceScenarios(reg: Registry, pack: Pack): [string, () => string][] {
   const anim = new HumanAnim(pack.clips);
   const rigs = buildRigs(pack.header.rigs, pack.clips);
-  return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(rigs.values())], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
+  const creatures = creatureAnims(reg, (d) => rigs.get(d.mesh)).filter((a) => a !== null);
+  return [["sim", () => simHash(reg)], ["pose", () => poseHash(anim)], ["snap", () => snapHash(reg)], ["creature", () => creatureHash(creatures)], ["tuned", () => tunedHash(reg)], ["hull", () => hullHash(reg)], ["node", () => nodeHash(reg)]];
 }
 
 /** What a step shows. The pieces are the server's to build; the rest is added on the page. */
@@ -620,7 +622,7 @@ export class DeviceRun {
   /** The self-check's probes that are on this screen, read off the picture of the default tier once it has settled. A narrow screen leaves the slope out. */
   private probes(read: (sx: number, sy: number) => [number, number, number]): boolean {
     const { app, reg, pack, hf } = this.side;
-    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true).filter((p) => p.sx >= 0 && p.sx < 1 && p.sy >= 0 && p.sy < 1);
+    const shown = provingProbes(app.cam, reg, pack.palette, SKY_COLOR, hf, true, app.scene!.packet).filter((p) => p.sx >= 0 && p.sx < 1 && p.sy >= 0 && p.sy < 1);
     this.report.probes = shown.map((p) => {
       const got = read(p.sx, p.sy);
       return { name: p.name, ok: probePasses(p, got[0], got[1], got[2]), expected: p.rgb, got };

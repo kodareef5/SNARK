@@ -1,8 +1,9 @@
 // Meshes drawn with materials: the lighting of client/core/render/surface.ts, and the software rasterizer drawing it.
 import { expect, test } from "bun:test";
-import { DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_TWO_SIDED } from "../../client/core/render/packet.ts";
-import { AMBIENT, DIFFUSE } from "../../client/core/render/shading.ts";
-import { DIELECTRIC, NEUTRAL, SKY, SUN, SURFACE_VERTEX, dyed, lit, linearToSrgb, skyShare, srgbToLinear, surfaceFragment } from "../../client/core/render/surface.ts";
+import { DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_TWO_SIDED, FRAME, FRAME_FLOATS } from "../../client/core/render/packet.ts";
+import { AMBIENT } from "../../client/core/render/shading.ts";
+import { SKY_GLSL } from "../../client/core/render/sky.ts";
+import { DIELECTRIC, DOME_VERTEX, KNEE, NEUTRAL, SMOOTHEST, SURFACE_VERTEX, domeFragment, dyed, lit, linearToSrgb, skyShare, srgbToLinear, surfaceFragment } from "../../client/core/render/surface.ts";
 import { buildRig } from "../../shared/anim/rigs.ts";
 import { quatAxis } from "../../shared/math/quat.ts";
 import { describePack } from "../../shared/pack/manifest.ts";
@@ -12,7 +13,7 @@ import { Rng } from "../../shared/rng.ts";
 import { packedMips } from "../../tools/pack/image.ts";
 import { buildPack, type SourceMesh } from "../../tools/pack/write.ts";
 import { PICK_ENTITY, PICK_SKY } from "../../tools/snap/raster.ts";
-import { Stage, picture, squareMesh } from "../fixtures/stage.ts";
+import { Stage, evenSky, picture, squareMesh } from "../fixtures/stage.ts";
 import { TUBE, TUBE_RIG, tubeClips, tubeMesh, tubePack, tubePictures } from "../fixtures/textured.ts";
 
 const W = 160;
@@ -57,40 +58,35 @@ function apart(a: ArrayLike<number>, b: ArrayLike<number>): number {
   return most;
 }
 
-test("the sun and the sky are as strong as makes a mid-grey rough surface the flat renderer's grey, in the sun and out of it", () => {
-  // The flat renderer shows a colour at AMBIENT of its display value out of the sun, and at AMBIENT + DIFFUSE facing it.
-  const grey = 128 / 255;
-  const albedo = srgbToLinear(grey);
-  const shaded = srgbToLinear(AMBIENT * grey);
-  const sunlit = srgbToLinear((AMBIENT + DIFFUSE) * grey);
+test("under a sky as even as low poly's, a mid-grey rough surface is the flat renderer's grey in the sun and out of it, drawn flat or with materials", () => {
   // Seen and lit head on, a fully rough surface that is not metal sends back, besides its colour, DIELECTRIC of the
   // sun through a GGX of width 1 (1 / pi) and Smith's term (1 / 4), and of the sky the share its highlight takes,
-  // which there is DIELECTRIC * (1 - ln 2). Out of the sun: SKY * ofSky = shaded. Facing it: that and SUN * ofSun = sunlit.
-  const ofSun = albedo + DIELECTRIC / 4;
-  const ofSky = albedo + DIELECTRIC * (1 - Math.log(2));
+  // which there is DIELECTRIC * (1 - ln 2). The stage's even sky is solved from those (D155).
   expect(skyShare(DIELECTRIC, 1, 1)).toBeCloseTo(DIELECTRIC * (1 - Math.log(2)), 12);
-  expect(SKY).toBe(Math.round((shaded / ofSky) * 1e4) / 1e4);
-  expect(SUN).toBe(Math.round(((sunlit - shaded) / ofSun) * 1e4) / 1e4);
-
-  // The functions agree, whatever colour the sky is: a rough highlight takes the sky's light as white.
-  const out = [0, 0, 0];
+  const frame = new Float32Array(FRAME_FLOATS);
   const front = [0, 0, 1];
-  for (const sky of [[0.3, 0.5, 0.8], [0, 0, 0]]) {
-    lit(out, [albedo, albedo, albedo], [1, 1, 0], front, front, front, sky);
-    for (const c of out) expect(linearToSrgb(c) * 255).toBeCloseTo(128, 1);
-    lit(out, [albedo, albedo, albedo], [1, 1, 0], front, front, [0, 0, -1], sky);
-    for (const c of out) expect(linearToSrgb(c) * 255).toBeCloseTo(AMBIENT * 128, 1);
+  const albedo = srgbToLinear(128 / 255);
+  const out = [0, 0, 0];
+  // What the sky mirrors does not reach a fully rough highlight.
+  for (const mirrored of [[0.3, 0.5, 0.8], [0, 0, 0]]) {
+    for (const [sun, byte] of [[front, 128], [[0, 0, -1], AMBIENT * 128]] as const) {
+      evenSky(frame, sun);
+      lit(out, [albedo, albedo, albedo], [1, 1, 0], front, front, frame, mirrored);
+      for (const c of out) expect(linearToSrgb(c) * 255).toBeCloseTo(byte, 1);
+    }
   }
+  expect([frame[FRAME.sunColor], frame[FRAME.skyAbove]].map((v) => Math.round(v! * 1e4) / 1e4)).toEqual([0.6814, 0.2715]);
 
-  // Drawn: a square in palette grey, and the same square with a base colour of that grey and no other map.
+  // Drawn: a square in palette grey by FLAT and by LIT, and the same square with a base colour of that grey and no other map.
   const stage = facing(packOf(squareMesh("test:grey", 1, ["base"])), 1, 1.2);
-  const draw = (flat: boolean, sun: readonly number[], night: boolean): Uint8ClampedArray => {
+  const draw = (flat: boolean, sun: readonly number[], night: boolean, lit = true): Uint8ClampedArray => {
     stage.sun = [...sun];
     stage.begin();
+    const p = stage.packet;
+    p.lit = lit;
     if (night) {
       // A dim day, and fog that is a fifth of the way to hiding the square.
-      const p = stage.packet;
-      [p.light, p.fogStart, p.fogEnd] = [0.3, 0.5, 2];
+      [p.light, p.frame[FRAME.exposure], p.fogStart, p.fogEnd] = [0.3, 0.3, 0.5, 2];
       for (let k = 0; k < 3; k++) p.sky[k]! *= p.light;
     }
     stage.texture(0, "base", dot(128, 128, 128, 255));
@@ -99,19 +95,23 @@ test("the sun and the sky are as strong as makes a mid-grey rough surface the fl
   };
   const middle = ((H / 2) * W + W / 2) * 4;
   for (const [sun, byte] of [[[0, 0, 1], 128], [[0, 0, -1], 70]] as const) {
-    const [flat, textured] = [draw(true, sun, false), draw(false, sun, false)];
-    expect([...flat.subarray(middle, middle + 3)]).toEqual([byte, byte, byte]);
-    expect([...textured.subarray(middle, middle + 3)]).toEqual([byte, byte, byte]);
+    const [low, flat, textured] = [draw(true, sun, false, false), draw(true, sun, false), draw(false, sun, false)];
+    for (const picture of [low, flat, textured]) expect([...picture.subarray(middle, middle + 3)]).toEqual([byte, byte, byte]);
     expect(stage.raster.pickKind[middle / 4]).toBe(PICK_ENTITY);
-    // Toward its edges the square is seen a little aslant, and reflects a little more of what is in front of it.
+    // Toward its edges the square is seen a little aslant, and reflects a little more of what is in front of it. Low
+    // poly clears to its sky colour where the lit tiers have the dome.
     expect(apart(flat, textured)).toBeLessThanOrEqual(1);
-    // The day's light and the fog are the flat renderer's.
+    const square = (picture: Uint8ClampedArray): number[] => [...picture].filter((_, i) => stage.raster.pickKind[i >> 2] === PICK_ENTITY);
+    expect(apart(square(low), square(flat))).toBeLessThanOrEqual(1);
+    // Exposure dims both alike, and the fog is the flat renderer's.
     expect(apart(draw(true, sun, true), draw(false, sun, true))).toBeLessThanOrEqual(1);
   }
 });
 
 test("the sky's share of a highlight is what the sun's highlight comes to over the whole sky", () => {
   // The sun's light in `lit`, with no colour under the highlight and no sky, summed over every place the sun could be.
+  const frame = new Float32Array(FRAME_FLOATS);
+  frame.fill(1, FRAME.sunColor, FRAME.sunColor + 3);
   const over = (albedo: number, metal: number, rough: number, nv: number): number => {
     const out = [0, 0, 0];
     const eye = [Math.sqrt(1 - nv * nv), 0, nv];
@@ -121,12 +121,13 @@ test("the sky's share of a highlight is what the sun's highlight comes to over t
       for (let j = 0; j < n * 2; j++) {
         const z = (i + 0.5) / n;
         const turn = ((j + 0.5) / n) * Math.PI;
-        lit(out, [albedo, albedo, albedo], [0, rough, metal], [0, 0, 1], eye, [Math.sqrt(1 - z * z) * Math.cos(turn), Math.sqrt(1 - z * z) * Math.sin(turn), z], [0, 0, 0]);
+        frame.set([Math.sqrt(1 - z * z) * Math.cos(turn), Math.sqrt(1 - z * z) * Math.sin(turn), z], FRAME.sun);
+        lit(out, [albedo, albedo, albedo], [0, rough, metal], [0, 0, 1], eye, frame, [0, 0, 0]);
         sum += out[0]!;
       }
     }
-    // Each sample stands for pi / (n n) of the sky, and the sun's strength is in terms of pi of it.
-    return sum / (n * n) / SUN;
+    // Each sample stands for pi / (n n) of the sky, and the sun's light is in terms of pi of it.
+    return sum / (n * n);
   };
   for (const [rough, nv] of [[1, 1], [1, 0.3], [0.7, 0.8], [0.7, 0.25], [0.45, 0.6], [0.45, 0.2]] as const) {
     // A white metal reflects all its highlight. A surface that is not metal reflects DIELECTRIC of it, and more at its edges.
@@ -136,11 +137,13 @@ test("the sky's share of a highlight is what the sun's highlight comes to over t
 });
 
 test("the SURFACE program's text is written from the same numbers", () => {
-  const text = surfaceFragment("bc");
-  for (const n of [SUN, SKY, DIELECTRIC]) expect(text.split(String(n)).length).toBeGreaterThan(1);
+  const text = surfaceFragment("bc", SKY_GLSL);
+  for (const n of [DIELECTRIC, SMOOTHEST, KNEE]) expect(text.split(String(n)).length).toBeGreaterThan(1);
   // A normal's x and y are in red and green, but in the astc variant in the colours and alpha.
-  expect([text.includes("texture(uNormal, vUv).rg;"), surfaceFragment("rgba") === text, surfaceFragment("astc").includes("texture(uNormal, vUv).ra;")]).toEqual([true, true, true]);
-  for (const part of [text, SURFACE_VERTEX]) {
+  expect([text.includes("texture(uNormal, vUv).rg;"), surfaceFragment("rgba", SKY_GLSL) === text, surfaceFragment("astc", SKY_GLSL).includes("texture(uNormal, vUv).ra;")]).toEqual([true, true, true]);
+  // Smooth surfaces mirror the sky table.
+  expect(text.includes(SKY_GLSL)).toBe(true);
+  for (const part of [text, SURFACE_VERTEX, DOME_VERTEX, domeFragment(SKY_GLSL)]) {
     expect(part.startsWith("#version 300 es\n")).toBe(true);
     expect([part.split("{").length, part.split("(").length]).toEqual([part.split("}").length, part.split(")").length]);
   }
@@ -175,7 +178,8 @@ test("a checker on a square seen at an angle lands texel for texel, and a far sq
     tested++;
     expect(bright(i) > (darkest + lightest) / 2).toBe(((Math.floor(x) + Math.floor(y)) & 1) === 1);
   }
-  expect([covered > 6000, tested > 1000, darkest < 0.05, lightest > 0.9]).toEqual([true, true, true, true]);
+  // White lit nearly head on is 0.94 as light, and 0.88 past the tone curve's shoulder.
+  expect([covered > 6000, tested > 1000, darkest < 0.05, lightest > 0.85]).toEqual([true, true, true, true]);
 
   // A texture whose every picture is one grey of its own says which pictures a pixel was drawn from. Seen head on from
   // `back` metres, a pixel of the screen is as wide as `back` times this many pixels of the 64 that cross the square.
@@ -447,7 +451,7 @@ test("a two-sided material shows its back lit as its other side, and a cut-out o
   expect(kinds()).toEqual([PICK_ENTITY, PICK_ENTITY]);
   const cut = draw(DRAW_CUTOUT);
   expect(kinds()).toEqual([PICK_ENTITY, PICK_SKY]);
-  expect([cut[left * 4], cut[right * 4], stage.raster.depth[right]]).toEqual([whole[left * 4]!, Math.round(stage.packet.sky[0]! * 255), Infinity]);
+  expect([cut[left * 4], cut[right * 4], stage.raster.depth[right]]).toEqual([whole[left * 4]!, Math.round(255 * linearToSrgb(stage.packet.frame[FRAME.skyAbove]!)), Infinity]);
   // From behind there is nothing, unless both faces show. Then the back faces the sun there, and is the lit grey.
   draw(DRAW_CUTOUT, true);
   expect(kinds()).toEqual([PICK_SKY, PICK_SKY]);

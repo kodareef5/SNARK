@@ -23,9 +23,9 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials } from "./characters.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
-import { flatLight, skyFrame, theSky } from "./sky.ts";
+import { SKY_SIZE, flatLight, skyFrame, theSky } from "./sky.ts";
 import { TerrainLod } from "./terrain.ts";
 
 export interface RenderWorld {
@@ -228,6 +228,8 @@ export class Scene {
     this.world = world;
     this.terrain = new TerrainLod(world.hf);
     this.assets = new Assets(reg, pack, stream?.manifest, stream?.port);
+    // The renderer holds the sky table on every tier.
+    this.assets.residency.reserve("sky table", SKY_SIZE ** 3 * 4);
     const { table, bind } = this.assets;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
@@ -298,6 +300,7 @@ export class Scene {
     cam.update();
     this.assets.begin(this.now, this.viewHeight, cam.fovY);
     p.tier = this.assets.tier;
+    p.lit = p.tier.lit;
     p.viewProj.set(cam.split > 0 ? cam.ranges[PASS_NEAR] : cam.viewProj);
     p.farViewProj.set(cam.ranges[PASS_FAR]);
     p.nearViewProj.set(cam.nearViewProj);
@@ -311,6 +314,7 @@ export class Scene {
 
     // Under water the view is short and the fog is the water's colour, dimmed.
     const sea = this.world.hf.seaLevel;
+    p.frame[FRAME.eyeHeight] = cam.y - sea;
     if (cam.y < sea) {
       for (let k = 0; k < 3; k++) p.sky[k] = this.deepColor[k]! * p.light;
       p.fogStart = 0;
@@ -426,7 +430,7 @@ export class Scene {
             for (let j = 0; j < remote.count && !found; j++) {
               if (remote.id[j] !== on) continue;
               const ms = this.mountState;
-              ms.unpack(remote.anim[j]!);
+              ms.unpack(remote.anim[j]!, remote.cue[j]!);
               ms.seed = bodySeed(on);
               found = ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at);
               yaw = remote.yaw[j]!;
@@ -471,7 +475,7 @@ export class Scene {
       for (let k = 0; k < n; k++) {
         const i = from[k]!;
         const kind = remote.kind[i]!;
-        st.unpack(remote.anim[i]!);
+        st.unpack(remote.anim[i]!, remote.cue[i]!);
         st.seed = bodySeed(remote.id[i]!);
         const look = remote.hasLook[i] !== 0 ? remote.look : null;
         const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;

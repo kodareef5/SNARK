@@ -5,9 +5,8 @@ import { HUMAN } from "../shared/anim/human.ts";
 import { SLOT_OF_ZONE, ZONE_NONE, ZONE_TORSO } from "../shared/anim/human.ts";
 import { AnimState, bodySeed } from "../shared/anim/pose.ts";
 import { BODY_REACH, BODY_REACH_Y, rayBody } from "../shared/anim/zones.ts";
-import { rayCreature } from "../shared/anim/creature.ts";
+import { rayCreature, type CreatureAnim } from "../shared/anim/creature.ts";
 import { youngScale } from "../shared/sim/breeding.ts";
-import type { Rig } from "../shared/anim/rigs.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
@@ -127,7 +126,7 @@ export class Combat {
   /** A second entity the cast in progress skips: the rider of the creature that is biting. -1 for none. */
   private spare = -1;
   private readonly human: Uint8Array;
-  private readonly rig: (Rig | null)[];
+  private readonly anims: (CreatureAnim | null)[];
   private readonly rng: Rng;
   private readonly dir = [0, 0, 0];
   private readonly st = new AnimState();
@@ -173,7 +172,7 @@ export class Combat {
     this.survivor = reg.index.get("core:survivor")!;
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
     // A creature whose skeleton came with its model is hit on that rig's capsules, as posed.
-    this.rig = reg.defs.map((d) => (d?.type === "species" && d.skeleton !== undefined && d.skeleton !== HUMAN.id ? (ctx.world.rigs.get(d.mesh) ?? null) : null));
+    this.anims = ctx.world.anims;
     this.rng = new Rng(seed);
     this.dose = reg.index.get("core:tranquilized") ?? 0;
   }
@@ -402,7 +401,7 @@ export class Combat {
           const kind = ents.kind[i]!;
           // A sphere that holds the body in any pose. A larger box gets a larger sphere.
           const h = reg.bodyHeight[kind]!;
-          const rig = this.rig[kind];
+          const rig = this.anims[kind]?.rig;
           const r = (rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
           const px = ents.x[i]! - ox;
           const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : rig ? rig.mid : h * 0.5) - oy;
@@ -472,6 +471,7 @@ export class Combat {
       out.z = ents.z[i]!;
       out.yaw = ents.yaw[i]!;
       out.anim = ents.anim[i]!;
+      out.cue = ents.cue[i]!;
       return true;
     }
     // Between the last remembered tick and this one, which is not recorded yet. Blend as a client does.
@@ -484,7 +484,10 @@ export class Combat {
     if (turn > 32768) turn -= 65536;
     else if (turn < -32768) turn += 65536;
     out.yaw = (out.yaw + Math.round(turn * k)) & 0xffff;
-    if (k >= 0.5) out.anim = ents.anim[i]!;
+    if (k >= 0.5) {
+      out.anim = ents.anim[i]!;
+      out.cue = ents.cue[i]!;
+    }
     return true;
   }
 
@@ -537,16 +540,16 @@ export class Combat {
           this.zone = zone;
           best = i;
         }
-      } else if (this.rig[kind]) {
-        st.unpack(past.anim);
+      } else if (this.anims[kind]) {
+        st.unpack(past.anim, past.cue);
         st.seed = bodySeed(i);
         // A young creature is its kind's shape scaled down about its position. The ray is scaled up about that
         // point instead, and the hit distance is scaled back.
         const size = world.ents.grown[i] !== 0 ? youngScale(reg.birthScale[kind]!, world.ents.span[i]!, world.ents.grown[i]!, tick) : 1;
         const zone =
           size === 1
-            ? rayCreature(this.rig[kind]!, st, tick, reg.runAt[kind]!, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach)
-            : rayCreature(this.rig[kind]!, st, tick, reg.runAt[kind]!, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size);
+            ? rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, rx, ry, rz, ux, uy, uz, reach)
+            : rayCreature(this.anims[kind]!, st, tick, past.x, past.y, past.z, past.yaw, past.x + (rx - past.x) / size, past.y + (ry - past.y) / size, past.z + (rz - past.z) / size, ux, uy, uz, reach / size);
         if (zone !== ZONE_NONE && zoneHit.t * size < reach) {
           this.t = zoneHit.t * size * scale;
           this.zone = zone;

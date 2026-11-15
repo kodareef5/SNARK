@@ -1,11 +1,14 @@
 // The sky on lit tiers: the sun's path, the table the dome, haze and light come from, and the exposure that keeps a grey
 // card as bright as low poly shows it.
 import { expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FRAME as F, FRAME_FLOATS } from "../../client/core/render/packet.ts";
-import { KNEE, cardTakes, SKY_SIZE, aroundOf, domeLight, elevationOf, flatCard, heightOf, hourOfSun, luminance, decodeTexel, encodeTexel, sampleSky, shownSky, skyFrame, trueSun, sunDirection, sunHeight, sunTravel, texelAt, theSky, tone } from "../../client/core/render/sky.ts";
+import { SKY_SIZE, aroundOf, cardTakes, decodeTexel, domeLight, elevationOf, encodeTexel, flatCard, heightOf, hourOfSun, luminance, sampleSky, shownSky, skyFrame, sunDirection, sunHeight, sunTravel, texelAt, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { linearToSrgb } from "../../client/core/render/surface.ts";
 import { SkyBuilder } from "../../tools/sky/build.ts";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { SKY_POINTS, apart, basePoints, tableAt } from "../../tools/sky/fit.ts";
 import { sceneWorld } from "../fixtures/sceneworld.ts";
 
 const sky = theSky();
@@ -147,20 +150,6 @@ test("a texel's bytes hold a colour to within a step on screen, from the dark to
   expect(worst).toBeLessThanOrEqual(1);
 });
 
-test("the tone curve leaves light under its knee and bends smoothly above it", () => {
-  const out = [0, 0, 0];
-  tone([0.5, 0.3, 0.1], out);
-  expect(out).toEqual([0.5, 0.3, 0.1]);
-  const at = (v: number): number => {
-    tone([v, v, v], out);
-    return out[0]!;
-  };
-  expect(at(KNEE + 1e-6)).toBeCloseTo(KNEE, 5);
-  expect((at(KNEE + 1e-4) - at(KNEE)) / 1e-4).toBeCloseTo(1, 2);
-  expect(at(100)).toBeLessThan(1);
-  expect(at(100)).toBeGreaterThan(0.99);
-});
-
 test("on a lit tier the scene fills the frame block's sky for its hour, and on low poly leaves it", () => {
   const w = sceneWorld();
   w.scene.hour = 9.5;
@@ -208,7 +197,8 @@ test("at dusk the dome is brightest low toward fTrueSun, 8 degrees down, and rea
   }
   const toward = (Math.atan2(sun[2]!, sun[0]!) * 180) / Math.PI;
   expect(at[0]!).toBeLessThan(5);
-  expect(Math.abs((((at[1]! - toward) % 360) + 540) % 360 - 180)).toBeLessThan(6);
+  // The glow lies along the horizon either side of the sun, about even for 20 degrees: its brightest is on that stretch.
+  expect(Math.abs((((at[1]! - toward) % 360) + 540) % 360 - 180)).toBeLessThan(25);
   const held = [f[F.sun]!, f[F.sun + 1]!, f[F.sun + 2]!];
   const zenith = [0, 0, 0], wrong = [0, 0, 0];
   domeLight(sky.table, sun, [0, 1, 0], zenith);
@@ -229,4 +219,14 @@ test("at noon a grey card sunlit and seen head on shows 128, and one in its own 
   const shade = cardTakes(n, n, l);
   const shaded = [0, 1, 2].map((k) => ((above[k]! + below[k]!) / 2) * shade.sky * f[F.exposure]!);
   expect(255 * linearToSrgb(luminance(shaded))).toBeCloseTo(70, 0);
+});
+
+test("at each key's hour the dome is within 6 of the accepted key at its four sky points (OKLab times 100), read from the table as the game reads it", () => {
+  const keys = JSON.parse(readFileSync(resolve(import.meta.dir, "../../assets/source/core/sky/keys/points-read.json"), "utf8")).keys as Record<string, { points: Record<string, number[]> }>;
+  let worst = 0;
+  for (const key of basePoints()) {
+    const seen = tableAt(sky, key);
+    for (const p of SKY_POINTS) worst = Math.max(worst, apart(seen[p]!, keys[key.name]!.points[p]!));
+  }
+  expect(worst).toBeLessThanOrEqual(6);
 });

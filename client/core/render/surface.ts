@@ -1,22 +1,16 @@
-// The second way to draw a mesh: with materials. A material's base colour is dyed by the instance's region colours,
-// lit in linear light by the sun and the sky, and shown as the flat renderer shows its colours. The maths is here twice:
-// as functions on numbers, which the software rasterizer runs, and as the GLSL of the SURFACE program, which a WebGL2
-// shell compiles as is. Both are written from the constants below, and the fragment text's functions are named as
+// How the lit tiers light what they draw. A mesh with materials has its base colour dyed by the instance's region
+// colours; a flat draw (LIT) is its palette colour on a fully rough surface that is not metal. Either is lit in linear
+// light by the sun, the moon and the sky as the frame block has them, then exposed, put through the tone curve and
+// shown. The maths is here twice: as functions on numbers, which the software rasterizer runs, and as GLSL, which a
+// WebGL2 shell compiles as is. Both are written from the constants below, and the GLSL's functions are named as
 // their twins here.
 //
-// Directions are in the world and of length 1. Colours are linear, 0 to 1, until `shown`.
+// Directions are in the world and of length 1. Colours are linear until `shown`.
 
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
-import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, type FramePacket } from "./packet.ts";
+import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
 
-/**
- * How strong the sun and the sky's light are. At these a mid-grey surface (128 of 255) that is fully rough and not
- * metal, seen and lit head on, is as bright as the flat renderer draws that grey, in the sun and out of it. A test
- * derives them.
- */
-export const SUN = 0.6814;
-export const SKY = 0.2715;
 /** What a surface that is not metal reflects head on. */
 export const DIELECTRIC = 0.04;
 /** The smoothest a surface is lit as. The sun is a point, and a highlight narrower than this would fall between pixels. */
@@ -29,6 +23,9 @@ const FIT_DULL = 5;
 /** A normal map's x and y are stored with 128 of 255 as 0 and 255 as 1. */
 const BUMP_SCALE = 255 / 127;
 const BUMP_ZERO = 128 / 127;
+/** Where the tone curve begins to bend, and how fast what is above it turns toward white: Khronos PBR Neutral's shoulder, without its toe. */
+export const KNEE = 0.8;
+const WHITEN = 0.15;
 
 /**
  * What a texture a material lacks reads as, in bytes: white, a normal that points straight out (in every variant's
@@ -53,11 +50,6 @@ export function srgbToLinear(s: number): number {
 
 export function linearToSrgb(l: number): number {
   return l <= 0.0031308 ? l * 12.92 : 1.055 * Math.pow(l, 1 / 2.4) - 0.055;
-}
-
-/** The sky's colour as light, before the day's light dims it: what a mirror shows of the sky. The shell sets `uSkyLight` from this. */
-export function skyLight(out: Out, p: FramePacket): void {
-  for (let c = 0; c < 3; c++) out[c] = srgbToLinear(Math.min(p.sky[c]! / Math.max(p.light, 1 / 255), 1));
 }
 
 /**
@@ -108,27 +100,38 @@ export function bumped(out: Out, normal: Numbers, tangent: Numbers, x: number, y
  * `lit` gives the sun. Without Fresnel's part it is exact at roughness 1.
  */
 export function skyShare(f0: number, rough: number, nv: number): number {
+  skyParts(rough, nv);
+  return f0 * parts[0]! + (1 - f0) * parts[1]!;
+}
+
+const parts = new Float64Array(2);
+
+/** `skyShare`'s two parts, which do not hang on `f0`: what a white metal sends, and what is added at the edge. */
+function skyParts(rough: number, nv: number): void {
   const a = rough * rough;
-  const whole = 1 - nv * Math.log(1 + 1 / nv) * Math.pow(a, FIT_ROUGH * rough + FIT_LEAN * (1 - rough) * nv);
-  const edge = Math.pow(1 - nv, 5 - FIT_EDGE * rough) / ((1 + FIT_DULL * a) * (1 + FIT_DULL * a));
-  return f0 * whole + (1 - f0) * edge;
+  parts[0] = 1 - nv * Math.log(1 + 1 / nv) * Math.pow(a, FIT_ROUGH * rough + FIT_LEAN * (1 - rough) * nv);
+  parts[1] = Math.pow(1 - nv, 5 - FIT_EDGE * rough) / ((1 + FIT_DULL * a) * (1 + FIT_DULL * a));
 }
 
 /**
- * The light a pixel sends to the eye. `mro` is occlusion, roughness and metalness, `n` the normal, `v` the way to the
- * eye, `sun` the way to the sun and `sky` what `skyLight` gives. The sun lights by Lambert and a GGX highlight as wide
- * as the roughness squared, shadowed by Smith's term and edged by Schlick's. The sky lights from all round, less where
- * the surface is occluded: evenly and white for the colour under the highlight, and for the highlight in the sky's
- * own colour where the surface is smooth, turning to the same white as it roughens.
+ * The sky's light on a surface whose normal is `up` high, -1 to 1: the frame block's light from above on a surface
+ * facing up and from below on one facing down, mixed by how much of each it faces.
  */
-export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numbers, sun: Numbers, sky: Numbers): void {
-  const rough = Math.max(mro[1]!, SMOOTHEST);
-  const metal = mro[2]!;
-  const a = rough * rough;
-  const a2 = a * a;
-  const nl = Math.max(n[0]! * sun[0]! + n[1]! * sun[1]! + n[2]! * sun[2]!, 0);
-  const nv = Math.min(Math.max(n[0]! * v[0]! + n[1]! * v[1]! + n[2]! * v[2]!, 0.001), 1);
-  const hx = sun[0]! + v[0]!, hy = sun[1]! + v[1]!, hz = sun[2]! + v[2]!;
+export function skyOn(out: Out, frame: Numbers, up: number): void {
+  const t = 0.5 + 0.5 * up;
+  for (let c = 0; c < 3; c++) out[c] = frame[FRAME.skyBelow + c]! * (1 - t) + frame[FRAME.skyAbove + c]! * t;
+}
+
+/**
+ * Adds one light's share: the frame block's direction at `way` and colour at `colour`. Lambert and a GGX highlight as
+ * wide as the roughness squared, shadowed by Smith's term and edged by Schlick's.
+ */
+function direct(out: Out, frame: Numbers, way: number, colour: number, albedo: Numbers, metal: number, a2: number, n: Numbers, v: Numbers, nv: number): void {
+  const lx = frame[way]!, ly = frame[way + 1]!, lz = frame[way + 2]!;
+  const nl = Math.max(n[0]! * lx + n[1]! * ly + n[2]! * lz, 0);
+  // What the shader works out and adds as nothing.
+  if (nl === 0 || frame[colour]! + frame[colour + 1]! + frame[colour + 2]! === 0) return;
+  const hx = lx + v[0]!, hy = ly + v[1]!, hz = lz + v[2]!;
   const hl = Math.max(Math.hypot(hx, hy, hz), 1e-6);
   const nh = Math.min(Math.max((n[0]! * hx + n[1]! * hy + n[2]! * hz) / hl, 0), 1);
   const vh = Math.min(Math.max((v[0]! * hx + v[1]! * hy + v[2]! * hz) / hl, 0), 1);
@@ -137,19 +140,61 @@ export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numb
   const gloss = ((a2 / (d * d)) * 0.5) / (nl * Math.sqrt(nv * nv * (1 - a2) + a2) + nv * Math.sqrt(nl * nl * (1 - a2) + a2));
   const edge = Math.pow(1 - vh, 5);
   for (let c = 0; c < 3; c++) {
-    const diffuse = albedo[c]! * (1 - metal);
     const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
-    const fromSun = SUN * nl * (diffuse + gloss * (f0 + (1 - f0) * edge));
-    const fromSky = SKY * diffuse + skyShare(f0, rough, nv) * (sky[c]! + (SKY - sky[c]!) * a);
-    out[c] = fromSun + mro[0]! * fromSky;
+    out[c]! += frame[colour + c]! * nl * (albedo[c]! * (1 - metal) + gloss * (f0 + (1 - f0) * edge));
   }
 }
 
-/** What is drawn: the light as display values, under the day's light, in the fog `dist` metres off. The last two are the flat renderer's. */
+const sky = new Float64Array(3);
+
+/**
+ * The light a pixel sends to the eye, from the frame block `frame`. `mro` is occlusion, roughness and metalness, `n`
+ * the normal, `v` the way to the eye, and `mirror` the sky's light from where the eye's ray is reflected to. The sun
+ * and the moon each light by `direct`. The sky lights from all round as `skyOn` has it, less where the surface is
+ * occluded: the colour under the highlight, and the highlight itself, which shows `mirror` where the surface is smooth
+ * and turns to the same light as the colour's as it roughens.
+ */
+export function lit(out: Out, albedo: Numbers, mro: Numbers, n: Numbers, v: Numbers, frame: Numbers, mirror: Numbers): void {
+  const rough = Math.max(mro[1]!, SMOOTHEST);
+  const metal = mro[2]!;
+  const a = rough * rough;
+  const nv = Math.min(Math.max(n[0]! * v[0]! + n[1]! * v[1]! + n[2]! * v[2]!, 0.001), 1);
+  skyOn(sky, frame, n[1]!);
+  skyParts(rough, nv);
+  for (let c = 0; c < 3; c++) {
+    const f0 = DIELECTRIC + (albedo[c]! - DIELECTRIC) * metal;
+    out[c] = mro[0]! * (sky[c]! * albedo[c]! * (1 - metal) + (f0 * parts[0]! + (1 - f0) * parts[1]!) * (mirror[c]! * (1 - a) + sky[c]! * a));
+  }
+  direct(out, frame, FRAME.sun, FRAME.sunColor, albedo, metal, a * a, n, v, nv);
+  direct(out, frame, FRAME.moon, FRAME.moonColor, albedo, metal, a * a, n, v, nv);
+}
+
+/**
+ * The tone curve. Light under KNEE is kept as it is. A colour whose brightest channel is over it is brought under 1,
+ * keeping its hue, and turned toward white the further over it was. It meets the line with slope 1 at the knee.
+ */
+export function tone(out: Out, c: Numbers): void {
+  const peak = Math.max(c[0]!, c[1]!, c[2]!);
+  const d = 1 - KNEE;
+  const top = peak <= KNEE ? peak : 1 - (d * d) / (peak + d - KNEE);
+  const white = peak <= KNEE ? 0 : 1 - 1 / (WHITEN * (peak - top) + 1);
+  for (let k = 0; k < 3; k++) {
+    const kept = peak <= KNEE ? c[k]! : (c[k]! * top) / peak;
+    out[k] = kept * (1 - white) + top * white;
+  }
+}
+
+/**
+ * What is drawn: light times the frame's exposure, through the tone curve, clamped and shown as display values, then
+ * in the fog `dist` metres off, which is the flat renderer's.
+ */
 export function shown(out: Out, light: Numbers, dist: number, p: FramePacket): void {
+  const exposure = p.frame[FRAME.exposure]!;
+  for (let c = 0; c < 3; c++) out[c] = light[c]! * exposure;
+  tone(out, out);
   let fog = (dist - p.fogStart) / (p.fogEnd - p.fogStart);
   fog = fog < 0 ? 0 : fog > 1 ? 1 : fog * fog;
-  for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(light[c]!, 0), 1)) * p.light * (1 - fog) + p.sky[c]! * fog;
+  for (let c = 0; c < 3; c++) out[c] = linearToSrgb(Math.min(Math.max(out[c]!, 0), 1)) * (1 - fog) + p.sky[c]! * fog;
 }
 
 /**
@@ -228,14 +273,104 @@ void main() {
   gl_Position = uViewProj * vec4(p, 1.0);
 }`;
 
+/** The light's GLSL, which LIT and SURFACE share: the frame block, the fog's two uniforms, and the twins of `skyShare`, `skyOn`, `direct`, `lit`, `tone` and `shown`. */
+export const LIGHT = `${FRAME_BLOCK}uniform vec3 uSky;
+uniform vec2 uFog;
+vec3 skyShare(vec3 f0, float rough, float nv) {
+  float a = rough * rough;
+  float whole = 1.0 - nv * log(1.0 + 1.0 / nv) * pow(a, ${f(FIT_ROUGH)} * rough + ${f(FIT_LEAN)} * (1.0 - rough) * nv);
+  float edge = pow(1.0 - nv, 5.0 - ${f(FIT_EDGE)} * rough) / ((1.0 + ${f(FIT_DULL)} * a) * (1.0 + ${f(FIT_DULL)} * a));
+  return f0 * whole + (1.0 - f0) * edge;
+}
+vec3 skyOn(float up) {
+  return mix(fSkyBelow.rgb, fSkyAbove.rgb, 0.5 + 0.5 * up);
+}
+vec3 direct(vec3 l, vec3 colour, vec3 albedo, float metal, float a2, vec3 n, vec3 v, float nv) {
+  float nl = max(dot(n, l), 0.0);
+  vec3 h = l + v;
+  h /= max(length(h), 0.000001);
+  float nh = clamp(dot(n, h), 0.0, 1.0);
+  float vh = clamp(dot(v, h), 0.0, 1.0);
+  float d = nh * nh * (a2 - 1.0) + 1.0;
+  float gloss = a2 / (d * d) * 0.5 / (nl * sqrt(nv * nv * (1.0 - a2) + a2) + nv * sqrt(nl * nl * (1.0 - a2) + a2));
+  vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, metal);
+  return colour * nl * (albedo * (1.0 - metal) + gloss * (f0 + (1.0 - f0) * pow(1.0 - vh, 5.0)));
+}
+vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v, vec3 mirrored) {
+  float rough = max(mro.g, ${f(SMOOTHEST)});
+  float a = rough * rough;
+  float nv = clamp(dot(n, v), 0.001, 1.0);
+  vec3 sky = skyOn(n.y);
+  vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, mro.b);
+  vec3 light = mro.r * (sky * albedo * (1.0 - mro.b) + skyShare(f0, rough, nv) * mix(mirrored, sky, a));
+  return light + direct(fSun.xyz, fSunColor.rgb, albedo, mro.b, a * a, n, v, nv) + direct(fMoon.xyz, fMoonColor.rgb, albedo, mro.b, a * a, n, v, nv);
+}
+vec3 tone(vec3 c) {
+  float peak = max(c.r, max(c.g, c.b));
+  if (peak <= ${f(KNEE)}) return c;
+  float d = 1.0 - ${f(KNEE)};
+  float top = 1.0 - d * d / (peak + d - ${f(KNEE)});
+  float white = 1.0 - 1.0 / (${f(WHITEN)} * (peak - top) + 1.0);
+  return mix(c * (top / peak), vec3(top), white);
+}
+vec3 shown(vec3 light, float dist) {
+  vec3 c = clamp(tone(light * fSunColor.w), 0.0, 1.0);
+  c = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
+  float fog = clamp((dist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
+  return mix(c, uSky, fog * fog);
+}
+`;
+
+/**
+ * The sky's light from direction `r` into `out`: the sky table read by `look` (sky.ts domeLight on the table, at
+ * where the sun is, sky.ts trueSun) and scaled to light. It is what a smooth surface mirrors, and the dome. The GLSL
+ * twin is below.
+ */
+export function skyFrom(out: Out, frame: Float32Array, r: Numbers, look: (view: Numbers, out: Out) => void): void {
+  look(r, out);
+  for (let c = 0; c < 3; c++) out[c]! *= frame[FRAME.skyScale]!;
+}
+
+/** `skyFrom` as GLSL, with the sky table on its unit: `sky` is the table's lookup (sky.ts SKY_GLSL). */
+const skyFromText = (sky: string): string => `uniform highp sampler3D uSkyTable;
+${sky}
+vec3 skyFrom(vec3 r) {
+  return skyLook(uSkyTable, r, fTrueSun) * fSkyScale;
+}
+`;
+
+/**
+ * The dome where nothing else is drawn: the sky table in the view's direction, as light shown as surfaces are, at no
+ * distance. Under water, where the frame's eye is below the sea, it is the fog's colour, as low poly clears to.
+ */
+export const DOME_VERTEX = `#version 300 es
+uniform mat4 uViewProj;
+out vec3 vRay;
+void main() {
+  vec2 at = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)) * 2.0 - 1.0;
+  vRay = inverse(mat3(uViewProj[0].xyw, uViewProj[1].xyw, uViewProj[2].xyw)) * vec3(at, 1.0);
+  gl_Position = vec4(at, 1.0, 1.0);
+}`;
+
+export function domeFragment(sky: string): string {
+  return `#version 300 es
+precision highp float;
+in vec3 vRay;
+out vec4 o;
+${LIGHT}${skyFromText(sky)}void main() {
+  o = vec4(fHaze.z < 0.0 ? uSky : shown(skyFrom(normalize(vRay)), 0.0), 1.0);
+}`;
+}
+
 /**
  * The fragment text for a variant of the textures: `astc` keeps a normal's x in the colour channels and its y in
  * alpha, the others keep them in red and green. The base colour is an sRGB texture, so it is sampled as light, and
  * every texture repeats, since a material may run along a mesh more than once. `uCutoff` is the material's for a
  * cut-out draw and 0 for any other. A cut-out draw writes as alpha how much of the pixel lies on the solid side, for
  * alpha to coverage to take as samples. The rasterizer tests each pixel's middle, so the two differ only along a cut.
+ * `sky` is the sky table's lookup, which smooth surfaces mirror.
  */
-export function surfaceFragment(format: TextureFormat): string {
+export function surfaceFragment(format: TextureFormat, sky: string): string {
   return `#version 300 es
 precision highp float;
 precision highp sampler2D;
@@ -244,47 +379,16 @@ in vec4 vTangent;
 in vec2 vUv;
 flat in mat3 vDye, vDye2;
 uniform sampler2D uBase, uNormal, uMro, uMask, uMask2;
-uniform vec3 uSun, uSky, uSkyLight, uTint;
-uniform vec2 uFog;
-uniform float uLight, uCutoff;
+uniform vec3 uTint;
+uniform float uCutoff;
 out vec4 o;
-vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
+${LIGHT}${skyFromText(sky)}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
   return base * uTint * (1.0 - dot(mask + mask2, vec3(1.0)) + vDye * mask + vDye2 * mask2);
 }
 vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
-}
-vec3 skyShare(vec3 f0, float rough, float nv) {
-  float a = rough * rough;
-  float whole = 1.0 - nv * log(1.0 + 1.0 / nv) * pow(a, ${f(FIT_ROUGH)} * rough + ${f(FIT_LEAN)} * (1.0 - rough) * nv);
-  float edge = pow(1.0 - nv, 5.0 - ${f(FIT_EDGE)} * rough) / ((1.0 + ${f(FIT_DULL)} * a) * (1.0 + ${f(FIT_DULL)} * a));
-  return f0 * whole + (1.0 - f0) * edge;
-}
-vec3 lit(vec3 albedo, vec3 mro, vec3 n, vec3 v) {
-  float rough = max(mro.g, ${f(SMOOTHEST)});
-  float a = rough * rough;
-  float a2 = a * a;
-  float nl = max(dot(n, uSun), 0.0);
-  float nv = clamp(dot(n, v), 0.001, 1.0);
-  vec3 h = uSun + v;
-  h /= max(length(h), 0.000001);
-  float nh = clamp(dot(n, h), 0.0, 1.0);
-  float vh = clamp(dot(v, h), 0.0, 1.0);
-  float d = nh * nh * (a2 - 1.0) + 1.0;
-  float gloss = a2 / (d * d) * 0.5 / (nl * sqrt(nv * nv * (1.0 - a2) + a2) + nv * sqrt(nl * nl * (1.0 - a2) + a2));
-  vec3 diffuse = albedo * (1.0 - mro.b);
-  vec3 f0 = mix(vec3(${f(DIELECTRIC)}), albedo, mro.b);
-  vec3 fromSun = ${f(SUN)} * nl * (diffuse + gloss * (f0 + (1.0 - f0) * pow(1.0 - vh, 5.0)));
-  vec3 fromSky = ${f(SKY)} * diffuse + skyShare(f0, rough, nv) * mix(uSkyLight, vec3(${f(SKY)}), a);
-  return fromSun + mro.r * fromSky;
-}
-vec3 shown(vec3 light, float dist) {
-  vec3 c = clamp(light, 0.0, 1.0);
-  c = mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c));
-  float fog = clamp((dist - uFog.x) / (uFog.y - uFog.x), 0.0, 1.0);
-  return mix(c * uLight, uSky, fog * fog);
 }
 void main() {
   vec4 base = texture(uBase, vUv);
@@ -294,6 +398,8 @@ void main() {
   vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
   float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;
   if (cover == 0.0) discard;
-  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, bumped(bump), -normalize(vRel)), length(vRel)), cover);
+  vec3 v = -normalize(vRel);
+  vec3 n = bumped(bump);
+  o = vec4(shown(lit(dyed(base.rgb, mask, mask2), mro, n, v, skyFrom(reflect(-v, n))), length(vRel)), cover);
 }`;
 }

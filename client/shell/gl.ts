@@ -1,10 +1,11 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
-import { NEUTRAL, skinMode, skyLight } from "../core/render/surface.ts";
+import { SKY_SIZE, theSky } from "../core/render/sky.ts";
+import { NEUTRAL, skinMode } from "../core/render/surface.ts";
 import { coarseGround, groundSize, type GroundSize } from "../core/render/terrain.ts";
 import type { AssetUpload } from "../core/assets/residency.ts";
 import { DEFAULT_TIER, tierOf, type Tier } from "../core/assets/tiers.ts";
@@ -84,7 +85,8 @@ export class GlRenderer {
   private tileBuffer!: WebGLBuffer;
   private tileIndexCount = 0;
   private readonly tileData = new Float32Array(1024 * 6);
-  private readonly sky = new Float32Array(3);
+  /** The frame block, bound to the point every lit program's block "Frame" reads. */
+  private frame!: WebGLBuffer;
   private readonly pack: Pack;
   private readonly hf: Heightfield;
   /** The terrain's pictures (terrain.ts), and the two copies of the window's pair, heights then tints. */
@@ -147,10 +149,17 @@ export class GlRenderer {
     this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
     // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit.
     texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
+    // The sky table, filtered between its texels and held at its edges, stays bound on its unit too.
+    gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
+    gl.bindTexture(gl.TEXTURE_3D, gl.createTexture());
+    gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, SKY_SIZE, SKY_SIZE, SKY_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, theSky().table);
+    for (const [name, value] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_3D, name, value);
 
     // A lost context took every level with it. Core sends them again.
     this.levels.clear();
     this.transient = gl.createBuffer()!;
+    gl.bindBufferBase(gl.UNIFORM_BUFFER, 0, (this.frame = gl.createBuffer()!));
+    gl.bufferData(gl.UNIFORM_BUFFER, FRAME_FLOATS * 4, gl.DYNAMIC_DRAW);
 
     // The terrain is one 32 x 32 grid with a skirt, drawn once per tile.
     const row = TILE_QUADS + 1;
@@ -339,7 +348,6 @@ export class GlRenderer {
     gl.uniform1f(prog.uniform("uFrom"), this.from);
     gl.uniform3fv(prog.uniform("uSun"), p.sun);
     gl.uniform3fv(prog.uniform("uSky"), p.sky);
-    gl.uniform3fv(prog.uniform("uSkyLight"), this.sky);
     gl.uniform2f(prog.uniform("uFog"), p.fogStart, p.fogEnd);
     // Checker parity repeats every 16 m, so a small remainder keeps float precision.
     gl.uniform3f(prog.uniform("uCamMod"), p.camX % 16, p.camY % 16, p.camZ % 16);
@@ -416,7 +424,8 @@ export class GlRenderer {
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(p.sky[0]!, p.sky[1]!, p.sky[2]!, 1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    skyLight(this.sky, p);
+    gl.bindBuffer(gl.UNIFORM_BUFFER, this.frame);
+    gl.bufferSubData(gl.UNIFORM_BUFFER, 0, p.frame);
 
     // Resource changes first, in order.
     for (const u of p.uploads) {
@@ -508,6 +517,16 @@ export class GlRenderer {
       this.set(false, true, false);
       gl.clear(gl.DEPTH_BUFFER_BIT);
     }
+    // A lit frame's dome goes at the far end of the view, where the opaque steps left it.
+    if (s === STEP_FAR_SEE && p.lit) {
+      this.use("sky", p);
+      this.set(false, false, false);
+      gl.bindVertexArray(null);
+      gl.depthFunc(gl.LEQUAL);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.depthFunc(gl.LESS);
+      this.drawCalls++;
+    }
     if (s > STEP_FAR) return;
     // A draw for the tiles that read each pair of pictures: corner and stride in its samples, and its spacing and size.
     const [data, g] = [this.tileData, this.ground];
@@ -558,6 +577,8 @@ export class GlRenderer {
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error("program: " + gl.getProgramInfoLog(program));
     gl.useProgram(program);
     for (const name in text.samplers) gl.uniform1i(gl.getUniformLocation(program, name), text.samplers[name]!);
+    const block = gl.getUniformBlockIndex(program, "Frame");
+    if (block !== gl.INVALID_INDEX) gl.uniformBlockBinding(program, block, 0);
     const cache = new Map<string, WebGLUniformLocation | null>();
     return {
       program,

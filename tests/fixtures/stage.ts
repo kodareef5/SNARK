@@ -3,7 +3,10 @@
 
 import { Camera } from "../../client/core/render/camera.ts";
 import { writeBones } from "../../client/core/render/characters.ts";
-import { BONE_FLOATS, DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { BONE_FLOATS, DRAW_CUTOUT, DRAW_PLAIN, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { AMBIENT, DIFFUSE } from "../../client/core/render/shading.ts";
+import { SKY_SIZE, decodeTexel, encodeTexel } from "../../client/core/render/sky.ts";
+import { DIELECTRIC, skyShare, srgbToLinear } from "../../client/core/render/surface.ts";
 import type { Rig } from "../../shared/anim/rigs.ts";
 import { solve } from "../../shared/anim/skeleton.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
@@ -19,6 +22,39 @@ import { Rasterizer } from "../../tools/snap/raster.ts";
 const packet = new FramePacket();
 const writer = new InstanceWriter(packet.transient);
 const ground = new Heightfield({ chunksX: 1, chunksZ: 1 }, TERRAIN_CELL, -32, 1 / 256);
+
+/**
+ * A frame block lit by a white sun from `sun` and a white sky as strong on every side, at exposure 1 and with no
+ * moon. The sun and the sky are as strong as makes a mid-grey surface that is fully rough and not metal, seen and lit
+ * head on, the flat renderer's grey in the sun and out of it (D155): as `lit` lights it, it takes DIELECTRIC / 4 of
+ * the sun besides its colour (a GGX of width 1 and Smith's term), and of the sky the share its highlight takes. Drawn
+ * with EVEN_TABLE, a smooth surface mirrors the same light, and the dome is that light too.
+ */
+export function evenSky(frame: Float32Array, sun: ArrayLike<number>): void {
+  const grey = 128 / 255;
+  const albedo = srgbToLinear(grey);
+  const shaded = srgbToLinear(AMBIENT * grey);
+  const sky = shaded / (albedo + skyShare(DIELECTRIC, 1, 1));
+  const light = (srgbToLinear((AMBIENT + DIFFUSE) * grey) - shaded) / (albedo + DIELECTRIC / 4);
+  frame.fill(0, 0, FRAME.ends);
+  for (let k = 0; k < 3; k++) {
+    frame[FRAME.sun + k] = sun[k]!;
+    frame[FRAME.moon + k] = -sun[k]!;
+    frame[FRAME.sunColor + k] = light;
+    frame[FRAME.skyAbove + k] = frame[FRAME.skyBelow + k] = sky;
+  }
+  frame[FRAME.casting] = frame[FRAME.exposure] = 1;
+  frame[FRAME.skyScale] = sky / EVEN_UNIT;
+  frame[FRAME.eyeHeight] = 1;
+}
+
+/** A sky table that is one white everywhere, and how bright that white decodes. */
+export const EVEN_TABLE = new Uint8Array(SKY_SIZE ** 3 * 4);
+encodeTexel([1, 1, 1], EVEN_TABLE, 0);
+for (let at = 4; at < EVEN_TABLE.length; at += 4) EVEN_TABLE.copyWithin(at, 0, 4);
+const decoded = [0, 0, 0];
+decodeTexel(EVEN_TABLE[0]!, EVEN_TABLE[1]!, EVEN_TABLE[2]!, EVEN_TABLE[3]!, decoded);
+const EVEN_UNIT = decoded[0]!;
 
 export interface Placed {
   x: number;
@@ -49,10 +85,11 @@ export class Stage {
   constructor(pack: Pack, width = 160, height = 90, manifest: Manifest | null = null) {
     this.pack = pack;
     this.raster = new Rasterizer(width, height, pack, ground, manifest);
+    this.raster.skyTable = EVEN_TABLE;
     this.cam.aspect = width / height;
   }
 
-  /** Starts a frame at noon, with no fog, seen from the camera as it now is. */
+  /** Starts a lit frame under an even sky (`evenSky`), with no fog, seen from the camera as it now is. */
   begin(): void {
     const p = packet;
     this.cam.update();
@@ -68,6 +105,8 @@ export class Stage {
     p.light = 1;
     p.fogStart = 1e6;
     p.fogEnd = 2e6;
+    p.lit = true;
+    evenSky(p.frame, p.sun);
   }
 
   /** Sends a whole texture to the card in this frame: its mips as RGBA8, smallest first, as the image tools make them. */

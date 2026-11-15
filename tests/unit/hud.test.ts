@@ -105,8 +105,8 @@ test("the self-check probes pass on the reference renderer and fail on a wrong p
   r.x[0] = PROBE_BODY.x;
   r.z[0] = PROBE_BODY.z;
   r.y[0] = view.hf.heightAt(PROBE_BODY.x, PROBE_BODY.z);
-  view.render();
-  const probes = provingProbes(view.cam, view.reg, view.pack.palette, SKY_COLOR, view.hf, true);
+  const packet = view.render();
+  const probes = provingProbes(view.cam, view.reg, view.pack.palette, SKY_COLOR, view.hf, true, packet);
   expect(probes.map((p) => p.name)).toEqual(["sky", "plaza", "block", "slope", "creature", "body"]);
   for (const p of probes) {
     const o = (Math.floor(p.sy * H) * W + Math.floor(p.sx * W)) * 4;

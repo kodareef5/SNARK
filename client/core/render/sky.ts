@@ -6,10 +6,10 @@
 // texture sampled with linear filtering. Beside it, per sun height, the light of the sun, the moon and the sky above
 // and below. Low poly keeps its own light, `flatLight`, and its own sky colour.
 
-import { FRAME } from "./packet.ts";
+import { FRAME, FRAME_FLOATS } from "./packet.ts";
 import { AMBIENT, DIFFUSE, NIGHT_LIGHT } from "./shading.ts";
 import { SKY_LIGHTS, SKY_TABLE } from "./skytable.ts";
-import { SKY, SUN, linearToSrgb, lit, srgbToLinear } from "./surface.ts";
+import { linearToSrgb, lit, srgbToLinear, tone } from "./surface.ts";
 
 /** How far the sun's path leans toward +Z: its noon height is atan(1 / 0.43), low poly's, 66.7 degrees. */
 const TILT = Math.atan(0.43);
@@ -19,8 +19,6 @@ export const SUN_STEP = 0.05;
 export const SUN_TOP = (Math.asin(Math.cos(TILT)) * 180) / Math.PI;
 /** Texels along each side of the table. */
 export const SKY_SIZE = 32;
-/** Where the tone curve begins to bend. */
-export const KNEE = 0.8;
 /**
  * Numbers per sun height beside the table: the light of the sun, of the moon, of the sky above and below, three each,
  * in the table's units, so that between heights land and dome blend alike; then the light one unit stands for.
@@ -260,25 +258,9 @@ export function theSky(): Sky {
   return (made ??= { table: fromBase64(SKY_TABLE), lights: Float32Array.from(SKY_LIGHTS) });
 }
 
-/**
- * The tone curve: Khronos PBR Neutral's shoulder with its knee at KNEE and no toe. Light under the knee is left as it
- * is; a colour whose brightest channel is above it is brought under 1, keeping its hue, and toward white as it climbs.
- */
-export function tone(c: Vec, out: Float32Array | Float64Array | number[]): void {
-  const peak = Math.max(c[0]!, c[1]!, c[2]!);
-  if (peak <= KNEE) {
-    for (let k = 0; k < 3; k++) out[k] = c[k]!;
-    return;
-  }
-  const d = 1 - KNEE;
-  const top = 1 - (d * d) / (peak + d - KNEE);
-  const white = 1 - 1 / (0.15 * (peak - top) + 1);
-  for (let k = 0; k < 3; k++) out[k] = (c[k]! * top) / peak + (top - (c[k]! * top) / peak) * white;
-}
-
 /** Light after exposure as the screen shows it, 0 to 255: the tone curve, then sRGB. */
 export function shownSky(c: Vec, out: Float32Array | Float64Array | number[]): void {
-  tone(c, out);
+  tone(out, c);
   for (let k = 0; k < 3; k++) out[k] = 255 * linearToSrgb(Math.max(0, Math.min(1, out[k]!)));
 }
 
@@ -318,16 +300,25 @@ const light = new Float64Array(12);
 const UP = [0, 1, 0];
 const takes = new Float64Array(3);
 const GREY = [CARD, CARD, CARD];
+/** A frame block of one light: 1 from the way `cardTakes` is given, or a sky of 1 from every side. */
+const unit = new Float32Array(FRAME_FLOATS);
 
 /**
  * What a grey 128 card, fully rough and not metal, sends to the eye as surface.ts's `lit` lights it: per unit of a
  * light's strength from `l`, and per unit of the sky's light on it. `n` is its normal and `v` the way to the eye.
  */
 export function cardTakes(n: Vec, v: Vec, l: Vec): { light: number; sky: number } {
-  lit(takes, GREY, [0, 1, 0], n, v, l, UP);
-  const light = takes[0]! / SUN;
-  lit(takes, GREY, [1, 1, 0], n, v, l, UP);
-  return { light, sky: (takes[0]! - light * SUN) / SKY };
+  unit.fill(0);
+  unit.set([l[0]!, l[1]!, l[2]!], FRAME.sun);
+  unit.fill(1, FRAME.sunColor, FRAME.sunColor + 3);
+  // A fully rough highlight mirrors nothing, so what the sky shows in the reflected direction does not matter.
+  lit(takes, GREY, [0, 1, 0], n, v, unit, UP);
+  const light = takes[0]!;
+  unit.fill(0, FRAME.sunColor, FRAME.sunColor + 3);
+  unit.fill(1, FRAME.skyAbove, FRAME.skyAbove + 3);
+  unit.fill(1, FRAME.skyBelow, FRAME.skyBelow + 3);
+  lit(takes, GREY, [1, 1, 0], n, v, unit, UP);
+  return { light, sky: takes[0]! };
 }
 
 /**

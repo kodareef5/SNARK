@@ -42,7 +42,7 @@ function world(slope: number) {
 function dying(rig: Rig, frame: number): Solved {
   const pose = new Pose(rig.bones);
   const out = new Solved(rig.bones);
-  sampleClip(rig.death!, frame, pose);
+  sampleClip(rig.clips.get("death")!, frame, pose);
   solve(rig, pose, out);
   return out;
 }

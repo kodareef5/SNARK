@@ -88,6 +88,8 @@ const GAP = 4;
 const EASE = 0.12;
 /** Metres a frame beyond which the body jumped and did not walk there. */
 const JUMP = 3;
+/** Radians a second under which a turn on the spot has all but stopped, so the next begins anew. */
+const SPIN_ANEW = 0.2;
 
 /** What a client keeps of a body between frames to play its gait by the ground it covers. */
 export class Gait {
@@ -104,6 +106,12 @@ export class Gait {
   yaw = 0;
   /** The tick it was last moved to. NaN before it is first seen. */
   tick = Number.NaN;
+  /**
+   * Turning where it stands: radians a second, eased, + to its left, and radians turned since it began, for a clip that
+   * turns on the spot. A turn begins again from 0 once the last has all but stopped, or the other way.
+   */
+  spin = 0;
+  turned = 0;
 
   /**
    * Moves to the body's place at `tick` and returns the metres its feet covered, at the size it was made, or -1 when it
@@ -123,13 +131,20 @@ export class Gait {
     this.tick = tick;
     if (!(dt > 0 && dt <= GAP)) {
       this.speed = speed / size;
+      this.spin = this.turned = 0;
       return -1;
     }
     turn -= Math.floor((turn + PI) / TAU) * TAU;
     const arc = (turn < 0 ? -turn : turn) * radius;
     const moved = Math.sqrt(dx * dx + dz * dz) / size;
-    speed /= size;
     const seconds = dt / TICK_RATE;
+    const spin = speed > 0 ? 0 : turn / seconds;
+    if (spin !== 0) {
+      if (this.spin * spin <= 0 || Math.abs(this.spin) < SPIN_ANEW) this.turned = 0;
+      this.turned += turn;
+    }
+    this.spin += ((spin - this.spin) * seconds) / (EASE + seconds);
+    speed /= size;
     const want = speed > arc / seconds ? speed : arc / seconds;
     this.speed += ((want - this.speed) * seconds) / (EASE + seconds);
     if (moved * size > JUMP) return 0;
