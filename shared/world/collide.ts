@@ -170,13 +170,16 @@ export function capsuleKind(parts: PartTable, kind: number, sx: number, sy: numb
   return true;
 }
 
-/** Filled by groundUnder: the unit normal of the ground where the body touches it. */
-export const ground = { nx: 0, ny: 1, nz: 0 };
+/**
+ * Filled by groundUnder: the unit normal of the ground where the body touches it, and the upward part of the normal of the most
+ * level face there, the normal's own on a face, as `push.up` is of a part.
+ */
+export const ground = { nx: 0, ny: 1, nz: 0, up: 1 };
 
 // The last groundUnder call, which movement asks again at the same place several times a substep: its ground, and its x, z, r,
-// answer and normal.
+// answer, normal and most level face.
 let lastHf: Heightfield | null = null;
-const last = new Float64Array([NaN, NaN, NaN, 0, 0, 1, 0]);
+const last = new Float64Array([NaN, NaN, NaN, 0, 0, 1, 0, 1]);
 /** While groundUnder runs, per face under the sphere: the most its plane could hold the centre up, or -Infinity where it misses. */
 let faceTop = new Float64Array(32);
 /** While groundUnder tries edges: the height the sphere's centre must reach so far, and where it touches, from the centre. */
@@ -191,6 +194,7 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
     ground.nx = last[4]!;
     ground.ny = last[5]!;
     ground.nz = last[6]!;
+    ground.up = last[7]!;
     return last[3]!;
   }
   const cell = hf.cell;
@@ -299,6 +303,7 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
   }
   // No edge holds the centre higher than either face beside it could, so edges are tried only when the face that could hold it
   // highest does not, and only those whose faces both could beat the best so far.
+  let faced = best;
   if (!topOn) {
     if (best === -Infinity) {
       // The ground straight under the axis touches the sphere's lowest point, so the centre is at least that high.
@@ -311,6 +316,7 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
     held[1] = cx;
     held[2] = cy;
     held[3] = cz;
+    faced = best;
     const diagonal = cell * Math.SQRT2;
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
@@ -349,7 +355,125 @@ export function groundUnder(hf: Heightfield, x: number, z: number, r: number): n
   last[4] = ground.nx = -cx / r;
   last[5] = ground.ny = -cy / r;
   last[6] = ground.nz = -cz / r;
+  // On an edge or a corner.
+  last[7] = ground.up = best > faced ? levelAt(hf, x + cx, z + cz) : ground.ny;
   return best - r;
+}
+
+/** The upward part of the normal of the most level face with (x, z) on it or on its edge. */
+function levelAt(hf: Heightfield, x: number, z: number): number {
+  const perCell = 1 / hf.cell;
+  const nx = hf.nx;
+  const hts = hf.heights;
+  const rise = hf.stepY * perCell;
+  const fx = x * perCell;
+  const fz = z * perCell;
+  const e = 1e-6;
+  let up = 0;
+  for (let j = Math.max(0, Math.floor(fz - e)), j1 = Math.min(hf.nz - 2, Math.floor(fz + e)); j <= j1; j++) {
+    for (let i = Math.max(0, Math.floor(fx - e)), i1 = Math.min(nx - 2, Math.floor(fx + e)); i <= i1; i++) {
+      const k = j * nx + i;
+      const u = fx - i;
+      const v = fz - j;
+      for (let upper = 0; upper < 2; upper++) {
+        if (upper === 1 ? !(u >= -e && u <= v + e && v <= 1 + e) : !(v >= -e && v <= u + e && u <= 1 + e)) continue;
+        const gx = (upper === 1 ? hts[k + nx + 1]! - hts[k + nx]! : hts[k + 1]! - hts[k]!) * rise;
+        const gz = (upper === 1 ? hts[k + nx]! - hts[k]! : hts[k + nx + 1]! - hts[k + 1]!) * rise;
+        const ny = 1 / Math.sqrt(1 + gx * gx + gz * gz);
+        if (ny > up) up = ny;
+      }
+    }
+  }
+  return up;
+}
+
+/**
+ * Whether a walker of `slopeCos` may stand on the ground where the last groundUnder call touched it: the way out and its most
+ * level face there are both within its angle, as on a part.
+ */
+export function groundStands(slopeCos: number): boolean {
+  return ground.ny >= slopeCos && ground.up >= slopeCos;
+}
+
+/**
+ * Whether a body with its feet at `y` over (x, z) is in ground it cannot stand on where it touches it. If it is, `push` is the
+ * way out along the ground's normal there, as out of a part's face.
+ */
+export function steepGround(hf: Heightfield, x: number, y: number, z: number, r: number, slopeCos: number): boolean {
+  const h = groundUnder(hf, x, z, r);
+  if (!(y < h) || groundStands(slopeCos)) return false;
+  const d = (h - y) * ground.ny;
+  push.x = ground.nx * d;
+  push.y = ground.ny * d;
+  push.z = ground.nz * d;
+  push.depth = d;
+  push.hull = false;
+  push.face = true;
+  push.up = ground.up;
+  return true;
+}
+
+/** Most surfaces groundNear lists. */
+const NEAR_MOST = 8;
+/** Filled by groundNear: per surface its unit normal and the upward part of its most level face's, as `ground` has them. */
+export const groundN = new Float64Array(4 * NEAR_MOST);
+
+/**
+ * The ground within `probe` under a body with its feet at `y` over (x, z), in groundN, and how many surfaces: where its lower
+ * sphere touches it, as groundUnder says, and each other face whose plane it would touch on the face, as the other side of a
+ * crease. None if it is more than `probe` above the ground.
+ */
+export function groundNear(hf: Heightfield, x: number, y: number, z: number, r: number, probe: number): number {
+  const under = groundUnder(hf, x, z, r);
+  if (y - under > probe) return 0;
+  const out = groundN;
+  out[0] = ground.nx;
+  out[1] = ground.ny;
+  out[2] = ground.nz;
+  out[3] = ground.up;
+  let count = 1;
+  const cell = hf.cell;
+  const perCell = 1 / cell;
+  const nx = hf.nx;
+  const hts = hf.heights;
+  const i0 = Math.max(0, Math.floor((x - r) * perCell));
+  const j0 = Math.max(0, Math.floor((z - r) * perCell));
+  const i1 = Math.min(nx - 2, Math.floor((x + r) * perCell));
+  const j1 = Math.min(hf.nz - 2, Math.floor((z + r) * perCell));
+  // The height the centre would be at, lowered by `probe`.
+  const low = y - probe + r;
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) {
+      const k = j * nx + i;
+      const h00 = hf.minY + hts[k]! * hf.stepY;
+      const h10 = hf.minY + hts[k + 1]! * hf.stepY;
+      const h01 = hf.minY + hts[k + nx]! * hf.stepY;
+      const h11 = hf.minY + hts[k + nx + 1]! * hf.stepY;
+      const dx = x - i * cell;
+      const dz = z - j * cell;
+      for (let upper = 0; upper < 2 && count < NEAR_MOST; upper++) {
+        const gx = (upper === 1 ? h11 - h01 : h10 - h00) * perCell;
+        const gz = (upper === 1 ? h01 - h00 : h11 - h10) * perCell;
+        const s = Math.sqrt(1 + gx * gx + gz * gz);
+        if (h00 + gx * dx + gz * dz + r * s <= low) continue;
+        const u = (dx + (gx * r) / s) * perCell;
+        const v = (dz + (gz * r) / s) * perCell;
+        if (!(upper === 1 ? u >= 0 && u <= v && v <= 1 : v >= 0 && v <= u && u <= 1)) continue;
+        const ux = -gx / s;
+        const uy = 1 / s;
+        const uz = -gz / s;
+        let seen = false;
+        for (let n = 0; n < count && !seen; n++) seen = ux * out[n * 4]! + uy * out[n * 4 + 1]! + uz * out[n * 4 + 2]! > 1 - 1e-9;
+        if (seen) continue;
+        out[count * 4] = ux;
+        out[count * 4 + 1] = uy;
+        out[count * 4 + 2] = uz;
+        out[count * 4 + 3] = uy;
+        count++;
+      }
+    }
+  }
+  return count;
 }
 
 /**
@@ -420,8 +544,8 @@ export const SETTLE_MARGIN = SKIN * 0.75;
 
 /**
  * Where a body that capsuleFree accepts at `top` over (x, z) comes to rest when lowered toward `low`. NaN if it is free at `low`
- * and needs no step, if a structure or node holds it higher than `top`, or if all that holds it is too steep for `slopeCos`
- * where it touches (push.up): raised by a step, its lower sphere passes over an edge up to a radius above its feet, so a step
+ * and needs no step, if a structure or node holds it higher than `top`, or if all that holds it, the ground too, is too steep
+ * for `slopeCos` where it touches (push.up, ground.ny): raised by a step, its lower sphere passes over an edge up to a radius above its feet, so a step
  * is judged by what it would stand on.
  */
 export function stepOnto(w: CollisionWorld, x: number, z: number, low: number, top: number, r: number, h: number, slopeCos: number): number {
@@ -437,7 +561,7 @@ export function stepOnto(w: CollisionWorld, x: number, z: number, low: number, t
   // centre, reaches the sphere's surface.
   const y = lo - SETTLE_MARGIN;
   const high = y + (h > 2 * r ? h : 2 * r) + PAD;
-  let held = y < groundUnder(w.hf, x, z, r) - SKIN;
+  let held = y < groundUnder(w.hf, x, z, r) - SKIN && groundStands(slopeCos);
   for (let pass = 0; pass < 2; pass++) {
     const store = pass === 0 ? w.structs : w.nodes;
     if (!store) continue;
@@ -453,7 +577,7 @@ export function stepOnto(w: CollisionWorld, x: number, z: number, low: number, t
 
 /**
  * Where a body over (x, z) that capsuleFree accepts at `high` comes to rest lowered toward `lowest`, or NaN. Down to `low` it
- * may rest on the ground or on anything not too steep for `slopeCos` where it touches, as a step down; below that, only on a
+ * may rest on anything not too steep for `slopeCos` where it touches, the ground too, as a step down; below that, only on a
  * part's face it can stand on, so a body follows a ramp down however fast it goes and still drops off a ledge.
  */
 export function settleOnto(w: CollisionWorld, x: number, z: number, lowest: number, low: number, high: number, r: number, h: number, slopeCos: number): number {
@@ -467,7 +591,7 @@ export function settleOnto(w: CollisionWorld, x: number, z: number, lowest: numb
   }
   const y = lo - SETTLE_MARGIN;
   const step = y >= low - SETTLE_MARGIN;
-  if (step && y < groundUnder(w.hf, x, z, r) - SKIN) return hi;
+  if (step && y < groundUnder(w.hf, x, z, r) - SKIN && groundStands(slopeCos)) return hi;
   const top = y + (h > 2 * r ? h : 2 * r) + PAD;
   for (let pass = 0; pass < 2; pass++) {
     const store = pass === 0 ? w.structs : w.nodes;
@@ -488,9 +612,9 @@ const steepN = new Float64Array(3 * STEEP_MOST);
 const DITCH = 0.02;
 
 /**
- * Where the capsule at `y` over (x, z) rests on the structures and nodes within `probe` below it, or NaN if it does not: on an
- * upward push no steeper than `slopeCos` allows, from a surface no steeper either, or held by steeper ones that leave it no way
- * down, as in a notch between two slabs. It rests where it is, but on faces alone, parts' or boxes' tops, it rests on the
+ * Where the capsule at `y` over (x, z) rests on the structures, nodes and ground within `probe` below it, or NaN if it does not:
+ * on an upward push no steeper than `slopeCos` allows, from a surface no steeper either, or held by steeper ones that leave it
+ * no way down, as in a notch between two slabs, or a slab and a bank, or two banks. It rests where it is, but on faces alone, parts' or boxes' tops, it rests on the
  * highest of them, so it does not hover down a ramp or off one.
  */
 export function restingAt(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, probe: number, slopeCos: number): number {
@@ -525,6 +649,17 @@ export function restingAt(w: CollisionWorld, x: number, y: number, z: number, r:
         steep++;
       } else steep = STEEP_MOST + 1;
     }
+  }
+  // The ground within the probe is one more surface, one it stands on where it is walkable, as everywhere else.
+  for (let i = 0, n = groundNear(w.hf, x, y, z, r, probe); i < n; i++) {
+    faces = false;
+    if (groundN[i * 4 + 1]! >= slopeCos && groundN[i * 4 + 3]! >= slopeCos) stands = true;
+    else if (steep < STEEP_MOST) {
+      steepN[steep * 3] = groundN[i * 4]!;
+      steepN[steep * 3 + 1] = groundN[i * 4 + 1]!;
+      steepN[steep * 3 + 2] = groundN[i * 4 + 2]!;
+      steep++;
+    } else steep = STEEP_MOST + 1;
   }
   // A piece of several boxes or parts tells only of the one it is deepest in, so the others are asked before it is lowered.
   if (stands) return faces && on < y && capsuleFree(w, x, on, z, r, h) ? on : y;
