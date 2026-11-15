@@ -425,7 +425,10 @@ export class GlRenderer {
     let step = -1;
     let held = -1;
     for (let d = 0; d < p.drawCount; d++) {
-      for (const s = stepOf(p, d); step < s; held = -1) this.step(p, ++step);
+      // A step's terrain binds its own vertex array.
+      const s = stepOf(p, d);
+      if (step < s) held = -1;
+      while (step < s) this.step(p, ++step);
       const flags = p.drawFlags[d]!;
       const textured = (flags & DRAW_TEXTURED) !== 0;
       const lod = this.levels.get(p.drawSlot[d]!);
