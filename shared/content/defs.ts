@@ -365,6 +365,11 @@ export interface WeaponFacet {
   readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number; readonly sway?: number };
   /** The degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick (DEV129). */
   readonly recoil?: { readonly kick: number; readonly recover: number };
+  /**
+   * A gun's rays a shot, in place of its round's `ammo.pellets` (W3): ARK's pump-action fires the same shells as the
+   * double-barrel, 14 pellets to its 10 (Pump-Action Shotgun). Omitted, a shot sends its round's.
+   */
+  readonly pellets?: number;
   // Stubs of the same plan: declared, checked and compiled, and read by nothing until the project named builds them
   // (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
   /** W6: what its damage is multiplied by against a structure. 1 where not given. ARK's grenade is 4.5 (Table of explosives). */
@@ -394,11 +399,16 @@ export interface AmmoFacet {
    * is loaded. ARK's darts: loaded with them the Longneck "cannot use any attachments" (Longneck Rifle).
    */
   readonly bare?: boolean;
-  // Stubs of planning/reference/weapons-plan.md, as the weapon facet's are. Omitted, a round does what all do today.
-  /** W3: rays one round sends, each tested and landed alone, as a shotgun's pellets. 1 where not given. */
+  // Shot (planning/reference/weapons-plan.md, M3, built by W3). Omitted, a round is one ray and keeps its damage at any range.
+  /**
+   * Rays one round with no speed sends, each inside its gun's cone and tested and landed alone, as a shotgun's pellets
+   * ("Each pellet fired from a Shotgun has an individual collision check", Shotgun). The round's damage is a pellet's.
+   * 1 where not given; a gun's `weapon.pellets` takes its place.
+   */
   readonly pellets?: number;
-  /** W3: its damage falls from all of it at `full` metres to none at `none`. Omitted, it does not fall off. */
+  /** Its damage falls evenly from all of it at `full` metres to none at `none` (shared/sim/damage.ts `falloff`). */
   readonly falloff?: { readonly full: number; readonly none: number };
+  // Stubs of the same plan, as the weapon facet's are. Omitted, a round does what all do today.
   /** W6: where it ends it goes off as a grenade does, reaching this many metres. The blast is the whole of its damage. */
   readonly blast?: number;
   /** W6: the share of armor, 0 to 1, it goes through (the metal arrow's "-90% armor bypass" is 0.9). */
@@ -557,12 +567,15 @@ export interface BuffDef extends Named {
   readonly immune?: boolean;
   /** A beneficial buff, shown apart from harmful ones. */
   readonly good?: boolean;
-  // Stubs of planning/reference/weapons-plan.md (W4, the bola), read by nothing yet.
-  /** The creatures it takes, by species; omitted, any. A survivor is always taken. ARK's bola names its list (Bola). */
+  // The bola's fields (planning/reference/weapons-plan.md, M6), read where a hit gives the buff (server/entangle.ts).
+  /** The species it takes, the survivor's among them if it takes survivors; omitted, any. ARK's bola names its list (Bola). */
   readonly only?: readonly string[];
   /** Seconds it lasts on a survivor, in place of `seconds` (the bola's 25 against a creature's 30). */
   readonly survivorSeconds?: number;
-  /** A buff given as it ends, such as a time it cannot be given again (the bola's 10 s, patch 240.5). */
+  /**
+   * A buff given as it ends, if the body is one that buff takes, and while that one lasts this one is not given again:
+   * the bola's 10 s of grace (patch 240.5).
+   */
   readonly after?: string;
 }
 

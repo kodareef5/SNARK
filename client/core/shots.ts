@@ -9,8 +9,9 @@ import { EVENT_BLAST, EVENT_SHOT } from "../../shared/net/protocol.ts";
 import { FLIGHT_TICKS, HITSCAN_RANGE, flyEnd, flyStep, launchSpeed, piece, type Flight } from "../../shared/sim/projectiles.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { HIT_NONE, castWorld, rayBox, rayHit } from "../../shared/world/ray.ts";
+import { HIT_NONE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { shotDir } from "../../shared/sim/aim.ts";
+import { shotRays } from "../../shared/content/registry.ts";
 import type { Camera } from "./render/camera.ts";
 import type { Characters } from "./render/characters.ts";
 import type { FramePacket } from "./render/packet.ts";
@@ -26,7 +27,8 @@ export const BLAST_MS = 220;
 export const FLASH_MS = 50;
 const FLASH_SIZE = 0.14;
 const MAX_FLYING = 256;
-const MAX_TRACERS = 32;
+/** Two shotguns' worth of pellets and a few more. */
+const MAX_TRACERS = 48;
 /** Its own shot is drawn from ahead of the eye and a little below, so it is seen to leave. Metres. */
 const AHEAD = 0.7;
 const BELOW = 0.1;
@@ -91,8 +93,18 @@ export class Shots {
     const silenced = fitted !== 0 && (reg.defs[fitted] as ItemDef | null)?.attachment === "silencer";
     for (const s of session.fired) {
       // Its own shot leaves along the server's ray: the same aim, cone and seed (shared/sim/aim.ts).
-      shotDir(s.seed, 0, s.yaw, s.pitch, s.cone, d);
       const full = reg.ammoSpeed[s.ammo]!;
+      const rays = shotRays(reg, s.weapon, s.ammo);
+      if (rays > 1) {
+        // A shot of many rays is laid from its aim and cone as 32-bit floats, as the server lays and sends it.
+        if (!silenced) {
+          lookDirection(s.yaw, s.pitch, d);
+          this.flash(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, nowMs);
+        }
+        this.pellets(world, s.x, s.y, s.z, Math.fround(s.yaw), Math.fround(s.pitch), Math.fround(s.cone), s.seed, rays, true, nowMs);
+        continue;
+      }
+      shotDir(s.seed, 0, s.yaw, s.pitch, s.cone, d);
       if (full <= 0) {
         const reach = castWorld(world, s.x, s.y, s.z, d[0]!, d[1]!, d[2]!, HITSCAN_RANGE) === HIT_NONE ? HITSCAN_RANGE : rayHit.t;
         if (!silenced) this.flash(s.x + d[0]! * AHEAD, s.y - BELOW + d[1]! * AHEAD, s.z + d[2]! * AHEAD, nowMs);
@@ -117,7 +129,14 @@ export class Shots {
         continue;
       }
       if (ev.flies) this.fly(ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.item);
-      else {
+      else if (ev.rays > 1) {
+        // The first ray's way stands for the muzzle's, as a silencer hides the flash of any shot.
+        if (!ev.silenced) {
+          lookDirection(ev.vx, ev.vy, d);
+          this.flash(ev.x + d[0]! * AHEAD, ev.y - BELOW + d[1]! * AHEAD, ev.z + d[2]! * AHEAD, nowMs);
+        }
+        this.pellets(world, ev.x, ev.y, ev.z, ev.vx, ev.vy, ev.vz, ev.seed, ev.rays, false, nowMs);
+      } else {
         if (!ev.silenced) {
           const dx = ev.vx - ev.x;
           const dy = ev.vy - ev.y;
@@ -135,6 +154,20 @@ export class Shots {
   private flash(x: number, y: number, z: number, nowMs: number): void {
     if (this.flashes.length >= MAX_TRACERS) this.flashes.shift();
     this.flashes.push({ x, y, z, born: nowMs });
+  }
+
+  /**
+   * A tracer for each of a shot's `rays` from (x, y, z), each shotDir(seed, k, ...) about the aim `yaw`, `pitch` within
+   * `cone`, as the server cast them, to the world it meets. `own`: drawn from ahead of the eye, as its own shot is.
+   */
+  private pellets(world: CollisionWorld, x: number, y: number, z: number, yaw: number, pitch: number, cone: number, seed: number, rays: number, own: boolean, nowMs: number): void {
+    const d = this.dir;
+    for (let k = 0; k < rays; k++) {
+      shotDir(seed, k, yaw, pitch, cone, d);
+      const reach = castWorld(world, x, y, z, d[0]!, d[1]!, d[2]!, HITSCAN_RANGE) === HIT_NONE ? HITSCAN_RANGE : rayHit.t;
+      const ahead = own ? AHEAD : 0;
+      this.line(x + d[0]! * ahead, y - (own ? BELOW : 0) + d[1]! * ahead, z + d[2]! * ahead, x + d[0]! * reach, y + d[1]! * reach, z + d[2]! * reach, nowMs);
+    }
   }
 
   private fly(x: number, y: number, z: number, vx: number, vy: number, vz: number, ammo: number): void {

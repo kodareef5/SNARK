@@ -894,7 +894,8 @@ if (import.meta.main) {
   }
   if (args.includes("--fight")) {
     // A survivor faces a dummy in flak six metres off. --fight takes "punch" or "club" (up close, as the blow lands), "bow" or
-    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air) or "rifle" (the round's tracer).
+    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air), "rifle" (the round's tracer) or
+    // "shotgun" (a shell's ten tracers).
     const what = arg("fight") ?? "bow";
     const close = what === "punch" || what === "club";
     const sling = what === "slingshot" || what === "slung";
@@ -910,17 +911,18 @@ if (import.meta.main) {
       for (const part of ["hat", "shirt", "gloves", "pants", "boots"]) dress(hh.host, drec, hh.reg.index.get(`core:flak_${part}`)!);
       hh.host.refreshBody(drec);
       const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
-      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
+      const gun = what === "rifle" || what === "shotgun";
+      const weapon = gun ? what : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
       if (weapon !== "") {
         hh.host.items.mint(rec, k(weapon), 1);
-        if (weapon !== "club") hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : sling ? "stone" : "arrow_stone"), 20);
+        if (weapon !== "club") hh.host.items.mint(rec, k(gun ? `round_${weapon}` : sling ? "stone" : "arrow_stone"), 20);
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
         s.command(CMD_MOVE, (wr) => (wr.bits(BOX_SELF, 1), wr.varint(from), wr.bits(BOX_SELF, 1), wr.varint(inv.hotbar), wr.u16(0), wr.u16(k(weapon))));
         run(150);
         s.command(CMD_SELECT, (wr) => wr.u8(0));
-        run(weapon === "rifle" ? 5400 : 1500);
+        run(gun ? 5400 : 1500);
       }
       app.view.thirdPerson = args.includes("--third");
       app.controls.yaw = args.includes("--third") ? 0.5 : 0;
@@ -928,7 +930,7 @@ if (import.meta.main) {
       run(200);
       app.controls.mouseButton(0, true);
       if (close) run(260);
-      else if (what === "rifle") run(1000 / 60);
+      else if (gun) run(1000 / 60);
       else {
         run(1400);
         if (what === "loosed" || what === "slung") {

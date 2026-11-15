@@ -287,11 +287,13 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
         if (t && !g) out.push(`the tree order has no rung for the ${wood} wood on ${tier}`);
         if (g?.invalid) out.push(`trees ${wood} ${tier}: invalid, ${g.invalid}`);
         if (g && g.orders.some((o) => (!o.small && o.frames === 0) || o.reads.length < 2)) out.push(`trees ${wood} ${tier}: an order lacks its frames`);
+        if (g && !g.invalid && !(g.budget && g.budget.frames > 0)) out.push(`trees ${wood} ${tier}: the budget's windows lack their frames`);
       }
     }
     if (t?.counted) out.push(`trees: ${t.counted}`);
     if (t && (!t.surface || t.surface.slope === null)) out.push(`trees: no cost of a layer${t.surface?.note ? `, ${t.surface.note}` : ""}`);
     if (t && !t.verdict) out.push("trees: no verdict");
+    if (t && !t.budget) out.push("trees: no line on the budget");
   }
   return out;
 }

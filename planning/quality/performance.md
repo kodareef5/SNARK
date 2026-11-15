@@ -24,6 +24,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
 | P2 | `bun tools/bench/corpses.ts`, three runs on a busy machine, ranges | 2026-11-15 | branch `r9/p2-corpses` |
 | P10 | the hurt and decay layers' rows, once each on a busy machine (load 9 to 14) | 2026-11-15 | `r9/p10-layers` |
+| B | `bun tools/bench/budget.ts`, two runs after merging main, counts alike (load 2.3 on 10 cores) | 2026-11-15 | branch `r9/frame-budget` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
 
@@ -268,6 +269,32 @@ particles, writing the packet), after a warm-up run (M).
 
 Two draws a frame at most, two triangles a particle; the atlas is 1.33 MB on every tier.
 
+### The frame's budget (round 9)
+
+`bun tools/bench/budget.ts` (B): forty bodies, survivors swinging and their tames running, 4 to 34 m in front of
+the camera, in the device page's young wood and elder stand on medium at the iPhone's view (390 by 669 CSS pixels,
+70 degrees), eight headings, each settled 150 frames; levels taken as drawn with their materials. Medium allows 2 M
+triangles. Counts do not vary run to run.
+
+| | Young wood | Young, 40 bodies | Elder stand | Elder, 40 bodies |
+| --- | --- | --- | --- | --- |
+| Triangles a heading whole, mean (most) | 2.10 M (2.19) | 2.12 M (2.21) | 5.83 M (5.96) | 5.36 M (5.49) |
+| As the budget draws it, mean (most) | 1.92 M (2.00) | 1.93 M (2.00) | 1.89 M (2.00) | 1.85 M (1.99) |
+| Crowns near, whole and as drawn | 0.90, 0.71 M | 0.85, 0.65 M | 4.49, 0.89 M | 4.09, 0.85 M |
+| The squeeze, mean | 1.22 | 1.29 | 2.88 | 3.00 |
+| Bodies' triangles, whole and as drawn | | 69 k, 69 k | | 69 k, 69 k |
+| Headings whose bodies' levels moved | | 0 of 8 | | 0 of 8 |
+| Draws a heading, whole and as drawn | 496, 481 | 507, 495 | 561, 385 | 580, 394 |
+| Frame build, median | 0.3 to 0.8 ms either way | | | |
+
+The rest of the elder's frame as drawn: ground and far 0.42 M, stones 0.27, trunks 0.25, bushes 0.06. The bench
+counts the young wood at the 2.10 M and the elders at the 5.83 M the iPhone drew (D423).
+
+Pictures by the rasterizer at the iPhone's medium view, `planning/reference/round9-pictures/frame-budget`
+(`bun assets/source/core/nodes/trees/squeeze.ts`, and `--alone --squeeze 2.84`): the elder stand settles at a squeeze
+of 2.84, 5.90 M triangles whole and 1.94 M as drawn toward an oak 20 m off, 5.38 and 1.96 M toward one 60 m off; one
+elder oak alone at 20 and 60 m, whole and held at 2.84, and at 20 m with its leaves cut to 100, 60 and 30%.
+
 ## The GPU on this Mac
 
 | Row | Result | Source |
@@ -281,6 +308,7 @@ Two draws a frame at most, two triangles a particle; the atlas is 1.33 MB on eve
 | SURFACE and surfaceLayer, a megapixel, by slope (the device page, headless) | 0.30 ± 0.04, 0.34 ± 0.03 ms | P10 |
 | Forty hurt and dead dodos round the camera (the GPU bench's flock, 750 by 873, a GPU shared with other jobs): the frame on medium, ultra; what the layers add, each run | 4.7, 21.2 ms; -0.6 to +0.6 ms on medium, -1.0 to -0.3 on ultra | P10 |
 | Node pixels changed stepping over a chunk border, medium | 0 of 39,171 | D355 |
+| The device page's tree order, headless at 500 by 845 CSS pixels (load 2): each wood whole, cut-outs last, and as the frame's budget draws it; GPU by timer query, median. Every mean frame 16.7 ms but the elders whole on high, 16.8 | elders, medium: 11.9 ms at 6.5 M triangles, 8.3 at 1.8 M (squeeze 3.2); high: 33.2 at 12.8 M, 13.0 at 3.6 M (squeeze 2.9). Young wood, medium: 7.1 at 2.5 M, 7.3 at 1.9 M (squeeze 2); high: 9.3 at 4.2 M, 8.6 at 3.8 M (squeeze 1) | `.cache/device` run `36ed0137`, branch `r9/frame-budget` |
 | On the card on any device: terrain on 8 km; sky table; shadow maps by lit tier | 9.5 MB; 256 KB; 16, 24, 32 MB | M; computed; D268 |
 
 The lit probe's timing page read the dome at 0.023 ms because it blends alpha as

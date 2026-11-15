@@ -89,7 +89,7 @@ const ITEM = {
     open: true,
     stubs: { structures: "polish", cloud: "polish" },
   }),
-  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { pellets: "polish", falloff: "polish", blast: "polish", pierce: "polish", light: "polish" } }),
+  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { blast: "polish", pierce: "polish", light: "polish" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
@@ -236,9 +236,10 @@ const BUFF = {
   root: f("switch"),
   immune: f("switch"),
   good: stub("polish", "switch"),
-  only: stub("polish", "list", "the species a bola takes (Bola)", { refs: { "[]": "species" } }),
-  survivorSeconds: stub("polish", "number", "a bola's time on a survivor"),
-  after: stub("polish", "text", "", { refs: { "": "buff" } }),
+  // Built by W4 of planning/reference/weapons-plan.md (server/entangle.ts gives a buff that names them).
+  only: f("list", "the species a bola takes (Bola)", { refs: { "[]": "species" } }),
+  survivorSeconds: f("number", "a bola's time on a survivor"),
+  after: f("text", "", { refs: { "": "buff" } }),
 } satisfies Fields<BuffDef>;
 
 const MATERIAL = {
@@ -355,7 +356,7 @@ const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
 row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto", "youngFor", "ammo"], slots: { shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "A material: gathered, stacked, and spent in crafting. One a weapon fires, as a slingshot fires stone, has an ammo facet." });
 row("item/consumable", "item", ITEM, { parent: "item", ark: "PrimalItemConsumable_", shelf: "items/consumables", must: ["stack"], may: [...ANY_ITEM, "eat", "dose", "spoilHours", "spoilsInto", "cooks", "fuel", "youngFor", "use"], any: ["eat", "dose", "use"], slots: ITEM_SLOTS, doc: "Something eaten, drunk or fed for what it does to a body." });
-row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool"], slots: { held: mesh("must", "{weapon.mesh}", "none"), ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool." });
+row("item/weapon", "item", ITEM, { parent: "item", ark: "PrimalItem_Weapon", shelf: "items/weapons", must: ["stack", "weapon"], may: [...ANY_ITEM, "tool", "ammo"], slots: { held: mesh("must", "{weapon.mesh}", "none"), shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "Held in the hand to strike, shoot or throw. A hatchet or pick is a weapon that is also a tool. A thrown one with an ammo facet of its own flies and hits as an arrow does (the bola)." });
 row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: "items/ammo", must: ["stack", "ammo"], may: ANY_ITEM, slots: { shot: mesh("may", "{ammo.mesh}", "core:tracer"), ...ITEM_SLOTS }, doc: "What a bow or gun fires." });
 row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
 row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item type Equipment", shelf: "items/equipment", doc: "Worn by a body, in a slot." });

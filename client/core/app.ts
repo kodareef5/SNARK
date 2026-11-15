@@ -24,6 +24,7 @@ import { Controls } from "./controls.ts";
 import { HudModel, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
+import { SQUEEZE_MOST } from "./render/budget.ts";
 import type { FramePacket } from "./render/packet.ts";
 import { Scene, bodySeed, type OwnBody } from "./render/scene.ts";
 import { Feedback } from "./feedback.ts";
@@ -596,7 +597,8 @@ export class App {
   /** After the frame is handed to WebGL: our code took `ours` ms of it, and `timed` are earlier frames' GPU ms by pass, as they came back. */
   drawn(packet: FramePacket, ours: number, timed: readonly number[][]): void {
     for (const ms of timed) this.governor.timed(ms.reduce((a, b) => a + b, 0));
-    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, packet.triangles + DRAW_TRIANGLES * packet.drawCount);
+    const budget = this.scene?.budget;
+    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, packet.triangles + DRAW_TRIANGLES * packet.drawCount, budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0);
   }
 
   /** The shell says the graphics card ran out of memory or lost everything. On every third time the graphics tier falls by one. */

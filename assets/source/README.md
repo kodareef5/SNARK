@@ -199,7 +199,10 @@ pieces: [{ id: "core:pick", object: "pick", hold: "prop_r", dropped: "auto", ico
   Blender's +Z is the engine's +Y and its -Y the engine's +Z, so in Blender
   the length runs along -Y and the top is up. The check fails a held piece
   whose bounds miss the origin by more than a centimetre on any axis, or whose
-  longest extent is not along +Z, reaching further forward than back.
+  longest extent is not along +Z, reaching further forward than back. The left
+  hand holds a bow as the boxes do: its limbs along Y either side of the grip,
+  shooting along +X, and the check holds a `prop_l` piece to its longest extent
+  along Y instead.
 - `dropped`: how it lies on the ground, where a bag of that one stack would
   be. `"auto"` lays the held piece down (`tools/pack/lying.ts`): turned a
   quarter turn so the thinnest axis of its bounds points up and its broadest
