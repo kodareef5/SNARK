@@ -2,6 +2,7 @@
 // `bun run snap -- --ride SPECIES --moment MOMENT` puts the survivor on a saddled tame of hers on the proving ground and
 // draws her riding camera at that moment. With `--watch` Bob rides and the picture is what she sees of him from 9 m off
 // his right; with `--passenger` Bob steers and she sits behind him on a saddle of three seats (THREE_SEATS, the test's).
+// The pteranodon is its block-out, as the game will have it once its art lands.
 // Moments: `ground` (got on, at rest), `run` (sprinting), and for a flyer `air` (level flight), `bank` (turning hard) and
 // `dive`.
 
@@ -10,7 +11,10 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { BTN_JUMP, BTN_SPRINT } from "../../shared/sim/character.ts";
 import type { Seat } from "../../shared/sim/seats.ts";
+import type { ClipSet } from "../../shared/anim/clip.ts";
+import type { PackRig } from "../../shared/pack/pack.ts";
 import { flatGround } from "../../tests/fixtures/arena.ts";
+import { FLYER, flyerHost, flyerPackBytes, flyerRegistry } from "../../tests/fixtures/flyer/flyer.ts";
 import type { Harness } from "../../tests/fixtures/net.ts";
 
 export const RIDE_MOMENTS = ["ground", "run", "air", "bank", "dive"] as const;
@@ -23,12 +27,25 @@ export const THREE_SEATS: Seat[] = [
   { id: "passenger_right", anchor: [-0.35, 2.45, -0.15], entry: [-1.7, 0, -0.15] },
 ];
 
-/** The core content with `species`'s saddle given THREE_SEATS. */
-export function threeSeatRegistry(species: string): Registry {
-  const content = CORE_CONTENT.map((d) => (d.type === "item" && d.id === `core:saddle_${species}` ? { ...d, saddle: { ...d.saddle!, seats: THREE_SEATS } } : d));
-  const { registry, errors } = compileContent(content);
-  if (!registry) throw new Error(errors.join("\n"));
-  return registry;
+/** Content, a pack, and the server's clips and rigs, in place of the core's. */
+export interface Game {
+  readonly reg?: Registry;
+  readonly pack?: Uint8Array;
+  readonly host?: { clips: ClipSet; rigs: PackRig[] };
+}
+
+/**
+ * What `species` is ridden in: the pteranodon on its block-out (tests/fixtures/flyer/flyer.ts) as the game will have it
+ * once its art lands, and with `passenger` the core content with its saddle given THREE_SEATS.
+ */
+export function rideGame(species: string, passenger: boolean): Game | undefined {
+  if (passenger) {
+    const content = CORE_CONTENT.map((d) => (d.type === "item" && d.id === `core:saddle_${species}` ? { ...d, saddle: { ...d.saddle!, seats: THREE_SEATS } } : d));
+    const { registry, errors } = compileContent(content);
+    if (!registry) throw new Error(errors.join("\n"));
+    return { reg: registry };
+  }
+  return `core:${species}` === FLYER ? { reg: flyerRegistry(), pack: flyerPackBytes(), host: flyerHost() } : undefined;
 }
 
 /** The setup for clientPicture (tools/snap.ts): someone gets on `species` and rides it to `moment`. */
