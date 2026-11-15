@@ -274,8 +274,8 @@ export const OWN_SLOTS = 3;
  */
 export const SLOT_BLUEPRINT = 1;
 /**
- * Reserved in protocol 13 for the weapons program (planning/reference/weapons-plan.md, W7): the weapon's attachment is
- * switched on. Nothing sets it yet.
+ * A slot's flags, protocol 13 (planning/reference/weapons-plan.md, M10): the weapon's attachment, a flashlight or a laser, is
+ * switched on (shared/sim/items.ts FLAG_ON). Only the weapon in hand is ever on.
  */
 export const SLOT_ON = 2;
 
@@ -342,7 +342,7 @@ export const MARKER_DEATH = 1;
  * Kinds of S_EVENT, each after a u8 naming it.
  * HIT, to the attacker: position (3 x f32), zone 4 bits, damage u16, killed 1 bit, armor stopped some 1 bit.
  * HURT, to the victim: damage u16, the side it came from (u8, 256ths of a turn, as a facing), zone 4 bits, and from protocol 13
- *   whether the side is shown 1 bit (always 1 until a silenced shot hides it: planning/reference/weapons-plan.md, W7).
+ *   whether the side is shown 1 bit (0 for a silenced shot, whose side is then sent as 0: planning/reference/weapons-plan.md, M10).
  * DEATH, to the victim: the HURT fields, then killer name string, weapon content index u16 (0 for bare hands), distance u16 (tenths of a metre).
  * KILL, to the killer: victim name string, its level u16, experience gained u16 (tenths).
  */
@@ -355,8 +355,9 @@ export const EVENT_KILL = 4;
 /**
  * SHOT, to other clients nearby: origin (3 x f32), ammunition content index u16, flies 1 bit, then 3 x f32. For a shot that
  * flies they are its velocity, followed by the ticks since it left u8. Otherwise they are where it ended. From protocol 13
- * three more follow, each sent as what it means today and read past: rays u8 (1: the shot is the one ray above), seed u32
- * (0: the seed a shot of many rays is cast from, W3 of planning/reference/weapons-plan.md), silenced 1 bit (0: W7).
+ * three more follow: rays u8 (1: the shot is the one ray above), seed u32 (0: the seed a shot of many rays is cast from, W3
+ * of planning/reference/weapons-plan.md), each sent as what it means today and read past, and silenced 1 bit (its weapon has
+ * a silencer, and no flash is drawn: M10).
  */
 export const EVENT_SHOT = 5;
 /** BLAST, to clients nearby: position (3 x f32), reach f32 in metres. */

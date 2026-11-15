@@ -89,14 +89,14 @@ export function importSurvey(from: string, to: string): void {
 }
 
 if (import.meta.main) {
-  const source = resolve("assets/source/maps/miami/blocks");
-  const args = process.argv.slice(2);
+  const source = resolve(process.argv[2] ?? (() => { throw new Error("Blocks folder required"); })());
+  const args = process.argv.slice(3);
   if (args[0] === "--import") {
     if (!args[1]) throw new Error("--import requires the survey folder");
     importSurvey(resolve(args[1]), source);
   }
   const inventory = surveyInventory(readSurvey(source));
-  const out = resolve("assets/source/maps/miami/reports/ruins1/legacy-survey.json");
+  const out = resolve(source, "../reports/legacy-survey.json");
   mkdirSync(resolve(out, ".."), { recursive: true });
   writeFileSync(out, `${JSON.stringify({ ...inventory, status: "stopped; historical claims only", unavailable: inventory.pending, pending: [] }, null, 2)}\n`);
   console.log(JSON.stringify({ ...inventory, pending: (inventory.pending as string[]).length, famous: (inventory.famous as unknown[]).length, styles: undefined, materials: undefined, character: undefined }, null, 2));

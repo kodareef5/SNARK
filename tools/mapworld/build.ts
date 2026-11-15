@@ -188,6 +188,6 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
 }
 
 if (import.meta.main) {
-  const { stats } = buildMap(process.argv[2] ?? "miami");
+  const { stats } = buildMap(process.argv[2] ?? (() => { throw new Error("Map name required"); })());
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }

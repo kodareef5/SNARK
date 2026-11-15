@@ -10,10 +10,11 @@ import { youngScale } from "../shared/sim/breeding.ts";
 import { zoneHit } from "../shared/anim/skeleton.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import { EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, S_EVENT } from "../shared/net/protocol.ts";
-import { stanceEye } from "../shared/sim/character.ts";
+import { BTN_MOD, stanceEye } from "../shared/sim/character.ts";
 import { DMG_EXPLOSIVE, DMG_MELEE, PIECE_SCALE, harm, hit, resetHit, resolveDamage } from "../shared/sim/damage.ts";
 import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
-import { ARMOR_SLOTS, QUALITY_MUL } from "../shared/sim/items.ts";
+import { ARMOR_SLOTS, FLAG_ON, QUALITY_MUL } from "../shared/sim/items.ts";
+import { TICK_RATE } from "../shared/coords.ts";
 import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
 import { Found } from "../shared/world/structures.ts";
@@ -44,6 +45,11 @@ const CHUNK_REACH = CHUNK_METRES * Math.SQRT1_2;
 /** How many times a saddle's rating counts against a blow, an arrow or a round, and against an explosion. ARK's. */
 const SADDLE_DIRECT = 4;
 const SADDLE_BLAST = 1;
+/**
+ * A flashlight that is on spends a use of its weapon every this many ticks of the world's clock. ARK's flashlight "will
+ * use the durability of the weapon" (Flashlight Attachment) at a rate no page gives: a use a minute is ours (DEV145).
+ */
+export const LIGHT_WEAR_TICKS = 60 * TICK_RATE;
 
 export interface CombatContext {
   readonly world: ServerWorld;
@@ -101,6 +107,10 @@ export interface Source {
   /** Seconds torporOver is spread over, and a buff the hit gives (a content index, or 0). */
   torporSeconds: number;
   buff: number;
+  /** From a weapon with a silencer: a survivor it hits is not shown the side it came from (Silencer Attachment). */
+  silenced?: boolean;
+  /** The share of its damage a round keeps at the distance it hit from (`falloff`, shared/sim/damage.ts). 1 where not given. */
+  far?: number;
 }
 
 /** One resolved blow, for tests, the console and measurement. */
@@ -132,7 +142,7 @@ export class Combat {
   private readonly near = new Int32Array(MAX_NEAR);
   private readonly nearT = new Float32Array(MAX_NEAR);
   private readonly past = new Past();
-  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  private readonly src: Source = { by: null, x: 0, z: 0, item: 0, base: 0, type: DMG_MELEE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0, silenced: false };
   /** Content index of the tranquilized buff. Each hit with torpor over time gives one, carrying its strength. */
   private readonly dose: number;
   /** Where the last `castBodies` hit: the zone, and the distance along the ray. */
@@ -182,9 +192,12 @@ export class Combat {
   /** Call once a tick, after every body has stepped. */
   step(): void {
     const now = this.ctx.world.tick;
+    const wears = now % LIGHT_WEAR_TICKS === 0;
     for (const c of this.ctx.game.clients) {
       if (!c?.active) continue;
       this.measure(c, now);
+      // N switches the attachment of the weapon in hand, on foot (weapons-plan.md, M10). A rider's hands are on the reins.
+      if (c.ent >= 0 && c.drive < 0 && ((c.pressed & BTN_MOD) !== 0 || wears)) this.attachments(c, (c.pressed & BTN_MOD) !== 0, wears);
       if (c.did === 0 || c.ent < 0) continue;
       if ((c.did & DID_RELOAD) !== 0) this.reload(c);
       if ((c.did & DID_STRIKE) !== 0) this.strike(c);
@@ -197,6 +210,18 @@ export class Combat {
   private heldSlot(rec: EntityRecord): number {
     const inv = this.ctx.items.inv(rec);
     return inv.hotbar >= 0 && rec.held >= 0 && inv.item[inv.hotbar + rec.held] !== 0 ? inv.hotbar + rec.held : -1;
+  }
+
+  /** `toggle`: N was pressed. `wear`: a flashlight on spends a use now (LIGHT_WEAR_TICKS). */
+  private attachments(c: Client, toggle: boolean, wear: boolean): void {
+    const { records, items } = this.ctx;
+    const rec = records.byPid.get(c.pid);
+    if (!rec || rec.dead) return;
+    const slot = this.heldSlot(rec);
+    if (slot < 0) return;
+    if (toggle) items.toggle(rec, slot);
+    const inv = items.inv(rec);
+    if (wear && !toggle && (inv.flags[slot]! & FLAG_ON) !== 0 && items.attachmentOf(inv, slot) === "light" && this.ctx.world.reg.uses[inv.item[slot]!]! > 0) items.wear(rec, slot, 1);
   }
 
   bite(e: number): void {
@@ -639,6 +664,7 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
+    hit.far = src.far ?? 1;
     hit.attack = src.attack * (by ? buffs.dealtOf(by) : 1);
     hit.resist = buffs.takenOf(victim);
     hit.torporInstant = src.torporInstant;
@@ -732,11 +758,12 @@ export class Combat {
       const w = game.begin(S_EVENT);
       w.u8(killed ? EVENT_DEATH : EVENT_HURT);
       w.u16(shown);
-      // The side it came from, in 256ths of a turn.
-      w.u8(Math.round((Math.atan2(ax - vx, az - vz) / (Math.PI * 2)) * 256) & 255);
+      // The side it came from, in 256ths of a turn, unless the shot was silenced: "Players hit by a silenced weapon will not
+      // be shown the direction the bullet came from" (Silencer Attachment). Then the side is not sent at all.
+      const side = src.silenced !== true;
+      w.u8(side ? Math.round((Math.atan2(ax - vx, az - vz) / (Math.PI * 2)) * 256) & 255 : 0);
       w.bits(zone, 4);
-      // The side is shown (protocol 13). A silenced shot will clear it (planning/reference/weapons-plan.md, W7).
-      w.bool(true);
+      w.bool(side);
       if (killed) {
         w.string(!by ? "someone" : by.name !== "" ? by.name.slice(0, 24) : speciesLabel(reg.ids[by.kind]!));
         w.u16(item);
@@ -760,6 +787,7 @@ export class Combat {
     hit.type = src.type;
     hit.quality = src.quality;
     hit.draw = src.draw;
+    hit.far = src.far ?? 1;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
     // A structure is spared as its owning tribe would be.

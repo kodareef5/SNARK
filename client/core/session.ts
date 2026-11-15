@@ -181,6 +181,8 @@ export class RemoteSample {
   readonly hasLook = new Uint8Array(MAX_VIEW);
   /** GEAR_COUNT content indices each, 0 for nothing. */
   readonly gear = new Uint16Array(MAX_VIEW * GEAR_COUNT);
+  /** 1 while the laser in its hand is on (the gear's "on" bit). */
+  readonly on = new Uint8Array(MAX_VIEW);
   /** Each 0 for none: the owning team, the entity it sits on plus one, the ticks its growing takes, and the tick it will be grown. */
   readonly team = new Uint32Array(MAX_VIEW);
   readonly seat = new Uint32Array(MAX_VIEW);
@@ -241,8 +243,11 @@ export interface CombatEvent {
   kill: boolean;
   /** Armor stopped some of it. */
   blocked: boolean;
-  /** The side harm came from, as a facing in 256ths of a turn. */
+  /** The side harm came from, as a facing in 256ths of a turn, if `side`; a silenced shot's is not told (Silencer Attachment). */
   bearing: number;
+  side: boolean;
+  /** A shot from a weapon with a silencer: no flash is drawn. */
+  silenced: boolean;
   /** Who killed this body, or what this body killed. */
   name: string;
   /** The killing item's content index (0 for bare hands), and the range in metres. For a blast, `far` is its reach. */
@@ -253,13 +258,17 @@ export interface CombatEvent {
   xp: number;
   /**
    * For a shot, (x, y, z) is the origin and `item` the ammunition. If it `flies`, (vx, vy, vz) is its
-   * velocity and `back` the ticks since it left. If not, (vx, vy, vz) is where it ended.
+   * velocity and `back` the ticks since it left. If not, (vx, vy, vz) is where it ended; for a shot of more than one ray
+   * (`rays`, a shotgun's pellets) it is the aim's yaw and pitch in wire units and its cone in degrees, and each ray is
+   * shotDir(`seed`, k, ...) of shared/sim/aim.ts.
    */
   flies: boolean;
   vx: number;
   vy: number;
   vz: number;
   back: number;
+  rays: number;
+  seed: number;
 }
 
 /** A predicted shot of this client's own, from its eye. yaw and pitch are in input units. */
@@ -274,6 +283,8 @@ export interface LocalShot {
   seed: number;
   draw: number;
   ammo: number;
+  /** The weapon's content index: its rays a shot are shotRays of it and the ammunition. */
+  weapon: number;
 }
 
 export interface TextLine {
@@ -618,6 +629,7 @@ export class ClientSession {
       const gear = b.gear[j]!;
       if (gear) out.gear.set(gear, n * GEAR_COUNT);
       else out.gear.fill(0, n * GEAR_COUNT, (n + 1) * GEAR_COUNT);
+      out.on[n] = b.on[j]!;
       for (let q = 0; q < 6; q++) out.colors[n * 6 + q] = b.colors[j * 6 + q]!;
       out.team[n] = b.team[j]!;
       out.seat[n] = b.seat[j]!;
@@ -712,7 +724,7 @@ export class ClientSession {
       const ammo = slot >= 0 ? inv!.ammo[slot]! : 0;
       // It leaves where the server will send it: the look with its kick, sway and cone, from the same body and seed.
       aimShot(this.own, buttons, w, this.registry.tamedMove[this.own.kind] ?? this.move!, inp.yaw[i]!, inp.pitch[i]!, scopeFitted(this.registry, inv, slot), this.ownHandle, t);
-      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: shotAim.yaw, pitch: shotAim.pitch, cone: shotAim.cone, seed: aimSeed(this.ownHandle, t), draw: actionOut.draw, ammo });
+      if (ammo !== 0 && this.fired.length < 16) this.fired.push({ x: this.own.x, y: this.own.y + stanceEye(this.move!, this.own.stance), z: this.own.z, yaw: shotAim.yaw, pitch: shotAim.pitch, cone: shotAim.cone, seed: aimSeed(this.ownHandle, t), draw: actionOut.draw, ammo, weapon: inv!.item[slot]! });
     }
     this.bodies[t & (HISTORY - 1)]!.copy(this.own);
     this.bodyTick[t & (HISTORY - 1)] = t;
@@ -1011,7 +1023,7 @@ export class ClientSession {
 
   private event(r: BitReader): void {
     const kind = r.u8();
-    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0 };
+    const ev: CombatEvent = { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0 };
     if (kind === EVENT_SHOT) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -1022,10 +1034,10 @@ export class ClientSession {
       ev.vy = r.f32();
       ev.vz = r.f32();
       if (ev.flies) ev.back = r.u8();
-      // Protocol 13: rays, seed and silenced, read past until shots of many rays and the silencer are built.
-      r.u8();
-      r.u32();
-      r.bool();
+      // Protocol 13: rays and seed (W3), and whether its weapon has a silencer (W7).
+      ev.rays = r.u8();
+      ev.seed = r.u32();
+      ev.silenced = r.bool();
     } else if (kind === EVENT_BLAST) {
       ev.x = r.f32();
       ev.y = r.f32();
@@ -1043,8 +1055,8 @@ export class ClientSession {
       ev.damage = r.u16();
       ev.bearing = r.u8();
       ev.zone = r.bits(4);
-      // Protocol 13: whether the side is shown, read past until a silenced shot can hide it.
-      r.bool();
+      // Protocol 13: whether the side is shown. A silenced shot's is not.
+      ev.side = r.bool();
       if (kind === EVENT_DEATH) {
         ev.kill = true;
         ev.name = r.string(EVENT_NAME_BYTES);
