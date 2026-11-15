@@ -74,7 +74,48 @@ that worked are in `recipes.json` (Stable: "TrackType: SFX, ..." in whole second
 calls with pauses). Prompts that missed: "mumble" (rumble from Stable, a human-sounding mumble from MOSS),
 "chirrup" (small-bird chirps), a squawk with wing flaps (thumps only), and MOSS "panic" (buried in wing noise).
 
-## What the new machine changes
+## On the Linux machine (2026-11-15)
+
+The machine has an RTX 4070 Laptop GPU with 8 GB, not 12 GB, and 62 GB of memory shared with other agents' jobs.
+
+- `r9/sound` is merged with main locally (bfb3a0d). The only conflict was `tools/bench.ts`, which keeps both
+  sections. `bun run check` passes on Linux. Before the merge it failed the two `Math.hypot` tests that main fixed.
+- `bun run probe` passes, and the self-check hears the call (peak 0.24). It is flaky here: headless Chrome has no
+  GPU and falls back to SwiftShader, and the page sometimes boots after the probe's 30 s limit. One run of two
+  timed out.
+- `tools/sound/` runs on Linux with `SOUND_BACKEND=torch` (the default off a Mac). Only MOSS is ported:
+  `tools/sound/setup.sh`, then `generate.py <brief> --model moss`.
+  - It runs upstream's own code in three stages: text encoder, DiT, VAE. The maths is the same as
+    `MossSoundEffectPipeline`, and so is the full 30 s decode.
+  - On this GPU a take takes 32 s after a first one that compiles (about 100 s). GPU peak 5.8 GB, process peak
+    7.2 GB.
+  - A seed matches upstream's own `pipe()` at correlation 0.99995. The compiled DiT is not bit-exact from one
+    process to the next (max sample difference 0.02), so `remake.py` reports these takes as close, not identical.
+  - Upstream's CPU offload works too, but it holds 17 GB of memory and pushed other jobs into swap. Don't use it.
+  - Upstream ships the DiT in fp32 under bf16 autocast. Eager mode runs out of 8 GB, because autocast keeps a bf16
+    copy of every weight. Leave `torch.compile` on.
+- Takes from torch are named `moss-pt-<seed>`, so they never replace an MLX `moss-<seed>`. Briefs may set
+  `settings` and `takes_<model>-pt` for them under `moss-pt`.
+- Candidates made here, none listened to yet. Sheets: `review.py <brief> --out tools/sound/.work/core/creatures/dodo/review-pt`.
+  Without `--out`, review would overwrite the Mac's committed sheets in `ref/sound/` with only this machine's
+  candidates.
+  - hurt `yelps-m` 501 to 504: 3 or 4 separate squawks at 1 to 3 kHz in each. These are the first MOSS pain takes
+    that are not noise.
+  - land `drops-m` 501 to 504: 3 or 4 separate thumps in each.
+  - peck `wood-m` 601 to 604: clean, separate knocks. Peck `pecks-m`: 502 and 504 are clean; 501 and 503 have a
+    noisy floor and many small events.
+  - steps `walk` 1 to 4 on each ground: weak, as on the Mac. Stone 0001 has a regular stride. Sand is mostly a noise
+    bed, and sand 0003 has hard silences. The Stable steps already accepted remain the better ones.
+  - call `coo` 1 and 2: a clear harmonic coo over a low rumble.
+- Stable Audio 3 is not ported. `stabilityai/stable-audio-3-small-sfx` and `-medium` are gated, and this machine's
+  Hugging Face token has no access until the owner accepts their terms. Stable's PyTorch package pins torch 2.7.1,
+  transformers 5.8 or newer and numpy 2.2 or newer. MOSS's pins conflict with those, so Stable needs its own venv
+  (`.venv-stable`, already git-ignored).
+- `accept.py` writes `sounds.json` and `recipes.json` only for the slots in the picks, and deletes accepted takes no
+  pick names. The Mac's picks file did not travel, so a picks file for new takes must first list every take now in
+  `sounds.json`.
+
+## What the new machine changes (the plan written on the Mac)
 
 With 12 GB of GPU and 64 GB of memory the full models are open again. Try first:
 

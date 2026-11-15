@@ -1,6 +1,6 @@
 """Measure every candidate take of a brief and draw contact sheets of their spectrograms.
 
-    tools/sound/.venv/bin/python tools/sound/review.py <brief.json> [--slot S] [--accepted-only]
+    tools/sound/.venv/bin/python tools/sound/review.py <brief.json> [--slot S] [--accepted-only] [--out DIR]
 
 Writes tools/sound/.work/<asset>/measures.json, and one sheet per slot into the brief's
 review folder. Takes listed in the asset's sounds.json are framed green with their bounds.
@@ -222,6 +222,8 @@ def main():
     ap.add_argument("--slot", action="append")
     ap.add_argument("--no-sheets", action="store_true")
     ap.add_argument("--detail", nargs="+", help="slot then take names: close-up into the work folder")
+    ap.add_argument("--out", help="folder for the sheets instead of the brief's review folder, which holds the "
+                                  "committed sheets of every candidate; a machine without them should write elsewhere")
     a = ap.parse_args()
     brief = generate.load_brief(a.brief)
     if a.detail:
@@ -231,7 +233,8 @@ def main():
     mpath = generate.work_dir(brief) / "measures.json"
     allm = json.loads(mpath.read_text()) if mpath.exists() else {}
     acc = accepted_map(brief)
-    review = (brief["_dir"] / brief["review"]).resolve()
+    review = Path(a.out).resolve() if a.out else (brief["_dir"] / brief["review"]).resolve()
+    review.mkdir(parents=True, exist_ok=True)
     for slot in brief["slots"]:
         if a.slot and slot not in a.slot:
             continue
