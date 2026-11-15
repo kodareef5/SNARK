@@ -97,8 +97,18 @@ def main():
             out.append((g, props))
             continue
         split += 1
+        # With taller_first, a building standing within a larger one (a hotel tower in its resort) names that host, so a
+        # tower OpenStreetMap leaves unnamed is labelled by the resort it belongs to.
+        hosts = {}
+        if taller_first:
+            shapes = dict(inside)
+            for way, _ in pieces:
+                p = shapes[way]
+                best = max(((q.intersection(p).area, w) for w, q in inside if w != way and q.area > p.area), default=(0, None))
+                if best[0] > .25 * p.area:
+                    hosts[way] = best[1]
         for way, piece in sorted(pieces, key=lambda wp: wp[0]) + [(None, h) for h in sorted(rest, key=lambda h: (h.centroid.x, h.centroid.y))]:
-            out.append((piece, {'id': next_id, 'parent': props['id'], 'osm_way': way}))
+            out.append((piece, {'id': next_id, 'parent': props['id'], 'osm_way': way, **({'host': hosts[way]} if way in hosts else {})}))
             rows.append((next_id, props['id'], round(piece.area, 1)))
             next_id += 1
             pieces_total += 1

@@ -335,8 +335,13 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
     if (p.kind === "bridge") { record.status = "full way geometry built by bridge layer"; continue; }
     if (p.kind === "pier") { record.status = "full way geometry built by bridge layer"; continue; }
     if (y < 0) { record.status = "submerged context"; continue; }
-    if ([S.STREET, S.HIGHWAY, S.DECK].includes(site.ground.surface[i]! as typeof S.STREET)) { record.status = "road kept clear"; continue; }
+    // A board stands on its posts in a median or a verge, as it is mapped; anything else keeps the road clear.
+    if (p.kind !== "board" && [S.STREET, S.HIGHWAY, S.DECK].includes(site.ground.surface[i]! as typeof S.STREET)) { record.status = "road kept clear"; continue; }
     const frame: Frame = { x, z, c: 1, s: 0, yaw: 0, width: 24, depth: 24, rings: [[[-12, -12], [12, -12], [12, 12], [-12, 12], [-12, -12]]] };
+    if (p.kind === "board") {
+      // Its face toward the compass bearing it is mapped facing: the frame's u runs along the board.
+      const yaw = -(p.facing ?? 0); frame.yaw = yaw; frame.c = Math.cos((yaw * Math.PI) / 180); frame.s = Math.sin((yaw * Math.PI) / 180);
+    }
     if (p.kind === "crane") {
       const directions = Array.from({ length: 8 }, (_, i) => i * Math.PI / 4);
       const angle = directions.sort((a, b) => site.groundAt(x + Math.cos(a) * 48, z - Math.sin(a) * 48) - site.groundAt(x + Math.cos(b) * 48, z - Math.sin(b) * 48) || a - b)[0]!;
@@ -345,6 +350,9 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
     const m = new Mason(frame, y);
     if (["monument", "artwork", "fountain", "viewpoint"].includes(p.kind)) {
       m.put("plinth", 0, .5, 0); m.put("crown", 0, 3, 0, "limestone");
+    } else if (p.kind === "board") {
+      for (const side of [-1, 1]) m.put("zpole", side * 2.6, 3, 0, "steel");
+      m.put("zpanel8", 0, 5.2, 0, "limestone"); m.put("zsign", 0, 7.7, 0, "rose");
     } else if (["park", "garden", "dog_park", "marina", "beach"].includes(p.kind)) {
       for (const side of [-1, 1]) { m.put("seat", 0, .4, side * 8); m.put("rubble", side * 10, .35, 0); }
     } else if (p.kind === "station") {

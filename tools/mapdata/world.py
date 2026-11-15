@@ -136,6 +136,8 @@ def main():
             world['sea'] = False
         if settings.get('easy_around_spawns_m'):
             world['easyAroundSpawns'] = settings['easy_around_spawns_m']
+        if m.city.get('succession', {}).get('dry_classes'):
+            world['dryGround'] = True
         if settings.get('obelisks'):
             world['obelisks'] = settings['obelisks']
         path.write_text(json.dumps(world, indent=1, ensure_ascii=False) + '\n')

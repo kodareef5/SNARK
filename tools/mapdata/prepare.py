@@ -23,6 +23,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import folder_arg, save  # noqa: E402
 
 HIGHWAY = ('S1100', 'S1200')
+# An airfield's paving in roads.png: no street, and no street's wrecks.
+PAVED = 6
 # Census water by its feature class, as the perched layer names it.
 TIGER_WATER = {'H2030': 'lake or pond', 'H2040': 'reservoir', 'H2041': 'treatment pond', 'H2051': 'bay', 'H2053': 'ocean',
                'H3010': 'stream', 'H3013': 'braided stream', 'H3020': 'canal'}
@@ -243,7 +245,7 @@ def main():
     paved = osm_paved(m, features)
     if paved:
         m.write_features('paved', paved)
-    rd = m.burn([(g, 2) for g, p in paved] + [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
+    rd = m.burn([(g, PAVED) for g, p in paved] + [(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
                  for g, p in sorted(roads, key=lambda gp: gp[1]['width_m'])], n, m.grid)
     rd[(rd > 0) & (w > 0)] = 3  # a bridge over the water, which stays beneath it
     zero = m.cfg.get('height_zero_m', -100)

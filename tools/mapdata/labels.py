@@ -18,13 +18,14 @@ part_of, podium = {}, set()
 # With split_taller_first a piece split from an OpenStreetMap building is labelled by that building alone, wherever its
 # centre falls, and another building's centre falling on it (a tower drawn across a casino) adds no name or height.
 own_way = json.load(open(os.path.join(MAIN, "city.json"))).get("footprints", {}).get("split_taller_first", False)
-way_of = {}
+way_of, host_of, way_names = {}, {}, {}
 for f in json.load(open(os.path.join(HERE, "..", "base", "buildings.geojson")))["features"]:
     g = f["geometry"]
     polys = [g["coordinates"]] if g["type"] == "Polygon" else g["coordinates"]
     if f["properties"].get("osm_part"): part_of[f["properties"]["id"]] = f["properties"]["osm_part"]
     if f["properties"].get("parts_remainder"): podium.add(f["properties"]["id"])
     if own_way and f["properties"].get("osm_way") and not f["properties"].get("parts_remainder"): way_of[f["properties"]["id"]] = f["properties"]["osm_way"]
+    if own_way and f["properties"].get("host"): host_of[f["properties"]["id"]] = f["properties"]["host"]
     for poly in polys:
         ring = poly[0]; xs = [p[0] for p in ring]; ys = [p[1] for p in ring]
         a = sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(ring, ring[1:])) / 2
@@ -106,6 +107,7 @@ for el in json.load(open(os.path.join(MAIN, "raw", "osm", "all.json")))["element
     if lat is None: continue
     e, n = local(lat, lon)
     if "building" in t:
+        if t.get("name"): way_names[el["id"] if el["type"] == "way" else -el["id"]] = t["name"]
         owned = piece_of_way.get(el["id"] if el["type"] == "way" else -el["id"], [])
         found = footprint_at(e, n, 25.0) if not owned else None
         if not owned and found is None: loose += 1; continue
@@ -128,13 +130,18 @@ for el in json.load(open(os.path.join(MAIN, "raw", "osm", "all.json")))["element
         if k in ("fire_station", "police_station", "city_hall", "courthouse", "library", "hospital", "school", "university", "museum", "place_of_worship", "theatre", "hotel", "stadium", "convention_center") and feet[fid]["area"] < 4000:
             L["tenant"] = (k, t.get("name"))
         continue
-    what = (t.get("leisure") in ("park", "garden", "marina", "golf_course", "stadium", "beach_resort", "dog_park") and t["leisure"]) or (t.get("natural") == "beach" and "beach") or \
+    # A board with its words mapped, standing on posts by a road: a welcome sign, a roadside sign.
+    board = el["type"] == "node" and t.get("inscription") and (t.get("information") == "board" or t.get("advertising") == "board" or t.get("man_made") == "advertising")
+    what = (board and "board") or (t.get("leisure") in ("park", "garden", "marina", "golf_course", "stadium", "beach_resort", "dog_park") and t["leisure"]) or (t.get("natural") == "beach" and "beach") or \
            (t.get("man_made") in ("bridge", "pier", "tower", "crane", "breakwater", "storage_tank", "wastewater_plant") and t["man_made"]) or ("bridge" in t and "bridge") or \
            (t.get("historic") and "monument") or (t.get("tourism") in ("artwork", "attraction", "viewpoint", "museum") and t["tourism"]) or (t.get("amenity") == "fountain" and "fountain") or \
            (t.get("place") and t["place"]) or (t.get("railway") == "station" and "station") or (t.get("public_transport") == "station" and "station") or (k and k)
     if what and (t.get("name") or what in ("pier", "crane", "bridge", "storage_tank")):
         places.append({"name": t.get("name"), "kind": what, "e": round(e, 1), "n": round(n, 1), "lat": lat, "lon": lon, "in_footprint": fid})
+        if what == "board" and re.fullmatch(r"\d+(\.\d+)?", t.get("direction", "")): places[-1]["facing"] = float(t["direction"]) % 360
 
+for fid, host in host_of.items():
+    if not labels[fid]["names"] and way_names.get(host): labels[fid]["names"].append(way_names[host])
 for fid, way in part_of.items():
     t = part_tags.get(way, {}); L = labels[fid]
     if t.get("name"): L["names"].insert(0, t["name"])

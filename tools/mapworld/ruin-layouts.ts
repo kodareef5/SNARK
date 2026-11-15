@@ -443,6 +443,29 @@ function wheel(m: Mason, op: Op, rule: Rule): void {
   }
 }
 
+/** A lattice tower: rings of beams round a square narrowing up a curve, a leg at each corner between them, floors at its decks and a spire. */
+function lattice(m: Mason, op: Op, rule: Rule): void {
+  const beam = op.shape ?? "trim8"; const along = RUIN_SHAPES[beam][0]; const finish = op.finish ?? rule.finish;
+  const [cu, cv] = op.at ?? [0, 0]; const [hu, hv] = op.half ?? [m.frame.width / 2, m.frame.depth / 2];
+  const top = op.height ?? rule.height; const tip = op.tip ?? 1.5; const p = op.profile ?? 1; const every = op.every ?? 8;
+  const half = (y: number): [number, number] => { const f = (1 - Math.min(1, y / top)) ** p; return [tip + (hu - tip) * f, tip + (hv - tip) * f]; };
+  for (let y = 0; y < top - every / 2; y += every) {
+    const [wu, wv] = half(y + every); const [lu, lv] = half(y + every / 2);
+    if (y + every < top) for (const side of [-1, 1]) {
+      const nu = Math.max(1, Math.round((2 * wu) / along)); const nv = Math.max(1, Math.round((2 * wv) / along));
+      for (let i = 0; i < nu; i++) m.put(beam, cu - wu + ((i + .5) * 2 * wu) / nu, y + every, cv + side * wv, finish);
+      for (let i = 0; i < nv; i++) m.put(beam, cu + side * wu, y + every, cv - wv + ((i + .5) * 2 * wv) / nv, finish, 90);
+    }
+    const leg: RuinShape = every >= 16 ? "fin16" : every >= 8 ? "fin8" : "fin4";
+    for (const su of [-1, 1]) for (const sv of [-1, 1]) m.put(leg, cu + su * lu, y + every / 2, cv + sv * lv, finish);
+  }
+  for (const d of op.decks ?? []) {
+    const [wu, wv] = half(d);
+    for (let u = -wu + 4; u <= wu - 3.99; u += 8) for (let v = -wv + 4; v <= wv - 3.99; v += 8) m.put("floor8", cu + u, d, cv + v, finish);
+  }
+  m.put("fin16", cu, top + 8, cv, "steel");
+}
+
 /** A roof of plates over the chosen part of the footprint, each raised to where a shallow dome over it stands. */
 function vault(m: Mason, tiles: Tile[], op: Op, rule: Rule): void {
   if (!tiles.length) return;
@@ -492,7 +515,8 @@ function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, compo
       for (let k = 0; k * h < top; k++) radii.push(at((k + .5) * h));
       radii.forEach((outer, k) => {
         const inner = radii[k + 1] ?? -along;
-        for (let rho = outer; rho > inner + along / 4; rho -= along) ring(m, op, Math.max(0, rho), spring + (k + .5) * h, finish, scale);
+        // Each course lays at least its own ring, however little the course above draws in (near a large dome's springing).
+        for (let rho = outer; rho === outer || rho > inner + along / 4; rho -= along) ring(m, op, Math.max(0, rho), spring + (k + .5) * h, finish, scale);
       });
       const foot = spring - (op.drum ?? 0); const lower: number[] = [];
       for (let k = 0; k * h < (op.below ?? 0); k++) lower.push(at((k + .5) * h));
@@ -504,6 +528,7 @@ function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, compo
     if (op.op === "pyramid") pyramid(m, op, rule);
     if (op.op === "wheel") wheel(m, op, rule);
     if (op.op === "vault") vault(m, selected, op, rule);
+    if (op.op === "lattice") lattice(m, op, rule);
     if (op.op === "portal") for (let i = m.pieces.length - 1; i >= 0; i--) {
       const p = m.pieces[i]!; const u = (p.x - m.frame.x) * m.frame.c - (p.z - m.frame.z) * m.frame.s;
       if (Math.abs(u) < (op.width ?? 12) / 2 && p.y - m.base < (op.height ?? 16) - .5) m.pieces.splice(i, 1);

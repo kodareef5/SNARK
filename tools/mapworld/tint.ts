@@ -30,6 +30,14 @@ const GROUND: Record<number, readonly number[]> = {
   [S.WRECK]: [179, 180, 97],
   // Desert: buff and tan gravel, a little grey.
   [S.DESERT]: [123, 122, 167, 124, 100],
+  // An airfield: asphalt and concrete.
+  [S.PAVED]: [85, 99, 84, 100],
+};
+
+/** A dry city's open ground and courts are gravel, dust and paving, not grass; its weeds are dry. */
+const DRY: Record<number, readonly number[]> = {
+  [S.OPEN]: [101, 123, 100, 122],
+  [S.COURT]: [101, 100, 158],
 };
 
 /** A ruin's colour by its district's style: one picked for each ruin, then a step lighter or darker by noise. */
@@ -50,6 +58,8 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
   const { n, surface, heaps } = ground;
   const tint = new Uint8Array(n * n);
   const cell = 2;
+  const table = world.dryGround ? { ...GROUND, ...DRY } : GROUND;
+  const weeds = world.dryGround ? 158 : 150;
   for (let i = 0; i < n * n; i++) {
     const c = i % n;
     const r = (i - c) / n;
@@ -66,7 +76,7 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
       if (s === S.SPILL || s === S.FLOOR) k = v < 0.45 ? k - 1 : k;
       else k = v < 0.33 ? k - 1 : v > 0.68 ? k + 1 : k;
       // Weeds take the spill and the low floors of halls.
-      if ((s === S.SPILL || s === S.FLOOR) && fbm(x, z, 14, 402, 2) > 0.6) k = 150;
+      if ((s === S.SPILL || s === S.FLOOR) && fbm(x, z, 14, 402, 2) > 0.6) k = weeds;
       tint[i] = k;
       continue;
     }
@@ -74,7 +84,7 @@ export function makeTint(ground: Ground, world: World): Uint8Array {
       tint[i] = CONTAINERS[ground.container[i]! % CONTAINERS.length]!;
       continue;
     }
-    const list = GROUND[s] ?? [15];
+    const list = table[s] ?? [15];
     let k = list[0]!;
     if (list.length > 1) {
       const wet = s === S.FLAT || s === S.DEEP || s === S.CHANNEL || s === S.SHALLOW;

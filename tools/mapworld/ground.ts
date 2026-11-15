@@ -38,6 +38,8 @@ export const S = {
   CONTAINER: 25,
   /** Dry ground that grows no green: desert pavement and scrub, where a city's succession names its land cover dry. */
   DESERT: 26,
+  /** An airfield's runways, taxiways and aprons (roads.png value 6): paved, and no street. */
+  PAVED: 27,
 } as const;
 
 export interface District {
@@ -64,6 +66,8 @@ export interface World {
   readonly obelisks?: readonly { name: string; at: [number, number]; face: [number, number] }[];
   /** Metres round a spawn point with no beach region in reach within which the jungle's regions take the beach's table. */
   readonly easyAroundSpawns?: number;
+  /** A dry city: its open ground and courts are tinted gravel and dust, its weeds dry (a desert's). */
+  readonly dryGround?: boolean;
   /** Whether each footprint is raised into a heap of rubble (heaps.ts), the stand-in for block ruins. On unless false. */
   readonly heaps?: boolean;
   readonly containerHeaps?: boolean;
@@ -354,6 +358,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
     const rd = roads[i]!;
     if (rd === 2) surface[i] = S.HIGHWAY;
     else if (rd === 1) surface[i] = S.STREET;
+    else if (rd === 6) surface[i] = S.PAVED;
     else if (b === 6) surface[i] = shore[i]! < 7 ? S.WET_SAND : canopy[i] ? S.DUNE : S.BEACH;
     else if (b === 4) surface[i] = S.MANGROVE;
     else if (b === 5) surface[i] = S.MARSH;

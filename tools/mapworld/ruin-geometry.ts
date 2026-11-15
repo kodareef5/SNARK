@@ -1,4 +1,4 @@
-import { RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
+import { finished, RUIN_SHAPES, ruinKind, type RuinFinish, type RuinShape } from "../../content/ruins.ts";
 import type { Footprint, Site, StaticPiece } from "./statics.ts";
 
 export type Point = readonly [number, number];
@@ -71,7 +71,8 @@ export class Mason {
   point(u: number, v: number): Point { return worldPoint(this.frame, u, v); }
   put(shape: RuinShape, u: number, y: number, v: number, finish: RuinFinish = "concrete", turn = 0): void {
     const [x, z] = worldPoint(this.frame, u, v);
-    this.pieces.push({ kind: ruinKind(shape, finish), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
+    // A shape the kit has in no such finish (a floor plate is concrete) is concrete.
+    this.pieces.push({ kind: ruinKind(shape, finished(shape, finish) ? finish : "concrete"), x, y: this.base + y, z, yaw: ((this.frame.yaw + turn) % 360 + 360) % 360 });
   }
   cover(u: number, v: number, radius: number): void {
     const [x, z] = worldPoint(this.frame, u, v); this.clear.push({ x, z, radius });

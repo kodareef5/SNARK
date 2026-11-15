@@ -12,14 +12,16 @@ interface Modifier { match: string; accent?: RuinFinish; finish?: RuinFinish; fe
 export interface Form { plan?: string; marker?: string; terrace?: number; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
 export interface Assembly { role: string; clearance?: string; passage?: [number, number][]; parts: [RuinShape, number, number, number, RuinFinish | "finish", number?][]; }
 interface Choice { id: string; when: { kind?: string[]; recipe?: string[]; district?: string[]; name?: string; areaAbove?: number; areaBelow?: number; heightAbove?: number; heightBelow?: number; waterBelow?: number; waterAbove?: number; builtBefore?: number; neighboursAbove?: number; trades?: string[] }; form?: string; finish?: RuinFinish; collapse?: string[]; }
-export interface Composition { operations: ({ op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal" | "ring" | "dome" | "pyramid" | "wheel" | "vault"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number } & Round)[]; }
+export interface Composition { operations: ({ op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal" | "ring" | "dome" | "pyramid" | "wheel" | "vault" | "lattice"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number } & Round)[]; }
 /**
  * A ring of pieces round a centre, or a dome of such rings: in the footprint's metres, from the ground's height. `radii`
  * makes the ring an ellipse along u and v; `rise` is a dome's height over its springing (its radius unless given);
  * `below` carries the dome's sphere down past the foot of its drum for that many metres, narrowing; `half` is a
- * pyramid's half widths at its foot; `turn` is the yaw of a wheel's plane and `cabins` how many hang round its rim.
+ * pyramid's or a lattice's half widths at its foot; `turn` is the yaw of a wheel's plane and `cabins` how many hang
+ * round its rim. A lattice narrows to `tip` half widths at its top along a curve of power `profile`, with a ring of
+ * beams `every` metres and floors at its `decks`.
  */
-export interface Round { at?: [number, number]; radius?: number; radii?: [number, number]; heights?: number[]; y?: number; drum?: number; rise?: number; below?: number; shape?: RuinShape; arc?: [number, number]; half?: [number, number]; turn?: number; cabins?: number; }
+export interface Round { at?: [number, number]; radius?: number; radii?: [number, number]; heights?: number[]; y?: number; drum?: number; rise?: number; below?: number; shape?: RuinShape; arc?: [number, number]; half?: [number, number]; turn?: number; cabins?: number; tip?: number; profile?: number; every?: number; decks?: number[]; }
 export interface Vocabulary {
   sightlines?: { place: string; from: [number, number]; length: number; width: number }[];
   event: { travel: [number, number]; reach: number; shelter: number; cell: number; bands: { below: number; modes: string[] }[] };
