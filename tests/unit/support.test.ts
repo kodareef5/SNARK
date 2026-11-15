@@ -3,7 +3,8 @@
 import { expect, test } from "bun:test";
 import { FOUNDATION_THICK, WALL_HEIGHT } from "../../content/building.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
-import { floorTop, poseAt, units, type Pose } from "../../shared/world/snap.ts";
+import { slopeKind } from "../../content/slopes.ts";
+import { floorTop, makeSockets, poseAt, socketsOf, units, type Pose } from "../../shared/world/snap.ts";
 import { CEILING_REACH, LOAD_REACH, Support } from "../../shared/world/support.ts";
 import { TRIANGLE_HALF, hullWorld } from "../fixtures/hulls.ts";
 import { flatWorld } from "../fixtures/world.ts";
@@ -135,6 +136,18 @@ test("held by walls: two floors out from the wall and not a third; walls on a fl
   support.standsRef(out2);
   expect(support.visited).toBeLessThan(12);
   expect(units(1)).toBe(U);
+});
+
+test("a map's static is no building piece, sloped or not: it offers no place, holds nothing up and is never judged", () => {
+  const w = flatWorld(4);
+  const support = new Support(w.structs, w.reg, (x, z) => w.hf.heightAt(x, z));
+  const statics = w.reg.defs.flatMap((d, k) => (d?.type === "structure" && d.class === "static" ? [k] : []));
+  expect(statics).toContain(w.kind(slopeKind("roof")));
+  expect(statics.filter((k) => w.reg.role[k] !== -1)).toEqual([]);
+  // A roof left in the air stands, as a box static does, and a floor beside it is offered no place on it.
+  const roof = w.structs.add(w.kind(slopeKind("roof")), 100, 9, 100, 0, 0, 9000);
+  expect(support.standsRef(roof)).toBe(true);
+  expect(socketsOf(w.structs, w.reg, roof, w.kind("core:ceiling_wood"), makeSockets())).toBe(0);
 });
 
 test("a thing stands on a floor of convex parts where its foot is on the part's top under its middle, level or sloped", () => {
