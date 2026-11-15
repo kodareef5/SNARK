@@ -10,7 +10,7 @@ const s = new Sheet(SERVER_ROWS, "server", "Rates and world");
 s.f("XPMultiplier", 1, "Experience gained by survivors and tames. Higher is more. Each gain is also multiplied by its source's own multiplier.", live({ live: true }))
   .f("TamingSpeedMultiplier", 1, "What each piece of food is worth to a creature being tamed. Higher is faster.", live({ live: true }))
   .f("HarvestAmountMultiplier", 1, "What each harvesting blow yields. Higher is more.", live({ live: true }))
-  .f("HarvestHealthMultiplier", 1, "Health of trees, rocks and bushes. Higher takes more blows and gives more in all.", live({ min: 0.01 }))
+  .f("HarvestHealthMultiplier", 1, "Health of trees, rocks, bushes and bodies. Higher takes more blows and gives more in all.", live({ min: 0.01 }))
   .f("ResourcesRespawnPeriodMultiplier", 1, "Time before a harvested node grows back. Lower is sooner.", live({ retime: "period", min: 0.001 }))
   .f("ItemStackSizeMultiplier", 1, "Stack sizes. What stacks to 1 is left alone.", live({ client: true, min: 0.01 }))
   .f("DayCycleSpeedScale", 1, "Speed of the game clock through the whole day. Higher is faster; about 0.035 is a day as long as a real one.", live({ client: true, retime: "clock", min: 0.01, max: 1000 }))

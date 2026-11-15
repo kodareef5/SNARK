@@ -142,12 +142,10 @@ export class Corpses {
 
   /**
    * `rec` died of `cause` (a CAUSE_ of server/survival.ts), struck last by `by` (a pid, or 0). Its body is still in the
-   * world. A creature's becomes a body, which takes what it carried and its saddle; Death raises it once the creature's
-   * entity is gone.
+   * world. A creature's becomes a body whatever killed it, and takes what it carried and its saddle; Death raises it once
+   * the creature's entity is gone.
    */
   fell(rec: EntityRecord, cause: number, by: number): void {
-    void cause;
-    void by;
     const { world, records, items, rules } = this.ctx;
     const reg = world.reg;
     const def = reg.defs[rec.kind];
@@ -407,8 +405,8 @@ export class Corpses {
 
   /**
    * `by` struck the body that is entity `e` for `damage` of harvest damage, with `tool` in hand (a content index, or 0 for
-   * bare hands). Each roll's worth of damage gives one of its drops; the last blow is not cut to what is left, as ARK's is
-   * not. Returns false if `e` is no body.
+   * bare hands). Each roll's worth of damage gives one of its drops. The last blow counts whole, not cut to what is left, as
+   * wikily.gg's harvest calculator counts ASA's. Returns false if `e` is no body.
    */
   struck(by: EntityRecord, e: number, damage: number, tool: number): boolean {
     const b = this.byEnt.get(e);
@@ -506,7 +504,18 @@ export class Corpses {
   remove(b: Body, usedUp: boolean): void {
     const { world, records, items, game, death } = this.ctx;
     const rec = b.rec;
-    for (const c of game.clients) if (c?.open === rec.pid) death ? death.close(c) : (c.open = 0);
+    for (const c of game.clients) {
+      if (c?.open !== rec.pid) continue;
+      if (death) death.close(c);
+      else c.open = 0;
+    }
+    // Its entity goes first, so the cache has its place in a full store.
+    if (b.e >= 0) {
+      this.byEnt.delete(b.e);
+      world.ents.destroy(b.e);
+      records.entOf.delete(rec.pid);
+      b.e = -1;
+    }
     if (usedUp && rec.inv && items.inv(rec).used() > 0 && death) {
       const inv = items.inv(rec);
       const cache = death.spill(b.x, b.y, b.z, `${rec.name}'s cache`);
@@ -514,11 +523,6 @@ export class Corpses {
       for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) items.move(rec, s, cache, s, 0);
     }
     if (rec.inv) items.burnAll(rec);
-    if (b.e >= 0) {
-      this.byEnt.delete(b.e);
-      world.ents.destroy(b.e);
-      b.e = -1;
-    }
     b.fall = null;
     this.bodies.delete(rec.pid);
     records.delete(rec.pid);
