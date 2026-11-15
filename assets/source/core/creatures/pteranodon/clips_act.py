@@ -7,12 +7,13 @@ head are put where the movement clips put them and the clips meet theirs: ground
 hands planted where it plants them, and the roll starts and ends on the top of the flight's beat, fly's frame 0, which
 fly_fast and hover share.
 
-Some clips are layers (rig.CLIPS "layer"), played over whatever else plays:
-- attack_air and flinch are added: each frame's turns are laid on each bone's own, so they start and end at rest and turn
-  nothing but their bones. The air bite turns the neck and head only, so it works over every flight clip;
-- grab, carry and release are the legs' pose ("hold"), laid in place of the flight's leg turns, so the feet stay on the
-  `grab` socket whatever the flight does with the body. grab starts from the trailing legs and ends on carry's first
-  frame; release starts there and ends on them. carry is one stroke of fly long and keeps time with it.
+Some clips are layers (rig.CLIPS "layer"), each frame's turns laid on each bone's own over whatever else plays
+(shared/anim/creature.ts: layer), so they turn nothing but their bones:
+- attack_air and flinch start and end at rest. The air bite turns the neck and head only, so it works over every flight
+  clip; the flinch turns nothing from the hips down, so it works standing and flying;
+- carry is the carrying legs' turns from rest, held ("held"): the engine fades it in over the grab's frames and out
+  over the release's (D550). It is one stroke of fly long and keeps time with it. grab and release start and end at
+  rest and add what the fade lacks: the reach, the snap of the talons, the kick.
 
 Every ridden clip keeps the shoulder's upstroke to 40 degrees and the head's pitch to 15 above the chest, so a seated
 rider keeps clear (ref/DESIGN.md, "The rider"); each clip reports its reach, as clips_move.py's do.
@@ -259,12 +260,14 @@ def startled(r):
     lean0, ext0 = lean_of(ground(), mv.STANCE_HEAD)
     # The hands leave the ground from frame 1 and the free arms have them by `free`; they take hold again at `hold` and
     # are on the ground at `down`.
-    free, hold, down = 5.0, 13.0, 17.0
-    rear = Keys([(0, 0.0), (1, 0.0), (4, 1.0), (9, 0.88), (hold, 0.35), (down, -0.12), (20, 0.03), (n - 1, 0.0)])
-    # The wings open once the hands are off the ground, or the folded skin would swing into it.
-    fold = Keys([(0, 1.0), (2, 1.0), (7, 0.34), (9, 0.36), (hold - 1, 1.0)])
-    raise_ = Keys([(0, 0.0), (2, 0.0), (7, 30.0), (9, 28.0), (hold - 1, 4.0), (down, 0.0)])
-    look = Keys([(0, 0.0), (6, 0.0), (8, 28.0), (11, 26.0), (14, 0.0)])
+    free, hold, down = 5.0, 15.0, 20.0
+    # It comes down heavily: the body sinks past the crouch as the hands take its weight, and rises back.
+    rear = Keys([(0, 0.0), (1, 0.0), (4, 1.0), (10, 0.86), (hold, 0.3), (down, -0.28), (23, 0.05), (n - 1, 0.0)])
+    # The wings open once the hands are off the ground, or the folded skin would swing into it, and fold back over
+    # four frames before the hands come down.
+    fold = Keys([(0, 1.0), (2, 1.0), (7, 0.34), (10, 0.37), (hold - 1, 1.0)])
+    raise_ = Keys([(0, 0.0), (2, 0.0), (7, 30.0), (10, 27.0), (hold - 1, 4.0), (down, 0.0)])
+    look = Keys([(0, 0.0), (6, 0.0), (8, 28.0), (12, 26.0), (15, 0.0)])
     gasp = Keys([(0, 0.0), (1, 0.0), (3, 0.5), (6, 0.3), (8, 0.0)])
 
     def at(t):

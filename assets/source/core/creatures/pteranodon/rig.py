@@ -243,7 +243,7 @@ CLIPS = {
     "fall":         {"owner": "move", "loop": True,  "frames": 18, "min": 12, "max": 30},
     "call":         {"owner": "act",  "loop": False, "frames": 50, "min": 30, "max": 75, "start": "ground", "end": "ground", "ridden": True},
     # A wild one taking fright on the ground stands through it before it takes off (server/behavior.ts: flee).
-    "startled":     {"owner": "act",  "loop": False, "frames": 24, "min": 9, "max": 30, "start": "ground", "end": "ground"},
+    "startled":     {"owner": "act",  "loop": False, "frames": 27, "min": 9, "max": 30, "start": "ground", "end": "ground"},
     # The bite's 20 ticks, ARK's 0.67 s (content/creatures/pteranodon.ts: bite).
     "attack":       {"owner": "act",  "loop": False, "frames": 20, "min": 10, "max": 20, "start": "ground", "end": "ground", "hit_by": 10, "ridden": True},
     "attack_air":   {"owner": "act",  "loop": False, "frames": 20, "min": 10, "max": 20, "layer": _NECK_HEAD, "hit_by": 10, "ridden": True},

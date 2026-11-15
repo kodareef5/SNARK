@@ -232,7 +232,7 @@ def stage(rig):
         "side": camera(rig, "g_side", (12, 0.95, 0.2), (0, 0.95, 0.2), ortho=3.4),
         "front": camera(rig, "g_front", (0, 0.95, 12), (0, 0.95, 0), ortho=3.6),
         "three": camera(rig, "g_three", (2.9, 2.3, 3.4), (0, 0.65, 0.2), lens=32),
-        "head": camera(rig, "g_head", (12, 1.25, 0.75), (0, 1.25, 0.75), ortho=2.2),
+        "head": camera(rig, "g_head", (12, 1.3, 0.62), (0, 1.3, 0.62), ortho=2.5),
         "small": camera(rig, "g_small", (12.0, 9.0, 13.0), (0, 0.7, -0.1), lens=55),
         "film": camera(rig, "g_film", (3.2, 2.4, 4.0), (0, 0.7, 0.2), lens=30),
     }
