@@ -102,3 +102,36 @@ test("a survivor whose connection drops in a seat is set down beside the car whe
     h.host.shutdown();
   }
 });
+
+test("a driver knocked out falls from the seat beside the car, and a tangled one can be pulled out", () => {
+  const { h, ada, me, car, x, z } = setup();
+  try {
+    const bob = h.join("bob");
+    h.run(800);
+    h.say(bob, "enablecheats");
+    h.say(bob, `tp ${x + 2.2} ${z - 1.2}`);
+    h.run(500);
+    const thief = h.client(bob)!, rec = h.host.records.byPid.get(me.pid)!, ents = h.world.ents, move = h.reg.move[rec.kind]!;
+    expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);
+    h.run(800);
+    expect(me.drive).toBe(car);
+    // Tangled, the driver cannot drive, and is no shield for the car.
+    const bola = h.reg.index.get("core:entangled")!;
+    expect(h.host.entangle.give(rec, bola, thief.pid)).toBe(true);
+    h.run(100);
+    expect(h.host.urban.mount(thief, car)).toBe(RESULT_OK);
+    h.run(1000);
+    expect(thief.drive).toBe(car);
+    expect(h.host.urban.occupancy.seatOf(me.pid)).toBeNull();
+    // The thief, knocked out at the wheel, falls out beside the car as a rider falls from a mount.
+    const thiefRec = h.host.records.byPid.get(thief.pid)!;
+    thiefRec.out = true;
+    h.run(300);
+    expect(h.host.urban.occupancy.seatOf(thief.pid)).toBeNull();
+    expect(thief.drive).toBe(-1);
+    expect(within(h, car, ents.x[thief.ent]!, ents.y[thief.ent]!, ents.z[thief.ent]!, move.radius)).toBe(false);
+    void ada;
+  } finally {
+    h.host.shutdown();
+  }
+});

@@ -392,7 +392,8 @@ export class Occupancy {
     if (!actor?.alive || !actor.ready || actor.handle !== action.actorHandle || !handle(actor.handle)) return 'actor-invalid';
     if (action.victim) {
       const victim = this.authority.actor(action.victim);
-      if (!victim?.alive || !victim.ready || victim.handle !== action.victimHandle || !handle(victim.handle)) return 'victim-invalid';
+      // A driver who cannot act (tangled) can still be pulled out; one who cannot act is no shield for the car.
+      if (!victim?.alive || victim.handle !== action.victimHandle || !handle(victim.handle)) return 'victim-invalid';
     }
     return null;
   }

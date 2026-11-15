@@ -421,7 +421,12 @@ export class Urban {
         for (const effect of this.occupancy.invalidateActor(pid, world.tick)) this.apply(effect);
         continue;
       }
-      if (rec.out) for (const effect of this.occupancy.cancel(pid, world.tick, 'unconscious')) this.apply(effect);
+      // One knocked out falls from a seat as a rider falls from a mount: it lies beside the car (server/riding.ts).
+      if (rec.out) {
+        for (const effect of this.occupancy.cancel(pid, world.tick, 'unconscious')) this.apply(effect);
+        if (this.occupancy.seatOf(pid)) this.standDown(pid);
+        continue;
+      }
       const c = this.client(pid);
       if (c) this.scope(pid);
       const place = this.occupancy.seatOf(pid);
