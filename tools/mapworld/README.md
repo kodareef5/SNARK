@@ -6,6 +6,7 @@ packs `var/maps/<name>.snmap`. Run one build or rasterizer batch at a time:
 
 ```sh
 bun tools/mapworld/build.ts <name>
+bun tools/mapworld/repeat-build.ts <name>
 bun tools/mapworld/walk.ts var/maps/<name>.snmap
 bun tools/mapworld/ruin-walk.ts var/maps/<name>.snmap --all
 bun tools/mapworld/access-walk.ts var/maps/<name>.snmap
@@ -68,7 +69,10 @@ shape there, its palette/material variants, then use its name in an assembly.
 Existing kinds keep their ids; new shape names sort after the original kit.
 The compatibility content module remains so the core pack needs no new import.
 
-`ruins/vocabulary.json` is the per-map grammar:
+Every city inherits [the shared rule library](rules/README.md). Its
+`ruins/vocabulary.json` extends shared objects by key and ordered choices by
+id. Districts, recipes, budgets and named compositions stay in the map folder.
+Do not copy the shared sections into a new city:
 
 - `categories` and `recipes` settle broad building use and retained height.
 - `forms` give plan, shell, interior, front, roof and window rhythm.
@@ -76,12 +80,21 @@ The compatibility content module remains so the core pack needs no new import.
   partitions and beds; offices use low dividers; storage halls stay open.
 - `choices` are ordered rules over kind, recipe, district, height, water
   distance, known construction year, trades and nearby footprint count.
-  Each match can change form or the seeded distribution of collapse modes.
+  Each match can change form, finish or an initial collapse selection.
   Names can match a regular expression and floor area can bound a choice.
+- `event` makes the final collapse selection from shoreline exposure,
+  upstream shelter and a spatially shared seed. Travel direction belongs to
+  the city; exposure bands and their failure families inherit shared defaults.
 - `damage` gives collapse radius, retained top and pancake layer count.
 - `assemblies` list shape, local x/y/z, finish and optional yaw. They carry a
   role and optional clearance note. Fronts, wrecks, signs and street remnants
-  all use this interpreter.
+  all use this interpreter. A street `passage` reserves a walkable gap;
+  `roof identity` keeps a marker whole when clearance removes its support.
+- `growth` supplies resource densities, canopy bounds, roof planting chance
+  and low-growth radii around public place kinds. Listed nodes are filtered
+  against their actual collision forms and reserved routes after construction.
+- `sightlines` reserves view corridors towards named compositions, and
+  `frontage` sets the tolerance for detecting neighbouring party walls.
 - `compositions` combine regional stacks, towers, bowls, portals, ribs,
   rings and domes and explicit parts. `ruins/places.json` attaches a composition
   to a footprint. A `ring` sets pieces round a centre at listed heights, turned

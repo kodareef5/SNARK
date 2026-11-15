@@ -31,7 +31,7 @@ install and give byte-identical layers on 3.12. Run every Python tool with `-I`:
 | labels | `labels.py` | `blocks/labels.json`, `blocks/places.json`, `blocks/height-units.json` (OpenStreetMap's bare heights read as feet where a city's run near 3.28 times USA Structures') |
 | ways | `ways.py` | `blocks/ways.json` (with `bridge:structure`), `blocks/supports.json` (bridge towers mapped in three dimensions), `blocks/stairs.json`, `blocks/signs.json` (lines with an inscription of capitals and a height: letters standing on the ground) |
 | world | `world.py [--accept]` | `world/proposed.json`: districts round OpenStreetMap's places and spawn points on named parks; `world/world.json` when there is none or with `--accept` |
-| vocabulary | `vocabulary.py` | `ruins/vocabulary.json`: the reference map's rule sections, the city's districts, recipes and compositions, and budgets scaled to its footprints |
+| vocabulary | `vocabulary.py` | `ruins/vocabulary.json`, extending `tools/mapworld/rules/default.json`: the city's districts, recipes, label tables and compositions, and budgets scaled to its footprints |
 | build | `bun tools/mapworld/build.ts <name>` | `var/maps/<name>.snmap` |
 
 The settings `city.json` holds, beyond the sources: `height_zero_m` (the height height.png's zero stands for, -100 m

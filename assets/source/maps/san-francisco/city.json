@@ -70,7 +70,7 @@
     "seaNavd88": 0.97,
     "sea_source": "NOAA CO-OPS station 9414290 San Francisco, mean sea level 1983-2001 epoch: 2.773 m above station datum, NAVD88 at 1.804",
     "minY": -128,
-    "report": "ruins3",
+    "report": "ruins4",
     "places": [
       {"name": "Presidio", "at": [-122.4662, 37.7989], "why": "a national park of 6 km2 with its own posts and barracks, mapped as a park, not a neighbourhood"}
     ],
