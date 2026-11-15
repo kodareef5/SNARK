@@ -19,7 +19,7 @@ import { MANIFEST_VERSION, describePack, parseManifest, type Manifest } from "..
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { ARMOR_SLOTS, HOTBAR_SLOTS, Inventory } from "../../shared/sim/items.ts";
-import { IconPainter, buildIcons } from "../../tools/pack/icons.ts";
+import { IconPainter, buildIcons, iconSubjects } from "../../tools/pack/icons.ts";
 import { weaponMeshes } from "../../tools/pack/weapons.ts";
 import { buildPack } from "../../tools/pack/write.ts";
 import { coreRegistry } from "../fixtures/world.ts";
@@ -62,6 +62,12 @@ test("a code-made pick is drawn on a clear ground, filling its picture and centr
   const shades = new Set<number>();
   for (let p = 0; p < n * n; p++) if (picture[p * 4 + 3] === 255) shades.add(picture[p * 4]! * 65536 + picture[p * 4 + 1]! * 256 + picture[p * 4 + 2]!);
   expect(shades.size).toBeGreaterThan(3);
+});
+
+test("an item is drawn from its own dropped mesh, else its own held mesh, and never from the bag that stands in", () => {
+  const subjects = (meshes: string[]): string[] => iconSubjects(reg.defs, (id) => meshes.includes(id)).map((s) => `${s.icon} ${s.mesh}`);
+  expect(subjects(["core:pick", "core:bag"])).toEqual(["core:pick/icon core:pick"]);
+  expect(subjects(["core:pick", "core:pick/dropped", "core:stone/dropped"]).sort()).toEqual(["core:pick/icon core:pick/dropped", "core:stone/icon core:stone/dropped"]);
 });
 
 test("a sheet of pictures is a file of the manifest, which still reads version 3 and refuses a picture outside its sheet", () => {

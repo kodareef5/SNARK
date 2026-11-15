@@ -16,7 +16,7 @@ import { ICONS_A_SHEET, ICON_SIZE, SHEET_COLUMNS, iconAt, sheetShapes, type Mani
 import { storedStep, type Manifest } from "../../shared/pack/manifest.ts";
 import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, lodVertices, parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { unfilterPart } from "../../shared/pack/stored.ts";
-import { TEXTURE_ROLES, pictureBytes, stepBytes, stepOf, topIn } from "../../shared/pack/texture.ts";
+import { MAP_ROLES, pictureBytes, stepBytes, stepOf, topIn } from "../../shared/pack/texture.ts";
 import { findAssets } from "../art/assets.ts";
 import { ModelView } from "../snap.ts";
 import type { RgbaTexture } from "../snap/files.ts";
@@ -189,7 +189,8 @@ export class IconPainter {
     if (!runs || (m.flat ?? 0) === 0) return null;
     const materials = this.pack.header.materials ?? [];
     const out = new Set<number>();
-    for (let k = 0; k < runs.length; k += 3) for (const role of TEXTURE_ROLES) if ((materials[runs[k]!]![role] ?? -1) >= 0) out.add(materials[runs[k]!]![role]);
+    // The maps a picture is drawn with. A body's layer, for wounds and decay, is not shown.
+    for (let k = 0; k < runs.length; k += 3) for (const role of MAP_ROLES) if (materials[runs[k]!]![role] >= 0) out.add(materials[runs[k]!]![role]);
     return [...out];
   }
 
@@ -342,7 +343,7 @@ function iconKey(pack: Pack, mesh: number, colors: readonly number[], framing: I
   for (let k = 0; k < runs.length; k += 3) {
     const mat = materials[runs[k]!]!;
     hash.update(JSON.stringify(mat));
-    for (const role of TEXTURE_ROLES) if (mat[role] >= 0) hash.update(textureKey(mat[role]));
+    for (const role of MAP_ROLES) if (mat[role] >= 0) hash.update(textureKey(mat[role]));
   }
   return hash.digest("hex");
 }
