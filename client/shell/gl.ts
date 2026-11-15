@@ -4,6 +4,7 @@
 import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_PULLED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
+import { PASS_CASTERS, PASS_DOME, PASS_FAR_SEE, PASS_OF_STEP, PASS_UPLOADS, type PassClock } from "../core/passes.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
 import { comparedLookup } from "../core/render/shadowfilter.ts";
 import { POLYGON_OFFSET } from "../core/render/shadowtext.ts";
@@ -64,8 +65,11 @@ export class GlRenderer {
   private shadow = { texture: null as WebGLTexture | null, targets: [] as WebGLFramebuffer[], size: 0 };
   /** The program, level, buffer and first instance the last draw bound, which the next may share. */
   private readonly held: unknown[] = [];
-  /** Each tier's programs by name, as client/core/render/programs.ts lists them, made as a frame of that tier first asks. */
+  /** Each tier's programs by name, as client/core/render/programs.ts lists them, made as a frame of that tier first asks; one linked for each name and text, which copies of a tier share. */
   private readonly programs = new Map<Tier, Map<string, Program>>();
+  private readonly linked = new Map<string, Program>();
+  /** Where the frame's GPU time goes (passes.ts), if anything times it. */
+  passes: PassClock | null = null;
   /** A pixel for each map a material lacks or has not been sent, made the first time a frame draws with materials. */
   private neutral: WebGLTexture[] = [];
   private current: Program | null = null;
@@ -135,6 +139,7 @@ export class GlRenderer {
     this.shadowLookup = comparedLookup(gl);
     this.shadow = { texture: null, targets: [], size: 0 };
     this.programs.clear();
+    this.linked.clear();
     this.neutral = [];
     this.current = null;
     // The flat programs are made at once, so a device that cannot compile them says so at boot.
@@ -308,7 +313,10 @@ export class GlRenderer {
   private program(name: string, tier: Tier): Program {
     const made = this.programs.get(tier) ?? this.programs.set(tier, new Map()).get(tier)!;
     let prog = made.get(name);
-    if (!prog) made.set(name, (prog = this.link(PROGRAMS[name]!(tier, this.format, this.shadowLookup === "hard"))));
+    if (prog) return prog;
+    const text = PROGRAMS[name]!(tier, this.format, this.shadowLookup === "hard");
+    const key = name + text.defines + text.vertex + text.fragment;
+    made.set(name, (prog = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!));
     return prog;
   }
 
@@ -391,6 +399,7 @@ export class GlRenderer {
     const gl = this.gl;
     this.drawCalls = 0;
     this.failed.length = this.failedTextures.length = 0;
+    this.passes?.mark(PASS_UPLOADS);
     for (const slot of p.assetDrops) this.drop(slot);
     for (const u of p.assetUploads) {
       if (u.of === undefined) this.take(u);
@@ -498,6 +507,7 @@ export class GlRenderer {
     this.set(false, this.culling, false);
     gl.depthRange(0, 1);
     gl.bindVertexArray(null);
+    this.passes?.end();
   }
 
   /** The buffer of instances a draw or caster names. */
@@ -531,6 +541,7 @@ export class GlRenderer {
   private shadows(p: FramePacket): void {
     const gl = this.gl;
     const [map, { cascades, size }] = [this.shadow, p.lit ? p.tier.shadows : { cascades: 0, size: 0 }];
+    this.passes?.mark(PASS_CASTERS);
     if (map.size !== size || map.targets.length !== cascades) {
       gl.deleteTexture(map.texture);
       for (const t of map.targets.splice(0)) gl.deleteFramebuffer(t);
@@ -590,6 +601,7 @@ export class GlRenderer {
     const half = p.split > 0 && s !== STEP_BODY;
     this.pass++;
     this.held.length = 0;
+    this.passes?.mark(s === STEP_FAR_SEE && p.lit ? PASS_DOME : PASS_OF_STEP[s]!);
     this.matrix = s === STEP_BODY ? p.nearViewProj : far ? p.farViewProj : p.viewProj;
     this.from = s === STEP_FAR_SEE ? p.split : 0;
     gl.depthRange(half && far ? 0.5 : 0, half && !far ? 0.5 : 1);
@@ -607,6 +619,7 @@ export class GlRenderer {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.depthFunc(gl.LESS);
       this.drawCalls++;
+      this.passes?.mark(PASS_FAR_SEE);
     }
     if (s <= STEP_FAR) this.tiles(p, 1 << s, "terrain");
   }

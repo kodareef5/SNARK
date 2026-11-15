@@ -3,6 +3,7 @@
 
 import type { AssetPort } from "./assets/port.ts";
 import { forTouch, tierOf } from "./assets/tiers.ts";
+import { BENCH_TURN_MS, effectsOff, packetWithout, tierWithout, type Effect } from "./passes.ts";
 import { keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -91,6 +92,8 @@ export class App {
   steer = true;
   /** The dome drawn as the sky table alone and nothing hazed, as the rasterizer draws, so the self-check's colours are the twins'. */
   plainSky = false;
+  /** Effects the page's address turned off (passes.ts). */
+  off: ReadonlySet<Effect> = new Set();
 
   /** The registry last handed to the UI and shots. frame() swaps it when the session's changes. */
   private shown: Registry;
@@ -275,11 +278,14 @@ export class App {
     if (!this.ui.settings.toggleTalk) this.talk(false);
   }
 
-  /** Steers for a measurement run. Call it each frame instead of forwarding input. */
-  autopilot(nowMs: number): void {
-    this.controls.key("KeyW", true);
-    this.controls.yaw = nowMs / 1600;
-    this.controls.pitch = Math.sin(nowMs / 2300) * 0.35 - 0.1;
+  /**
+   * Steers for a measurement run, `ms` into its measured frames: the body stands and the view turns once round in
+   * BENCH_TURN_MS, a little up and down, so that every run of a scene sees the same views. Call it each frame instead
+   * of forwarding input.
+   */
+  autopilot(ms: number): void {
+    this.controls.yaw = (ms / BENCH_TURN_MS) * TAU;
+    this.controls.pitch = Math.sin(ms / 2300) * 0.2 - 0.05;
   }
 
   textInput(key: number, value: string): void {
@@ -414,7 +420,16 @@ export class App {
     cam.pitch = -0.06;
   }
 
-  /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
+  /**
+   * What the page's address asks: `off`, effects turned off for a before and after (passes.ts). A page that pins pictures
+   * or hashes, or measures, may name the `tier`.
+   */
+  address(get: (name: string) => string | null, pinned: boolean): void {
+    this.off = effectsOff(get("off"));
+    if (!pinned) return;
+    this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
+  }
+
   /** The shell says the graphics card ran out of memory or lost everything. On every third time the graphics tier falls by one. */
   pressure(): void {
     if (!this.scene?.assets.pressure()) return;
@@ -422,6 +437,7 @@ export class App {
     this.ui.chat.print(TEXT_NOTICE, `The graphics card keeps running out of memory, so the graphics setting is now ${this.ui.settings.tier}.`, this.session.serverTick);
   }
 
+  /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
     this.last = nowMs;
@@ -570,11 +586,12 @@ export class App {
     if (this.ui.settings.download) this.scene.assets.residency.download();
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
-    this.scene.assets.tier = forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst);
+    this.scene.assets.tier = tierWithout(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.off);
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
     session.askFar(this.scene.assets.tier.reach.bases);
     session.holdNodes(this.scene.assets.tier.nodes.chunks);
     const packet = this.scene.build(cam, this.remote);
+    packetWithout(packet, this.off);
     updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);
     this.feedback.absorb(session, this.reg, nowMs);
     this.feedback.fill(hud.combat, cam, c.yaw, alive, nowMs, session.damageNumbers && this.ui.settings.damageNumbers, session.hitMarkers);

@@ -13,6 +13,7 @@ import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.t
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchJson, fetchText } from "../core/fetched.ts";
 import { heldTo, probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
+import { BenchRun, PassClock } from "../core/passes.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
 import { devicePage } from "./device.ts";
@@ -24,9 +25,8 @@ import { UiView } from "./ui.ts";
 
 const params = new URLSearchParams(location.search);
 const selfcheck = params.has("selfcheck");
-/** A measurement run. The camera flies itself and the page reports frame times. */
-const bench = params.has("bench");
-const BENCH_FRAMES = 900;
+/** A measurement run. The camera flies itself and the page reports frame times and the GPU's by pass. */
+const bench = params.has("bench") ? new BenchRun() : null;
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
@@ -86,8 +86,8 @@ async function boot(): Promise<void> {
   app.steer = !selfcheck && !device;
   app.plainSky = selfcheck;
   app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
-  const intervals: number[] = [];
-  let previous = 0;
+  app.address((name) => params.get(name), selfcheck || bench !== null || device !== null);
+  const clock = (renderer.passes = device ? null : new PassClock(renderer.gl, bench !== null && params.has("passes")));
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
@@ -123,7 +123,7 @@ async function boot(): Promise<void> {
     const cssWidth = canvas.clientWidth;
     const cssHeight = canvas.clientHeight;
     const t0 = performance.now();
-    if (bench) app.autopilot(now);
+    if (bench) app.autopilot(bench.since(now));
     voice.sync(session.voice);
     if (voiceCheck && voice.report.status === "listening") voice.talk(true);
     if (app.scene) app.scene.assets.format = renderer.format;
@@ -146,29 +146,15 @@ async function boot(): Promise<void> {
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
       app.pressure();
     }
+    const [ours, gpu] = [performance.now() - t0, clock?.take() ?? []];
     device?.frame(now, packet, t0, built);
     if (frames === 30) loser?.loseContext();
     if (frames === 45) loser?.restoreContext();
     times.push(performance.now() - t0);
-    if (bench && previous > 0 && intervals.push(now - previous) === BENCH_FRAMES) {
-      const sorted = (list: number[]) => [...list].sort((x, y) => x - y);
-      const at = (list: number[], q: number) => list[Math.floor((list.length - 1) * q)]!;
-      const gaps = sorted(intervals);
-      const work = sorted(times);
-      const result = {
-        frames: BENCH_FRAMES,
-        frameMs: { median: at(gaps, 0.5), p95: at(gaps, 0.95), p99: at(gaps, 0.99), worst: at(gaps, 1) },
-        buildAndSubmitMs: { median: at(work, 0.5), p99: at(work, 0.99) },
-        drawCalls: renderer.drawCalls,
-        triangles: packet.triangles,
-        canvas: [width, height],
-        renderer: renderer.rendererName,
-        userAgent: navigator.userAgent,
-      };
-      document.title = `SNARK ${result.frameMs.median.toFixed(1)} ms`;
-      void fetch("__bench", { method: "POST", body: JSON.stringify(result) });
-    }
-    previous = now;
+    const r = app.scene!.assets.residency;
+    const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent });
+    if (result) document.title = `SNARK ${result.frameMs.median} ms`;
+    if (result) void fetch("__bench", { method: "POST", body: JSON.stringify(result) });
 
     // The self-check reads pixels back and reports on the 90th drawn frame. With voice it first waits for a
     // second of played voice, or for ten seconds to report that none was.
