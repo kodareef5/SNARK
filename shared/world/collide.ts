@@ -490,8 +490,8 @@ const DITCH = 0.02;
 /**
  * Where the capsule at `y` over (x, z) rests on the structures and nodes within `probe` below it, or NaN if it does not: on an
  * upward push no steeper than `slopeCos` allows, from a surface no steeper either, or held by steeper ones that leave it no way
- * down, as in a notch between two slabs. It rests where it is, but on parts' faces alone it rests on the highest of them, so it
- * does not hover down a ramp.
+ * down, as in a notch between two slabs. It rests where it is, but on faces alone, parts' or boxes' tops, it rests on the
+ * highest of them, so it does not hover down a ramp or off one.
  */
 export function restingAt(w: CollisionWorld, x: number, y: number, z: number, r: number, h: number, probe: number, slopeCos: number): number {
   const low = y - probe - PAD;
@@ -507,7 +507,8 @@ export function restingAt(w: CollisionWorld, x: number, y: number, z: number, r:
     for (let i = 0; i < n; i++) {
       if (!capsuleBox(store, found.refs[i]!, x, y - probe, z, r, h, 0) || push.y <= 0) continue;
       const up = push.y > slopeCos * push.depth && push.up > slopeCos;
-      if (up && push.face) {
+      // A part's face, or a box's top, which pushes straight up.
+      if (up && (push.face || (push.x === 0 && push.z === 0))) {
         // Raised this much, it would just touch the face.
         const touch = y - probe + (push.depth * push.depth) / push.y;
         if (touch > on) on = touch;
@@ -525,7 +526,8 @@ export function restingAt(w: CollisionWorld, x: number, y: number, z: number, r:
       } else steep = STEEP_MOST + 1;
     }
   }
-  if (stands) return faces && on < y ? on : y;
+  // A piece of several boxes or parts tells only of the one it is deepest in, so the others are asked before it is lowered.
+  if (stands) return faces && on < y && capsuleFree(w, x, on, z, r, h) ? on : y;
   return steep > 1 && steep <= STEEP_MOST && noWayDown(steep) ? y : NaN;
 }
 
