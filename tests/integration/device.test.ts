@@ -389,15 +389,16 @@ test("the tree order is offered by the terrain server's link, stands in each woo
   expect(stood).toEqual([0, 1, 0, 1]);
   expect([views[0], views.length, t.counted, t.counts.length, t.view]).toEqual(["layers/390/844/70", 3, "", 4, [390, 844, 70]]);
   for (const g of t.rungs) {
-    expect([g.invalid, g.orders.map((o) => o.order)]).toEqual(["", ["last", "made", "first"]]);
+    expect([g.invalid, g.orders.map((o) => o.order)]).toEqual(["", ["last", "made", "first", "none"]]);
     for (const o of g.orders) expect([o.frames > 5, o.means.length, o.reads.length]).toEqual([true, 2, 2]);
     expect(g.verdict).not.toBe("");
   }
-  expect([...drawn].sort()).toEqual(["first false", "first true", "last false", "last true", "made false", "made true"]);
-  expect(reads).toBeGreaterThan(4 * 6 * 3);
-  // The SURFACE pass alone was timed, for the cost of a layer, and the verdict says what was found.
-  expect([t.surface?.name, t.surface?.slope !== null, t.verdict !== ""]).toEqual(["surface", true, true]);
-  expect(lacking(r, "trees")).toEqual([]);
+  expect([...drawn].sort()).toEqual(["first false", "first true", "last false", "last true", "made false", "made true", "none false", "none true"]);
+  expect(reads).toBeGreaterThan(4 * 8 * 3);
+  // The SURFACE pass alone was timed. This pack has no pictures, so nothing was cut out, and nothing is judged.
+  expect([t.surface?.name, t.surface?.slope !== null]).toEqual(["surface", true]);
+  expect(t.verdict).toStartWith("not judged: young medium nothing was drawn with its materials");
+  expect(lacking(r, "trees")).toEqual(["nothing was drawn with its materials on medium, which has them", "nothing was drawn with its materials on high, which has them"]);
   // After it the game draws its cut-outs last again.
   expect(app.scene!.cutouts).toBe("last");
   const table = deviceTable(r);

@@ -140,7 +140,7 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   expect([seen(PICK_ENTITY, 100) > 100, seen(PICK_ENTITY, 101) > 100, seen(PICK_ENTITY, 102) > 100, seen(PICK_ENTITY, 0) > 600, seen(PICK_STRUCTURE, -1) > 600]).toEqual([true, true, true, true, true]);
 });
 
-test("a step's cut-out draws come after all its opaque ones; as they were made and before them all are a switch away, and all three draw the same picture", () => {
+test("a step's cut-out draws come after all its opaque ones; as they were made, before them all and none are a switch away, and the first three draw the same picture", () => {
   // Rows of panels, the nearer hiding the farther, a creature among them and one past the split. Panels are structures,
   // made before the bodies, so as made a panel's lattice comes before the creatures.
   const w = sceneWorld({}, { split: 30 });
@@ -164,6 +164,10 @@ test("a step's cut-out draws come after all its opaque ones; as they were made a
     expect(o.draws.map((d) => d.what).sort()).toEqual(made.draws.map((d) => d.what).sort());
     expect(o.picture).toEqual(made.picture);
   }
+  // Left out, the cut-outs are the only draws missing.
+  const none = shot("none");
+  expect(none.draws.map((d) => d.what).sort()).toEqual(made.draws.filter((d) => !d.cut).map((d) => d.what).sort());
+  expect(none.picture).not.toEqual(made.picture);
 });
 
 test("a body drawn with its materials and the same body drawn flat agree in mean colour, as near as the palette and the two ways of lighting allow", () => {

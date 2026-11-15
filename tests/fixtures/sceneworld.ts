@@ -215,8 +215,8 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
     /**
      * One frame, `ms` after the last. Throws if the card is sent anything out of order, if a draw is of a level, a
      * surface or a material's base colour or masks that the card does not hold, if a level drawn with materials is not
-     * drawn once for each of its sections, in their order but for its cut-out ones, or if a cut-out draw comes before an
-     * opaque one of its step while the scene draws them last.
+     * drawn once for each of its sections, in their order but for its cut-out ones (which the scene may leave out), or
+     * if a cut-out draw comes before an opaque one of its step while the scene draws them last.
      */
     frame(ms = 100, draw = true): FramePacket {
       now += ms;
@@ -245,7 +245,7 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
         level.drawn.push(k / 3 + (cut && scene.cutouts === "last" ? runs.length : 0) - (cut && scene.cutouts === "first" ? runs.length : 0));
       }
       for (const [key, { sections, drawn }] of levels) {
-        if (drawn.length !== sections || drawn.some((k, i) => i > 0 && k <= drawn[i - 1]!)) throw new Error(`the level drawn as ${key} is not drawn once for each of its sections, in order`);
+        if ((drawn.length !== sections && scene.cutouts !== "none") || drawn.some((k, i) => i > 0 && k <= drawn[i - 1]!)) throw new Error(`the level drawn as ${key} is not drawn once for each of its sections, in order`);
       }
       if (draw) raster.render(p);
       return p;

@@ -97,14 +97,14 @@ const FAR_TURN_MS = 2000;
 const EYE_UP = 1.7;
 /**
  * The tree order (trees design, phase 1): on medium and high, each wood by the spot the server stands the body at, the
- * young wood at the map's middle and the elders' stand (devicescene.ts STAND). Each order is drawn in a window of a
- * turn twice, in the order of ORDER_WINDOWS so a phone warming over the rung weighs on each alike; then again, each
- * frame read back.
+ * young wood at the map's middle and the elders' stand (devicescene.ts STAND). Each order, and the cut-outs left out,
+ * is drawn in a window of a turn twice, in the order of ORDER_WINDOWS so a phone warming over the rung weighs on each
+ * alike; then again, each frame read back.
  */
 export const TREE_TIERS: readonly string[] = ["medium", "high"];
 export const WOODS = ["young", "elder"] as const;
 export type Wood = (typeof WOODS)[number];
-const ORDER_WINDOWS: readonly Cutouts[] = ["last", "made", "first", "first", "made", "last"];
+const ORDER_WINDOWS: readonly Cutouts[] = ["last", "made", "first", "none", "none", "first", "made", "last"];
 /** Frames left out after the order changes, and how long the page waits for the server's counts after its last rung, asking this often. */
 const SWITCH_FRAMES = 3;
 const COUNT_WAIT_MS = 300000;
@@ -386,7 +386,7 @@ export interface OrderRung {
 export interface TreesReport {
   /** The view the server counts: the page's CSS pixels and its field of view's height in degrees. */
   view: number[];
-  /** The full-screen SURFACE pass's time a megapixel (the quick look's), the cost of a layer of cut-outs. */
+  /** The full-screen SURFACE pass's time a megapixel (the quick look's): a lit layer, beside what a counted cut-out layer costs in the wood. */
   surface: PassTime | null;
   counts: LayerCount[];
   /** Empty once counted, or why there are no counts. */
@@ -720,7 +720,8 @@ export interface OrderJudged {
   line: string;
   skipped: boolean | null;
   judged: boolean;
-  /** Drawn first against drawn last, and as made against last: measured and predicted ms. */
+  /** What the cut-outs cost drawn first against none drawn; drawn first against last, and as made against last: measured and predicted ms. */
+  cost: number;
   measured: number;
   predicted: number;
   saved: number;
@@ -728,42 +729,44 @@ export interface OrderJudged {
 }
 
 /**
- * A rung of the tree order judged against the server's count of its view. Drawn first, every cut-out pixel the ground
- * does not hide is shaded; drawn last, a GPU that skips what an opaque surface drawn before hides shades only those in
- * front of the nearest one. At the device's own cost of a layer a megapixel over its canvas, the counts say how much
- * longer the first should take if it skips them; one that shades them all takes no longer. The frames read back say how
- * much longer it did.
+ * A rung of the tree order judged against the server's count of its view. Drawn first, every cut-out fragment the
+ * ground leaves is shaded, and what that costs over drawing none prices a counted layer on this device, in this wood.
+ * Drawn last, a GPU that skips what an opaque surface drawn before hides shades only those in front of the nearest one,
+ * so at that price the counts say how much less it should take; one that shades them all takes as long. The frames
+ * read back say how much less it took.
  */
-export function orderVerdict(rung: OrderRung, count: LayerCount | undefined, msPerMp: number | null): OrderJudged {
+export function orderVerdict(rung: OrderRung, count: LayerCount | undefined): OrderJudged {
   const of = (o: Cutouts): OrderTime | undefined => rung.orders.find((x) => x.order === o);
-  const [last, made, first] = [of("last"), of("made"), of("first")];
-  const none = (line: string): OrderJudged => ({ line, skipped: null, judged: false, measured: 0, predicted: 0, saved: 0, saving: 0 });
+  const [last, made, first, bare] = [of("last"), of("made"), of("first"), of("none")];
+  const none = (line: string): OrderJudged => ({ line, skipped: null, judged: false, cost: 0, measured: 0, predicted: 0, saved: 0, saving: 0 });
   if (rung.invalid) return none(`not judged: invalid, ${rung.invalid}`);
-  if (!last || !made || !first) return none("not judged: an order was not drawn");
-  if (!count) return none("not judged: the server did not count this view");
-  if (msPerMp === null || !(msPerMp > 0)) return none("not judged: no cost of a layer was measured");
-  const layer = (msPerMp * rung.canvas[0]! * rung.canvas[1]!) / 1e6;
+  if (!last || !made || !first || !bare) return none("not judged: an order was not drawn");
+  if (rung.mat === 0) return none("not judged: nothing was drawn with its materials, so nothing was cut out");
+  if (!count || !(count.first > count.front)) return none("not judged: the server did not count this view");
+  const cost = first.readMs - bare.readMs;
+  const layer = Math.max(0, cost) / count.first;
   const [measured, predicted] = [first.readMs - last.readMs, (count.first - count.front) * layer];
   const [saved, saving] = [made.readMs - last.readMs, (count.old - count.front) * layer];
   const noise = Math.max(...rung.orders.map((o) => (o.reads.length === 2 ? Math.abs(o.reads[0]! - o.reads[1]!) : 0)));
-  const share = measured / predicted;
+  const share = predicted > 0 ? measured / predicted : 0;
   const too = predicted < Math.max(SMALLEST_MS, 2 * noise);
   const skipped = too ? null : share >= SKIPPED ? true : share <= NOT_SKIPPED ? false : null;
   const word = too ? `too small to tell, against ${tenth(noise)} ms between an order's two windows` : skipped === true ? "skipped" : skipped === false ? "not skipped" : "partly skipped";
   const ms = (x: number): string => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
-  const line = `first against last ${ms(measured)} ms read back, ${ms(predicted)} predicted if hidden pixels are skipped (${Math.round(share * 100)}%); made against last ${ms(saved)}, ${ms(saving)} predicted: ${word}`;
-  return { line, skipped, judged: !too, measured, predicted, saved, saving };
+  const mp = (rung.canvas[0]! * rung.canvas[1]!) / 1e6;
+  const line = `drawn first the cut-outs cost ${ms(cost)} ms over none, ${(layer / mp).toFixed(3)} ms a counted layer a megapixel; first against last ${ms(measured)} ms read back, ${ms(predicted)} predicted if hidden pixels are skipped (${Math.round(share * 100)}%); made against last ${ms(saved)}, ${ms(saving)} predicted: ${word}`;
+  return { line, skipped, judged: !too, cost, measured, predicted, saved, saving };
 }
 
 /** The tree order's verdict in a line, from the rung that predicts the most: whether the GPU skipped the hidden cut-out pixels. */
 export function treesVerdict(t: TreesReport): string {
-  const judged = t.rungs.map((g) => ({ g, v: orderVerdict(g, t.counts.find((c) => c.wood === g.wood && c.tier === g.tier), t.surface?.slope ?? null) }));
+  const judged = t.rungs.map((g) => ({ g, v: orderVerdict(g, t.counts.find((c) => c.wood === g.wood && c.tier === g.tier)) }));
   const best = judged.filter((x) => x.v.judged).sort((a, b) => b.v.predicted - a.v.predicted)[0];
-  if (!best) return `not judged: ${t.counted || judged.map((x) => `${x.g.wood} ${x.g.tier} ${x.v.line.replace("not judged: ", "")}`).join("; ") || "no rung ran"}`;
+  if (!best) return `not judged: ${t.counted || judged.map((x) => `${x.g.wood} ${x.g.tier} ${x.v.line.replace(/^not judged: |^.*: (?=too small)/, "")}`).join("; ") || "no rung ran"}`;
   const { g, v } = best;
   const where = `${g.wood === "elder" ? "the elder oaks'" : "the young wood's"} cut-outs on ${g.tier}`;
   const word = v.skipped === true ? "skipped" : v.skipped === false ? "not skipped" : "partly skipped";
-  return `${word}: drawn first, ${where} took ${v.measured.toFixed(1)} ms more than drawn last, where the counts predict ${v.predicted.toFixed(1)} ms if the GPU skips what an opaque surface drawn before hides; drawn last saves ${v.saved.toFixed(1)} ms of ${v.saving.toFixed(1)} predicted against the order they were made in`;
+  return `${word}: ${where} cost ${v.cost.toFixed(1)} ms drawn first; drawn last they took ${v.measured.toFixed(1)} ms less, where the counts predict ${v.predicted.toFixed(1)} ms less if the GPU skips what an opaque surface drawn before hides; drawn last saves ${v.saved.toFixed(1)} ms of ${v.saving.toFixed(1)} predicted against the order they were made in`;
 }
 
 /** Half of what the ladder held on `tier` for each axis, a rung down, or `fallback` where it did not climb. */
@@ -1598,7 +1601,7 @@ export class DeviceRun {
       r.counted = a ? `the server was still counting after ${Math.round(waited / 1000)} s` : "the server did not answer";
     } else if (a.state === "failed") r.counted = `the server could not count: ${a.why ?? "no reason given"}`;
     else [r.counts, r.counted] = [a.counts ?? [], ""];
-    for (const g of r.rungs) g.verdict = orderVerdict(g, r.counts.find((c) => c.wood === g.wood && c.tier === g.tier), r.surface?.slope ?? null).line;
+    for (const g of r.rungs) g.verdict = orderVerdict(g, r.counts.find((c) => c.wood === g.wood && c.tier === g.tier)).line;
     r.verdict = treesVerdict(r);
     this.end();
     return true;

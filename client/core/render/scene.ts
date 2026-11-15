@@ -102,8 +102,8 @@ const FAR = 1 << PASS_FAR;
 const CAST_FLAGS = DRAW_SKINNED | DRAW_ONE_BONE | DRAW_SIZED;
 
 /** Where an opaque step's cut-out draws go among its others (Scene.cutouts). */
-export type Cutouts = "last" | "made" | "first";
-export const CUTOUTS: readonly Cutouts[] = ["last", "made", "first"];
+export type Cutouts = "last" | "made" | "first" | "none";
+export const CUTOUTS: readonly Cutouts[] = ["last", "made", "first", "none"];
 
 /** A mesh stood somewhere by itself, with no entity or structure behind it. `level` is the level it was last drawn at, or -1. */
 export interface Thing {
@@ -165,7 +165,8 @@ export class Scene {
   /**
    * Where an opaque step's cut-out draws go among its other draws: "last", after them all, so that a tiled GPU can
    * reject the cut-out pixels an opaque surface hides before it shades them; "made", as they were made; "first", before
-   * them all, where it can reject none but those the ground hides. The device page sets the three side by side.
+   * them all, where it can reject none but those the ground hides; "none", left out. The device page sets them side by
+   * side, and prices the cut-outs by the last two.
    */
   cutouts: Cutouts = "last";
 
@@ -587,7 +588,8 @@ export class Scene {
     const p = this.packet;
     const n = p.drawCount;
     const one = p.split <= 0;
-    const [cutAt, restAt] = this.cutouts === "last" ? [1, 0] : this.cutouts === "first" ? [0, 1] : [0, 0];
+    // A cut-out's place and the rest's within the step, -1 for left out.
+    const [cutAt, restAt] = this.cutouts === "last" ? [1, 0] : this.cutouts === "first" ? [0, 1] : this.cutouts === "none" ? [-1, 0] : [0, 0];
     if (one) {
       p.drawPass.fill(PASS_NEAR, 0, n);
       p.skyAt = n;
@@ -596,7 +598,7 @@ export class Scene {
       if (!cut) return;
     }
     // Each draw's place in each range, -1 where it is not drawn in that range: its step as stepOf will find it, and in
-    // an opaque step the cut-outs a place after the rest, or before it.
+    // an opaque step the cut-outs a place after the rest, or before it, or none.
     const steps = this.steps;
     const starts = this.starts.fill(0);
     for (let d = 0; d < n; d++) {
@@ -605,14 +607,15 @@ export class Scene {
         const drawn = one ? range === PASS_NEAR : (this.passOf[d]! & (1 << range)) !== 0;
         let s = !drawn ? -1 : (flags & DRAW_BLEND) !== 0 ? STEP_NEAR_SEE - range : range;
         if ((flags & DRAW_NEAR) !== 0) s = range === PASS_NEAR ? STEP_BODY : -1;
-        const place = s < 0 ? -1 : s <= STEP_FAR ? s * 2 + ((flags & DRAW_CUTOUT) !== 0 ? cutAt : restAt) : s + 2;
+        const at = s <= STEP_FAR && (flags & DRAW_CUTOUT) !== 0 ? cutAt : restAt;
+        const place = s < 0 || at < 0 ? -1 : s <= STEP_FAR ? s * 2 + at : s + 2;
         steps[d * 2 + range] = place;
         if (place >= 0) starts[place + 1]!++;
       }
     }
     for (let s = 1; s < starts.length; s++) starts[s]! += starts[s - 1]!;
     const total = starts[STEP_BODY + 3]!;
-    if (!one) p.skyAt = starts[STEP_FAR_SEE + 2]!;
+    p.skyAt = one ? total : starts[STEP_FAR_SEE + 2]!;
     const source = this.source;
     const pass = this.sourcePass;
     let moved = total !== n;
