@@ -1,0 +1,3 @@
+Created all requested images, masks, checks, editable scenes, and rebuild scripts in the current folder. Maximum cross-view discrepancy: **1.25 mm**.
+
+[Lineup](/home/user/Desktop/SNARK/.claude/worktrees/agent-abb3ae7aed2973297/assets/source/core/structures/stations/ref/concept-a/lineup.png) · [Inventory sizes](/home/user/Desktop/SNARK/.claude/worktrees/agent-abb3ae7aed2973297/assets/source/core/structures/stations/ref/concept-a/read_sizes.png) · [Report and limitations](/home/user/Desktop/SNARK/.claude/worktrees/agent-abb3ae7aed2973297/assets/source/core/structures/stations/ref/concept-a/REPORT.md)

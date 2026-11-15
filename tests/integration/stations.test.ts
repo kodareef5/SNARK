@@ -195,9 +195,10 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   expect(at_(ada, spark, 1)).toBe(RESULT_INVALID);
   use(ada, box);
 
-  // Opened, the mortar is a station with 24 slots and an empty queue.
+  // Opened, the mortar is a station with 24 slots and an empty queue. It names its structure, and burns nothing and makes
+  // nothing by itself (protocol 17's OWN_STATION, planning/reference/stations-plan.md, S0).
   expect(use(ada, mortar)).toBe(RESULT_OK);
-  expect([ada.open?.inventory.cap, ada.station]).toEqual([24, { kind: id("mortar"), jobs: [] }]);
+  expect([ada.open?.inventory.cap, ada.station]).toEqual([24, { kind: id("mortar"), ref: mortar, out: 0, lanes: [], jobs: [] }]);
   // Without the engram it is refused. The engram is ARK's: level 6 and 3 points.
   expect(at_(ada, spark, 1)).toBe(RESULT_DENIED);
   h.say(ada, "addxp 1000");

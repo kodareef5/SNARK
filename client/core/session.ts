@@ -19,6 +19,7 @@ import {
   MARGIN_UNKNOWN,
   MAX_CLIENT_MESSAGE,
   MAX_NAME_BYTES,
+  MAX_PLACE_NAME_BYTES,
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   CMD_CREATE,
@@ -87,7 +88,7 @@ import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
-import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
+import { FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -370,8 +371,12 @@ export class ClientSession {
   looked: { id: number; health: number; food: number; torpor: number; taming: number; te: number; mating: number; tribe: string } | null = null;
   inventory: Inventory | null = null;
   open: { name: string; inventory: Inventory } | null = null;
-  /** The queue of the open container when it is a crafting station (OWN_STATION), or null. `kind` is the station's structure kind. */
-  station: { kind: number; jobs: { item: number; left: number; doneAt: number }[] } | null = null;
+  /**
+   * The open container when it is a crafting station (OWN_STATION), or null. `kind` is the station's structure kind and `ref`
+   * the structure; `out` the tick its fire is due to go out (0 when it does not burn); `lanes` what its fire makes by itself,
+   * each unit done at `doneAt` (0 while it waits); `jobs` its queue, a unit paused for want of fuel with `rest` ticks left.
+   */
+  station: { kind: number; ref: number; out: number; lanes: { item: number; doneAt: number }[]; jobs: { item: number; left: number; doneAt: number; rest: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
   /**
@@ -721,6 +726,7 @@ export class ClientSession {
       if (jaws) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
         stepAction(this.own, buttons, buttons & ~was, jaws);
+        biteCost(this.own, this.registry.biteStamina[this.own.kind]!);
       }
       this.bodies[t & (HISTORY - 1)]!.copy(this.own);
       this.bodyTick[t & (HISTORY - 1)] = t;
@@ -942,9 +948,13 @@ export class ClientSession {
       }
     } else if (component === OWN_STATION) {
       const kind = r.u16();
-      const jobs: { item: number; left: number; doneAt: number }[] = [];
-      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32() });
-      if (!r.overflow) this.station = kind === 0 ? null : { kind, jobs };
+      const ref = r.u32();
+      const out = r.u32();
+      const lanes: { item: number; doneAt: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) lanes.push({ item: r.u16(), doneAt: r.u32() });
+      const jobs: { item: number; left: number; doneAt: number; rest: number }[] = [];
+      for (let k = r.u8(); k > 0 && !r.overflow; k--) jobs.push({ item: r.u16(), left: r.u8(), doneAt: r.u32(), rest: r.u32() });
+      if (!r.overflow) this.station = kind === 0 ? null : { kind, ref, out, lanes, jobs };
     } else if (component === OWN_OPEN) {
       // A station's queue comes after it is opened.
       this.station = null;
@@ -1038,7 +1048,7 @@ export class ClientSession {
       const number = r.u8();
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
+      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_PLACE_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
       if (r.overflow) return;
       this.choosing = why;
       this.placesList = number;

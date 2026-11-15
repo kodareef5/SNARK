@@ -2,8 +2,8 @@
 // per component. Also the slot command handlers, the only way a client can ask for its inventory to change.
 
 import type { ItemDef } from "../shared/content/defs.ts";
-import type { BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { fitBytes, type BitReader } from "../shared/net/codec.ts";
+import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CRAFT_BLUEPRINT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, MAX_PLACE_NAME_BYTES, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { FLAG_BLUEPRINT, HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -314,7 +314,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
     w.u8(places.length);
     for (const p of places) {
       w.u16(p.kind);
-      w.string(p.name);
+      w.string(fitBytes(p.name, MAX_PLACE_NAME_BYTES));
       w.f32(p.x);
       w.f32(p.z);
       w.u32(p.readyAt);

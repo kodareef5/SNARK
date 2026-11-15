@@ -96,7 +96,7 @@ test("a creature in its own flight is saved flying and loads in the air, and a s
       store.close();
       return row.data[0]!;
     };
-    expect(format(db, pid)).toBe(6);
+    expect(format(db, pid)).toBe(7);
     const back = createHost(reg, { dbPath: db });
     const f = back.records.entOf.get(pid)!;
     expect([back.records.byPid.get(pid)!.flying, back.world.ents.mode[f], (back.world.ents.flags[f]! & F_GROUNDED) !== 0, back.world.ents.y[f]]).toEqual([true, MODE_FLYER, false, aloft]);
@@ -113,16 +113,20 @@ test("a creature in its own flight is saved flying and loads in the air, and a s
     copyFileSync(join(import.meta.dir, "../fixtures/saves/before-flyers.db"), old);
     const [ada, mount, bo] = [1099511627777, 1099511627778, 1099511627779];
     expect([ada, mount, bo].map((id) => format(old, id))).toEqual([5, 5, 5]);
-    const loaded = createHost(reg, { dbPath: old });
+    // It was made on the proving ground before the ground listed its resource nodes (shared/world/proving.ts), so on other
+    // bytes of the same map; what it holds is what is read here, so it is loaded as an operator would, told to go on.
+    const loaded = createHost(reg, { dbPath: old, allowMapMismatch: true });
     const rec = (id: number) => loaded.records.byPid.get(id)!;
-    expect(loaded.persistence!.store.missingContent).toEqual([]);
+    // The save knew the ingot's engram, which the stations wave took out (planning/reference/stations-plan.md, Decided 2).
+    // Nothing in it uses the engram, so it loads without --allow-missing-content.
+    expect(loaded.persistence!.store.missingContent).toEqual(["core:engram-ingot"]);
     expect([rec(ada).held, rec(ada).inv!.total(reg.index.get("core:stone")!), rec(ada).flying]).toEqual([2, 40, false]);
     expect([reg.ids[rec(mount).saddle], rec(mount).stance, rec(mount).team, rec(mount).flying]).toEqual(["core:saddle_raptor", 2, 7, false]);
     expect([rec(bo).dead, rec(bo).expiresAt, rec(bo).flying]).toEqual([true, 900, false]);
     expect(loaded.world.ents.mode[loaded.records.entOf.get(mount)!]).toBe(MODE_WALK);
     loaded.shutdown();
-    // Written again by this build, it is revision 6 and reads the same.
-    expect([ada, mount, bo].map((id) => format(old, id))).toEqual([6, 6, 6]);
+    // Written again by this build, it is revision 7 and reads the same.
+    expect([ada, mount, bo].map((id) => format(old, id))).toEqual([7, 7, 7]);
     const resaved = createHost(reg, { dbPath: old });
     expect([resaved.records.byPid.get(ada)!.held, reg.ids[resaved.records.byPid.get(mount)!.saddle], resaved.records.byPid.get(bo)!.expiresAt]).toEqual([2, "core:saddle_raptor", 900]);
     resaved.shutdown();

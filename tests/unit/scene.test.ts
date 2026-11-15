@@ -22,7 +22,7 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { buildPack, type SourceLod } from "../../tools/pack/write.ts";
-import { CLUB, H, PANEL, POST, SHARD, W, sceneRegistry, sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
+import { CLUB, H, PANEL, POST, SHARD, TUBE_SADDLE, W, sceneRegistry, sceneSet, sceneWorld } from "../fixtures/sceneworld.ts";
 import { TUBE, TUBE_RIG, tubeClips, tubeMesh } from "../fixtures/textured.ts";
 
 type World = ReturnType<typeof sceneWorld>;
@@ -298,7 +298,11 @@ test("a thing's textures are wanted as wide as its size and its distance show th
   expect(top((w) => w.place("core:survivor", 32, 23, { held: CLUB }))).toEqual([0, 0, 0, 64]);
 });
 
-test("low poly asks for no surface and no texture, draws nothing with a material, and its packets are what they were", () => {
+/**
+ * Three hundred frames of one of everything the scene draws, on low poly, with `saddled` the nearest and the farthest
+ * tube wearing the tube's saddle: their hash, what they drew and uploaded, and what the network was asked for.
+ */
+function lowPoly(saddled: boolean) {
   // The chunk ahead and to the right is past the near node field, and holds trees and palms placed from the map.
   const wood = (hf: Heightfield, reg: Registry): FarNodeSource => {
     const dims = hf.dims;
@@ -316,7 +320,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   for (let i = 0; i < 6; i++) structs.add(kind(i % 2 ? "core:wall" : "core:foundation"), 58 + i * 3, 1.5, 40, 16384 * i, 0, 1);
   // Nodes stand on their base, each at a size of its kind and turned.
   for (let i = 0; i < 4; i++) nodes.add(w.form(i % 2 ? "core:tree" : "core:rock", i * 5), 20 + i * 9, 0, 46, i * 9000, 0, 1);
-  for (let i = 0; i < 8; i++) w.place(TUBE, 24 + i * 2.5, 23 + i * 5, { colors: [8, 7, 14, 6], yaw: i });
+  for (let i = 0; i < 8; i++) w.place(TUBE, 24 + i * 2.5, 23 + i * 5, { colors: [8, 7, 14, 6], yaw: i, saddle: saddled && (i === 0 || i === 7) ? TUBE_SADDLE : undefined });
   [remote.span[3], remote.grown[3]] = [1000, 800];
   w.place("core:survivor", 30, 24, { held: CLUB });
   const looked = w.place("core:survivor", 33, 27, { held: "core:hatchet", colors: [3, 4, 5] });
@@ -336,6 +340,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
 
   let hash = 0;
   let [draws, rigid, uploads] = [0, 0, 0];
+  const worn: number[] = [];
   for (let f = 0; f < 300; f++) {
     cam.yaw = Math.sin(f / 40) * 0.7;
     cam.z = 20 + f / 30;
@@ -350,19 +355,24 @@ test("low poly asks for no surface and no texture, draws nothing with a material
     hash = hashPacket(p, hash);
     draws += p.drawCount;
     uploads += p.assetUploads.length;
+    for (const d of w.draws(p, `${TUBE_SADDLE}/worn`)) worn[p.drawLod[d]!] = (worn[p.drawLod[d]!] ?? 0) + p.drawInstances[d]!;
     for (let d = 0; d < p.drawCount; d++) {
       expect(textured(p, d)).toBe(false);
       if ((p.drawFlags[d]! & DRAW_ONE_BONE) !== 0) rigid++;
     }
     expect([p.texUploads.length, p.texDrops.length, p.assetUploads.filter((u) => u.of !== undefined).length, p.skipped, p.dropped]).toEqual([0, 0, 0, 0, 0]);
   }
+  return { hash, draws, rigid, uploads, worn, log: w.port.log, post: scene.assets.residency.slot(w.mesh(TUBE), 0), texLedger: scene.assets.residency.texLedger };
+}
+
+test("low poly asks for no surface and no texture, draws nothing with a material, and its packets are what they were", () => {
+  const { hash, draws, rigid, uploads, log, post, texLedger, worn } = lowPoly(false);
   // All it asked the network for was the finest level of the tube, for the post, no more urgently than it ever did,
   // and again when the request was lost.
-  const post = scene.assets.residency.slot(w.mesh(TUBE), 0);
-  expect(w.port.log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
+  expect(log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
   // place of the palm's last level.
-  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([7900, 767, 23, 0]);
+  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7900, 767, 23, 0, []]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -400,7 +410,22 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 3260333166 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
   // It was 3479987675 until the pteranodon's grey box (content/creatures/pteranodon.ts) took a mesh number; without the
   // pteranodon and its beach entry it is that again.
-  expect(hash).toBe(1901866876);
+  // It was 1901866876 until the sign letters' grey boxes (content/lettering.ts) and the oil rock's, crystal's, obsidian
+  // rock's and clam's (content/items/nodes.ts) took mesh numbers: 1076386992 with the letters alone, 2385450423 with the
+  // nodes alone (the eleven the proving ground lists do not move it).
+  expect(hash).toBe(1918661154);
+
+  // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
+  // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
+  // its own two: low poly draws nothing finer than a mesh's second level. Its one draw where it is seen is all that is
+  // new, with its level's one upload; the network is asked for nothing more, as the boot file holds both its levels. The
+  // pin moved only for this: without the saddles it is the hash above.
+  const saddled = lowPoly(true);
+  expect(saddled.log).toEqual(log);
+  expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 97, 1, 0, 0, 273]);
+  // It was 1277817829 until the sign letters' and the four resource nodes' grey boxes took mesh numbers, as above:
+  // 1675711496 with the letters alone, 3184345957 with the nodes alone.
+  expect(saddled.hash).toBe(295710133);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

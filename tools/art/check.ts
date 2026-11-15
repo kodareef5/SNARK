@@ -13,6 +13,7 @@ import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { MAP_ROLES } from "../../shared/pack/texture.ts";
 import { dirname } from "node:path";
+import { extraMeshes } from "../pack/creature.ts";
 import { detailInputs } from "../pack/details.ts";
 import { SLOW_MOST, slowSurfaceError, surfaceError } from "../pack/error.ts";
 import { boundsOf } from "../pack/lying.ts";
@@ -521,6 +522,12 @@ function checkCreature(asset: Asset, spec: CreatureAsset, pack: Pack, meshes: So
   }
   if (spec.ragdoll) report.ragdoll = checkRagdoll(rig, spec, pack, faults, notes);
   for (const bone of spec.feet) if (!rig.names.includes(bone)) faults.push(`foot "${bone}" is not a bone of the rig`);
+  // Each saddle worn on it and its saddled model, against budgets of its own, on the body's bones.
+  for (const extra of extraMeshes(asset.id, spec)) {
+    const made = meshes.find((m) => m.id === extra.id);
+    if (made) report.meshes.push(measureMesh(made, pack, extra.budgets.triangles, faults, rig.bones));
+    else faults.push(`${extra.id}: not in the pack`);
+  }
   for (const name of Object.keys(spec.gaits)) if (!spec.clips.some((c) => c.name === name)) faults.push(`gait "${name}" is not one of the clips`);
 }
 

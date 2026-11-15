@@ -126,7 +126,7 @@ test("tranquilizer arrows: torpor at once and more to come, a creature goes down
   expect(h.host.items.audit()).toEqual([]);
 });
 
-test("a flame arrow sets its mark burning: eight health a second for eight seconds, nothing stepped, and the kill is the archer's", () => {
+test("a flame arrow sets its mark burning: twenty-two health a second for eight seconds, nothing stepped, and the kill is the archer's", () => {
   const { h, s, pilot, rec, spawn, arm } = range();
   const survival = h.host.survival;
   const d = spawn("dummy", 10);
@@ -139,18 +139,18 @@ test("a flame arrow sets its mark burning: eight health a second for eight secon
   loose(h, pilot, 300);
   expect(h.host.combat.last.damage).toBe(55);
   expect(d.rec.buffs.map((b) => [b.buff, b.by])).toEqual([[id("burning"), rec.pid]]);
-  // The burn changes the health rate and steps nothing. The rate is 0.2 mending less 8 burning a second, in millionths per tick.
+  // The burn changes the health rate and steps nothing. The rate is 0.2 mending less 22 burning a second (Flame Arrow), in millionths per tick.
   const v = d.rec.vitals!;
-  expect(v.rate[V_HEALTH]).toBe(Math.round(((0.2 - 8) * 1e6) / 30));
+  expect(v.rate[V_HEALTH]).toBe(Math.round((0.2 * 1e6) / 30) + Math.round((-22 * 1e6) / 30));
   const began = d.rec.buffs[0]!.until - 8 * 30;
   h.run(4000);
   const mid = h.world.tick;
-  expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - (7.8 * (mid - began)) / 30, 1);
+  expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - (21.8 * (mid - began)) / 30, 1);
   h.run(5000);
   expect(d.rec.buffs.length).toBe(0);
   expect(v.rate[V_HEALTH]).toBe(Math.round((0.2 * 1e6) / 30));
   const after = h.world.tick;
-  expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - 8 * 8 + (0.2 * (after - began)) / 30, 1);
+  expect(survival.value(d.rec, V_HEALTH)).toBeCloseTo(full - 55 - 22 * 8 + (0.2 * (after - began)) / 30, 1);
   // A second flame arrow restarts the eight seconds. It does not add to the time left.
   aim(pilot, 10, 1.25 + 0.1);
   loose(h, pilot, 300);
@@ -174,7 +174,7 @@ test("a flame arrow sets its mark burning: eight health a second for eight secon
   const hits = h.host.combat.hits;
   loose(h, pilot, 200);
   expect(h.host.combat.hits).toBe(hits + 1);
-  // The arrow takes 55 of its 70 health. The last 15 take two seconds of burning.
+  // The arrow takes 55 of its 70 health. The last 15 take under a second of burning.
   expect(h.host.records.byPid.has(g.rec.pid)).toBe(true);
   h.run(2500);
   expect(h.host.records.byPid.has(g.rec.pid)).toBe(false);
@@ -217,7 +217,7 @@ test("what acts on a body: a stun roots it, an injury slows it and mends, god mo
   run(600);
   say("buff stunned");
   expect(ents.mflags[e]! & (MF_ROOTED | MF_NO_SPRINT)).toBe(MF_ROOTED | MF_NO_SPRINT);
-  expect(marks()).toEqual(["Stunned  3s"]);
+  expect(marks()).toEqual(["Stunned  2s"]);
   run(400);
   const [x, z] = [ents.x[e]!, ents.z[e]!];
   run(1000);

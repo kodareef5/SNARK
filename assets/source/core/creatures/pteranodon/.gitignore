@@ -1,0 +1,3 @@
+# Kept: the accepted pictures, the generated originals they are built from (concept/round2_*), briefs, prompts,
+# build scripts, reports. Superseded rounds are deleted.
+!round[0-9]*/

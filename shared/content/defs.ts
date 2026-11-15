@@ -184,8 +184,11 @@ export interface FlyFacet {
   readonly stamina: { readonly fly: number; readonly sprint: number; readonly roll: number; readonly grab: number };
   /** Seconds after it last flew before any stamina comes back on the ground. None comes back in the air. */
   readonly wait: number;
-  /** The barrel roll: metres per second it adds to its speed, and seconds from one roll to the next. */
-  readonly roll: { readonly burst: number; readonly every: number };
+  /**
+   * The barrel roll: metres per second it adds to its speed, and seconds from one roll to the next. FL2: the damage it does
+   * to each body it passes, at 100% melee, 0 where not given.
+   */
+  readonly roll: { readonly burst: number; readonly every: number; readonly damage?: number };
 }
 
 /** `at` is the centre, measured from the piece's origin. `half` is the half extents. Both are in metres. */
@@ -262,6 +265,20 @@ export interface StructureDef extends Named {
   readonly floor?: boolean;
   /** Where a survivor rises from a bed, from its middle and turned with it. On top of it unless given. */
   readonly rise?: readonly [number, number, number];
+  // A station's fuel, fire and power (planning/reference/stations-plan.md). Both kinds of a lit pair say the same.
+  /**
+   * The only fuel this station burns, and the seconds one piece lasts in it (the fabricator's gasoline, the preserving bin's
+   * sparkpowder). Omitted, it burns every item by the item's own `fuel`, as a campfire does.
+   */
+  readonly burns?: readonly { readonly item: string; readonly seconds: number }[];
+  /** False for a fire that does not cook what has `cooks` (M1). Omitted, it cooks. A stub until S1. */
+  readonly cooks?: boolean;
+  /** How many times as long things keep in it, as a species' `keeps` (M6). A stub until S3. */
+  readonly keeps?: number;
+  /** Its jobs run only while it burns (M5). A stub until S2. */
+  readonly powered?: boolean;
+  /** It is not lit below the map's sea level (M8). A stub until S1. */
+  readonly dry?: boolean;
 }
 
 /** Multiplier on each type of damage a structure of this material takes. A type not given does no damage. */
@@ -291,6 +308,8 @@ export interface ItemDef extends Named {
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** Seconds one of it keeps a fire going. */
   readonly fuel?: number;
+  /** When one piece of it has burnt out in a fire, the fire gets one of this, as wood leaves charcoal (M4). A stub until S1. */
+  readonly burnsInto?: string;
   /** The species it fits and the armor it gives the creature that wears it (the reference's rating). */
   readonly saddle?: { readonly fits: string; readonly armor: number };
   /** Fed to an unconscious creature, it adds this much torpor over this many seconds. */
@@ -375,6 +394,11 @@ export interface CraftFacet {
   readonly at?: string;
   /** The level below which it cannot be made, engram or no. */
   readonly level?: number;
+  /**
+   * Made by the fire it is `at` while that burns and its ingredients lie in it, with no job, engram or experience
+   * (planning/reference/stations-plan.md, M3). Only at a station that `lights`. A stub until S1.
+   */
+  readonly fired?: boolean;
 }
 
 /** Species and structure materials each give a multiplier per type. */
@@ -548,8 +572,12 @@ export interface NodeDef extends Named {
   readonly respawnHours: number;
   /** Matched against a tool's `on`. Omitted for things picked by hand with the use key. */
   readonly material?: string;
-  /** What each hit gives. `tool` true means only with the right tool. */
-  readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean }[];
+  /**
+   * What each hit gives. `tool` true means only with the right tool. A right tool multiplies every yield by its power but
+   * one marked `flat`, whose range is what a hit gives whatever the tool: where the reference game's page says what its
+   * stone pick gets a hit (oil), or that it gets very little (crystal).
+   */
+  readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean; readonly flat?: boolean }[];
   /** Experience per hit. */
   readonly xp: number;
   /** The individuals it grows as. Each node is one of them, chosen by its place. Without them it is its own mesh and `half`. */
@@ -564,6 +592,12 @@ export interface NodeDef extends Named {
    * its place, as it is, or nothing.
    */
   readonly footing?: { readonly reach: number; readonly fall: number; readonly else?: string };
+  /**
+   * Where a scattered slot grows it against the sea: "under", only where the ground is under the sea (a clam, an oil rock);
+   * "either", there or on dry ground (crystal). Without it, only where the ground is 0.3 m above the sea or more. A listed
+   * node stands where it is listed.
+   */
+  readonly sea?: "under" | "either";
 }
 
 export interface EngramDef extends Named {

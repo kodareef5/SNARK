@@ -5,8 +5,8 @@ import { crafting } from "../craft.ts";
 // on the Pteranodon page and its items' pages, in metres and seconds. What it does in ARK, and where each number is from,
 // is assets/source/core/creatures/pteranodon/ref/FUNCTIONS.md; a number with no source there says it was chosen. The art
 // replaces its mesh under the same id, which is this definition's (PA5 of planning/reference/flyers-plan.md): nothing here
-// depends on how it looks. Its flight, grab, egg rule, rider's weight and damage rules are read by nothing until the
-// plan's packages build them.
+// depends on how it looks. Its grab, egg rule, rider's weight and damage rules are read by nothing until the plan's
+// packages build them; its flight is the step's (shared/sim/character.ts).
 
 /** The egg in the hand, ARK's Pteranodon Egg: a small egg of 7 that spoils in 8 hours and lies 30 minutes, eaten as 35 food and 35 health (its 35 stamina has no field). */
 export const PTERANODON_EGG: ItemDef = {
@@ -38,8 +38,8 @@ export const PTERANODON: readonly Def[] = [
     radius: 0.75,
     height: 1.9,
     eyeHeight: 1.8,
-    // 260 units a second on all fours, with no run on the ground, and 300 swimming. It never jumps in ARK; jump will take it
-    // off (FL1), and until then this is a hop no mind asks for.
+    // 260 units a second on all fours, with no run on the ground, and 300 swimming. It never jumps in ARK: its jump held takes
+    // it off, and a flyer's step never hops, so jumpSpeed is read by nothing.
     walkSpeed: 2.6,
     sprintMul: 1,
     swimSpeed: 3,
@@ -52,8 +52,9 @@ export const PTERANODON: readonly Def[] = [
     stamina: { sprint: 0, regen: 8, jump: 6, walk: 0.025 },
     // 600 units a second flying, a sprint of 1,650 wild and 1,897.5 tamed. 0.325 stamina a second flying or hovering (the
     // page; hovering is given no rate), 6 sprinting, 90 a barrel roll and 40 a grab, and none back for 10 s after it flies.
-    // A roll every 7 s. Chosen, as ARK publishes none: the acceleration, the turn in the air and the roll's burst.
-    fly: { speed: 6, sprintMul: 2.75, tamedSprintMul: 3.1625, accel: 12, turn: 120, stamina: { fly: 0.325, sprint: 6, roll: 90, grab: 40 }, wait: 10, roll: { burst: 10, every: 7 } },
+    // A roll every 7 s, doing 50 to all it hits. Chosen, as ARK publishes none: the acceleration, the turn in the air and the
+    // roll's burst.
+    fly: { speed: 6, sprintMul: 2.75, tamedSprintMul: 3.1625, accel: 12, turn: 120, stamina: { fly: 0.325, sprint: 6, roll: 90, grab: 40 }, wait: 10, roll: { burst: 10, every: 7, damage: 50 } },
     // It lifts at most 50 of drag weight, within 500 units below it: of ours the dodo and a survivor.
     grab: { drag: 50, reach: 5 },
     // Its bite: 18, every 0.67 s, for 5 stamina. Chosen until the model measures it: a reach of 1.6 m past its body, landing
@@ -92,7 +93,9 @@ export const PTERANODON: readonly Def[] = [
     // eleven rolls of 10 against our tools, a hatchet favouring hide and a pick meat, as the dodo's are.
     corpse: { health: 110, roll: 10 },
     drops: [{ item: "core:hide", min: 1, max: 1, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, favoured: "stone" }],
-    // Its head takes three times; damage by type is the shared carnivore's, as the raptor's is.
+    // Its head takes three times; damage by type is the shared carnivore's, as the raptor's is: 70% from guns ("all
+    // creatures aside from Humans", ark.wiki.gg, Longneck Rifle, 2026-11-15).
+    takes: { bullet: 0.7 },
     zones: { head: 3 },
     // The experience the infobox gives for a kill at level 1. Its data module's base is 3.
     killXp: 12,

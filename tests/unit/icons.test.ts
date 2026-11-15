@@ -93,6 +93,20 @@ test("an item is drawn from its own dropped mesh, else its own held mesh, and ne
   expect(subjects(["core:pick", "core:pick/dropped", "core:stone/dropped"]).sort()).toEqual(["core:pick/icon core:pick/dropped", "core:stone/icon core:stone/dropped"]);
 });
 
+test("a structure's item with no mesh of its own is drawn as the first structure it places stands, in that structure's colour", () => {
+  const subjects = (meshes: string[]): string[] => iconSubjects(reg.defs, (id) => meshes.includes(id)).map((s) => `${s.icon} ${s.mesh} ${s.colors[0]}`);
+  const mortar = reg.defs.find((d) => d?.id === "core:mortar") as { color: number };
+  // The mortar's grey box or modelled mesh, which share its id; its own preview where it has one, and its own dropped
+  // mesh before either. The bag a dropped stack stands in is still nobody's picture.
+  expect(subjects(["core:mortar"])).toEqual([`core:piece_mortar/icon core:mortar ${mortar.color}`]);
+  expect(subjects(["core:mortar", "core:piece_mortar/preview"])).toEqual([`core:piece_mortar/icon core:piece_mortar/preview ${mortar.color}`]);
+  expect(subjects(["core:mortar", "core:piece_mortar/dropped"])[0]!.split(" ")[1]).toBe("core:piece_mortar/dropped");
+  expect(subjects(["core:bag"])).toEqual([]);
+  // A lit pair's item places the unlit kind, so it is pictured out.
+  const campfire = reg.defs.find((d) => d?.type === "item" && d.places?.includes("core:campfire"));
+  expect(subjects(["core:campfire", "core:campfire_lit"])).toEqual([`${campfire!.id}/icon core:campfire ${(reg.defs.find((d) => d?.id === "core:campfire") as { color: number }).color}`]);
+});
+
 test("a sheet of pictures is a file of the manifest, which still reads version 3 and refuses a picture outside its sheet", () => {
   expect(MANIFEST_VERSION).toBe(4);
   expect([sheet.role, [...sheet.bytes.subarray(0, 8)]]).toEqual(["icon", [137, 80, 78, 71, 13, 10, 26, 10]]);
