@@ -134,18 +134,26 @@ test("a page shows which device it is on and the tests, starts nothing until one
   gpu.readPixel = () => (air.push([app.scene!.packet.frame[FRAME.haze]!, app.scene!.packet.frame[FRAME.skyDetail]!]), [0, 0, 0]);
   const yaw = new Map<string, number>();
   const split = new Map<string, number>();
-  const each = (): void => void (yaw.set(probe.report.stage, app.controls.yaw), split.set(probe.report.stage, app.scene!.packet.split));
+  const cascades = new Map<string, number>();
+  const each = (): void => {
+    yaw.set(probe.report.stage, app.controls.yaw);
+    split.set(probe.report.stage, app.scene!.packet.split);
+    cascades.set(probe.report.stage, app.scene!.assets.tier.shadows.cascades);
+  };
   await run(probe, h, app, gpu, 60000, { each });
   const r = probe.report;
   expect([r.mode, r.done, r.errors, r.reloadedDuring]).toEqual(["quick", true, [], null]);
-  expect(r.phases.map((p) => `${p.tier} ${p.scene}`)).toEqual(["lowpoly plain", "lowpoly stress", "lowpoly crowd", "medium plain", "medium stress", "medium crowd", "medium crowd1", "high plain", "high stress", "high crowd", "high crowd1"]);
+  expect(r.phases.map((p) => `${p.tier} ${p.scene}`)).toEqual(["lowpoly plain", "lowpoly stress", "lowpoly crowd", "medium plain", "medium stress", "medium crowd", "medium crowd1", "medium crowd0", "high plain", "high stress", "high crowd", "high crowd1", "high crowd0"]);
   expect(r.skipped).toEqual(["ultra: its textures are up to 4096 wide, and this device takes 2048"]);
-  expect(r.phases.map((p) => p.ratio)).toEqual([1, 1, 1, 1.5, 1.5, 1.5, 1.5, 2, 2, 2, 2]);
+  expect(r.phases.map((p) => p.ratio)).toEqual([1, 1, 1, 1.5, 1.5, 1.5, 1.5, 1.5, 2, 2, 2, 2, 2]);
+  // The crowd with its shadows and then with none, the next tier with its own again.
+  expect([cascades.get("medium crowd"), cascades.get("medium crowd0"), cascades.get("high plain")]).toEqual([2, 0, 3]);
   expect(r.phases[3]!.canvas).toEqual([585, 1266]);
   expect([yaw.get("medium crowd"), yaw.get("medium plain"), yaw.get("medium crowd1")]).toEqual([Math.PI, 0, Math.PI]);
   // The crowd on medium in its two depth ranges and then in one; the next tier has its split again.
   expect([split.get("medium crowd"), split.get("medium crowd1"), split.get("high plain")]).toEqual([384, 0, 384]);
   expect(deviceTable(r).some((line) => line.startsWith("ranges    medium, two against one in the crowd: frames "))).toBe(true);
+  expect(deviceTable(r).some((line) => line.startsWith("shadows   medium, on against off in the crowd: the GPU's time not known here (no timer queries); frames "))).toBe(true);
   // The GPU questions were asked first, and each answered on the harness's context.
   const q = r.gpuTests!;
   expect([q.lostDuring, q.passes.filter((p) => p.note !== "").length, typeof q.seam]).toEqual([null, 0, "object"]);
@@ -172,7 +180,7 @@ test("a page shows which device it is on and the tests, starts nothing until one
   const s = probe.report.soak!;
   expect([probe.report.done, probe.report.errors, s.tier, s.from, s.minutes.length]).toEqual([true, [], "high", "defaults", 1]);
   expect(s.minutes[0]!.frames).toBeGreaterThan(100);
-  expect(deviceTable(probe.report).some((line) => line.startsWith("soak      high: 200 bodies, 1024 pieces"))).toBe(true);
+  expect(deviceTable(probe.report).some((line) => line.startsWith("soak      high: 200 bodies, 1024 pieces") && line.includes("shadows on in 3 cascades"))).toBe(true);
 });
 
 test("the ladder climbs until a rung breaks, asks the server for the base, and ends taking texture memory until the device refuses it", async () => {

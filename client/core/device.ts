@@ -36,11 +36,12 @@ export const MODES: readonly Mode[] = ["quick", "ladder", "soak", "terrain"];
 
 /**
  * The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the
- * crowd; and on a tier of two depth ranges (D252), the crowd again in one, to set the two against each other.
+ * crowd; on a tier of two depth ranges (D252), the crowd again in one; and on a lit tier that casts, the crowd again with
+ * no shadows: each to set against the crowd.
  */
-export type SceneName = "plain" | "stress" | "crowd" | "crowd1";
+export type SceneName = "plain" | "stress" | "crowd" | "crowd1" | "crowd0";
 export const SCENES: readonly SceneName[] = ["plain", "stress", "crowd"];
-export const scenesOf = (tier: Tier): readonly SceneName[] => (tier.split > 0 ? [...SCENES, "crowd1"] : SCENES);
+export const scenesOf = (tier: Tier): readonly SceneName[] => [...SCENES, ...(tier.split > 0 ? ["crowd1" as const] : []), ...(tier.lit && tier.shadows.cascades > 0 ? ["crowd0" as const] : [])];
 
 /**
  * What the ladder adds, a rung at a time. Bodies: copies of the crowd, posed. Pieces: stone and wood houses the server
@@ -137,6 +138,8 @@ export interface PhaseReport {
   /** In our own code: building the frame and the interface, and handing the frame to WebGL. */
   buildMs: Spread;
   drawMs: Spread;
+  /** The GPU's ms for a frame by timer query, median, or null where there are none. */
+  gpuMs: number | null;
   /** Medians a frame: WebGL draw calls, triangles, draws the frame asked to have drawn with their materials, and bones posed. */
   drawCalls: number;
   triangles: number;
@@ -197,6 +200,8 @@ export interface SoakReport {
   /** What the soak turned through, and where the amounts came from: "defaults", or half what the ladder held on this page. */
   load: { bodies: number; pieces: number; near: number; far: number; stress: boolean };
   from: string;
+  /** The sun's cascades the tier casts into, 0 for none: lit tiers cast by default. */
+  cascades: number;
   minutesWanted: number;
   /** Each minute's frames, with `long` the frames of LONG display intervals or more while the page was shown, and `mat` the most draws with materials in one. */
   minutes: { minute: number; frames: number; frameMs: Spread; long: number; buildMs: number; drawMs: number; missed: number; mat: number }[];
@@ -470,8 +475,9 @@ export interface Load {
   pieces: number;
   near: number;
   far: number;
-  /** Drawn in one depth range on a tier of two. */
+  /** Drawn in one depth range on a tier of two, and with no shadows on a tier that casts. */
   oneRange?: boolean;
+  noShadows?: boolean;
 }
 
 interface Step {
@@ -610,7 +616,7 @@ export class DeviceRun {
   private failedAt = 0;
   private dropped = 0;
   private skipped = 0;
-  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[] };
+  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[], gpu: [] as number[] };
   /** Tiers above this index are not tried in the quick look, for `stopWhy`. */
   private stopAbove = TIERS.length;
   private stopWhy = "";
@@ -631,8 +637,9 @@ export class DeviceRun {
   private memoryRung = 0;
   private heldSince = -1;
   private sweepsAt = 0;
-  /** Whether the scene is drawn in one depth range, and the scene whose build looks at it. */
+  /** Whether the scene is drawn in one depth range, and with no shadows. */
   private flat = false;
+  private dark = false;
   /** Where the terrain flight puts the camera, if it does. */
   private fly: { x: number; y: number; z: number; yaw: number; pitch: number } | null = null;
   /** The terrain flight under way: its tier, clock, heading, jumps, and the jump whose window is awaited. */
@@ -838,7 +845,7 @@ export class DeviceRun {
     }
     if (this.mode === "soak") {
       const tier = this.soakTier();
-      this.report.soak = { tier: tier.name, load: this.soakFrom.load, from: this.soakFrom.from, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0 };
+      this.report.soak = { tier: tier.name, load: this.soakFrom.load, from: this.soakFrom.from, cascades: tier.lit ? tier.shadows.cascades : 0, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0 };
       this.stage = "soak";
       this.report.stage = "soak";
       this.apply({ ...this.soakFrom.load, tier, yaw: 0 });
@@ -850,6 +857,9 @@ export class DeviceRun {
   }
 
   private measure(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number): boolean {
+    // The GPU's time for each frame, where there are timer queries; none is open while the GPU questions are asked.
+    const frames = this.side.frames;
+    frames?.tick(true);
     if (this.at < 0) this.at = now;
     const step = this.step!;
     const measureMs = step.kind === "rung" ? this.timing.rungMs : this.timing.measureMs;
@@ -861,9 +871,11 @@ export class DeviceRun {
       this.at = now;
       for (const list of Object.values(this.samples)) list.length = 0;
       this.dropped = this.skipped = 0;
+      frames?.take();
       return false;
     }
     this.sample(gap, buildMs, drawMs, drawCalls, p);
+    this.samples.gpu.push(...(frames?.take() ?? []).map((t) => t.ms));
     if (now - this.at < measureMs) return false;
     const phase = this.result();
     if (step.kind === "again") {
@@ -900,7 +912,7 @@ export class DeviceRun {
     const app = this.side.app;
     return {
       tier: load.tier.name, scene: this.step!.scene ?? "plain", ratio: this.ratio(), canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
-      frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw),
+      frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw), gpuMs: s.gpu.length > 0 ? spread(s.gpu).median : null,
       drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median, bones: spread(s.bones).median,
       dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, failed: this.failures() - this.failedAt, missed: this.missedSince(this.stepBase),
       lost: this.lostCount - this.lostAt, fellTo: app.ui.settings.tier === load.tier.name ? null : app.ui.settings.tier,
@@ -927,6 +939,7 @@ export class DeviceRun {
     const load = bare(tier, scene.startsWith("crowd") ? LOOK.crowd : 0);
     load.stress = scene === "stress";
     load.oneRange = scene === "crowd1";
+    load.noShadows = scene === "crowd0";
     this.go({ kind: again ? "again" : "phase", load, scene }, `${again ? "again " : ""}${tier.name} ${scene}`);
   }
 
@@ -934,6 +947,7 @@ export class DeviceRun {
     const rung = this.ladder.next(held, lost);
     if (!rung) {
       this.apply(bare(tierOf(DEFAULT_TIER), 0));
+      this.side.frames?.stop();
       this.stage = this.side.memory ? "memory" : "done";
       if (this.side.memory) this.report.ladder!.memory = { variant: this.report.gpu?.variant ?? "rgba", gameMB: 0, heldMB: 0, failedMB: null, slowMB: null, how: "", rungs: [] };
       return this.stage === "done" ? this.end() : void (this.report.stage = `memory ${MEMORY_MB[0]} MB`);
@@ -948,20 +962,22 @@ export class DeviceRun {
   }
 
   /**
-   * Whether the scene draws in one depth range on a tier of two. The game sets the tier on its scene each frame, so the
-   * scene's build is wrapped once to put a copy with no split in its place. A copy a tier, since the renderer keeps its
-   * programs by the tier.
+   * Whether the scene draws in one depth range on a tier of two, and with no shadows on a tier that casts. The game sets
+   * the tier on its scene each frame, so the scene's build is wrapped once to put a copy with no split, or no cascades,
+   * in its place. A copy a tier, since the renderer keeps its programs by the tier.
    */
-  private oneRange(on: boolean): void {
+  private variant(oneRange: boolean, noShadows: boolean): void {
     const scene = this.side.app.scene!;
-    this.flat = on;
+    [this.flat, this.dark] = [oneRange, noShadows];
     if (this.wrapped === scene) return;
     this.wrapped = scene;
     const build = scene.build.bind(scene);
     const copies = new Map<Tier, Tier>();
+    const dark = new Map<Tier, Tier>();
     scene.build = (cam, remote) => {
       const t = scene.assets.tier;
       if (this.flat && t.split > 0) scene.assets.tier = copies.get(t) ?? copies.set(t, { ...t, split: 0 }).get(t)!;
+      if (this.dark && t.shadows.cascades > 0) scene.assets.tier = dark.get(t) ?? dark.set(t, { ...t, shadows: { ...t.shadows, cascades: 0 } }).get(t)!;
       // The flight moves the camera as it builds; the body stays where the server has it.
       if (this.fly) [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [this.fly.x, this.fly.y, this.fly.z, this.fly.yaw, this.fly.pitch];
       return build(cam, remote);
@@ -1160,7 +1176,7 @@ export class DeviceRun {
     const assets = app.scene!.assets;
     app.scene!.things = [...(load.stress ? this.stressed() : []), ...(load.near + load.far > 0 ? rocks(assets.table, hf, load.near, load.far) : [])];
     bodies.n = load.bodies;
-    this.oneRange(load.oneRange === true);
+    this.variant(load.oneRange === true, load.noShadows === true);
     if (load.pieces !== this.pieces) {
       this.asking = true;
       this.pieces = load.pieces;
@@ -1323,6 +1339,7 @@ export class DeviceRun {
   }
 
   private end(): void {
+    this.side.frames?.stop();
     this.apply(bare(tierOf(DEFAULT_TIER), 0));
     this.sync();
     this.stage = "done";

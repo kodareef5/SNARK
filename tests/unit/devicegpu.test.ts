@@ -3,12 +3,13 @@
 // context's compiler refuses, which every program the probe draws with goes through.
 
 import { expect, test } from "bun:test";
-import { TIERS } from "../../client/core/assets/tiers.ts";
+import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
 import { GL, GpuQuestions, PROBE_UNITS, compareKind, filterKind, fitLine, lookFrom, saveState, seamCount, solidBlock, type GpuPlan } from "../../client/core/devicegpu.ts";
 import { AIR, SKY_VERTEX } from "../../client/core/render/atmosphere.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { FLAT_MESH_VERTEX, LIT_FRAGMENT } from "../../client/core/render/glsl.ts";
 import { PROGRAMS, withDefines } from "../../client/core/render/programs.ts";
+import { shadowDefines } from "../../client/core/render/shadowtext.ts";
 import { SKY_GLSL } from "../../client/core/render/sky.ts";
 import { SURFACE_VERTEX, surfaceFragment } from "../../client/core/render/surface.ts";
 import { TextureMemory } from "../../client/core/devicescene.ts";
@@ -118,12 +119,17 @@ function link(vertex: string, fragment: string): string {
 }
 
 test("the fake context refuses the probe's SURFACE pass as the dome left it, and what else a GPU would refuse that it can see", () => {
-  // The sky table's lookup where the air now goes: what Chrome said at line 100, and a prototype with no body.
-  expect(link(SURFACE_VERTEX, surfaceFragment("astc", SKY_GLSL))).toBe("ERROR: 0:100: 'skyFrom' : no matching overloaded function found\nERROR: 'hazed' : function is called but never defined");
+  // The sky table's lookup where the air now goes: what Chrome said (at line 100 of the text then), and a prototype with no body.
+  expect(link(SURFACE_VERTEX, surfaceFragment("astc", SKY_GLSL))).toMatch(/^ERROR: 0:\d+: 'skyFrom' : no matching overloaded function found\nERROR: 'hazed' : function is called but never defined$/);
   expect(link(SURFACE_VERTEX, surfaceFragment("astc", AIR))).toBe("");
+  // The shadow lookup's branches are taken as the defines say: SHADOW_SIZE is a name only where shadows are defined.
+  const shadows = shadowDefines(tierOf("high").shadows, true);
+  const sized = surfaceFragment("astc", AIR).replace("float sunShadow(vec3 rel, vec3 normal) {\n  return 1.0;", "float sunShadow(vec3 rel, vec3 normal) {\n  return SHADOW_SIZE;");
+  expect([link(SURFACE_VERTEX, withDefines(surfaceFragment("astc", AIR), shadows)), link(SURFACE_VERTEX, withDefines(sized, shadows))]).toEqual(["", ""]);
+  expect(link(SURFACE_VERTEX, sized)).toMatch(/^ERROR: 0:\d+: 'SHADOW_SIZE' : undeclared identifier$/);
   // A name the frame block does not have, a call with an argument too many, and a line before the version.
   expect(link(SKY_VERTEX.replace("fCloudSun.rgb", "fCloudLight.rgb"), LIT_FRAGMENT)).toMatch(/^ERROR: 0:\d+: 'fCloudLight' : undeclared identifier$/);
-  expect(link(FLAT_MESH_VERTEX, LIT_FRAGMENT.replace("vec3(0.0)), vRel)", "vec3(0.0), 1.0), vRel)"))).toMatch(/'lit' : no matching overloaded function found$/);
+  expect(link(FLAT_MESH_VERTEX, LIT_FRAGMENT.replace("sunShadow(vRel, n)), vRel)", "sunShadow(vRel, n), 1.0), vRel)"))).toMatch(/'lit' : no matching overloaded function found$/);
   expect(link(FLAT_MESH_VERTEX, withDefines(LIT_FRAGMENT, "#define SHADOWS 1\n"))).toBe("");
   expect(link(FLAT_MESH_VERTEX, "#define SHADOWS 1\n" + LIT_FRAGMENT)).toMatch(/'#version' : must be the text's first line/);
   // Linking: SURFACE's fragment behind FLAT's vertex text, which writes vRel but not the rest, and vColor flat where LIT reads it smooth.
@@ -131,12 +137,14 @@ test("the fake context refuses the probe's SURFACE pass as the dome left it, and
   expect(link(FLAT_MESH_VERTEX, LIT_FRAGMENT.replace("flat in vec3 vColor;", "in vec3 vColor;"))).toBe("ERROR: 'vColor' : the fragment reads it as vec3, and the vertex text writes it as flat vec3");
 });
 
-test("every program of the game's table compiles and links on the fake context, on every tier and texture variant", () => {
+test("every program of the game's table compiles and links on the fake context, on every tier and texture variant, compared lookups hard or not", () => {
   for (const tier of TIERS) {
     for (const format of ["rgba", "bc", "astc"] as const) {
       for (const [name, make] of Object.entries(PROGRAMS)) {
-        const t = make(tier, format);
-        expect(`${tier.name} ${format} ${name}: ${link(withDefines(t.vertex, t.defines), withDefines(t.fragment, t.defines))}`).toBe(`${tier.name} ${format} ${name}: `);
+        for (const hard of [false, true]) {
+          const t = make(tier, format, hard);
+          expect(`${tier.name} ${format} ${name}: ${link(withDefines(t.vertex, t.defines), withDefines(t.fragment, t.defines))}`).toBe(`${tier.name} ${format} ${name}: `);
+        }
       }
     }
   }
@@ -192,7 +200,7 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect(per("flat")).toMatchObject({ slope: 0.03, timer: 0.03, k: 512 });
   expect(per("9 taps").slope).toBe(0.03);
   // The game's lit programs read noon's frame block: every draw of theirs had its buffer, or the fake would have drawn nothing.
-  expect(["lit", "lit haze 3.5 km", "far", "surface", "sky table", "sky 2 layers"].map((n) => per(n).slope)).toEqual(Array(6).fill(0.03));
+  expect(["lit", "lit haze 3.5 km", "far", "surface", "sky table", "sky 2 layers", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(7).fill(0.03));
   expect(card.gl.invalid).toEqual([]);
   // A draw's 0.01 ms on the clock: 1,000 of them are enough to time.
   expect(per("draw")).toMatchObject({ slope: 10, error: 0, k: 1000 });
@@ -205,7 +213,7 @@ test("a question past its deadline says it did not finish, and a lost context na
   const late = new GpuQuestions(slow.gl, () => slow.gl.createTexture(), slow.now, "bc", [390, 844], PLAN);
   ask(late, () => slow.tick(4000));
   expect([late.report.depthRange, late.report.seam]).toEqual(["neither (read 128,128,128)", "did not finish"]);
-  expect(late.report.passes.map((p) => p.note)).toEqual(Array(18).fill("did not finish"));
+  expect(late.report.passes.map((p) => p.note)).toEqual(Array(19).fill("did not finish"));
 
   const card = timedCard();
   const q = new GpuQuestions(card.gl, () => card.gl.createTexture(), card.now, "rgba", [390, 844], PLAN);
@@ -218,7 +226,7 @@ test("a question past its deadline says it did not finish, and a lost context na
   const r = q.report;
   expect(r.lostDuring).toBe("flat");
   expect(r.passes[0]!.note).toBe("lost the context");
-  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(17).fill("not asked: the context was lost during flat"));
+  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(18).fill("not asked: the context was lost during flat"));
 
   // Lost in the middle of a question's step: what it read is not its answer.
   const dying: ReturnType<typeof fakeGl> = fakeGl({ read: () => dying.lose() });

@@ -1,9 +1,9 @@
 // What a GLSL ES 3.00 compiler and linker would refuse in a program's texts, as far as the fake context can tell
-// without types. Compiling: a text whose first line is not #version 300 es; a call to a function no text declares, or
-// with a count of arguments none of its declarations takes; a name nothing declares; a function called and never
-// defined. Linking: a fragment input the vertex text does not write with the same type and qualifier, and a uniform the
-// two declare as different types. It cannot see a wrong type passed or returned, a swizzle a type lacks, precision, a
-// GPU's limits, or what a program draws.
+// without types. Compiling, after the preprocessor's branches are taken as its defines say: a text whose first line is
+// not #version 300 es; a call to a function no text declares, or with a count of arguments none of its declarations
+// takes; a name nothing declares; a function called and never defined. Linking: a fragment input the vertex text does
+// not write with the same type and qualifier, and a uniform the two declare as different types. It cannot see a wrong
+// type passed or returned, a swizzle a type lacks, precision, a GPU's limits, or what a program draws.
 
 const TYPES = new Set([
   "void", "bool", "int", "uint", "float", "vec2", "vec3", "vec4", "bvec2", "bvec3", "bvec4", "ivec2", "ivec3", "ivec4", "uvec2", "uvec3", "uvec4",
@@ -29,20 +29,70 @@ interface Token {
   line: number;
 }
 
-/** The text's tokens, with comments and preprocessor lines left out, and the names its #define lines declare. */
+/** An #if's condition: whole numbers, defined(), the macros' values (0 for one not defined), comparisons, ! && || and arithmetic. */
+function condition(expr: string, macros: Map<string, string>): number {
+  const text = expr.replace(/defined\s*\(\s*(\w+)\s*\)|defined\s+(\w+)/g, (_, a: string | undefined, b: string | undefined) => (macros.has(a ?? b ?? "") ? "1" : "0")).replace(/[A-Za-z_]\w*/g, (n) => macros.get(n)?.trim() || "0");
+  const t = text.match(/\d+\.?\d*|&&|\|\||==|!=|<=|>=|[()<>!+\-*/]/g) ?? [];
+  let i = 0;
+  type Ops = Record<string, (a: number, b: number) => number>;
+  const binary = (next: () => number, ops: Ops) => (): number => {
+    let v = next();
+    while (ops[t[i] ?? ""]) v = ops[t[i++]!]!(v, next());
+    return v;
+  };
+  const atom = (): number => {
+    const x = t[i++];
+    if (x === "(") {
+      const v = or();
+      i++;
+      return v;
+    }
+    if (x === "!") return atom() === 0 ? 1 : 0;
+    if (x === "-") return -atom();
+    return Number(x);
+  };
+  const mul = binary(atom, { "*": (a, b) => a * b, "/": (a, b) => a / b });
+  const add = binary(mul, { "+": (a, b) => a + b, "-": (a, b) => a - b });
+  const cmp = binary(add, { "<": (a, b) => +(a < b), ">": (a, b) => +(a > b), "<=": (a, b) => +(a <= b), ">=": (a, b) => +(a >= b) });
+  const eq = binary(cmp, { "==": (a, b) => +(a === b), "!=": (a, b) => +(a !== b) });
+  const and = binary(eq, { "&&": (a, b) => +(a !== 0 && b !== 0) });
+  const or: () => number = binary(and, { "||": (a, b) => +(a !== 0 || b !== 0) });
+  return or();
+}
+
+/**
+ * The text's tokens as a preprocessor leaves them: comments, directives and the lines of branches not taken out; and
+ * the names its #define lines declare. Macros are not expanded, which a name's use does not need.
+ */
 function tokens(text: string): { list: Token[]; macros: string[] } {
   const list: Token[] = [];
-  const macros: string[] = [];
+  const macros = new Map<string, string>();
+  const branches: { on: boolean; taken: boolean }[] = [];
+  const live = (): boolean => branches.every((b) => b.on);
   const bare = text.replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " ")).replace(/\/\/.*$/gm, "");
   bare.split("\n").forEach((line, i) => {
-    if (/^\s*#/.test(line)) {
-      const named = /^\s*#\s*define\s+([A-Za-z_]\w*)/.exec(line);
-      if (named) macros.push(named[1]!);
+    const d = /^\s*#\s*(\w+)\s*(.*)$/.exec(line);
+    if (d) {
+      const [, word, rest] = d as unknown as [string, string, string];
+      const top = branches.at(-1);
+      if (word === "ifdef" || word === "ifndef" || word === "if") {
+        const on = word === "if" ? condition(rest, macros) !== 0 : macros.has(rest.trim()) === (word === "ifdef");
+        branches.push({ on, taken: on });
+      } else if (top && word === "elif") {
+        top.on = !top.taken && condition(rest, macros) !== 0;
+        top.taken ||= top.on;
+      } else if (top && word === "else") [top.on, top.taken] = [!top.taken, true];
+      else if (word === "endif") branches.pop();
+      else if (word === "define" && live()) {
+        const m = /^([A-Za-z_]\w*)\s*(.*)$/.exec(rest);
+        if (m) macros.set(m[1]!, m[2]!);
+      }
       return;
     }
+    if (!live()) return;
     for (const m of line.matchAll(/[A-Za-z_]\w*|\d+\.\d*(?:[eE][+-]?\d+)?[uUfF]?|\.\d+(?:[eE][+-]?\d+)?|\d+(?:[eE][+-]?\d+)?[uUfF]?|\S/g)) list.push({ t: m[0], line: i + 1 });
   });
-  return { list, macros };
+  return { list, macros: [...macros.keys()] };
 }
 
 const isName = (t: string): boolean => /^[A-Za-z_]/.test(t);

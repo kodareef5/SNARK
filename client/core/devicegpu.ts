@@ -319,7 +319,9 @@ export function newGpuReport(): GpuReport {
 
 /**
  * A full-screen pass of one of the game's programs as `tier` draws it: on a wall `wall` metres off, or the dome looking
- * up toward the sun; under noon's frame block with `layers` of cloud, or plain (no haze, nothing over the table).
+ * up toward the sun; under noon's frame block with `layers` of cloud, or plain (no haze, nothing over the table). A
+ * lit program looks the sun's shadow up only when `shadowed`, in the depth passes' array, whose first cascade the frame
+ * block puts the wall in.
  */
 export interface ScreenPass {
   name: string;
@@ -328,7 +330,11 @@ export interface ScreenPass {
   wall?: number;
   layers: number;
   plain: boolean;
+  shadowed?: boolean;
 }
+
+/** LIT with its shadow lookup, against LIT without it: what shadows cost a pixel. */
+export const SHADOWED_PASS: ScreenPass = { name: "lit shadowed", program: "flat", tier: "medium", wall: 12, layers: 0, plain: true, shadowed: true };
 
 /**
  * The full-screen passes. LIT is hazed at 500 m and 3.5 km, where haze costs most (D266); the far blocks' program has
@@ -532,13 +538,15 @@ export class GpuQuestions {
     this.tasks.push({ name: "3D texture", run: () => this.texture3d(), ms: plan.checkMs, fail: set(["texture3d"]) });
     this.tasks.push({ name: "far edge", run: () => this.farEdge(), ms: plan.checkMs, fail: set(["farEdge"]) });
     for (const spec of SCREEN_PASSES) this.addPass(spec.name, "megapixel", () => this.screenPass(spec));
-    // What shadow maps cost: depth into a 16-bit array as a cascade is drawn, and compared taps in it full screen.
+    // What shadow maps cost: depth into a 16-bit array as a cascade is drawn, LIT looking the shadow up in it, and
+    // compared taps in it full screen.
     for (const size of plan.depthSizes) {
       for (const skinned of [false, true]) {
         const name = `depth ${skinned ? "skinned" : "rigid"} ${size}`;
         this.addPass(name, "100k triangles", () => this.depthPass(size, skinned));
       }
     }
+    this.addPass(SHADOWED_PASS.name, "megapixel", () => this.screenPass(SHADOWED_PASS));
     for (const taps of [1, 4, 9]) this.addPass(`${taps} ${taps === 1 ? "tap" : "taps"}`, "megapixel", () => this.tapsPass(taps));
     const draw: PassTime = { name: "draw", per: "draw", timer: null, slope: null, error: null, k: 0, note: "did not finish" };
     r.passes.push(draw);
@@ -1175,14 +1183,15 @@ void main() {}`);
 
   /**
    * The game's program `name` on `tier`, linked as the renderer links it (client/shell/gl.ts): its defines after the
-   * #version line, each sampler pointed at its unit, and its frame block on the probe's binding. `vertex` in place of
-   * the game's draws it full screen; it must write what the fragment text reads.
+   * #version line, with the shadow lookup filtering for itself where this device's compared lookups came back hard,
+   * each sampler pointed at its unit, and its frame block on the probe's binding. `vertex` in place of the game's draws
+   * it full screen; it must write what the fragment text reads.
    */
   private linked(name: string, tier: Tier, vertex?: string): { prog: Obj; text: ProgramText } {
     const gl = this.gl;
     const made = PROGRAMS[name];
     if (!made) throw new Error(`the renderer has no program "${name}"`);
-    const text = made(tier, this.variant);
+    const text = made(tier, this.variant, this.report.compareArray === "hard");
     const prog = this.program(withDefines(vertex ?? text.vertex, text.defines), withDefines(text.fragment, text.defines));
     gl.useProgram(prog);
     for (const sampler in text.samplers) gl.uniform1i(gl.getUniformLocation(prog, sampler), text.samplers[sampler]!);
@@ -1197,13 +1206,13 @@ void main() {}`);
     const tier = tierOf(spec.tier);
     const vertex = spec.program === "sky" ? undefined : spec.program === "surface" ? SURFACE_VERTEX : wallVertex(spec.wall ?? 12);
     const { prog, text } = this.linked(spec.program, tier, vertex);
-    const frame = this.frameBlock(spec.layers, spec.plain);
+    const frame = this.frameBlock(spec.layers, spec.plain, spec.shadowed === true);
     const inputs = this.inputs(text);
     const [w, h] = this.report.screen;
     const at = (n: string): Obj => gl.getUniformLocation(prog, n);
     // The dome looks 14 degrees up toward the sun, as the lit probe times it.
     const sun = [0, 0, 0];
-    trueSun(this.frameData(0, false), sun);
+    trueSun(this.frameData(0, false, false), sun);
     const look = lookFrom(Math.atan2(sun[0]!, sun[2]!), (14 * Math.PI) / 180, 1.2217, w! / h!, 0.25, AIR_VIEW);
     return this.fullScreen(prog, () => {
       frame();
@@ -1219,15 +1228,19 @@ void main() {}`);
       gl.uniform2f(at("uSize"), w!, h!);
       gl.uniform3f(at("uTint"), 1, 1, 1);
       gl.uniform1f(at("uCutoff"), 0);
+      gl.uniform1i(at("uCascades"), spec.shadowed ? tier.shadows.cascades : 0);
       gl.uniformMatrix4fv(at("uViewProj"), false, look);
     });
   }
 
   private readonly frames = new Map<string, { data: Float32Array; buffer: Obj }>();
 
-  /** Noon's frame block with the air as atmosphere.ts fills it for `layers` of cloud, or plain; medium's fade for the far blocks. */
-  private frameData(layers: number, plain: boolean): Float32Array {
-    const key = `${layers} ${plain}`;
+  /**
+   * Noon's frame block with the air as atmosphere.ts fills it for `layers` of cloud, or plain; medium's fade for the far
+   * blocks; and with `shadowed` medium's cascades round the wall 12 m off: the first holds it, its map seen square on.
+   */
+  private frameData(layers: number, plain: boolean, shadowed: boolean): Float32Array {
+    const key = `${layers} ${plain} ${shadowed}`;
     const had = this.frames.get(key);
     if (had) return had.data;
     const data = new Float32Array(FRAME_FLOATS);
@@ -1235,15 +1248,20 @@ void main() {}`);
     airFrame(data, theSky(), HOUR, 0, 0, 0, AIR_VIEW, layers, plain);
     data[FRAME.eyeHeight] = EYE;
     data[FRAME.fade] = MEDIUM.fade;
+    for (let k = 0; shadowed && k < MEDIUM.shadows.cascades; k++) {
+      // A sphere twice the wall's reach, and its map 20 m across at the wall's depth, 40 m deep.
+      data.set([0, 0, -12, 20 * (k + 1)], FRAME.spheres + k * 4);
+      data.set([0.1, 0, 0, 0, 0, 0.1, 0, 0, 0, 0, 0.05, 0, 0, 0, 0.6, 1], FRAME.cascades + k * 16);
+    }
     this.frames.set(key, { data, buffer: null });
     return data;
   }
 
   /** That frame block in a buffer, made once: a function that binds it on the probe's binding, which bind() calls. */
-  private frameBlock(layers: number, plain: boolean): () => void {
+  private frameBlock(layers: number, plain: boolean, shadowed: boolean): () => void {
     const gl = this.gl;
-    const data = this.frameData(layers, plain);
-    const made = this.frames.get(`${layers} ${plain}`)!;
+    const data = this.frameData(layers, plain, shadowed);
+    const made = this.frames.get(`${layers} ${plain} ${shadowed}`)!;
     if (!made.buffer) {
       made.buffer = this.keep("buffer", gl.createBuffer());
       gl.bindBuffer(GL.UNIFORM_BUFFER, made.buffer);
@@ -1253,9 +1271,9 @@ void main() {}`);
   }
 
   /**
-   * The probe's textures for a program's samplers, by name: the sky table, SURFACE's five maps, and the sky's moon and
-   * cloud layers. A function that binds each on the unit the program reads it from, one of the probe's own; a sampler
-   * the probe has nothing for reads what the renderer left there.
+   * The probe's textures for a program's samplers, by name: the sky table, SURFACE's five maps, the sky's moon and cloud
+   * layers, and the depth passes' largest array as the shadow maps. A function that binds each on the unit the program
+   * reads it from, one of the probe's own; a sampler the probe has nothing for reads what the renderer left there.
    */
   private inputs(text: ProgramText): () => void {
     const gl = this.gl;
@@ -1265,6 +1283,7 @@ void main() {}`);
     for (const [name, unit] of Object.entries(text.samplers)) {
       if (!PROBE_UNITS.includes(unit)) continue;
       if (name === "uSkyTable") bound.push([unit, GL.TEXTURE_3D, this.table()]);
+      else if (name === "uShadow") bound.push([unit, GL.TEXTURE_2D_ARRAY, this.depthMap(Math.max(...this.plan.depthSizes)).texture]);
       else if (surface.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.surfaceTextures()[surface.indexOf(name)]]);
       else if (sky.includes(name)) bound.push([unit, GL.TEXTURE_2D, this.skyMaps()[sky.indexOf(name)]]);
     }
@@ -1344,7 +1363,7 @@ void main() { gl_Position = vec4(corner(), 0.0, 1.0); }`, CLOUD_FRAGMENT);
     const gone = MEDIUM.reach.bases;
     const at = gone * (1 - MEDIUM.fade / 2);
     const { prog, text } = this.linked("far", MEDIUM, edgeVertex(at));
-    const frame = this.frameBlock(0, true);
+    const frame = this.frameBlock(0, true, false);
     const inputs = this.inputs(text);
     const out = this.texture(GL.RGBA8, EDGE, EDGE);
     gl.bindFramebuffer(GL.FRAMEBUFFER, this.keep("framebuffer", framebuffer(gl, (f) => gl.framebufferTexture2D(f, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, out, 0), `an RGBA8 texture ${EDGE} square`)));

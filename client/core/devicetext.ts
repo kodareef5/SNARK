@@ -11,8 +11,10 @@ const yes = (b: unknown): string => (b ? "yes" : "no");
 const mb = (bytes: number): string => (bytes / 1048576).toFixed(1);
 const secs = (ms: number): string => (ms / 1000).toFixed(1);
 const tenth = (x: number): number => Math.round(x * 10) / 10;
+const round3 = (x: number): number => Math.round(x * 1000) / 1000;
 const count = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e4 ? `${Math.round(n / 1000)}k` : String(Math.round(n)));
 const pct = (share: number): string => `${(share * 100).toFixed(1)}%`;
+const signed = (x: number): string => `${x >= 0 ? "+" : ""}${tenth(x)}`;
 
 /** Text made safe to put in HTML. */
 export function escape(text: string): string {
@@ -67,11 +69,11 @@ export function progressText(mode: Mode, stage: string, detail: string): string 
   return escape(`${TESTS[mode].replace(/,.*/, "")}: ${stage}${detail ? `, ${detail}` : ""}\nKeep this page open and the screen on until it says Done.`);
 }
 
-const WIDTHS = [8, 7, 10, 6, 7, 7, 7, 7, 6, 6, 6, 7, 5, 5, 5, 5, 6, 5, 5];
+const WIDTHS = [8, 7, 10, 6, 7, 7, 7, 7, 6, 6, 6, 6, 7, 5, 5, 5, 5, 6, 5, 5];
 const row = (cells: string[], widths = WIDTHS): string => cells.map((c, i) => (i < 2 || (widths === WIDTHS && i === 2) ? c.padEnd(widths[i]!) : c.padStart(widths[i]!))).join(" ").trimEnd();
 
 function phaseRow(p: PhaseReport, tier = p.tier): string {
-  const line = row([tier, p.scene, p.canvas.join("x"), `${secs(p.settleMs)}${p.settled ? "" : "!"}`, String(p.frameMs.median), String(p.frameMs.p95), String(p.frameMs.p99), String(p.frameMs.worst), String(p.buildMs.median), String(p.drawMs.median), count(p.drawCalls), count(p.triangles), count(p.textured), String(p.dropped), String(p.skipped), String(p.lost), mb(p.fetched), String(p.failed), String(p.missed)]);
+  const line = row([tier, p.scene, p.canvas.join("x"), `${secs(p.settleMs)}${p.settled ? "" : "!"}`, String(p.frameMs.median), String(p.frameMs.p95), String(p.frameMs.p99), String(p.frameMs.worst), String(p.buildMs.median), String(p.drawMs.median), p.gpuMs == null ? "-" : String(p.gpuMs), count(p.drawCalls), count(p.triangles), count(p.textured), String(p.dropped), String(p.skipped), String(p.lost), mb(p.fetched), String(p.failed), String(p.missed)]);
   return p.fellTo ? `${line}  fell to ${p.fellTo}` : line;
 }
 
@@ -126,10 +128,14 @@ function gpuLines(r: DeviceReport): string[] {
   out.push(row(["pass", "per", "timer", "slope", "+-", "k"], widths));
   const n = (x: number | null): string => (x === null ? "-" : String(x));
   for (const p of q.passes) out.push(row([p.name, p.per === "draw" ? "µs a draw" : `ms a ${p.per === "megapixel" ? "megapixel" : "100k tris"}`, n(p.timer), n(p.slope), n(p.error), String(p.k)], widths) + (p.note ? `  ${p.note}` : ""));
+  const slope = (name: string): number | null => q.passes.find((p) => p.name === name)?.slope ?? null;
+  const [lit, shadowed, depth] = [slope("lit"), slope("lit shadowed"), slope("depth rigid 2048")];
+  const mp = (q.screen[0]! * q.screen[1]!) / 1e6;
+  if (lit !== null && shadowed !== null) out.push(`shadowed  LIT looking the sun's shadow up costs ${round3(shadowed - lit)} ms a megapixel more than LIT: ${round3((shadowed - lit) * mp)} ms over this screen's ${mp.toFixed(2)} megapixels; and a cascade of 100k triangles drawn 2,048 square ${depth ?? "?"} ms`);
   out.push(`full screen at ${q.screen.join("x")}, blended, the game's programs under noon's frame block: flat, lit and far on a wall 12 m off, lit hazed`);
   out.push("on one 500 m and 3.5 km off, surface with five maps 512 square; the sky looking 14 degrees up toward the sun, its table alone,");
-  out.push("then with the sun, moon and stars and 0, 1 and 2 cloud layers 1,024 square. depth into a 16-bit depth array; a draw is a");
-  out.push("uniform, a vertex array, a buffer, two pointers and the draw");
+  out.push("then with the sun, moon and stars and 0, 1 and 2 cloud layers 1,024 square. depth into a 16-bit depth array; lit shadowed");
+  out.push("looks up medium's shadow in the 2,048 one; a draw is a uniform, a vertex array, a buffer, two pointers and the draw");
   if (q.lostDuring) out.push(`lost      the graphics context was lost during ${q.lostDuring}`);
   return out;
 }
@@ -167,7 +173,7 @@ function terrainLines(r: DeviceReport): string[] {
 function soakLines(r: DeviceReport): string[] {
   const s = r.soak!;
   const l = s.load;
-  const out = [`soak      ${s.tier}: ${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, turning once a minute (${s.from}); ${s.minutes.length} of ${s.minutesWanted} minutes`];
+  const out = [`soak      ${s.tier}: ${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near, ${l.far} far${l.stress ? ", the stress meshes" : ""}, turning once a minute (${s.from}), ${s.cascades > 0 ? `shadows on in ${s.cascades} cascades` : "no shadows"}; ${s.minutes.length} of ${s.minutesWanted} minutes`];
   const widths = [6, 7, 7, 7, 7, 7, 6, 6, 5, 5, 5];
   out.push(row(["minute", "frames", "median", "p95", "p99", "worst", "build", "draw", "mat", "long", "miss"], widths));
   for (const m of s.minutes) out.push(row([String(m.minute), String(m.frames), String(m.frameMs.median), String(m.frameMs.p95), String(m.frameMs.p99), String(m.frameMs.worst), String(m.buildMs), String(m.drawMs), String(m.mat ?? "?"), String(m.long ?? "?"), String(m.missed)], widths));
@@ -227,16 +233,24 @@ export function deviceTable(r: DeviceReport): string[] {
   if (r.phases.length > 0) {
     out.push(`tiers run ${[...new Set(r.phases.map((p) => p.tier))].join(", ")}`);
     out.push("");
-    out.push(row(["tier", "scene", "canvas", "settle", "median", "p95", "p99", "worst", "build", "draw", "calls", "tris", "mat", "drop", "skip", "lost", "MB", "fail", "miss"]));
+    out.push(row(["tier", "scene", "canvas", "settle", "median", "p95", "p99", "worst", "build", "draw", "gpu", "calls", "tris", "mat", "drop", "skip", "lost", "MB", "fail", "miss"]));
     for (const p of r.phases) out.push(phaseRow(p));
     if (r.again) out.push(phaseRow(r.again, "again"));
-    out.push("median to worst: ms between frames. settle: s until nothing was on its way, ! if never. build, draw: ms in our code.");
+    out.push("median to worst: ms between frames. settle: s until nothing was on its way, ! if never. build, draw: ms in our code;");
+    out.push("gpu: the GPU's ms a frame by timer query, - where there are none.");
     out.push("calls: WebGL draws. mat: draws with materials. drop, skip: what the frame left out.");
     out.push("MB, fail, miss: fetched, fetches failed and snapshots missed while the phase settled and ran.");
-    out.push("crowd1: the crowd in one depth range on a tier of two, to set against crowd");
+    out.push("crowd1: the crowd in one depth range on a tier of two; crowd0: with no shadows on a tier that casts; each to set against crowd");
     for (const one of r.phases.filter((p) => p.scene === "crowd1")) {
       const two = r.phases.find((p) => p.tier === one.tier && p.scene === "crowd");
       if (two) out.push(`ranges    ${one.tier}, two against one in the crowd: frames ${two.frameMs.median} against ${one.frameMs.median} ms, 95th ${two.frameMs.p95} against ${one.frameMs.p95}; our code ${tenth(two.buildMs.median + two.drawMs.median)} against ${tenth(one.buildMs.median + one.drawMs.median)} ms; ${count(two.drawCalls)} against ${count(one.drawCalls)} draws`);
+    }
+    // What shadows cost a frame, the number the touch-first rule is set from: the GPU's own where there are timer queries.
+    for (const off of r.phases.filter((p) => p.scene === "crowd0")) {
+      const on = r.phases.find((p) => p.tier === off.tier && p.scene === "crowd");
+      if (!on) continue;
+      const gpu = on.gpuMs != null && off.gpuMs != null ? `the GPU ${on.gpuMs} against ${off.gpuMs} ms a frame, ${signed(on.gpuMs - off.gpuMs)} ms by timer query` : "the GPU's time not known here (no timer queries)";
+      out.push(`shadows   ${off.tier}, on against off in the crowd: ${gpu}; frames ${on.frameMs.median} against ${off.frameMs.median} ms, 95th ${on.frameMs.p95} against ${off.frameMs.p95}; our code ${tenth(on.buildMs.median + on.drawMs.median)} against ${tenth(off.buildMs.median + off.drawMs.median)} ms; ${count(on.drawCalls)} against ${count(off.drawCalls)} draws`);
     }
   }
   if (r.gpuTests) out.push("", ...gpuLines(r));
