@@ -195,8 +195,14 @@ def mrot(r3, side):
     return tuple(r3) if side == LEFT else (r3[0], -r3[1], -r3[2])
 
 
-def wing(fold=0.0, flap=0.0, sweep=0.0, twist=0.0, curl=0.0):
-    return {"fold": fold, "flap": flap, "sweep": sweep, "twist": twist, "curl": curl}
+def wing(fold=0.0, flap=0.0, sweep=0.0, twist=0.0, curl=0.0, via=None):
+    """A wing as rig.Clip.wing takes it. With `via`, a fold past that value goes straight from the wing folded that
+    far to FOLD instead of on through TUCK: on the ground, from wings raised a quarter folded, the finger stays up
+    and folds onto the arm, where through TUCK it would swing down and back along the body first."""
+    w = {"fold": fold, "flap": flap, "sweep": sweep, "twist": twist, "curl": curl}
+    if via is not None:
+        w["via"] = via
+    return w
 
 
 def lift_tuck(p, side):
@@ -204,7 +210,12 @@ def lift_tuck(p, side):
     wing passing through it is turned leading edge down at the shoulder so the finger lies about level. Nothing at
     spread or fully folded, so a planted hand still finds its place."""
     w = p["wing_" + side]
-    w["twist"] -= max(0.0, chest_pitch(p) + 8.0) * math.sin(math.pi * min(1.0, max(0.0, w["fold"])))
+    fold, via = min(1.0, max(0.0, w["fold"])), w.get("via")
+    if via is not None and fold > via:
+        tucked = math.sin(math.pi * via) * (1.0 - (fold - via) / (1.0 - via))
+    else:
+        tucked = math.sin(math.pi * fold)
+    w["twist"] -= max(0.0, chest_pitch(p) + 8.0) * tucked
 
 
 def air(**over):
@@ -259,6 +270,12 @@ def _mix(a, b, s):
     if a is None or b is None:
         return b if s >= 0.5 else a
     if isinstance(a, dict):
+        if "via" in a or "via" in b:
+            out = _mix({k: v for k, v in a.items() if k != "via"}, {k: v for k, v in b.items() if k != "via"}, s)
+            via = (a if s < 0.5 else b).get("via")
+            if via is not None:
+                out["via"] = via
+            return out
         return {k: _mix(a[k] if k in a else _zero(b[k]), b[k] if k in b else _zero(a[k]), s) for k in set(a) | set(b)}
     if isinstance(a, Vector):
         return a.lerp(b, s)
@@ -402,12 +419,19 @@ def wing_turns(side, w, extra):
     sign = 1.0 if side == LEFT else -1.0
     stroke = rot(roll=-w["flap"] * sign) @ rot(yaw=-w["sweep"] * sign) @ rot(pitch=w["twist"])
     fold = w["fold"]
+    via = w.get("via")
     out = {}
+
+    def along(name, f):
+        if f <= 0.5:
+            return Quaternion().slerp(_r.tuck[name], f * 2.0)
+        return _r.tuck[name].slerp(_r.fold[name], f * 2.0 - 1.0)
+
     for name in rig._WING_L:
-        if fold <= 0.5:
-            q = Quaternion().slerp(_r.tuck[name], fold * 2.0)
+        if via is not None and fold > via:
+            q = along(name, via).slerp(_r.fold[name], (fold - via) / (1.0 - via))
         else:
-            q = _r.tuck[name].slerp(_r.fold[name], fold * 2.0 - 1.0)
+            q = along(name, fold)
         m = q.to_matrix()
         if side == RIGHT:
             m = rig._mirror_turn(m)
@@ -718,8 +742,9 @@ def hover(r):
 
 
 def dive(r):
-    """A steep dive: the wings half folded, swept back and raised in a narrow W, the finger tips quivering in the
-    rushing air; the head stretched along the line of the dive; the legs pressed back."""
+    """A steep dive: the wings flexed at the wrist, swept back and raised into an arrow, the finger tips quivering in
+    the rushing air; the head stretched along the line of the dive; the legs pressed back. The engine pitches the root
+    down the dive; the clip adds only a little."""
     name = "dive"
     N = rig.CLIPS[name]["frames"]
 
@@ -731,7 +756,8 @@ def dive(r):
         p["body_rot"] = (-10.0 + loop_sine(t, N, [(0.8, 2, 0.0)]), 0.0, roll)
         for s in "lr":
             sign = 1.0 if s == LEFT else -1.0
-            p["wing_" + s] = wing(fold=0.40, flap=12.0 - sign * 0.8 * roll, sweep=-16.0, twist=-2.0 + sign * 0.5 * roll, curl=-4.0 + 1.5 * q)
+            p["wing_" + s] = wing(fold=0.24, flap=17.0 - sign * 0.8 * roll, sweep=-22.0, twist=-2.0 + sign * 0.5 * roll,
+                                  curl=-4.0 + 1.5 * q)
             p["foot_" + s] = trailing(p, s, reach=0.975, droop=-8.0, splay=-3.0)
             p["knee_" + s] = body_point(p, REST_KNEE[s])
             p["foot_rot_" + s] = (-10.0, 0.0, 0.0)
@@ -1090,16 +1116,18 @@ def idle_stretch(r):
     the skin ripples, folds them back and comes down onto its hands again."""
     name = "idle_stretch"
     N = rig.CLIPS[name]["frames"]
-    down = 74.0  # the hands are planted again: STANCE, wings folded
-    rock = Keys([(0, 0.0), (6, 0.15), (16, 1.0), (60, 1.0), (down - 4, 0.2), (down, 0.0), (89, 0.0)])
-    fold = Keys([(0, 1.0), (12, 1.0), (24, 0.32), (52, 0.32), (down - 4, 1.0), (89, 1.0)])
-    raise_ = Keys([(0, 0.0), (12, 0.0), (26, 34.0), (50, 32.0), (down - 6, 4.0), (down, 0.0)])
+    # The hands lift off the ground from 2 and the free arms take over at `free`; they take hold again at `hold`,
+    # where the free arms have put them, and are on the ground at `down`.
+    free, hold, down = 9.0, 66.0, 73.0
+    rock = Keys([(0, 0.0), (6, 0.15), (16, 1.0), (60, 1.0), (hold, 0.4), (down, 0.0), (89, 0.0)])
+    fold = Keys([(0, 1.0), (12, 1.0), (24, 0.32), (52, 0.32), (hold - 2, 1.0), (89, 1.0)])
+    raise_ = Keys([(0, 0.0), (12, 0.0), (26, 34.0), (50, 32.0), (hold - 2, 4.0), (down, 0.0)])
     shake = Keys([(0, 0.0), (30, 0.0), (33, 1.0), (46, 0.8), (52, 0.0)])
     settle = Keys([(0, 0.0), (down, 0.0), (down + 4, -1.0), (down + 10, 0.3), (89, 0.0)])
 
     def at(t):
         k = rock(t)
-        sh = shake(t) * math.sin(2.0 * math.pi * (t - 30.0) / 5.0)
+        sh = shake(t) * math.sin(2.0 * math.pi * (t - 30.0) / 6.0)
         p = ground()
         p["body"] = STANCE_BODY + Vector((0.0, -0.03 * k + 0.012 * settle(t), -0.06 * k))
         p["body_rot"] = (S["body"]["pitch"] + 14.0 * k + 1.5 * sh, 0.0, 0.0)
@@ -1109,14 +1137,22 @@ def idle_stretch(r):
         look_head(p, 0.0, pitch=-6.0 * k + 2.0 * sh, lean=lean0 + 8.0 * k, ext=ext0 - 0.02 * k)
         p["beak"] = 0.1 * shake(t)
         for s in "lr":
-            sign = 1.0 if s == LEFT else -1.0
-            p["wing_" + s] = wing(fold=fold(t), flap=raise_(t) + 9.0 * sh, sweep=-6.0 * k + 3.0 * sh,
-                                  twist=5.0 * sh * sign * 0.0 + 6.0 * sh, curl=-8.0 * k + 10.0 * sh)
+            p["wing_" + s] = wing(fold=fold(t), flap=raise_(t) + 6.0 * sh, via=0.32, sweep=-6.0 * k + 2.0 * sh,
+                                  twist=5.0 * sh, curl=-8.0 * k + 8.0 * sh)
             lift_tuck(p, s)
-            # The hands leave the ground while the body is still in STANCE, and come down when it is again.
-            p["plant_" + s] = 1.0 - smooth(t / 6.0) + smooth((t - (down - 3.0)) / 3.0)
-            if 6.0 <= t <= down - 3.0:
-                p["hand_" + s] = None
+            planted = (STANCE_HAND[s], (0.0, 0.0, 0.0))
+            if t <= free:
+                k_ = smooth((t - 2.0) / (free - 2.0))
+                p["hand_" + s] = between_hands(planted, free_hand(p, s), k_)
+                p["elbow_" + s] = STANCE_ELBOW[s].lerp(carried(p, STANCE_ELBOW[s])[0], k_)
+                p["plant_" + s] = 1.0 - smooth((t - free + 1.0) / 1.0)
+            elif t >= hold - 1.0:
+                k_ = smooth((t - hold) / (down - hold))
+                p["hand_" + s] = between_hands(free_hand(p, s), planted, k_)
+                p["elbow_" + s] = carried(p, STANCE_ELBOW[s])[0].lerp(STANCE_ELBOW[s], k_)
+                p["plant_" + s] = smooth((t - hold + 1.0) / 1.0)
+            else:
+                p["hand_" + s], p["plant_" + s] = None, 0.0
         p["tail"] = (6.0 * k, 0.0)
         return p
 
@@ -1251,8 +1287,8 @@ def swim(r):
         for s in "lr":
             # Forward and up out of the water, then down and back through it.
             power = 1.0 if u < 0.45 else 0.0
-            p["wing_" + s] = wing(fold=0.30 - 0.08 * k, flap=6.0 + 8.0 * (1.0 - power) * math.sin(math.pi * (u - 0.45) / 0.55),
-                                  sweep=14.0 * k, twist=-6.0 * power, curl=-4.0)
+            p["wing_" + s] = wing(fold=0.14 - 0.04 * k, flap=-2.0 + 10.0 * (1.0 - power) * math.sin(math.pi * (u - 0.45) / 0.55),
+                                  sweep=12.0 * k, twist=-6.0 * power, curl=-3.0)
             ph = 2.0 * math.pi * (t / N + (0.0 if s == LEFT else 0.5))
             p["foot_" + s] = p["foot_" + s] + Vector((0.0, 0.03 * math.sin(ph), 0.10 * math.cos(ph)))
             p["foot_rot_" + s] = (75.0 - 30.0 * math.sin(ph), 0.0, 0.0)
