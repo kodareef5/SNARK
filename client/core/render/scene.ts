@@ -628,25 +628,21 @@ export class Scene {
     p.triangles += triangles * copies;
   };
 
-  /** Trees, rocks and bushes past the near node field, each kind to its reach and flat, faded over the last of it. */
+  /** Trees, rocks and bushes past the near node field, each kind to its reach at its last level, faded over the last of it. */
   private farNodes(cam: Camera): void {
     const p = this.packet;
     p.frame[FRAME.fade] = this.assets.tier.fade;
     this.nodesFar!.update(p, this.assets.residency, cam.x, cam.z, this.assets.tier);
-    this.nodesFar!.draw(cam, this.chooseFar, this.drawFarNodes);
+    this.nodesFar!.draw(cam, this.drawFarNodes);
   }
 
-  /** A far node's level: as a near one's (nodeRanges), but never finer than its mesh's first flat level. */
-  private readonly chooseFar = (mesh: number, distance: number, was: number): number => {
-    const errors = this.assets.table.error[mesh]!;
-    return Math.min(errors.length - 1, Math.max(this.assets.table.flat[mesh]!, this.assets.choose(errors, distance / this.reachOfMesh[mesh]!, was)));
-  };
-
-  private readonly drawFarNodes = (mesh: number, level: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, fade: number, distance: number): void => {
+  /** A run of far nodes at its mesh's last level, which the boot pack holds. */
+  private readonly drawFarNodes = (mesh: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, fade: number, distance: number): void => {
     const p = this.packet;
     const from = p.drawCount;
-    this.assets.want(mesh, level, distance / this.reachOfMesh[mesh]!);
-    this.draw(mesh, level, buffer, first, count, ox, oy, oz, DRAW_SIZED, passes);
+    const last = this.assets.table.error[mesh]!.length - 1;
+    this.assets.want(mesh, last, distance / this.reachOfMesh[mesh]!);
+    this.draw(mesh, last, buffer, first, count, ox, oy, oz, DRAW_SIZED, passes);
     p.drawFade.fill(fade, from, p.drawCount);
   };
 

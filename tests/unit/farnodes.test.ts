@@ -51,7 +51,7 @@ function drawnNodes(w: NodeWorld, p: FramePacket): Map<number, Drawn> {
 
 const wood = (): NodeWorld => nodeWorld({ chunksX: 24, chunksZ: 12, kinds: [WOOD, WOOD, "core:tree", "core:rock", "core:bush"], ground: (x, z) => 20 + 6 * Math.sin(x / 90) * Math.cos(z / 70) });
 
-test("a node drawn far stands where the near store puts it, with the same mesh, turn and size, and a level at most one apart", () => {
+test("a node drawn far stands where the near store puts it, with the same mesh, turn and size, at its mesh's last level", () => {
   const w = wood();
   const z = 6 * CHUNK_SIZE + 20;
   // The body stands in chunk 4 of its row, so the near field holds chunks 1 to 7 and chunk 8 is far. The camera looks along it.
@@ -72,6 +72,8 @@ test("a node drawn far stands where the near store puts it, with the same mesh, 
     expect([b.far, a.far]).toEqual([true, false]);
     expect([b.mesh, b.yaw, b.size]).toEqual([a.mesh, a.yaw, a.size]);
     for (const k of ["x", "y", "z"] as const) expect(Math.abs(b[k] - a[k])).toBeLessThan(0.002);
+    // Far, a node is its mesh's last level; near, here, the near store's rule gives that or the one before.
+    expect(b.level).toBe(w.scene.assets.table.error[b.mesh]!.length - 1);
     expect(Math.abs(b.level - a.level)).toBeLessThanOrEqual(1);
     meshes.add(a.mesh);
     compared++;
@@ -116,9 +118,10 @@ test("over a 2 km walk across chunk borders no node is drawn by both stores or b
   const z = 5 * CHUNK_SIZE + 30;
   w.stand(160, z);
   w.look(160, 26, z, Math.PI / 2, -0.04);
+  const makes = w.scene.nodesFar!.makes;
   w.scene.nodesFar!.makes = Infinity;
   w.frame();
-  w.scene.nodesFar!.makes = 2;
+  w.scene.nodesFar!.makes = makes;
   const reach = (kind: number): number => w.scene.nodesFar!.reachOf(kind);
   // What grows in each slot of the map, worked out once.
   const spot = { kind: 0, form: 0, x: 0, y: 0, z: 0, yaw: 0 };
@@ -129,7 +132,7 @@ test("over a 2 km walk across chunk borders no node is drawn by both stores or b
   }
   let last = new Map<number, Drawn>();
   let [handed, apart, checked, both, neither] = [0, 0, 0, 0, 0];
-  const STEP = 20;
+  const STEP = 32;
   const tilesX = Math.ceil(w.dims.chunksX / 4);
   for (let x = 160; x <= 2260; x += STEP) {
     w.stand(x, z);

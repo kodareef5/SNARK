@@ -1,9 +1,10 @@
 // Trees, rocks and bushes past the near node field, placed by the client from the map alone (shared/world/nodes.ts):
 // the node the near field would hold, at its spot, as its variant, turned and sized as near, so the tree far is the
-// tree near. Each is drawn flat at its mesh's coarsest levels to its kind's reach and dropped over the last share of
-// it as far blocks are (far.ts). The nodes of 4 by 4 chunks are one instance buffer, sorted by mesh and by chunk, made
-// again when a chunk of it changes hands with the near field, when the client is told of nodes used up there, when
-// the far feed shows building there, and when a kind comes within reach of it.
+// tree near. Each is drawn at its mesh's last level, which is flat, to its kind's reach, and dropped over the last share
+// of it as far blocks are (far.ts). A mesh whose last level is a far level made for this is drawn as that. The nodes
+// of 4 by 4 chunks are one instance buffer, sorted by mesh and by chunk, made again when a chunk of it changes hands
+// with the near field, when the client is told of nodes used up there, when the far feed shows building there, and
+// when a kind comes within reach of it.
 
 import type { NodeDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
@@ -36,12 +37,10 @@ const RESERVE = "far nodes";
  * other reason, this many a frame, nearest first.
  */
 const FAR_NOW = 512;
-const FAR_MAKES = 2;
+const FAR_MAKES = 4;
 /** A tile holds the kinds whose reach comes within this of it, so a kind is there before it is in reach. */
 const MARGIN = FAR_TILE_METRES / 2;
-/** A draw costs about what drawing this many more triangles does: scene.ts's RUN_TRIANGLES (D289). */
-const RUN_TRIANGLES = 4096;
-/** Chunks in a tile, each a cell levels are chosen by, one row and then the next back the other way. */
+/** Chunks in a tile, each a cell left out when out of view or reach, one row and then the next back the other way. */
 const CELLS = FAR_TILE * FAR_TILE;
 /** The far feed's 4 m cells along a chunk's side. */
 const BUILT_SIDE = CHUNK_SIZE / TACTICAL_CELL;
@@ -115,10 +114,8 @@ export interface NodeLooks {
   readonly tris: readonly (readonly number[])[];
 }
 
-/** The level to draw a mesh at, `distance` metres off, given the level it had (or -1). */
-export type ChooseLevel = (mesh: number, distance: number, was: number) => number;
-/** A draw of `count` instances of a mesh at a level, gone at `fade` metres, the nearest of them `distance` off. */
-export type PutDraw = (mesh: number, level: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, fade: number, distance: number) => void;
+/** A draw of `count` instances of a mesh at its last level, gone at `fade` metres, the nearest of them `distance` off. */
+export type PutDraw = (mesh: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, fade: number, distance: number) => void;
 
 /** The nodes of a tile's chunks as the map places them. */
 interface Spots {
@@ -138,6 +135,9 @@ interface Tile {
   spots: Spots | null;
   data: Uint8Array | null;
   slots: Uint16Array | null;
+  /** What `data` and `slots` are the start of. */
+  room: Uint8Array | null;
+  roomSlots: Uint16Array | null;
   uploaded: boolean;
   /** The farthest reach, plus MARGIN, of a kind it left out; a tile this near is made again. -1 for none. */
   next: number;
@@ -147,9 +147,6 @@ interface Tile {
   cellFirst: Uint16Array;
   /** Per range, its box and then each cell's: x, y, z least then most, in the world. */
   box: Float32Array;
-  /** Per range, the level it was last drawn at, and per range and cell, or -1. */
-  level: Int8Array;
-  cellLevel: Int8Array;
   /** The box of all of it, in the world. */
   readonly whole: Float64Array;
 }
@@ -185,6 +182,8 @@ export class FarNodes {
   private readonly counts: Uint32Array;
   private readonly gone: Uint8Array;
   private readonly keep: Uint8Array;
+  private readonly rangeOf: Int16Array;
+  private shared: Spots | null = null;
   private readonly runs: number[] = [];
 
   constructor(source: FarNodeSource, cells: FarStore | null, dims: MapDims, reg: Registry, looks: NodeLooks) {
@@ -221,6 +220,7 @@ export class FarNodes {
     this.counts = new Uint32Array(meshes * CELLS);
     this.gone = new Uint8Array(256);
     this.keep = new Uint8Array(CELLS * this.perChunk);
+    this.rangeOf = new Int16Array(meshes);
   }
 
   /** How far nodes of a kind are drawn on the tier last set, 0 for not at all. */
@@ -309,14 +309,11 @@ export class FarNodes {
   }
 
   /**
-   * Calls `put` for each run of nodes of one mesh on the card, in a tile in view, whose nearest is within its kind's
-   * reach: at the level `choose` gives for the nearest point of the tile's nodes of that mesh where its farthest asks
-   * the same and all of them are in view, and otherwise for each chunk's, neighbouring chunks one level apart sharing
-   * the finer where that costs fewer triangles than a draw, as the near store chooses (scene.ts nodeRanges). A chunk
-   * past reach or out of view is left out.
+   * Calls `put` for the nodes of each mesh on the card in a tile in view whose nearest is within its kind's reach: once
+   * where every one of them is in view, in reach and in one depth range, and otherwise for each run of neighbouring
+   * chunks in the same depth ranges, a chunk past reach or out of view left out.
    */
-  draw(cam: Camera, choose: ChooseLevel, put: PutDraw): void {
-    const tris = this.looks.tris;
+  draw(cam: Camera, put: PutDraw): void {
     for (const [t, tile] of this.tiles) {
       if (!tile.data || !tile.uploaded) continue;
       const w = tile.whole;
@@ -332,22 +329,14 @@ export class FarNodes {
         const dn = near(b, at, cam);
         if (dn >= reach || (!whole && !visible(b, at, cam))) continue;
         const seenAll = whole || inside(b, at, cam);
-        const df = far(b, at, cam);
-        const level = choose(mesh, dn, tile.level[q]!);
         const along = passes(b, at, cam);
-        // One draw where every node of it is in view, in reach, of one level and in one depth range.
-        if (seenAll && df < reach && along !== BOTH && level === choose(mesh, df, tile.level[q]!)) {
-          tile.level[q] = level;
-          tile.cellLevel.fill(level, q * CELLS, (q + 1) * CELLS);
-          put(mesh, level, buffer, tile.ranges[r + 1]!, tile.ranges[r + 2]!, ox, oy, oz, along, reach, dn);
+        if (seenAll && far(b, at, cam) < reach && along !== BOTH) {
+          put(mesh, buffer, tile.ranges[r + 1]!, tile.ranges[r + 2]!, ox, oy, oz, along, reach, dn);
           continue;
         }
-        tile.level[q] = -1;
-        // Runs of neighbouring cells of the same depth ranges: first and end instance, the finer and the coarser level
-        // asked, the nearest, and the ranges.
+        // Runs of neighbouring cells: first and end instance, the nearest, and the depth ranges.
         const runs = this.runs;
         runs.length = 0;
-        const cost = tris[mesh]!;
         for (let c = 0; c < CELLS; c++) {
           const first = tile.cellFirst[q * (CELLS + 1) + c]!;
           const end = tile.cellFirst[q * (CELLS + 1) + c + 1]!;
@@ -355,20 +344,15 @@ export class FarNodes {
           const k = at + (c + 1) * 6;
           const seen = near(b, k, cam);
           if (seen >= reach || (!seenAll && !visible(b, k, cam))) continue;
-          const lv = (tile.cellLevel[q * CELLS + c] = choose(mesh, seen, tile.cellLevel[q * CELLS + c]!));
           const cp = passes(b, k, cam);
-          const last = runs.length - 6;
-          if (last >= 0 && runs[last + 1] === first && runs[last + 5] === cp) {
-            const [finer, coarser] = [Math.min(runs[last + 2]!, lv), Math.max(runs[last + 3]!, lv)];
-            const coarse = lv > runs[last + 2]! ? end - first : lv < runs[last + 2]! ? runs[last + 1]! - runs[last]! : 0;
-            if (coarser - finer <= 1 && coarse * ((cost[finer] ?? 0) - (cost[coarser] ?? 0)) <= RUN_TRIANGLES) {
-              [runs[last + 1], runs[last + 2], runs[last + 3], runs[last + 4]] = [end, finer, coarser, Math.min(runs[last + 4]!, seen)];
-              continue;
-            }
+          const last = runs.length - 4;
+          if (last >= 0 && runs[last + 1] === first && runs[last + 3] === cp) {
+            [runs[last + 1], runs[last + 2]] = [end, Math.min(runs[last + 2]!, seen)];
+            continue;
           }
-          runs.push(first, end, lv, lv, seen, cp);
+          runs.push(first, end, seen, cp);
         }
-        for (let k = 0; k < runs.length; k += 6) put(mesh, runs[k + 2]!, buffer, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, runs[k + 5]!, reach, runs[k + 4]!);
+        for (let k = 0; k < runs.length; k += 4) put(mesh, buffer, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, runs[k + 3]!, reach, runs[k + 2]!);
       }
     }
   }
@@ -424,10 +408,15 @@ export class FarNodes {
     }
   }
 
-  /** The nodes of cell `c` of a tile, worked out from the map once while the tile keeps them. */
-  private spotsOf(tile: Tile, c: number, chunk: number): Spots {
+  /** Room for a tile's nodes. */
+  private newSpots(): Spots {
     const n = this.perChunk;
-    const s = (tile.spots ??= { have: new Uint8Array(CELLS), form: new Uint16Array(CELLS * n), pos: new Float32Array(CELLS * n * 3), yaw: new Uint16Array(CELLS * n) });
+    return { have: new Uint8Array(CELLS), form: new Uint16Array(CELLS * n), pos: new Float32Array(CELLS * n * 3), yaw: new Uint16Array(CELLS * n) };
+  }
+
+  /** The nodes of cell `c` of chunk `chunk` into `s`, worked out from the map once while `s` keeps them. */
+  private spotsOf(s: Spots, c: number, chunk: number): Spots {
+    const n = this.perChunk;
     if (s.have[c]) return s;
     const spot = this.spot;
     for (let i = 0; i < n; i++) {
@@ -458,11 +447,14 @@ export class FarNodes {
     const [ox, oz] = [(t % this.tilesX) * FAR_TILE_METRES, Math.floor(t / this.tilesX) * FAR_TILE_METRES];
     let next = -1;
     let total = 0;
+    // A tile near enough to change hands with the near field keeps its nodes; any other works them out in shared room.
+    const room = off <= FAR_NOW ? (tile.spots ??= this.newSpots()) : (this.shared ??= this.newSpots());
+    if (room === this.shared) room.have.fill(0);
     let spots: Spots | null = null;
     for (let c = 0; c < CELLS; c++) {
       const chunk = this.chunkOf(t, c);
       if (chunk < 0 || this.source.held(chunk)) continue;
-      const s = (spots = this.spotsOf(tile, c, chunk));
+      const s = (spots = this.spotsOf(room, c, chunk));
       const told = this.source.gone(chunk);
       if (told) for (const i of told) gone[i] = 1;
       // Building in the far feed's 4 m cells, counted from the chunk's corner.
@@ -507,15 +499,20 @@ export class FarNodes {
     const cellFirst = new Uint16Array(nr * (CELLS + 1));
     const box = new Float32Array(nr * (CELLS + 1) * 6);
     for (let k = 0; k < box.length; k += 6) box.set(EMPTY, k);
-    const rangeOf = new Int16Array(meshes).fill(-1);
+    const rangeOf = this.rangeOf;
     for (let q = 0; q < nr; q++) {
       const m = ranges[q * 3]!;
       rangeOf[m] = q;
       for (let c = 0; c < CELLS; c++) cellFirst[q * (CELLS + 1) + c] = counts[m * CELLS + c]!;
       cellFirst[q * (CELLS + 1) + CELLS] = ranges[q * 3 + 1]! + ranges[q * 3 + 2]!;
     }
-    const data = new Uint8Array(total * INSTANCE_BYTES);
-    const slots = new Uint16Array(total);
+    // The tile's bytes go where its last ones were when they fit, so walking makes little for the collector.
+    if (!tile.room || tile.room.length < total * INSTANCE_BYTES) {
+      tile.room = new Uint8Array(Math.ceil(total * 1.25) * INSTANCE_BYTES);
+      tile.roomSlots = new Uint16Array(tile.room.length / INSTANCE_BYTES);
+    }
+    const data = tile.room.subarray(0, total * INSTANCE_BYTES);
+    const slots = tile.roomSlots!.subarray(0, total);
     const w = new InstanceWriter(data);
     const s = spots;
     for (let c = 0; c < CELLS; c++) {
@@ -525,7 +522,9 @@ export class FarNodes {
         const form = s.form[at]!;
         const mesh = meshOfForm[form]!;
         const k = counts[mesh * CELLS + c]!++;
-        const [x, y, z] = [s.pos[at * 3]!, s.pos[at * 3 + 1]!, s.pos[at * 3 + 2]!];
+        const x = s.pos[at * 3]!;
+        const y = s.pos[at * 3 + 1]!;
+        const z = s.pos[at * 3 + 2]!;
         w.set(k, x - ox, y, z - oz, s.yaw[at]!, colorOfForm[form]!);
         w.size(k, sizeOfForm[form]!);
         slots[k] = (c << 8) | i;
@@ -549,8 +548,6 @@ export class FarNodes {
       grow(whole, 0, box, q * (CELLS + 1) * 6);
     }
     [tile.data, tile.slots, tile.ranges, tile.cellFirst, tile.box] = [data, slots, ranges, cellFirst, box];
-    tile.level = new Int8Array(nr).fill(-1);
-    tile.cellLevel = new Int8Array(nr * CELLS).fill(-1);
   }
 }
 
@@ -574,7 +571,7 @@ export function farNodeOf(dims: MapDims, buffer: number, slot: number): [number,
 const EMPTY = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity];
 
 function newTile(): Tile {
-  return { dirty: true, now: false, spots: null, data: null, slots: null, uploaded: false, next: -1, ranges: [], cellFirst: new Uint16Array(0), box: new Float32Array(0), level: new Int8Array(0), cellLevel: new Int8Array(0), whole: Float64Array.from(EMPTY) };
+  return { dirty: true, now: false, spots: null, data: null, slots: null, room: null, roomSlots: null, uploaded: false, next: -1, ranges: [], cellFirst: new Uint16Array(0), box: new Float32Array(0), whole: Float64Array.from(EMPTY) };
 }
 
 /** Widens the box at `o` of `box` to hold the one at `from` of `b`. */

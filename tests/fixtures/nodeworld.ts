@@ -126,6 +126,8 @@ export function nodeWorld(o: NodeWorldOptions) {
   let center = -1;
   return {
     reg, dims, hf, source, field, changes, gone, cells, scene, cam, raster, card, W, H, pack: thePack,
+    /** The card keeps copies of what is uploaded. A benchmark timing frames turns it off, so the copies make no garbage. */
+    holdCard: true,
     kind: (id: string): number => reg.index.get(id)!,
     mesh: (id: string): number => scene.assets.table.find(id),
     /** The body stands at (x, z), and the near field holds the chunks round its chunk, taking them before letting the old ones go, as the session does. */
@@ -160,7 +162,7 @@ export function nodeWorld(o: NodeWorldOptions) {
     frame(draw = false, ground = false): FramePacket {
       scene.now += 1000 / 60;
       const p = scene.build(cam, null);
-      for (const u of p.uploads) card.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
+      if (this.holdCard) for (const u of p.uploads) card.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
       for (const id of p.drops) card.delete(id);
       if (draw) {
         const tiles = p.tileCount;
