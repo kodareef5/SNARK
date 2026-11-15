@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { slopeKind } from "../../content/slopes.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { leaning, slopeShape, staticOf } from "../../shared/content/slopes.ts";
+import { leaning, slopeShape, staticOf, wedge } from "../../shared/content/slopes.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
 import { SKIN, capsuleFree, groundUnder } from "../../shared/world/collide.ts";
@@ -14,9 +14,11 @@ import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import type { TestWorld } from "../fixtures/world.ts";
 
-// A slab 16 m long leaning at 60 degrees, for a long ride down a face too steep to stand on.
+// A slab 16 m long leaning at 60 degrees, for a long ride down a face too steep to stand on, and a heap of 47 degrees, steeper
+// than a survivor or a wild creature stands on and not than a tame does.
 const LONG = slopeShape("test:shape_long60", "thing", [leaning([2, 0.25, 8], 60)]);
-const { registry: reg, errors } = compileContent([...CORE_CONTENT, LONG, staticOf("test:long60", LONG, { color: 1, hp: 1000 })]);
+const STEEP = slopeShape("test:shape_heap47", "thing", [wedge(4, 3, 3.2)]);
+const { registry: reg, errors } = compileContent([...CORE_CONTENT, LONG, STEEP, staticOf("test:long60", LONG, { color: 1, hp: 1000 }), staticOf("test:heap47", STEEP, { color: 1, hp: 1000 })]);
 if (!reg) throw new Error(errors.join("\n"));
 const kind = (id: string): number => reg.index.get(id)!;
 const move = (id: string): MoveParams => reg.move[kind(id)]!;
@@ -355,4 +357,26 @@ test("a body too fast for its step down follows a ramp down onto a walkable slop
   c.speedQ = 2500;
   const off = walk(ledge, p, c, 0, SPEEDS[3], (body) => body.z > 67);
   expect(off.air).toBeGreaterThan(0);
+});
+
+test("a tame walks up a heap of 47 degrees that stops a survivor and a wild creature of its species, as ARK's tamed and wild slopes differ", () => {
+  const w = world();
+  const k = kind("test:heap47");
+  w.structs.add(k, 64, reg.halfY[k]!, 64, 0, 0, 1);
+  const wrong: string[] = [];
+  for (const id of WALKERS) {
+    for (const tamed of [false, true]) {
+      const p = (tamed ? reg.tamedMove : reg.move)[kind(id)]!;
+      if (tamed && p === reg.move[kind(id)]) continue;
+      for (const speed of SPEEDS) {
+        if (p.walkSpeed * (speed.move / 127) < 0.3) continue;
+        let high = 0;
+        const b = bodyAt(w, p, 64, 62.5 - p.radius - 0.3, 0);
+        walk(w, p, b, 0, speed, (body) => ((high = Math.max(high, body.y)), body.z > 64.5), 600);
+        if (tamed ? high < 2 : high > p.stepUp) wrong.push(`${tamed ? "tamed" : "wild"} ${id} ${speed.said}: up ${high.toFixed(3)} m`);
+      }
+    }
+  }
+  expect(wrong).toEqual([]);
+  expect([reg.move[kind("core:survivor")]!.slopeCos, reg.tamedMove[kind("core:survivor")]!.slopeCos, reg.move[kind("core:raptor")]!.slopeCos, reg.tamedMove[kind("core:raptor")]!.slopeCos]).toEqual([0.71, 0.71, 0.71, 0.6]);
 });

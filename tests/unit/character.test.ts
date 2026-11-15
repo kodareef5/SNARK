@@ -99,9 +99,19 @@ test("climbs walkable slopes and is stopped by steep ones", () => {
     expect(b.y).toBeGreaterThan(3);
     expect(Math.abs(b.y - w.hf.heightAt(b.x, b.z))).toBeLessThan(0.03);
   }
-  const steep = climb(5); // Strip 5 is 60 degrees.
-  expect(steep.z).toBeLessThan(SLOPE_Z0 + 1);
-  expect(steep.y).toBeLessThan(1.5);
+  // Strip 4 is 50 degrees, past a survivor's 44.765, and strip 5 is 60.
+  for (const strip of [4, 5]) {
+    const steep = climb(strip);
+    expect(steep.z).toBeLessThan(SLOPE_Z0 + 1);
+    expect(steep.y).toBeLessThan(1.5);
+  }
+  // A tame stands on up to 53.13 degrees, so it climbs strip 4, which stops it wild.
+  const raptor = w.kind("core:raptor");
+  for (const [p, climbs] of [[w.reg.tamedMove[raptor]!, true], [w.reg.move[raptor]!, false]] as const) {
+    const b = bodyAt(w, SLOPE_X0 + SLOPE_WIDTH * 4 + 4, SLOPE_Z0 - 3);
+    for (let i = 0; i < 150; i++) stepBody(w, b, 0, FWD, NORTH, 0, BTN_SPRINT, p, TICK_DT);
+    expect(b.z > SLOPE_Z0 + 10).toBe(climbs);
+  }
 });
 
 test("walks up the staircase onto the slab", () => {

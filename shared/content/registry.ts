@@ -32,7 +32,10 @@ const ID = /^[a-z][a-z0-9_]*:[a-z][a-z0-9_\/-]*$/;
 const ALIAS = /^[A-Za-z0-9_.-]+$/;
 const TAG = /^[a-z][a-z0-9_]*$/;
 const GRAVITY = 20;
-const SLOPE_COS = 0.6427876096865394; // 50 degrees
+/** The steepest a survivor or a wild creature stands on, as a cosine: Unreal's WalkableFloorZ, which ARK keeps, 44.765 degrees. */
+const SLOPE_COS = 0.71;
+/** A tame's: TamedWalkableFloorZ on ARK's base creature, 53.13 degrees. */
+const TAMED_SLOPE_COS = 0.6;
 
 export interface Registry {
   /** Definitions by dense index. Entry 0 is null. */
@@ -681,7 +684,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
     } else if (d.type === "species" || d.type === "prop") {
       if (d.type === "species") {
         move[i] = moveParams(d);
-        tamedMove[i] = d.tamedSprintMul === undefined ? move[i] : { ...move[i]!, sprintMul: d.tamedSprintMul };
+        // A survivor's tamed numbers are its own. A creature once tamed stands on steeper ground, and may run at another speed.
+        const m = move[i]!;
+        tamedMove[i] = d.class === "creature" ? { ...m, sprintMul: d.tamedSprintMul ?? m.sprintMul, slopeCos: TAMED_SLOPE_COS } : m;
         damage[i] = d.fists ?? 8;
         meleeTorpor[i] = d.fistsTorpor ?? 0;
         reach[i] = FIST_REACH;
