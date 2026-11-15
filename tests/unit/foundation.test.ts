@@ -3,7 +3,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import { handleIndex, makeHandle, makePid, pidSeq, pidWorld } from "../../shared/ids.ts";
-import { detAtan2, detCos, detSin } from "../../shared/math/scalar.ts";
+import { detAtan2, detCos, detSin, len3 } from "../../shared/math/scalar.ts";
 import { LoopbackNet } from "../../shared/net/loopback.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
@@ -22,6 +22,17 @@ test("deterministic trig stays within its stated error", () => {
   }
   expect(worstSin).toBeLessThan(1e-9);
   expect(worstAtan).toBeLessThan(2e-5);
+});
+
+test("len3 is exact where the answer is whole and otherwise within a few parts in 1e16 of Math.hypot", () => {
+  expect([len3(3, 4, 12), len3(-2, 3, -6), len3(0, 0, 0), len3(1, 4, 8)]).toEqual([13, 7, 0, 9]);
+  let worst = 0;
+  for (let i = 1; i <= 4000; i++) {
+    const [x, y, z] = [Math.cos(i) * i * 0.01, Math.sin(i * 1.7) * 3, 1 / i];
+    const h = Math.hypot(x, y, z);
+    worst = Math.max(worst, Math.abs(len3(x, y, z) - h) / h);
+  }
+  expect(worst).toBeLessThan(5e-16);
 });
 
 test("handles and persistent ids keep their parts", () => {

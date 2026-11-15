@@ -1,5 +1,6 @@
 // How far a coarser level of a mesh lies from the finest, measured on the meshes themselves.
 
+import { len3 } from "../../shared/math/scalar.ts";
 import type { SourceLod } from "./write.ts";
 
 /** The distance from point p to the triangle a, b, c (Ericson, Real-Time Collision Detection, 5.1.5). */
@@ -35,7 +36,7 @@ export function toTriangle(px: number, py: number, pz: number, t: Float32Array, 
       w = sum === 0 ? 0 : vc / sum;
     }
   }
-  return Math.hypot(apx - abx * v - acx * w, apy - aby * v - acy * w, apz - abz * v - acz * w);
+  return len3(apx - abx * v - acx * w, apy - aby * v - acy * w, apz - abz * v - acz * w);
 }
 
 /** A grid has no more cells than this along an axis. */
@@ -77,7 +78,7 @@ class Grid {
       }
       const ux = t[b]! - t[a]!, uy = t[b + 1]! - t[a + 1]!, uz = t[b + 2]! - t[a + 2]!;
       const vx = t[c]! - t[a]!, vy = t[c + 1]! - t[a + 1]!, vz = t[c + 2]! - t[a + 2]!;
-      area += Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
+      area += len3(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 2;
     }
     // A cell is about as wide as the side of a mean triangle.
     const side = Math.sqrt((2 * area) / count) || 1;
