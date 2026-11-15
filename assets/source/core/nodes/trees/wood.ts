@@ -12,12 +12,14 @@
 //
 //   bun assets/source/core/nodes/trees/wood.ts [--tier medium] [--size 1024x576] [--trees core:tree_1,core:tree_2]
 //     [--kind core:tree] [--size-range 0.4,0.75] [--out artifacts/trees/wood.png] [--heat artifacts/trees/heat.png]
-//     [--map hills.snmap] [--at x,z] [--fov 70] [--rows 576] [--headings 8] [--json]
+//     [--map hills.snmap] [--at x,z] [--fov 70] [--rows 576] [--headings 8] [--json] [--budget]
 //
 // --trees names the meshes the wood's trees grow as, in place of the content's; --size-range their sizes. --map counts
 // on a map file's ground and nodes in place of the hills and their wood, from eye height at (x, z) or the map's first
 // spawn point, as the device page's tree rung is drawn (tools/device.ts). --fov is the view's height in degrees, --rows
-// the rows levels are chosen for (a page's CSS pixels), and --json prints the counts as one line and no picture.
+// the rows levels are chosen for (a page's CSS pixels), and --json prints the counts as one line and no picture. With
+// --budget the view is drawn as the frame's budget draws it on the tier (client/core/render/budget.ts), its squeeze
+// settled at each heading; without, whole, as its distance asks.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -100,6 +102,7 @@ scene.viewHeight = Number(arg("rows", String(H)));
 scene.hour = 10;
 // In the order the draws were made, so that one frame gives what both orders shade: the picture is the same.
 scene.cutouts = "made";
+scene.budget.on = args.includes("--budget");
 const cam = new Camera();
 cam.aspect = W / H;
 cam.fovY = (Number(arg("fov", "70")) * Math.PI) / 180;
@@ -209,7 +212,23 @@ function groundDepth(p: FramePacket): void {
   }
 }
 
-const totals = { cut: 0, front: 0, old: 0, first: 0, nearest: 0, litNearest: 0, covered: 0, p99: 0, most: 0 };
+const totals = { cut: 0, front: 0, old: 0, first: 0, nearest: 0, litNearest: 0, covered: 0, p99: 0, most: 0, triangles: 0, crowns: 0, squeeze: 0 };
+
+/** Builds frames, the rasterizer taking each one's uploads, until the budget's squeeze has settled, and the card is filled again. */
+function squeezed(): void {
+  for (let round = 0; round < 8 && scene.budget.on; round++) {
+    const before = scene.budget.squeeze;
+    for (let f = 0; f < 150; f++) {
+      scene.now += 1000 / 60;
+      port.advance(scene.now);
+      const p = scene.build(cam, remote);
+      p.drawCount = p.tileCount = 0;
+      raster.render(p);
+    }
+    settle(proving, 20000);
+    if (Math.abs(scene.budget.squeeze - before) < 0.01) break;
+  }
+}
 const byMesh = new Map<string, number>();
 const meshIds = (files.manifest ?? pack.header).meshes.map((m) => m.id);
 /** By level, the instances and triangles a heading draws, on the mean over the headings. */
@@ -220,7 +239,11 @@ for (let k = 0; k < turns; k++) {
   cam.yaw = (k / turns) * Math.PI * 2;
   cam.pitch = 0;
   settle(proving, 20000);
+  squeezed();
   const p = scene.packet;
+  totals.triangles += p.triangles / turns;
+  totals.crowns += scene.budget.last.crowns / turns;
+  totals.squeeze += scene.budget.squeeze / turns;
   cam.update();
   cut.fill(0);
   near.fill(Infinity);
@@ -302,6 +325,7 @@ console.log(`  nearest opaque: textured ${((100 * totals.nearest) / px).toFixed(
 console.log(`  on the phone's figures, ${PHONE_MP} MP: cut-out ${((totals.cut * SURFACE_MS) / 1e6 * scale).toFixed(2)} ms, of it in front ${((totals.front * SURFACE_MS) / 1e6 * scale).toFixed(2)} ms; nearest opaque ${(((totals.nearest * SURFACE_MS + totals.litNearest * LIT_MS) / 1e6) * scale).toFixed(2)} ms, ${ms.toFixed(2)} ms in all`);
 console.log(`  cut-out layers by mesh and level: ${[...byMesh].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${(v / turns / px).toFixed(2)}`).join(", ")}`);
 const all = [...levels.values()].reduce((n, l) => n + l.triangles, 0);
+console.log(`  the frame a heading: ${(totals.triangles / 1e6).toFixed(2)} M triangles, crowns near ${(totals.crowns / 1e6).toFixed(2)} M${scene.budget.on ? `, as the budget draws it at a squeeze of ${totals.squeeze.toFixed(2)}, the tier allowing ${(tier.budget.triangles / 1e6).toFixed(2)} M` : ", whole"}`);
 console.log(`  drawn a heading: ${(all / 1000).toFixed(0)} k triangles; by level ${[...levels].sort().map(([k, l]) => `${k} ${l.instances.toFixed(0)} drawn, ${(l.triangles / 1000).toFixed(0)} k`).join("; ")}`);
 if (args.includes("--heat") && heat) {
   const img = new Uint8ClampedArray(px * 4);

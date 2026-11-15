@@ -101,7 +101,7 @@ test("the content hangs together: every engram can be reached, every thing that 
   const points = levels.type === "levels" ? levels.engramPoints.reduce((a, b) => a + b, 0) : 0;
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
   const weapons = items.filter((d) => d.weapon);
-  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bow", "club", "crossbow", "grenade", "hatchet", "pick", "pistol", "rifle", "shotgun", "slingshot", "spear"]);
+  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bola", "bow", "club", "crossbow", "grenade", "hatchet", "pick", "pistol", "rifle", "shotgun", "slingshot", "spear"]);
   // Ammunition is made, or gathered as a slingshot's stone is.
   const gathered = new Set(reg.defs.flatMap((d) => (d?.type === "node" ? d.yields.map((y) => y.item) : [])));
   for (const d of weapons) {
@@ -273,7 +273,8 @@ test("loading and fitting keep carried weight, moving gear transfers it, and fir
   give("round_rifle");
   const scope = give("scope");
   const weight = inv().weight(items.table);
-  expect(weight).toBeCloseTo(9.6);
+  // A long rifle of 15, a rifle round of 0.1 and a scope of 0.1 (Longneck Rifle, Simple Rifle Ammo, Scope Attachment).
+  expect(weight).toBeCloseTo(15.2);
   expect(items.load(rec, rifle, id("round_rifle"), 1)).toBe(1);
   expect(inv().weight(items.table)).toBeCloseTo(weight);
   expect(send(CMD_ATTACH, (w) => (w.varint(rifle), w.varint(scope)))).toBe(RESULT_OK);

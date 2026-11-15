@@ -25,7 +25,7 @@ export const DRAW_MIN = 0.5;
 /**
  * The share of its damage a round keeps `metres` from where it left: all of it out to `full`, falling evenly to none at
  * `none`, and none beyond. A round whose `none` is 0 does not fall off. ARK's shotgun "lacks any sort of long-range
- * capabilities" (Shotgun); its numbers are ours (DEV132).
+ * capabilities" (Shotgun); its numbers are ours (DEV142).
  */
 export function falloff(metres: number, full: number, none: number): number {
   if (!(none > 0) || metres <= full) return 1;

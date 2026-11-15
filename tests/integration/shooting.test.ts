@@ -319,7 +319,8 @@ test("lag compensation: at every latency within the cap, a shot aimed at the bod
     let moving = 0;
     // The pistol holds six rounds, so the twelve shots include a reload.
     for (let n = 0; n < 12; n++) {
-      if (inv.loaded[inv.hotbar] === 0) h.run(2600, frame());
+      // It reloads in 3.33 s (Simple Pistol).
+      if (inv.loaded[inv.hotbar] === 0) h.run(3800, frame());
       const before = combat.hits;
       if (speedOf(h, bob) > 4) moving++;
       pa.buttons |= BTN_PRIMARY;

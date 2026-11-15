@@ -559,12 +559,15 @@ export interface BuffDef extends Named {
   readonly immune?: boolean;
   /** A beneficial buff, shown apart from harmful ones. */
   readonly good?: boolean;
-  // Stubs of planning/reference/weapons-plan.md (W4, the bola), read by nothing yet.
-  /** The creatures it takes, by species; omitted, any. A survivor is always taken. ARK's bola names its list (Bola). */
+  // The bola's fields (planning/reference/weapons-plan.md, M6), read where a hit gives the buff (server/entangle.ts).
+  /** The species it takes, the survivor's among them if it takes survivors; omitted, any. ARK's bola names its list (Bola). */
   readonly only?: readonly string[];
   /** Seconds it lasts on a survivor, in place of `seconds` (the bola's 25 against a creature's 30). */
   readonly survivorSeconds?: number;
-  /** A buff given as it ends, such as a time it cannot be given again (the bola's 10 s, patch 240.5). */
+  /**
+   * A buff given as it ends, if the body is one that buff takes, and while that one lasts this one is not given again:
+   * the bola's 10 s of grace (patch 240.5).
+   */
   readonly after?: string;
 }
 

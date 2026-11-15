@@ -1,0 +1,20 @@
+# Beyond assets/source/.gitignore: what the scripts here make again, for the three weapon assets (bows/, firearms/,
+# thrown/) and their shared kit.
+__pycache__/
+*.blend1
+# The image model's run logs; its briefs, reports, last messages and timings are kept.
+artist-transcript*.txt
+# The materials are used at 1,024 (materials.ts); their 2,048 sets, their construction fields and diagnostics, and their
+# first passes are rebuilt by build_material.py, and the steel's packed map as made beside the tuned one by
+# tune_steel.py. Both materials are made by script alone: no picture of the image tool's is in either.
+*/tex/*/*_base.png
+*/tex/*/*_height.png
+*/tex/*/*_normal.png
+*/tex/*/*_orm.png
+*/tex/*/*_orm_made*.png
+*/tex/*/source/*.png
+*/tex/*/source/pass1/
+# The concepts' raw renders, which their scripts make again from the masters kept beside them.
+*/ref/concept/renders/
+# The game's pictures as snap.ts writes them; the ones kept are under ref/game/, as JPEG.
+ref/*.png
