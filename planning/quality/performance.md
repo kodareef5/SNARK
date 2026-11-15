@@ -303,7 +303,7 @@ counts the young wood at the 2.10 M and the elders at the 5.83 M the iPhone drew
 | SURFACE and surfaceLayer, a megapixel, by slope (the device page, headless) | 0.30 ± 0.04, 0.34 ± 0.03 ms | P10 |
 | Forty hurt and dead dodos round the camera (the GPU bench's flock, 750 by 873, a GPU shared with other jobs): the frame on medium, ultra; what the layers add, each run | 4.7, 21.2 ms; -0.6 to +0.6 ms on medium, -1.0 to -0.3 on ultra | P10 |
 | Node pixels changed stepping over a chunk border, medium | 0 of 39,171 | D355 |
-| The device page's tree order, headless at 500 by 845 CSS pixels: the elder stand whole, cut-outs last, and as the frame's budget draws it, mean frame | medium 18.0 ms at 6.5 M triangles, 16.7 at 1.8 M (squeeze 3.2); high 27.1 at 12.9 M, 17.3 at 3.6 M (squeeze 2.9) | `.cache/device` run `06feab13`, branch `r9/frame-budget` |
+| The device page's tree order, headless at 500 by 845 CSS pixels (load 2): each wood whole, cut-outs last, and as the frame's budget draws it; GPU by timer query, median. Every mean frame 16.7 ms but the elders whole on high, 16.8 | elders, medium: 11.9 ms at 6.5 M triangles, 8.3 at 1.8 M (squeeze 3.2); high: 33.2 at 12.8 M, 13.0 at 3.6 M (squeeze 2.9). Young wood, medium: 7.1 at 2.5 M, 7.3 at 1.9 M (squeeze 2); high: 9.3 at 4.2 M, 8.6 at 3.8 M (squeeze 1) | `.cache/device` run `36ed0137`, branch `r9/frame-budget` |
 | On the card on any device: terrain on 8 km; sky table; shadow maps by lit tier | 9.5 MB; 256 KB; 16, 24, 32 MB | M; computed; D268 |
 
 The lit probe's timing page read the dome at 0.023 ms because it blends alpha as
