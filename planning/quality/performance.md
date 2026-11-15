@@ -22,6 +22,7 @@ ASTC, 24-bit depth, 16 texture units, no timer queries.
 | Q | three or four quiet runs, ranges | 2026-11-13 | `5bf4d63` |
 | S | three quiet runs, ranges | 2026-11-14 | `95a19af` |
 | M | once on main, on a busy machine (load 7 to 39 on 10 cores) | 2026-11-15 | `1ca2026` |
+| P10 | the hurt and decay layers' rows, once each on a busy machine (load 9 to 14) | 2026-11-15 | `r9/p10-layers` |
 | Dnnn | the measurement its decision records | | |
 | iPhone | the device page's reports (D349), kept in `planning/reference/device-reports`, named by UTC time | 2026-11-15 | |
 
@@ -137,6 +138,8 @@ Core's frame build on this Mac's CPU, before the shell draws.
 | 2,048 bodies on ultra: bones; triangles; median, 99th | 57,344; 3.31 M; 3.5, 6.3 ms busy | 65,536; none; 6, 12 | M |
 | 2,048 on medium: posed, rigid; triangles; median, 99th | 530, 1,518; 2.39 M; 1.8, 15.0 ms busy, missed | none; none; 6, 12 | M |
 | 500 creatures with materials: all textured after; as wide as shown after; draws | 0.12 s; 2.7 s; 2 | 1.5 s; none; 60 | M |
+| The same with a hurt and decay layer, none hurt: frame build median; draws with a layer, layer fetched | 0.21 ms; 0, no | 1.2; 0 | P10 |
+| Its 40 nearest hurt or dead: frame build median; draws added, of them with a layer | 0.23 ms; 12, 6 | 1.2; none | P10 |
 | Stress meshes over 20 Mbit/s: boot file; first usable detail; the detail wanted | 0.30 MB; 1.1 s; 3.9 s | 1 MB; 1.5 s; 6 s | M |
 | The same flying at 25 m/s: fetched over drawn; given up; left out | 1.00; 0%; 0 | 1.3; 15%; 0 | M |
 | A 4 MB card: most held over budget; left out | 1.00; 0 | 1.25; 0 | M |
