@@ -47,7 +47,7 @@ export class RespawnScreen {
     const x = Math.round((f.width - w) / 2);
     const y = Math.round(f.height * 0.3);
     f.add(KEY_RESPAWN_PANEL, K_PANEL, x, y, w, h, S_PANEL);
-    f.text(KEY_RESPAWN_TITLE, x + 16, y + 14, w - 32, S_TITLE, "Return to life at");
+    f.text(KEY_RESPAWN_TITLE, x + 16, y + 14, w - 32, S_TITLE, session.arriving ? "Arrive at" : "Return to life at");
     for (let i = 0; i < rows; i++) {
       const p = points[first + i]!;
       const b = f.add(KEY_RESPAWN_BUTTON + i, K_BUTTON, x + 16, y + 52 + i * (rowH + 6), w - 32, rowH, S_BUTTON);

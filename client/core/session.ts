@@ -50,6 +50,7 @@ import {
   PITCH_LIMIT,
   PROTOCOL_VERSION,
   SESSION_ALIVE,
+  SESSION_DEAD,
   S_CHUNK,
   S_CHUNK_DROP,
   S_EVENT,
@@ -69,7 +70,10 @@ import {
   S_RESULT,
   S_SNAPSHOT,
   S_TEXT,
+  S_TRAVEL,
   S_WELCOME,
+  REJECT_TRAVEL,
+  TICKET_BYTES,
   nextCommandSeq,
   readBody,
   writeCommand,
@@ -85,7 +89,7 @@ import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
-import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
+import { V_COUNT, V_HEALTH, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
@@ -111,6 +115,8 @@ export interface SessionOptions {
   clipHash?: number;
   /** A look for a new survivor (shared/anim/look.ts). Without one, a new name waits in the creator for `create`. */
   look?: Uint8Array;
+  /** A travel ticket: the survivor arrives with it from another server of the cluster (S_TRAVEL). */
+  ticket?: Uint8Array;
   /** Returns null if this client does not have the map. */
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
@@ -290,6 +296,10 @@ export class ClientSession {
   state: "connecting" | "active" | "closed" = "connecting";
   /** Reject reason from the server, or a negative local reason. */
   closeReason = 0;
+  /** What the server said of a REJECT_TRAVEL. */
+  closeText = "";
+  /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
+  travelled: { ticket: Uint8Array; world: number } | null = null;
 
   world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
@@ -317,6 +327,10 @@ export class ClientSession {
   logVersion = 0;
   /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
+  /** It came from another server of the cluster and chooses where to rise: bodiless as the dead are, and alive (Cluster.arriving). */
+  get arriving(): boolean {
+    return this.sessionState === SESSION_DEAD && this.vitals.max[V_HEALTH]! > 0 && this.vitals.value[V_HEALTH]! > 0;
+  }
   hasVitals = false;
   /** Oldest first. Falling.absorb empties it. */
   readonly rubble: Rubble[] = [];
@@ -456,7 +470,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "");
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -768,6 +782,12 @@ export class ClientSession {
     else if (type === S_REJECT) {
       this.state = "closed";
       this.closeReason = r.u8();
+      if (this.closeReason === REJECT_TRAVEL) this.closeText = r.string(MAX_SERVER_TEXT_BYTES);
+    } else if (type === S_TRAVEL) {
+      const ticket = new Uint8Array(TICKET_BYTES);
+      for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
+      const world = r.u16();
+      if (!r.overflow) this.travelled = { ticket, world };
     }
   }
 

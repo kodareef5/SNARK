@@ -52,7 +52,7 @@ raptors that will come for you.
 | R | Reload |
 | G | Let a drawn bow down without loosing. With a melee weapon in hand, swing it |
 | V | Look from behind the body, or from its eyes |
-| E | Pick a bush, open a cache or a box, open a door, get on a saddled creature of your tribe and off it, take a young creature that is nobody's, look into one that is unconscious or yours. Held on something built: what can be done to it |
+| E | At an obelisk's terminal, the other servers of the cluster to travel to with all you carry ([server/README.md](server/README.md)). Pick a bush, open a cache or a box, open a door, get on a saddled creature of your tribe and off it, take a young creature that is nobody's, look into one that is unconscious or yours. Held on something built: what can be done to it |
 | F | Look into the creature you ride or look at: follow or stay, its stance, its saddle, whether it may mate, its levels |
 | T, Y, J, U | Whistle the creature looked at to follow, to stay; all of them to follow, to stay |
 | Building piece in hand | Left button sets it down where it is shown. E turns it, Q takes the next nearest place (held: open ground), R changes a wall to a doorframe or a windowframe, arrow keys raise and lower a foundation |
