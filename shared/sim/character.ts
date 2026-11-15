@@ -36,6 +36,13 @@ export const MODE_SWIM = 2;
 export const MODE_GHOST = 3;
 /** Flight as a ghost's, but meeting the ground, pieces and nodes. Set only by the server (admins). */
 export const MODE_FLY = 4;
+/**
+ * A creature's own flight, with the flyers' contracts (planning/reference/flyers-plan.md): stepped by its species' numbers
+ * (the `fly` fields of MoveParams), not the admin's. Nothing sets it until FL1 builds the step; 6 and 7 are free.
+ */
+export const MODE_FLYER = 5;
+/** The most ticks either flight counter of a body holds (Body.regenWait, Body.rollWait): 10 bits on the wire, 34 s. */
+export const FLIGHT_TICKS_MAX = 1023;
 
 /** Stamina is stored in thousandths of a point, so it steps in exact integers. */
 export const STAMINA_UNITS = 1000;
@@ -105,6 +112,27 @@ export interface MoveParams {
   readonly turnRate: number;
   /** False for a body that moves only the way it faces. */
   readonly strafe: boolean;
+  // A creature's own flight (MODE_FLYER), from SpeciesDef.fly. For a body that does not fly, `flies` is false and every
+  // number is 0. Read by nothing until FL1 of planning/reference/flyers-plan.md builds the step.
+  readonly flies: boolean;
+  /** Metres per second flying, and the sprint as a multiple of it (a tame's own in its tamedMove). */
+  readonly flySpeed: number;
+  readonly flySprintMul: number;
+  /** Metres per second squared by which its velocity moves toward the one it wishes, so that it carries speed. */
+  readonly accelFly: number;
+  /** In 1/65536 turns per tick, as turnRate is: how fast its facing follows the look in the air. */
+  readonly flyTurnRate: number;
+  /** Stamina units per tick flying or hovering, and per tick sprinting in the air. */
+  readonly staminaFly: number;
+  readonly staminaFlySprint: number;
+  /** Stamina units one barrel roll costs, and one grab. */
+  readonly staminaRoll: number;
+  readonly staminaGrab: number;
+  /** Ticks after it last flew before any stamina comes back on the ground (Body.regenWait), at most FLIGHT_TICKS_MAX. */
+  readonly regenWaitTicks: number;
+  /** Metres per second a barrel roll adds to its speed, and the ticks from one roll to the next (Body.rollWait). */
+  readonly rollBurst: number;
+  readonly rollTicks: number;
 }
 
 /**
@@ -153,6 +181,14 @@ export class Body {
    */
   bloom = 0;
   kick = 0;
+  /**
+   * Flight state, with the flyers' contracts (planning/reference/flyers-plan.md), stepped by FL1: the ticks before stamina
+   * may come back (a flyer gets none in the air, and none on the ground for MoveParams.regenWaitTicks after it flew), and
+   * the ticks before it may roll again. Each counts down to 0, which a body that never flew has, and holds at most FLIGHT_TICKS_MAX. Not
+   * saved: both run out within seconds.
+   */
+  regenWait = 0;
+  rollWait = 0;
 
   copy(o: Body): void {
     this.x = o.x;
@@ -178,6 +214,8 @@ export class Body {
     this.reloadTo = o.reloadTo;
     this.bloom = o.bloom;
     this.kick = o.kick;
+    this.regenWait = o.regenWait;
+    this.rollWait = o.rollWait;
   }
 
   /** Position, velocity and grounded. */
@@ -203,7 +241,9 @@ export class Body {
       this.rounds === o.rounds &&
       this.reloadTo === o.reloadTo &&
       this.bloom === o.bloom &&
-      this.kick === o.kick
+      this.kick === o.kick &&
+      this.regenWait === o.regenWait &&
+      this.rollWait === o.rollWait
     );
   }
 }

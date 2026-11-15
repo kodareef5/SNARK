@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/direwolf",
+  "review": "../ref/sound",
+  "about": "A huge pack wolf; it howls to its pack and snarls as they hunt together.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 80,
+      "level": -20,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p3260",
+          "models": [
+            "moss"
+          ],
+          "seed": 3260,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A large wolf howls a long mournful howl, two separate howls with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 80,
+      "level": -20,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p3270",
+          "models": [
+            "moss"
+          ],
+          "seed": 3270,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large wolf barks sharply and snarls in alarm, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 80,
+      "level": -20,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p3280",
+          "models": [
+            "moss"
+          ],
+          "seed": 3280,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large wolf yelps in pain, five separate yelps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 80,
+      "level": -20,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p3290",
+          "models": [
+            "moss"
+          ],
+          "seed": 3290,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large wolf whimpers weakly and goes silent, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 80,
+      "level": -18,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p3300",
+          "models": [
+            "moss"
+          ],
+          "seed": 3300,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large wolf snarls and snaps its jaws in a vicious bite, five separate bites with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 48,
+      "level": -24,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p3310",
+          "models": [
+            "moss"
+          ],
+          "seed": 3310,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Paws of a large wolf trotting on earth: light quick padded steps, separate bursts. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

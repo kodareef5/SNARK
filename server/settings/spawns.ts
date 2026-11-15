@@ -42,9 +42,10 @@ const number = (n: IniNode | undefined): number => (typeof n === "string" ? toNu
 const items = (n: IniNode | undefined): readonly IniNode[] => (isList(n) ? n.items.map((i) => i.value) : []);
 
 function fromDef(d: SpawnsDef): Table {
+  // An entry or limit that waits for a feature is not in the table until its package builds the feature.
   return {
-    entries: d.entries.map((e) => ({ weight: e.weight, members: e.group.map((id, i) => ({ id, chance: e.chances?.[i] ?? 1, offset: e.offsets?.[i] ?? [0, 0] })) })),
-    limits: new Map((d.limits ?? []).map((l) => [l.species, l.share])),
+    entries: d.entries.filter((e) => e.waits === undefined).map((e) => ({ weight: e.weight, members: e.group.map((id, i) => ({ id, chance: e.chances?.[i] ?? 1, offset: e.offsets?.[i] ?? [0, 0] })) })),
+    limits: new Map((d.limits ?? []).filter((l) => l.waits === undefined).map((l) => [l.species, l.share])),
   };
 }
 

@@ -134,7 +134,7 @@ const SPECIES = {
   temper: f("text"),
   sight: f("number"),
   leash: f("number"),
-  bite: f("facet", "AttackInfos"),
+  bite: f("facet", "AttackInfos", { stubs: { stamina: "flyers" } }),
   taming: f("facet", "RequiredTameAffinity"),
   eats: f("list", "DinoSettings food effectiveness", { refs: { "[].item": "item" }, open: true }),
   torporDrain: f("number"),
@@ -149,6 +149,15 @@ const SPECIES = {
   carriable: f("switch", "picked up and thrown by a player"),
   feces: f("text", "the creature's feces item", { refs: { "": "item/feces" } }),
   eggChance: f("number", "the chance of an egg in place of feces"),
+  // The flyers' contracts (planning/reference/flyers-plan.md, FL0), each read once its package builds it.
+  fly: stub("flyers", "facet", "the flying speed, sprint and stamina, and the barrel roll"),
+  grab: stub("flyers", "facet", "the most drag weight a flyer carries"),
+  defendsEgg: stub("flyers", "switch", "a skittish flyer that turns on an egg thief"),
+  riderWeight: stub("flyers", "number", "PassengerWeightMultiplier"),
+  missiles: stub("flyers", "number", "the flyers' damage from projectiles that are not bullets"),
+  structures: stub("flyers", "number", "the flyers' damage to structures"),
+  tameBonus: stub("tameBonus", "facet", "TamingMaxStatAdditions and TamingMaxStatMultipliers"),
+  tamedHealth: stub("tameBonus", "number", "TamedBaseHealthMultiplier"),
   variant: stub("bosses", "text", "a child blueprint's kind"),
   attacks: stub("polish", "list", "AttackInfos"),
   loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
@@ -366,7 +375,7 @@ row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: 
 row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
 row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item type Equipment", shelf: "items/equipment", doc: "Worn by a body, in a slot." });
 row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: ANY_ITEM, slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "{body}/{wear.slot}"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
-row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden." });
+row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden. Drawn as its worn mesh on the creature's bones, unless the creature has a saddled model, which is drawn in place of both." });
 row("item/structure", "item", ITEM, { parent: "item", ark: "PrimalItemStructure_", shelf: "items/structures", must: ["stack", "places"], may: ANY_ITEM, slots: { preview: mesh("may", "{id}/preview", "#mesh"), ...ITEM_SLOTS }, doc: "Set down as a structure." });
 row("item/egg", "item", ITEM, { parent: "item/consumable", ark: "PrimalItemConsumable_Egg_", shelf: "items/eggs", must: ["stack"], may: [...ANY_ITEM, "eat", "spoilHours", "spoilsInto"], slots: ITEM_SLOTS, doc: "An egg in the hand, eaten or set down. A fertilised one stacks to 1, keeps its young and does not hatch while held." });
 row("item/feces", "item", ITEM, { parent: "item/resource", ark: "the feces items, small to massive", shelf: "items/feces", must: ["stack"], may: [...ANY_ITEM, "spoilHours", "spoilsInto", "fuel"], slots: ITEM_SLOTS, doc: "What a creature leaves when it defecates, a size for each kind of creature." });
@@ -393,7 +402,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "keeps", "fists", "bite", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "keeps", "fists", "bite", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
@@ -401,6 +410,13 @@ row("species/creature", "species", SPECIES, {
     // Without one, what it does besides goes on.
     move: { asset: "clip", need: "may", keys: ["swim", "swim_idle", "fall", "land", "turn", "startled", "flinch", "call", "torpor_eat", "held", "carried", "jump"], when: "skeleton", from: "{mesh}/{key}", fallback: ["none"] },
     torpor: { asset: "clip", need: "may", keys: ["torpor_in", "torpor_idle", "torpor_out"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/death", "rest"] },
+    // A flyer's own clips (planning/reference/flyers-plan.md, FL4 and FL6). Without one, what it does besides goes on.
+    flight: { asset: "clip", need: "may", keys: ["take_off", "hover", "fly", "fly_fast", "glide", "dive", "attack_air", "barrel_roll", "grab", "carry", "release", "torpor_fall", "death_air"], when: "fly", from: "{mesh}/{key}", fallback: ["none"] },
+    // Two ways to draw a saddle, the asset's to choose (FL5). This is its whole model as it is saddled: the same skeleton,
+    // clips, sockets and hit zones, its own meshes and maps, drawn in place of the bare body while it wears any saddle, and
+    // then no saddle's worn mesh is drawn over it. Without it the bare body is drawn, with the worn saddle's "{id}/worn"
+    // mesh (item/saddle) on its bones where the saddle has one.
+    saddled: { asset: "mesh", need: "may", when: "skeleton", from: "{mesh}/saddled", fallback: ["#body"] },
     icon,
     sound: { asset: "sound", need: "may", keys: "any", from: "{id}/sound/{key}", fallback: ["none"] },
   },

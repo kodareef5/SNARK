@@ -4,8 +4,9 @@
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
+import { FEATURES } from "../features.ts";
 import { hashString } from "../hash.ts";
-import { STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
+import { FLIGHT_TICKS_MAX, STAMINA_UNITS, type MoveParams } from "../sim/character.ts";
 import { COLOR_REGIONS, STAT_NAMES, type ColorSet } from "../sim/genome.ts";
 import { GAME_HOUR_TICKS } from "../sim/lazy.ts";
 import { ZONE_COUNT } from "../anim/human.ts";
@@ -228,6 +229,24 @@ export interface Registry {
    */
   readonly ammoLight: Float32Array;
   readonly ammoLightColor: Uint8Array;
+  // The flyers' columns (planning/reference/flyers-plan.md, FL0), compiled and read by nothing until the package named
+  // builds them. A flyer's speeds, turn, stamina and roll are in its MoveParams.
+  /** Per species: 1 if it flies (SpeciesDef.fly). */
+  readonly flies: Uint8Array;
+  /** FL6, per species: the most drag weight it grabs and lifts (0 if it grabs nothing), and the metres below it it reaches. */
+  readonly grabDrag: Float32Array;
+  readonly grabReach: Float32Array;
+  /** FL3, per species: 1 if its wild go for whoever takes their egg though the species flees. */
+  readonly defendsEgg: Uint8Array;
+  /** FL2, per species: the share of a rider's weight that counts on it, 1 where not given, and the stamina units one bite costs. */
+  readonly riderWeight: Float32Array;
+  readonly biteStamina: Uint32Array;
+  /**
+   * Per species: what the damage of a missile, a projectile that is not a bullet, is multiplied by against it, and what its
+   * bite's and bare hands' damage is multiplied by against a structure. 1 where not given.
+   */
+  readonly missileMul: Float32Array;
+  readonly biteStructureMul: Float32Array;
 }
 
 /** Default reach of bare hands and of a melee weapon, in metres. */
@@ -336,6 +355,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.mass !== undefined) positive(d, "mass", d.mass, 1e6);
       if (d.eggChance !== undefined && !(d.eggChance >= 0 && d.eggChance <= 1)) errors.push(`${d.id}: eggChance must be from 0 to 1`);
       if (d.fistsTorpor !== undefined && !(d.fistsTorpor >= 0)) errors.push(`${d.id}: fistsTorpor must not be negative`);
+      errors.push(...flyerFaults(d));
     } else if (d.type === "prop") {
       // A cloud's radius is its reach, not a body's (server/clouds.ts).
       positive(d, "radius", d.radius, d.class === "cloud" ? 32 : 8);
@@ -385,6 +405,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (e.offsets !== undefined && (!Array.isArray(e.offsets) || e.offsets.length !== n || e.offsets.some((o) => !(Math.abs(o[0]) <= 64 && Math.abs(o[1]) <= 64)))) errors.push(`${d.id}: an entry's offsets are one for each of its group, each within 64 m`);
       }
       for (const l of d.limits ?? []) if (!(l.share >= 0 && l.share <= 1)) errors.push(`${d.id}: the limit of ${l.species} must be a share from 0 to 1`);
+      for (const w of [...d.entries, ...(d.limits ?? [])]) if (w.waits !== undefined && !(w.waits in FEATURES)) errors.push(`${d.id}: "${w.waits}" is not a feature an entry or limit may wait for`);
     } else if (d.type === "map") {
       for (const z of d.zones ?? []) {
         if (z.count !== undefined && !(Number.isInteger(z.count) && z.count >= 0 && z.count <= 65535)) errors.push(`${d.id}: a zone holds a whole number of creatures from 0 to 65,535`);
@@ -664,6 +685,14 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const ammoPierce = new Float32Array(n);
   const ammoLight = new Float32Array(n);
   const ammoLightColor = new Uint8Array(n);
+  const flies = new Uint8Array(n);
+  const grabDrag = new Float32Array(n);
+  const grabReach = new Float32Array(n);
+  const defendsEgg = new Uint8Array(n);
+  const riderWeight = new Float32Array(n).fill(1);
+  const biteStamina = new Uint32Array(n);
+  const missileMul = new Float32Array(n).fill(1);
+  const biteStructureMul = new Float32Array(n).fill(1);
   const materials = new Map(sorted.flatMap((o) => (o.type === "material" ? [[o.id, o] as const] : [])));
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
@@ -704,9 +733,18 @@ export function compileContent(all: readonly Def[]): CompileResult {
     } else if (d.type === "species" || d.type === "prop") {
       if (d.type === "species") {
         move[i] = moveParams(d);
-        // A survivor's tamed numbers are its own. A creature once tamed stands on steeper ground, and may run at another speed.
+        // A survivor's tamed numbers are its own. A creature once tamed stands on steeper ground, and may run at another
+        // speed, on the ground and in the air.
         const m = move[i]!;
-        tamedMove[i] = d.class === "creature" ? { ...m, sprintMul: d.tamedSprintMul ?? m.sprintMul, slopeCos: TAMED_SLOPE_COS } : m;
+        tamedMove[i] = d.class === "creature" ? { ...m, sprintMul: d.tamedSprintMul ?? m.sprintMul, flySprintMul: d.fly?.tamedSprintMul ?? m.flySprintMul, slopeCos: TAMED_SLOPE_COS } : m;
+        if (d.fly) flies[i] = 1;
+        grabDrag[i] = d.grab?.drag ?? 0;
+        grabReach[i] = d.grab?.reach ?? 0;
+        if (d.defendsEgg) defendsEgg[i] = 1;
+        riderWeight[i] = d.riderWeight ?? 1;
+        biteStamina[i] = Math.round((d.bite?.stamina ?? 0) * STAMINA_UNITS);
+        missileMul[i] = d.missiles ?? 1;
+        biteStructureMul[i] = d.structures ?? 1;
         damage[i] = d.fists ?? 8;
         meleeTorpor[i] = d.fistsTorpor ?? 0;
         reach[i] = FIST_REACH;
@@ -858,7 +896,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, missileMul, biteStructureMul }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
@@ -963,9 +1001,64 @@ function moveParams(d: SpeciesDef): MoveParams {
     // A cost that would round to nothing is a unit.
     staminaWalk: d.stamina?.walk ? Math.max(1, Math.round((d.stamina.walk * STAMINA_UNITS) / TICK_RATE)) : 0,
     // Whole units per tick, so both sides turn the same.
-    turnRate: d.turn === undefined ? 0 : Math.max(1, Math.round(((d.turn / 360) * 65536) / TICK_RATE)),
+    turnRate: d.turn === undefined ? 0 : turnUnits(d.turn),
     strafe: d.strafe !== false,
+    ...flight(d.fly),
   };
+}
+
+/** Degrees a second as whole 1/65536 turns a tick, at least one. */
+const turnUnits = (degrees: number): number => Math.max(1, Math.round(((degrees / 360) * 65536) / TICK_RATE));
+
+/** The flight fields of MoveParams, in whole units a tick as the rest are. All 0 for a body that does not fly. */
+function flight(f: SpeciesDef["fly"]) {
+  // A cost a second that would round to nothing is a unit a tick.
+  const perTick = (perSecond: number): number => (perSecond > 0 ? Math.max(1, Math.round((perSecond * STAMINA_UNITS) / TICK_RATE)) : 0);
+  return {
+    flies: f !== undefined,
+    flySpeed: f?.speed ?? 0,
+    flySprintMul: f?.sprintMul ?? 0,
+    accelFly: f?.accel ?? 0,
+    flyTurnRate: f ? turnUnits(f.turn) : 0,
+    staminaFly: f ? perTick(f.stamina.fly) : 0,
+    staminaFlySprint: f ? perTick(f.stamina.sprint) : 0,
+    staminaRoll: f ? Math.round(f.stamina.roll * STAMINA_UNITS) : 0,
+    staminaGrab: f ? Math.round(f.stamina.grab * STAMINA_UNITS) : 0,
+    regenWaitTicks: f ? Math.round(f.wait * TICK_RATE) : 0,
+    rollBurst: f?.roll.burst ?? 0,
+    rollTicks: f ? Math.max(1, Math.round(f.roll.every * TICK_RATE)) : 0,
+  };
+}
+
+/** What is wrong with a species' flyer fields (planning/reference/flyers-plan.md, FL0). */
+function flyerFaults(d: SpeciesDef): string[] {
+  const out: string[] = [];
+  const f = d.fly;
+  if (f) {
+    const within = (name: string, v: number | undefined, low: number, high: number, open = true): void => {
+      if (!(v !== undefined && (open ? v > low : v >= low) && v <= high)) out.push(`${d.id}: fly.${name} must be ${open ? "above" : "at least"} ${low} and at most ${high}, got ${v}`);
+    };
+    within("speed", f.speed, 0, 40);
+    within("sprintMul", f.sprintMul, 0, 4);
+    if (f.tamedSprintMul !== undefined) within("tamedSprintMul", f.tamedSprintMul, 0, 4);
+    within("accel", f.accel, 0, 1000);
+    within("turn", f.turn, 0, 3600);
+    for (const cost of ["fly", "sprint", "roll", "grab"] as const) within(`stamina.${cost}`, f.stamina?.[cost], 0, 1e6, false);
+    // Both counters of a body hold FLIGHT_TICKS_MAX.
+    within("wait", f.wait, 0, FLIGHT_TICKS_MAX / TICK_RATE, false);
+    within("roll.burst", f.roll?.burst, 0, 40, false);
+    within("roll.every", f.roll?.every, 0, FLIGHT_TICKS_MAX / TICK_RATE);
+  }
+  if (d.grab && !(d.grab.drag > 0 && d.grab.drag <= 1e6 && d.grab.reach > 0 && d.grab.reach <= 100)) out.push(`${d.id}: grab needs a drag above 0 and a reach above 0 and at most 100 m`);
+  if (d.riderWeight !== undefined && !(d.riderWeight >= 0 && d.riderWeight <= 1)) out.push(`${d.id}: riderWeight must be from 0 to 1`);
+  for (const [name, v] of [["missiles", d.missiles], ["structures", d.structures], ["bite.stamina", d.bite?.stamina]] as const) {
+    if (v !== undefined && !(v >= 0 && v <= 1e6)) out.push(`${d.id}: ${name} must not be negative`);
+  }
+  for (const [stat, pair] of Object.entries(d.tameBonus ?? {})) {
+    if (!(STAT_NAMES as readonly string[]).includes(stat) || !(Array.isArray(pair) && pair.length === 2 && pair[0] >= 0 && pair[1] >= 0)) out.push(`${d.id}: tameBonus.${stat} must name a stat and be [add >= 0, mult >= 0]`);
+  }
+  if (d.tamedHealth !== undefined && !(d.tamedHealth > 0 && d.tamedHealth <= 10)) out.push(`${d.id}: tamedHealth must be above 0 and at most 10`);
+  return out;
 }
 
 /** Key-sorted JSON, so the hash does not depend on property order. */

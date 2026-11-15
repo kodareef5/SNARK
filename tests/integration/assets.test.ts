@@ -110,5 +110,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was fff88e25 until the pack held the obelisk's and its terminal's grey boxes (content/terminals.ts), which number the
   // meshes after them on; without them, and the proving ground's obelisk, it is that again.
   // It was e8a95911 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
-  expect(hash.toString(16)).toBe("949f9aed");
+  // It was 949f9aed until the pteranodon's grey box (content/creatures/pteranodon.ts) numbered the meshes after it on;
+  // without the pteranodon and its beach entry it is that again.
+  expect(hash.toString(16)).toBe("98e00881");
 });

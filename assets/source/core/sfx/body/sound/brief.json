@@ -1,0 +1,188 @@
+{
+  "asset": "core/sfx/body",
+  "review": "../ref/sound",
+  "about": "Bodies in water and bodies falling, for any body without its own.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "splash/in/small": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 1.0,
+      "want": "a small body drops into water",
+      "prompts": [
+        {
+          "id": "p1330",
+          "models": [
+            "moss"
+          ],
+          "seed": 1330,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small rock is tossed into a pond four times: small plops and splashes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "splash/in/large": {
+      "kind": "impact",
+      "range": 45,
+      "level": -16,
+      "vary": 0.8,
+      "want": "a person or big animal plunges into water",
+      "prompts": [
+        {
+          "id": "p1340",
+          "models": [
+            "moss"
+          ],
+          "seed": 1340,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps into a lake three times: big deep splashes with water settling, long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "splash/out": {
+      "kind": "impact",
+      "range": 30,
+      "level": -22,
+      "vary": 0.8,
+      "want": "climbing out of water, dripping",
+      "prompts": [
+        {
+          "id": "p1350",
+          "models": [
+            "moss"
+          ],
+          "seed": 1350,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person climbs out of a pool three times: water pouring and dripping off, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "swim/stroke": {
+      "kind": "step",
+      "range": 25,
+      "level": -24,
+      "vary": 1.0,
+      "want": "swimming strokes",
+      "prompts": [
+        {
+          "id": "p1360",
+          "models": [
+            "moss"
+          ],
+          "seed": 1360,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A person swims slowly in a lake: steady breaststroke strokes, gentle splashing and water swirling. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "thump/small": {
+      "kind": "impact",
+      "range": 25,
+      "level": -22,
+      "vary": 1.0,
+      "want": "a small body falls to the ground",
+      "prompts": [
+        {
+          "id": "p1370",
+          "models": [
+            "moss"
+          ],
+          "seed": 1370,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small sack of grain is dropped on soft ground four times: soft muffled thumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "thump/medium": {
+      "kind": "impact",
+      "range": 35,
+      "level": -18,
+      "vary": 0.8,
+      "want": "a person-sized body falls",
+      "prompts": [
+        {
+          "id": "p1380",
+          "models": [
+            "moss"
+          ],
+          "seed": 1380,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy sandbag the weight of a person is dropped onto earth four times: deep heavy thuds with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "thump/large": {
+      "kind": "impact",
+      "range": 60,
+      "level": -14,
+      "vary": 0.6,
+      "want": "a huge body crashes to the ground",
+      "prompts": [
+        {
+          "id": "p1390",
+          "models": [
+            "moss"
+          ],
+          "seed": 1390,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge heavy animal collapses onto the ground three times: deep booming crashing thuds that shake the earth, long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bubbles": {
+      "kind": "impact",
+      "range": 15,
+      "level": -26,
+      "vary": 1.0,
+      "want": "breath bubbles underwater",
+      "prompts": [
+        {
+          "id": "p1400",
+          "models": [
+            "moss"
+          ],
+          "seed": 1400,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Underwater recording: a diver breathes out, bursts of bubbles rising, with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "rustle/foliage": {
+      "kind": "step",
+      "range": 15,
+      "level": -28,
+      "vary": 1.0,
+      "want": "a body pushes through bushes",
+      "prompts": [
+        {
+          "id": "p1410",
+          "models": [
+            "moss"
+          ],
+          "seed": 1410,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person pushes slowly through dense leafy bushes, leaves and branches brushing and rustling, several separate passes. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

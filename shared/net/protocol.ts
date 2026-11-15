@@ -38,8 +38,28 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-/** 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. */
-export const PROTOCOL_VERSION = 15;
+/** 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. 16: the flyers'. */
+export const PROTOCOL_VERSION = 16;
+
+// Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
+// named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
+// flight layout of a pose's motion bits and CUE_TAKEOFF and CUE_ROLL (shared/anim/pose.ts), and the two flight counters
+// at the end of writeBody.
+/** CMD_CARRY, FL6: a ridden flyer grabs a body in its feet, named by its entity index u32, as CARRY_PICK_UP names one. */
+export const CARRY_GRAB = 3;
+/** CMD_CARRY, FL6: a ridden flyer lets go of what it carries, in the air or on the ground. Nothing follows. */
+export const CARRY_RELEASE = 4;
+/** CMD_ORDER, FL3: a flyer lands where it is, as ARK's whistle lands flyers (ASE 288.113). A whistle may give it. */
+export const ORDER_LAND = 11;
+/** The flight counters (Body.regenWait, Body.rollWait), 10 bits each after the rest of a body. */
+function writeFlight(w: BitWriter, b: Body): void {
+  w.bits(b.regenWait, 10);
+  w.bits(b.rollWait, 10);
+}
+function readFlight(r: BitReader, b: Body): void {
+  b.regenWait = r.bits(10);
+  b.rollWait = r.bits(10);
+}
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -411,6 +431,8 @@ export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;
 export const MAX_NAME_BYTES = 24;
+/** A place a survivor may rise at, as OWN_RESPAWN names it: a bed's name, or a map's spawn point's, which may be longer. */
+export const MAX_PLACE_NAME_BYTES = 48;
 /** A console line from a client. */
 export const MAX_TEXT_BYTES = 200;
 /** A chat line from a client. Each of its MAX_CHAT_CHARS takes at most three bytes, whatever the script. */
@@ -467,8 +489,9 @@ export class InputBuffer {
 }
 
 /**
- * 360 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
- * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them).
+ * 380 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
+ * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them), and the flyers'
+ * contracts (protocol 16) the flight counters.
  */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
@@ -494,6 +517,7 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u8(b.reloadTo);
   w.u8(b.bloom);
   w.u8(b.kick);
+  writeFlight(w, b);
 }
 
 export function readBody(r: BitReader, b: Body): void {
@@ -520,6 +544,7 @@ export function readBody(r: BitReader, b: Body): void {
   b.reloadTo = r.u8();
   b.bloom = r.u8();
   b.kick = r.u8();
+  readFlight(r, b);
 }
 
 /** `key` must be KEY_BYTES long, and a `ticket` TICKET_BYTES. */

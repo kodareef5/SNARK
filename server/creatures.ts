@@ -3,7 +3,7 @@
 
 import { AnimState, CUE_LAND, CUE_NONE, CUE_OUT, CUE_STARTLE, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
 import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
-import { BTN_JUMP, BTN_SPRINT, Body, MF_OUT, MF_WINDED, MODE_SWIM, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
+import { BTN_JUMP, BTN_SPRINT, Body, MF_OUT, MF_WINDED, MODE_FLYER, MODE_SWIM, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
 import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
 import { Behavior } from "./behavior.ts";
 import type { GameServer } from "./game.ts";
@@ -197,6 +197,11 @@ export class Creatures {
     this.records.entOf.set(rec.pid, e);
     // One saved knocked out lies where it was, and does not fall again.
     if (rec.out && this.world.anims[rec.kind]) ents.cue[e] = CUE_OUT;
+    // One saved in its own flight is in the air where it was, and does not fall (planning/reference/flyers-plan.md, FL0).
+    if (rec.flying) {
+      ents.mode[e] = MODE_FLYER;
+      ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
+    }
     this.mind.reset(e);
     this.mind.stance[e] = rec.stance;
     this.mind.wanders[e] = rec.team !== 0 && rec.wander ? 1 : 0;

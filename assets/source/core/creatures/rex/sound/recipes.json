@@ -1,0 +1,979 @@
+{
+  "takes": {
+    "takes/call/moss-pt-2881-06140.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "p2880",
+      "prompt": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2881,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2881.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 34.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "46d4392e1d34360074deccb38ccdc2a737c02fa401769efaf6b8d727beac01e3",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5c0adfc398fddd2551aee6f39d20de6c090428f9c8da87d15e4c1af7359697ed",
+      "cut": {
+        "source_file": "moss-pt-2881.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          292320,
+          373200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-2880-00085.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "p2880",
+      "prompt": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2880,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2880.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 33.4,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "11f08a533c6f57906f07aa16f91b901c4fc26f00a2fb66f53babc3fac22b7723",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b9c068e42dd32c01c73141445e282da54e774a33550b8b381cb1ef4dc02561fb",
+      "cut": {
+        "source_file": "moss-pt-2880.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1680,
+          125760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-2881-00120.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "p2880",
+      "prompt": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2881,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2881.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 34.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7b98f73a3b74b5d93b80d333bc4f2ecc719c36c04463c648370d3993c7d30fc3",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5c0adfc398fddd2551aee6f39d20de6c090428f9c8da87d15e4c1af7359697ed",
+      "cut": {
+        "source_file": "moss-pt-2881.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          3359,
+          112320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-2880-03950.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "p2880",
+      "prompt": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2880,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2880.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator dinosaur gives a deep rumbling growling call, low and menacing, two separate calls with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 33.4,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "37158b33366f1e2c358e27e21d81c4a2abdd7fb7d7eabb408c8d35e93cdf4d59",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b9c068e42dd32c01c73141445e282da54e774a33550b8b381cb1ef4dc02561fb",
+      "cut": {
+        "source_file": "moss-pt-2880.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          187200,
+          280320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-pt-2890-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "p2890",
+      "prompt": "A gigantic predator dinosaur roars an enormous deep thunderous roar, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2890,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2890.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator dinosaur roars an enormous deep thunderous roar, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7dca2616cf00183a2c5a40d321e412950cf864447ba7e3d486de855f72ee3d61",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "799a35500f6db0eec7b68dcaad050122ba6aed6d053e68da925465c53337db8e",
+      "cut": {
+        "source_file": "moss-pt-2890.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          80160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-2900-00645.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "p2900",
+      "prompt": "A gigantic predator dinosaur bellows in pain with a deep angry roar, three separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2900,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2900.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator dinosaur bellows in pain with a deep angry roar, three separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "86ad85560d08be052ce3e7156a6a33b1f291ce5631e618955a91972caef1d419",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac03119274915fa63d56431eff6cc075ecb4441805024eea6068ce5ebaf27f4c",
+      "cut": {
+        "source_file": "moss-pt-2900.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          28560,
+          148800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-2900-03210.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "p2900",
+      "prompt": "A gigantic predator dinosaur bellows in pain with a deep angry roar, three separate cries with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2900,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2900.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator dinosaur bellows in pain with a deep angry roar, three separate cries with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.2,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5475475b05a4c94a5cd9d1201b4c852e32a2ac6262b0ecfe47a0badd431df887",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ac03119274915fa63d56431eff6cc075ecb4441805024eea6068ce5ebaf27f4c",
+      "cut": {
+        "source_file": "moss-pt-2900.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          151680,
+          172320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-2910-04600.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "p2910",
+      "prompt": "A gigantic dinosaur gives a long deep dying groan that fades into a rattle, one time. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2910,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2910.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic dinosaur gives a long deep dying groan that fades into a rattle, one time. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "40d80e47f2fbf4b61b8cb201cd558cc30347c2c145bedb411c62832c8bc69c7a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cf7f1d907059e38347679f6b538893550243ae51e78e5777fd7d6b7922fc1285",
+      "cut": {
+        "source_file": "moss-pt-2910.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          218400,
+          332640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/death/moss-pt-2910-00645.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "death",
+      "prompt_id": "p2910",
+      "prompt": "A gigantic dinosaur gives a long deep dying groan that fades into a rattle, one time. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2910,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2910.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic dinosaur gives a long deep dying groan that fades into a rattle, one time. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "5a2671503b269abfee16f087dc1681d0104f9e1a016ba74931fd83bc2f7b6939",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "cf7f1d907059e38347679f6b538893550243ae51e78e5777fd7d6b7922fc1285",
+      "cut": {
+        "source_file": "moss-pt-2910.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          28560,
+          162480
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-2920-05975.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "p2920",
+      "prompt": "A gigantic predator snaps its huge jaws shut with a deep snarl, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2920,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2920.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator snaps its huge jaws shut with a deep snarl, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0408d7c9e129c6753958c08027457c3fbff3d370510409b86c9baa673ef15112",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b013eb2c85c678b4d513646985b472d77ecdd719fd41162d2b19fe7be12dc6bc",
+      "cut": {
+        "source_file": "moss-pt-2920.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          284400,
+          353040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/attack/moss-pt-2920-03980.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "attack",
+      "prompt_id": "p2920",
+      "prompt": "A gigantic predator snaps its huge jaws shut with a deep snarl, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2920,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2920.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator snaps its huge jaws shut with a deep snarl, four separate bites with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "b17abeca9320cce9a681937a27f67f1392be127bd5007736bbf4b1ebc5d14e9b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b013eb2c85c678b4d513646985b472d77ecdd719fd41162d2b19fe7be12dc6bc",
+      "cut": {
+        "source_file": "moss-pt-2920.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          188640,
+          243120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/moss-pt-2930-06727.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step",
+      "prompt_id": "p2930",
+      "prompt": "Enormous footsteps of a giant animal: deep booming ground-shaking thuds, slow and well spaced. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2930,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2930.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Enormous footsteps of a giant animal: deep booming ground-shaking thuds, slow and well spaced. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "89d27287b5db6c63de56e695dfb9062c740463f7de9f105aed54e92fa5ae5aac",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1036.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 19.5,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "2080afd329778f7cc9a9d0c05300591199b503445587e7ba3ee80bdbfd7f6843",
+      "cut": {
+        "source_file": "moss-pt-2930.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          320496,
+          362400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/roar/moss-pt-2940-00160.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "roar",
+      "prompt_id": "p2940",
+      "prompt": "A gigantic predator dinosaur bellows a huge long challenging roar that echoes, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 2940,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-2940.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A gigantic predator dinosaur bellows a huge long challenging roar that echoes, two separate roars with long pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 42.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "64c4f0f25aeb03217d672690cac535537baa3783d1d7ae39299c45188f7b8957",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.28
+        },
+        "stages": {
+          "text": {
+            "seconds": 12.0,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1046.7,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 22.0,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "201a9be98af964923812d46a423c3626f79599c22fb5138a4293086494d63e93",
+      "cut": {
+        "source_file": "moss-pt-2940.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          5280,
+          315840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

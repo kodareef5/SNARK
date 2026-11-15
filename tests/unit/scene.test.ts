@@ -398,7 +398,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1227352852 until the sloped statics' grey boxes (content/slopes.ts) took mesh numbers; without them it is that again.
   // It was 3382680890 until San Francisco's 8 m solid (zmass8, content/ruins.ts) added eight static boxes the same way.
   // It was 3260333166 until the pack held the sleeping bag's and the bunk bed's grey boxes; without those two it is that again.
-  expect(hash).toBe(3479987675);
+  // It was 3479987675 until the pteranodon's grey box (content/creatures/pteranodon.ts) took a mesh number; without the
+  // pteranodon and its beach entry it is that again.
+  expect(hash).toBe(1901866876);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

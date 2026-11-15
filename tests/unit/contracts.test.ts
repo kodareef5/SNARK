@@ -3,11 +3,17 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT, TAME_XP } from "../../content/core.ts";
 import { DODO_EGG, DODO_EGG_FERTILE } from "../../content/creatures/dodo.ts";
-import { AnimState, CUE_BITS, CUE_DEAD, CUE_HELD, CUE_OUT, CUE_TORPOR, LAYER_FLINCH, MATING_STEPS, STAGE_WORST, hurtStage } from "../../shared/anim/pose.ts";
-import { defFaults } from "../../shared/content/classes.ts";
-import type { Def } from "../../shared/content/defs.ts";
+import { ANIM_FLYING, AnimState, BANK_STEP, BANK_STEPS, CLIMB_DIVE, CLIMB_DOWN, CLIMB_LEVEL, CLIMB_UP, CUE_BITS, CUE_DEAD, CUE_HELD, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, FLY_SPEED_STEP, LAYER_FLINCH, MATING_STEPS, SPEED_MAX, STAGE_WORST, hurtStage } from "../../shared/anim/pose.ts";
+import { RIG_CLIPS } from "../../shared/anim/rigs.ts";
+import { FIELDS, classRow, defFaults } from "../../shared/content/classes.ts";
+import type { Def, SpeciesDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import { slotsOf } from "../../shared/content/slots.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { Body, FLIGHT_TICKS_MAX, MODE_FLY, MODE_FLYER, MODE_GHOST, MODE_NONE, MODE_SWIM, MODE_WALK, STANCE_STAND } from "../../shared/sim/character.ts";
+import { EntityStore } from "../../shared/sim/entities.ts";
 import { GAME_HOUR_TICKS } from "../../shared/sim/lazy.ts";
+import { HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import * as P from "../../shared/net/protocol.ts";
 import { DEADLINE_BREED } from "../../server/breeding.ts";
 import { DEADLINE_BUFF } from "../../server/buffs.ts";
@@ -51,11 +57,12 @@ test("a hurt stage is a quarter of health wide, and never more than a glance sho
 test("the new codes are each one of their kind, and deadlines have kinds of their own", () => {
   const ops = Object.entries(P).filter(([k]) => k.startsWith("CMD_")).map(([, v]) => v);
   expect(new Set(ops).size).toBe(ops.length);
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 15]);
-  const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS];
+  // 14 is the cluster's, 15 the beds', 16 the flyers' (below).
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 16]);
+  const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
-  expect(new Set([P.CARRY_PICK_UP, P.CARRY_DROP, P.CARRY_THROW]).size).toBe(3);
+  expect(new Set([P.CARRY_PICK_UP, P.CARRY_DROP, P.CARRY_THROW, P.CARRY_GRAB, P.CARRY_RELEASE]).size).toBe(5);
   const kinds = [DEADLINE_VITALS, DEADLINE_DESPAWN, DEADLINE_NODE, DEADLINE_CRAFT, DEADLINE_BUFF, DEADLINE_FIRE, DEADLINE_TAME, DEADLINE_BREED, DEADLINE_SPAWN, DEADLINE_CORPSE, DEADLINE_FECES];
   expect(new Set(kinds).size).toBe(kinds.length);
 });
@@ -63,9 +70,13 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
 test("the new columns change nothing for content that does not use them", () => {
   for (let i = 1; i < reg.defs.length; i++) {
     const d = reg.defs[i]!;
-    // A tame stands on steeper ground than a wild one; past that, its numbers are its species' but for a tamed sprint.
-    if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }) });
-    if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual([0, 0, 0, 0, 0]);
+    // A tame stands on steeper ground than a wild one; past that, its numbers are its species' but for a tamed sprint, on
+    // the ground and in the air.
+    const sprints = d.type === "species" ? { ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }), ...(d.fly?.tamedSprintMul === undefined ? {} : { flySprintMul: d.fly.tamedSprintMul }) } : {};
+    if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
+    // The pteranodon is carried as 149 of drag weight by what can lift it, and its mass is 190.
+    const dragged = ({ "core:pteranodon": [0, 149, 190, 0, 0] } as Record<string, number[]>)[d.id];
+    if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
     // Prime meat (content/corpses.ts) is what the young give in place of raw meat.
@@ -78,12 +89,13 @@ test("the new columns change nothing for content that does not use them", () => 
 
 test("every species that lays an egg leaves feces, and its egg is an item, fertilised or not", () => {
   const layers = reg.defs.filter((d) => d?.type === "species" && d.breeds?.egg !== undefined).map((d) => d!.id);
-  expect(layers.sort()).toEqual(["core:dodo", "core:parasaur", "core:raptor"]);
+  expect(layers.sort()).toEqual(["core:dodo", "core:parasaur", "core:pteranodon", "core:raptor"]);
   const ids = (col: Uint16Array, i: number): string => (col[i] === 0 ? "" : reg.ids[col[i]!]!);
-  expect(layers.map((id) => ids(reg.feces, at(id)))).toEqual(["core:feces_small", "core:feces_medium", "core:feces_small"]);
+  expect(layers.map((id) => ids(reg.feces, at(id)))).toEqual(["core:feces_small", "core:feces_medium", "core:feces_small", "core:feces_small"]);
   expect(layers.map((id) => [ids(reg.propItem, reg.breedEgg[at(id)]!), ids(reg.propFertile, reg.breedEgg[at(id)]!)])).toEqual([
     ["core:dodo_egg", "core:dodo_egg_fertile"],
     ["core:parasaur_egg", "core:parasaur_egg_fertile"],
+    ["core:pteranodon_egg", "core:pteranodon_egg_fertile"],
     ["core:raptor_egg", "core:raptor_egg_fertile"],
   ]);
   // Only an egg prop names items, and only a species leaves feces.
@@ -152,4 +164,146 @@ test("a feces item, and melee and fist torpor, compile where named, and are chec
     "core:dodo: eggChance must be from 0 to 1",
     'core:dodo: "core:thatch" is not an item/feces',
   ]);
+});
+
+// The flyers' contracts (planning/reference/flyers-plan.md, FL0): the fields, codes and state FL1 to FL7 build on, each
+// read by nothing until its package builds it.
+
+test("the flyers' codes: a creature's own flight is mode 5 of a body's three bits, take-off and the roll are cues, a carry grabs and lets go, and a tame is told to land", () => {
+  expect(MODE_FLYER).toBe(5);
+  expect(new Set([MODE_NONE, MODE_WALK, MODE_SWIM, MODE_GHOST, MODE_FLY, MODE_FLYER]).size).toBe(6);
+  expect(MODE_FLYER).toBeLessThan(8);
+  expect([CUE_TAKEOFF, CUE_ROLL]).toEqual([4, 5]);
+  expect(new Set([CUE_NONE, CUE_STARTLE, CUE_LAND, CUE_TORPOR, CUE_TAKEOFF, CUE_ROLL]).size).toBe(6);
+  expect([P.CARRY_GRAB, P.CARRY_RELEASE, P.ORDER_LAND]).toEqual([3, 4, 11]);
+  // Both counters of a body hold 10 bits, more than ARK's 10 s wait and 7 s between rolls.
+  expect(FLIGHT_TICKS_MAX).toBe(1023);
+  expect(FLIGHT_TICKS_MAX).toBeGreaterThan(Math.max(...reg.move.map((m) => Math.max(m?.regenWaitTicks ?? 0, m?.rollTicks ?? 0))));
+  // A flyer carrying in its feet holds as a survivor holding a creature does.
+  expect(HOLD_CARRY).toBe(7);
+});
+
+test("a body's flight counters travel with it, 20 bits after the rest, and every body today has none", () => {
+  const a = new Body();
+  a.regenWait = 300;
+  a.rollWait = FLIGHT_TICKS_MAX;
+  const w = new BitWriter(64);
+  P.writeBody(w, a);
+  expect(w.pos).toBe(380);
+  const b = new Body();
+  const r = new BitReader(w.bytes());
+  P.readBody(r, b);
+  expect([r.overflow, b.regenWait, b.rollWait, b.equals(a)]).toEqual([false, 300, FLIGHT_TICKS_MAX, true]);
+  const c = new Body();
+  c.copy(a);
+  expect([c.regenWait, c.rollWait]).toEqual([300, FLIGHT_TICKS_MAX]);
+  c.rollWait = 0;
+  expect(c.equals(a)).toBe(false);
+  // The entity store keeps them for the server, and stores what the step left.
+  const ents = new EntityStore({ chunksX: 1, chunksZ: 1 }, 4);
+  const e = ents.create(1, 1, 1, 1, 0);
+  ents.storeBody(e, a);
+  const back = new Body();
+  ents.loadBody(e, back);
+  expect([back.regenWait, back.rollWait]).toEqual([300, FLIGHT_TICKS_MAX]);
+  expect([new Body().regenWait, new Body().rollWait, ents.regenWait[ents.create(1, 2, 1, 2, 0)], ents.rollWait[1]]).toEqual([0, 0, 0, 0]);
+});
+
+test("a flyer's pose packs its speed through the air, its bank and its climb in the motion bits, and every other body packs as it did", () => {
+  // Every body that does not fly packs exactly as before: speed, direction, stance, swimming and airborne, the look, the action.
+  const st = new AnimState();
+  for (let k = 0; k < 2000; k++) {
+    st.mode = k % 3 === 0 ? MODE_SWIM : k % 3 === 1 ? MODE_WALK : MODE_FLY;
+    st.grounded = k % 5 !== 0;
+    st.speed = k % 16;
+    st.dir = (k * 7) % 16;
+    st.stance = k % 3;
+    st.pitch = (k % 63) - 31;
+    st.setAction(k % 7, (k >> 3) % 8, k * 13);
+    const old = (st.speed | (st.dir << 4) | (st.stance << 8) | (st.mode === MODE_SWIM ? 1 << 10 : 0) | (st.grounded ? 0 : 1 << 11) | ((st.pitch & 63) << 12) | (st.action << 18) | ((st.actionStart & 255) << 24)) >>> 0;
+    expect(st.pack()).toBe(old);
+    const back = new AnimState();
+    back.unpack(old);
+    expect([back.mode === MODE_FLYER, back.bank, back.climb, back.stance, back.dir]).toEqual([false, 0, CLIMB_LEVEL, st.stance, st.dir]);
+  }
+  // In flight: 2 m/s steps to 30, the way it travels against level, and how far it faces to the left of its travel.
+  const fly = (vx: number, vy: number, vz: number, yaw: number): AnimState => {
+    const f = new AnimState();
+    f.mode = MODE_FLYER;
+    f.setMotion(vx, vz, yaw, 0.3, vy);
+    return f;
+  };
+  const level = fly(0, 0, 19, 0);
+  expect([level.speed * FLY_SPEED_STEP, level.bank, level.climb, level.dir]).toEqual([20, 0, CLIMB_LEVEL, 0]);
+  expect([fly(0, 6, 10, 0).climb, fly(0, -4, 10, 0).climb, fly(0, -15, 10, 0).climb, fly(0, 0, 0, 0).climb]).toEqual([CLIMB_UP, CLIMB_DOWN, CLIMB_DIVE, CLIMB_LEVEL]);
+  expect(fly(0, 0, 40, 0).speed).toBe(SPEED_MAX);
+  // Faced 3 steps to the left of where it goes, as when it turns left; to its right; past the most; and at no speed none.
+  expect([fly(0, 0, 10, 3 * BANK_STEP).bank, fly(0, 0, 10, -2 * BANK_STEP).bank, fly(0, 0, 10, 20 * BANK_STEP).bank, fly(0, 0, 0, 1).bank]).toEqual([3, -2, BANK_STEPS, 0]);
+  // It goes over the wire and back: flying in the stance bits, never grounded, standing, its look and action kept.
+  const turning = fly(0, -4, 10, -5 * BANK_STEP);
+  turning.setAction(2, 0, 77);
+  const word = turning.pack();
+  expect((word >>> 8) & 3).toBe(ANIM_FLYING);
+  const back = new AnimState();
+  back.unpack(word);
+  expect([back.mode, back.grounded, back.stance, back.speed, back.bank, back.climb, back.pitch, back.action, back.actionStart]).toEqual([MODE_FLYER, false, STANCE_STAND, turning.speed, -5, CLIMB_DOWN, turning.pitch, 2, 77]);
+  // The entity store poses a flyer with its vertical speed.
+  const ents = new EntityStore({ chunksX: 1, chunksZ: 1 }, 4);
+  const e = ents.create(1, 10, 50, 10, 0);
+  ents.mode[e] = MODE_FLYER;
+  ents.vy[e] = -15;
+  ents.vz[e] = 10;
+  ents.pose(e);
+  back.unpack(ents.anim[e]!);
+  expect([back.mode, back.climb]).toEqual([MODE_FLYER, CLIMB_DIVE]);
+});
+
+test("a flyer's clips are named among a rig's, each once, and asked for of a species that flies; a saddled model of one that has a skeleton", () => {
+  const flight = ["take_off", "hover", "fly", "fly_fast", "glide", "dive", "attack_air", "barrel_roll", "grab", "carry", "release", "torpor_fall", "death_air"];
+  expect(flight.every((c) => (RIG_CLIPS as readonly string[]).includes(c))).toBe(true);
+  expect(new Set(RIG_CLIPS).size).toBe(RIG_CLIPS.length);
+  const row = classRow("species/creature")!;
+  expect([row.slots.flight!.keys, row.slots.flight!.when, row.slots.saddled!.from, row.slots.saddled!.when, row.slots.saddled!.fallback]).toEqual([flight, "fly", "{mesh}/saddled", "skeleton", ["#body"]]);
+  const uses = slotsOf(CORE_CONTENT);
+  expect(uses.filter((u) => u.slot === "flight").map((u) => u.owner).every((o) => o === "core:pteranodon")).toBe(true);
+  expect(uses.filter((u) => u.slot === "flight").length).toBe(flight.length);
+  expect(uses.filter((u) => u.slot === "saddled").map((u) => [u.owner, u.id]).sort()).toEqual([["core:dodo", "core:dodo/saddled"], ["core:parasaur", "core:parasaur/saddled"], ["core:raptor", "core:raptor/saddled"]]);
+  expect(classRow("item/saddle")!.slots.worn!.from).toBe("{id}/worn");
+});
+
+test("a flyer's numbers compile into its moves in whole units a tick and its tame's sprint into its tamed moves, and no other species flies, grabs or turns on an egg thief", () => {
+  const ptera = at("core:pteranodon");
+  const m = reg.move[ptera]!;
+  expect([m.flies, m.flySpeed, m.flySprintMul, reg.tamedMove[ptera]!.flySprintMul, m.accelFly, m.flyTurnRate, m.staminaFly, m.staminaFlySprint, m.staminaRoll, m.staminaGrab, m.regenWaitTicks, m.rollBurst, m.rollTicks]).toEqual([true, 6, 2.75, 3.1625, 12, 728, 11, 200, 90000, 40000, 300, 10, 210]);
+  const none = { flies: false, flySpeed: 0, flySprintMul: 0, accelFly: 0, flyTurnRate: 0, staminaFly: 0, staminaFlySprint: 0, staminaRoll: 0, staminaGrab: 0, regenWaitTicks: 0, rollBurst: 0, rollTicks: 0 };
+  for (let i = 1; i < reg.defs.length; i++) {
+    if (i === ptera) continue;
+    if (reg.move[i]) expect([reg.ids[i], reg.move[i]!]).toMatchObject([reg.ids[i], none]);
+    expect([reg.ids[i], reg.flies[i], reg.grabDrag[i], reg.grabReach[i], reg.defendsEgg[i], reg.riderWeight[i], reg.biteStamina[i], reg.missileMul[i], reg.biteStructureMul[i]]).toEqual([reg.ids[i], 0, 0, 0, 0, 1, 0, 1, 1]);
+  }
+  const def = CORE_CONTENT.find((d) => d.id === "core:pteranodon")! as SpeciesDef;
+  const faults = (more: Partial<SpeciesDef>): string[] => compileContent(CORE_CONTENT.map((d): Def => (d === def ? ({ ...def, ...more } as Def) : d))).errors;
+  expect(faults({ fly: { ...def.fly!, speed: 0, wait: 40, roll: { burst: -1, every: 0 } } })).toEqual([
+    "core:pteranodon: fly.speed must be above 0 and at most 40, got 0",
+    "core:pteranodon: fly.wait must be at least 0 and at most 34.1, got 40",
+    "core:pteranodon: fly.roll.burst must be at least 0 and at most 40, got -1",
+    "core:pteranodon: fly.roll.every must be above 0 and at most 34.1, got 0",
+  ]);
+  expect(faults({ grab: { drag: 0, reach: 5 }, riderWeight: 2, missiles: -1, tameBonus: { luck: [1, 0] } as SpeciesDef["tameBonus"], tamedHealth: 0 })).toEqual([
+    "core:pteranodon: grab needs a drag above 0 and a reach above 0 and at most 100 m",
+    "core:pteranodon: riderWeight must be from 0 to 1",
+    "core:pteranodon: missiles must not be negative",
+    "core:pteranodon: tameBonus.luck must name a stat and be [add >= 0, mult >= 0]",
+    "core:pteranodon: tamedHealth must be above 0 and at most 10",
+  ]);
+});
+
+test("the class table holds the flyers' fields as stubs, each waiting for its feature, and only a creature may declare them", () => {
+  const s = FIELDS.species;
+  expect(["fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth"].map((k) => [k, s[k]!.waits])).toEqual([
+    ["fly", "flyers"], ["grab", "flyers"], ["defendsEgg", "flyers"], ["riderWeight", "flyers"], ["missiles", "flyers"], ["structures", "flyers"], ["tameBonus", "tameBonus"], ["tamedHealth", "tameBonus"],
+  ]);
+  expect(s.bite!.stubs).toEqual({ stamina: "flyers" });
+  const survivor = CORE_CONTENT.find((d) => d.id === "core:survivor")!;
+  expect(defFaults({ ...survivor, fly: { speed: 1 } } as Def)).toEqual(['core:survivor: class species/survivor may not declare "fly"']);
 });
