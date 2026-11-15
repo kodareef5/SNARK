@@ -768,21 +768,30 @@ function landings(h: Harness, rec: EntityRecord): [number, number][] {
 /** D385: a creature lands unhurt below 16 m/s, and loses 7 x 2/3 health for each metre a second over. */
 const creatureFall = (speed: number): number => (speed - 16) * 7 * (2 / 3);
 
-test("a stand-in knocked out 100 m up falls, lands at the step's 60 m/s, is hurt for D385's 205 of its 210, and wakes where it landed", () => {
-  const { h, at } = camp();
+test("a ridden stand-in knocked out 100 m up puts its rider off, falls, lands at the step's 60 m/s, is hurt for D385's 205 of its 210, and wakes where it landed; she falls to her death", () => {
+  const { h, ada, at, me, id } = camp();
   const ents = h.world.ents;
   const sv = h.host.survival;
-  const e = h.host.spawnCreature("core:pteranodon", at.x, at.z + 6, 1);
+  sv.gods.delete(me.pid);
+  const c = h.client(ada)!;
+  const e = h.host.spawnCreature("core:pteranodon", at.x, at.z + 3, 1);
   h.host.creatures.mind.stay(e, 0xffffffff);
   const rec = h.host.records.byPid.get(ents.pid[e]!)!;
+  rec.team = me.team;
+  rec.saddle = id("core:saddle_pteranodon");
+  h.host.refreshBody(rec);
+  h.run(300);
+  expect([h.host.riding.mount(c, e), sv.value(rec, V_HEALTH)]).toEqual([RESULT_OK, 210]);
   h.run(500);
-  expect(sv.value(rec, V_HEALTH)).toBe(210);
   const seen = landings(h, rec);
+  const hers = landings(h, me);
   const ground = aloft(h, e, 100);
   sv.add(rec, V_TORPOR, rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
   expect([rec.out, (ents.mflags[e]! & MF_OUT) !== 0]).toEqual([true, true]);
   const [x, z] = [ents.x[e]!, ents.z[e]!];
-  for (let k = 0; k < 40 && seen.length === 0; k++) h.run(100);
+  h.run(100);
+  expect(h.host.riding.riding(c)).toBe(false);
+  for (let k = 0; k < 40 && (seen.length === 0 || hers.length === 0); k++) h.run(100);
   // It fell straight down, knocked out the whole way, and hit the ground at the step's terminal speed.
   expect(seen.length).toBe(1);
   const [speed, lost] = seen[0]!;
@@ -790,6 +799,9 @@ test("a stand-in knocked out 100 m up falls, lands at the step's 60 m/s, is hurt
   expect(lost).toBeCloseTo(creatureFall(speed), 4);
   expect([rec.out, h.host.records.byPid.has(rec.pid), Math.abs(ents.y[e]! - ground) < 0.01, Math.hypot(ents.x[e]! - x, ents.z[e]! - z) < 1e-3]).toEqual([true, true, true, true]);
   expect(sv.value(rec, V_HEALTH)).toBeCloseTo(210 - creatureFall(60), 1);
+  // A survivor lands unhurt below 12 m/s and loses 7 for each metre a second over: 336 at 60, and she has 100.
+  expect([hers.length, hers[0]![0]]).toEqual([1, seen[0]![0]]);
+  expect(me.dead).toBe(true);
   // Its torpor run out, it wakes where it lies, and is not hurt again.
   h.run(2000);
   sv.add(rec, V_TORPOR, -1e9);
