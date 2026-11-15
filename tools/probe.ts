@@ -5,12 +5,14 @@
 // browser profile, and passes if that time no part of an asset file came over the network. --stress builds the stress
 // meshes in and has the page draw them: three rocks must each show the colour of the level their distance asks for.
 // --textured holds the shell's textures and materials to our decoders and the software rasterizer (tools/probe-textured.ts).
+// --lit holds what the shell draws at the lit tiers to the rasterizer and to each check under tools/probe-lit/ (tools/probe-lit.ts).
 
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startServer } from "../server/main.ts";
 import { buildClient } from "./build-client.ts";
+import { litProbe } from "./probe-lit.ts";
 import { texturedProbe } from "./probe-textured.ts";
 
 const CANDIDATES = [
@@ -27,9 +29,11 @@ if (!chrome) {
   process.exit(2);
 }
 
-await buildClient({ stress: process.argv.includes("--stress") });
-if (process.argv.includes("--textured")) {
-  const passed = await texturedProbe(chrome);
+// The lit probe builds the core pack itself and needs no client.
+if (!process.argv.includes("--lit")) await buildClient({ stress: process.argv.includes("--stress") });
+for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe]] as const) {
+  if (!process.argv.includes(flag)) continue;
+  const passed = await run(chrome);
   console.log(passed ? "\nprobe: PASS" : "\nprobe: FAIL");
   process.exit(passed ? 0 : 1);
 }
