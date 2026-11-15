@@ -55,6 +55,31 @@ crest=pieces==nums['crest'];o=np.array(paint.RECIPE['crest_origin_yz']);tip=np.a
 fromtip=length-((y-o[0])*axis[0]+(z-o[1])*axis[1]);expected=crest&(fromtip>.099)&(fromtip<.185)
 assert np.array_equal(expected,own&(reg==paint.COLORS[3]).all(-1))
 facts['band_limits_mm']=[float(fromtip[expected].min()*1000),float(fromtip[expected].max()*1000)]
+# Measure delivered drawing in animal space, including filtering/fringe variation.
+charcoal=(reg==paint.COLORS[0]).all(-1)
+facts['eye_streak_depth_mm']={}
+for name,zz,limits in [('at_eye',.694,(25,38)),('rear_cheek',.55,(43,57))]:
+    cross=m&charcoal&(np.abs(z-zz)<.001)&(y>1.33)&(y<1.42)
+    bounds=np.percentile(y[cross],[5,95])*1000
+    depth=float(bounds[1]-bounds[0])
+    facts['eye_streak_depth_mm'][name]={'central_90_percent':depth,'y_bounds_mm':bounds.tolist()}
+    assert limits[0]<depth<limits[1], (name,depth)
+# A rear-head patch continues below the cheek band; a thin ring would fail.
+back=m&(x<.018)&(y>1.355)&(y<1.375)&(z<.43)
+facts['rear_head_below_band_charcoal_fraction']=float(charcoal[back].mean())
+assert facts['rear_head_below_band_charcoal_fraction']>.98
+# Compare natural iris pigment with the black pupil, independent of lighting.
+centre=np.array(paint.RECIPE['eye_centre']);look=np.array(paint.RECIPE['eye_look']);look/=np.linalg.norm(look)
+dp=pos-centre;ef=(dp*look).sum(-1);er=np.sqrt(np.maximum((dp*dp).sum(-1)-ef*ef,0))
+wet=(pieces==nums['eye_l'])&(reg==0).all(-1)&(ef>.002)
+iris=wet&(er>.004)&(er<.007);pupil=wet&(er<.0023)
+irisrgb=lin[iris].mean(0);pupilrgb=lin[pupil].mean(0)
+facts['eye_iris_mean_srgb']=(paint.srgb(irisrgb)*255).tolist()
+facts['eye_pupil_mean_srgb']=(paint.srgb(pupilrgb)*255).tolist()
+weights=np.array([.2126,.7152,.0722])
+facts['iris_to_pupil_linear_luminance']=float((irisrgb@weights)/max(pupilrgb@weights,1e-6))
+assert facts['iris_to_pupil_linear_luminance']>8
+assert irisrgb[1]/irisrgb[0]>.30
 # Byte reproducibility checks all six delivered files. Body/study changes are
 # detected separately, because those live inputs intentionally change the paint.
 files=sorted(L.glob('*'))

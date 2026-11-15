@@ -9,9 +9,10 @@ from pathlib import Path
 import json
 import hashlib
 import time
+from functools import lru_cache
 import numpy as np
 from PIL import Image
-from scipy.ndimage import gaussian_filter, gaussian_filter1d, map_coordinates, distance_transform_edt
+from scipy.ndimage import gaussian_filter, map_coordinates, distance_transform_edt
 from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import spsolve
 from scipy.spatial import cKDTree
@@ -45,6 +46,26 @@ def read(path):
     return np.asarray(Image.open(path))
 
 
+@lru_cache(maxsize=3)
+def horn_layer(layer):
+    """Suppress long growth streaks in the accepted tile, retaining its pits.
+
+    Source growth runs horizontally. Subtract the directional 1 x 12 mm field
+    while retaining isotropic soft mottling and the original fine stipple.
+    Use the same operation on value, relief and satin response.
+    """
+    cfg=json.loads((STUDIES/'horn/study.json').read_text())['sets']['horn']
+    a=read(STUDIES/f'horn/horn_{layer}.png').astype(F)/(65535 if layer=='height' else 255)
+    if layer=='base': a=linear(a[...,:3])
+    if layer=='height': a*=cfg['height_mm']
+    px=2048/(cfg['span_m']*1000)
+    tail=(0,) if a.ndim==3 else ()
+    directional=gaussian_filter(a,(1.0*px,12*px)+tail,mode='wrap')
+    mottling=gaussian_filter(a,(7*px,12*px)+tail,mode='wrap')
+    a=a-RECIPE['horn_surface']['long_streak_removal']*(directional-mottling)
+    return a
+
+
 def study(folder, name, u, v, pitch_mm=.50):
     """Same physical coordinates and antialiasing for every aligned study layer.
     u,v metres; non-tiling panels use upper left as origin. One layer at a time.
@@ -62,6 +83,7 @@ def study(folder, name, u, v, pitch_mm=.50):
         a=a.astype(F)/(65535 if layer=='height' else 255)
         if layer=='base': a=linear(a[...,:3])
         if layer=='height': a*=cfg['height_mm']
+        if folder=='horn' and name=='horn': a=horn_layer(layer)
         sigma=max(0, pitch_mm/(span*1000/2048)*.33)
         if sigma>.3:
             a=gaussian_filter(a,(sigma,sigma,0) if a.ndim==3 else sigma,mode='wrap' if cfg['tiles'] else 'nearest')
@@ -109,27 +131,22 @@ def flow_chart(mask, pos, flow):
     return [map_coordinates(charts[...,k],[yy/step,xx/step],order=1,mode='nearest') for k in range(2)]
 
 
-def nape_ids(p):
-    """The published 45 mm nape, with face-sized categorical fibre ends.
-    Along-contour coordinates match body.paint.mantle_ids; across the edge the
-    study's 12 mm interleave contracts to 4 mm for the shorter facial pile.
-    The actual common cut is matched to the live body maps below.
+def nape_ids(p, distjoin, feather):
+    """A broad rear-head patch tapering into the live body's nape.
+    Short face fibres interleave the edge over 2–4 mm. The actual common cut
+    takes the body's live categorical tips below, even as that source evolves.
     """
     x,y,z=p.T
-    distance=np.minimum(.0225-x,(y-.84-(z-.08)*1.30)*.72)
-    rg=read(STUDIES/'fuzz/mantle_edge_regions.png')
-    dark=(rg[...,0]==255)&(rg[...,1]==0);N=len(dark)
-    center=int(np.argmin(np.abs(dark.mean(1)[N//3:2*N//3]-.5)))+N//3
-    span=json.loads((STUDIES/'fuzz/study.json').read_text())['sets']['mantle_edge']['span_m']
-    u=((-z+.24*y+.16*x)/span*N+317)%N
-    v=center-3*distance/span*N
-    profile=np.sum(dark[N//4:3*N//4],axis=0)+N//4
-    coarse=gaussian_filter1d(profile.astype(F),30,mode='wrap')
-    shift=map_coordinates(coarse,[u],order=1,mode='grid-wrap')-center
-    v+=shift*.5
-    result=map_coordinates(dark.astype(F),[np.clip(v,0,N-1),u],order=0,mode='nearest')>.5
-    result[distance>.035]=True;result[distance<-.035]=False
-    return result
+    joinpath=PAINT/'body/source/joins.json'
+    join=json.loads(joinpath.read_text())['nape'] if joinpath.exists() else {}
+    half=join.get('full_width_m',.045)/2
+    # Fullness below the eye band removes the thin closed ring on the rear.
+    # Taper both toward the neck cut and upward beneath the crest root.
+    width=half+(.068-half)*smooth(distjoin/.055)
+    upper=np.interp(z,[.39,.43,.50,.694],[1.379,1.389,1.400,1.393])
+    distance=np.minimum.reduce([width-x,(y-.84-(z-.08)*1.30)*.72,(.54-z)*.7,
+                                upper-y])
+    return distance>-1.5*feather
 
 
 def main():
@@ -168,13 +185,14 @@ def main():
     gy=np.interp(z,[.720,1.100,1.420,1.512],[1.2935,1.2960,1.2995,1.3025])
     mouth=(~eye)&(~crest)&((np.all(guide==0,axis=1))|((~jaw)&(z>.719)&(y<gy+.0008)))
     horn &= ~mouth
-    streak_y=np.interp(z,[.39,.44,.52,.694,.76],[1.348,1.357,1.365,1.371,1.374])
-    streak=(np.abs(y-streak_y)<RECIPE['streak_depth_mm']/2000+feather)&(z>.39)
-    nape=nape_ids(p)&(z<.56)
-    # The mantle study's wandering is wider than this narrow head marking.
-    # Keep a 30 mm charcoal core so that it never breaks into isolated spots;
-    # the live categorical drawing still supplies both margins and the join.
-    nape|=(x<.015)&(z<.56)&(y-.84>(z-.08)*1.30)
+    neckpoints=pfull[piece==numbers['neck']]
+    distjoin,joinindex=cKDTree(neckpoints).query(p[ishead],workers=1)
+    streak_y=np.interp(z,[.39,.43,.50,.694,.76],[1.354,1.364,1.375,1.378,1.378])
+    depth=RECIPE['streak_depth_mm']/1000+.020*smooth((.694-z)/.174)
+    # Upper/lower margins follow separate interlocking fibres, at 2–4 mm.
+    streak=(np.abs(y-streak_y)<depth/2+1.5*feather)&(z>.39)
+    nape=np.zeros(len(x),bool)
+    nape[ishead]=nape_ids(p[ishead],distjoin,feather[ishead])
     region[ishead&(streak|nape)]=0
     region[horn]=2
 
@@ -263,20 +281,30 @@ def main():
     use[wet]=1
     # The narrow bare lid is streak skin; surrounding fuzz rejoins fuzz_face.
     target=ep['base'].copy();target[ewet&~wet]=.5
+    # Amber pigment must survive the rgba downsample and the game's light.
+    # Restrict this correction to warm iris texels; keep its black pupil.
+    iris=wet&(target[:,0]>target[:,2]*1.6)&(target[:,0]>.012)
+    target[iris]=np.clip(target[iris]*np.array(RECIPE['eye_iris_linear_gain'],F),0,1)
+    # A thin pale, undyed inner lid ring follows the source's actual wet edge.
+    wetmap=read(STUDIES/'skin/eye_regions.png').sum(-1)==0
+    edge_mm=distance_transform_edt(~wetmap)*ecfg['span_m']*1000/2048
+    ecoord=[(.025-ev[patch])/.05*2048-.5,(eu[patch]+.025)/.05*2048-.5]
+    outside=map_coordinates(edge_mm,ecoord,order=1,mode='nearest')
+    lid=(~ewet)&(outside<RECIPE['eye_pale_lid_mm'])&(ef[patch]>.002)&eye[patch]
+    target[lid]=linear(np.array([190,177,149],F)/255)
+    use[lid]=1
     base[patch]=base[patch]*(1-use[:,None])+target*use[:,None]
     # Study eye baseline is 0.35 mm (fuzz outer plane 0.385 mm).
     eh=baseline+ep['height']-.385
     height[patch]=height[patch]*(1-use)+eh*use
     rough[patch]=rough[patch]*(1-use)+ep['packed'][:,1]*use
     ao[patch]=ao[patch]*(1-use)+ep['packed'][:,0]*use
-    rid=region[patch];rid[(er[patch]<.012)&(use>.01)]=0;rid[wet]=6;region[patch]=rid
+    rid=region[patch];rid[(er[patch]<.012)&(use>.01)]=0;rid[wet|lid]=6;region[patch]=rid
     # Fully hidden back of globe remains undyed dark wet tissue.
     hidden=eye&(ef<0)
     base[hidden]=linear(np.array([46,33,25],F)/255);region[hidden]=6;rough[hidden]=.20
 
     # Match the other painter at the geometric head/neck cut, not a UV edge.
-    neckpoints=pfull[piece==numbers['neck']]
-    distjoin,joinindex=cKDTree(neckpoints).query(p[ishead],workers=1)
     calm=1-smooth((distjoin-.0005)/.004)
     base[ishead]=base[ishead]*(1-calm[:,None])+.5*calm[:,None]
     height[ishead]=height[ishead]*(1-calm)+baseline*calm

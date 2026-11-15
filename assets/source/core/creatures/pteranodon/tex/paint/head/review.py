@@ -69,3 +69,39 @@ if (body/'layers.json').exists():
         else:facts[f'{name}_mean_difference']=float(np.abs(a.astype(float)-b.astype(float)).mean()/255)
     (C/'join_measurements.json').write_text(json.dumps(facts,indent=2)+'\n')
     print(json.dumps(facts,indent=2))
+
+# Round-two review keeps the actual renderer pixels: no contrast edits. The
+# standard views have different perspective from the orthographic concepts;
+# the side/front_1000ppm sheets above are the physical-scale comparisons.
+before=C/'round1_before/checks/look'
+for shot,reference in [('head','head_side'),('head_front','head_front'),('rider','head_side')]:
+    current=C/'look'/f'{shot}_design.png'
+    if not current.exists() or not (before/current.name).exists():continue
+    a=Image.open(before/current.name).convert('RGB')
+    b=Image.open(current).convert('RGB')
+    # Concept head details are at 1000 px/m. Standard game head is ~603 px/m;
+    # front is ~822 px/m at the target plane. Rider is a perspective context.
+    ref=Image.open(paint.ASSET/'ref/concept'/f'{reference}.png').convert('RGB')
+    factor=900/(2*(.55 if shot=='head_front' else .75)*np.cos(.1))/1000
+    if shot=='rider':ref=ref.crop((1000,700,1500,1250));factor=1
+    ref=ref.resize((round(ref.width*factor),round(ref.height*factor)),Image.Resampling.LANCZOS)
+    if shot=='head_front':
+        # Show head and upper neck at matched density, without squeezing it.
+        ref=ref.crop((0,100,ref.width,1000))
+    row=Image.new('RGB',(3600,966),(225,223,218));d=ImageDraw.Draw(row)
+    titles=[f'CONCEPT | {"nape detail, native scale" if shot=="rider" else "matched centre-plane density"}',
+            'SENT BACK | game renderer', 'REVISED | game renderer']
+    for i,(im,title) in enumerate(zip([ref,a,b],titles)):
+        d.text((i*1200+18,15),title,font=font,fill=(24,24,24))
+        row.paste(im,(i*1200+(1200-im.width)//2,50))
+    row.save(C/f'{shot}_round2_comparison.png')
+
+# Keep a focused rider comparison legible without rescaling whole-animal views.
+if (before/'rider_design.png').exists():
+    refs=[Image.open(paint.ASSET/'ref/concept/head_side.png').crop((1020,720,1490,1200)),
+          Image.open(before/'rider_design.png').crop((470,180,735,660)).resize((530,960),Image.Resampling.NEAREST),
+          Image.open(C/'look/rider_design.png').crop((470,180,735,660)).resize((530,960),Image.Resampling.NEAREST)]
+    row=Image.new('RGB',(1590,1020),(225,223,218));d=ImageDraw.Draw(row)
+    for i,(im,title) in enumerate(zip(refs,['CONCEPT | 1000 px/m','SENT BACK | rider 2x','REVISED | rider 2x'])):
+        d.text((i*530+10,14),title,font=font,fill=(24,24,24));row.paste(im,(i*530,50))
+    row.save(C/'rider_round2_detail.png')

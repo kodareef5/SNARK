@@ -88,8 +88,56 @@ def main():
    fact['body_side_nape_xyz_min']=pos[ea][ok].min(0).tolist()
    fact['body_side_nape_xyz_max']=pos[ea][ok].max(0).tolist()
   metrics['joins'][a+'_'+b]=fact
+ # The final fuzz fringe must leave a continuous dorsal core and stay local
+ # to the nape's sides. Check actual surface texels, not just the width setting.
+ neck=piece==numbers['neck'];p=pos[neck];nr=reg[neck]
+ join=json.loads((HERE/'source/joins.json').read_text())['nape']
+ path=np.array(join['centreline_yz_m'])
+ rear=p[:,2]<np.interp(p[:,1],path[:,0],path[:,1])
+ dark=(nr==COLS[0]).all(1)
+ core=rear&(np.abs(p[:,0])<.010)&(p[:,1]>1.04)&(p[:,1]<1.34)
+ metrics['nape']={'nominal_full_width_under_head_mm':join['full_width_m']*1000,
+                  'dorsal_core_texels':int(core.sum()),
+                  'dorsal_core_dark_fraction':float(dark[core].mean())}
+ assert dark[core].all(), 'Pale fringe crosses the nape core'
+ # Head reads the body width contract and actual body layers at the shared cut.
+ # Record current composition agreement, without claiming ownership of the head.
+ hp=PAINT/'head/layers'
+ if (hp/'pteranodon_regions.png').exists():
+  hm=piece==numbers['head'];dist,ix=cKDTree(p).query(pos[hm]);ok=dist<.0015
+  hr=load(hp/'pteranodon_regions.png')[hm]
+  hb=linear(load(hp/'pteranodon_base.png')[hm,:3].astype(np.float32)/255)
+  hh=load(hp/'pteranodon_height.png')[hm].astype(np.float32)/65535
+  hh*=json.loads((hp/'layers.json').read_text())['pteranodon_height_mm']
+  metrics['joins']['head_to_live_neck']={
+   'nearby_samples':int(ok.sum()),'max_distance_m':.0015,
+   'region_agreement':float(np.all(hr[ok]==nr[ix[ok]],axis=1).mean()),
+   'mean_linear_difference':float(np.abs(hb[ok]-base[neck][ix[ok]]).mean()),
+   'mean_height_difference_mm':float(np.abs(hh[ok]-physical[neck][ix[ok]]).mean())}
+  # Publish concrete points on the shared ring for the other painter, in abs-X.
+  rearcut=ok&(pos[hm,2]<.49)
+  indices=ix[rearcut];points=p[indices].copy();points[:,0]=np.abs(points[:,0])
+  samples=[]
+  for x in [0,.010,.020,.030,.035,.040,.050,.060]:
+   k=int(np.argmin(np.abs(points[:,0]-x)))
+   samples.append({'position_m':np.round(points[k],6).tolist(),
+                   'body_region':0 if dark[indices[k]] else 5})
+  metrics['nape']['shared_ring_samples']=samples
+ # Regression evidence for the untouched orange fingers, toes and dark claws.
+ before=out/'round1_before/layers'
+ if before.exists():
+  digits=np.isin(piece,[numbers[k] for k in OWN if k.startswith(('toe_','hand_'))])
+  changes={};delta={}
+  for layer in ['base','height','rough','occlusion','regions']:
+   a=load(before/f'pteranodon_{layer}.png')[digits]
+   b=load(folder/f'pteranodon_{layer}.png')[digits]
+   changes[layer]=int(np.count_nonzero(np.any(a!=b,axis=-1) if a.ndim==2 else a!=b))
+   delta[layer]=int(np.max(np.abs(a.astype(np.int32)-b.astype(np.int32))))
+  metrics['digit_changed_texels_vs_previous']=changes
+  metrics['digit_max_level_change_vs_previous']=delta
  # Source-to-delivery comparison at a real 100 mm physical crop, no enlarged fibres.
  sf=ASSET/'tex/studies/fuzz';info=json.loads((sf/'study.json').read_text())
+ metrics['fuzz_round']=info['round']
  source=Image.open(sf/info['source']).convert('RGB')
  sw=round(.100/(info['sets']['fuzz']['span_m']/2048*info.get('source_scale_before_quilting',.78)))
  src=source.crop((source.width//2-sw//2,source.height//2-sw//2,source.width//2+sw//2,source.height//2+sw//2))

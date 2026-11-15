@@ -200,7 +200,11 @@ def mantle_distance(p):
     x,y,z=p.T
     # Measured concept silhouette: a rounded shoulder saddle tapering to the hips.
     stations=np.array([-.69,-.62,-.54,-.40,-.22,-.05,.06,.13,.20,.29,.40,.60])
-    widths=np.array([0,.045,.080,.114,.146,.158,.145,.095,.045,.023,.0225,.0225])
+    # Keep the accepted saddle below z=.20; carry the neck colour around both
+    # sides of its rear surface so that it also survives the profile view.
+    nape=metadata(HERE/'source/joins.json')['nape']
+    half_width=nape['full_width_m']*.5
+    widths=np.array([0,.045,.080,.114,.146,.158,.145,.095,.045,.040,half_width,half_width])
     width=np.interp(z,stations,widths)
     # C1 smoothing of the width function rather than a face-step threshold.
     zz=np.linspace(-.75,.65,2801)
@@ -208,7 +212,12 @@ def mantle_distance(p):
     width=np.interp(z,zz,ww)
     cy=np.interp(z,[-.82,-.66,-.48,-.17,.10],[.668,.706,.733,.745,.752])
     top=y-cy
-    back=y-.84-(z-.08)*1.30
+    # Follow the curved neck's centre line. The old straight diagonal passed
+    # within the edge fringe of the dorsal meridian under the head; final study
+    # pale locks could then cut right across the stripe in the rider's view.
+    path=np.array(nape['centreline_yz_m'])
+    slope=np.interp(y,path[:,0],np.gradient(path[:,1],path[:,0]))
+    back=(np.interp(y,path[:,0],path[:,1])-z)/np.sqrt(1+slope*slope)
     neck=smooth((z-.10)/.13)
     facing=top*(1-neck)+back*neck
     # Distance positive inside; x is absolute, so both midlines are exactly symmetric.
@@ -227,15 +236,18 @@ def mantle_ids(folder, p, distance):
     # Long contour coordinate; the edge's full 500 mm cycle is not repeated in short rows.
     along=-z+.24*y+.16*x
     u=(along/spec['span_m']*N+317)%N
-    v=center-distance/spec['span_m']*N
+    # The fringe shortens with the face-scale pile at the neck's upper end.
+    # Body-sized locks here would reach across most of the narrow nape band.
+    edge_scale=1-.5*smooth((y-1.14)/.18)
+    v=center-distance/(spec['span_m']*edge_scale)*N
     # Main band's natural wandering is retained at half amplitude (about 7 mm).
     profile=np.sum(dark[N//4:3*N//4],axis=0)+N//4
     coarse=gaussian_filter1d(profile.astype(F),30,mode='wrap')
     shift=map_coordinates(coarse,[u],order=1,mode='grid-wrap')-center
     v+=shift*.5
     out=map_coordinates(dark.astype(F),[np.clip(v,0,N-1),u],order=0,mode='nearest')>.5
-    out[distance>.035]=True
-    out[distance<-.035]=False
+    out[distance>.035*edge_scale]=True
+    out[distance<-.035*edge_scale]=False
     return out
 
 
