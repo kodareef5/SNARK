@@ -317,6 +317,8 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.vehicle) {
         try {
           if (d.vehicle.id !== d.id) throw new Error("its vehicle must carry its own id");
+          // The body other systems see (radius, height) is the chassis, so nothing reads two sizes for one car.
+          if (d.radius !== d.vehicle.spec.halfWidth || d.height !== d.vehicle.spec.height) throw new Error("its radius and height must be its chassis half width and height");
           validateVehicleDefinition(d.vehicle);
         } catch (e) { errors.push(`${d.id}: ${(e as Error).message}`); }
       }

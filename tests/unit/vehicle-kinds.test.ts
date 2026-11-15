@@ -32,7 +32,7 @@ export const PICKUP: VehicleDefinition = {
 };
 
 test("a second kind compiles beside the compact as content, with its own seats, doors and wheels", () => {
-  const species: SpeciesDef = { ...COMPACT_SPECIES, id: "t:pickup", mesh: "t:pickup", skeleton: "t:pickup", aliases: ["pickup"], mass: 1900, vehicle: PICKUP };
+  const species: SpeciesDef = { ...COMPACT_SPECIES, id: "t:pickup", mesh: "t:pickup", skeleton: "t:pickup", aliases: ["pickup"], radius: 1, height: 1.9, mass: 1900, vehicle: PICKUP };
   const out = compilePacks([CORE_PACK, { name: "t", requires: ["core"], defs: [species as unknown as DefPatch] }]);
   expect(out.errors).toEqual([]);
   const reg = out.registry!, kind = reg.index.get("t:pickup")!;
@@ -53,9 +53,10 @@ test("a vehicle that would not register or draw is refused when it compiles, wit
   expect(bad({ doors: [{ ...PICKUP.doors[0]!, openTicks: 0 }, ...PICKUP.doors.slice(1)] })).toBe("invalid vehicle door");
   expect(bad({ actionTicks: 0 })).toBe("invalid vehicle action ticks");
   expect(bad({ steeringWheel: { bone: "", axis: [0, 0, 1], ratio: 1 } })).toBe("invalid steering wheel");
-  const species: SpeciesDef = { ...COMPACT_SPECIES, id: "t:broken", aliases: [], vehicle: { ...PICKUP, id: "t:broken", doors: [] } };
-  const out = compilePacks([CORE_PACK, { name: "t", requires: ["core"], defs: [species as unknown as DefPatch] }]);
-  expect(out.errors).toEqual(["t:broken: invalid vehicle seat"]);
+  const species: SpeciesDef = { ...COMPACT_SPECIES, id: "t:broken", aliases: [], radius: 1, height: 1.9, vehicle: { ...PICKUP, id: "t:broken", doors: [] } };
+  const wide: SpeciesDef = { ...COMPACT_SPECIES, id: "t:wide", aliases: [], vehicle: { ...PICKUP, id: "t:wide" } };
+  const out = compilePacks([CORE_PACK, { name: "t", requires: ["core"], defs: [species, wide] as unknown as DefPatch[] }]);
+  expect(out.errors).toEqual(["t:broken: invalid vehicle seat", "t:wide: its radius and height must be its chassis half width and height"]);
 });
 
 test("four doors travel in one word, each on its own, and a door alone costs an update one part", () => {
