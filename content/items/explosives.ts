@@ -59,10 +59,10 @@ export const EXPLOSIVES: readonly Def[] = [
   // from wild creatures; a 5 s fuse; weighs 0.5, stacks to 10; level 24 for 18 points; craftingxp 11.35, shown times the
   // global 4 as the grenade's is (45.4); made in the inventory of 1 metal ingot, 10 charcoal, 2 wood, 6 hide, 3 flint, 15
   // fiber, 5 thatch and 5 sparkpowder, after Sparkpowder. Its height and its making time are on no page: 5 m, so it stands
-  // over a survivor, and the grenade's 8 s. Charcoal waits for its item (items-ark.md), so the recipe leaves it out (DEV143).
+  // over a survivor, and the grenade's 8 s. Its 10 charcoal went in with stations S6, once fires left charcoal (S1).
   { type: "item", class: "weapon", id: id("grenade_smoke"), label: "smoke grenade", stack: 10, weight: 0.5, color: 2, weapon: { kind: "thrown", speed: 18, fuse: 5, uses: 1, mesh: id("grenade"), hold: "tool", cloud: { prop: id("cloud_smoke"), seconds: 40 } } },
   { type: "prop", class: "cloud", id: id("cloud_smoke"), mesh: "box", color: 2, radius: 9, height: 5 },
-  crafting(id("grenade_smoke"), { needs: needs([["ingot", 1], ["wood", 2], ["hide", 6], ["flint", 3], ["fiber", 15], ["thatch", 5], ["sparkpowder", 5]]), seconds: 8, xp: 45.4 }),
+  crafting(id("grenade_smoke"), { needs: needs([["ingot", 1], ["charcoal", 10], ["wood", 2], ["hide", 6], ["flint", 3], ["fiber", 15], ["thatch", 5], ["sparkpowder", 5]]), seconds: 8, xp: 45.4 }),
   { type: "engram", id: id("engram-grenade_smoke"), label: "Smoke grenade", level: 24, cost: 18, item: id("grenade_smoke"), requires: [id("engram-sparkpowder")] },
 
   // ark.wiki.gg/wiki/Poison_Grenade (2026-11-15): narcotic gas that "rapidly increases the Torpor of enemy survivors";

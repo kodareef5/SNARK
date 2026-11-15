@@ -95,11 +95,11 @@ test("the core pack compiles to the columns: each station is its own base, a fir
   // Its lit kind keeps 10 times as long, Registry.keeps with it; out, it keeps as the hand does.
   expect(bin.map((k) => [reg.stationBase[k], reg.stationCooks[k], reg.structKeeps[k], reg.keeps[k], reg.powered[k], reg.dry[k]])).toEqual([[bin[0], 0, 1, 1, 0, 0], [bin[0], 0, 10, 10, 0, 0]]);
   // S1's forge: it burns every item's own fuel, is not powered, is dry and does not cook; the ingot and gasoline are fired
-  // at it, and wood leaves charcoal.
+  // at it, and wood leaves charcoal. Since S6 the preserving bin makes both jerkies (tests/unit/ark-stations.test.ts).
   expect([structures.filter((k) => reg.stationCooks[k] !== 1), structures.filter((k) => reg.dry[k] !== 0)]).toEqual([byIndex([...both, ...bin]), both]);
-  expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"]], [["core:wood", "core:charcoal"]]]);
-  // Sparkpowder is made at the mortar, as before, and since S6 the narcotic and cementing paste (tests/unit/ark-stations.test.ts).
-  expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]).sort()]).toEqual([id(reg, "mortar"), ["core:narcotic", "core:paste", "core:sparkpowder"]]);
+  expect([[...reg.firedAt].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]])).sort(), [...reg.burnsInto].flatMap((v, k) => (v === 0 ? [] : [[reg.ids[k], reg.ids[v]]]))]).toEqual([[["core:gasoline", "core:forge"], ["core:ingot", "core:forge"], ["core:jerky", "core:preserving_bin"], ["core:jerky_prime", "core:preserving_bin"]], [["core:wood", "core:charcoal"]]]);
+  // Sparkpowder is made at the mortar, as before, and since S6 the narcotic, cementing paste and gunpowder (tests/unit/ark-stations.test.ts).
+  expect([reg.craftAt[id(reg, "sparkpowder")], stationRecipes(reg, id(reg, "mortar")).map((k) => reg.ids[k]).sort()]).toEqual([id(reg, "mortar"), ["core:gunpowder", "core:narcotic", "core:paste", "core:sparkpowder"]]);
 });
 
 /** A test station that lights, named by its unlit and lit ids, burning only sparkpowder 2 s a piece, and a loaf made at it. */

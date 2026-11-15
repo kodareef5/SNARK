@@ -261,7 +261,10 @@ const MAKING: Def[] = [
   // GEAR above). A save that knew the engram "Smelting" loads without it, and a job of ingots it was making is dropped
   // (server/progression.ts). Its recipe's old id still reads as the ingot.
   { type: "rename", id: id("make-ingot"), to: [id("ingot")] },
-  ...making("gunpowder", "Gunpowder", 21, 2, 1, 2, [["flint", 1], ["stone", 1], ["wood", 1]]),
+  // ark.wiki.gg, Gunpowder, infobox, 2026-11-15: at the mortar and pestle, 1 sparkpowder and 1 charcoal, in 1 s, craftingxp
+  // 0.05 (our 0.2, D465's four times); level 15, 2 engram points (moved from the hand and its flint, stone and wood by S6,
+  // once the forge's wood left charcoal, S1). The chemistry bench's recipe waits for the bench.
+  ...making("gunpowder", "Gunpowder", 15, 2, 1, 1, [["sparkpowder", 1], ["charcoal", 1]], 0.2, "mortar"),
   // Each piece of an armor tier has its own engram, at the tier's level and the piece's cost. They were one engram for all
   // five once, and a save that knew the set knows every piece.
   ...ARMOR_TIERS.flatMap((t): Def[] => {

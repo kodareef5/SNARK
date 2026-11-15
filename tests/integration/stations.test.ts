@@ -189,9 +189,9 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   };
   const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
 
-  // The client lists what the mortar makes, from content: the item names it in craft.at. Since S6, the narcotic and
+  // The client lists what the mortar makes, from content: the item names it in craft.at. Since S6, the narcotic, gunpowder and
   // cementing paste too (tests/unit/ark-stations.test.ts).
-  expect(stationRecipes(reg, id("mortar")).sort((a, b) => a - b)).toEqual([spark, id("narcotic"), id("paste")].sort((a, b) => a - b));
+  expect(stationRecipes(reg, id("mortar")).sort((a, b) => a - b)).toEqual([spark, id("narcotic"), id("paste"), id("gunpowder")].sort((a, b) => a - b));
   expect([reg.craftAt[spark], reg.craftAt[id("pick")]]).toEqual([id("mortar"), 0]);
   // With nothing open, or a box that is no station open, nothing is made at one.
   expect(at_(ada, spark, 1)).toBe(RESULT_DENIED);

@@ -32,13 +32,16 @@ const MORTAR: Readonly<Record<string, Made>> = {
   paste: ["mortar", "4 chitin, 8 stone", 1, 4.8, 1, 13, 3],
   // Narcotic: 5 narcoberries (or ascerbic mushrooms) and 1 spoiled meat; 5 s; craftingxp 2.
   narcotic: ["mortar", "5 narcoberry, 1 spoiled_meat", 5, 8, 1, 6, 6],
+  // Gunpowder: 1 sparkpowder and 1 charcoal (what any wood fire leaves since S1); 1 s; craftingxp 0.05.
+  gunpowder: ["mortar", "1 sparkpowder, 1 charcoal", 1, 0.2, 1, 15, 2],
 };
 
-test("cementing paste and the narcotic are made at the mortar and pestle at ARK's numbers (Cementing Paste, Narcotic)", () => {
+test("cementing paste, the narcotic and gunpowder are made at the mortar and pestle at ARK's numbers (Cementing Paste, Narcotic, Gunpowder)", () => {
   for (const name of Object.keys(MORTAR)) expect([name, made(name)]).toEqual([name, MORTAR[name]!]);
-  // The mortar makes these and sparkpowder; gunpowder waits for the forge's charcoal and is made in the hand (S1).
-  expect(stationRecipes(reg, at("mortar")).map((k) => reg.ids[k]!.slice(5)).sort()).toEqual(["narcotic", "paste", "sparkpowder"]);
-  expect(made("gunpowder")[0]).toBe("hand");
+  // The mortar makes these and sparkpowder.
+  expect(stationRecipes(reg, at("mortar")).map((k) => reg.ids[k]!.slice(5)).sort()).toEqual(["gunpowder", "narcotic", "paste", "sparkpowder"]);
+  // The smoke grenade, made in the hand as in ARK, takes its 10 charcoal (Smoke Grenade; DEV143 keeps the rest).
+  expect(made("grenade_smoke").slice(0, 2)).toEqual(["hand", "1 ingot, 10 charcoal, 2 wood, 6 hide, 3 flint, 15 fiber, 5 thatch, 5 sparkpowder"]);
 });
 
 /**
@@ -171,4 +174,45 @@ test("the fabricator makes the shock dart, the flashlight and laser, the poison 
 
 test("each of the fabricator's moved recipes is refused in the hand and made at a lit fabricator, from its slots into them", () => {
   makesEach("fabricator", Object.keys(FABRICATOR), ["gasoline", 1]);
+});
+
+// The preserving bin's: jerky, which the lit bin makes by itself (fired, D534).
+test("cooked meat jerky and prime meat jerky are ARK's, made by the lit preserving bin itself (Cooked Meat Jerky, Prime Meat Jerky)", () => {
+  const minutes = (n: number): number => (n * 60) / 140;
+  for (const [name, meat, food, health, stack] of [["jerky", "meat_cooked", 20, 8, 50], ["jerky_prime", "meat_prime_cooked", 35, 25, 30]] as const) {
+    expect([name, item(name).craft]).toEqual([name, { needs: [{ item: `core:${meat}`, count: 1 }, { item: "core:oil", count: 1 }, { item: "core:sparkpowder", count: 3 }], seconds: 2160, xp: 0, at: "core:preserving_bin", fired: true }]);
+    // Each keeps 2 days (spoilsin 172800) and spoils into spoiled meat; it weighs 0.1; no engram makes it.
+    expect([name, item(name).eat, item(name).spoilHours, item(name).spoilsInto, item(name).weight, item(name).stack]).toEqual([name, { food, health }, minutes(2880), "core:spoiled_meat", 0.1, stack]);
+    expect([name, reg.firedAt[at(name)], reg.defs.some((d) => d?.type === "engram" && d.item === `core:${name}`)]).toEqual([name, at("preserving_bin"), false]);
+  }
+});
+
+test("a lit preserving bin makes both jerkies at once in 36 minutes with nobody looking, spending its own sparkpowder, and neither is made by hand or by a job", () => {
+  const h = new Harness({}, 1, 60, { dev: true, startingCreatures: 0 }, reg);
+  try {
+    const s = h.join("ada");
+    h.run(200);
+    const ground = flatGround(h, 10, 10);
+    const me = h.host.records.byPid.get(h.client(s)!.pid)!;
+    const k = at("preserving_bin");
+    const ref = h.world.structs.add(k, ground.x + 3, ground.y + reg.halfY[k]!, ground.z + 3, 0, me.team, reg.maxHp[k]!);
+    const rec = h.host.fixtures.ensure(ref);
+    for (const name of ["jerky", "jerky_prime"]) {
+      expect([name, h.host.progression.craft(me, at(name), 1), h.host.progression.craftAt(me, rec, at(name), 1)]).toEqual([name, 2, 2]);
+    }
+    // Two pieces of sparkpowder burn 1,800 s each; six more are the two recipes', spent when the units finish at 2,160 s.
+    for (const [name, n] of [["meat_cooked", 1], ["meat_prime_cooked", 1], ["oil", 2], ["sparkpowder", 8]] as const) h.host.items.mint(rec, at(name), n);
+    expect(h.host.stations.toggle(ref)).toBe(RESULT_OK);
+    const lit = rec.fire!.at;
+    const total = (name: string): number => h.host.items.inv(rec).total(at(name));
+    for (let t = h.world.tick; t < lit + 2159 * TICK_RATE; t++) h.server.tick();
+    expect([total("jerky"), total("jerky_prime")]).toEqual([0, 0]);
+    for (let t = 0; t < 2 * TICK_RATE; t++) h.server.tick();
+    expect(["jerky", "jerky_prime", "meat_cooked", "meat_prime_cooked", "oil", "sparkpowder"].map(total)).toEqual([1, 1, 0, 0, 0, 0]);
+    // The second piece of sparkpowder still burns; nobody got experience for what the bin made (DEV171).
+    expect([rec.kind, me.xp, rec.jobs]).toEqual([at("preserving_bin_lit"), 0, []]);
+    expect(h.host.items.audit()).toEqual([]);
+  } finally {
+    h.host.shutdown();
+  }
 });
