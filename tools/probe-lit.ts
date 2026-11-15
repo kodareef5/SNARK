@@ -11,11 +11,12 @@ import { join, resolve } from "node:path";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { depthCheck } from "./probe-lit/depth.ts";
 import { topFirst, type Device, type LitCheck, type Readback, type Shot } from "./probe-lit/shot.ts";
+import { terrainCheck } from "./probe-lit/terrain.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, terrainCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");
