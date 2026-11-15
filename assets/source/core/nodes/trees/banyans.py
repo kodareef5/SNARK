@@ -7,6 +7,7 @@
 import math
 
 import broadleaf as bl
+import far
 import figs
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, rotate, sub, tube, unit
 from layout import CUTS, RUINS
@@ -58,6 +59,8 @@ ORDERS = {"orders": [
     {"count": (2, 3), "along": (0.4, 0.9), "turn": (25, 50), "rise": (10, 28), "length": (1.5, 2.5), "girth": (0.5, 0.7), "points": 5, "wander": 0.2, "droop": 5},
 ]}
 SPECS = {b["name"]: b for b in BANYANS}
+# The flat levels draw only the pillars this thick or more.
+FAR_PILLAR = 0.25
 
 
 def smooth_path(points, n):
@@ -96,9 +99,18 @@ class Pillar:
         base = lambda h: r * interp(h, [-2.0, 0.0, 0.4, 1.0, top - 0.8, top], [1.45, 1.4, 1.08, 1.0, 1.0, 1.35])
         self.wall = bl.Ribbons(rng_for(name, "pillar", k), base, 6, (0.04, 0.08), (0.02, 0.05), drift=0.6, top=top, foot=0.5, splay=2.0)
 
+    def reach(self):
+        """How far from the tree's origin the pillar's flared foot reaches."""
+        return math.hypot(self.foot[0], self.foot[2]) + self.r * 1.45 + 0.2
+
+    def under(self):
+        """How deep the pillar is carried: as far below the origin as 0.6 of its reach, so it stands in ground falling
+        away from the tree at 32 degrees."""
+        return -0.6 * self.reach() - 0.05
+
     def mesh(self, m, sides, rings, material, flat, cut=None, cap_material=None, cap_uv=None):
         top = cut if cut is not None else self.joint + self.r * 0.6
-        under = -0.6 * (self.r * 1.4 + 0.15) - 0.05
+        under = self.under()
         hs = [under, -0.05] + [mix(0.0, top, (i / (rings - 1)) ** 1.15) for i in range(rings)]
         rings_ = bl.fluted(m, hs, self.wall.radius, sides, material, flat, caps=(True, True), cap_material=cap_material, cap_uv=cap_uv,
                            centre=(self.foot[0], self.foot[2]))
@@ -222,6 +234,13 @@ def car(m, lod):
 
 def banyan(name, lod):
     spec = SPECS[name]
+    if lod == far.LEVEL:
+        beams, pillars, stub, lobes = skeleton(spec)
+        # The largest of the pillars the flat levels draw, if they draw any.
+        drawn = [p for p in pillars if p.r >= FAR_PILLAR]
+        big = max(drawn, key=lambda p: p.r) if drawn else None
+        post = ((big.foot[0], big.foot[2]), big.r * 2.0, big.under()) if big else None
+        return far.banyan(banyan(name, lod - 1), lobes, (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, post)
     m = Mesh(lod <= 2)
     rng = rng_for(name, "level", lod)
     beams, pillars, stub, lobes = skeleton(spec)
@@ -237,7 +256,7 @@ def banyan(name, lod):
             bl.bark_tube(m, bl.coarser(rope, 10), 6, BARK, STEM, caps=(True, True))
     psides, prings = {0: (14, 9), 1: (8, 4), 2: (5, 2), 3: (4, 2), 4: (3, 2)}[lod]
     for p in pillars:
-        if lod >= 3 and p.r < 0.25:
+        if lod >= 3 and p.r < FAR_PILLAR:
             continue
         p.mesh(m, psides, prings, BARK, STEM)
     order_sides, keep, least = {0: ((14, 9, 5, 3), (16, 9, 5, 3), 0.0), 1: ((8, 5, 3, 3), (8, 4, 3, 2), 0.07), 2: ((4, 3, 0, 0), (3, 1, 1, 1), 0.2),
@@ -320,4 +339,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else bl.LEVELS
+    return 4 if piece.endswith("_depleted") else far.LEVEL + 1

@@ -410,6 +410,7 @@ export class Spawner {
     const reach = r + this.nodeReach + PAD;
     const y = groundUnder(hf, x, z, r);
     const forms = field.forms;
+    const spread = field.store.spread;
     const at = this.mapped;
     for (let cz = Math.max(0, Math.floor((z - reach) / CHUNK_SIZE)); cz <= Math.min(dims.chunksZ - 1, Math.floor((z + reach) / CHUNK_SIZE)); cz++) {
       for (let cx = Math.max(0, Math.floor((x - reach) / CHUNK_SIZE)); cx <= Math.min(dims.chunksX - 1, Math.floor((x + reach) / CHUNK_SIZE)); cx++) {
@@ -423,6 +424,9 @@ export class Spawner {
           let form = at[k + 3]!;
           if ((this.ctx.harvest?.regrowsAt(chunk, at[k + 5]!) ?? 0) > 0) form = forms.left[form]!;
           if (form === 0 || forms.soft[form] === 1) continue;
+          // Most nodes reach far less than the widest banyan.
+          const near = r + spread[form]! + PAD;
+          if (dx * dx + dz * dz >= near * near) continue;
           if (capsuleKind(forms.parts, form, at[k]!, at[k + 1]!, at[k + 2]!, at[k + 4]!, x, y, z, r, p.height + p.stepUp, SKIN)) return true;
         }
       }

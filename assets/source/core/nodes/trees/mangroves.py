@@ -8,6 +8,7 @@
 import math
 
 import broadleaf as bl
+import far
 from kit import UP, Mesh, add, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, sub, tube, unit
 from layout import CUTS, SPANS
 
@@ -147,6 +148,8 @@ def root_tube(m, b, sides, flat, lumpy=True):
 
 def mangrove(name, lod):
     spec = SPECS[name]
+    if lod == far.LEVEL:
+        return far.mangrove(mangrove(name, lod - 1), skeleton(spec)[-1], (LIGHT, MID, DARK), WET, spec["reach"] * 0.9, name)
     m = Mesh(lod <= 2)
     rng = rng_for(name, "level", lod)
     hs, path, ribs, roots, limbs, broken, lobes = skeleton(spec)
@@ -248,4 +251,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else bl.LEVELS
+    return 4 if piece.endswith("_depleted") else far.LEVEL + 1

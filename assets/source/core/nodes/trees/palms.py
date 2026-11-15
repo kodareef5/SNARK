@@ -7,6 +7,7 @@
 
 import math
 
+import far
 from kit import UP, Mesh, add, blade, cross, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, rotate, sheet, sub, tube, unit
 from layout import FRONDS, PARTS, SPANS, frond_slot
 
@@ -435,8 +436,24 @@ def coarse(fronds, keep):
     return [live[int(i * step)] for i in range(min(keep, len(live)))]
 
 
+def far_palm(name):
+    """The far level: the stem from its buried foot to the hub, and three of level 4's fronds as a star."""
+    spec = SPECS[name]
+    royal = spec["kind"] == "royal"
+    near = palm(name, far.LEVEL - 1)
+    path = spine(spec, 0.2)
+    axis = unit(sub(path[-1], path[-2]))
+    hub = add(path[-1], mul(axis, spec["shaft"] if royal else 0.5))
+    spec["top"] = hub
+    tips = [frond_spine(f["base"], f["azimuth"], f["rise"], f["droop"], f["length"], 2, f["curl"])[0][-1] for f in coarse(crown(spec), 6)]
+    blades = {BLADE_FRESH, BLADE, BLADE_DARK, BLADE_OLD, BLADE_DEAD}
+    return far.palm(near, blades, path[0], hub, radius_at(spec, 0.0), spec["radii"][-1][1], tips, ROYAL_STEM if royal else COCONUT_STEM, math.radians(30))
+
+
 def palm(name, lod):
     spec = SPECS[name]
+    if lod == far.LEVEL:
+        return far_palm(name)
     royal = spec["kind"] == "royal"
     m = Mesh(lod in TEXTURED)
     bark = "royal_bark" if royal else "coconut_bark"
@@ -575,4 +592,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else LEVELS
+    return 4 if piece.endswith("_depleted") else far.LEVEL + 1

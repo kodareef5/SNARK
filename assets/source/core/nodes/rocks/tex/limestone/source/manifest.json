@@ -1,0 +1,32 @@
+{
+  "weathered_relief.png": {
+    "generated_by": "built-in image generation",
+    "original_path": "/home/user/.codex/generated_images/01a1dc4c-32ef-70a3-88ac-e273799930af/exec-6e0d2b62-3dd7-4697-9ab1-4d78b1b763ff.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "5426c246dc9e092e08a98c259e57fe641209ee228341fba02e39ff6dde84b987",
+    "unchanged_copy": true
+  },
+  "fresh_relief.png": {
+    "generated_by": "built-in image generation",
+    "original_path": "/home/user/.codex/generated_images/01a1dc4c-32ef-70a3-88ac-e273799930af/exec-6b562b6b-fd94-4e86-97a4-b13971cb951b.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "4437bdb5a6a98fc4a709290505182b0b3f7e8265c9df22626f9d177748e2a1d7",
+    "unchanged_copy": true
+  },
+  "limestone_pigment.png": {
+    "generated_by": "built-in image generation",
+    "original_path": "/home/user/.codex/generated_images/01a1dc4c-32ef-70a3-88ac-e273799930af/exec-8eeba17f-fd9b-432b-bd26-d37f7943b686.png",
+    "size": [
+      1254,
+      1254
+    ],
+    "sha256": "91faf671f1e3fceb3b8daa682cd127f30762862dfc7e989def38b7b760fd1499",
+    "unchanged_copy": true
+  }
+}

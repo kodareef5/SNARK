@@ -29,7 +29,8 @@ export const TAG_NODES = 1;
 const REACH = 3.5;
 /**
  * Metres. A node does not grow back while a survivor is this close, nor a foundation or a pillar, which is what the reference
- * game counts as built. It tries again after RETRY_TICKS.
+ * game counts as built. It tries again after RETRY_TICKS. Counted from as far as its boxes reach from its middle, so a banyan
+ * does not grow its outer trunks round someone standing among them.
  */
 const CROWDED = 12;
 const RETRY_TICKS = 30 * TICK_RATE;
@@ -196,7 +197,7 @@ export class Harvest {
     const chunk = key >> 8;
     const index = key & 255;
     this.field.source.at(chunk, index, this.spot);
-    if (this.held(this.spot.x, this.spot.z)) {
+    if (this.held(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!)) {
       t.respawnAt = this.world.tick + RETRY_TICKS;
       this.deadlines.push(t.respawnAt, DEADLINE_NODE, key, t.respawnAt);
       this.dirty.add(chunk);
@@ -208,11 +209,11 @@ export class Harvest {
     this.dirty.add(chunk);
   }
 
-  /** Whether a survivor, or a foundation or pillar built there, keeps a node at (x, z) from growing back. */
-  private held(x: number, z: number): boolean {
+  /** Whether a survivor, or a foundation or pillar built there, keeps a node at (x, z) whose boxes reach `reach` from it from growing back. */
+  private held(x: number, z: number, reach: number): boolean {
     const rules = this.rules;
     const ents = this.world.ents;
-    const near = CROWDED * (rules ? rules.num("ResourceNoReplenishRadiusPlayers") : 1);
+    const near = CROWDED * (rules ? rules.num("ResourceNoReplenishRadiusPlayers") : 1) + reach;
     for (const c of this.game.clients) {
       if (!c?.active || c.ent < 0) continue;
       const dx = ents.x[c.ent]! - x;
@@ -220,7 +221,7 @@ export class Harvest {
       if (dx * dx + dz * dz < near * near) return true;
     }
     // A free-standing thing (a box, a fire, a bed) does not count, nor a wall or a ceiling by itself.
-    const built = CROWDED * (rules ? rules.num("ResourceNoReplenishRadiusStructures") * rules.num("StructurePreventResourceRadiusMultiplier") : 1);
+    const built = CROWDED * (rules ? rules.num("ResourceNoReplenishRadiusStructures") * rules.num("StructurePreventResourceRadiusMultiplier") : 1) + reach;
     const structs = this.world.structs;
     const role = this.world.reg.role;
     const n = structs.query(x - built, z - built, x + built, z + built, this.found);

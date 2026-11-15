@@ -9,10 +9,12 @@
 //   mode and of BC5, ASTC blocks built bit by bit over every grid, weight range, endpoint mode and partition count,
 //   and what our encoders make of the test card. A base colour is read through an sRGB target, so a texture made in
 //   the wrong colour space does not pass either.
-// - Draws a thatch house on the proving ground from the frames core builds for it here, at the medium and the high
-//   tier: its levels, surfaces and textures streamed in, then the context lost and restored and everything sent
-//   again. The last frame must agree with the software rasterizer drawing the same frames, with the compressed
-//   variants decoded by our decoders, at points on the house away from its edges (D203).
+// - Draws a thatch house on the proving ground, and nodes about it, from the frames core builds for it here, at the
+//   medium and the high tier: its levels, surfaces and textures streamed in, then the context lost and restored and
+//   everything sent again. The last frame must agree with the software rasterizer drawing the same frames, with the
+//   compressed variants decoded by our decoders, at points on the house and the nodes away from their edges and cuts
+//   (D203), and so must the points on a live oak and its stump at a size their kind never grows to, leaves and bark
+//   apart. The frames have a plain sky, since the rasterizer draws no air (D264).
 // - Times the renderer over that frame on a small canvas, its draws repeated up to the packet's limit, with materials
 //   and flat.
 //
@@ -24,10 +26,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { tierOf } from "../client/core/assets/tiers.ts";
 import { Camera } from "../client/core/render/camera.ts";
-import { BONE_FLOATS, DRAW_CUTOUT, DRAW_TEXTURED, DRAW_TWO_SIDED, type FramePacket, type TextureUpload } from "../client/core/render/packet.ts";
+import { BONE_FLOATS, DRAW_CUTOUT, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, type FramePacket, type TextureUpload } from "../client/core/render/packet.ts";
 import { Scene } from "../client/core/render/scene.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
 import { CORE_CONTENT } from "../content/core.ts";
+import type { NodeDef } from "../shared/content/defs.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { parseManifest, type Manifest } from "../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack } from "../shared/pack/pack.ts";
@@ -55,6 +58,11 @@ const TIERS = ["medium", "high"] as const;
 const BAND = 7;
 /** Where the house stands, west of the proving ground's spawn as tools/snap.ts has its house. */
 const HOUSE = [PROVING_SPAWN.x - 24, PROVING_SPAWN.z - 2] as const;
+/**
+ * A live oak beside the house at a size its kind never grows to, its bark solid and its leaves cut out and two-sided, and
+ * the stump one leaves, its bark and its cut solid: where each stands from the house, and its turn in degrees.
+ */
+const SMALL_OAK = { id: "core:probe_oak", size: 0.6, oak: [7, -5, 37], stump: [-1.2, 5.6, 151] } as const;
 
 /** Bytes sent to the page in one piece. Each run starts on a multiple of 4, so the page can view it as an array of any type. */
 class Bytes {
@@ -295,6 +303,8 @@ interface House {
   frames: Frame[];
   bytes: Uint8Array;
   raster: Rasterizer;
+  /** The flags of each draw of the last frame, which the rasterizer's `pickDraw` names. */
+  flags: Uint16Array;
   /** Draws in the last frame, those with materials, those of a mesh with materials drawn flat, and those cut out and two-sided. */
   draws: number;
   textured: number;
@@ -309,22 +319,35 @@ interface House {
  * takes the same frames as they come and draws the last.
  */
 function house(manifest: Manifest, files: Uint8Array[], format: TextureFormat, tierName: string): House {
-  const reg = compileContent(CORE_CONTENT).registry!;
+  // The oak is a kind of its own here, the first of the live oaks, which grows to that size alone.
+  const oak = CORE_CONTENT.find((d): d is NodeDef => d.type === "node" && d.id === "core:tree")!;
+  const reg = compileContent([...CORE_CONTENT, { ...oak, id: SMALL_OAK.id, size: [SMALL_OAK.size, SMALL_OAK.size], variants: oak.variants!.slice(0, 1) }]).registry!;
   const hf = buildProvingHeightfield();
   const structs = new StructureStore(PROVING_DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
   const ground = hf.heightAt(HOUSE[0], HOUSE[1]);
   placeHouse(structs, (id) => reg.index.get(id)!, ground);
-  // Rocks, a tree and a bush about the house, each at a size of its kind and turned, so that sized draws are held to the
-  // rasterizer with the rest.
+  // Rocks and a bush about the house at sizes of their kinds, and the oak and the stump, each turned, so that sized draws
+  // with materials and flat are held to the rasterizer with the rest.
   const forms = nodeForms(reg);
   const nodes = new StructureStore(PROVING_DIMS, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
-  for (const [kind, dx, dz, step] of [["core:rock", -5.5, 2, 15], ["core:rock", 4.5, -1, 0], ["core:tree", -6, -4, 9], ["core:bush", 5, 3, 12]] as const) {
+  const first = (kind: string): number => forms.first[reg.index.get(kind)!]!;
+  const turn = (degrees: number): number => Math.round((degrees / 360) * 65536);
+  const placed = [
+    [first("core:rock") + 15, -5.5, 2, 15 * 4099],
+    [first("core:rock"), 4.5, -1, 0],
+    [first("core:bush") + 12, 5, 3, 12 * 4099],
+    [first(SMALL_OAK.id), SMALL_OAK.oak[0], SMALL_OAK.oak[1], turn(SMALL_OAK.oak[2])],
+    [forms.left[first(SMALL_OAK.id)]!, SMALL_OAK.stump[0], SMALL_OAK.stump[1], turn(SMALL_OAK.stump[2])],
+  ] as const;
+  for (const [form, dx, dz, yaw] of placed) {
     const [x, z] = [HOUSE[0] + dx, HOUSE[1] + dz];
-    nodes.add(forms.first[reg.index.get(kind)!]! + step, x, hf.heightAt(x, z), z, step * 4099, 0, 1);
+    nodes.add(form, x, hf.heightAt(x, z), z, yaw & 0xffff, 0, 1);
   }
   const pack = parsePack(files[manifest.boot]!);
   const port = new FakeNet(files);
   const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes }, reg, pack, { manifest, port });
+  // The GPU's air, which the rasterizer leaves out (D264), would add up to 6 levels to dark leaves 20 m off.
+  scene.plainSky = true;
   const tier = tierOf(tierName);
   scene.assets.tier = tier;
   scene.assets.format = format;
@@ -374,7 +397,7 @@ function house(manifest: Manifest, files: Uint8Array[], format: TextureFormat, t
     if ((flags & DRAW_CUTOUT) !== 0) cut++;
     if ((flags & DRAW_TWO_SIDED) !== 0) both++;
   }
-  return { width, height, loseAt, frames, bytes: out.join(), raster, draws: p!.drawCount, textured, flat, cut, both };
+  return { width, height, loseAt, frames, bytes: out.join(), raster, flags: p!.drawFlags.slice(0, p!.drawCount), draws: p!.drawCount, textured, flat, cut, both };
 }
 
 export interface Spread {
@@ -394,15 +417,25 @@ export function spread(values: number[]): Spread {
 /** The tolerance, in levels of 255, at points on the house with nothing but one flat face of one piece within 4 pixels. */
 const TOLERANCE = { meanP99: 2, meanWorst: 4, pixelP95: 4 };
 const NEAR = 4;
+/** Points the judge must find on the house and its nodes, and on the sized draws with materials cut out and solid. */
+const LEAST = { all: 200, sized: 50 };
+
+interface Judged {
+  pixel: Spread;
+  mean: Spread;
+  ok: boolean;
+}
 
 /**
- * The GPU's picture against the rasterizer's at points on the house: the worst channel of the pixel there, and of the
- * mean of the five by five pixels about it, which a texel more or less in the GPU's choice of picture does not move
- * much. A point is taken where the rasterizer's depth about it lies on one plane, so that no edge of a triangle or of
- * a piece, where the GPU's samples share a pixel, is near.
+ * The GPU's picture against the rasterizer's at points on the house and the nodes about it: the worst channel of the
+ * pixel there, and of the mean of the five by five pixels about it, which a texel more or less in the GPU's choice of
+ * picture does not move much. A point is taken where the rasterizer's depth about it lies on one plane of one draw of
+ * one piece or node, so that no edge of a triangle or of a piece, where the GPU's samples share a pixel, is near; and
+ * where no cut-out draw covers part of a pixel, which the GPU blends with what is behind and the rasterizer does not.
+ * The points on sized draws with materials, cut out and solid, are judged again by themselves.
  */
-function judgeHouse(shot: Uint8Array, raster: Rasterizer): { pixel: Spread; mean: Spread; ok: boolean } {
-  const { width: W, height: H, color, depth, pickKind, pickId } = raster;
+function judgeHouse(shot: Uint8Array, house: House): { all: Judged; cut: Judged; solid: Judged; ok: boolean } {
+  const { width: W, height: H, color, depth, pickKind, pickId, pickDraw, cover } = house.raster;
   // The GPU's rows come bottom first.
   const gpu = (x: number, y: number, c: number): number => shot[((H - 1 - y) * W + x) * 4 + c]!;
   const flat = (at: number): boolean => {
@@ -412,13 +445,13 @@ function judgeHouse(shot: Uint8Array, raster: Rasterizer): { pixel: Spread; mean
     for (let dy = -NEAR; dy <= NEAR; dy++) {
       for (let dx = -NEAR; dx <= NEAR; dx++) {
         const near = at + dy * W + dx;
-        if (pickKind[near] !== PICK_STRUCTURE || pickId[near] !== pickId[at] || Math.abs(depth[near]! - depth[at]! - dx * gx - dy * gy) > slack) return false;
+        if (pickKind[near] !== PICK_STRUCTURE || pickId[near] !== pickId[at] || pickDraw[near] !== pickDraw[at] || cover[near]! < 1) return false;
+        if (Math.abs(depth[near]! - depth[at]! - dx * gx - dy * gy) > slack) return false;
       }
     }
     return true;
   };
-  const pixel: number[] = [];
-  const mean: number[] = [];
+  const groups = { all: { pixel: [] as number[], mean: [] as number[] }, cut: { pixel: [] as number[], mean: [] as number[] }, solid: { pixel: [] as number[], mean: [] as number[] } };
   const step = Math.round(W / 240);
   for (let y = NEAR + 1; y < H - NEAR - 1; y += step) {
     for (let x = NEAR + 1; x < W - NEAR - 1; x += step) {
@@ -432,12 +465,20 @@ function judgeHouse(shot: Uint8Array, raster: Rasterizer): { pixel: Spread; mean
         for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) sum += gpu(x + dx, y + dy, c) - color[(at + dy * W + dx) * 4 + c]!;
         mostMean = Math.max(mostMean, Math.abs(sum / 25));
       }
-      pixel.push(most);
-      mean.push(mostMean);
+      const flags = house.flags[pickDraw[at]!]!;
+      const sized = (flags & (DRAW_SIZED | DRAW_TEXTURED)) === (DRAW_SIZED | DRAW_TEXTURED);
+      for (const g of [groups.all, ...(sized ? [(flags & DRAW_CUTOUT) !== 0 ? groups.cut : groups.solid] : [])]) {
+        g.pixel.push(most);
+        g.mean.push(mostMean);
+      }
     }
   }
-  const [p, m] = [spread(pixel), spread(mean)];
-  return { pixel: p, mean: m, ok: p.points >= 200 && m.p99 <= TOLERANCE.meanP99 && m.worst <= TOLERANCE.meanWorst && p.p95 <= TOLERANCE.pixelP95 };
+  const judged = (g: { pixel: number[]; mean: number[] }, least: number): Judged => {
+    const [pixel, mean] = [spread(g.pixel), spread(g.mean)];
+    return { pixel, mean, ok: pixel.points >= least && mean.p99 <= TOLERANCE.meanP99 && mean.worst <= TOLERANCE.meanWorst && pixel.p95 <= TOLERANCE.pixelP95 };
+  };
+  const [all, cut, solid] = [judged(groups.all, LEAST.all), judged(groups.cut, LEAST.sized), judged(groups.solid, LEAST.sized)];
+  return { all, cut, solid, ok: all.ok && cut.ok && solid.ok };
 }
 
 // ---- The page ----
@@ -707,8 +748,8 @@ export async function texturedProbe(chrome: string): Promise<boolean> {
   console.log("\nThe test cards, drawn a texel to a pixel, against our decoders. Differences are in levels of 255.");
   for (const line of cardLines) console.log(line);
 
-  console.log(`\nThe house against the rasterizer at points with one flat face of one piece within ${NEAR} pixels: the worst channel, as a pixel and as the mean of the 5 by 5 about it.`);
-  console.log(`Passes with the means within ${TOLERANCE.meanP99} at 99 points in 100 and ${TOLERANCE.meanWorst} at every point, and pixels within ${TOLERANCE.pixelP95} at 95 in 100.`);
+  console.log(`\nThe house and its nodes against the rasterizer at points with one flat face of one draw and no cut within ${NEAR} pixels: the worst channel, as a pixel and as the mean of the 5 by 5 about it.`);
+  console.log(`Passes with the means within ${TOLERANCE.meanP99} at 99 points in 100 and ${TOLERANCE.meanWorst} at every point, and pixels within ${TOLERANCE.pixelP95} at 95 in 100, at ${LEAST.all} points or more, and so do the sized draws with materials, cut out and solid, at ${LEAST.sized} or more each.`);
   for (const [key, house] of houses) {
     const shot = shots.get(key);
     if (!shot) {
@@ -716,12 +757,14 @@ export async function texturedProbe(chrome: string): Promise<boolean> {
       ok = false;
       continue;
     }
-    const j = judgeHouse(shot, house.raster);
+    const j = judgeHouse(shot, house);
     ok &&= j.ok && house.flat === 0 && house.textured > 0 && house.cut > 0 && house.both > 0;
     const t = timings.get(key) as { textured: { draws: number; pageMicros: number; gpuMicros: number }; flat: { pageMicros: number; gpuMicros: number } } | undefined;
-    console.log(`  ${key.padEnd(12)} ${house.width}x${house.height}, ${house.frames.length} frames, context lost before ${house.loseAt}; ${house.draws} draws, ${house.textured} with materials (${house.cut} cut out, ${house.both} two-sided), ${house.flat} flat that have them`);
-    console.log(`  ${"".padEnd(12)} ${j.pixel.points} points: pixels mean ${j.pixel.mean.toFixed(1)}, 95 in 100 within ${j.pixel.p95}, worst ${j.pixel.worst}; means mean ${j.mean.mean.toFixed(2)}, 99 in 100 within ${j.mean.p99.toFixed(1)}, worst ${j.mean.worst.toFixed(1)}  ${j.ok ? "ok" : "FAIL"}`);
-    if (t) console.log(`  ${"".padEnd(12)} ${t.textured.draws} draws a frame: ${t.textured.pageMicros.toFixed(2)} us a draw in the page and ${t.textured.gpuMicros.toFixed(2)} us to the GPU's end with materials, ${t.flat.pageMicros.toFixed(2)} and ${t.flat.gpuMicros.toFixed(2)} flat`);
+    console.log(`  ${key.padEnd(14)} ${house.width}x${house.height}, ${house.frames.length} frames, context lost before ${house.loseAt}; ${house.draws} draws, ${house.textured} with materials (${house.cut} cut out, ${house.both} two-sided), ${house.flat} flat that have them`);
+    for (const [name, g] of [["", j.all], ["sized, cut out", j.cut], ["sized, solid", j.solid]] as const) {
+      console.log(`  ${name.padEnd(14)} ${String(g.pixel.points).padStart(4)} points: pixels mean ${g.pixel.mean.toFixed(1)}, 95 in 100 within ${g.pixel.p95}, worst ${g.pixel.worst}; means mean ${g.mean.mean.toFixed(2)}, 99 in 100 within ${g.mean.p99.toFixed(1)}, worst ${g.mean.worst.toFixed(1)}  ${g.ok ? "ok" : "FAIL"}`);
+    }
+    if (t) console.log(`  ${"".padEnd(14)} ${t.textured.draws} draws a frame: ${t.textured.pageMicros.toFixed(2)} us a draw in the page and ${t.textured.gpuMicros.toFixed(2)} us to the GPU's end with materials, ${t.flat.pageMicros.toFixed(2)} and ${t.flat.gpuMicros.toFixed(2)} flat`);
   }
   // The pictures of the variant this device takes first, top row first, and the rasterizer's of the house at medium.
   const save = (name: string, width: number, height: number, rgba: Uint8Array | Uint8ClampedArray): void => {

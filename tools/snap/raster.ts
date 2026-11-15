@@ -107,6 +107,21 @@ function sample(t: Texture, u: number, v: number, spread: number, out: Float64Ar
   if (level > whole) bilinear(t, top - whole - 1, u, v, level - whole, out);
 }
 
+const beside = new Float64Array(4);
+
+/**
+ * The share of a pixel of a cut-out draw that alpha to coverage covers, as SURFACE's fragment works it out: from the
+ * base colour's `alpha` there and how much it changes to the next pixel right, (ux, vx) on in the texture, and down,
+ * (uy, vy) on.
+ */
+function covered(t: Texture, alpha: number, cutoff: number, u: number, v: number, ux: number, vx: number, uy: number, vy: number, spread: number): number {
+  sample(t, u + ux, v + vx, spread, beside);
+  let change = Math.abs(beside[3]! - alpha);
+  sample(t, u + uy, v + vy, spread, beside);
+  change += Math.abs(beside[3]! - alpha);
+  return Math.min(Math.max((alpha - cutoff) / Math.max(change, 0.0001) + 0.5, 0), 1);
+}
+
 /** Puts a direction through the rotation in a bone's rows and gives it length 1. */
 function turned(m: Float64Array, from: Float32Array, at: number, out: Float32Array, to: number): void {
   const x = from[at]!, y = from[at + 1]!, z = from[at + 2]!;
@@ -179,10 +194,21 @@ export class Rasterizer {
   depthBits = 0;
   /** PICK_* per pixel. */
   readonly pickKind: Uint8Array;
-  /** Structure ref (chunk * 65536 + slot) or entity slot index. */
-  readonly pickId: Uint32Array;
+  /**
+   * For a structure or a node, its instance buffer * 65536 + its slot, which a double holds exactly for every buffer id; an
+   * entity's slot index; a far draw's slot.
+   */
+  readonly pickId: Float64Array;
   /** One more than the bone the triangle under the pixel follows. 0 where no skinned body is drawn. */
   readonly pickBone: Uint8Array;
+  /** The draw under the pixel, as the packet numbers them. -1 for the ground and the sky. */
+  readonly pickDraw: Int16Array;
+  /**
+   * How much of the pixel a cut-out draw covers as the SURFACE program's alpha to coverage has it, from the base colour's
+   * alpha and how fast it changes to the next pixel. The rasterizer keeps or drops the whole pixel by its middle, so the
+   * two pictures differ where this is under 1. 1 under anything not cut out.
+   */
+  readonly cover: Float32Array;
   trianglesDrawn = 0;
   /** The sky table a lit frame reads, as the renderer holds it on its unit: the game's, or one a test sets. */
   skyTable: Uint8Array = theSky().table;
@@ -213,8 +239,9 @@ export class Rasterizer {
   private from = 0;
   /** Triangles are drawn without the checker. */
   private plain = false;
-  /** What `pickBone` gets for the triangle being drawn. */
+  /** What `pickBone` and `pickDraw` get for the triangle being drawn. */
   private bone = 0;
+  private drawing = -1;
   /** For a draw that fades out (`drawFade`): where it is gone, and the share of that it fades over. 0 for any other. */
   private fade = 0;
   private fadeShare = 0;
@@ -253,8 +280,10 @@ export class Rasterizer {
     this.color = new Uint8ClampedArray(width * height * 4);
     this.depth = new Float32Array(width * height);
     this.pickKind = new Uint8Array(width * height);
-    this.pickId = new Uint32Array(width * height);
+    this.pickId = new Float64Array(width * height);
     this.pickBone = new Uint8Array(width * height);
+    this.pickDraw = new Int16Array(width * height);
+    this.cover = new Float32Array(width * height);
     this.deferred = new Uint16Array(width * height);
     this.deferredShade = new Float64Array(width * height);
     this.deferredAt = new Float64Array(width * height * 6);
@@ -294,6 +323,8 @@ export class Rasterizer {
     this.pickKind.fill(PICK_SKY);
     this.pickId.fill(0);
     this.pickBone.fill(0);
+    this.pickDraw.fill(-1);
+    this.cover.fill(1);
     this.trianglesDrawn = 0;
 
     this.depthSteps = (2 ** this.depthBits - 1) / 2;
@@ -441,6 +472,7 @@ export class Rasterizer {
   private terrain(p: FramePacket, range: number): void {
     const hf = this.hf;
     this.fade = 0;
+    this.drawing = -1;
     const row = TILE_QUADS + 1;
     const pos = new Float32Array(row * row * 3);
     const tint = new Uint8Array(row * row);
@@ -475,6 +507,7 @@ export class Rasterizer {
   }
 
   private draw(p: FramePacket, d: number): void {
+    this.drawing = d;
     if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) return this.textured(p, d);
     const meshIndex = p.drawMesh[d]!;
     const lod = this.decode(meshIndex, p.drawLod[d]!, p.drawSlot[d]!);
@@ -775,6 +808,8 @@ export class Rasterizer {
             this.pickKind[at] = pickKind;
             this.pickId[at] = pickId;
             this.pickBone[at] = this.bone;
+            this.pickDraw[at] = this.drawing;
+            this.cover[at] = 1;
           }
           const wx = rx + sx, wy = solid ? ry + sy : 0, wz = rz + sz;
           let shade = 1;
@@ -915,6 +950,8 @@ export class Rasterizer {
           this.pickKind[at] = pickKind;
           this.pickId[at] = pickId;
           this.pickBone[at] = bone;
+          this.pickDraw[at] = this.drawing;
+          this.cover[at] = s.cutoff > 0 ? covered(s.maps[0]!, base[3]!, s.cutoff, u, v, ux, vx, uy, vy, spread) : 1;
           sample(s.maps[1]!, u, v, spread, bump);
           sample(s.maps[2]!, u, v, spread, mro);
           sample(s.maps[3]!, u, v, spread, mask);

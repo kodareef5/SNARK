@@ -6,6 +6,7 @@
 import math
 
 import broadleaf as bl
+import far
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, length, lerp, mix, mul, rng_for, rotate, sheet, sub, tube, unit
 from layout import CUTS, FERN_SIZE, MOSS_SIZE, OAK_FERN, OAK_MOSS, SPANS
 
@@ -112,6 +113,8 @@ def interp_h(h, fork):
 
 def oak(name, lod):
     spec = SPECS[name]
+    if lod == far.LEVEL:
+        return far.broadleaf(oak(name, lod - 1), skeleton(spec)[1], (LIGHT, MID, DARK), STEM, spec["stem"] * 1.3, name)
     m = Mesh(lod <= 2)
     rng = rng_for(name, "level", lod)
     limbs, lobes = skeleton(spec)
@@ -247,4 +250,4 @@ def build(piece, lod):
 
 
 def levels(piece):
-    return 4 if piece.endswith("_depleted") else bl.LEVELS
+    return 4 if piece.endswith("_depleted") else far.LEVEL + 1
