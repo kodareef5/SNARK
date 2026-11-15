@@ -243,20 +243,20 @@ const NODES: NodeDef[] = [
   { type: "node", id: id("rubble"), mesh: "box", color: 2, half: [1.3, 0.45, 1], hits: 8, respawnHours: REGROW, material: "stone", yields: ROCK_YIELDS, xp: 1, size: [0.85, 1.15], variants: RUBBLE, footing: { reach: 4, fall: 1.85 } },
   // A metal rock, darker and veined, which a player learns to spot. It is harder than limestone, and a pick gets its ore.
   { type: "node", id: id("metal_rock"), mesh: "box", color: 4, half: [1, 0.7, 0.9], hits: 15, respawnHours: REGROW, material: "stone", yields: [{ item: "core:stone", min: 1, max: 1 }, { item: "core:ore", min: 1, max: 3, tool: true }], xp: 1, size: [0.75, 1.2], variants: METAL_ROCKS, footing: { reach: 4, fall: 1.95 } },
-  // Berry bushes, their berries red.
-  plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }], [0.8, 1.2], BUSHES),
+  // Berry bushes, their berries red. How many narcoberries each picking gives is chosen, as the wiki gives no figure.
+  plant("bush", 46, 4, [0.5, 0.4, 0.5], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 5 }, { item: "core:narcoberry", min: 0, max: 2 }], [0.8, 1.2], BUSHES),
   // Saw palmetto bears a few berries. A fern bears none.
-  plant("palmetto", 17, 4, [0.7, 0.5, 0.7], [{ item: "core:fiber", min: 3, max: 6 }, { item: "core:berry", min: 1, max: 3 }], [0.75, 1.25], PALMETTOS),
+  plant("palmetto", 17, 4, [0.7, 0.5, 0.7], [{ item: "core:fiber", min: 3, max: 6 }, { item: "core:berry", min: 1, max: 3 }, { item: "core:narcoberry", min: 0, max: 1 }], [0.75, 1.25], PALMETTOS),
   plant("fern", 7, 3, [0.45, 0.35, 0.45], [{ item: "core:fiber", min: 3, max: 6 }], [0.75, 1.3], FERNS),
   // Sea grape is a berry bush of the shore. Creeper, a mass of vine, gives fibre and nothing else.
-  plant("seagrape", 12, 4, [0.9, 0.8, 0.9], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 4 }], [0.8, 1.2], SEAGRAPES),
+  plant("seagrape", 12, 4, [0.9, 0.8, 0.9], [{ item: "core:berry", min: 3, max: 6 }, { item: "core:fiber", min: 2, max: 4 }, { item: "core:narcoberry", min: 0, max: 2 }], [0.8, 1.2], SEAGRAPES),
   plant("creeper", 16, 3, [0.8, 0.6, 0.5], [{ item: "core:fiber", min: 4, max: 8 }], [0.8, 1.25], CREEPERS),
 ];
 
 /** Levels are the reference game's. */
 const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
-  ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["berry", 5], ["meat", 1]]),
+  ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["narcoberry", 5], ["meat", 1]]),
   ...making("bow", "Bow", 10, 11, 1, 6, [["wood", 15], ["fiber", 50]]),
   ...making("arrow_stone", "Stone arrow", 10, 0, 2, 2, [["thatch", 2], ["fiber", 2], ["flint", 1]]),
   ...making("ingot", "Smelting", 20, 6, 1, 6, [["ore", 2], ["wood", 1]]),
@@ -348,6 +348,8 @@ const ALL: readonly Def[] = [
     slots: 40,
     equips: true,
     fists: 8,
+    // A punch's torpor is 1.75 times what it does.
+    fistsTorpor: 1.75,
     zones: { head: 3 },
     killXp: 10,
     // Knocked out at 200 torpor, and out for most of a minute.
@@ -413,7 +415,8 @@ const ALL: readonly Def[] = [
   // A missed arrow that did not break. It stays where it landed until someone walks over it.
   { type: "prop", class: "projectile", id: "core:arrow_stuck", mesh: "core:arrow", color: 15, radius: 0.1, height: 0.1, pitched: true },
   { type: "item", class: "resource", id: "core:fiber", stack: 300, weight: 0.01, color: 7 },
-  { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15 },
+  // A slingshot's ammunition. Its speed is chosen.
+  { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15, ammo: { damage: 14, type: "melee", speed: 35, gravity: 9.81, torpor: { instant: 1.35, over: 0, seconds: 0 }, mesh: "core:stone_shot" } },
   { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 4, water: 2 }, color: 8 },
   { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
   { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
@@ -421,7 +424,7 @@ const ALL: readonly Def[] = [
   { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
   { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
   { type: "item", class: "resource", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
-  { type: "item", class: "weapon", id: "core:pick", stack: 1, weight: 1, color: 2, tool: { on: "stone", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 16, type: "melee", uses: 60, mesh: "core:pick", hold: "tool" } },
+  { type: "item", class: "weapon", id: "core:pick", stack: 1, weight: 1, color: 2, tool: { on: "stone", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 16, type: "melee", torpor: 0.5, uses: 60, mesh: "core:pick", hold: "tool" } },
   { type: "item", class: "weapon", id: "core:hatchet", stack: 1, weight: 1, color: 5, tool: { on: "wood", power: 3, uses: 60 }, weapon: { kind: "melee", damage: 20, type: "melee", uses: 60, mesh: "core:hatchet", hold: "tool" } },
   ...GEAR,
 

@@ -415,6 +415,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   errors.push(...refFaults(input));
   const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
   const crafted = new Set(input.flatMap((d) => (d.type === "item" && d.craft ? [d.id] : [])));
+  const noAmmo = new Set(input.flatMap((d) => (d.type === "item" && !d.ammo ? [d.id] : [])));
   const taught = new Map<string, string>();
   const young = new Map<string, string>();
   for (const d of input) {
@@ -431,6 +432,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
     }
     if (d.type === "item" && d.places && d.places.length === 0) errors.push(`${d.id}: places must name at least one structure`);
+    for (const a of d.type === "item" ? (d.weapon?.ammo ?? []) : []) if (noAmmo.has(a)) errors.push(`${d.id}: "${a}" has no ammo facet, so it cannot be fired`);
     if (d.type === "item" && d.youngFor !== undefined) {
       const other = young.get(d.youngFor);
       if (other !== undefined) errors.push(`${d.id}: ${other} is already given in place of "${d.youngFor}"`);

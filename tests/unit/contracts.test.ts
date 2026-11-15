@@ -66,7 +66,8 @@ test("the new columns change nothing for content that does not use them", () => 
     if (d.type === "species" && d.tamedSprintMul === undefined) expect(reg.tamedMove[i]).toBe(reg.move[i]);
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual([0, 0, 0, 0, 0]);
     if (d.id !== "core:egg_dodo") expect(reg.drawSize[i]).toBe(1);
-    expect([reg.meleeTorpor[i], reg.feces[i], reg.propItem[i], reg.decomposeTicks[i], reg.youngItem[i]]).toEqual([0, 0, 0, 0, 0]);
+    if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
+    expect([reg.feces[i], reg.propItem[i], reg.decomposeTicks[i], reg.youngItem[i]]).toEqual([0, 0, 0, 0]);
   }
 });
 

@@ -70,6 +70,8 @@ export interface OwnContext {
   refresh(rec: EntityRecord): void;
   /** Food gives `points` of health. */
   mend(rec: EntityRecord, points: number): void;
+  /** See `Taming.dose`. */
+  dose(rec: EntityRecord, item: number, by: number): void;
   /** The item in this survivor's hands was replaced by a move, perhaps by another of its kind. It takes a moment to be ready, as a change of hotbar slot does. */
   rearm(rec: EntityRecord): void;
   /** See `Death.drop`. */
@@ -526,6 +528,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (eat.food) ctx.survival.add(rec, V_FOOD, eat.food);
     if (eat.water) ctx.survival.add(rec, V_WATER, eat.water);
     if (eat.health) ctx.mend(rec, eat.health);
+    ctx.dose(rec, item, c.pid);
     return RESULT_OK;
   });
 }

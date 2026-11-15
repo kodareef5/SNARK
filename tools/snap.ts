@@ -595,7 +595,7 @@ export function gearScene(view: ProvingView, facing: number): void {
   tiers.forEach((tier, i) => {
     for (const sex of [0, 1]) rows[0]!.push({ sex, held: weapons[(i * 2 + sex + 3) % weapons.length]!, worn: pieces.map((p) => `${tier}_${p}`) });
   });
-  weapons.forEach((w, i) => rows[1]!.push({ sex: i % 2, held: w, worn: [] }));
+  [...weapons, "club", "slingshot"].forEach((w, i) => rows[1]!.push({ sex: i % 2, held: w, worn: [] }));
   rows[1]!.push({ sex: 0, held: "", worn: ["hide_hat", "", "", "flak_pants", "cloth_boots"] });
   rows.forEach((row, j) => {
     row.forEach((b, i) => {
@@ -875,25 +875,27 @@ if (import.meta.main) {
     process.exit(0);
   }
   if (args.includes("--fight")) {
-    // A survivor faces a dummy in flak six metres off. --fight takes "punch" (up close, as the blow lands), "bow" (at full draw),
-    // "loosed" (the arrow in the air) or "rifle" (the round's tracer).
+    // A survivor faces a dummy in flak six metres off. --fight takes "punch" or "club" (up close, as the blow lands), "bow" or
+    // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air) or "rifle" (the round's tracer).
     const what = arg("fight") ?? "bow";
+    const close = what === "punch" || what === "club";
+    const sling = what === "slingshot" || what === "slung";
     const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
       const s = app.session;
       const ents = hh.world.ents;
       const e = hh.ent(s);
       const rec = hh.host.records.byPid.get(ents.pid[e]!)!;
-      const far = what === "punch" ? 1.4 : 6;
+      const far = close ? 1.4 : 6;
       const d = hh.host.spawnCreature("core:dummy", ents.x[e]!, ents.z[e]! + far, 1);
       const drec = hh.host.records.byPid.get(ents.pid[d]!)!;
       ents.yaw[d] = drec.yaw = 32768;
       for (const part of ["hat", "shirt", "gloves", "pants", "boots"]) dress(hh.host, drec, hh.reg.index.get(`core:flak_${part}`)!);
       hh.host.refreshBody(drec);
       const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
-      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : "bow";
+      const weapon = what === "rifle" ? "rifle" : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
       if (weapon !== "") {
         hh.host.items.mint(rec, k(weapon), 1);
-        hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : "arrow_stone"), 20);
+        if (weapon !== "club") hh.host.items.mint(rec, k(weapon === "rifle" ? "round_rifle" : sling ? "stone" : "arrow_stone"), 20);
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
@@ -904,14 +906,14 @@ if (import.meta.main) {
       }
       app.view.thirdPerson = args.includes("--third");
       app.controls.yaw = args.includes("--third") ? 0.5 : 0;
-      app.controls.pitch = what === "punch" ? 0.02 : -0.02;
+      app.controls.pitch = close ? 0.02 : -0.02;
       run(200);
       app.controls.mouseButton(0, true);
-      if (what === "punch") run(260);
+      if (close) run(260);
       else if (what === "rifle") run(1000 / 60);
       else {
         run(1400);
-        if (what === "loosed") {
+        if (what === "loosed" || what === "slung") {
           app.controls.mouseButton(0, false);
           run(1000 / 30);
         }
