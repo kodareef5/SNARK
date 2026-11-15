@@ -29,7 +29,7 @@ export default {
   },
   flat: 2,
   budgets: {
-    triangles: [30000, 14000, 6000, 2400, 960, 320],
+    triangles: [30000, 14000, 6000, 2400, 960, 400],
     texture: { top: 2048, megabytes: 80 },
   },
 } satisfies PiecesAsset;
