@@ -60,7 +60,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | `session.leave` | after | `pid`, `why` |  | logout and kick | `server/host.ts` | wired |
 | `session.create` | before | `name` |  | the create-character request | `server/own.ts` | wired |
 | `session.spawn` | after | `pid`, `first`, `why` |  | the first spawn, and taking a body | `server/host.ts` | wired |
-| `session.respawn` | before | `pid`, `bed`, `wait` | `wait` | the respawn-at-point request | `server/host.ts` | wired |
+| `session.respawn` | before | `pid`, `bed`, `wait` | `wait` | the respawn-at-point request | `server/beds.ts` | wired |
 | `session.admin` | after | `pid` |  | the admin-detected notice | `server/commands/core.ts` | wired |
 
 - **`session.login`.** Someone is asking to join. No body exists yet.
@@ -98,7 +98,7 @@ same purpose. ARK has no event API, so plugins hook the game's own functions.
 | --- | --- | --- | --- | --- | --- | --- |
 | `name.set` | before | `what`, `text` | `text` | name filters | `server/game.ts` | wired |
 
-- **`name.set`.** A survivor, a tribe or a creature is about to be named.
+- **`name.set`.** A survivor, a tribe, a creature or a bed is about to be named.
 
 ## Combat
 

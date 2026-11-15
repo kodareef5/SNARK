@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, RESULT_WAIT, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -13,6 +13,7 @@ import { addSettingsCommands } from "./commands/settings.ts";
 import { addClusterCommands } from "./commands/cluster.ts";
 import { Build } from "./build.ts";
 import { Fixtures } from "./fixtures.ts";
+import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Entangle } from "./entangle.ts";
@@ -28,7 +29,6 @@ import { creatureAnims } from "../shared/anim/creature.ts";
 import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
-import type { BedPoint } from "./own.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
@@ -179,6 +179,8 @@ export interface Host {
   readonly hurt: Hurt;
   /** Null unless the host was asked to keep the wild stocked, the map has spawn regions, and no -NoDinos flag is given. */
   readonly spawner: Spawner | null;
+  /** Where a survivor without a body may rise, and its choosing (server/beds.ts). */
+  readonly beds: Beds;
   /** The cluster the server is part of (-clusterid), or null for one alone. */
   readonly cluster: Cluster | null;
   /** Bodies found inside a node or a piece as their chunk or a node near them loaded, and set free (server/place.ts). */
@@ -222,8 +224,6 @@ export interface Host {
   shutdown(): void;
 }
 
-/** In ticks. After a respawn at a bed, nobody may respawn there for this long. */
-export const BED_WAIT_TICKS = 5 * 60 * TICK_RATE;
 /** One minute, in ticks. */
 const DECAY_SAVE_TICKS = 1800;
 /** How long commits have failed, in ticks, before sessions are told and before logins are refused. */
@@ -264,7 +264,6 @@ const SESSION_JOIN = event("session.join");
 const SESSION_PRESENCE = event("session.presence");
 const SESSION_LEAVE = event("session.leave");
 const SESSION_SPAWN = event("session.spawn");
-const SESSION_RESPAWN = event("session.respawn");
 const DEATH = event("death");
 const BODY_OUT = event("body.out");
 
@@ -510,7 +509,30 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   fixtures.rules = rules;
   fixtures.index();
   const stations = new Stations(world, records, items, fixtures, deadlines);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  const beds = new Beds({
+    world, game, records, tribes, fixtures, rules, bus,
+    // A death refills the survivor. One that arrives or travels comes as it left.
+    rise: (c, p, why) => {
+      const at = Number.isNaN(p.y) ? undefined : p.y;
+      if (why === CHOOSE_DIED) return death.respawn(c, p.x, p.z, p.yaw, at);
+      if (why === CHOOSE_ARRIVED && cluster) return cluster.rise(c, p.x, p.z, p.yaw, at);
+      const rec = records.byPid.get(c.pid);
+      if (!rec) return RESULT_INVALID;
+      rec.dead = false;
+      if (!game.revive(c, p.x, p.z, p.yaw, at)) {
+        rec.dead = true;
+        return RESULT_INVALID;
+      }
+      records.dirty.add(rec.pid);
+      return RESULT_OK;
+    },
+    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+    drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
+  });
+  if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
+  persistence?.sidecar("beds", beds.saved);
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  build.onPlaced = (by, ref) => beds.placed(by, ref);
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
   if (persistence && !loaded!.fresh) build.decay.restore(persistence.store.meta("decay"));
@@ -565,6 +587,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     buffs.died(rec);
     spawner?.left(rec);
     corpses.fell(rec, cause, by);
+    if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);
   };
   // Unconsciousness, an injury and any buff change how a body moves.
@@ -816,6 +839,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     focus.set(c.id, c.chunk);
     moved(-1, c.chunk);
     c.entered = true;
+    // One that joins with no body chooses where to rise, for the reason it left its body.
+    if (c.state === SESSION_DEAD) c.why = cluster?.arriving.has(c.pid) ? CHOOSE_ARRIVED : beds.whyOf(c.pid);
     // One still making its survivor is told of when it has made it.
     if (c.pid !== 0) joined(c);
     // Tribe member lists show who is online.
@@ -960,42 +985,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),
-    respawn: (c, index) => {
-      const p = c.respawnAt[index];
-      if (!p) return RESULT_INVALID;
-      // A module may refuse the place, or make the survivor wait: `wait` is seconds, and more than none refuses for now.
-      const asked = { pid: c.pid, bed: p.bed, wait: p.bed >= 0 ? Math.max(0, Math.ceil(((fixtures.find(p.bed)?.readyAt ?? 0) - world.tick) / TICK_RATE)) : 0 };
-      if (bus.before(SESSION_RESPAWN, asked) !== "") return RESULT_DENIED;
-      if (asked.wait > 0) return RESULT_WAIT;
-      // One that came from another server rises alive with what it carried; one that died comes back to life.
-      const rise = (x: number, z: number, yaw: number, y?: number): number => (cluster?.arriving.has(c.pid) ? cluster.rise(c, x, z, yaw, y) : death.respawn(c, x, z, yaw, y));
-      if (p.bed < 0) return rise(p.x, p.z, p.yaw);
-      // The bed must still stand and still belong to its tribe.
-      const bed = fixtures.find(p.bed);
-      const t = world.structs.chunks[Math.floor(p.bed / 65536)];
-      const slot = p.bed & 0xffff;
-      if (!bed || !t || world.reg.isBed[t.kind[slot]!] !== 1 || !tribes.may(records.byPid.get(c.pid), t.owner[slot]!)) return RESULT_INVALID;
-      if (bed.readyAt > world.tick) return RESULT_WAIT;
-      const code = rise(p.x, p.z, p.yaw, p.y);
-      if (code === RESULT_OK) {
-        bed.readyAt = world.tick + BED_WAIT_TICKS;
-        records.dirty.add(bed.pid);
-      }
-      return code;
-    },
+    beds,
     subject: (rec) => taming.subject(rec),
-    beds: (rec) => {
-      const out: BedPoint[] = [];
-      fixtures.each((ref, bed) => {
-        const t = world.structs.chunks[Math.floor(ref / 65536)]!;
-        const slot = ref & 0xffff;
-        const kind = t.kind[slot]!;
-        if (world.reg.isBed[kind] !== 1 || !tribes.may(rec, t.owner[slot]!)) return;
-        // The respawn point is on top of the bed, facing the way it does.
-        out.push({ ref, name: `bed at ${Math.round(t.x[slot]!)}, ${Math.round(t.z[slot]!)}`, x: t.x[slot]!, y: t.y[slot]! + world.reg.halfY[kind]!, z: t.z[slot]!, yaw: (t.yaw[slot]! / 65536) * 2 * Math.PI, wait: Math.max(0, Math.ceil((bed.readyAt - world.tick) / TICK_RATE)) });
-      });
-      return out;
-    },
     refresh: (rec) => refreshBody(rec),
     mend: (rec, points) => {
       // Health from food comes over time, at the rate of the buff that shows it, and one meal at a time.
@@ -1154,6 +1145,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     overhead,
     hurt,
     spawner,
+    beds,
     cluster,
     settled,
     online: (pid) => sessionOf(pid) !== null,

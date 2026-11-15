@@ -4,7 +4,7 @@
 import { STRUCT_UNITS } from "../shared/coords.ts";
 import type { StructureDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
+import { MAX_NAME_BYTES, TEXT_NOTICE, RESULT_DAMAGED, RESULT_DENIED, RESULT_ENEMY_NEAR, RESULT_FAR, RESULT_FULL, RESULT_INVALID, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_NO_SNAP, RESULT_NO_SUPPORT, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_TOO_HIGH, RESULT_WAIT, SESSION_ALIVE } from "../shared/net/protocol.ts";
 import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
@@ -13,7 +13,7 @@ import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, floorTop, freePose, 
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
-import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
+import { ACT_REACH, NO_PIN, PIN_TRIES, PIN_WAIT_TICKS, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../shared/world/upkeep.ts";
 import type { Fixtures } from "./fixtures.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Decay } from "./decay.ts";
@@ -48,6 +48,8 @@ export interface BuildContext {
   readonly fixtures: Fixtures;
   /** Lights the fire at a ref, or puts it out. Returns a RESULT code. */
   light(ref: number): number;
+  /** Names the bed at a ref, or travels from it (STRUCT_NAME, STRUCT_TRAVEL; server/beds.ts). Returns a RESULT code. */
+  bed(c: Client, ref: number, action: number, name: string): number;
   /** Returns a new empty cache at that place. */
   /** `owner` is the survivor a refund is for, so that its refunds share a cache and are counted as its own. */
   spill(x: number, y: number, z: number, name: string, owner?: number): EntityRecord;
@@ -59,7 +61,7 @@ const BUILD_PLACED = event("build.placed");
 const STRUCTURE_ACT = event("structure.act");
 const STRUCTURE_GONE = event("structure.gone");
 /** What is done to a piece, as a module is told it, by STRUCT_ action. And why one is gone, by GONE_ cause. */
-const ACT_WORDS: readonly string[] = ["pickup", "demolish", "repair", "lock", "unlock", "pin", "use", "light"];
+const ACT_WORDS: readonly string[] = ["pickup", "demolish", "repair", "lock", "unlock", "pin", "use", "light", "name", "travel"];
 const GONE_WORDS: readonly string[] = ["taken", "destroyed", "fell"];
 
 /** A survivor who picked up or demolished a piece is owed what stood on it. `action` says which. `cache` takes what does not fit. */
@@ -402,6 +404,7 @@ export class Build {
     const ref = r.u32();
     const action = r.u8();
     const code = action === STRUCT_PIN || action === STRUCT_USE ? r.u16() : NO_PIN;
+    const name = action === STRUCT_NAME ? r.string(MAX_NAME_BYTES) : "";
     if (r.overflow) return RESULT_INVALID;
     const { world, records, items, tribes, rules, fixtures } = this.ctx;
     const reg = world.reg;
@@ -438,6 +441,11 @@ export class Build {
       if (reg.lights[kind] === 0) return RESULT_INVALID;
       return mine ? this.ctx.light(ref) : RESULT_NOT_YOURS;
     }
+    if (action === STRUCT_NAME || action === STRUCT_TRAVEL) {
+      if (reg.isBed[kind] !== 1) return RESULT_INVALID;
+      if (!mine) return RESULT_NOT_YOURS;
+      return this.inSight(e, ref, x, y, z) ? this.ctx.bed(c, ref, action, name) : RESULT_FAR;
+    }
     if (action === STRUCT_LOCK || action === STRUCT_UNLOCK || action === STRUCT_PIN) {
       if (reg.opens[kind] === 0 && reg.structSlots[kind] === 0) return RESULT_INVALID;
       if (!mine) return RESULT_NOT_YOURS;
@@ -457,6 +465,8 @@ export class Build {
       if (item === 0) return RESULT_INVALID;
       if (t.hp[slot]! < reg.maxHp[kind]!) return RESULT_DAMAGED;
       if ((fixtures.find(ref)?.inv?.used() ?? 0) > 0) return RESULT_NOT_EMPTY;
+      // Ascended's fix (36.8): a bed is not picked up while it waits, which would set it down again ready.
+      if (reg.isBed[kind] === 1 && (fixtures.find(ref)?.readyAt ?? 0) > tick) return RESULT_WAIT;
       const window = rules.on("AlwaysAllowStructurePickup") ? 0 : rules.num("StructurePickupTimeAfterPlacement") * TICK_RATE;
       if (window > 0 && !(tick - (this.placedAt.get(ref) ?? -Infinity) <= window)) return RESULT_WAIT;
       if (items.mint(rec, item, 1) === 0) return RESULT_FULL;
@@ -617,6 +627,8 @@ export class Build {
       const px = x / STRUCT_UNITS;
       const pz = z / STRUCT_UNITS;
       if (!(px > 2 && pz > 2 && px < world.hf.sizeX - 2 && pz < world.hf.sizeZ - 2)) return RESULT_INVALID;
+      // A bed is set on a foundation or a ceiling, as in ARK. A sleeping bag goes where a campfire does.
+      if ((reg.defs[kind] as StructureDef).floor === true) return RESULT_NO_SNAP;
       if (!freePose((gx, gz) => world.hf.heightAt(gx, gz), reg, kind, px, pz, yaw, lift, pose)) return RESULT_NO_SNAP;
     } else {
       const t = structs.chunks[Math.floor(target / 65536)];

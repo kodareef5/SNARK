@@ -11,10 +11,11 @@ import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand } from "./hud.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { UiFrame } from "./nodes.ts";
-import { RespawnScreen, buildMap } from "./screens.ts";
+import { buildMap } from "./screens.ts";
+import { ChoosingScreen, KEY_CHOOSE_FILTER } from "./choosing.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsClick } from "./settings.ts";
-import { StructMenu } from "./structure.ts";
+import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { TravelScreen } from "./travel.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
@@ -29,7 +30,7 @@ export class Ui {
   readonly inventory = new InventoryScreen();
   readonly creator = new CreatorScreen();
   readonly sheet = new CharacterScreen();
-  readonly respawn = new RespawnScreen();
+  readonly choosing = new ChoosingScreen();
   readonly structure = new StructMenu();
   readonly naming = new NamePrompt();
   /** The other servers of the cluster, opened at an obelisk's terminal. */
@@ -41,7 +42,7 @@ export class Ui {
   character = false;
   options = false;
   readonly settings = new Settings();
-  /** The session is dead and choosing where to respawn, so the mouse is free. */
+  /** The session has no body and chooses where to rise, so the mouse is free. */
   private dead = false;
   /** The app sets both once it has them. */
   registry: Registry | null = null;
@@ -49,7 +50,7 @@ export class Ui {
 
   /** A text field has the keyboard, so keys must not also drive the body. */
   get captureKeyboard(): boolean {
-    return this.console.open || this.chat.open || this.naming.open;
+    return this.console.open || this.chat.open || this.naming.open || this.structure.naming || this.choosing.filtering;
   }
 
   /** True when the mouse should steer the camera, with the shell holding pointer lock. */
@@ -63,6 +64,8 @@ export class Ui {
     const chat = this.chat;
     // The name prompt has the keyboard until it is answered.
     if (this.naming.open && !con.open) return this.naming.key(code, down, repeat, session);
+    if (this.structure.naming && !con.open) return this.structure.key(code, down, repeat, session);
+    if (this.choosing.filtering && !con.open) return this.choosing.key(code, down, repeat);
     if (chat.open && !con.open) {
       // The chat box has the keyboard. It handles Enter, Escape and Tab, and every other key is typing.
       if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape" && code !== "Tab") return false;
@@ -135,17 +138,17 @@ export class Ui {
   }
 
   /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
-  pointer(kind: number, key: number, _x: number, _y: number, button: number, session: ClientSession | null): void {
+  pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null): void {
     if (!session || this.console.open) return;
     if (kind === 0 && key === KEY_CHAT_TAG) {
       this.chat.cycle(session);
       return;
     }
     if (this.creating) {
-      this.creator.pointer(kind, key, _x, session);
+      this.creator.pointer(kind, key, x, session);
       return;
     }
-    if (kind === 0 && this.respawn.click(key, session)) return;
+    if (kind === 0 && this.choosing.click(key, x, y, session)) return;
     if (kind === 0 && this.structure.click(key, session)) return;
     if (kind === 0 && this.character && this.registry && this.sheet.click(key, session, this.registry)) return;
     if (kind === 0 && this.options && settingsClick(key, this.settings)) return;
@@ -155,6 +158,8 @@ export class Ui {
 
   input(key: number, value: string): void {
     if (key === KEY_NAME_INPUT) this.naming.edit(value);
+    else if (key === KEY_STRUCT_NAME_INPUT) this.structure.edit(value);
+    else if (key === KEY_CHOOSE_FILTER) this.choosing.edit(value);
     else if (key === KEY_CONSOLE_INPUT) this.console.edit(value);
     else if (key === KEY_CHAT_INPUT) this.chat.edit(value);
   }
@@ -179,9 +184,14 @@ export class Ui {
     // While the console or the chat box is open, the screen under it is not built, so nothing clickable hides behind either.
     this.dead = session?.sessionState === SESSION_DEAD;
     if (this.dead || this.creating) this.structure.close();
+    // The filter is for one spell of choosing.
+    if (!this.dead && (this.choosing.filtering || this.choosing.filter !== "")) {
+      this.choosing.filtering = false;
+      this.choosing.edit("");
+    }
     if (!this.console.open && !this.chat.open) {
       if (this.creating && session) this.creator.build(f, this.palette, session.name);
-      else if (this.dead && session) this.respawn.build(f, session);
+      else if (this.dead && session) this.choosing.build(f, session, hud);
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
       else if (this.options) buildSettings(f, this.settings, hud.micLevel);

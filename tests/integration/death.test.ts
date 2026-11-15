@@ -102,7 +102,7 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   const food = sv.value(rec, V_FOOD);
   pilot.moveZ = 1;
   s.command(CMD_USE, (w) => (w.varint(0), w.u16(id("core:berry"))));
-  s.command(CMD_RESPAWN, (w) => w.u8(9)); // no such place
+  s.command(CMD_RESPAWN, (w) => (w.u8(9), w.u8(s.placesList))); // no such place
   h.run(3000);
   pilot.moveZ = 0;
   expect(codes).toEqual([RESULT_DENIED, RESULT_INVALID]);
@@ -113,7 +113,7 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
 
   // Respawn at the second place offered.
   codes.length = 0;
-  s.command(CMD_RESPAWN, (w) => w.u8(1));
+  s.command(CMD_RESPAWN, (w) => (w.u8(1), w.u8(s.placesList)));
   h.run(500);
   expect(codes).toEqual([RESULT_OK]);
   expect(s.sessionState).toBe(SESSION_ALIVE);
@@ -123,7 +123,7 @@ test("a death moves everything to a cache in one step; the survivor returns, fin
   expect(sv.value(rec, V_HEALTH)).toBe(100);
   expect(rec.dead).toBe(false);
   expect(items.inv(rec).used()).toBe(0);
-  s.command(CMD_RESPAWN, (w) => w.u8(0)); // alive, so there is nothing to respawn from
+  s.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(s.placesList))); // alive, so there is nothing to respawn from
   h.run(200);
   expect(codes).toEqual([RESULT_OK, RESULT_INVALID]);
 
@@ -262,7 +262,7 @@ test("drowning kills, the death is journalled, and a restart keeps the dead dead
   expect(again.markers).toEqual([marker]);
   expect(again.respawnPoints.length).toBe(3);
   expect(h2.world.ents.count).toBe(1);
-  again.command(CMD_RESPAWN, (w) => w.u8(0));
+  again.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(again.placesList)));
   h2.run(500);
   expect(again.sessionState).toBe(SESSION_ALIVE);
   expect(h2.host.survival.value(rec2, V_HEALTH)).toBe(100);

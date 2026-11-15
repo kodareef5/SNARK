@@ -102,8 +102,6 @@ async function main(): Promise<void> {
   let trip: { ticket: Uint8Array; from: string; to: string; refused: string } | null = null;
   /** The cluster as the server last listed it for a trip. */
   let cluster: ClusterList | null = null;
-  /** The map's spawn points: the spawn screen lists them first, then the tribe's beds. */
-  let spawns = 1;
 
   const enter = async (): Promise<void> => {
     joining = true;
@@ -118,7 +116,6 @@ async function main(): Promise<void> {
       // It names its map's file, which holds the ground and where the trees and rocks stand.
       const named = (await (await get("map.json")).json()) as { file: string };
       const map = parseMap(new Uint8Array(await (await get(named.file)).arrayBuffer()));
-      spawns = map.spawns.length;
       const hf = mapHeightfield(map);
       const ticket = trip && trip.refused === "" ? trip.ticket : null;
       const session = new ClientSession(connect(url), {
@@ -236,10 +233,12 @@ async function main(): Promise<void> {
         for (let i = 0; i < 50 && going.refused === "" && here.session.sessionState !== SESSION_ALIVE && here.session.respawnPoints.length === 0; i++) await Bun.sleep(100);
         if (going.refused === "" && here.session.arriving) {
           const places = here.session.respawnPoints;
-          const named = riseAt(places, spawns, want);
-          const index = named >= 0 ? named : riseAt(places, spawns);
+          const tick = here.session.serverTick;
+          const named = riseAt(places, tick, want);
+          const index = named >= 0 ? named : riseAt(places, tick);
           rose = places[index]?.name ?? "";
-          here.session.command(CMD_RESPAWN, (w) => w.u8(index));
+          const list = here.session.placesList;
+          here.session.command(CMD_RESPAWN, (w) => (w.u8(index), w.u8(list)));
           for (let i = 0; i < 50 && here.session.sessionState !== SESSION_ALIVE; i++) await Bun.sleep(100);
         }
         // What it carries is told just after the welcome; the answer waits for it, a few seconds at most.

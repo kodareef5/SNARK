@@ -43,6 +43,8 @@ import {
   OWN_STATION,
   OWN_PROGRESSION,
   OWN_RESPAWN,
+  CHOOSE_ARRIVED,
+  CHOOSE_DIED,
   OWN_SESSION,
   OWN_SLOTS,
   OWN_VITALS,
@@ -89,7 +91,7 @@ import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
-import { V_COUNT, V_HEALTH, Vitals } from "../../shared/sim/vitals.ts";
+import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
@@ -327,9 +329,9 @@ export class ClientSession {
   logVersion = 0;
   /** Values at a tick and their rates, as the server last sent them. Evaluate with `vitals.at(i, serverTick)`. */
   readonly vitals = new Vitals();
-  /** It came from another server of the cluster and chooses where to rise: bodiless as the dead are, and alive (Cluster.arriving). */
+  /** It came from another server of the cluster and chooses where to rise, as the server says (CHOOSE_ARRIVED). */
   get arriving(): boolean {
-    return this.sessionState === SESSION_DEAD && this.vitals.max[V_HEALTH]! > 0 && this.vitals.value[V_HEALTH]! > 0;
+    return this.sessionState === SESSION_DEAD && this.choosing === CHOOSE_ARRIVED;
   }
   hasVitals = false;
   /** Oldest first. Falling.absorb empties it. */
@@ -372,8 +374,14 @@ export class ClientSession {
   station: { kind: number; jobs: { item: number; left: number; doneAt: number }[] } | null = null;
   /** Oldest first. */
   readonly markers: { kind: number; x: number; y: number; z: number; tick: number }[] = [];
-  /** The world's respawn points, then the tribe's beds. wait is in seconds. */
-  readonly respawnPoints: { name: string; x: number; z: number; wait: number }[] = [];
+  /**
+   * While the survivor has no body: the map's spawn points, then its tribe's beds. `kind` is the bed's structure kind (0 for a
+   * spawn point), `readyAt` the tick it may be risen at from (0 for now). `choosing` says why (CHOOSE_), and `placesList` is the
+   * list's number, which a choice names.
+   */
+  readonly respawnPoints: { kind: number; name: string; x: number; z: number; readyAt: number }[] = [];
+  choosing = CHOOSE_DIED;
+  placesList = 0;
   /** The map beyond the view: structure cells and marks, as the server sends them. */
   readonly tactical = new MapStore();
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
@@ -840,6 +848,11 @@ export class ClientSession {
       const dayOffset = r.u32();
       if (r.overflow) return;
       this.sessionState = state;
+      // A survivor with a body has no places to choose among. The list of the next spell without one follows this message.
+      if (state !== SESSION_DEAD) {
+        this.respawnPoints.length = 0;
+        this.choosing = CHOOSE_DIED;
+      }
       this.admin = admin;
       this.ownHandle = handle;
       this.dayOffset = dayOffset;
@@ -1007,10 +1020,14 @@ export class ClientSession {
       p.jobs = jobs;
       p.version++;
     } else if (component === OWN_RESPAWN) {
+      const why = r.u8();
+      const number = r.u8();
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), wait: r.u16() });
+      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
       if (r.overflow) return;
+      this.choosing = why;
+      this.placesList = number;
       this.respawnPoints.length = 0;
       this.respawnPoints.push(...list);
     }

@@ -3,11 +3,12 @@
 
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
-import { CMD_STRUCT, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
-import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
+import { CMD_STRUCT, MAX_NAME_BYTES, RESULT_DAMAGED, RESULT_DENIED, RESULT_FAR, RESULT_FULL, RESULT_LOCKED, RESULT_NOT_EMPTY, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, RESULT_PIN, RESULT_SHORT, RESULT_WAIT } from "../../../shared/net/protocol.ts";
+import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_LOCK, STRUCT_NAME, STRUCT_PICKUP, STRUCT_PIN, STRUCT_REPAIR, STRUCT_TRAVEL, STRUCT_UNLOCK, STRUCT_USE, cost, refundOf, repairCostOf } from "../../../shared/world/upkeep.ts";
+import { fitBytes } from "./tame.ts";
 import type { ClientSession } from "../session.ts";
-import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BUTTON, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
+import { K_BUTTON, K_INPUT, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import { S_BUTTON, S_INPUT, S_LABEL, S_PANEL, S_TITLE } from "./style.ts";
 
 export const KEY_STRUCT_PANEL = 2400;
 export const KEY_STRUCT_TITLE = 2401;
@@ -21,9 +22,17 @@ export const KEY_PIN_TITLE = 2431;
 export const KEY_PIN_DIGITS = 2432;
 export const KEY_PIN_BUTTON = 2440;
 export const KEY_PIN_CLEAR = 2450;
+/** The field a bed's name is typed in, on the PIN panel's place. */
+export const KEY_STRUCT_NAME_INPUT = 2451;
 
-/** Actions in listed order. Digit n + 1 chooses LISTED[n]. Those after STRUCT_DEMOLISH need a piece that can be used. */
-const LISTED = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH, STRUCT_LOCK, STRUCT_UNLOCK, STRUCT_PIN, STRUCT_LIGHT] as const;
+/** The actions a piece of `kind` lists, in order: digit n + 1 chooses the nth. */
+export function actionsOf(reg: Registry, kind: number): number[] {
+  const out = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH];
+  if (reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) out.push(STRUCT_LOCK, STRUCT_UNLOCK, STRUCT_PIN);
+  if ((reg.opens[kind] !== 0 || reg.structSlots[kind] !== 0) && reg.lights[kind] !== 0) out.push(STRUCT_LIGHT);
+  if (reg.isBed[kind] === 1) out.push(STRUCT_NAME, STRUCT_TRAVEL);
+  return out;
+}
 
 /** The message for each RESULT code the server refuses a piece action with. */
 export const STRUCT_REASONS: Readonly<Record<number, string>> = {
@@ -67,11 +76,13 @@ export class StructMenu {
   ref = -1;
   /** The server's last refusal, shown under the crosshair until tick() clears it. */
   notice = "";
-  /** STRUCT_USE while asking for a PIN to get in, STRUCT_PIN while setting one, else 0. */
+  /** STRUCT_USE while asking for a PIN to get in, STRUCT_PIN while setting one, STRUCT_NAME while a bed's name is typed, else 0. */
   pad = 0;
   digits = "";
-  /** Actions the list showed at the last build. */
-  private lines = 3;
+  /** The name typed so far. */
+  typed = "";
+  /** Actions the list showed at the last build, in order. */
+  private actions: number[] = [STRUCT_PICKUP, STRUCT_REPAIR, STRUCT_DEMOLISH];
   private noticeUntil = 0;
   private asked = 0;
   private askedRef = -1;
@@ -105,16 +116,27 @@ export class StructMenu {
       w.u32(ref);
       w.u8(action);
       if (action === STRUCT_PIN || action === STRUCT_USE) w.u16(pin);
+      if (action === STRUCT_NAME) w.string(this.typed.trim());
     });
   }
 
-  /** `n` indexes LISTED. Setting a PIN asks for the digits first. */
+  /** The bed's name field has the keyboard. */
+  get naming(): boolean {
+    return this.open && this.pad === STRUCT_NAME;
+  }
+
+  edit(value: string): void {
+    this.typed = fitBytes(value, MAX_NAME_BYTES);
+  }
+
+  /** `n` indexes the actions listed. Setting a PIN asks for the digits first, and naming a bed for the name. */
   choose(n: number, session: ClientSession): void {
-    const action = LISTED[n];
-    if (!this.open || this.pad !== 0 || action === undefined || n >= this.lines) return;
-    if (action === STRUCT_PIN) {
-      this.pad = STRUCT_PIN;
+    const action = this.actions[n];
+    if (!this.open || this.pad !== 0 || action === undefined) return;
+    if (action === STRUCT_PIN || action === STRUCT_NAME) {
+      this.pad = action;
       this.digits = "";
+      this.typed = "";
       return;
     }
     this.send(session, this.ref, action);
@@ -132,6 +154,13 @@ export class StructMenu {
   /** Returns true if the panel used the key. */
   key(code: string, down: boolean, repeat: boolean, session: ClientSession | null): boolean {
     if (!this.open) return false;
+    if (this.pad === STRUCT_NAME) {
+      // The field has the keyboard: Enter names the bed, Escape gives up, and every other key is typing.
+      if (code !== "Enter" && code !== "NumpadEnter" && code !== "Escape") return false;
+      if (down && !repeat && session && code !== "Escape") this.send(session, this.ref, STRUCT_NAME);
+      if (down && !repeat) this.close();
+      return true;
+    }
     const digit = /^(?:Digit|Numpad)(\d)$/.exec(code);
     if (digit) {
       if (!down || repeat || !session) return true;
@@ -165,7 +194,7 @@ export class StructMenu {
       return true;
     }
     const n = key - KEY_STRUCT_BUTTON;
-    if (n < 0 || n >= LISTED.length) return false;
+    if (n < 0 || n >= this.actions.length) return false;
     this.choose(n, session);
     return true;
   }
@@ -219,6 +248,19 @@ export class StructMenu {
     const labelH = lineHeight(S_LABEL);
     const rowH = 28;
     const pad = 12;
+    if (this.pad === STRUCT_NAME) {
+      const h = pad * 2 + titleH + labelH + 8 + rowH;
+      const x = Math.round((f.width - w) / 2);
+      const y = Math.round(Math.min(f.height - h - 8, f.height / 2 + 40));
+      f.add(KEY_PIN_PANEL, K_PANEL, x, y, w, h, S_PANEL);
+      f.text(KEY_PIN_TITLE, x + pad, y + pad, w - pad * 2, S_TITLE, `Name the ${structName(reg, kind)}`);
+      f.text(KEY_PIN_DIGITS, x + pad, y + pad + titleH, w - pad * 2, S_LABEL, "Its tribe sees it by this name. Enter to keep it.");
+      const field = f.add(KEY_STRUCT_NAME_INPUT, K_INPUT, x + pad, y + pad + titleH + labelH + 8, w - pad * 2, rowH, S_INPUT);
+      field.text = this.typed;
+      field.interactive = true;
+      field.focus = true;
+      return;
+    }
     if (this.pad !== 0) {
       const cell = Math.floor((w - pad * 2 - 4 * 4) / 5);
       const h = pad * 2 + titleH + labelH + 8 + 2 * (rowH + 4) + (this.pad === STRUCT_PIN ? rowH + 4 : 0);
@@ -239,21 +281,20 @@ export class StructMenu {
       }
       return;
     }
-    const lines = ["1  Take it back", "2  Mend it", "3  Take it down"];
-    const details = [
-      hp < max ? "not while it is damaged" : "into your hands, as it was",
-      repairCostOf(reg, kind, hp) ? `costs ${listed(reg)}` : "it is whole",
-      refundOf(reg, kind) && cost.n > 0 ? `gives ${listed(reg)}` : "gives nothing back",
-    ];
-    if (usable) {
-      lines.push("4  Lock it", "5  Unlock it", "6  Give it a PIN");
-      details.push("for your tribe alone", "for anyone", "four digits let others in");
-    }
-    if (usable && reg.lights[kind] !== 0) {
-      lines.push(reg.burning[kind] === 1 ? "7  Put it out" : "7  Light it");
-      details.push(reg.burning[kind] === 1 ? "what is half cooked starts again" : "it burns what fuel lies on it");
-    }
-    this.lines = lines.length;
+    this.actions = actionsOf(reg, kind);
+    const said: Record<number, [string, string]> = {
+      [STRUCT_PICKUP]: ["Take it back", hp < max ? "not while it is damaged" : "into your hands, as it was"],
+      [STRUCT_REPAIR]: ["Mend it", repairCostOf(reg, kind, hp) ? `costs ${listed(reg)}` : "it is whole"],
+      [STRUCT_DEMOLISH]: ["Take it down", refundOf(reg, kind) && cost.n > 0 ? `gives ${listed(reg)}` : "gives nothing back"],
+      [STRUCT_LOCK]: ["Lock it", "for your tribe alone"],
+      [STRUCT_UNLOCK]: ["Unlock it", "for anyone"],
+      [STRUCT_PIN]: ["Give it a PIN", "four digits let others in"],
+      [STRUCT_LIGHT]: reg.burning[kind] === 1 ? ["Put it out", "what is half cooked starts again"] : ["Light it", "it burns what fuel lies on it"],
+      [STRUCT_NAME]: ["Name it", "as its tribe sees it on the map"],
+      [STRUCT_TRAVEL]: ["Travel from it", "to another of your tribe's beds"],
+    };
+    const lines = this.actions.map((a, i) => `${i + 1}  ${said[a]![0]}`);
+    const details = this.actions.map((a) => said[a]![1]);
     const step = rowH + labelH + 8;
     const h = pad * 2 + titleH + labelH + 8 + lines.length * step;
     // Beside the crosshair where there is room, else under it.
