@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 41 classes: 28 built, 5 partly built, and 8 stubs that
-wait for a feature. The core pack holds 617 definitions, and 87 renames of ids
+wait for a feature. The core pack holds 621 definitions, and 87 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -32,7 +32,7 @@ share a `tag`.
 | `item/resource` | PrimalItemResource_ | built | `stack` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `fuel`, `burnsInto`, `spoilHours`, `spoilsInto`, `youngFor`, `ammo` | 20 |
 | `item/consumable` | PrimalItemConsumable_ | built | `stack`; one of `eat`, `dose`, `use` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `eat`, `dose`, `spoilHours`, `spoilsInto`, `cooks`, `fuel`, `burnsInto`, `youngFor`, `use` | 9 |
 | `item/weapon` | PrimalItem_Weapon | built | `stack`, `weapon` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `tool`, `ammo` | 15 |
-| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 8 |
+| `item/ammo` | PrimalItemAmmo_ | built | `stack`, `ammo` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels`, `spoilHours`, `spoilsInto` | 8 |
 | `item/attachment` | item type WeaponAttachment | built | `stack`, `attachment` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 4 |
 | `item/equipment` | item type Equipment | a group |  |  |  |
 | `item/armor` | PrimalItemArmor_, hat to boots | built | `stack`, `wear` | `weight`, `label`, `color`, `craft`, `description`, `folder`, `blueprint`, `decomposeHours`, `travels` | 20 |
@@ -197,7 +197,7 @@ ARK's names: `takes` is the structure settings' damage by type; `decayDays` is D
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted`, `footing` | 14 |
+| `node` | a foliage type and its harvest component | built | `mesh`, `color`, `half`, `hits`, `respawnHours`, `yields`, `xp` | `top`, `soft`, `material`, `variants`, `size`, `depleted`, `footing`, `sea` | 18 |
 
 - **`node`** on shelf `nodes`. A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place.
 
@@ -340,7 +340,7 @@ built.
 - **Taming bonuses in a tame's stats, passive taming, mate boost, unfertilised eggs.** `species.tameBonus`, `species.tamedHealth`.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot` (partly built), `species.loot`.
-- **Flyers.** `species.bite.stamina`, `species.fly`, `species.grab`, `species.defendsEgg`, `species.riderWeight`, `species.missiles`, `species.structures`.
+- **Flyers.** `species.grab`, `species.defendsEgg`, `species.missiles`, `species.structures`.
 - **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
 - **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built), `item.burnsInto`, `item.craft.fired`, `structure.cooks`, `structure.keeps`, `structure.powered`, `structure.dry`.
@@ -393,7 +393,7 @@ built.
 
 **`material`** (4): mat_thatch, mat_wood, mat_stone, mat_metal.
 
-**`node`** (14): tree, palm, fig, oak, banyan, mangrove, rock, rubble, metal_rock, bush, palmetto, fern, seagrape, creeper.
+**`node`** (18): oil_rock, crystal_rock, obsidian_rock, clam, tree, palm, fig, oak, banyan, mangrove, rock, rubble, metal_rock, bush, palmetto, fern, seagrape, creeper.
 
 **`prop/container`** (4): corpse, feces, cache, bag.
 

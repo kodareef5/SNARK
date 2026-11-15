@@ -61,13 +61,13 @@ import {
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
-import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
+import { FISTS, actionOut, biteCost, stepAction } from "../shared/sim/weapon.ts";
 import { stepAim } from "../shared/sim/aim.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { GONE_TAKEN, RECENT } from "../shared/world/structures.ts";
 import { sortU32 } from "../shared/sort.ts";
-import { groundUnder } from "../shared/world/collide.ts";
+import { groundStands, groundUnder } from "../shared/world/collide.ts";
 import type { ChunkTable } from "../shared/world/structures.ts";
 import { Guesses } from "./guesses.ts";
 import { freeAt, freePlace, placeFree } from "./place.ts";
@@ -158,6 +158,8 @@ export const DID_STRIKE = 1;
 export const DID_BITE = 8;
 export const DID_FIRE = 2;
 export const DID_RELOAD = 4;
+/** The flyer it drives began a barrel roll. */
+export const DID_ROLL = 16;
 
 /** Read every argument and check r.overflow before acting. Returns a RESULT code. */
 export type CommandHandler = (c: Client, r: BitReader) => number;
@@ -390,6 +392,8 @@ export class GameServer {
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
   onMountLand: ((e: number, speed: number) => void) | null = null;
+  /** A driven flyer `e` took off, set down from flight or began a barrel roll this tick, as stepOut still says. */
+  onMountFlight: ((e: number) => void) | null = null;
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -506,11 +510,14 @@ export class GameServer {
           if (jaws) {
             stepAction(b, c.heldButtons, c.pressed, jaws);
             if (actionOut.strike) c.did = DID_BITE;
+            biteCost(b, world.reg.biteStamina[b.kind]!);
           }
+          if (stepOut.rolled) c.did |= DID_ROLL;
         }
         ents.storeBody(e, b);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
+        if (driving && (stepOut.tookOff || stepOut.setDown || stepOut.rolled)) this.onMountFlight?.(e);
         if (stepOut.landSpeed > 0) {
           if (driving) this.onMountLand?.(e, stepOut.landSpeed);
           else this.onLand?.(c, stepOut.landSpeed);
@@ -727,23 +734,26 @@ export class GameServer {
     let y = 0;
     let yaw = at ? at.yaw : world.spawn.yaw;
     // A place on the ground, or one saved before bodies stood on their lower sphere, is lifted to where the body rests there.
-    // A bed is stood on as it is.
+    // A bed is stood on as it is. A spawn point on ground too steep to stand on is taken as taken.
     const wantY = want ? (exact ? want.y : Math.max(want.y, groundUnder(world.hf, want.x, want.z, p.radius))) : 0;
-    if (want && placeFree(world, want.x, wantY, want.z, p.radius, p.height) && (exact || !(at && this.occupied(want.x, wantY, want.z)))) {
+    const slides = want !== null && !exact && wantY === groundUnder(world.hf, want.x, want.z, p.radius) && !groundStands(p.slopeCos);
+    if (want && placeFree(world, want.x, wantY, want.z, p.radius, p.height) && (exact || !(at && (slides || this.occupied(want.x, wantY, want.z))))) {
       x = want.x;
       y = wantY;
       z = want.z;
       yaw = want.yaw;
-    } else if (saved && freePlace(world, saved.x, wantY, saved.z, p.radius, p.height, saved.team ?? 0, p.stepUp)) {
+    } else if (saved && freePlace(world, saved.x, wantY, saved.z, p.radius, p.height, saved.team ?? 0, p.stepUp, p.slopeCos)) {
       x = freeAt.x;
       y = freeAt.y;
       z = freeAt.z;
       yaw = saved.yaw;
     } else {
       if (exact) return false;
-      // First free spot on rings around the place, else the first that only another body is in.
+      // First free spot on rings around the place that is not too steep to stand on, else the first that only another body is
+      // in, else the first where it would slide.
       let free = false;
       let beside = false;
+      let besideStands = false;
       let bx = 0;
       let bz = 0;
       for (let k = 0; k < 96 && !free; k++) {
@@ -752,10 +762,12 @@ export class GameServer {
         x = cx + detSin(a) * ring * 1.5;
         z = cz + detCos(a) * ring * 1.5;
         y = groundUnder(world.hf, x, z, p.radius);
+        const stands = groundStands(p.slopeCos);
         if (!placeFree(world, x, y, z, p.radius, p.height)) continue;
-        free = !this.occupied(x, y, z);
-        if (!free && !beside) {
+        free = stands && !this.occupied(x, y, z);
+        if (!free && (!beside || (stands && !besideStands))) {
           beside = true;
+          besideStands = stands;
           bx = x;
           bz = z;
         }

@@ -19,6 +19,7 @@ import {
   MARGIN_UNKNOWN,
   MAX_CLIENT_MESSAGE,
   MAX_NAME_BYTES,
+  MAX_PLACE_NAME_BYTES,
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   CMD_CREATE,
@@ -87,7 +88,7 @@ import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
-import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
+import { FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -404,6 +405,13 @@ export class ClientSession {
   private readonly died = new Map<number, number>();
   private readonly dying: number[] = [];
   onResult: ((seq: number, code: number) => void) | null = null;
+  /**
+   * Told of each structure row a snapshot changes in a chunk already whole: its kind before and after (0 where there is
+   * none), where, its health before and after, and for a removal its GONE_ cause (else -1). For sound only.
+   */
+  onStructure: ((was: number, kind: number, x: number, y: number, z: number, hpWas: number, hp: number, cause: number) => void) | null = null;
+  /** Told of each node used up (true) or grown back (false) in a chunk whose nodes were known before. For sound only. */
+  onNode: ((chunk: number, index: number, used: boolean) => void) | null = null;
   /** Predicted local body after the latest simulated tick. */
   readonly own = new Body();
   /** One tick earlier, for render interpolation. */
@@ -718,6 +726,7 @@ export class ClientSession {
       if (jaws) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
         stepAction(this.own, buttons, buttons & ~was, jaws);
+        biteCost(this.own, this.registry.biteStamina[this.own.kind]!);
       }
       this.bodies[t & (HISTORY - 1)]!.copy(this.own);
       this.bodyTick[t & (HISTORY - 1)] = t;
@@ -812,10 +821,17 @@ export class ClientSession {
     for (let k = 0; k < count; k++) gone.push(r.u8());
     const field = this.nodeField;
     if (r.overflow || !field) return;
+    const known = this.nodeGone.has(chunk);
     const before = this.nodeGone.get(chunk) ?? [];
     this.nodeGone.set(chunk, gone);
-    for (const i of before) if (!gone.includes(i)) field.set(chunk, i, true);
-    for (const i of gone) if (!before.includes(i)) field.set(chunk, i, false);
+    for (const i of before) if (!gone.includes(i)) {
+      field.set(chunk, i, true);
+      if (known) this.onNode?.(chunk, i, false);
+    }
+    for (const i of gone) if (!before.includes(i)) {
+      field.set(chunk, i, false);
+      if (known) this.onNode?.(chunk, i, true);
+    }
     this.nodeChanges?.touch(chunk);
   }
 
@@ -1032,7 +1048,7 @@ export class ClientSession {
       const number = r.u8();
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
+      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_PLACE_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
       if (r.overflow) return;
       this.choosing = why;
       this.placesList = number;
@@ -1323,11 +1339,18 @@ export class ClientSession {
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
     const kinds = this.registry.defs.length;
+    const told = this.onStructure && this.whole[chunk] === 1 ? this.onStructure : null;
+    const rows = world.structs.chunks[chunk];
     for (let i = 0; i < count; i++) {
       const slot = r.u16();
       const kind = r.u16();
+      const was = told && rows && slot < rows.high ? rows.kind[slot]! : 0;
+      const hpWas = was !== 0 ? rows!.hp[slot]! : 0;
       if (kind === 0) {
-        if (!r.overflow) world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
+        if (!r.overflow) {
+          if (told && was !== 0) told(was, 0, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, 0, GONE_TAKEN);
+          world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
+        }
         continue;
       }
       const x = x0 + r.bits(15) / STRUCT_UNITS;
@@ -1337,6 +1360,7 @@ export class ClientSession {
       const owner = r.varint();
       const hp = r.f32();
       if (r.overflow || kind >= kinds) return;
+      if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
       world.structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
     }
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
@@ -1357,6 +1381,7 @@ export class ClientSession {
         if (r.overflow || !t || first < 0) break;
         for (let slot = first; slot <= first + more && slot < t.high; slot++) {
           if (t.kind[slot] === 0 || t.mod[slot]! >= at) continue;
+          this.onStructure?.(t.kind[slot]!, 0, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.hp[slot]!, 0, cause);
           if (told) {
             if (this.rubble.length >= MAX_RUBBLE_QUEUED) this.rubble.shift();
             this.rubble.push({ kind: t.kind[slot]!, x: t.x[slot]!, y: t.y[slot]!, z: t.z[slot]!, yaw: t.yaw[slot]!, cause, ox, oy, oz, tick });

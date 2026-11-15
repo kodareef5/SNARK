@@ -11,7 +11,7 @@ import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
-import { stanceEye } from "../../shared/sim/character.ts";
+import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -48,6 +48,13 @@ import { waitWords } from "./ui/inventory.ts";
 import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
+import type { SoundSink } from "./sound/packet.ts";
+import { Sounds } from "./sound/sounds.ts";
+import type { SoundDecoder } from "./sound/library.ts";
+import { hearSession, soundView } from "./sound/view.ts";
+import { cueKey } from "../../shared/sound/cues.ts";
+import { soundCommand } from "./sound/command.ts";
+import { SplitPort } from "./sound/split.ts";
 
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
@@ -138,6 +145,10 @@ export class App {
   dpr = 1;
   off: ReadonlySet<Effect> = new Set();
   private interval = 0;
+  /** Whether the keys are a flyer's, and the last tick stepped before its wing was last wanted. */
+  private flying = false;
+  private wingFrom = 0;
+  private wingWas = false;
 
   /** The registry last handed to the UI and shots. frame() swaps it when the session's changes. */
   private shown: Registry;
@@ -161,6 +172,7 @@ export class App {
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     this.shots = new Shots(reg, pack);
@@ -201,6 +213,14 @@ export class App {
   private eggKept = false;
 
   voice: VoicePort | null = null;
+  /** Plays the world's sounds. Null in tests and wherever there is no audio: then no sound work is done at all. */
+  sound: SoundSink | null = null;
+  /** Made with the scene, where there is a sink and the assets stream. */
+  sounds: Sounds | null = null;
+  /** Decodes sounds off the main thread: the browser's worker, set before the first frame. Null decodes inline. */
+  soundDecoder: SoundDecoder | null = null;
+  /** Tames already heard of the session's queue, which the naming prompt empties. */
+  private tamedHeard = 0;
   talking = false;
   private talkMode = MODE_TALK;
   private volumeSet = -1;
@@ -401,6 +421,21 @@ export class App {
     if (this.session.ownHandle === 0) return -1;
     for (let i = 0; i < r.count; i++) if (r.seat[i] === seat && (r.cue[i]! & CUE_HELD) !== 0) return r.id[i]!;
     return -1;
+  }
+
+  /**
+   * Gives the keys a flyer's meaning while the predicted body is a mount that flies, and notes the tick its wing was asked
+   * for. Returns whether they have it.
+   */
+  private flyerKeys(): boolean {
+    const s = this.session;
+    const c = this.controls;
+    const flyer = s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.flies[s.own.kind] === 1;
+    if (flyer !== this.flying) c.fly(flyer, flyer && s.own.mode === MODE_FLYER);
+    this.flying = flyer;
+    if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
+    this.wingWas = c.wing;
+    return flyer;
   }
 
   /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
@@ -687,16 +722,21 @@ export class App {
       // Only the reasons a player can act on are spelled out.
       hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
+      if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
     this.holding = this.heldInArms();
+    const flyer = this.flyerKeys();
     if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons);
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
+    // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
+    if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
     const world = session.world;
     if (session.state !== "active" || !world) {
       hud.status = "connecting";
       this.ui.build(aspect, hud, session);
+      if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
     if (this.shown !== session.registry) {
@@ -705,7 +745,14 @@ export class App {
       this.shots.reg = this.shown;
     }
     if (!this.scene) {
-      this.scene = new Scene(world, this.reg, this.pack, this.stream);
+      // Sounds share the asset port, each side taking only what it asked for.
+      const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
+      this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
+      if (split) {
+        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst, this.soundDecoder ?? undefined);
+        hearSession(session, this.sounds);
+        this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
+      }
       this.scene.shots = this.shots;
       this.scene.plainSky = this.plainSky;
       if (this.stress) {
@@ -718,7 +765,7 @@ export class App {
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
-    hud.status = this.debug ? this.scene.assets.line() : "";
+    hud.status = this.debug ? `${this.scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
 
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
     const cam = this.cam;
@@ -817,13 +864,14 @@ export class App {
       body.state.setMotion(session.own.vx, session.own.vz, body.yaw, 0);
       body.state.setAction(session.own.act, 0, session.simTick - session.own.actTicks);
       body.state.seed = bodySeed(body.id);
-      // The mount's colours and cues come from its remote copy.
+      // The mount's colours, its saddle and its cues come from its remote copy.
       body.colors.fill(0);
       body.state.unpackCue(0);
       const r = this.remote;
       for (let i = 0; i < r.count; i++) {
         if (r.id[i] !== session.driving) continue;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
+        for (let k = 0; k < GEAR_COUNT; k++) body.gear[k] = r.gear[i * GEAR_COUNT + k]!;
         body.state.unpackCue(r.cue[i]!);
       }
     }
@@ -831,6 +879,9 @@ export class App {
     this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     session.sampleRemote(this.remote);
+    // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
+    this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
+    this.tamedHeard = session.tamed.length;
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
@@ -843,7 +894,10 @@ export class App {
     this.scene.viewHeight = height;
     this.scene.now = nowMs;
     const kept = this.scene.assets.residency.cache;
-    if (this.ui.settings.download) this.scene.assets.residency.download();
+    if (this.ui.settings.download) {
+      this.scene.assets.residency.download();
+      this.sounds?.library.download();
+    }
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
     this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), this.off);
@@ -862,6 +916,8 @@ export class App {
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     this.listen(hud);
+    const vol = this.ui.settings;
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder;

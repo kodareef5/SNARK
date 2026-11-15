@@ -2,10 +2,9 @@ import type { Def } from "../../shared/content/defs.ts";
 import { crafting } from "../craft.ts";
 
 // The materials the stations make and burn (planning/reference/stations-plan.md, S0): each a plain resource with its page's
-// weight and stack (ark.wiki.gg, each page's infobox, read 2026-11-15), and no recipe and no node yet. Charcoal and gasoline
+// weight and stack (ark.wiki.gg, each page's infobox, read 2026-11-15), and no recipe yet. Charcoal and gasoline
 // get what makes and burns them from the forge (S1), polymer and electronics their recipes at the fabricator (S2). Oil,
-// crystal, obsidian and silica pearls have no node on any map: until the map team places them they come only from the
-// console's give and from tests (by the user, 2026-11-15). The colours are chosen.
+// crystal, obsidian and silica pearls are gathered from the nodes of content/items/nodes.ts. The colours are chosen.
 
 export const RESOURCES: readonly Def[] = [
   // Cementing paste, moved here unchanged from content/building.ts (S0): made in the hand from 4 chitin and 8 stone, as

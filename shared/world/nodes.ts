@@ -13,6 +13,10 @@ import { StructureStore, type PartTable } from "./structures.ts";
 export const SIZE_STEPS = 16;
 /** A size is a whole number of these. A drawn node carries the number in its last colour region. */
 export const SIZE_UNITS = 64;
+/** Where a kind grows against the sea (NodeDef.sea): on dry ground, only under the sea, or either. */
+export const SEA_DRY = 0;
+export const SEA_UNDER = 1;
+export const SEA_EITHER = 2;
 
 export interface NodeSpot {
   /** Content index, or 0 if the slot is empty on this map. */
@@ -65,6 +69,8 @@ export interface NodeForms {
   readonly footReach: Float32Array;
   readonly footFall: Float32Array;
   readonly footElse: Uint16Array;
+  /** Per content index: where it grows against the sea, SEA_DRY, SEA_UNDER or SEA_EITHER. */
+  readonly sea: Uint8Array;
 }
 
 export function mix(a: number, b: number, c: number): number {
@@ -98,6 +104,7 @@ function buildForms(reg: Registry): NodeForms {
   const footReach = new Float32Array(n);
   const footFall = new Float32Array(n);
   const footElse = new Uint16Array(n);
+  const sea = new Uint8Array(n);
   const kind = [0];
   const variant = [0];
   const size = [0];
@@ -123,6 +130,7 @@ function buildForms(reg: Registry): NodeForms {
   for (let k = 1; k < n; k++) {
     const d = reg.defs[k];
     if (d?.type !== "node") continue;
+    sea[k] = d.sea === "under" ? SEA_UNDER : d.sea === "either" ? SEA_EITHER : SEA_DRY;
     if (d.footing) {
       footReach[k] = d.footing.reach;
       footFall[k] = d.footing.fall;
@@ -179,6 +187,7 @@ function buildForms(reg: Registry): NodeForms {
     footReach,
     footFall,
     footElse,
+    sea,
   };
 }
 
@@ -194,7 +203,7 @@ export function nodeForms(reg: Registry): NodeForms {
 /**
  * Scatters nodes by a hash. `kindsAt` gives the content indices that may grow at a place, repeated for weight, with 0 for
  * bare ground, or null where nothing grows. A slot is also empty where the ground is lower than 0.3 m above sea level or too
- * steep. A node's kind and turn come from one hash of its slot, as they always have, and its variant and size from a third.
+ * steep, or for a kind of the sea floor where the ground is not under the sea. A node's kind and turn come from one hash of its slot, as they always have, and its variant and size from a third.
  * A kind with a footing grows only where the ground under it falls no further than it allows, and elsewhere what it says.
  */
 export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perChunk: number, forms: NodeForms, kindsAt: (x: number, z: number) => readonly number[] | null): NodeSource {
@@ -232,8 +241,10 @@ export function scatterNodes(dims: MapDims, hf: Heightfield, seed: number, perCh
       const grows = kindsAt(x, z);
       if (grows === null || grows.length === 0) return;
       const y = hf.heightAt(x, z);
-      if (y < hf.seaLevel + 0.3 || hf.slopeCosAt(x, z) < 0.85) return;
       let kind = grows[g % grows.length]!;
+      // A kind of the sea floor grows only under the sea, one of either anywhere, and every other only on dry ground.
+      const sea = forms.sea[kind]!;
+      if ((sea === SEA_DRY ? y < hf.seaLevel + 0.3 : sea === SEA_UNDER && y >= hf.seaLevel) || hf.slopeCosAt(x, z) < 0.85) return;
       if (kind !== 0 && ring[kind]! > 0 && !fits(kind, chunkCx(dims, chunk) * 65536 + (h & 0xffff), chunkCz(dims, chunk) * 65536 + (h >>> 16))) kind = forms.footElse[kind]!;
       if (kind === 0) return;
       out.kind = kind;

@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/trike",
+  "review": "../ref/sound",
+  "about": "A three-horned plant-eating dinosaur built like a tank; it grunts and snorts and charges when threatened.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p2950",
+          "models": [
+            "moss"
+          ],
+          "seed": 2950,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A huge horned herbivore dinosaur gives low grunting snorts and rumbling huffs, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p2960",
+          "models": [
+            "moss"
+          ],
+          "seed": 2960,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge horned herbivore dinosaur bellows an angry loud snorting roar, three separate roars with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p2970",
+          "models": [
+            "moss"
+          ],
+          "seed": 2970,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge horned herbivore grunts and bellows in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p2980",
+          "models": [
+            "moss"
+          ],
+          "seed": 2980,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge herbivore dinosaur gives a long deep fading groan as it dies, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 90,
+      "level": -16,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p2990",
+          "models": [
+            "moss"
+          ],
+          "seed": 2990,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge horned animal charges and rams: a heavy snort and a crashing horn impact, four separate charges with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 54,
+      "level": -22,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p3000",
+          "models": [
+            "moss"
+          ],
+          "seed": 3000,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Heavy footsteps of a large four-legged animal walking on earth: deep heavy thuds, well spaced. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

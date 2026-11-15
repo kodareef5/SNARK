@@ -1,0 +1,28 @@
+{
+  "sounds": {
+    "felled/wood": {
+      "range": 120, "level": -12, "vary": 0.4,
+      "takes": [
+        {"file": "takes/felled/wood/moss-pt-2450-05255.wav", "from": "moss", "start": 0.05, "end": 0.88},
+        {"file": "takes/felled/wood/moss-pt-2451-01485.wav", "from": "moss", "start": 0.05, "end": 3.69},
+        {"file": "takes/felled/wood/moss-pt-2450-03660.wav", "from": "moss", "start": 0.05, "end": 0.17},
+        {"file": "takes/felled/wood/moss-pt-2451-06365.wav", "from": "moss", "start": 0.05, "end": 0.148}
+      ]
+    },
+    "crumble/stone": {
+      "range": 60, "level": -16, "vary": 0.5,
+      "takes": [
+        {"file": "takes/crumble/stone/moss-pt-2460-05240.wav", "from": "moss", "start": 0.05, "end": 0.257},
+        {"file": "takes/crumble/stone/moss-pt-2460-00290.wav", "from": "moss", "start": 0.05, "end": 0.25}
+      ]
+    },
+    "picked/foliage": {
+      "range": 15, "level": -24, "vary": 1.0,
+      "takes": [
+        {"file": "takes/picked/foliage/moss-pt-2470-05660.wav", "from": "moss", "start": 0.05, "end": 0.365},
+        {"file": "takes/picked/foliage/moss-pt-2471-05080.wav", "from": "moss", "start": 0.05, "end": 0.25},
+        {"file": "takes/picked/foliage/moss-pt-2470-01405.wav", "from": "moss", "start": 0.05, "end": 0.465}
+      ]
+    }
+  }
+}

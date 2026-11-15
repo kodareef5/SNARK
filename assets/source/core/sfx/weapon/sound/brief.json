@@ -1,0 +1,652 @@
+{
+  "asset": "core/sfx/weapon",
+  "review": "../ref/sound",
+  "about": "Weapons by how they are held, projectiles in flight, impacts and blasts, for every weapon without its own.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "swing/hands": {
+      "kind": "impact",
+      "range": 15,
+      "level": -26,
+      "vary": 1.5,
+      "want": "a punch cuts the air",
+      "prompts": [
+        {
+          "id": "p1420",
+          "models": [
+            "moss"
+          ],
+          "seed": 1420,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "swing/tool": {
+      "kind": "impact",
+      "range": 18,
+      "level": -24,
+      "vary": 1.2,
+      "want": "a hand tool swung",
+      "prompts": [
+        {
+          "id": "p1430",
+          "models": [
+            "moss"
+          ],
+          "seed": 1430,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "swing/spear": {
+      "kind": "impact",
+      "range": 20,
+      "level": -24,
+      "vary": 1.0,
+      "want": "a spear thrust",
+      "prompts": [
+        {
+          "id": "p1440",
+          "models": [
+            "moss"
+          ],
+          "seed": 1440,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A long wooden spear is thrust and swung: airy swooshing whooshes, five separate thrusts with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "swing/heavy": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.8,
+      "want": "a heavy club swung",
+      "prompts": [
+        {
+          "id": "p1450",
+          "models": [
+            "moss"
+          ],
+          "seed": 1450,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy wooden club is swung slowly: deep low whooshes, four separate swings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "throw": {
+      "kind": "impact",
+      "range": 18,
+      "level": -24,
+      "vary": 1.0,
+      "want": "something thrown hard",
+      "prompts": [
+        {
+          "id": "p1460",
+          "models": [
+            "moss"
+          ],
+          "seed": 1460,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person throws a rock hard: quick grunt-free arm whooshes, five separate throws with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "draw/bow": {
+      "kind": "impact",
+      "range": 20,
+      "level": -24,
+      "vary": 0.6,
+      "want": "a bowstring drawn back",
+      "prompts": [
+        {
+          "id": "p1470",
+          "models": [
+            "moss"
+          ],
+          "seed": 1470,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A wooden longbow is drawn back slowly: creaking wood and a tightening string, four separate draws with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "release/bow": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.8,
+      "want": "an arrow loosed",
+      "prompts": [
+        {
+          "id": "p1480",
+          "models": [
+            "moss"
+          ],
+          "seed": 1480,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/crossbow": {
+      "kind": "impact",
+      "range": 50,
+      "level": -16,
+      "vary": 0.6,
+      "want": "a crossbow shot",
+      "prompts": [
+        {
+          "id": "p1490",
+          "models": [
+            "moss"
+          ],
+          "seed": 1490,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy crossbow is fired: a loud mechanical snap and thwack, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "reload/crossbow": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "cocking a crossbow",
+      "prompts": [
+        {
+          "id": "p1500",
+          "models": [
+            "moss"
+          ],
+          "seed": 1500,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A crossbow is cocked and loaded: a cranking ratchet, a click and a bolt sliding in, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/rifle": {
+      "kind": "impact",
+      "range": 220,
+      "level": -10,
+      "vary": 0.4,
+      "want": "an old long rifle shot",
+      "prompts": [
+        {
+          "id": "p1510",
+          "models": [
+            "moss"
+          ],
+          "seed": 1510,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An old long rifle is fired outdoors: a loud sharp gunshot with a rolling echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/pistol": {
+      "kind": "impact",
+      "range": 180,
+      "level": -12,
+      "vary": 0.5,
+      "want": "an old pistol shot",
+      "prompts": [
+        {
+          "id": "p1520",
+          "models": [
+            "moss"
+          ],
+          "seed": 1520,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/far": {
+      "kind": "impact",
+      "range": 400,
+      "level": -20,
+      "vary": 0.5,
+      "want": "a gunshot heard from far away",
+      "prompts": [
+        {
+          "id": "p1530",
+          "models": [
+            "moss"
+          ],
+          "seed": 1530,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Distant gunshots heard from far across a valley: dull booming pops with long rolling echoes, three separate shots. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "reload/rifle": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "reloading a rifle",
+      "prompts": [
+        {
+          "id": "p1540",
+          "models": [
+            "moss"
+          ],
+          "seed": 1540,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An old rifle is reloaded: a bolt pulled back, a cartridge pushed in and the bolt closed, three separate reloads with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "reload/pistol": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "reloading a revolver",
+      "prompts": [
+        {
+          "id": "p1550",
+          "models": [
+            "moss"
+          ],
+          "seed": 1550,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A revolver is reloaded: the cylinder swings out, rounds click in and it snaps shut, three separate reloads with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "dry": {
+      "kind": "impact",
+      "range": 10,
+      "level": -26,
+      "vary": 0.5,
+      "want": "trigger on an empty gun",
+      "prompts": [
+        {
+          "id": "p1560",
+          "models": [
+            "moss"
+          ],
+          "seed": 1560,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An empty gun is dry-fired: small dry metallic trigger clicks, five separate clicks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "equip": {
+      "kind": "impact",
+      "range": 12,
+      "level": -26,
+      "vary": 1.0,
+      "want": "taking a weapon in hand",
+      "prompts": [
+        {
+          "id": "p1570",
+          "models": [
+            "moss"
+          ],
+          "seed": 1570,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person draws a tool from a leather belt: leather slide and a grip, five separate draws with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/sling": {
+      "kind": "impact",
+      "range": 25,
+      "level": -22,
+      "vary": 0.8,
+      "want": "a slingshot shot",
+      "prompts": [
+        {
+          "id": "p1580",
+          "models": [
+            "moss"
+          ],
+          "seed": 1580,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A slingshot is fired: a rubber band snap and a stone whizzing away, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fly/arrow": {
+      "kind": "impact",
+      "range": 30,
+      "level": -24,
+      "vary": 1.0,
+      "want": "an arrow flying past",
+      "prompts": [
+        {
+          "id": "p1590",
+          "models": [
+            "moss"
+          ],
+          "seed": 1590,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Arrows fly close past the listener: fast fluttering whooshes passing by, five separate arrows with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "whiz/bullet": {
+      "kind": "impact",
+      "range": 40,
+      "level": -20,
+      "vary": 1.0,
+      "want": "a bullet passing close",
+      "prompts": [
+        {
+          "id": "p1600",
+          "models": [
+            "moss"
+          ],
+          "seed": 1600,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "ricochet": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 1.0,
+      "want": "a bullet ricochet off stone",
+      "prompts": [
+        {
+          "id": "p1610",
+          "models": [
+            "moss"
+          ],
+          "seed": 1610,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Bullets ricochet off rocks: a sharp hit and a whining ricochet, four separate ricochets with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "stick": {
+      "kind": "impact",
+      "range": 25,
+      "level": -22,
+      "vary": 1.0,
+      "want": "an arrow thudding into wood",
+      "prompts": [
+        {
+          "id": "p1620",
+          "models": [
+            "moss"
+          ],
+          "seed": 1620,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Arrows hit a wooden target: hard woody thunks with a quivering shaft, five separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "blast/near": {
+      "kind": "impact",
+      "range": 300,
+      "level": -8,
+      "vary": 0.4,
+      "want": "an explosion close by",
+      "prompts": [
+        {
+          "id": "p1630",
+          "models": [
+            "moss"
+          ],
+          "seed": 1630,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A powerful explosion close by outdoors: a huge boom, a blast of debris and a rumbling tail, two separate explosions with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "blast/far": {
+      "kind": "impact",
+      "range": 800,
+      "level": -18,
+      "vary": 0.4,
+      "want": "an explosion far away",
+      "prompts": [
+        {
+          "id": "p1640",
+          "models": [
+            "moss"
+          ],
+          "seed": 1640,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A distant explosion far away: a deep low boom and long rolling rumble echoing, two separate explosions with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fuse": {
+      "kind": "impact",
+      "range": 15,
+      "level": -26,
+      "vary": 0.3,
+      "want": "a lit fuse hissing",
+      "prompts": [
+        {
+          "id": "p1650",
+          "models": [
+            "moss"
+          ],
+          "seed": 1650,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "A lit fuse burns: a steady fizzing sputtering hiss. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "bounce": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 1.0,
+      "want": "a grenade bouncing on the ground",
+      "prompts": [
+        {
+          "id": "p1660",
+          "models": [
+            "moss"
+          ],
+          "seed": 1660,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small heavy metal object is tossed onto hard ground: clunky bouncing and rolling, four separate throws with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "debris/wood": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.6,
+      "want": "wooden debris falling",
+      "prompts": [
+        {
+          "id": "p1670",
+          "models": [
+            "moss"
+          ],
+          "seed": 1670,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Broken wooden planks and beams crash to the ground: splintering clattering wood, three separate falls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "debris/stone": {
+      "kind": "impact",
+      "range": 70,
+      "level": -14,
+      "vary": 0.6,
+      "want": "stone debris falling",
+      "prompts": [
+        {
+          "id": "p1680",
+          "models": [
+            "moss"
+          ],
+          "seed": 1680,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Broken stone blocks tumble and crash to the ground: heavy crunching rubble, three separate falls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "debris/metal": {
+      "kind": "impact",
+      "range": 70,
+      "level": -14,
+      "vary": 0.6,
+      "want": "metal debris falling",
+      "prompts": [
+        {
+          "id": "p1690",
+          "models": [
+            "moss"
+          ],
+          "seed": 1690,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Sheets of metal crash and clatter to the ground: banging scraping metal, three separate falls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "zap": {
+      "kind": "impact",
+      "range": 25,
+      "level": -20,
+      "vary": 1.0,
+      "want": "an electric shock dart",
+      "prompts": [
+        {
+          "id": "p1700",
+          "models": [
+            "moss"
+          ],
+          "seed": 1700,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Electric stun shocks: a sharp crackling zap and buzz, four separate zaps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hit/head": {
+      "kind": "impact",
+      "range": 1,
+      "level": -20,
+      "vary": 0.3,
+      "want": "the attacker's confirmation of a head hit",
+      "prompts": [
+        {
+          "id": "p1710",
+          "models": [
+            "moss"
+          ],
+          "seed": 1710,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A short bright metallic ding, like a small bell tapped once, four separate dings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "hit/marker": {
+      "kind": "impact",
+      "range": 1,
+      "level": -26,
+      "vary": 0.5,
+      "want": "the attacker's confirmation of a hit",
+      "prompts": [
+        {
+          "id": "p1720",
+          "models": [
+            "moss"
+          ],
+          "seed": 1720,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A short soft dull tick, like a knuckle knocking on a wooden box once, five separate ticks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    },
+    "kill": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.2,
+      "want": "the attacker's confirmation of a kill",
+      "prompts": [
+        {
+          "id": "p1730",
+          "models": [
+            "moss"
+          ],
+          "seed": 1730,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A deep heavy single thump like a drum hit with a felt mallet, four separate hits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    }
+  }
+}

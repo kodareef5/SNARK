@@ -184,8 +184,11 @@ export interface FlyFacet {
   readonly stamina: { readonly fly: number; readonly sprint: number; readonly roll: number; readonly grab: number };
   /** Seconds after it last flew before any stamina comes back on the ground. None comes back in the air. */
   readonly wait: number;
-  /** The barrel roll: metres per second it adds to its speed, and seconds from one roll to the next. */
-  readonly roll: { readonly burst: number; readonly every: number };
+  /**
+   * The barrel roll: metres per second it adds to its speed, and seconds from one roll to the next. FL2: the damage it does
+   * to each body it passes, at 100% melee, 0 where not given.
+   */
+  readonly roll: { readonly burst: number; readonly every: number; readonly damage?: number };
 }
 
 /** `at` is the centre, measured from the piece's origin. `half` is the half extents. Both are in metres. */
@@ -569,8 +572,12 @@ export interface NodeDef extends Named {
   readonly respawnHours: number;
   /** Matched against a tool's `on`. Omitted for things picked by hand with the use key. */
   readonly material?: string;
-  /** What each hit gives. `tool` true means only with the right tool. */
-  readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean }[];
+  /**
+   * What each hit gives. `tool` true means only with the right tool. A right tool multiplies every yield by its power but
+   * one marked `flat`, whose range is what a hit gives whatever the tool: where the reference game's page says what its
+   * stone pick gets a hit (oil), or that it gets very little (crystal).
+   */
+  readonly yields: readonly { readonly item: string; readonly min: number; readonly max: number; readonly tool?: boolean; readonly flat?: boolean }[];
   /** Experience per hit. */
   readonly xp: number;
   /** The individuals it grows as. Each node is one of them, chosen by its place. Without them it is its own mesh and `half`. */
@@ -585,6 +592,12 @@ export interface NodeDef extends Named {
    * its place, as it is, or nothing.
    */
   readonly footing?: { readonly reach: number; readonly fall: number; readonly else?: string };
+  /**
+   * Where a scattered slot grows it against the sea: "under", only where the ground is under the sea (a clam, an oil rock);
+   * "either", there or on dry ground (crystal). Without it, only where the ground is 0.3 m above the sea or more. A listed
+   * node stands where it is listed.
+   */
+  readonly sea?: "under" | "either";
 }
 
 export interface EngramDef extends Named {

@@ -1,7 +1,7 @@
 // Spawns creatures, wakes and sleeps them, and steps the awake ones. A chunk is awake while a player is within wakeRadius chunks of it.
 // Creatures in sleeping chunks are not stepped or iterated. Slow quantities such as hunger are lazy and belong to server/survival.ts.
 
-import { AnimState, CUE_LAND, CUE_NONE, CUE_OUT, CUE_STARTLE, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
+import { AnimState, CUE_LAND, CUE_NONE, CUE_OUT, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, LAYER_EAT, LAYER_FLINCH, LAYER_NONE } from "../shared/anim/pose.ts";
 import { TICK_DT, chunkCount, chunkCx, chunkCz } from "../shared/coords.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, MF_OUT, MF_WINDED, MODE_FLYER, MODE_SWIM, STAMINA_UNITS, stanceEye, stepBody, stepOut, type MoveParams } from "../shared/sim/character.ts";
 import { ACT_NONE, actionOut, stepAction } from "../shared/sim/weapon.ts";
@@ -76,6 +76,7 @@ export class Creatures {
     // One that takes fright is startled before it runs.
     this.mind.onStartle = (e) => this.cue(e, CUE_STARTLE, false);
     game.onMountLand = (e, speed) => this.landed(e, speed);
+    game.onMountFlight = (e) => this.flew(e);
     this.still = Uint8Array.from(world.reg.defs, (d) => (d?.type === "species" && d.still ? 1 : 0));
   }
 
@@ -102,6 +103,13 @@ export class Creatures {
     if (!this.world.anims[ents.kind[e]!]) return;
     ents.cue[e] = out ? ents.cue[e]! | CUE_OUT : ents.cue[e]! & ~CUE_OUT;
     this.cue(e, CUE_TORPOR, false);
+  }
+
+  /** Just after `e`'s step: the barrel roll, take-off or setting down from flight that stepOut says it began now (FL2). */
+  flew(e: number): void {
+    if (stepOut.rolled) this.cue(e, CUE_ROLL, false);
+    else if (stepOut.tookOff) this.cue(e, CUE_TAKEOFF, false);
+    else if (stepOut.setDown) this.cue(e, CUE_LAND, false);
   }
 
   /** `e`, knocked out, ate a piece it was fed. */
@@ -276,7 +284,10 @@ export class Creatures {
       if (move === 0 && pressed === 0 && ents.act[e] === ACT_NONE && ents.vx[e] === 0 && ents.vz[e] === 0 && ents.yaw[e] === mind.look[e] && ((flags & F_GROUNDED) !== 0 || (swims && ents.vy[e] === 0)) && (this.wet[e] === 0 || cold)) {
         const cap = ents.staminaMax[e]! * STAMINA_UNITS;
         const had = ents.stamina[e]!;
-        if (had < cap) {
+        // As the step counts them: a flyer's roll, and its wait after flying before any stamina comes back.
+        if (ents.rollWait[e]! > 0) ents.rollWait[e] = ents.rollWait[e]! - 1;
+        if (ents.regenWait[e]! > 0) ents.regenWait[e] = ents.regenWait[e]! - 1;
+        else if (had < cap) {
           const now = had + p.staminaRegen < cap ? had + p.staminaRegen : cap;
           ents.stamina[e] = now;
           if ((ents.mflags[e]! & MF_WINDED) !== 0 && now * 4 >= cap) ents.mflags[e] = ents.mflags[e]! & ~MF_WINDED;

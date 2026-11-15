@@ -59,9 +59,9 @@ test("the eight resources are plain items at their pages' weights and stacks, an
   expect(plain.map((n) => [n, def(n).weight, def(n).stack, def(n).class, def(n).craft, def(n).fuel])).toEqual(
     [0.25, 0.1, 0.2, 1, 1, 0.02, 0.25, 0.01].map((w, k) => [plain[k], w, 100, "resource", undefined, undefined]),
   );
-  // No node yields them yet (the map project's), nor does any engram teach them.
+  // None is made yet. The four found in the world come from the resource nodes' project's nodes (content/items/nodes.ts).
   const yielded = new Set(CORE_CONTENT.flatMap((d) => (d.type === "node" ? d.yields.map((y) => y.item) : [])));
-  expect(plain.filter((n) => yielded.has(`core:${n}`) || reg.recipeOf[id(reg, n)] !== null)).toEqual([]);
+  expect([plain.filter((n) => reg.recipeOf[id(reg, n)] !== null), plain.filter((n) => yielded.has(`core:${n}`))]).toEqual([[], ["oil", "crystal", "obsidian", "silica_pearls"]]);
   const paste = CORE_CONTENT.find((d) => d.id === "core:paste" && d.type === "item") as ItemDef;
   expect(paste).toMatchObject({ class: "resource", stack: 100, weight: 0.01, label: "cementing paste", color: 15, craft: { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 } });
   expect(RESOURCES.filter((d) => d.id === "core:paste" || d.id === "core:engram-paste" || d.id === "core:make-paste").map((d) => d.type).sort()).toEqual(["engram", "item", "rename"]);

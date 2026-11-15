@@ -437,6 +437,8 @@ export const INPUT_KEPT = BTN_CROUCH | BTN_PRONE;
 /** In bytes. */
 export const MAX_CLIENT_MESSAGE = 512;
 export const MAX_NAME_BYTES = 24;
+/** A place a survivor may rise at, as OWN_RESPAWN names it: a bed's name, or a map's spawn point's, which may be longer. */
+export const MAX_PLACE_NAME_BYTES = 48;
 /** A console line from a client. */
 export const MAX_TEXT_BYTES = 200;
 /** A chat line from a client. Each of its MAX_CHAT_CHARS takes at most three bytes, whatever the script. */

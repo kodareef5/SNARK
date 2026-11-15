@@ -6,7 +6,7 @@ import { proneHunger } from "../shared/sim/taming.ts";
 import type { SpeciesDef } from "../shared/content/defs.ts";
 import type { Registry } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
+import { MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, STAMINA_UNITS } from "../shared/sim/character.ts";
 import type { EntityStore } from "../shared/sim/entities.ts";
 import { STAT_NAMES, statValue, type Genome, type StatName } from "../shared/sim/genome.ts";
 import { GAME_HOUR_TICKS, MICRO } from "../shared/sim/lazy.ts";
@@ -79,7 +79,9 @@ export function refreshMods(reg: Registry, ents: EntityStore, e: number, g: Geno
   let flags = (rooted ? MF_ROOTED | MF_NO_SPRINT : 0) | (out ? MF_OUT : 0);
   // Buffs (an injury, a stun) slow it through speedMul.
   let speed = Math.max(1, Math.min(4095, Math.round(ratioQ(def, g, STAT_SPEED) * speedMul)));
-  if (load >= 1) flags |= MF_ROOTED | MF_NO_SPRINT;
+  // Too heavy to move, a flyer cannot take off either, and in the air is put down as one out of stamina is, not felled as a
+  // bola fells it (shared/sim/character.ts). Encumbered, it cannot sprint or roll.
+  if (load >= 1) flags |= MF_ROOTED | MF_NO_SPRINT | (reg.flies[ents.kind[e]!] ? MF_NO_JUMP : 0);
   else if (load >= HEAVY) {
     flags |= MF_NO_SPRINT;
     speed = Math.max(1, Math.round(speed * HEAVY_SPEED));
