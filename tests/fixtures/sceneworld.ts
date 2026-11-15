@@ -6,6 +6,7 @@
 import { CORE_CONTENT } from "../../content/core.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import type { FarNodeSource } from "../../client/core/render/farnodes.ts";
 import { DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
@@ -159,9 +160,10 @@ export interface Body {
 
 /**
  * Flat ground 128 metres square at y = 0, seen through a scene on the medium tier, or on `tier` over it, whose assets
- * come over `net`. The camera stands at (32, 1.2, 20) and looks along +z.
+ * come over `net`. The camera stands at (32, 1.2, 20) and looks along +z. With `farNodes`, nodes past the near store
+ * are placed from what it gives.
  */
-export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set = sceneSet()) {
+export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set = sceneSet(), farNodes?: (hf: Heightfield, reg: Registry) => FarNodeSource) {
   const { files, manifest } = set;
   const reg = sceneRegistry();
   const dims = { chunksX: 2, chunksZ: 2 };
@@ -173,7 +175,7 @@ export function sceneWorld(net: NetOptions = {}, tier: Partial<Tier> = {}, set =
   const nodes = new StructureStore(dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
   const port = new FakeNet(files.map((f) => f.bytes), net);
   const pack = parsePack(files[0]!.bytes);
-  const scene = new Scene({ dims, hf, structs, nodes }, reg, pack, { manifest, port });
+  const scene = new Scene({ dims, hf, structs, nodes, ...(farNodes ? { farNodes: farNodes(hf, reg) } : {}) }, reg, pack, { manifest, port });
   scene.assets.tier = { ...tierOf("medium"), ...tier };
   scene.viewHeight = H;
   const cam = new Camera();

@@ -4,6 +4,7 @@ import { Found } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, FramePacket, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
+import { sunDirection } from "../../client/core/render/sky.ts";
 import { lit, shown } from "../../client/core/render/surface.ts";
 import { NODE_BUFFERS, bodySeed, type OwnBody } from "../../client/core/render/scene.ts";
 import { Viewpoint } from "../../client/core/viewpoint.ts";
@@ -189,7 +190,11 @@ test("the hour moves the sun and dims the world at night; noon is what every oth
     view.scene.hour = hour;
     const p = view.render();
     const o = (Math.floor(0.9 * H) * W + Math.floor(0.5 * W)) * 4; // plaza at the bottom of the frame
-    return { light: p.light, sunY: p.sun[1]!, sunX: p.sun[0]!, sky: p.sky[2]!, ground: view.raster.color[o]! };
+    // Low poly's sun lies round the sky where the lit tiers' does: its bearing from north toward east, in degrees.
+    const lit = [0, 0, 0];
+    sunDirection(hour, lit);
+    const bearing = (x: number, z: number): number => (Math.atan2(-x, z) * 180) / Math.PI;
+    return { light: p.light, sunY: p.sun[1]!, sunX: p.sun[0]!, sky: p.sky[2]!, ground: view.raster.color[o]!, off: Math.abs(bearing(p.sun[0]!, p.sun[2]!) - bearing(lit[0]!, lit[2]!)) };
   };
   const noon = at(12);
   const morning = at(8);
@@ -197,8 +202,10 @@ test("the hour moves the sun and dims the world at night; noon is what every oth
   const midnight = at(0);
   expect(noon.light).toBe(1);
   expect(noon.sunY).toBeGreaterThan(0.9);
-  expect(morning.sunX).toBeGreaterThan(0.2);
-  expect(evening.sunX).toBeLessThan(-0.2);
+  // It rises in the east (-X) and sets in the west, as on the lit tiers.
+  expect(morning.sunX).toBeLessThan(-0.2);
+  expect(evening.sunX).toBeGreaterThan(0.2);
+  expect([noon.off, morning.off, evening.off].every((d) => d < 0.01)).toBe(true);
   expect(morning.sunY).toBeCloseTo(evening.sunY, 5);
   // Night has 0.3 of the light and is still lit from above.
   expect(midnight.light).toBeCloseTo(0.3, 5);

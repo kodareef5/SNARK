@@ -69,21 +69,30 @@ export function hourOfSun(height: number, evening: boolean): number {
 
 /**
  * Low poly's light at an hour: a unit vector toward its sun into `sun`, and the day's light, which it returns. Its sun
- * rises toward +X and at night it is lit by a fixed moon, dimmer.
+ * stands as high as it always has, and lies round the sky where the lit tiers' sun does (`sunDirection`): in the east
+ * in the morning, the north at noon and the west in the evening. At night it is lit by a fixed moon, dimmer.
  */
 export function flatLight(hour: number, sun: Float32Array): number {
   const up = Math.sin(((hour - 6) / 12) * Math.PI);
   const around = Math.cos(((hour - 6) / 12) * Math.PI);
   const dusk = Math.max(0, Math.min(1, (up + 0.1) / 0.4));
-  const sx = up > 0.15 ? around * 0.6 : 0.3;
-  const sy = up > 0.15 ? up : 0.8;
-  const sl = Math.hypot(sx, sy, 0.43);
-  sun[0] = sx / sl;
-  sun[1] = sy / sl;
-  sun[2] = 0.43 / sl;
+  if (up > 0.15) {
+    const y = up / Math.hypot(around * 0.6, up, 0.43);
+    sunDirection(hour, flatAim);
+    const across = Math.sqrt(1 - y * y) / Math.hypot(flatAim[0]!, flatAim[2]!);
+    sun[0] = flatAim[0]! * across;
+    sun[1] = y;
+    sun[2] = flatAim[2]! * across;
+  } else {
+    const l = Math.hypot(0.3, 0.8, 0.43);
+    sun[0] = 0.3 / l;
+    sun[1] = 0.8 / l;
+    sun[2] = 0.43 / l;
+  }
   return NIGHT_LIGHT + (1 - NIGHT_LIGHT) * dusk * dusk * (3 - 2 * dusk);
 }
 
+const flatAim = new Float64Array(3);
 const flatSun = new Float32Array(3);
 
 /** What low poly shows of a grey 128 card facing up in the open at an hour, 0 to 255. */

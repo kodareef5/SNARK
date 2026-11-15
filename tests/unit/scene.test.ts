@@ -10,8 +10,11 @@ import { AnimState } from "../../shared/anim/pose.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { INSTANCE_BYTES } from "../../shared/pack/pack.ts";
 import { PICK_ENTITY, PICK_STRUCTURE } from "../../tools/snap/raster.ts";
-import { SIZE_UNITS } from "../../shared/world/nodes.ts";
+import { SIZE_UNITS, nodeForms, scatterNodes } from "../../shared/world/nodes.ts";
+import type { Registry } from "../../shared/content/registry.ts";
+import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { Camera } from "../../client/core/render/camera.ts";
+import { NodeChanges, type FarNodeSource } from "../../client/core/render/farnodes.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -265,11 +268,19 @@ test("a thing's textures are wanted as wide as its size and its distance show th
 });
 
 test("low poly asks for no surface and no texture, draws nothing with a material, and its packets are what they were", () => {
-  const w = sceneWorld({ latencyMs: 40, bytesPerSecond: 150e3, loss: 0.7, seed: 1 }, tierOf("lowpoly"));
+  // The chunk ahead and to the right is past the near node field, and holds trees and palms placed from the map.
+  const wood = (hf: Heightfield, reg: Registry): FarNodeSource => {
+    const dims = hf.dims;
+    const kinds = ["core:tree", "core:palm"].map((id) => reg.index.get(id)!);
+    const nodes = scatterNodes(dims, hf, 7, 24, nodeForms(reg), (x, z) => (x >= CHUNK_SIZE && z >= CHUNK_SIZE ? kinds : null));
+    return { nodes, held: (chunk) => chunk !== 3, gone: () => undefined, changes: new NodeChanges(dims) };
+  };
+  const w = sceneWorld({ latencyMs: 40, bytesPerSecond: 150e3, loss: 0.7, seed: 1 }, tierOf("lowpoly"), undefined, wood);
   const { scene, cam, remote, structs, nodes, kind } = w;
   w.hf.seaLevel = -0.5;
-  // One of everything the scene draws: pieces in two chunks, nodes, bodies of both kinds, one young, one riding, things
-  // in hands, a rigid creature, an arrow where it landed, the viewer's own body, beams, a ghost, falling pieces and loose things.
+  // One of everything the scene draws: pieces in two chunks, nodes near and far, bodies of both kinds, one young, one
+  // riding, things in hands, a rigid creature, an arrow where it landed, the viewer's own body, beams, a ghost, falling
+  // pieces and loose things.
   for (let i = 0; i < 10; i++) structs.add(kind(PANEL), 22 + i * 2, 0, 34, 0, 0, 1);
   for (let i = 0; i < 6; i++) structs.add(kind(i % 2 ? "core:wall" : "core:foundation"), 58 + i * 3, 1.5, 40, 16384 * i, 0, 1);
   // Nodes stand on their base, each at a size of its kind and turned.
@@ -318,7 +329,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // and again when the request was lost.
   const post = scene.assets.residency.slot(w.mesh(TUBE), 0);
   expect(w.port.log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
-  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([7643, 767, 20, 0]);
+  // The far wood is about two draws a frame more, and the palm's level one upload more.
+  expect([draws, rigid, uploads, scene.assets.residency.texLedger]).toEqual([8145, 767, 21, 0]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -326,8 +338,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // 16 bits each, and hashed a byte each it was that still; then 2089007614 until the nodes here were turned and sized,
   // stood on their bases and were drawn sized, and seven more kinds' grey boxes numbered the meshes after the tree's on;
   // then 1755989135 until three more kinds' grey boxes did the same, and 3019125801 until the dodo was drawn as its
-  // model, so that its grey box left this pack.
-  expect(hash).toBe(946480213);
+  // model, so that its grey box left this pack. It was 946480213 until low poly's sun stood where the lit tiers' does
+  // and the far wood was drawn (D260): the sun alone gives 1662333099, and less the far wood's draws, buffers and the
+  // palm's level, every frame is as with the sun alone but for the first frame's level uploads, where the tree's comes
+  // first, since the far wood draws it before the near store does.
+  expect(hash).toBe(133088346);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
