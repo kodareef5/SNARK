@@ -152,10 +152,11 @@ const SPECIES = {
   carriable: f("switch", "picked up and thrown by a player"),
   feces: f("text", "the creature's feces item", { refs: { "": "item/feces" } }),
   eggChance: f("number", "the chance of an egg in place of feces"),
-  // The flyers' contracts (planning/reference/flyers-plan.md, FL0), each read once its package builds it: `fly` by the step.
+  // The flyers' contracts (planning/reference/flyers-plan.md, FL0), each read once its package builds it: `fly` by the step,
+  // `defendsEgg` by the egg rule.
   fly: f("facet", "the flying speed, sprint and stamina, and the barrel roll"),
   grab: stub("flyers", "facet", "the most drag weight a flyer carries"),
-  defendsEgg: stub("flyers", "switch", "a skittish flyer that turns on an egg thief"),
+  defendsEgg: f("switch", "a skittish flyer that turns on an egg thief"),
   riderWeight: f("number", "PassengerWeightMultiplier"),
   missiles: stub("flyers", "number", "the flyers' damage from projectiles that are not bullets"),
   structures: stub("flyers", "number", "the flyers' damage to structures"),

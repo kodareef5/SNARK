@@ -7,7 +7,7 @@ import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHost } from "../../server/host.ts";
-import { CARRY_GRAB, CARRY_PICK_UP, CARRY_RELEASE, CARRY_THROW, CMD_CARRY, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_LAND, ORDER_WANDER, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS } from "../../shared/net/protocol.ts";
+import { CARRY_GRAB, CARRY_PICK_UP, CARRY_RELEASE, CARRY_THROW, CMD_CARRY, CMD_ORDER, CMD_TAKE, ORDER_ALL, ORDER_ATTACK, ORDER_LAND, ORDER_WANDER, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK } from "../../shared/net/protocol.ts";
 import { MODE_FLYER, MODE_WALK } from "../../shared/sim/character.ts";
 import { F_GROUNDED, F_HELD } from "../../shared/sim/entities.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -49,7 +49,7 @@ test("a wild creature is not picked up from out of reach nor ordered, a creature
 
 // The flyers' contracts (planning/reference/flyers-plan.md, FL0) in a running host.
 
-test("the flyers' codes are refused until their packages build them, and the pteranodon stand-in, made by the spawn cheat, walks the ground as any creature", () => {
+test("the grab codes are refused until their package builds them, a wild flyer is nobody's to land, and the pteranodon stand-in, made by the spawn cheat, rests on the ground and then takes off", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const ada = h.join("ada");
   h.run(500);
@@ -69,9 +69,13 @@ test("the flyers' codes are refused until their packages build them, and the pte
   ada.command(CMD_ORDER, (w) => (w.u32(e), w.u8(ORDER_LAND)));
   ada.command(CMD_ORDER, (w) => (w.u32(ORDER_ALL), w.u8(ORDER_LAND)));
   h.run(1500);
-  expect(codes).toEqual([RESULT_INVALID, RESULT_INVALID, RESULT_INVALID, RESULT_INVALID]);
+  // Landing is built (tests/integration/flyers.test.ts): a whistle with nothing of hers in earshot lands nothing.
+  expect(codes).toEqual([RESULT_INVALID, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK]);
   const ents = h.world.ents;
   expect([ents.mode[e], (ents.flags[e]! & F_GROUNDED) !== 0]).toEqual([MODE_WALK, true]);
+  let flew = false;
+  h.run(25000, () => void (flew ||= ents.mode[e] === MODE_FLYER));
+  expect(flew).toBe(true);
 });
 
 test("a creature in its own flight is saved flying and loads in the air, and a save written by main before the flying bit loads as it was", () => {
