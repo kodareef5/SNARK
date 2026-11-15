@@ -96,6 +96,8 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
     if (inv.item[s] !== 0) {
       w.u16(inv.count[s]!);
       w.u8(inv.quality[s]!);
+      // Flags (SLOT_ bits): none is set until blueprints are built.
+      w.u8(0);
       w.u16(inv.dur[s]!);
       w.u32(inv.spoilAt[s]!);
       const holds = inv.ammo[s] !== 0 || inv.attach[s] !== 0;

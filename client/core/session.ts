@@ -835,6 +835,8 @@ export class ClientSession {
         const item = r.u16();
         const n = item === 0 ? 0 : r.u16();
         const quality = item === 0 ? 0 : r.u8();
+        // Flags (SLOT_ bits), read past until a slot keeps them.
+        if (item !== 0) r.u8();
         const dur = item === 0 ? 0 : r.u16();
         const spoilAt = item === 0 ? 0 : r.u32();
         const holds = item !== 0 && r.bool();

@@ -1234,7 +1234,8 @@ benchTextured(section, record);
 benchDepth(section, record);
 benchTerrain(section, record, hf);
 await benchTextures(section, record);
-await benchParts(section, record);
+// Brotli at 11 over every part is minutes of work on a set of 2 GB and holds no budget, so it runs only when asked for.
+if (process.argv.includes("--parts")) await benchParts(section, record);
 benchTransport(section, record);
 await benchGpu(section, record);
 

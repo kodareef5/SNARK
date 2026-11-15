@@ -37,7 +37,7 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 
 export const C_HELLO = 1;
 export const C_INPUT = 2;
@@ -190,6 +190,13 @@ export const CARRY_DROP = 1;
 export const CARRY_THROW = 2;
 /** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
 export const CMD_TAKE = 28;
+/**
+ * Protocol 12, reserved for crafting at a station (planning/reference/items-plan.md, task D): item u16, count u8, made at the
+ * station the session has open, from that station's inventory. Refused until it is built.
+ */
+export const CMD_CRAFT_AT = 29;
+/** Protocol 12, reserved for crafting from a blueprint (items-plan.md, task E): own slot varint, count u8. Refused until it is built. */
+export const CMD_CRAFT_BLUEPRINT = 30;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
@@ -230,10 +237,12 @@ export const OWN_SESSION = 1;
 export const OWN_VITALS = 2;
 /**
  * box 1 bit, capacity varint, bag size varint, full 1 bit (forget every slot first), count u16, then per slot: index varint,
- * item u16, and if the item is not 0: count u16, quality u8, durability u16, spoil tick u32, and 1 bit for "it holds
- * something", then if so: ammunition item u16, rounds u8, attachment item u16.
+ * item u16, and if the item is not 0: count u16, quality u8, flags u8 (SLOT_ bits, protocol 12), durability u16, spoil tick u32, and 1
+ * bit for "it holds something", then if so: ammunition item u16, rounds u8, attachment item u16.
  */
 export const OWN_SLOTS = 3;
+/** A slot's flags. Protocol 12 sends them; nothing sets one until blueprints are built (items-plan.md, task E). */
+export const SLOT_BLUEPRINT = 1;
 
 /** open 1 bit, and if open: capacity varint, name string. Its slots follow as OWN_SLOTS for the open box. */
 export const OWN_OPEN = 4;
@@ -286,6 +295,8 @@ export const OWN_SUBJECT = 14;
  * effectiveness (10 bits each), its pair's mating progress (1 bit, 10 bits), its tribe's name (1 bit, string).
  */
 export const OWN_OVERHEAD = 15;
+/** Protocol 12, reserved for the open station's queue (items-plan.md, task D): count u8, then per job: item u16, units left u8, done tick u32. */
+export const OWN_STATION = 16;
 
 export const MARKER_DEATH = 1;
 

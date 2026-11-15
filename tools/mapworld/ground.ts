@@ -54,6 +54,7 @@ export interface World {
   readonly spawns: readonly { name: string; at: [number, number]; face: [number, number]; ground: "sand" | "open" }[];
   /** Whether each footprint is raised into a heap of rubble (heaps.ts), the stand-in for block ruins. On unless false. */
   readonly heaps?: boolean;
+  readonly containerHeaps?: boolean;
 }
 
 export interface Ground {
@@ -342,7 +343,7 @@ export function makeGround(base: Base, world: World, log: (line: string) => void
   const container = new Uint8Array(N);
   const port = world.districts.findIndex((d) => d.name === "The Port") + 1;
   let stacks = 0;
-  if (port > 0) {
+  if (port > 0 && world.containerHeaps !== false) {
     const ring = world.districts[port - 1]!.ring.map(([lon, lat]) => base.tm.forward(lon, lat));
     const angle = Math.atan2(ring[1]![1] - ring[0]![1], ring[1]![0] - ring[0]![0]);
     const [ca, sa] = [Math.cos(angle), Math.sin(angle)];

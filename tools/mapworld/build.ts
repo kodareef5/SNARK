@@ -4,7 +4,7 @@
 // districts and where survivors arrive), writes the folder of layers tools/map.ts builds from to var/maps/<name>/layers,
 // then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same bytes.
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -24,6 +24,8 @@ const ROOT = resolve(import.meta.dir, "../..");
 
 export function buildMap(name: string): { file: string; stats: Record<string, unknown> } {
   const t0 = performance.now();
+  const compiled = compileContent(CORE_CONTENT);
+  if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
   const lap = (what: string): void => console.log(`${((performance.now() - t0) / 1000).toFixed(1).padStart(5)} s  ${what}`);
   const source = join(ROOT, "assets/source/maps", name);
   const base = new Base(source);
@@ -34,26 +36,25 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
 
   const ground = makeGround(base, world, lap);
   lap("ground");
-  const tint = makeTint(ground, world);
-  lap("colour");
   const half = size / 2;
   const toSample = (lon: number, lat: number): [number, number] => {
     const [e, no] = base.tm.forward(lon, lat);
     return [(e + half) / 2, (half - no) / 2];
   };
-  // Pieces other modules set down on the ground as built (statics.ts): none yet, the ruin generator's later.
-  const site = siteOf(world, ground, size);
+  const site = siteOf(world, ground, size, source);
   const statics = STATIC_LAYERS.flatMap((layer) => {
     const pieces = layer.make(site);
     lap(`${pieces.length} static pieces of ${layer.name}`);
     return pieces;
   });
+  const tint = makeTint(ground, world);
+  lap("colour");
   const spawns = placeSpawns(ground, world, toSample, size);
   const regions = placeRegions(ground, size);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree.
   const near = spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2] as const);
-  const nodes = makeNodes(ground, world, (col, row) => near.some(([c, r]) => (c - col) ** 2 + (r - row) ** 2 < 16));
+  const nodes = makeNodes(ground, world, (col, row) => site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1 || near.some(([c, r]) => (c - col) ** 2 + (r - row) ** 2 < 16));
   lap("nodes");
 
   const layers = join(ROOT, "var/maps", name, "layers");
@@ -87,7 +88,8 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const map = readLayers(layers);
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
-  writeFileSync(file, bytes);
+  writeFileSync(`${file}.tmp`, bytes);
+  renameSync(`${file}.tmp`, file);
   const built = (performance.now() - t0) / 1000;
   lap(`map file ${file}`);
   for (const line of describe(bytes)) console.log(`        ${line}`);
@@ -155,9 +157,12 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     bytes: bytes.length,
     gzipped: Bun.gzipSync(bytes).length,
     buildSeconds: Number(built.toFixed(1)),
+    totalSeconds: Number(((performance.now() - t0) / 1000).toFixed(2)),
+    peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)),
+    staticTotal: statics.length,
     deepestWater: Number(deepest.toFixed(2)),
     highestGround: Number(highest.toFixed(2)),
-    landmarks,
+    landmarks: statics.length === 0 ? landmarks : [],
     ruins: ground.heaps.ruins.length,
     landShareWalkable: Number((walkable / land).toFixed(4)),
     landSquareMetres: land * 4,
