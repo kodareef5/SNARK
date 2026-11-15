@@ -6,7 +6,7 @@ import { AnimState, bodySeed } from "../shared/anim/pose.ts";
 import { boneToModel, solve } from "../shared/anim/skeleton.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { TEXT_NOTICE, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT, SESSION_ALIVE } from "../shared/net/protocol.ts";
-import { Body, MODE_FLYER, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../shared/sim/character.ts";
+import { Body, MODE_FLYER, MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../shared/sim/character.ts";
 import { F_ALIVE } from "../shared/sim/entities.ts";
 import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -19,6 +19,8 @@ import { event } from "./events/bus.ts";
 const MOUNT_REACH = 3.5;
 /** A rider's feet hang this many metres below the seat. */
 const SEAT_DROP = 0.55;
+/** Metres over the water's surface within which a flyer's feet touch it. A flyer over deep water skims at the surface. */
+const WET = 0.01;
 
 const RIDE_MOUNT = event("ride.mount");
 const RIDE_DISMOUNT = event("ride.dismount");
@@ -103,7 +105,8 @@ export class Riding {
     return RESULT_OK;
   }
 
-  dismount(c: Client): void {
+  /** `wet`: put off by the water its flyer touched, which then floats where it is. */
+  dismount(c: Client, wet = false): void {
     const { game } = this.ctx;
     const e = c.drive;
     const ride = e >= 0 ? this.riders.get(e) : undefined;
@@ -113,7 +116,7 @@ export class Riding {
     const rec = this.removeRider(e, ride);
     // A flyer let go of in the air stops flying and falls, hurt once as any fall is (ASE 203.1).
     const ents = this.ctx.world.ents;
-    if (rec?.pid === ride.pid && ents.mode[e] === MODE_FLYER) ents.mode[e] = MODE_WALK;
+    if (rec?.pid === ride.pid && ents.mode[e] === MODE_FLYER) ents.mode[e] = wet ? MODE_SWIM : MODE_WALK;
     if (c.ent >= 0) {
       // The mount has moved this tick since its rider was pinned.
       if (rec?.pid === ride.pid) this.note(ride, e);
@@ -249,7 +252,23 @@ export class Riding {
         }
         continue;
       }
+      // A ridden flyer that touches water throws its rider off (ARK's Flying page).
+      if (this.wet(e)) {
+        this.dismount(c, true);
+        continue;
+      }
       this.pin(ride);
     }
+  }
+
+  /** Whether `e`, if it flies, touches water: swimming, or in flight with its feet at or under the surface over water. */
+  private wet(e: number): boolean {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const kind = ents.kind[e]!;
+    if (world.reg.flies[kind] !== 1) return false;
+    if (ents.mode[e] === MODE_SWIM) return true;
+    const sea = world.hf.seaLevel;
+    return ents.mode[e] === MODE_FLYER && ents.y[e]! <= sea + WET && groundUnder(world.hf, ents.x[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!) < sea;
   }
 }

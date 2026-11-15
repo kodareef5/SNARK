@@ -25,7 +25,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
+import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_MELEE, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_ROLL, BTN_SECONDARY, BTN_SPRINT, BTN_USE } from "../../shared/sim/character.ts";
 
 const ASPECTS: [string, number][] = [["4:3", 4 / 3], ["16:9", 16 / 9], ["21:9", 21 / 9], ["phone upright", 9 / 16]];
 
@@ -364,6 +364,46 @@ test("controls: keys and mouse become one input sample", () => {
   expect(c.pitch).toBe(1.5);
   c.look(0, 100000);
   expect(c.pitch).toBe(-1.5);
+});
+
+test("controls driving a flyer: Space toggles its jump, held every tick, C rolls and X brakes while held, and on foot again they are stances", () => {
+  const c = new Controls();
+  // A stance chosen on foot is dropped, and a flyer found on the ground stays there.
+  c.key("KeyC", true);
+  c.key("KeyC", false);
+  c.fly(true, false);
+  expect([c.buttons, c.wing]).toEqual([0, false]);
+  c.key("Space", true);
+  c.key("Space", true); // repeating while held changes nothing
+  expect([c.buttons, c.wing]).toEqual([BTN_JUMP, true]);
+  c.key("Space", false);
+  c.key("KeyC", true);
+  c.key("KeyX", true);
+  expect(c.buttons).toBe(BTN_JUMP | BTN_ROLL | BTN_BRAKE);
+  c.key("KeyC", false);
+  c.key("KeyX", false);
+  expect(c.buttons).toBe(BTN_JUMP);
+  // Losing focus keeps it up. Space again, or the flyer coming down, lets go of its jump.
+  c.release();
+  expect(c.buttons).toBe(BTN_JUMP);
+  c.key("Space", true);
+  c.key("Space", false);
+  expect([c.buttons, c.wing]).toEqual([0, false]);
+  c.key("Space", true);
+  c.key("Space", false);
+  c.land();
+  expect([c.buttons, c.wing]).toEqual([0, false]);
+  // Taken over in the air, it is kept up. Off it, C is a stance again and Space a jump.
+  c.fly(true, true);
+  expect(c.buttons).toBe(BTN_JUMP);
+  c.fly(false, false);
+  c.key("KeyC", true);
+  c.key("KeyC", false);
+  expect(c.buttons).toBe(BTN_CROUCH);
+  c.key("KeyC", true);
+  c.key("KeyC", false);
+  c.key("Space", true);
+  expect(c.buttons).toBe(BTN_JUMP);
 });
 
 test("the inventory screen turns clicks into commands and never changes anything by itself", () => {

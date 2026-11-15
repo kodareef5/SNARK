@@ -340,7 +340,7 @@ built.
 - **Taming bonuses in a tame's stats, passive taming, mate boost, unfertilised eggs.** `species.tameBonus`, `species.tamedHealth`.
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot` (partly built), `species.loot`.
-- **Flyers.** `species.bite.stamina`, `species.grab`, `species.defendsEgg`, `species.riderWeight`, `species.missiles`, `species.structures`.
+- **Flyers.** `species.grab`, `species.defendsEgg`, `species.missiles`, `species.structures`.
 - **Small behaviours of things already built.** `damage` (partly built), `game`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
 - **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).

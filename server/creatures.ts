@@ -103,21 +103,6 @@ export class Creatures {
     this.tameFlight = world.reg.tamedMove.map(unridden);
   }
 
-  /** After a flyer's step, ridden or not: its take-off, its roll, or its setting down from its own flight shows. */
-  private flew(e: number): void {
-    if (stepOut.tookOff) {
-      this.tookOff++;
-      this.cue(e, CUE_TAKEOFF, false);
-    } else if (stepOut.rolled) {
-      this.rolled++;
-      this.cue(e, CUE_ROLL, false);
-    } else if (stepOut.setDown) {
-      // A flight set down has no landing speed, so the landing cue of a fall does not show it.
-      this.setDown++;
-      this.cue(e, CUE_LAND, false);
-    }
-  }
-
   /** Something at (x, z) hurt `e`. `by` is the entity that did it, or -1. */
   provoke(e: number, x: number, z: number, by = -1): void {
     const ents = this.world.ents;
@@ -141,6 +126,23 @@ export class Creatures {
     if (!this.world.anims[ents.kind[e]!]) return;
     ents.cue[e] = out ? ents.cue[e]! | CUE_OUT : ents.cue[e]! & ~CUE_OUT;
     this.cue(e, CUE_TORPOR, false);
+  }
+
+  /**
+   * Just after `e`'s step, ridden or not: the barrel roll, take-off or setting down from flight that stepOut says it began now
+   * (FL2, FL3). A flight set down has no landing speed, so the landing cue of a fall does not show it.
+   */
+  flew(e: number): void {
+    if (stepOut.rolled) {
+      this.rolled++;
+      this.cue(e, CUE_ROLL, false);
+    } else if (stepOut.tookOff) {
+      this.tookOff++;
+      this.cue(e, CUE_TAKEOFF, false);
+    } else if (stepOut.setDown) {
+      this.setDown++;
+      this.cue(e, CUE_LAND, false);
+    }
   }
 
   /** `e`, knocked out, ate a piece it was fed. */

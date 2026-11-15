@@ -241,6 +241,8 @@ export interface Registry {
   /** FL2, per species: the share of a rider's weight that counts on it, 1 where not given, and the stamina units one bite costs. */
   readonly riderWeight: Float32Array;
   readonly biteStamina: Uint32Array;
+  /** FL2, per species: the damage its barrel roll does to each body it passes (`fly.roll.damage`), 0 for none. */
+  readonly rollDamage: Float32Array;
   /**
    * Per species: what the damage of a missile, a projectile that is not a bullet, is multiplied by against it, and what its
    * bite's and bare hands' damage is multiplied by against a structure. 1 where not given.
@@ -691,6 +693,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const defendsEgg = new Uint8Array(n);
   const riderWeight = new Float32Array(n).fill(1);
   const biteStamina = new Uint32Array(n);
+  const rollDamage = new Float32Array(n);
   const missileMul = new Float32Array(n).fill(1);
   const biteStructureMul = new Float32Array(n).fill(1);
   const materials = new Map(sorted.flatMap((o) => (o.type === "material" ? [[o.id, o] as const] : [])));
@@ -743,6 +746,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (d.defendsEgg) defendsEgg[i] = 1;
         riderWeight[i] = d.riderWeight ?? 1;
         biteStamina[i] = Math.round((d.bite?.stamina ?? 0) * STAMINA_UNITS);
+        rollDamage[i] = d.fly?.roll.damage ?? 0;
         missileMul[i] = d.missiles ?? 1;
         biteStructureMul[i] = d.structures ?? 1;
         damage[i] = d.fists ?? 8;
@@ -896,7 +900,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, missileMul, biteStructureMul }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
@@ -1048,6 +1052,7 @@ function flyerFaults(d: SpeciesDef): string[] {
     within("wait", f.wait, 0, FLIGHT_TICKS_MAX / TICK_RATE, false);
     within("roll.burst", f.roll?.burst, 0, 40, false);
     within("roll.every", f.roll?.every, 0, FLIGHT_TICKS_MAX / TICK_RATE);
+    if (f.roll?.damage !== undefined) within("roll.damage", f.roll.damage, 0, 1e6, false);
   }
   if (d.grab && !(d.grab.drag > 0 && d.grab.drag <= 1e6 && d.grab.reach > 0 && d.grab.reach <= 100)) out.push(`${d.id}: grab needs a drag above 0 and a reach above 0 and at most 100 m`);
   if (d.riderWeight !== undefined && !(d.riderWeight >= 0 && d.riderWeight <= 1)) out.push(`${d.id}: riderWeight must be from 0 to 1`);
