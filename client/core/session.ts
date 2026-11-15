@@ -19,6 +19,7 @@ import {
   MARGIN_UNKNOWN,
   MAX_CLIENT_MESSAGE,
   MAX_NAME_BYTES,
+  MAX_PLACE_NAME_BYTES,
   MAX_SERVER_TEXT_BYTES,
   MAX_TEXT_BYTES,
   CMD_CREATE,
@@ -1038,7 +1039,7 @@ export class ClientSession {
       const number = r.u8();
       const count = r.u8();
       const list = [];
-      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
+      for (let k = 0; k < count; k++) list.push({ kind: r.u16(), name: r.string(MAX_PLACE_NAME_BYTES), x: r.f32(), z: r.f32(), readyAt: r.u32() });
       if (r.overflow) return;
       this.choosing = why;
       this.placesList = number;
