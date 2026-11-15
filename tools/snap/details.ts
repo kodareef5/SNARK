@@ -41,7 +41,7 @@ export interface Sequence {
  * Plays `which` in `view`, which the caller has filled and settled. The bird stands at (x, z) facing `yaw`; the camera
  * stands `near` metres off and then 20 m, at a phone's pixels a metre, frames `w` by `h`.
  */
-export function playDetails(view: ProvingView, which: string, w: number, h: number, settle: (v: ProvingView) => void, zoom = 1): Sequence {
+export function playDetails(view: ProvingView, which: string, w: number, h: number, settle: (v: ProvingView) => void, zoom = 1, moments: readonly number[] = MOMENTS, rows = 2): Sequence {
   const { reg, hf, remote: r, scene, cam, raster } = view;
   const kind = reg.index.get("core:dodo")!;
   const survivor = reg.index.get("core:survivor")!;
@@ -131,8 +131,8 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
   ];
   const frames: Uint8ClampedArray[][] = views.map(() => []);
   const counts: string[] = [];
-  const labels = MOMENTS.map((m) => `${m < 0 ? "before" : `${m.toFixed(1)} s`}`);
-  views.forEach((v, row) => {
+  const labels = moments.map((m) => `${m < 0 ? "before" : `${m.toFixed(1)} s`}`);
+  views.slice(0, rows).forEach((v, row) => {
     // A phone's pixels a metre at that distance, in a frame `h` rows high.
     cam.fovY = 2 * Math.atan((h / (PHONE_ROWS * zoom)) * Math.tan(PHONE_FOV / 2));
     cam.aspect = w / h;
@@ -149,7 +149,7 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
     settle(view);
     let next = 0;
     if (which === "death") r.died = new Map();
-    while (next < MOMENTS.length) {
+    while (next < moments.length) {
       tick += 0.5;
       scene.now += 1000 / 60;
       const t = (tick - t0) / TICK_RATE;
@@ -162,8 +162,8 @@ export function playDetails(view: ProvingView, which: string, w: number, h: numb
         }
       }
       const p = scene.build(cam, r);
-      if (t >= MOMENTS[next]! || p.assetUploads.length + p.texUploads.length > 0) raster.render(p);
-      if (t < MOMENTS[next]!) continue;
+      if (t >= moments[next]! || p.assetUploads.length + p.texUploads.length > 0) raster.render(p);
+      if (t < moments[next]!) continue;
       frames[row]!.push(raster.color.slice());
       if (row === 0) counts.push(`${scene.details.pool.count} alive, ${p.detailCount} drawn, fill ${p.detailFill.toFixed(3)}`);
       next++;

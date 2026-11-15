@@ -7,7 +7,7 @@
 import { CreatureAnim, advanceCreature, idleOf } from "../../shared/anim/creature.ts";
 import { Gait } from "../../shared/anim/gait.ts";
 import { socketDips } from "../../shared/anim/moments.ts";
-import { AnimState, CUE_LAND, CUE_NONE, CUE_TORPOR, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
+import { AnimState, CUE_DEAD, CUE_LAND, CUE_NONE, CUE_TORPOR, LAYER_FLINCH, SPEED_STEP, bodySeed } from "../../shared/anim/pose.ts";
 import type { Occasion } from "../../shared/pack/details.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
@@ -123,7 +123,7 @@ export class Occasions {
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
       const listens = this.listens[kind] ?? 0;
-      if (listens === 0 || (remote.flags[i]! & PROP) !== 0) continue;
+      if (listens === 0 || (remote.flags[i]! & PROP) !== 0 || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
       const id = remote.id[i]!;
       let b = this.bodies.get(id);
       const first = !b;

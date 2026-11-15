@@ -249,7 +249,7 @@ export class Details {
     const pool = this.pool;
     const age = Math.max(0, (tick - w.due) / TICK_RATE);
     for (let k = 0; k < n; k++) {
-      const i = pool.take();
+      const i = pool.count < tier.details.pool ? pool.take() : -1;
       if (i < 0) break;
       // Where it starts and which way it goes: out from the place, and up by the effect's share.
       let [sx, sy, sz] = [0, 0, 0];
