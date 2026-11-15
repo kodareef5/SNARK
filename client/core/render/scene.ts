@@ -17,6 +17,7 @@ import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { GEAR_COUNT } from "../../../shared/sim/entities.ts";
 import { AnimState, CUE_DEAD, CUE_HELD, PITCH_STEPS, bodySeed } from "../../../shared/anim/pose.ts";
+import { SEAT_FLOATS } from "../../../shared/anim/seat.ts";
 import { MAX_VIEW } from "../../../shared/net/view.ts";
 import { sortU32 } from "../../../shared/sort.ts";
 import { Details } from "../details/details.ts";
@@ -93,8 +94,6 @@ export const NODE_BUFFERS = 1 << 20;
  */
 export const NODE_CELLS = 4;
 
-/** Metres a rider's feet hang below its seat. Matches server/riding.ts. */
-const SEAT_DROP = 0.55;
 const MISSING_MESH = "core:missing";
 const WATER_MESH = "core:water";
 const BEAM_MESH = "core:beam";
@@ -283,7 +282,10 @@ export class Scene {
   own: OwnBody | null = null;
   /** Index of an entity to leave out of the remote bodies, because `own` is that body as the viewer predicts it (a mount). -1 for none. */
   skip = -1;
-  private readonly seatAt = [0, 0, 0];
+  private readonly seatAt = new Float64Array(SEAT_FLOATS);
+  /** By remote entity this frame: whether it rides in a seat, and the rows of that seat's turn (Characters.seat). */
+  private readonly seated = new Uint8Array(MAX_VIEW);
+  private readonly seatTurn = new Float64Array(MAX_VIEW * 9);
   /** The bodies in view this frame: which remote entity each is, its place (x, y, z, yaw), and whether it gets only one bone. */
   private readonly bodyFrom = new Uint16Array(MAX_VIEW);
   private readonly bodyAt = new Float64Array(MAX_VIEW * 4);
@@ -818,6 +820,7 @@ export class Scene {
       const rigid = this.bodyRigid;
       let n = 0;
       let wanted = 0;
+      this.seated.fill(0, 0, remote.count);
       for (let i = 0; i < remote.count; i++) {
         const kind = remote.kind[i]!;
         // A dead creature's body is drawn where it lies, by ch.corpses.
@@ -852,8 +855,13 @@ export class Scene {
           }
           if (found) {
             x = at[0]!;
-            y = at[1]! - (held || this.vehicleSeats[i] ? 0 : SEAT_DROP);
+            y = at[1]!;
             z = at[2]!;
+            // A rider sits in its seat's whole frame; one in a vehicle's seat is posed in the vehicle's (vehicleSeats).
+            if (!held && !this.vehicleSeats[i]) {
+              this.seated[i] = 1;
+              for (let q = 0; q < 9; q++) this.seatTurn[i * 9 + q] = at[3 + q]!;
+            }
           }
         }
         const r = ch.reach(kind);
@@ -922,7 +930,7 @@ export class Scene {
         }
         break;
       }
-      ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, own.vehicle, seat);
+      ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, null, 0, own.vehicle, seat);
     }
     if (remote && unseen > 0) this.poseUnseen(remote, unseen);
     const from = p.drawCount;
@@ -938,7 +946,7 @@ export class Scene {
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid, unseen, this.remoteVehicle(remote, i), this.vehicleSeats[i]);
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.remoteVehicle(remote, i), this.vehicleSeats[i]);
   }
 
   private remoteVehicle(remote: RemoteSample, i: number): VehicleRenderPose {

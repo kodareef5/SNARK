@@ -1,0 +1,510 @@
+{
+  "asset": "core/sfx/structure",
+  "review": "../ref/sound",
+  "about": "Building by material: placing, destroying, doors, chests, locks, fires and stations, for every piece without its own.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "place/thatch": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.6,
+      "want": "a thatch piece placed",
+      "prompts": [
+        {
+          "id": "p2200",
+          "models": [
+            "moss"
+          ],
+          "seed": 2200,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A thatch and straw hut panel is set firmly in place and fixed: a solid placing knock and settling, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "destroy/thatch": {
+      "kind": "impact",
+      "range": 90,
+      "level": -12,
+      "vary": 0.5,
+      "want": "a thatch piece destroyed",
+      "prompts": [
+        {
+          "id": "p2210",
+          "models": [
+            "moss"
+          ],
+          "seed": 2210,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A thatch and straw hut panel is smashed apart and collapses: breaking, cracking and falling pieces, three separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "place/wood": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.6,
+      "want": "a wood piece placed",
+      "prompts": [
+        {
+          "id": "p2220",
+          "models": [
+            "moss"
+          ],
+          "seed": 2220,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy wooden wall panel is set firmly in place and fixed: a solid placing knock and settling, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "destroy/wood": {
+      "kind": "impact",
+      "range": 90,
+      "level": -12,
+      "vary": 0.5,
+      "want": "a wood piece destroyed",
+      "prompts": [
+        {
+          "id": "p2230",
+          "models": [
+            "moss"
+          ],
+          "seed": 2230,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy wooden wall panel is smashed apart and collapses: breaking, cracking and falling pieces, three separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "place/stone": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.6,
+      "want": "a stone piece placed",
+      "prompts": [
+        {
+          "id": "p2240",
+          "models": [
+            "moss"
+          ],
+          "seed": 2240,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy stone block is set firmly in place and fixed: a solid placing knock and settling, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "destroy/stone": {
+      "kind": "impact",
+      "range": 90,
+      "level": -12,
+      "vary": 0.5,
+      "want": "a stone piece destroyed",
+      "prompts": [
+        {
+          "id": "p2250",
+          "models": [
+            "moss"
+          ],
+          "seed": 2250,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy stone block is smashed apart and collapses: breaking, cracking and falling pieces, three separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "place/metal": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.6,
+      "want": "a metal piece placed",
+      "prompts": [
+        {
+          "id": "p2260",
+          "models": [
+            "moss"
+          ],
+          "seed": 2260,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy steel wall panel is set firmly in place and fixed: a solid placing knock and settling, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "destroy/metal": {
+      "kind": "impact",
+      "range": 90,
+      "level": -12,
+      "vary": 0.5,
+      "want": "a metal piece destroyed",
+      "prompts": [
+        {
+          "id": "p2270",
+          "models": [
+            "moss"
+          ],
+          "seed": 2270,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy steel wall panel is smashed apart and collapses: breaking, cracking and falling pieces, three separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/open/wood": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.5,
+      "want": "a wood door opening",
+      "prompts": [
+        {
+          "id": "p2280",
+          "models": [
+            "moss"
+          ],
+          "seed": 2280,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy wooden door creaks open on its hinges, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/close/wood": {
+      "kind": "impact",
+      "range": 35,
+      "level": -18,
+      "vary": 0.5,
+      "want": "a wood door closing",
+      "prompts": [
+        {
+          "id": "p2290",
+          "models": [
+            "moss"
+          ],
+          "seed": 2290,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy wooden door swings shut and latches with a thud, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "box/open/wood": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a wood chest opened",
+      "prompts": [
+        {
+          "id": "p2300",
+          "models": [
+            "moss"
+          ],
+          "seed": 2300,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A wood storage chest lid is lifted open, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "box/close/wood": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a wood chest closed",
+      "prompts": [
+        {
+          "id": "p2310",
+          "models": [
+            "moss"
+          ],
+          "seed": 2310,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A wood storage chest lid is closed shut, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/open/metal": {
+      "kind": "impact",
+      "range": 30,
+      "level": -20,
+      "vary": 0.5,
+      "want": "a metal door opening",
+      "prompts": [
+        {
+          "id": "p2320",
+          "models": [
+            "moss"
+          ],
+          "seed": 2320,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy steel door creaks open on its hinges, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/close/metal": {
+      "kind": "impact",
+      "range": 35,
+      "level": -18,
+      "vary": 0.5,
+      "want": "a metal door closing",
+      "prompts": [
+        {
+          "id": "p2330",
+          "models": [
+            "moss"
+          ],
+          "seed": 2330,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy steel door swings shut and latches with a thud, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "box/open/metal": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a metal chest opened",
+      "prompts": [
+        {
+          "id": "p2340",
+          "models": [
+            "moss"
+          ],
+          "seed": 2340,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A metal storage chest lid is lifted open, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "box/close/metal": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a metal chest closed",
+      "prompts": [
+        {
+          "id": "p2350",
+          "models": [
+            "moss"
+          ],
+          "seed": 2350,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A metal storage chest lid is closed shut, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/locked": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a locked door rattled",
+      "prompts": [
+        {
+          "id": "p2360",
+          "models": [
+            "moss"
+          ],
+          "seed": 2360,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Someone tries a locked door: the handle rattles and the bolt holds, four separate tries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "lock": {
+      "kind": "impact",
+      "range": 12,
+      "level": -24,
+      "vary": 0.5,
+      "want": "a lock turned",
+      "prompts": [
+        {
+          "id": "p2370",
+          "models": [
+            "moss"
+          ],
+          "seed": 2370,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy padlock clicks shut and a key turns, five separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "collapse": {
+      "kind": "impact",
+      "range": 150,
+      "level": -10,
+      "vary": 0.4,
+      "want": "a building collapsing",
+      "prompts": [
+        {
+          "id": "p2380",
+          "models": [
+            "moss"
+          ],
+          "seed": 2380,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "A large wooden and stone building collapses: a cascade of crashing beams and stones, long rumbling, one collapse. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "repair": {
+      "kind": "impact",
+      "range": 30,
+      "level": -22,
+      "vary": 0.8,
+      "want": "a structure repaired",
+      "prompts": [
+        {
+          "id": "p2390",
+          "models": [
+            "moss"
+          ],
+          "seed": 2390,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A hammer knocks nails into wood to repair it: a few quick taps, three separate repairs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "demolish": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.6,
+      "want": "a piece pulled down",
+      "prompts": [
+        {
+          "id": "p2400",
+          "models": [
+            "moss"
+          ],
+          "seed": 2400,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A wooden panel is pried loose and pulled down: creaking wood and a clatter, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/light": {
+      "kind": "impact",
+      "range": 20,
+      "level": -20,
+      "vary": 0.6,
+      "want": "a fire lit",
+      "prompts": [
+        {
+          "id": "p2410",
+          "models": [
+            "moss"
+          ],
+          "seed": 2410,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A campfire is lit: a match strike, kindling catching with a whoosh, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/out": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.6,
+      "want": "a fire put out",
+      "prompts": [
+        {
+          "id": "p2420",
+          "models": [
+            "moss"
+          ],
+          "seed": 2420,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small fire is put out: a hiss of steam and smoke, embers dying, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "grind": {
+      "kind": "impact",
+      "range": 15,
+      "level": -24,
+      "vary": 0.3,
+      "want": "a mortar and pestle working",
+      "prompts": [
+        {
+          "id": "p2430",
+          "models": [
+            "moss"
+          ],
+          "seed": 2430,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 12,
+          "text": "A stone mortar and pestle grinding seeds steadily: rhythmic gritty grinding. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "bed/use": {
+      "kind": "impact",
+      "range": 1,
+      "level": -26,
+      "vary": 0.5,
+      "want": "lying down on a bed",
+      "prompts": [
+        {
+          "id": "p2440",
+          "models": [
+            "moss"
+          ],
+          "seed": 2440,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person lies down on a straw mattress: rustling straw and a soft creak, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "space": "ear"
+    }
+  }
+}

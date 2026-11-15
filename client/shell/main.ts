@@ -22,6 +22,8 @@ import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
+import { SoundIo } from "../sound/sound.ts";
+import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
 import { VehicleSelfcheck } from "../core/vehicle-selfcheck.ts";
 import { probeProgress } from "../core/diagnostics.ts";
@@ -91,10 +93,13 @@ async function boot(): Promise<void> {
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
-  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
+  // The world's sounds and the voices share one audio context.
+  const sound = SoundIo.supported ? new SoundIo(app.ui.settings.touchFirst) : null;
+  app.sound = sound;
+  if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
+  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.shared() : null);
   app.voice = voice;
-  addEventListener("pointerdown", () => voice.unlock());
-  addEventListener("keydown", () => voice.unlock());
+  for (const gesture of ["pointerdown", "pointerup", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
   const voiceCheck = selfcheck && params.get("voice") === "1";
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
@@ -151,6 +156,11 @@ async function boot(): Promise<void> {
     app.drawn(packet, ours, gpu);
     device?.frame(now, packet, t0, built);
     if (progress.frames === 30) loser?.loseContext();
+    // The self-check asks for a call and listens for it leaving the volume.
+    if (selfcheck && sound && progress.frames >= 0) {
+      if (progress.frames === 30) app.ui.local?.("sound call");
+      sound.listen();
+    }
     if (progress.frames === 45) loser?.restoreContext();
     const r = app.scene!.assets.residency;
     const result = bench?.frame(now, ours, gpu, packet, r.flying + r.waiting === 0, { drawCalls: renderer.drawCalls, canvas: [width, height], renderer: renderer.rendererName, userAgent: navigator.userAgent });
@@ -164,7 +174,7 @@ async function boot(): Promise<void> {
     if (progress.advance(performance.now() - t0, port.cache.used, selfcheck, voiced, voice.report.played, !drive || drive.finished)) {
       const report = selfcheckReport(app, pack, manifest, hf, packet, {
         has: name => params.has(name), voiced, voiceListen, voice: voice.report,
-        driveCheck, drive, restored, misplaced: view.misplaced(app.ui.frame),
+        driveCheck, drive, restored, misplaced: view.misplaced(app.ui.frame), sound: sound ? { peak: sound.peak } : null,
         cache: port.cache, userAgent: navigator.userAgent, width, height, times: progress.times, renderer,
       });
       document.title = report.ok ? "SNARK self-check passed" : "SNARK self-check FAILED";

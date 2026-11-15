@@ -1129,6 +1129,11 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
         if (session) session.did = 0;
       }
       inHand.set(rec.pid, slot);
+    } else if (rec.saddle !== 0 || world.ents.gear[e]) {
+      // A creature's gear names the saddle it wears, which every client draws on it (D491).
+      gear.fill(0);
+      gear[GEAR_WORN] = rec.saddle;
+      world.ents.setGear(e, gear);
     }
   }
   const gear = new Uint16Array(GEAR_COUNT);

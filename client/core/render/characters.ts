@@ -27,6 +27,7 @@ import { Corpses, type Corpse } from "../ragdoll.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
+import { seatFrame } from "../../../shared/anim/seat.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
 import { Layers, corpseWanted, layerWanted } from "./layers.ts";
@@ -45,6 +46,14 @@ interface Creature {
   color: number;
   /** How far each level of its mesh lies from the finest, in metres. */
   error: readonly number[];
+  /**
+   * Its whole model as it is saddled, made on its rig, drawn in place of `mesh` while it wears any saddle, and how far
+   * each of its levels lies from its finest; -1 where it has none (D491).
+   */
+  saddled: number;
+  saddledError: readonly number[];
+  /** Each saddle that fits it and has a mesh made on its rig: that mesh, by the saddle's content index, drawn on its bones. */
+  worn: ReadonlyMap<number, number>;
   /** A vehicle poses its rig from its definition, not from a gait; null for a creature. */
   vehicle: VehicleRig | null;
   oriented: Solved;
@@ -144,6 +153,8 @@ export class Characters {
   /** Per content index. */
   private readonly worn: (Worn | null)[];
   private readonly held: (Held | null)[];
+  /** 1 for each content index that is a saddle. */
+  private readonly saddle: Uint8Array;
   private readonly wornColor = new Uint8Array(6);
   private readonly pose = new Pose(HUMAN_BONES);
   private readonly solved = new Solved(HUMAN_BONES);
@@ -263,11 +274,22 @@ export class Characters {
       };
     };
     const rigs = buildRigs(pack.header.rigs, pack.clips);
+    this.saddle = Uint8Array.from(reg.saddleFits, (fits) => (fits !== 0 ? 1 : 0));
     this.creatures = reg.defs.map((d, i) => {
       if (d?.type !== "species" || d.skeleton === undefined || d.skeleton === HUMAN.id) return null;
-      const rig = rigs.get(bind.id(d.id, "rig"));
+      const id = bind.id(d.id, "rig");
+      const rig = rigs.get(id);
       const mesh = bind.own(d.id, "body");
-      return rig && mesh >= 0 ? { anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), mesh, color: d.color, error: table.error[mesh]!, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), oriented: new Solved(rig.bones) } : null;
+      if (!rig || mesh < 0) return null;
+      // A saddle is drawn either way only on the rig it was made on: the sample dinosaurs share a skeleton and not a rest pose.
+      const on = (m: number): number => (m >= 0 && pack.header.rigs[table.rig[m]!]?.id === id ? m : -1);
+      const saddled = on(bind.own(d.id, "saddled"));
+      const worn = new Map<number, number>();
+      reg.saddleFits.forEach((fits, item) => {
+        const m = fits === i ? on(bind.own(reg.ids[item]!, "worn")) : -1;
+        if (m >= 0) worn.set(item, m);
+      });
+      return { anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -330,7 +352,7 @@ export class Characters {
   }
 
   /** Root on a seat, using the same body binding/proportions and pelvis solve as add(). Does not emit a draw. */
-  seatedOrigin(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: number[]): boolean {
+  seatedOrigin(kind: number, look: Uint8Array | null, seat: VehicleSeatPose, out: Float64Array | number[]): boolean {
     const k = this.kinds[kind];
     if (!k) return false;
     const view = look ?? (k.sets.length > 1 ? PLAIN : null);
@@ -353,8 +375,12 @@ export class Characters {
     return this.creatures[kind]?.anim.rig.bones ?? HUMAN_BONES;
   }
 
-  /** Writes the seat socket's position to `out` for a creature at (x, y, z) facing `yaw` radians. False for a kind without a seat. */
-  seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: number[], seatSlot = 0, vehicle?: VehicleRenderPose): boolean {
+  /**
+   * Writes where a rider sits on a creature of this kind at (x, y, z) facing `yaw` radians, posed as it is drawn: the
+   * rider's origin and the rows of its turn, in the seat socket's whole frame (shared/anim/seat.ts). False for a kind
+   * without a seat. A vehicle's seat `seatSlot` (1 for its first) is its anchor alone, at out[0..2]; its turn is the car's.
+   */
+  seat(kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, out: Float64Array, seatSlot = 0, vehicle?: VehicleRenderPose): boolean {
     const c = this.creatures[kind];
     const rig = c?.anim.rig;
     if (c?.vehicle) {
@@ -376,13 +402,7 @@ export class Characters {
     else g = undefined;
     creaturePose(c.anim, st, tick, rig.a, g ?? null);
     solve(rig, rig.a, rig.solved);
-    boneToModel(rig.solved, socket.bone, socket.x, socket.y, socket.z, out);
-    const s = Math.sin(yaw);
-    const co = Math.cos(yaw);
-    const [mx, my, mz] = [out[0]!, out[1]!, out[2]!];
-    out[0] = x + co * mx + s * mz;
-    out[1] = y + my;
-    out[2] = z + co * mz - s * mx;
+    seatFrame(rig.solved, socket, x, y, z, yaw, out);
     return true;
   }
 
@@ -391,7 +411,7 @@ export class Characters {
    * (x, y, z) facing `yaw` radians: as near as a survivor of its stance holds one. Once its carrier is posed this frame it
    * is put right, to where the palms are drawn. False for a pair that is not drawn so.
    */
-  heldAt(id: number, kind: number, carrier: number, carrierKind: number, x: number, y: number, z: number, yaw: number, st: AnimState, out: number[]): boolean {
+  heldAt(id: number, kind: number, carrier: number, carrierKind: number, x: number, y: number, z: number, yaw: number, st: AnimState, out: Float64Array): boolean {
     const at = this.creatures[kind]?.anim.holdAt;
     if (!at || !this.kinds[carrierKind]) return false;
     this.carriedBy.set(id, carrier);
@@ -440,9 +460,13 @@ export class Characters {
     }
   }
 
-  private addCreature(p: FramePacket, kind: number, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean, vehicle?: VehicleRenderPose): boolean {
+  private addCreature(p: FramePacket, kind: number, c: Creature, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, size: number, rigid: boolean, unseen: boolean, vehicle?: VehicleRenderPose): boolean {
     const rig = c.anim.rig;
-    const first = this.room(p, rigid ? 1 : rig.bones, 1, !unseen);
+    // A saddle is drawn as the saddled model in place of the body, or else as its own mesh on the body's bones (D491).
+    const saddle = gear ? gear[gearAt + GEAR_WORN]! : 0;
+    const saddled = saddle !== 0 && this.saddle[saddle] === 1 && c.saddled >= 0;
+    const worn = saddle === 0 || saddled ? -1 : (c.worn.get(saddle) ?? -1);
+    const first = this.room(p, rigid ? 1 : rig.bones, worn >= 0 ? 2 : 1, !unseen);
     if (first < 0) return false;
     if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, size);
     else {
@@ -493,7 +517,8 @@ export class Characters {
     const carrier = st.held ? this.carriedBy.get(id) : undefined;
     if (carrier !== undefined) this.inArms.push(first, rigid ? 1 : rig.bones, x, y, z, yaw, size, carrier, kind, id);
     const layer = unseen || !this.assets.tier.lit ? 0 : this.layers.level(id, layerWanted(st), tick, this.last.has(id));
-    this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid, unseen, layer);
+    const lod = saddled ? this.queueCreature(c, c.saddled, c.saddledError, first, x, y, z, colors, colorAt, id, size, rigid, unseen, layer) : this.queueCreature(c, c.mesh, c.error, first, x, y, z, colors, colorAt, id, size, rigid, unseen, layer);
+    if (worn >= 0) this.queueWorn(c, worn, lod, x, y, z, size, rigid);
     return true;
   }
 
@@ -541,24 +566,47 @@ export class Characters {
   }
 
   /**
-   * Queues a creature's mesh on the bones from `first`, at the level its distance and size call for, and with its layer
-   * at `layer` where that level is drawn with materials. One `unseen` only casts, and asks for nothing.
+   * Queues a creature's `mesh`, whose levels lie `error` from its finest, on the bones from `first`, at the level its
+   * distance and size call for, and with its layer at `layer` where that level is drawn with materials. One `unseen`
+   * only casts, and asks for nothing. Returns the level.
    */
-  private queueCreature(c: Creature, first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean, layer = 0): void {
+  private queueCreature(c: Creature, mesh: number, error: readonly number[], first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean, layer = 0): number {
     const n = this.count++;
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
-    const lod = this.levelOf(id, c.error, far);
-    if (!unseen) this.assets.wantTextured(c.mesh, lod, far);
-    this.key[n] = (c.mesh * this.levels + lod) * 2 + (rigid ? 1 : 0);
-    if (layer > 0 && this.assets.wantLayers(c.mesh, lod, far)) this.key[n] = this.layeredKey(this.key[n]!, layer);
+    const lod = this.levelOf(id, error, far);
+    if (!unseen) this.assets.wantTextured(mesh, lod, far);
+    this.key[n] = (mesh * this.levels + lod) * 2 + (rigid ? 1 : 0);
+    if (layer > 0 && this.assets.wantLayers(mesh, lod, far)) this.key[n] = this.layeredKey(this.key[n]!, layer);
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
     this.id[n] = id;
     this.near[n] = unseen ? CASTS : SEEN;
     const s = this.shadows;
-    this.mask[n] = s ? s.body(x, y, z, c.anim.rig.reach * size) & s.mesh(c.mesh) : 0;
+    this.mask[n] = s ? s.body(x, y, z, c.anim.rig.reach * size) & s.mesh(mesh) : 0;
+    this.offset.fill(0, n * 3, n * 3 + 3);
+    return lod;
+  }
+
+  /**
+   * Queues the saddle `mesh` on the creature queued last, on its bones, in its colours and at its level `lod`, or the
+   * saddle's coarsest where it has fewer. Nothing in ARK dyes a saddle, so the saddle is drawn in its own colours, but
+   * where it names a colour region it takes the creature's.
+   */
+  private queueWorn(c: Creature, mesh: number, lod: number, x: number, y: number, z: number, size: number, rigid: boolean): void {
+    const body = this.count - 1;
+    const n = this.count++;
+    const level = Math.min(lod, this.assets.table.error[mesh]!.length - 1);
+    if (this.near[body] !== CASTS) this.assets.wantTextured(mesh, level, Math.sqrt(x * x + y * y + z * z) / size);
+    this.key[n] = (mesh * this.levels + level) * 2 + (rigid ? 1 : 0);
+    this.firstBone[n] = this.firstBone[body]!;
+    this.region0[n] = this.region0[body]!;
+    this.colors.copyWithin(n * 6, body * 6, body * 6 + 6);
+    this.id[n] = this.id[body]!;
+    this.near[n] = this.near[body]!;
+    const s = this.shadows;
+    this.mask[n] = s ? s.body(x, y, z, c.anim.rig.reach * size) & s.mesh(mesh) : 0;
     this.offset.fill(0, n * 3, n * 3 + 3);
   }
 
@@ -580,7 +628,7 @@ export class Characters {
       const first = this.room(p, c.anim.rig.bones, 1);
       if (first < 0) return;
       writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
-      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
+      this.queueCreature(c, c.mesh, c.error, first, x, y, z, d.colors, 0, d.id, d.size, false, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
     }
   }
 
@@ -635,11 +683,12 @@ export class Characters {
    * and what is on it. `size` scales a creature, below 1 for a young one. `rigid` leaves it in its rest pose on one bone, for
    * a frame without the bones to pose it. `unseen` poses it as a body in view is posed, for its shadow alone: none of it is
    * drawn in the view and it asks for nothing. Returns false when the frame has no room left even for that, and counts a
-   * body in view dropped. While the sun casts, what `headless` leaves out still casts.
+   * body in view dropped. While the sun casts, what `headless` leaves out still casts. `seat` holds, at `seatAt`, the rows
+   * of the turn of the seat a survivor rides in (seat()), which turns it in place of `yaw`.
    */
-  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false, unseen = false, vehicle?: VehicleRenderPose, seat?: VehicleSeatPose): boolean {
+  add(p: FramePacket, kind: number, x: number, y: number, z: number, yaw: number, st: AnimState, tick: number, look: Uint8Array | null, lookAt: number, colors: Uint8Array, colorAt: number, gear: Uint16Array | null, gearAt: number, id: number, own: boolean, headless: boolean, size = 1, rigid = false, unseen = false, seat: Float64Array | null = null, seatAt = 0, vehicle?: VehicleRenderPose, vehicleSeat?: VehicleSeatPose): boolean {
     const creature = this.creatures[kind];
-    if (creature) return this.addCreature(p, kind, creature, x, y, z, yaw, st, tick, colors, colorAt, id, size, rigid, unseen, vehicle);
+    if (creature) return this.addCreature(p, kind, creature, x, y, z, yaw, st, tick, colors, colorAt, gear, gearAt, id, size, rigid, unseen, vehicle);
     const k = this.kinds[kind];
     if (!k) return false;
     const first = this.room(p, rigid ? 1 : HUMAN_BONES, PARTS, !unseen);
@@ -648,15 +697,19 @@ export class Characters {
     const view = look ? look.subarray(lookAt) : k.sets.length > 1 ? PLAIN : null;
     const set = k.sets[view && view[LOOK_SEX]! < k.sets.length ? view[LOOK_SEX]! : 0]!;
     if (view) lookColors(view, this.lookColor);
-    if (rigid) writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
-    else {
+    if (rigid) {
+      if (seat) {
+        writeRigid(p.bones, first * BONE_FLOATS, 0, 0, 0, 0, 1);
+        inFrame(p.bones, first * BONE_FLOATS, 1, seat, seatAt, x, y, z);
+      } else writeRigid(p.bones, first * BONE_FLOATS, x, y, z, yaw, 1);
+    } else {
       this.packet = p;
       const g = this.gaitOf(id);
       advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
       humanPose(this.anim, st, tick, this.pose, g);
-      if (seat) mountPose(this.mount, { role: seat.driver ? "drive" : "passenger", tick, startTick: 0, durationTicks: 1, steering: seat.steer, ...(seat.driver ? {} : { upper: this.pose }) }, this.pose);
-      if (seat && !seat.driver && seat.aimYaw !== undefined) {
-        const turn = Math.atan2(Math.sin(seat.aimYaw - seat.yaw), Math.cos(seat.aimYaw - seat.yaw));
+      if (vehicleSeat) mountPose(this.mount, { role: vehicleSeat.driver ? "drive" : "passenger", tick, startTick: 0, durationTicks: 1, steering: vehicleSeat.steer, ...(vehicleSeat.driver ? {} : { upper: this.pose }) }, this.pose);
+      if (vehicleSeat && !vehicleSeat.driver && vehicleSeat.aimYaw !== undefined) {
+        const turn = Math.atan2(Math.sin(vehicleSeat.aimYaw - vehicleSeat.yaw), Math.cos(vehicleSeat.aimYaw - vehicleSeat.yaw));
         quatAxis(this.steer, 0, 0, 1, 0, Math.max(-1.2, Math.min(1.2, turn)));
         quatMul(this.pose.rot, B_SPINE * 4, this.steer, 0, this.pose.rot, B_SPINE * 4);
       }
@@ -665,12 +718,16 @@ export class Characters {
         scales = this.scales;
         lookScales(view, scales);
         // Longer legs lift the hips, so the feet stay on the ground.
-        if (!seat) this.pose.root[1]! += lookLift(scales, set.rest);
+        if (!seat && !vehicleSeat) this.pose.root[1]! += lookLift(scales, set.rest);
       }
       solve(HUMAN, this.pose, this.solved, set.rest, scales);
       if (seat) {
-        vehicleRotation(seat, this.rotation);
-        mountOrigin(this.solved, [seat.x, seat.y, seat.z], this.rotation, this.origin);
+        // A rider sits in its seat's whole frame, and leans, pitches and banks as the seat does.
+        writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, 0, 0, 0, 0);
+        inFrame(p.bones, first * BONE_FLOATS, HUMAN_BONES, seat, seatAt, x, y, z);
+      } else if (vehicleSeat) {
+        vehicleRotation(vehicleSeat, this.rotation);
+        mountOrigin(this.solved, [vehicleSeat.x, vehicleSeat.y, vehicleSeat.z], this.rotation, this.origin);
         orientSolved(this.solved, this.rotation, this.mounted);
         x = this.origin[0]!; y = this.origin[1]!; z = this.origin[2]!; yaw = 0;
         writeBones(p.bones, first * BONE_FLOATS, this.mounted, set.rest, scales, x, y, z, 0);
@@ -854,6 +911,26 @@ export class Characters {
 export function showMaterials(assets: Assets, mesh: number, distance: number, size = 1): void {
   const runs = assets.table.sections[mesh]![0]!;
   for (let k = 0; k < runs.length; k += 3) assets.material(runs[k]!, distance, size);
+}
+
+/**
+ * Turns the rows of `bones` bones at `at`, written about the origin facing +Z, by the turn whose rows are at `turnAt` in
+ * `turn`, and moves them to (x, y, z).
+ */
+function inFrame(out: Float32Array, at: number, bones: number, turn: Float64Array, turnAt: number, x: number, y: number, z: number): void {
+  const f00 = turn[turnAt]!, f01 = turn[turnAt + 1]!, f02 = turn[turnAt + 2]!;
+  const f10 = turn[turnAt + 3]!, f11 = turn[turnAt + 4]!, f12 = turn[turnAt + 5]!;
+  const f20 = turn[turnAt + 6]!, f21 = turn[turnAt + 7]!, f22 = turn[turnAt + 8]!;
+  for (let b = 0; b < bones; b++) {
+    const o = at + b * BONE_FLOATS;
+    for (let col = 0; col < 4; col++) {
+      const r0 = out[o + col]!, r1 = out[o + 4 + col]!, r2 = out[o + 8 + col]!;
+      const last = col === 3 ? 1 : 0;
+      out[o + col] = f00 * r0 + f01 * r1 + f02 * r2 + last * x;
+      out[o + 4 + col] = f10 * r0 + f11 * r1 + f12 * r2 + last * y;
+      out[o + 8 + col] = f20 * r0 + f21 * r1 + f22 * r2 + last * z;
+    }
+  }
 }
 
 /** Writes at `at` the one bone of a body left in its rest pose: it turns the body about +Y, sizes it and puts it in its place. */

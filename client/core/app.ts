@@ -49,6 +49,13 @@ import { waitWords } from "./ui/inventory.ts";
 import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
+import type { SoundSink } from "./sound/packet.ts";
+import { Sounds } from "./sound/sounds.ts";
+import type { SoundDecoder } from "./sound/library.ts";
+import { hearSession, soundView } from "./sound/view.ts";
+import { cueKey } from "../../shared/sound/cues.ts";
+import { soundCommand } from "./sound/command.ts";
+import { SplitPort } from "./sound/split.ts";
 
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
@@ -115,6 +122,8 @@ export class App {
   /** The frame's view and eye, and whether its own laser is on, for the sights. */
   private readonly sightAt = { yaw: 0, pitch: 0, laser: false, x: 0, y: 0, z: 0 };
   private readonly spot = [0, 0, 0];
+  /** Where a passenger sits, for its camera (Characters.seat). */
+  private readonly seatSpot = new Float64Array(12);
   readonly shots: Shots;
   /** Null until the world arrives. */
   falling: Falling | null = null;
@@ -165,6 +174,7 @@ export class App {
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     this.shots = new Shots(reg, pack);
@@ -205,6 +215,14 @@ export class App {
   private eggKept = false;
 
   voice: VoicePort | null = null;
+  /** Plays the world's sounds. Null in tests and wherever there is no audio: then no sound work is done at all. */
+  sound: SoundSink | null = null;
+  /** Made with the scene, where there is a sink and the assets stream. */
+  sounds: Sounds | null = null;
+  /** Decodes sounds off the main thread: the browser's worker, set before the first frame. Null decodes inline. */
+  soundDecoder: SoundDecoder | null = null;
+  /** Tames already heard of the session's queue, which the naming prompt empties. */
+  private tamedHeard = 0;
   talking = false;
   private talkMode = MODE_TALK;
   private volumeSet = -1;
@@ -713,6 +731,7 @@ export class App {
       // Only the reasons a player can act on are spelled out.
       hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
+      if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
@@ -724,6 +743,7 @@ export class App {
       this.vehicleTelemetry.stop();
       hud.status = "connecting";
       this.ui.build(aspect, hud, session);
+      if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
     if (this.shown !== session.registry) {
@@ -732,7 +752,14 @@ export class App {
       this.shots.reg = this.shown;
     }
     if (!this.scene) {
-      this.scene = new Scene(world, this.reg, this.pack, this.stream);
+      // Sounds share the asset port, each side taking only what it asked for.
+      const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
+      this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
+      if (split) {
+        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst, this.soundDecoder ?? undefined);
+        hearSession(session, this.sounds);
+        this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
+      }
       this.scene.shots = this.shots;
       this.scene.plainSky = this.plainSky;
       if (this.stress) {
@@ -745,7 +772,8 @@ export class App {
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
-    hud.status = this.debug ? this.scene.assets.line() : "";
+    hud.status = this.debug ? `${this.scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
+    // Sampled before the camera, which puts a passenger in its seat on the vehicle as it is drawn.
     session.sampleRemote(this.remote);
 
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
@@ -805,10 +833,10 @@ export class App {
         if (chase) { px = r.x[i]!; py = r.y[i]! + 1; pz = r.z[i]!; }
         else {
           const pose = { pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, steering: r.steering[i]!, wheelAngle: r.wheelAngle[i]! };
-          if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.spot, session.own.seatSlot, pose) &&
-            ch.seatedOrigin(session.ownKind, session.ownLook, ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.spot, heading)!, this.spot)) {
+          if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.seatSpot, session.own.seatSlot, pose) &&
+            ch.seatedOrigin(session.ownKind, session.ownLook, ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading)!, this.seatSpot)) {
             // Preserve the authority's root + stance-eye contract; an authored seated eye/muzzle must change combat too.
-            px = this.spot[0]!; py = this.spot[1]! + eye; pz = this.spot[2]!;
+            px = this.seatSpot[0]!; py = this.seatSpot[1]! + eye; pz = this.seatSpot[2]!;
           }
         }
         break;
@@ -889,7 +917,7 @@ export class App {
       body.state.setMotion(session.own.vx, session.own.vz, body.yaw, 0);
       body.state.setAction(session.own.act, 0, session.simTick - session.own.actTicks);
       body.state.seed = bodySeed(body.id);
-      // The mount's colours and cues come from its remote copy.
+      // The mount's colours, its saddle and its cues come from its remote copy.
       body.colors.fill(0);
       body.state.unpackCue(0);
       const r = this.remote;
@@ -898,12 +926,16 @@ export class App {
         if (body.vehicle) body.vehicle.doors = r.vehicleDoors[i]!;
         body.generation = r.gen[i]!;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
+        for (let k = 0; k < GEAR_COUNT; k++) body.gear[k] = r.gear[i * GEAR_COUNT + k]!;
         body.state.unpackCue(r.cue[i]!);
       }
     }
     this.scene.skip = riding ? session.driving : -1;
     this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
+    // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
+    this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
+    this.tamedHeard = session.tamed.length;
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
@@ -916,7 +948,10 @@ export class App {
     this.scene.viewHeight = height;
     this.scene.now = nowMs;
     const kept = this.scene.assets.residency.cache;
-    if (this.ui.settings.download) this.scene.assets.residency.download();
+    if (this.ui.settings.download) {
+      this.scene.assets.residency.download();
+      this.sounds?.library.download();
+    }
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
     this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), this.off);
@@ -936,6 +971,8 @@ export class App {
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     if (alive && car) hud.ammo = "";
     this.listen(hud);
+    const vol = this.ui.settings;
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder;

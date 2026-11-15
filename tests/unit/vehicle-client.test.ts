@@ -65,7 +65,7 @@ test("seated survivors retain real body bindings, proportions, appearance and eq
   look[LOOK_REGIONS + 13] = 100;
   gear[GEAR_HELD] = reg.index.get("core:rifle")!;
   gear[GEAR_WORN + SLOT_TORSO] = reg.index.get("core:cloth_shirt")!;
-  expect(characters.add(packet, survivor, 0, 0, 0, 0, state, 12, look, 0, colors, 0, gear, 0, 7, false, false, 1, false, false, undefined, seat)).toBe(true);
+  expect(characters.add(packet, survivor, 0, 0, 0, 0, state, 12, look, 0, colors, 0, gear, 0, 7, false, false, 1, false, false, null, 0, undefined, seat)).toBe(true);
   expect(packet.boneCount).toBe(HUMAN_BONES);
   close(transform(packet, B_HIPS, rest.subarray(0, 3)), [seat.x, seat.y, seat.z]);
   const drawn: string[] = [];
@@ -81,14 +81,14 @@ test("seated survivors retain real body bindings, proportions, appearance and eq
 test("passenger aim changes the upper body while the actual pelvis stays on the seat", () => {
   const a = fixture(), b = fixture();
   for (const [f, aimYaw] of [[a, seat.yaw], [b, seat.yaw + .9]] as const) {
-    f.characters.add(f.packet, survivor, 0, 0, 0, 0, new AnimState(), 3, defaultLook(), 0, colors, 0, null, 0, 7, false, false, 1, false, false, undefined, { ...seat, aimYaw });
+    f.characters.add(f.packet, survivor, 0, 0, 0, 0, new AnimState(), 3, defaultLook(), 0, colors, 0, null, 0, 7, false, false, 1, false, false, null, 0, undefined, { ...seat, aimYaw });
     close(transform(f.packet, B_HIPS, rest.subarray(0, 3)), [seat.x, seat.y, seat.z]);
   }
   expect([...a.packet.bones.subarray(B_HEAD * BONE_FLOATS, (B_HEAD + 1) * BONE_FLOATS)]).not.toEqual([...b.packet.bones.subarray(B_HEAD * BONE_FLOATS, (B_HEAD + 1) * BONE_FLOATS)]);
 });
 
 test("native car chassis and both seat sockets share full attitude; steering affects only front wheels", () => {
-  const { characters, packet } = fixture(), state = new AnimState(), out = [0, 0, 0], expected = [0, 0, 0];
+  const { characters, packet } = fixture(), state = new AnimState(), out = new Float64Array(12), expected = [0, 0, 0];
   const frame = { ...seat, x: 2, y: 3, z: 4, yaw: .8 };
   expect(characters.vehicle(compact)).toBe(true);
   for (const slot of [1, 2]) {
@@ -96,7 +96,7 @@ test("native car chassis and both seat sockets share full attitude; steering aff
     vehiclePoint(frame, [slot === 1 ? .42 : -.42, .59, .12], expected);
     close(out, expected);
   }
-  characters.add(packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, frame);
+  characters.add(packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, null, 0, frame);
   vehiclePoint(frame, [0, 1, 0], expected);
   close(transform(packet, 0, [0, 1, 0]), expected);
   expect(packet.boneCount).toBe(8);
@@ -107,7 +107,7 @@ test("native car chassis and both seat sockets share full attitude; steering aff
 test("suspension holds all wheel hubs on the support plane while chassis, occupants and doors follow the sprung body", () => {
   const { characters, packet } = fixture(), state = new AnimState(), expected = [0, 0, 0];
   const frame = { ...seat, pitch: -.12, roll: .18, rideOffset: .09, groundPitch: .08, groundRoll: -.04, grounded: true, doors: 0xffff };
-  characters.add(packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, frame);
+  characters.add(packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, null, 0, frame);
   for (const wheel of [1, 2, 3, 4]) {
     const pivot = carRig.rest.slice(wheel * 3, wheel * 3 + 3);
     vehiclePoint({ ...frame, y: frame.y - frame.rideOffset, pitch: frame.groundPitch, roll: frame.groundRoll }, pivot, expected);
@@ -122,7 +122,7 @@ test("suspension holds all wheel hubs on the support plane while chassis, occupa
     close(transform(packet, door, pivot), expected);
   }
   const closed = fixture();
-  closed.characters.add(closed.packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, { ...frame, doors: 0, steering: 0 });
+  closed.characters.add(closed.packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, null, 0, { ...frame, doors: 0, steering: 0 });
   expect(transform(packet, 5, [.84, .76, -.35])).not.toEqual(transform(closed.packet, 5, [.84, .76, -.35]));
   expect(transform(packet, 7, [.42, 1.05, .55])).not.toEqual(transform(closed.packet, 7, [.42, 1.05, .55]));
 });

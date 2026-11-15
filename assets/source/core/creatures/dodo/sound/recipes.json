@@ -1,0 +1,4029 @@
+{
+  "takes": {
+    "takes/call/stable-0004-00000.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "call",
+      "prompt_id": "coo",
+      "prompt": "TrackType: SFX, a big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 4,
+      "seconds": 3,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0004.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "wall_seconds": 1.1,
+      "peak_memory": null,
+      "sha256": "f2d4147ba6424809bb4611427eb456ad3b53122d1803183e37724434978cbc04",
+      "source_sha256": "7bb8803052d4519db28c528e4db4c25ffe17f3c31c57c3ae2a4cc2a4f690eaf6",
+      "cut": {
+        "source_file": "stable-0004.wav",
+        "source_frames": 132300,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          117747
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/stable-0003-00943.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "call",
+      "prompt_id": "coo",
+      "prompt": "TrackType: SFX, a big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 3,
+      "seconds": 3,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0003.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "wall_seconds": 0.97,
+      "peak_memory": null,
+      "sha256": "247bc1fe778f4c10af6a9309724a96048e90f1ea545a768aa0686db3eedbc5bb",
+      "source_sha256": "dcdfb5be29f4b142034936423662cf3102c43ab0f42419828968ab969495afab",
+      "cut": {
+        "source_file": "stable-0003.wav",
+        "source_frames": 132300,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          39381,
+          114396
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/stable-0304-00000.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "call",
+      "prompt_id": "coo2",
+      "prompt": "TrackType: SFX, a wood pigeon coos softly, one low throaty call, calm. Close-miked, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 304,
+      "seconds": 3,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0304.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a wood pigeon coos softly, one low throaty call, calm. Close-miked, dry, quiet background.",
+      "wall_seconds": 1.97,
+      "peak_memory": "1.48 GB",
+      "sha256": "0557eed542256ffbc51f1ccf16bd050450ea6d3cce17ca2e173f16aa53fc2d78",
+      "source_sha256": "9d9740bc060cce1398791a3bda3c5cb253ece35f08f89db398579ea615941e73",
+      "cut": {
+        "source_file": "stable-0304.wav",
+        "source_frames": 132300,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          68355
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/stable-0901-00204.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "call",
+      "prompt_id": "burble-3s",
+      "prompt": "TrackType: SFX, a fat bird makes a soft, low, bubbling burble in its throat, like a pigeon coo crossed with a turkey's contented purr. Calm, close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 901,
+      "seconds": 3,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0901.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a fat bird makes a soft, low, bubbling burble in its throat, like a pigeon coo crossed with a turkey's contented purr. Calm, close-miked, dry.",
+      "wall_seconds": 0.94,
+      "peak_memory": "1.48 GB",
+      "process": {
+        "max_rss_gb": 1.57,
+        "peak_footprint_gb": 1.81
+      },
+      "sha256": "ce8e2539556c417d11c27e9e10656a136f6731fa5a3492f137a2953307da3c2f",
+      "source_sha256": "824fd70d11a19ea3f1f72f0e04420542f4c56d10c0437e01d60022306ec7c33a",
+      "cut": {
+        "source_file": "stable-0901.wav",
+        "source_frames": 132300,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          6791,
+          96579
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/stable-0906-00209.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "call",
+      "prompt_id": "burble-3s",
+      "prompt": "TrackType: SFX, a fat bird makes a soft, low, bubbling burble in its throat, like a pigeon coo crossed with a turkey's contented purr. Calm, close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 906,
+      "seconds": 3,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0906.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a fat bird makes a soft, low, bubbling burble in its throat, like a pigeon coo crossed with a turkey's contented purr. Calm, close-miked, dry.",
+      "wall_seconds": 0.79,
+      "peak_memory": "1.48 GB",
+      "process": {
+        "max_rss_gb": 1.59,
+        "peak_footprint_gb": 1.81
+      },
+      "sha256": "a681c946c56f916184afc7427e93f7394a4e50c7fe48372c2fa194eb29af9964",
+      "source_sha256": "c52bf738adbaaa55e3c914a1fd78e2fe772a709746ea99e5cba6f8ce6d12efa3",
+      "cut": {
+        "source_file": "stable-0906.wav",
+        "source_frames": 132300,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          7011,
+          96932
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-0501-00100.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "coos-m",
+      "prompt": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 501,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "bf16",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0501.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background. duration: 8.0s",
+      "sample_seconds": 218.5,
+      "sha256": "7516e19e1ca16165249f10b61ad86fcfc3738577c4995e3b04bd16e254e0c92e",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.49,
+          "peak_footprint_gb": 4.6
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.3,
+            "peak_gb": 3.74
+          },
+          "dit-bf16": {
+            "seconds": 820.9,
+            "peak_gb": 4.14
+          },
+          "vae": {
+            "seconds": 2.5,
+            "peak_gb": 4.07
+          }
+        }
+      },
+      "source_sha256": "e40725773407c4db58adcccb417ddfad37efe1d615066d76f0437e152cd1d6fa",
+      "cut": {
+        "source_file": "moss-0501.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          2400,
+          65040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-0501-04475.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "coos-m",
+      "prompt": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 501,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "bf16",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0501.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background. duration: 8.0s",
+      "sample_seconds": 218.5,
+      "sha256": "8423c7be308f76348fbebe15797cad2d93228b7cc4c8cbbc362c0f9191f2622f",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.49,
+          "peak_footprint_gb": 4.6
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.3,
+            "peak_gb": 3.74
+          },
+          "dit-bf16": {
+            "seconds": 820.9,
+            "peak_gb": 4.14
+          },
+          "vae": {
+            "seconds": 2.5,
+            "peak_gb": 4.07
+          }
+        }
+      },
+      "source_sha256": "e40725773407c4db58adcccb417ddfad37efe1d615066d76f0437e152cd1d6fa",
+      "cut": {
+        "source_file": "moss-0501.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          212400,
+          266640
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-0502-00585.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "coos-m",
+      "prompt": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 502,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "bf16",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0502.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background. duration: 8.0s",
+      "sample_seconds": 203.3,
+      "sha256": "f796ca4727e51668d6e3f05b47c2b87e6fd778dff19da880bbdd7202c31ea801",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.49,
+          "peak_footprint_gb": 4.6
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.3,
+            "peak_gb": 3.74
+          },
+          "dit-bf16": {
+            "seconds": 820.9,
+            "peak_gb": 4.14
+          },
+          "vae": {
+            "seconds": 2.5,
+            "peak_gb": 4.07
+          }
+        }
+      },
+      "source_sha256": "b380d48e1a94883d99f10ea3ab17deafe5e3e7730eae58422d6b59e24241dd87",
+      "cut": {
+        "source_file": "moss-0502.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          25679,
+          77280
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-0502-05160.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "coos-m",
+      "prompt": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 502,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "bf16",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0502.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big plump pigeon coos softly to itself a few times, with short pauses between the calls: low, throaty, bubbling coos and murmurs, calm and sleepy. Close-miked outdoors, dry, quiet background. duration: 8.0s",
+      "sample_seconds": 203.3,
+      "sha256": "da727b2eba9e97b093de03a341fb33a314717730ffb5b33a881a4db9efae41aa",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.49,
+          "peak_footprint_gb": 4.6
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.3,
+            "peak_gb": 3.74
+          },
+          "dit-bf16": {
+            "seconds": 820.9,
+            "peak_gb": 4.14
+          },
+          "vae": {
+            "seconds": 2.5,
+            "peak_gb": 4.07
+          }
+        }
+      },
+      "source_sha256": "b380d48e1a94883d99f10ea3ab17deafe5e3e7730eae58422d6b59e24241dd87",
+      "cut": {
+        "source_file": "moss-0502.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          245280,
+          297600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-0001-00390.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "coo",
+      "prompt": "A big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 1,
+      "seconds": 3,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "bf16",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0001.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background. duration: 3.0s",
+      "sample_seconds": 194.9,
+      "sha256": "b086bd9789e77fc429b7498cadc35df5404a651882edbd3d23e2af2856988f66",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.49,
+          "peak_footprint_gb": 4.6
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.3,
+            "peak_gb": 3.74
+          },
+          "dit-bf16": {
+            "seconds": 820.9,
+            "peak_gb": 4.14
+          },
+          "vae": {
+            "seconds": 2.5,
+            "peak_gb": 4.07
+          }
+        }
+      },
+      "source_sha256": "0bf1d6d75e4695e18c106757fa1f7d2d69431ab5acaceb935aa14d956950a745",
+      "cut": {
+        "source_file": "moss-0001.wav",
+        "source_frames": 144000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          16320,
+          119040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-0001-00985.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "coo",
+      "prompt": "A big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 1,
+      "seconds": 3,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0001.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background. duration: 3.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 100.3,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "ded2242d69af13503bed77df14a93b0b992e9a1c9e9d241eba2b0fb2182d506f",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 140.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 6.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b67ba17fc054f0d894e35a86b82ed7c45991a88251ec6a72476c1c266438d337",
+      "cut": {
+        "source_file": "moss-pt-0001.wav",
+        "source_frames": 144000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          44880,
+          144000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/call/moss-pt-0002-00035.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "call",
+      "prompt_id": "coo",
+      "prompt": "A big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background.",
+      "negative_prompt": "",
+      "seed": 2,
+      "seconds": 3,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0002.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big plump pigeon gives one low, soft, throaty coo with a bubbling burble at the end, calm and sleepy. Close-miked outdoors, dry, quiet background. duration: 3.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "37db5d1e9677b9fed56a81fffb0fa9fdae412f687dea92c76a4159b3823db5c8",
+      "worker": {
+        "takes": 2,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 4.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 140.9,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 6.6,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "95e72450ac16d9e27c9e9ca6880636b08ae0fa492cb957461312d60d3aa1b8df",
+      "cut": {
+        "source_file": "moss-pt-0002.wav",
+        "source_frames": 144000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          133920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/stable-0001-00000.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "startled",
+      "prompt_id": "squawk",
+      "prompt": "TrackType: SFX, a big clumsy bird is startled and lets out one sudden, loud, alarmed squawk, a harsh rising honk. Close-miked, dry, outdoors.",
+      "negative_prompt": "",
+      "seed": 1,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0001.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a big clumsy bird is startled and lets out one sudden, loud, alarmed squawk, a harsh rising honk. Close-miked, dry, outdoors.",
+      "wall_seconds": 1.41,
+      "peak_memory": "1.47 GB",
+      "sha256": "56c49812e06d34ff288c8e3f52bbbc02e58d486723baea4b4c5487c7fef97d5d",
+      "source_sha256": "42bcc3ce49b2f225131bf763023995708d0101157a39f6a728935c3dc8704cc2",
+      "cut": {
+        "source_file": "stable-0001.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          47320
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/stable-0302-00000.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "startled",
+      "prompt_id": "hen-alarm",
+      "prompt": "TrackType: SFX, a hen squawks loudly in sudden alarm, one harsh shrill squawk. Close-miked, dry, outdoors.",
+      "negative_prompt": "",
+      "seed": 302,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0302.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a hen squawks loudly in sudden alarm, one harsh shrill squawk. Close-miked, dry, outdoors.",
+      "wall_seconds": 1.05,
+      "peak_memory": "1.47 GB",
+      "sha256": "c2b960f61d236082357fbe36dd2b168f043852c8da34fe386824471c527a3040",
+      "source_sha256": "f6bce7f4db0c340825b2e01a5c202e35523abe479460ea41757144650379fcf2",
+      "cut": {
+        "source_file": "stable-0302.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          55434
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/stable-0401-00319.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "startled",
+      "prompt_id": "goose-alarm",
+      "prompt": "TrackType: SFX, a goose is startled and gives one loud, harsh alarm honk. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 401,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0401.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a goose is startled and gives one loud, harsh alarm honk. Close-miked, dry.",
+      "wall_seconds": 1.04,
+      "peak_memory": "1.47 GB",
+      "sha256": "dccc5ab06ba4b53fb465aae6379c034781e3bde6425f10e950648273ebcb0cd0",
+      "source_sha256": "86a5406228523b4b6fec3d8ac3624c12b90fb65d8914d7125aa6e86d08047a9e",
+      "cut": {
+        "source_file": "stable-0401.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          11862,
+          51068
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/stable-0705-00000.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "startled",
+      "prompt_id": "screech",
+      "prompt": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry.",
+      "negative_prompt": "",
+      "seed": 705,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0705.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a big bird screeches once in fright, a loud raw squawk that cracks at the top. Close, dry.",
+      "wall_seconds": 1.2,
+      "peak_memory": "1.47 GB",
+      "sha256": "7d508e727eaa39fca2a246cea5b85aa47fc955fe6ef37f6a23d4347f82bbb5c2",
+      "source_sha256": "aef3f6d448fe03070e6fe43d234c938dc4be35a666e80a023a6805062b58c35d",
+      "cut": {
+        "source_file": "stable-0705.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          51950
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-0501-00015.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "squawks-m",
+      "prompt": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors.",
+      "negative_prompt": "",
+      "seed": 501,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "int4",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0501.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "dit_weights": {
+        "repo": "mlx-community/MOSS-SoundEffect-v2.0-4bit",
+        "revision": "51d53e8b51bb5f7eff1ac28ca6faf8d14557dfcb",
+        "file": "mlx/dit.safetensors",
+        "quantisation": "4-bit, group 64, transformer-block Linear layers"
+      },
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors. duration: 8.0s",
+      "sample_seconds": 188.6,
+      "sha256": "61d31f1a9ab01e5f5808d869e1e43959b28b77ae3b035a68843f312c5f055c3b",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.7,
+          "peak_footprint_gb": 4.52
+        },
+        "stages": {
+          "text": {
+            "seconds": 0.9,
+            "peak_gb": 3.74
+          },
+          "dit-int4": {
+            "seconds": 762.7,
+            "peak_gb": 1.95
+          },
+          "vae": {
+            "seconds": 3.6,
+            "peak_gb": 4.11
+          }
+        }
+      },
+      "source_sha256": "a07a5772a9759128afc2688fa7dfe503a954fa2f758d45012a0e93d035d5e03b",
+      "cut": {
+        "source_file": "moss-0501.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          74400
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-0501-02380.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "squawks-m",
+      "prompt": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors.",
+      "negative_prompt": "",
+      "seed": 501,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "int4",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0501.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "dit_weights": {
+        "repo": "mlx-community/MOSS-SoundEffect-v2.0-4bit",
+        "revision": "51d53e8b51bb5f7eff1ac28ca6faf8d14557dfcb",
+        "file": "mlx/dit.safetensors",
+        "quantisation": "4-bit, group 64, transformer-block Linear layers"
+      },
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors. duration: 8.0s",
+      "sample_seconds": 188.6,
+      "sha256": "6efe5c070fb2962ff22eece68b09e4f538144b63af54b171db69267920a3583d",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.7,
+          "peak_footprint_gb": 4.52
+        },
+        "stages": {
+          "text": {
+            "seconds": 0.9,
+            "peak_gb": 3.74
+          },
+          "dit-int4": {
+            "seconds": 762.7,
+            "peak_gb": 1.95
+          },
+          "vae": {
+            "seconds": 3.6,
+            "peak_gb": 4.11
+          }
+        }
+      },
+      "source_sha256": "a07a5772a9759128afc2688fa7dfe503a954fa2f758d45012a0e93d035d5e03b",
+      "cut": {
+        "source_file": "moss-0501.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          111840,
+          190800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-0501-04085.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "squawks-m",
+      "prompt": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors.",
+      "negative_prompt": "",
+      "seed": 501,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "int4",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0501.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "dit_weights": {
+        "repo": "mlx-community/MOSS-SoundEffect-v2.0-4bit",
+        "revision": "51d53e8b51bb5f7eff1ac28ca6faf8d14557dfcb",
+        "file": "mlx/dit.safetensors",
+        "quantisation": "4-bit, group 64, transformer-block Linear layers"
+      },
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors. duration: 8.0s",
+      "sample_seconds": 188.6,
+      "sha256": "49a3973708f195784ea4c4151fafb538d3a1c5a5463e5ae722bbc91f4f2ad41d",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.7,
+          "peak_footprint_gb": 4.52
+        },
+        "stages": {
+          "text": {
+            "seconds": 0.9,
+            "peak_gb": 3.74
+          },
+          "dit-int4": {
+            "seconds": 762.7,
+            "peak_gb": 1.95
+          },
+          "vae": {
+            "seconds": 3.6,
+            "peak_gb": 4.11
+          }
+        }
+      },
+      "source_sha256": "a07a5772a9759128afc2688fa7dfe503a954fa2f758d45012a0e93d035d5e03b",
+      "cut": {
+        "source_file": "moss-0501.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          193680,
+          278880
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/startled/moss-0501-06415.wav": {
+      "model": "moss",
+      "model_name": "MOSS-SoundEffect v2.0 (MLX bf16 conversion)",
+      "repo": "mlx-community/MOSS-SoundEffect-v2.0-bf16",
+      "revision": "71a08a420dcac61b73fc1f721d56ac41078973bf",
+      "code": {
+        "repo": "github.com/xocialize/moss-soundeffect-mlx",
+        "commit": "4e8e3e36d4d9c991d16a3e65a4b7099d406b9ed8",
+        "package": "moss-sfx-mlx 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "startled",
+      "prompt_id": "squawks-m",
+      "prompt": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors.",
+      "negative_prompt": "",
+      "seed": 501,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30,
+        "dtype": "bf16",
+        "dit": "int4",
+        "decode_margin": 1.0
+      },
+      "date": "2026-11-15",
+      "file": "moss-0501.wav",
+      "upstream": {
+        "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d"
+      },
+      "pipeline": "tools/sound/generate.py run_moss: the moss_sfx_mlx components in three stages (text encoder, DiT, VAE), one resident at a time; same maths as MossSoundEffectPipeline, with the VAE decode cut to seconds + decode_margin (null = the full 30 s, as upstream)",
+      "dit_weights": {
+        "repo": "mlx-community/MOSS-SoundEffect-v2.0-4bit",
+        "revision": "51d53e8b51bb5f7eff1ac28ca6faf8d14557dfcb",
+        "file": "mlx/dit.safetensors",
+        "quantisation": "4-bit, group 64, transformer-block Linear layers"
+      },
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big clumsy bird is startled three times: each time it lets out one sudden, loud, alarmed squawk, a harsh rising honk, with silence in between. Close-miked, dry, outdoors. duration: 8.0s",
+      "sample_seconds": 188.6,
+      "sha256": "af3f8672c5e20c25418fb84fccc131ccb7c7e2415f567f898b8163e4d94aa8e4",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 3.7,
+          "peak_footprint_gb": 4.52
+        },
+        "stages": {
+          "text": {
+            "seconds": 0.9,
+            "peak_gb": 3.74
+          },
+          "dit-int4": {
+            "seconds": 762.7,
+            "peak_gb": 1.95
+          },
+          "vae": {
+            "seconds": 3.6,
+            "peak_gb": 4.11
+          }
+        }
+      },
+      "source_sha256": "a07a5772a9759128afc2688fa7dfe503a954fa2f758d45012a0e93d035d5e03b",
+      "cut": {
+        "source_file": "moss-0501.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          305520,
+          375600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/stable-0703-00234.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "hurt",
+      "prompt_id": "yelp-2s",
+      "prompt": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 703,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0703.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a large bird is hit and gives one short pained squawk, a strangled honk cut off quickly. Close-miked, dry.",
+      "wall_seconds": 1.0,
+      "peak_memory": "1.47 GB",
+      "sha256": "93bef20cdc5af58ef0602e39764c755ad67ec84dd74ddae8ea93a166bc08a173",
+      "source_sha256": "2884d79439a80e98242c10ae94c86b3d5ae237e4a9c4ca13cb09927207a7849c",
+      "cut": {
+        "source_file": "stable-0703.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          8114,
+          37618
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/stable-0403-00858.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "hurt",
+      "prompt_id": "goose-yelp",
+      "prompt": "TrackType: SFX, a goose gives one short hoarse yelp of pain. Close, dry, no background.",
+      "negative_prompt": "",
+      "seed": 403,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0403.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a goose gives one short hoarse yelp of pain. Close, dry, no background.",
+      "wall_seconds": 0.99,
+      "peak_memory": "1.47 GB",
+      "sha256": "e6d601aa9c12e0d1bd0cf4e5c3241c769ed0341fd61c9fec638db2d05772be80",
+      "source_sha256": "13f4b3410de59acac9511431d9309439a5f9c3000b37406239396b4f64df88aa",
+      "cut": {
+        "source_file": "stable-0403.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          35632,
+          55655
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/stable-0406-00863.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "hurt",
+      "prompt_id": "goose-yelp",
+      "prompt": "TrackType: SFX, a goose gives one short hoarse yelp of pain. Close, dry, no background.",
+      "negative_prompt": "",
+      "seed": 406,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0406.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a goose gives one short hoarse yelp of pain. Close, dry, no background.",
+      "wall_seconds": 1.0,
+      "peak_memory": "1.47 GB",
+      "sha256": "a19d032497c55fea3d36e3a4a1bab7a4be67aa56ef2e5c0084a26cadcd6ded66",
+      "source_sha256": "bf287d4ed8059f97f8cfc2995425252c3e42167a390247af850442eef7cf151d",
+      "cut": {
+        "source_file": "stable-0406.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          35853,
+          58301
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/stable-0302-00579.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "hurt",
+      "prompt_id": "hen-pain",
+      "prompt": "TrackType: SFX, a chicken gives one short pained squawk when struck. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 302,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0302.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a chicken gives one short pained squawk when struck. Close-miked, dry.",
+      "wall_seconds": 1.17,
+      "peak_memory": "1.47 GB",
+      "sha256": "17faa41be3d8896936f38ca030d1ffc27af6ba1de87173f68326e77ba1e9562f",
+      "source_sha256": "72a0cd25aef5c43743c34794d038c6670dfa68100bc8031025fccc1d223f1c6c",
+      "cut": {
+        "source_file": "stable-0302.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          23328,
+          48863
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-0504-04735.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "yelps-m",
+      "prompt": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 504,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0504.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "aea4c71de13bc8de11a555e9690c235b8c71dd7b3f1946ae7525624eed987f98",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.6,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 139.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 6.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a77fb483237a26720b70b16f58a1ea3ac05053a12559d7235a386a3ce0f74fa1",
+      "cut": {
+        "source_file": "moss-pt-0504.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          224880,
+          268800
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-0503-07045.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "yelps-m",
+      "prompt": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 503,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0503.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "25a5210d84538f5d1acf8f185c3723a9ae42cfcfc04da29f180fbcb597ead2dc",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.6,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 139.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 6.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1d78fc0d445f24d602dcc8ebf515fd5bf30ed17151e22c90d5437f3902f74768",
+      "cut": {
+        "source_file": "moss-pt-0503.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          335760,
+          374160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-0502-06405.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "yelps-m",
+      "prompt": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 502,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0502.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.7,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c856332f97f5ec200ce276b521cae1185ea88fb73c072b4d5121170c4575ff31",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.6,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 139.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 6.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "ef67c0ecdb76f39df774988dfc3b72e13e07140fa12bbd25b68919269629fee6",
+      "cut": {
+        "source_file": "moss-pt-0502.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          305040,
+          345840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hurt/moss-pt-0501-03345.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hurt",
+      "prompt_id": "yelps-m",
+      "prompt": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 501,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0501.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A large bird is struck several times; each time it gives one short pained squawk, a strangled honk cut off quickly, with pauses in between. Close-miked, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 43.1,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c1eebcf56485e27f8b11df900f992014683609e60f605b708ac365d3ceffd665",
+      "worker": {
+        "takes": 4,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.6,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 139.8,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 6.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6ecfb8a3b65e624f66d5460c09da808420652f896734b05ad2ab6f63145b7467",
+      "cut": {
+        "source_file": "moss-pt-0501.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          158160,
+          189360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/peck/stable-0101-00010.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "peck",
+      "prompt_id": "wood",
+      "prompt": "TrackType: SFX, one quick jab of a heavy bird's beak against a wooden stick, a short hollow knock. Close-up, dry, no room sound.",
+      "negative_prompt": "",
+      "seed": 101,
+      "seconds": 1,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0101.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, one quick jab of a heavy bird's beak against a wooden stick, a short hollow knock. Close-up, dry, no room sound.",
+      "wall_seconds": 1.49,
+      "peak_memory": "1.46 GB",
+      "sha256": "b042532b28e97de36fca6ff866c91cb5dbdf4b54e9de7d7fa9e9cd2e7165956b",
+      "source_sha256": "50b49482bcc9f768c8a89248b3d1f545f7deb036009d96e91bb9f0e3120a1db8",
+      "cut": {
+        "source_file": "stable-0101.wav",
+        "source_frames": 44100,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          11907
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/peck/stable-0301-00025.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "peck",
+      "prompt_id": "board",
+      "prompt": "TrackType: SFX, foley, a single beak peck on a wooden board, a short sharp knock. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 301,
+      "seconds": 1,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0301.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, a single beak peck on a wooden board, a short sharp knock. Close-miked, dry.",
+      "wall_seconds": 1.06,
+      "peak_memory": "1.46 GB",
+      "sha256": "bd020ef3d0d5a5893771f81342a150a345834fa092f8345c9889f232c659348e",
+      "source_sha256": "c0dffc01ccf61b3e9d9d7333fb2e724c12afcb9e7829b57e764da814d5401dda",
+      "cut": {
+        "source_file": "stable-0301.wav",
+        "source_frames": 44100,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          16494
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/peck/stable-0402-00000.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "peck",
+      "prompt_id": "body",
+      "prompt": "TrackType: SFX, foley, a single quick jab into flesh, a short dull meaty thud. Close, dry.",
+      "negative_prompt": "",
+      "seed": 402,
+      "seconds": 1,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0402.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, a single quick jab into flesh, a short dull meaty thud. Close, dry.",
+      "wall_seconds": 1.39,
+      "peak_memory": "1.46 GB",
+      "sha256": "fed98eaea6f9a54e1aebb072a9f4b83a756fe3601d2b620b809e16af8388ccdd",
+      "source_sha256": "556293693c27d2cf36e749e358824b9d87365f9a1d71b13e2ce02ff5fc9bfa74",
+      "cut": {
+        "source_file": "stable-0402.wav",
+        "source_frames": 44100,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          15435
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/peck/stable-0702-00010.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "peck",
+      "prompt_id": "soil",
+      "prompt": "TrackType: SFX, foley, a bird pecks the ground once, a short dull tap in soft soil. Close, dry.",
+      "negative_prompt": "",
+      "seed": 702,
+      "seconds": 1,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0702.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, a bird pecks the ground once, a short dull tap in soft soil. Close, dry.",
+      "wall_seconds": 1.05,
+      "peak_memory": "1.46 GB",
+      "sha256": "614e2893fa41edda37a42c63f7a3dde7cb7a898538a5e75a48bd9776a71d8d4a",
+      "source_sha256": "5ccf0012355940ad31c98c67944490b12224c62d5d469a13f53e615ee7bd4361",
+      "cut": {
+        "source_file": "stable-0702.wav",
+        "source_frames": 44100,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          11025
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/peck/stable-0001-00000.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "peck",
+      "prompt_id": "ground",
+      "prompt": "TrackType: SFX, a single hard peck of a big bird's beak into dry earth, a short dull knock with a little soil crunch. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 1,
+      "seconds": 1,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0001.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, a single hard peck of a big bird's beak into dry earth, a short dull knock with a little soil crunch. Close-miked, dry.",
+      "wall_seconds": 1.61,
+      "peak_memory": "1.46 GB",
+      "sha256": "5af55f364bbf91e5ce9bbbc5d3e0ef3156353d0d99d77b3924b309e7b5b09d0e",
+      "source_sha256": "d3f88b6d7d5b16d0bd80ae1e265912a0849a46d2457e4333b9db3d65c53b13d1",
+      "cut": {
+        "source_file": "stable-0001.wav",
+        "source_frames": 44100,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          15832
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/peck/moss-pt-0602-03465.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "peck",
+      "prompt_id": "wood-m",
+      "prompt": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound.",
+      "negative_prompt": "",
+      "seed": 602,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0602.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "36750cef826ac7a4c918779a1d7e226ca8d9ce6b132747e80881e71f18041d54",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6e7392671b1905b5ac6b639c6e3f3092d8b939770cf06dab8acc13d5fc6c236c",
+      "cut": {
+        "source_file": "moss-pt-0602.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          163920,
+          178560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/peck/moss-pt-0604-04225.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "peck",
+      "prompt_id": "wood-m",
+      "prompt": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound.",
+      "negative_prompt": "",
+      "seed": 604,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0604.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "49c78ccf973a1c5650517e89f0397a8905c63f08713c017fc465f49dc35dba16",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e2be36648581ec0ae8851681f048ab4b5c4a5cf9d17821e4fba5c6172a63ca5a",
+      "cut": {
+        "source_file": "moss-pt-0604.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          200400,
+          211440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/peck/moss-pt-0601-03240.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "peck",
+      "prompt_id": "wood-m",
+      "prompt": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound.",
+      "negative_prompt": "",
+      "seed": 601,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0601.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A heavy bird jabs its beak against a wooden stick a few times, slowly: short hollow knocks with pauses in between. Close-up, dry, no room sound. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a65252179558e2b3f6e759e4b1598105bbb26f33bdaf4277ec169deaa3816dd4",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1b13eef157fd8c42186815a213fdcb705095ddad4a101ece4e3d77621d0e3fc2",
+      "cut": {
+        "source_file": "moss-pt-0601.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          153120,
+          165840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/stable-0304-00005.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "land",
+      "prompt_id": "drop",
+      "prompt": "TrackType: SFX, foley, a heavy feathered body drops onto soft ground, one dull thump with a feather ruffle. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 304,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0304.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, a heavy feathered body drops onto soft ground, one dull thump with a feather ruffle. Close-miked, dry.",
+      "wall_seconds": 0.98,
+      "peak_memory": "1.47 GB",
+      "sha256": "079ef2ca8fea23bf08ae60a0e8a2fe97bc3b55dc544b4fbb8831aa2a5907c067",
+      "source_sha256": "780412fe3842e64fa99cfe6c01dd5d916666ccbb2a2b40ca15b79bc61f8c7123",
+      "cut": {
+        "source_file": "stable-0304.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          28401
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/stable-0306-00030.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "land",
+      "prompt_id": "drop",
+      "prompt": "TrackType: SFX, foley, a heavy feathered body drops onto soft ground, one dull thump with a feather ruffle. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 306,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0306.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, a heavy feathered body drops onto soft ground, one dull thump with a feather ruffle. Close-miked, dry.",
+      "wall_seconds": 0.98,
+      "peak_memory": "1.47 GB",
+      "sha256": "c910b9bf9c20223805c66ff57f9a60019b88b3ae876bd8de7144d08aa49e9aa5",
+      "source_sha256": "66de5094c988153d6ace717009bc29c02bd02ce5f9598038c203592e7e858469",
+      "cut": {
+        "source_file": "stable-0306.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          36956
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/stable-0902-00045.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "land",
+      "prompt_id": "flutter-2s",
+      "prompt": "TrackType: SFX, foley, a turkey flutters its wings briefly and lands on grass with one soft thud. Close, dry.",
+      "negative_prompt": "",
+      "seed": 902,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0902.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, a turkey flutters its wings briefly and lands on grass with one soft thud. Close, dry.",
+      "wall_seconds": 0.78,
+      "peak_memory": "1.47 GB",
+      "process": {
+        "max_rss_gb": 1.58,
+        "peak_footprint_gb": 1.8
+      },
+      "sha256": "bca8af5b31c2ddcf724a33e1c95e433640e8eed92a3563587e36f5abc938e66c",
+      "source_sha256": "70778f2e12afc0422867643a244f9e5ce304068916be2e8e9446609c16ca74e3",
+      "cut": {
+        "source_file": "stable-0902.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          30915
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/stable-0905-00075.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "land",
+      "prompt_id": "flutter-2s",
+      "prompt": "TrackType: SFX, foley, a turkey flutters its wings briefly and lands on grass with one soft thud. Close, dry.",
+      "negative_prompt": "",
+      "seed": 905,
+      "seconds": 2,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0905.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, a turkey flutters its wings briefly and lands on grass with one soft thud. Close, dry.",
+      "wall_seconds": 0.78,
+      "peak_memory": "1.47 GB",
+      "process": {
+        "max_rss_gb": 1.58,
+        "peak_footprint_gb": 1.8
+      },
+      "sha256": "608a10b5aa864bc971c73cd2f1c89ea9b63a316a6b313642ffb068cfdb4deea2",
+      "source_sha256": "ed4b365a5e0a9e35eeca9432627b0b850955eaf0d80242aed6d26252dfe75dc9",
+      "cut": {
+        "source_file": "stable-0905.wav",
+        "source_frames": 88200,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          1102,
+          44674
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/moss-pt-0504-06610.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "land",
+      "prompt_id": "drops-m",
+      "prompt": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry.",
+      "negative_prompt": "",
+      "seed": 504,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0504.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 36.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "62f0809b2a1856233a183f22e319f14db563051b84e9d4555016c486252eba8c",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "13ca55376a788cb8894dc3e89e5da8c726ad243b65fc1177f2ec35e5d219d167",
+      "cut": {
+        "source_file": "moss-pt-0504.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          314880,
+          351120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/moss-pt-0502-00470.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "land",
+      "prompt_id": "drops-m",
+      "prompt": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry.",
+      "negative_prompt": "",
+      "seed": 502,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0502.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2f49c2c7a5f42c1bb54bf5700303449ca40d0377b6c201125f2f463fe5d4473b",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "b5d025643625da836aafb7f13e48b36f376d79eb64b4c790a0b83fc5651739df",
+      "cut": {
+        "source_file": "moss-pt-0502.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          20160,
+          47760
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/moss-pt-0501-00505.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "land",
+      "prompt_id": "drops-m",
+      "prompt": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry.",
+      "negative_prompt": "",
+      "seed": 501,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0501.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c9494460aab48ae0142d0b3f6aad293cbc8848785cef5b1da09e6eaee8079328",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "d39315e093f0bfc5835fd4d2acb275f6e175a8169b56f7e1ed5954b697d4d182",
+      "cut": {
+        "source_file": "moss-pt-0501.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          21840,
+          43440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/land/moss-pt-0503-02975.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "land",
+      "prompt_id": "drops-m",
+      "prompt": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry.",
+      "negative_prompt": "",
+      "seed": 503,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0503.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A plump turkey-sized bird is dropped onto grassy ground three times: each a soft, heavy, feathered thump with a quick ruffle of feathers, with pauses in between. Close-miked outdoors, dry. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "94699d48a0a137fcc6ca5593855e65a3ba149f8b2d0fd21a56bfb1f0df2ce90a",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c7c37c2393682095f9a3cf18e0261bcaa9f362a6976656d72f23e423136119e8",
+      "cut": {
+        "source_file": "moss-pt-0503.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          140400,
+          167040
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/grass/stable-0103-01514.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/grass",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 103,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0103.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 2.51,
+      "peak_memory": "1.51 GB",
+      "sha256": "6492938a414b3221ad19dfd826efb43936149ab99dae0ef53901a05641dd0029",
+      "source_sha256": "9511aac94c6549d3307081a3d60bfd1c570959a4f334d13492f5d890860f40e2",
+      "cut": {
+        "source_file": "stable-0103.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          64562,
+          82291
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/grass/stable-0103-04158.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/grass",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 103,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0103.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 2.51,
+      "peak_memory": "1.51 GB",
+      "sha256": "5eb4c5deaefe951406493065f8277090acc165030794687931175dfc8aa36255",
+      "source_sha256": "9511aac94c6549d3307081a3d60bfd1c570959a4f334d13492f5d890860f40e2",
+      "cut": {
+        "source_file": "stable-0103.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          181162,
+          199332
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/grass/stable-0103-05494.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/grass",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 103,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0103.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 2.51,
+      "peak_memory": "1.51 GB",
+      "sha256": "949c646ce9aeaf99637f1d76ff5b220dbb56e4a7672aad09103e638b614ca213",
+      "source_sha256": "9511aac94c6549d3307081a3d60bfd1c570959a4f334d13492f5d890860f40e2",
+      "cut": {
+        "source_file": "stable-0103.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          240080,
+          256530
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/grass/stable-0102-00067.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/grass",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 2.37,
+      "peak_memory": "1.51 GB",
+      "sha256": "b68644956e033878c3a4e567b866edb987c024aada286f6382cd76930b899940",
+      "source_sha256": "41bc1d6b16f95f7440723aa61e235232e66ef36c89d905ed8ecbffeb83eeb01e",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          749,
+          17817
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/grass/stable-0102-05370.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/grass",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 2.37,
+      "peak_memory": "1.51 GB",
+      "sha256": "74fc7d5bea07bd682d2908140ff72f96c9d9ac52fd8e7d199af5d21cdb8a6648",
+      "source_sha256": "41bc1d6b16f95f7440723aa61e235232e66ef36c89d905ed8ecbffeb83eeb01e",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          234612,
+          252561
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/grass/stable-0102-01374.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/grass",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on grass: three-toed clawed feet, soft padded steps with a light swish, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 2.37,
+      "peak_memory": "1.51 GB",
+      "sha256": "1d5939916d56213615af9997a9cf27f4260e414bf47994d713622fd6c16b54ac",
+      "source_sha256": "41bc1d6b16f95f7440723aa61e235232e66ef36c89d905ed8ecbffeb83eeb01e",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          58388,
+          79866
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/grass/moss-pt-0001-01807.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step/grass",
+      "prompt_id": "walk",
+      "prompt": "Slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors.",
+      "negative_prompt": "",
+      "seed": 1,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0001.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d0bffcddfdb49bf42d8e26f098ecb23913515ffbfa9b3b9181855d70578f9135",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7c5059c20ced9d7cba46794d6f9a679e822f071190cf72ad86dab228ab440529",
+      "cut": {
+        "source_file": "moss-pt-0001.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          84336,
+          114336
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/grass/moss-pt-0004-05512.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step/grass",
+      "prompt_id": "walk",
+      "prompt": "Slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors.",
+      "negative_prompt": "",
+      "seed": 4,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0004.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Slow footsteps of a heavy goose waddling across short grass: soft padded thuds with a light grass swish, well spaced. Close-miked, dry outdoors. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.0,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e7fd5c9177edfd81e58a2a89a1bdcb73dda661758d7e4ddc740f284ef94c2d22",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "5f0e12dd38c222bcaa4a01d585b22a94b9a60082c876012e5004fe45cc23a3c7",
+      "cut": {
+        "source_file": "moss-pt-0004.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          262176,
+          292080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/sand/stable-0102-00077.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/sand",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "wall_seconds": 1.2,
+      "peak_memory": "1.51 GB",
+      "sha256": "3e387213d35dfa358dffc2f3cf59b89780dc802efd6c45c60bad0482672d4a99",
+      "source_sha256": "ce8ebf070d4ef6f4e1eb17f3df1114b277bc7b9ea46133e0c6b56a30d972ac25",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          1190,
+          32590
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/sand/stable-0102-00810.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/sand",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "wall_seconds": 1.2,
+      "peak_memory": "1.51 GB",
+      "sha256": "83fba6cc13f11a45b8480950bb1e49352e8c334937d43f238aa66bbead36daa0",
+      "source_sha256": "ce8ebf070d4ef6f4e1eb17f3df1114b277bc7b9ea46133e0c6b56a30d972ac25",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          33516,
+          62049
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/sand/stable-0102-02875.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/sand",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "wall_seconds": 1.2,
+      "peak_memory": "1.51 GB",
+      "sha256": "ac6ee33f992be801f9f4d23600c957b9b0ca3ace41f71da51c1102b09f18bb76",
+      "source_sha256": "ce8ebf070d4ef6f4e1eb17f3df1114b277bc7b9ea46133e0c6b56a30d972ac25",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          124582,
+          154880
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/sand/stable-0103-00127.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/sand",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "negative_prompt": "",
+      "seed": 103,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0103.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "wall_seconds": 1.21,
+      "peak_memory": "1.51 GB",
+      "sha256": "6e9de454bdc72551157c72b1b17b82ba35d7751fe8606098861f77d4c6eac870",
+      "source_sha256": "624130cc250297152efcc3e91549131754696537cc0018f0f4f5c14550e2f821",
+      "cut": {
+        "source_file": "stable-0103.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          3395,
+          21918
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/sand/stable-0103-02217.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/sand",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "negative_prompt": "",
+      "seed": 103,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0103.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "wall_seconds": 1.21,
+      "peak_memory": "1.51 GB",
+      "sha256": "ca56ca08a75396940a7e9df4679514b10ee714bfcfc66def38ea54b1f974915b",
+      "source_sha256": "624130cc250297152efcc3e91549131754696537cc0018f0f4f5c14550e2f821",
+      "cut": {
+        "source_file": "stable-0103.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          95564,
+          122334
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/sand/stable-0103-02890.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/sand",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "negative_prompt": "",
+      "seed": 103,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0103.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on dry sand: three-toed clawed feet, soft padded crunching steps, slow and well spaced. Close-miked, dry, no waves.",
+      "wall_seconds": 1.21,
+      "peak_memory": "1.51 GB",
+      "sha256": "aeefe9cbe25d8afcbe0814e41dfc49a23be4f172d977a557a32788ff1b6e1ffb",
+      "source_sha256": "624130cc250297152efcc3e91549131754696537cc0018f0f4f5c14550e2f821",
+      "cut": {
+        "source_file": "stable-0103.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          125244,
+          152895
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/sand/moss-pt-0003-05992.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step/sand",
+      "prompt_id": "walk",
+      "prompt": "Slow footsteps of a heavy goose waddling on dry beach sand: soft crunchy padded steps, well spaced. Close-miked, dry, no waves.",
+      "negative_prompt": "",
+      "seed": 3,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0003.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Slow footsteps of a heavy goose waddling on dry beach sand: soft crunchy padded steps, well spaced. Close-miked, dry, no waves. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "61154ccb17e777ca95110f9ff884976e04ea35ffaaae34c8eef67a030ac67c06",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "9bb1b780c414591e0051105daf80868664fe6b7213360d107c43cbd57a5fd1be",
+      "cut": {
+        "source_file": "moss-pt-0003.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          285216,
+          313920
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/stone/stable-0101-00042.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/stone",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 101,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0101.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 1.23,
+      "peak_memory": "1.51 GB",
+      "sha256": "b2538b550eb3409855515da8ce0b151d028f2f362acfd8da529cb0f4131e627a",
+      "source_sha256": "ce46e1756df5c6b975680cd756a337d8606adc2300856dbbe6269902158e726d",
+      "cut": {
+        "source_file": "stable-0101.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          20904
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/stone/stable-0101-02726.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/stone",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 101,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0101.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 1.23,
+      "peak_memory": "1.51 GB",
+      "sha256": "4909b6711caa1caf7251f605c057e01cb1a9372a40ee72ba6d1ff510fc8bda3c",
+      "source_sha256": "ce46e1756df5c6b975680cd756a337d8606adc2300856dbbe6269902158e726d",
+      "cut": {
+        "source_file": "stable-0101.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          118011,
+          137504
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/stone/stable-0101-05200.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/stone",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 101,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0101.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 1.23,
+      "peak_memory": "1.51 GB",
+      "sha256": "13f8def6fa405d90de2ad1d4bc3903313c1aeaac41882c9b96ce31d0724ddadc",
+      "source_sha256": "ce46e1756df5c6b975680cd756a337d8606adc2300856dbbe6269902158e726d",
+      "cut": {
+        "source_file": "stable-0101.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          227115,
+          247534
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/stone/stable-0102-00042.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/stone",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 1.27,
+      "peak_memory": "1.51 GB",
+      "sha256": "bcb68381546bbdd37acfb98185f4b466ada5b83690ae9bc9720300982f8c9841",
+      "source_sha256": "705f9309ffcb67be9ebf36e3cbabf0cc40cf486329781bbbe38c00e9bd789550",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          0,
+          18037
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/stone/stable-0102-01399.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/stone",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 1.27,
+      "peak_memory": "1.51 GB",
+      "sha256": "766b1825f68b29da6a65d43e05355816b53e43583c7238bea4b97e87021be8f2",
+      "source_sha256": "705f9309ffcb67be9ebf36e3cbabf0cc40cf486329781bbbe38c00e9bd789550",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          59490,
+          76558
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/stone/stable-0102-03998.wav": {
+      "model": "stable",
+      "model_name": "Stable Audio 3.0 Small SFX",
+      "repo": "stabilityai/stable-audio-3-optimized",
+      "revision": "30cb2644da54bfa63275d1bc7f1fa67fc718680f",
+      "code": {
+        "repo": "github.com/Stability-AI/stable-audio-3",
+        "commit": "790793b89ddceea612be9ce42ff6830d18f6fa57",
+        "path": "optimized/mlx/scripts/sa3_mlx.py",
+        "licence": "MIT"
+      },
+      "licence": "Stability AI Community License (last updated 2024-07-05)",
+      "licence_link": "https://huggingface.co/stabilityai/stable-audio-3-optimized/blob/30cb2644da54bfa63275d1bc7f1fa67fc718680f/LICENSE.md",
+      "slot": "step/stone",
+      "prompt_id": "toes",
+      "prompt": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "negative_prompt": "",
+      "seed": 102,
+      "seconds": 6,
+      "settings": {
+        "steps": 8,
+        "cfg": 1.0,
+        "apg": 1.0,
+        "dit": "sm-sfx",
+        "decoder": "same-s",
+        "dit_dtype": "fp16"
+      },
+      "date": "2026-11-15",
+      "file": "stable-0102.wav",
+      "writer": "sa3_mlx.py save_wav: 16-bit PCM, stereo, 44.1 kHz, clipped to [-1, 1]",
+      "prompt_sent": "TrackType: SFX, foley, footsteps of a large flightless bird on flat stone: three-toed clawed feet, a soft padded pat and a light scrape of claws each step, slow and well spaced. Close-miked, dry.",
+      "wall_seconds": 1.27,
+      "peak_memory": "1.51 GB",
+      "sha256": "a2f5942949db70cb90b6bdff01fa7fbfddcf7b62c23e153cf6f8b287fb2f6faf",
+      "source_sha256": "705f9309ffcb67be9ebf36e3cbabf0cc40cf486329781bbbe38c00e9bd789550",
+      "cut": {
+        "source_file": "stable-0102.wav",
+        "source_frames": 264600,
+        "source_channels": 2,
+        "source_subtype": "PCM_16",
+        "frames": [
+          174106,
+          189630
+        ],
+        "rate": 44100,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/stone/moss-pt-0004-05097.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step/stone",
+      "prompt_id": "walk",
+      "prompt": "Slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors.",
+      "negative_prompt": "",
+      "seed": 4,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0004.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "6f6b4f50a7875c6be943c1ef7527a600847960e8823d718a47eabfcde226901b",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "6021af41efce549b70f4edf62c61d0cc282afcceb448fd343e1f844998a8dfd1",
+      "cut": {
+        "source_file": "moss-pt-0004.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          242256,
+          256560
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/step/stone/moss-pt-0001-01807.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "step/stone",
+      "prompt_id": "walk",
+      "prompt": "Slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors.",
+      "negative_prompt": "",
+      "seed": 1,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-0001.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Slow footsteps of a heavy bird walking on flat stone: soft padded taps with a faint click of claws, well spaced. Close-miked, dry outdoors. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 31.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "404f0e8f923a7bce9d2dec877146094a4678ebfa2d7e51c08f21565ce2bf5c26",
+      "worker": {
+        "takes": 25,
+        "process": {
+          "max_rss_gb": 7.26
+        },
+        "stages": {
+          "text": {
+            "seconds": 8.4,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 813.1,
+            "gpu_peak_gb": 5.82
+          },
+          "vae": {
+            "seconds": 16.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "701d6989ed43f3079e8ae19ba732bf87cd69ff4c63741739bea34e4502f3f1e5",
+      "cut": {
+        "source_file": "moss-pt-0001.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          84336,
+          114000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

@@ -1,0 +1,447 @@
+{
+  "asset": "core/world",
+  "review": "../ref/sound",
+  "about": "The world heard where the listener is: beds by place and time of day, water, wind, weather, fire. Beds loop.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "bed/beach/day": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "a tropical beach by day",
+      "prompts": [
+        {
+          "id": "p2000",
+          "models": [
+            "moss"
+          ],
+          "seed": 2000,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A calm tropical beach in the daytime: gentle waves rolling in, a soft breeze, distant seabirds. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "bed/beach/night": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "a tropical beach at night",
+      "prompts": [
+        {
+          "id": "p2010",
+          "models": [
+            "moss"
+          ],
+          "seed": 2010,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A tropical beach at night: soft waves on sand, crickets and night insects, a light breeze. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "bed/jungle/day": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "a jungle by day",
+      "prompts": [
+        {
+          "id": "p2020",
+          "models": [
+            "moss"
+          ],
+          "seed": 2020,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A dense tropical jungle in the daytime: many birds calling, buzzing insects, rustling leaves, humid air. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "bed/jungle/night": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "a jungle at night",
+      "prompts": [
+        {
+          "id": "p2030",
+          "models": [
+            "moss"
+          ],
+          "seed": 2030,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A tropical jungle at night: loud insects, tree frogs croaking, an occasional distant animal call. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "bed/grass/day": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "open grassland by day",
+      "prompts": [
+        {
+          "id": "p2040",
+          "models": [
+            "moss"
+          ],
+          "seed": 2040,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "Open grassland in the daytime: wind through tall grass, songbirds, distant buzzing insects. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "bed/grass/night": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "open grassland at night",
+      "prompts": [
+        {
+          "id": "p2050",
+          "models": [
+            "moss"
+          ],
+          "seed": 2050,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "Open grassland at night: crickets chirping steadily, a soft breeze, very calm. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "bed/ruins": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "among ruined buildings",
+      "prompts": [
+        {
+          "id": "p2060",
+          "models": [
+            "moss"
+          ],
+          "seed": 2060,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "Inside abandoned concrete ruins: hollow wind, distant dripping water, faint creaks, empty room tone. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "bed/sea": {
+      "kind": "impact",
+      "range": 1,
+      "level": -30,
+      "vary": 0.0,
+      "want": "out on the open sea",
+      "prompts": [
+        {
+          "id": "p2070",
+          "models": [
+            "moss"
+          ],
+          "seed": 2070,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "Out on the open ocean: deep rolling swells, waves lapping a small boat hull, open wind. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "underwater": {
+      "kind": "impact",
+      "range": 1,
+      "level": -28,
+      "vary": 0.0,
+      "want": "under water",
+      "prompts": [
+        {
+          "id": "p2080",
+          "models": [
+            "moss"
+          ],
+          "seed": 2080,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "Underwater ambience: deep muffled pressure, slow low rumble, faint distant bubbles and water movement. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "shore": {
+      "kind": "impact",
+      "range": 40,
+      "level": -24,
+      "vary": 0.0,
+      "want": "waves breaking on the shore",
+      "prompts": [
+        {
+          "id": "p2090",
+          "models": [
+            "moss"
+          ],
+          "seed": 2090,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "Waves breaking on a sandy shore close by: rolling surf, foam hissing back over the sand. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "wind/light": {
+      "kind": "impact",
+      "range": 1,
+      "level": -32,
+      "vary": 0.0,
+      "want": "a light wind",
+      "prompts": [
+        {
+          "id": "p2100",
+          "models": [
+            "moss"
+          ],
+          "seed": 2100,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A light steady wind blowing over open hills, soft gusting. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "wind/strong": {
+      "kind": "impact",
+      "range": 1,
+      "level": -26,
+      "vary": 0.0,
+      "want": "a strong wind",
+      "prompts": [
+        {
+          "id": "p2110",
+          "models": [
+            "moss"
+          ],
+          "seed": 2110,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A strong wind howling over a high cliff, powerful gusts. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "rain/light": {
+      "kind": "impact",
+      "range": 1,
+      "level": -28,
+      "vary": 0.0,
+      "want": "light rain",
+      "prompts": [
+        {
+          "id": "p2120",
+          "models": [
+            "moss"
+          ],
+          "seed": 2120,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "Light rain falling on leaves and the ground, gentle pattering. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "rain/heavy": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "heavy rain",
+      "prompts": [
+        {
+          "id": "p2130",
+          "models": [
+            "moss"
+          ],
+          "seed": 2130,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "Heavy rain pouring down on a forest, dense drumming downpour. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "thunder": {
+      "kind": "impact",
+      "range": 1,
+      "level": -16,
+      "vary": 0.5,
+      "want": "thunder",
+      "prompts": [
+        {
+          "id": "p2140",
+          "models": [
+            "moss"
+          ],
+          "seed": 2140,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Thunder in a storm: a sharp crack followed by a long deep rolling rumble, two separate thunderclaps with long pauses. Outdoors, no rain sound, no music."
+        }
+      ],
+      "space": "ear"
+    },
+    "river": {
+      "kind": "impact",
+      "range": 35,
+      "level": -26,
+      "vary": 0.0,
+      "want": "a stream nearby",
+      "prompts": [
+        {
+          "id": "p2150",
+          "models": [
+            "moss"
+          ],
+          "seed": 2150,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A shallow rocky stream flowing nearby: burbling trickling water over stones. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "waterfall": {
+      "kind": "impact",
+      "range": 60,
+      "level": -22,
+      "vary": 0.0,
+      "want": "a waterfall",
+      "prompts": [
+        {
+          "id": "p2160",
+          "models": [
+            "moss"
+          ],
+          "seed": 2160,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A waterfall nearby: water roaring and crashing into a pool, heavy spray. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "fire": {
+      "kind": "impact",
+      "range": 15,
+      "level": -24,
+      "vary": 0.0,
+      "want": "a campfire burning",
+      "prompts": [
+        {
+          "id": "p2170",
+          "models": [
+            "moss"
+          ],
+          "seed": 2170,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 24,
+          "text": "A campfire burning close by: crackling and popping wood, soft flames. Continuous, no music, no voices, no sudden events."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "stinger/dawn": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "dawn breaks",
+      "prompts": [
+        {
+          "id": "p2180",
+          "models": [
+            "moss"
+          ],
+          "seed": 2180,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 12,
+          "text": "Dawn in a forest: a rooster-free chorus of songbirds waking and singing brightly. No music."
+        }
+      ],
+      "space": "ear",
+      "whole": true
+    },
+    "stinger/dusk": {
+      "kind": "impact",
+      "range": 1,
+      "level": -26,
+      "vary": 0.0,
+      "want": "dusk falls",
+      "prompts": [
+        {
+          "id": "p2190",
+          "models": [
+            "moss"
+          ],
+          "seed": 2190,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 12,
+          "text": "Dusk in the countryside: the last birds settle and the first crickets begin, a calm evening. No music."
+        }
+      ],
+      "space": "ear",
+      "whole": true
+    }
+  }
+}
