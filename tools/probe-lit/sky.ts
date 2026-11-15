@@ -3,7 +3,7 @@
 // 4 steps of the rasterizer; the castles are the rasterizer's colour hazed as atmosphere.ts's twin says, within 4; and
 // so is the land fading into the dome over the end of the view, seen from 1 km up. With PROBE_PICTURES naming a folder,
 // it writes what the shell draws with the sky's pictures sent: each mood key's two views from the art director's
-// cameras, the castles with clouds, and the castles and the horizon as checked.
+// cameras with sun shadows, the castles with clouds, and the castles and the horizon as checked.
 //
 // Run by itself, this file draws the sky program full screen in Chrome with the sky's pictures from their sources, as a
 // player sees it toward the sun, away from it and straight up at the art director's hours, and writes the pictures; with
@@ -464,6 +464,7 @@ export const skyCheck: LitCheck = {
     // ground's rim, the sea running on past the map, 100 degrees across and 10 up, with the sky's pictures sent.
     const cams = JSON.parse(readFileSync(join(SKY, "keys/views/cameras.json"), "utf8")) as Record<string, Record<string, { heading: number; elevation: number; horizontalFOV: number }>>;
     const ground = new Shot("air-keys", W, H, provingView(W, H).hf, pack);
+    ground.shadows = true;
     for (const key of KEYS) {
       const v = provingView(W, H);
       v.scene.hour = key.hour;

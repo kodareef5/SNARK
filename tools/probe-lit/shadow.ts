@@ -9,8 +9,9 @@
 // within 3 steps and a survivor in the room within 7, and the floor is set beside low poly's. With PROBE_PICTURES naming
 // a folder, what a player sees is written there with materials, each with shadows off beside it: the thatch house with
 // a survivor and a dodo at 10:00, noon and 17:30, a wall's foot, the wall and ceiling joints from inside at 10:00 and
-// 17:30, the dodo at noon and 17:30 (its feather cards and the thatch's fringe are cut out), the slab under 15 degrees
-// and the sunlit wall close by at 17:30.
+// 17:30, the dodo at noon and 17:30 (its feather cards and the thatch's fringe are cut out), the slab under 15 degrees,
+// the sunlit wall close by at 17:30, and at golden hour a stone wall with the grey block beside it and a dodo either
+// side, seen from the sun's side and from the far side.
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -43,6 +44,8 @@ const FLOOR = GROUND + FOUNDATION_THICK;
 const ROOM = { x: 128, z: 128 };
 const BLOCK = { x: 144.5, z: 116.5 };
 const SLAB = { x: 104, z: 156 };
+/** A lone wall the pictures stage, clear of the others' shadows at golden hour. */
+const WALL = { x: 112, z: 118 };
 /** Levels of 255: the GPU against the twins, the most a slab pixel may be darker than sunlit, and how far the edge pixel may move. */
 const SAME = 4;
 const DARKER = 10;
@@ -409,6 +412,12 @@ async function pictureShots(): Promise<Shot[]> {
   const outside: [string, number, number, number, number][] = [["core:survivor", ROOM.x + 3.6, GROUND, ROOM.z - 5.4, 2.4], ["core:dodo", ROOM.x + 1.6, GROUND, ROOM.z - 5.8, 0.6]];
   const house = [[ROOM.x + 7.5, FLOOR + 3.2, ROOM.z - 9.5], [ROOM.x - 0.2, FLOOR + 0.9, ROOM.z - 2]];
   const dodo = [[ROOM.x + 0.6, GROUND + 1.3, ROOM.z - 8.2], [ROOM.x + 2.2, GROUND + 0.2, ROOM.z - 5.6]];
+  // A pale stone wall facing the golden hour's sun, the grey block beside it, and a dodo either side, the far one in the wall's shadow.
+  put(w, "wall_stone", WALL.x, GROUND + WALL_HEIGHT / 2, WALL.z, 1);
+  put(w, "block", WALL.x, GROUND + 1, WALL.z - 6);
+  const golden = hourOfSun(8, true);
+  const either: [string, number, number, number, number][] = [["core:dodo", WALL.x + 2.2, GROUND, WALL.z + 0.6, -1.2], ["core:dodo", WALL.x - 1.6, GROUND, WALL.z + 0.4, 1.9]];
+  const wallAt = [WALL.x, GROUND + 1.2, WALL.z - 1.5];
   const views: [string, number, [string, number, number, number, number][], number[][], number][] = [
     ["house-1000", 10, outside, house, 55],
     ["house-1200", 12, outside, house, 55],
@@ -421,6 +430,8 @@ async function pictureShots(): Promise<Shot[]> {
     ["slab-15", hourOfSun(15, false), [], [[SLAB.x - 8, GROUND + 4, SLAB.z - 8], [SLAB.x + 0.5, GROUND, SLAB.z + 0.5]], 60],
     // The sunlit wall close by at 17:30, where the upper row's fringe shades the row below it.
     ["wall-1730", 17.5, [], [[ROOM.x + 5.5, FLOOR + 1.7, ROOM.z - 1], [ROOM.x + 3, FLOOR + 1.4, ROOM.z + 0.2]], 40],
+    ["golden-sunward", golden, either, [[WALL.x + 7.5, GROUND + 1.8, WALL.z - 6.5], wallAt], 60],
+    ["golden-far", golden, either, [[WALL.x - 7.5, GROUND + 1.8, WALL.z - 6.5], wallAt], 60],
   ];
   for (const [name, hour, list, [eye, at], fov] of views) {
     w.scene.hour = hour;

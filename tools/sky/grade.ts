@@ -1,8 +1,8 @@
 // The grade: what the table shows of the sky, and the light the sky and the sun give. At each mood key's hour the dome
 // is the key's own clear sky (keys.ts), over the whole dome. The morning and the evening each pass through keys of
 // their own; between two keys the dome is the two blended by the sun's height, each carried along with the sun near
-// it, so a glow moves with the sun rather than staying where its key had it. The physical sky (atmosphere.ts) sets how
-// strong the light is; a few numbers per key tint it, fitted by tools/sky/fit.ts to the key's grey cards.
+// it, so a glow moves with the sun rather than staying where its key had it. The physical sky (atmosphere.ts) sets the
+// light; a few numbers per key tint the sun's and the sky's, fitted by tools/sky/fit.ts to the key's grey cards.
 
 export interface Grade {
   name: string;
@@ -11,7 +11,7 @@ export interface Grade {
   /** Multiplies the sun's light on surfaces, or the moon's at night. */
   sun: readonly [number, number, number];
   /** Multiplies the sky's light on surfaces. */
-  sky: number;
+  sky: readonly [number, number, number];
   /** How strong the afterglow the sun's slot carries through twilight is, as a share of the sky's light above: 0 to 1. */
   afterglow: number;
 }
@@ -21,18 +21,19 @@ export const TWILIGHT = -18;
 
 /**
  * The keys of the plan's A2, by height, their light fitted by tools/sky/fit.ts to the accepted keys' cards
- * (assets/source/core/sky/keys, round five). The night key holds from the end of twilight. Noon's light is the
- * anchors' and stays white.
+ * (assets/source/core/sky/keys, round five) and to their shaded card's hue on a card face up in shadow. The night key
+ * holds from the end of twilight. Noon's light is the anchors' and stays white. At dusk the sky's light on the sun's
+ * side carries what the afterglow did.
  */
 export const GRADES: readonly Grade[] = [
-  { name: "night", height: TWILIGHT, sun: [0.948, 0.96, 0.805], sky: 1.366, afterglow: 0.554 },
-  { name: "dusk", height: -7.99, sun: [0.995, 0.991, 1], sky: 1.014, afterglow: 1 },
-  { name: "sunset", height: 0, sun: [3, 1.513, 0.999], sky: 0.333, afterglow: 1 },
-  { name: "dawn", height: 2.02, sun: [1.185, 1.9, 1.333], sky: 0.333, afterglow: 0 },
-  { name: "golden", height: 7.99, sun: [1.386, 1.309, 0.814], sky: 0.677, afterglow: 0.42 },
-  { name: "morning", height: 14.99, sun: [1.127, 1.242, 1.265], sky: 0.564, afterglow: 1 },
-  { name: "afternoon", height: 35.01, sun: [0.893, 0.945, 1.241], sky: 0.955, afterglow: 0.217 },
-  { name: "noon", height: 66.73, sun: [1, 1, 1], sky: 1, afterglow: 0.5 },
+  { name: "night", height: TWILIGHT, sun: [0.643, 0.682, 1.01], sky: [0.947, 1.372, 1.738], afterglow: 0.554 },
+  { name: "dusk", height: -7.99, sun: [1.085, 1.196, 1.006], sky: [0.505, 1.347, 1.194], afterglow: 1 },
+  { name: "sunset", height: 0, sun: [2.327, 1.098, 1], sky: [0.63, 0.776, 0.794], afterglow: 1 },
+  { name: "dawn", height: 2.02, sun: [1.014, 1.563, 1.061], sky: [0.508, 0.898, 1.303], afterglow: 0 },
+  { name: "golden", height: 7.99, sun: [1.654, 1.184, 0.518], sky: [0.769, 1.044, 1.242], afterglow: 0.42 },
+  { name: "morning", height: 14.99, sun: [1.111, 0.972, 0.633], sky: [0.929, 1.209, 1.354], afterglow: 1 },
+  { name: "afternoon", height: 35.01, sun: [0.917, 0.925, 0.919], sky: [1.076, 1.138, 1.048], afterglow: 0.217 },
+  { name: "noon", height: 66.73, sun: [1, 1, 1], sky: [1, 1, 1], afterglow: 0.5 },
 ];
 
 /**
@@ -59,7 +60,7 @@ export function gradeAt(height: number, grades: readonly Grade[] = GRADES): Grad
   const x = grades[a]!, y = grades[b]!;
   if (a === b || f === 0) return x;
   const mix = (p: number, q: number): number => p + (q - p) * f;
-  return { name: `${x.name}-${y.name}`, height, sun: [mix(x.sun[0], y.sun[0]), mix(x.sun[1], y.sun[1]), mix(x.sun[2], y.sun[2])], sky: mix(x.sky, y.sky), afterglow: mix(x.afterglow, y.afterglow) };
+  return { name: `${x.name}-${y.name}`, height, sun: [mix(x.sun[0], y.sun[0]), mix(x.sun[1], y.sun[1]), mix(x.sun[2], y.sun[2])], sky: [mix(x.sky[0], y.sky[0]), mix(x.sky[1], y.sky[1]), mix(x.sky[2], y.sky[2])], afterglow: mix(x.afterglow, y.afterglow) };
 }
 
 /** Degrees from the sun over which a key's sky is carried along with it. */

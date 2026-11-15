@@ -24,10 +24,11 @@ export const SKY_SIZE = 32;
 /** Slices along the sun's axis: SKY_SIZE for the morning, from midnight to noon, then as many for the evening. */
 export const SKY_SLICES = 2 * SKY_SIZE;
 /**
- * Numbers per slice beside the table: the light of the sun, of the moon, of the sky above and below, three each,
- * in the table's units, so that between heights land and dome blend alike; then the light one unit stands for.
+ * Numbers per slice beside the table: the light of the sun, of the moon, of the sky on a face up and on one facing
+ * down, and on faces turned sideways and round from the sun (the frame block's fSkySide, fSkySun and fSkyAlong), three
+ * each, in the table's units, so that between heights land and dome blend alike; then the light one unit stands for.
  */
-export const LIGHT_FLOATS = 13;
+export const LIGHT_FLOATS = 22;
 /** The grey card the exposure is set by: 128 of 255, as light. */
 export const CARD = srgbToLinear(128 / 255);
 /** Half the sun's disc and half the moon's, degrees: each one's light fades over this either side of the horizon as it sets. */
@@ -101,12 +102,17 @@ export function flatCard(hour: number): number {
   return 128 * (AMBIENT + DIFFUSE * Math.max(0, flatSun[1]!)) * light;
 }
 
-/** How far either side of where low poly's light leaps from its moon to its sun the card the lit tiers follow blends the two, in the sine `flatLight` calls up. */
-const LEAP = 0.017;
+/**
+ * The sun's height, degrees, at which low poly's light leaps from its fixed moon to its sun, and over how many degrees
+ * before it the card the lit tiers follow blends the two.
+ */
+const LEAP_AT = Math.asin(0.15 * Math.cos(TILT)) / DEG;
+const LEAP = 1;
 
 /**
  * The card lit tiers are exposed to show at a sun height: low poly's, but where its light leaps from its fixed moon to
- * its sun (the sun 7.9 degrees up) blended over about a degree of the sun's height either side, so they do not leap too.
+ * its sun (the sun 7.9 degrees up) blended over the degree of the sun's height before, so they do not leap too and
+ * golden hour, just past it, has low poly's card.
  */
 export function cardTarget(height: number): number {
   const a = ((hourOfSun(height, false) - 6) / 12) * Math.PI;
@@ -115,7 +121,7 @@ export function cardTarget(height: number): number {
   const light = NIGHT_LIGHT + (1 - NIGHT_LIGHT) * dusk * dusk * (3 - 2 * dusk);
   const moon = 0.8 / Math.hypot(0.3, 0.8, 0.43);
   const sun = up / Math.hypot(Math.cos(a) * 0.6, up, 0.43);
-  const t = Math.max(0, Math.min(1, (up - 0.15 + LEAP) / (2 * LEAP)));
+  const t = Math.max(0, Math.min(1, (height - LEAP_AT + LEAP) / LEAP));
   return 128 * (AMBIENT + DIFFUSE * Math.max(0, moon + (sun - moon) * t * t * (3 - 2 * t))) * light;
 }
 
@@ -141,15 +147,22 @@ export function elevationOf(t: number): number {
   return t * t * 90;
 }
 
-/** The sun's heights, degrees, over which slices gather, and the share of a half's slices added there. */
-export const GATHER = [5, 8.5] as const;
-export const GATHERED = 0.24;
+/**
+ * The sun's heights, degrees, over which slices gather, and the share of a half's slices added there: low over the
+ * horizon, and more over the degree where the card the lit tiers follow blends low poly's leap.
+ */
+export const GATHER: readonly (readonly [number, number, number])[] = [
+  [5, 9.5, 0.3],
+  [LEAP_AT - LEAP, LEAP_AT, 0.1],
+];
+const GATHERED = GATHER.reduce((sum, g) => sum + g[2], 0);
 
 /** Where a sun height lies along one half of the sun's axis, 0 at midnight to 1 at noon. */
 export function sunCoord(height: number): number {
   const s = Math.max(-1, Math.min(1, height / SUN_TOP));
-  const gathered = Math.max(0, Math.min(1, (height - GATHER[0]) / (GATHER[1] - GATHER[0])));
-  return (0.5 + 0.5 * Math.sign(s) * Math.sqrt(Math.abs(s)) + GATHERED * gathered) / (1 + GATHERED);
+  let along = 0.5 + 0.5 * Math.sign(s) * Math.sqrt(Math.abs(s));
+  for (const [from, to, share] of GATHER) along += share * Math.max(0, Math.min(1, (height - from) / (to - from)));
+  return along / (1 + GATHERED);
 }
 
 export function heightOf(t: number): number {
@@ -340,7 +353,7 @@ function lightsAt(lights: Float32Array, height: number, evening: boolean, out: F
 
 const blend = new Float64Array(LIGHT_FLOATS);
 const sunAt = new Float64Array(3);
-const light = new Float64Array(12);
+const light = new Float64Array(LIGHT_FLOATS - 1);
 
 const UP = [0, 1, 0];
 const takes = new Float64Array(3);
@@ -383,8 +396,8 @@ export function cardExposure(height: number, sun: number, moon: number, above: n
 /** The light at a sun height in the morning or the evening into `light`, and the exposure there before noon's divides it. */
 function lightAt(lights: Float32Array, height: number, evening: boolean): number {
   lightsAt(lights, height, evening, blend);
-  for (let i = 0; i < 12; i++) light[i] = blend[i]! * blend[LIGHT_FLOATS - 1]!;
-  return cardExposure(height, luminance([light[0]!, light[1]!, light[2]!]), luminance([light[3]!, light[4]!, light[5]!]), luminance([light[6]!, light[7]!, light[8]!]));
+  for (let i = 0; i < LIGHT_FLOATS - 1; i++) light[i] = blend[i]! * blend[LIGHT_FLOATS - 1]!;
+  return cardExposure(height, luminance(light.subarray(0, 3)), luminance(light.subarray(3, 6)), luminance(light.subarray(6, 9)));
 }
 
 /** The exposure at an hour. */
@@ -422,6 +435,9 @@ export function skyFrame(hour: number, sky: Sky, frame: Float32Array): void {
     frame[f.moonColor + k] = light[3 + k]!;
     frame[f.skyAbove + k] = light[6 + k]!;
     frame[f.skyBelow + k] = light[9 + k]!;
+    frame[f.skySide + k] = light[12 + k]!;
+    frame[f.skySun + k] = light[15 + k]!;
+    frame[f.skyAlong + k] = light[18 + k]!;
   }
   frame[f.casting] = discUp(h);
   frame[f.skyScale] = blend[LIGHT_FLOATS - 1]!;
@@ -439,8 +455,8 @@ vec3 skyLook(highp sampler3D table, vec3 view, vec3 sun) {
   float up = sqrt(clamp(asin(clamp(view.y, -1.0, 1.0)) / 1.57079633, 0.0, 1.0));
   float height = degrees(asin(clamp(sun.y, -1.0, 1.0)));
   float s = clamp(height / ${g(SUN_TOP)}, -1.0, 1.0);
-  float gathered = clamp((height - ${g(GATHER[0])}) / ${g(GATHER[1] - GATHER[0])}, 0.0, 1.0);
-  float along = (0.5 + 0.5 * sign(s) * sqrt(abs(s)) + ${g(GATHERED)} * gathered) / ${g(1 + GATHERED)} * ${g(SKY_SIZE - 1)};
+  float along = 0.5 + 0.5 * sign(s) * sqrt(abs(s))${GATHER.map(([from, to, share]) => ` + ${g(share)} * clamp((height - ${g(from)}) / ${g(to - from)}, 0.0, 1.0)`).join("")};
+  along *= ${g((SKY_SIZE - 1) / (1 + GATHERED))};
   float slice = sun.x > 0.0 ? ${g(SKY_SLICES - 1)} - along : along;
   vec3 t = (vec3(vec2(around, up) * ${g(SKY_SIZE - 1)}, slice) + 0.5) / vec3(${g(SKY_SIZE)}, ${g(SKY_SIZE)}, ${g(SKY_SLICES)});
   return skyDecode(texture(table, t));
