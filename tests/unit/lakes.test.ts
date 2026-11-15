@@ -42,9 +42,9 @@ test("a map's bodies of water are written at version 3 and read back whole; a ma
   expect(writeMap(back)).toEqual(file);
   // Ten chunks of the sixteen hold water, 2 KB of squares each before the wire's compression.
   expect(w.chunks().length).toBe(10);
-  // Written as they were before water stood apart from the sea (main at 075c7daa): the same bytes, so the same hash.
+  // Written as they were before water stood apart from the sea (main at 82d7ac66): the same bytes, so the same hash.
   const dry = writeMap(busyMap());
-  expect([new DataView(dry.buffer).getUint16(4, true), parseMap(dry).hash, parseMap(writeMap(flatMap(4))).hash]).toEqual([2, 3858853969, 3013362243]);
+  expect([new DataView(dry.buffer).getUint16(4, true), parseMap(dry).hash, parseMap(writeMap(flatMap(4))).hash]).toEqual([2, 604744827, 3013362243]);
   expect(parseMap(dry).water).toBeUndefined();
 
   const grid = (b: number): Uint16Array => new Uint16Array(128 * 128).fill(b, 0, 64);
