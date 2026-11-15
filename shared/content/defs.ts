@@ -157,8 +157,18 @@ export interface ShapeDef extends Named {
    * piece's origin along its first axis, up and along its second. A shape with parts may have no boxes.
    */
   readonly hulls?: readonly HullDef[];
+  /**
+   * What is drawn in place of the boxes and parts, where that is not what bodies and rays meet: a flight of stairs walked as
+   * a ramp and drawn as treads. Far off, past the nearest level, the boxes and parts are drawn.
+   */
+  readonly look?: ShapeLook;
   /** A door may be set in it. */
   readonly doorway?: boolean;
+}
+
+export interface ShapeLook {
+  readonly boxes?: readonly ShapeBox[];
+  readonly hulls?: readonly HullDef[];
 }
 
 export interface StructureDef extends Named {
@@ -708,11 +718,11 @@ export interface RenameDef {
 
 export type Def = SpeciesDef | StructureDef | ItemDef | PropDef | NodeDef | EngramDef | LevelsDef | BuffDef | MaterialDef | ShapeDef | DamageDef | LootDef | SpawnsDef | MapDef | GameDef | RenameDef;
 
-/** Half extents of the box, centred on a shape's origin, that holds all of its boxes and convex parts. */
-export function shapeHalf(boxes: readonly ShapeBox[], hulls: readonly HullDef[] = []): [number, number, number] {
+/** Half extents of the box, centred on a shape's origin, that holds all of its boxes and convex parts, and what is drawn of it. */
+export function shapeHalf(boxes: readonly ShapeBox[], hulls: readonly HullDef[] = [], look: ShapeLook = {}): [number, number, number] {
   const out: [number, number, number] = [0, 0, 0];
-  for (const b of boxes) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
-  for (const h of hulls) {
+  for (const b of [...boxes, ...(look.boxes ?? [])]) for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(b.at[a]!) + b.half[a]!);
+  for (const h of [...hulls, ...(look.hulls ?? [])]) {
     for (const c of h.corners) {
       const p = hullPoint(c, h.sixty === true);
       for (let a = 0; a < 3; a++) out[a] = Math.max(out[a]!, Math.abs(p[a]!));

@@ -189,7 +189,9 @@ test("every piece content means to be walked onto still is, and every piece mean
   const joined = [ROLE_CEILING, ROLE_STAIRS, ROLE_WALL, ROLE_PILLAR, ROLE_DOOR];
   for (let k = 1; k < reg.defs.length; k++) {
     const d = reg.defs[k];
-    if (d?.type !== "structure" || d.id.startsWith("test:")) continue;
+    // Sloped pieces are walked by tests/unit/slopes.test.ts.
+    const hulls = reg.parts.hulls;
+    if (d?.type !== "structure" || d.id.startsWith("test:") || (hulls && hulls.start[k + 1]! > hulls.start[k]!)) continue;
     const role = reg.role[k]!;
     const w = world();
     if (!joined.includes(role)) {

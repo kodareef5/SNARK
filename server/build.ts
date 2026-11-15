@@ -9,7 +9,7 @@ import { stanceEye, stanceHeight } from "../shared/sim/character.ts";
 import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../shared/world/collide.ts";
-import { BUILD_REACH, ON_TOP, ROLE_CEILING, ROLE_FOUNDATION, ROLE_PILLAR, freePose, obstructed, overPiece, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
+import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, floorTop, freePose, obstructed, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
 import { Support } from "../shared/world/support.ts";
@@ -194,21 +194,19 @@ export class Build {
     return castWorld(world, ex, ey, ez, d[0]!, d[1]!, d[2]!, far + 2) === HIT_STRUCTURE && rayHit.ref === ref;
   }
 
-  /** Where a thing falling at (x, z) from height `below` lands: the top of the highest floor under it, or the ground. */
+  /**
+   * Where a thing falling at (x, z) from height `below` lands: the top of the highest floor under its middle, sloped or not, or
+   * the ground. It stands there (Support), and so is not dropped again.
+   */
   private floorUnder(x: number, z: number, below: number): number {
     const { world } = this.ctx;
-    const reg = world.reg;
     const structs = world.structs;
     let top = Math.ceil(world.hf.heightAt(x, z) * STRUCT_UNITS) / STRUCT_UNITS;
     const n = structs.query(x - 2.2, z - 2.2, x + 2.2, z + 2.2, this.near);
     const near = this.near.refs;
     for (let i = 0; i < n; i++) {
-      const t = structs.chunks[Math.floor(near[i]! / 65536)]!;
-      const s = near[i]! & 0xffff;
-      const role = reg.role[t.kind[s]!]!;
-      if (role !== ROLE_FOUNDATION && role !== ROLE_CEILING) continue;
-      const at = t.y[s]! + reg.halfY[t.kind[s]!]!;
-      if (at > top && at <= below + 1e-6 && overPiece(units(t.x[s]!), units(t.z[s]!), t.yaw[s]!, units(x), units(z))) top = at;
+      const at = floorTop(structs, world.reg, near[i]!, units(x), units(z)) / STRUCT_UNITS;
+      if (at > top && at <= below + 1e-6) top = at;
     }
     return top;
   }

@@ -14,11 +14,11 @@ test("a map written to a file is read back whole, and the same map is the same b
   const map = busyMap();
   const file = writeMap(map);
   const back = parseMap(file);
-  expect(back).toEqual({ ...map, hash: hashBytes(file.subarray(12)) });
+  expect({ ...back, statics: [...back.statics] }).toEqual({ ...map, statics: [...map.statics], hash: hashBytes(file.subarray(12)) });
   expect(writeMap(back)).toEqual(file);
   // A map with nothing on it and no water.
   const bare = parseMap(writeMap(flatMap(1)));
-  expect([bare.seaLevel, bare.statics, bare.nodes, mapNodes(bare, mapHeightfield(bare), reg)]).toEqual([-Infinity, [], [], null]);
+  expect([bare.seaLevel, [...bare.statics], bare.nodes, mapNodes(bare, mapHeightfield(bare), reg)]).toEqual([-Infinity, [], [], null]);
   // Smooth ground costs little once the file is compressed for the wire.
   expect(Bun.gzipSync(writeMap(flatMap(4))).length).toBeLessThan(400);
 });

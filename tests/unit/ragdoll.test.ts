@@ -15,6 +15,7 @@ import { Fall, layCorpse, wireX, wireY, wireYaw } from "../../shared/anim/corpse
 import { creatureAnims } from "../../shared/anim/creature.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { slopeKind } from "../../content/slopes.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -149,6 +150,32 @@ test("a ragdoll on a floor rests on it, falls again when the floor is taken away
     expect(d.step(w, STEP)).toBe(true);
     expect([id, rest(d, w, 4) > 0, d.deepest(w) < 0.01, d.x[1]! < 1]).toEqual([id, true, true, true]);
     refs.splice(0, 4, ...[-1.5, 1.5].flatMap((dx) => [-1.5, 1.5].map((dz) => w.structs.add(ceiling, 60 + dx, floor, 64 + dz, 0, 0, 1))));
+  }
+});
+
+test("a ragdoll lies on a ramp, on the slope of a pitched roof and across its ridge, not through them to the ground", () => {
+  const w = world(0);
+  // A ramp rising a third toward +Z (18 degrees), its top 0.2 m over its middle line; a roof of 32 degrees, 2.75 m high at its
+  // ridge along X.
+  w.structs.add(reg.index.get(slopeKind("ramp"))!, 60, 1.5, 64, 0, 0, 1);
+  w.structs.add(reg.index.get(slopeKind("roof"))!, 90, 1.375, 64, 0, 0, 1);
+  const ramp = (x: number, z: number): number => (Math.abs(x - 60) < 2 && Math.abs(z - 64) < 3 ? 1.7 + (z - 64) / 3 : -Infinity);
+  const roof = (x: number, z: number): number => (Math.abs(x - 90) < 4 && Math.abs(z - 64) < 4 ? 2.75 - (Math.abs(z - 64) * 2.5) / 4 : -Infinity);
+  const above = (d: Ragdoll, on: (x: number, z: number) => number): boolean => Array.from({ length: d.n }, (_, i) => d.x[i * 3 + 1]! > on(d.x[i * 3]!, d.x[i * 3 + 2]!)).every((b) => b);
+  for (const [id, rig] of dolls()) {
+    const size = id === "strider" ? 1 : 0.8;
+    for (const yaw of [0.4, 1.4, 2.4]) {
+      // On the ramp it rests within the 3 s a slope of terrain gives it.
+      const d = drop(rig, 60, ramp(60, 64.5), 64.5, yaw, size);
+      expect([id, yaw, rest(d, w, 3) > 0, d.deepest(w) < 0.01, above(d, ramp)]).toEqual([id, yaw, true, true, true]);
+      // Dropped onto the roof from over its ridge, so that no limb starts under it. A round body may still be creeping, as on
+      // terrain as steep, but it is on the roof.
+      for (const z of [65.5, 64]) {
+        const r = drop(rig, 90, roof(90, 64) + 0.2, z, yaw, size);
+        rest(r, w, 3);
+        expect([id, yaw, z, r.deepest(w) < 0.01, above(r, roof)]).toEqual([id, yaw, z, true, true]);
+      }
+    }
   }
 });
 
