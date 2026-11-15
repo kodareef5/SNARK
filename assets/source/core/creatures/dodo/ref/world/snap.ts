@@ -10,6 +10,9 @@
 //   knocked_out   standing, going down, lying, and swallowing a berry as it lies
 //   lying         two birds knocked out, close: one seen from its belly, one from its back
 //   dead          two corpses six seconds after death, one killed standing and one killed knocked out, by a live bird
+//   hurt_2m, hurt_10m     four birds side on, unhurt and at hurt stages 1, 2 and 3, from 2 and 10 m
+//   decay_2m, decay_10m   four corpses lying, fresh and at decay stages 1, 2 and 3, from 2 and 10 m; each also
+//                         enlarged about the birds
 //
 //   bun assets/source/core/creatures/dodo/ref/world/snap.ts [shot ...] [--tier medium|ultra]
 
@@ -29,7 +32,7 @@ import { encodePng } from "../../../../../../../tools/snap/png.ts";
 const [W, H] = [1280, 720];
 /** A grassy patch beyond the plaza with no tree or rock between it and a camera 26 m to its south. */
 const [CX, CZ] = [160, 360];
-const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead"] as const;
+const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead", "hurt_2m", "hurt_10m", "decay_2m", "decay_10m"] as const;
 type Shot = (typeof SHOTS)[number];
 
 const args = process.argv.slice(2);
@@ -176,6 +179,14 @@ function scene(view: ProvingView, shot: Shot): void {
     aim(view, 0, 1.3, -2.6, 0, 0.15, 0, 0.9);
     return;
   }
+  if (shot.startsWith("hurt") || shot.startsWith("decay")) {
+    // Side on in a row, the worst on the right. A corpse is drawn lying as one knocked out lies.
+    const dead = shot.startsWith("decay");
+    const d = shot.endsWith("10m") ? 10 : 2;
+    place(view, [0, 1, 2, 3].map((k) => ({ x: (1.5 - k) * 0.85, z: 0, yaw: -Math.PI / 2 + (dead ? 0.15 : -0.25), seed: k * 5, set: (s: AnimState) => (dead ? Object.assign(s, { out: true, dead: true, decay: k }) : Object.assign(s, { hurt: k })) })), tick);
+    aim(view, 0, 1.62, -d, 0, dead ? 0.1 : 0.32, 0);
+    return;
+  }
   if (shot === "lying") {
     place(view, [
       { x: 0.35, z: 0, yaw: -Math.PI / 2 - 0.3, set: (s) => void (s.out = true) },
@@ -233,7 +244,7 @@ function enlarged(color: Uint8ClampedArray, px: number, py: number, k: number): 
 }
 
 /** For the distance shots, the point to enlarge about and how many times. */
-const CROPS: Partial<Record<Shot, [number, number, number, number]>> = { "2m": [0, 0.33, 0, 2], "6m": [0.4, 0.3, 1.6, 3], "20m": [0.4, 0.3, 1.6, 6] };
+const CROPS: Partial<Record<Shot, [number, number, number, number]>> = { "2m": [0, 0.33, 0, 2], "6m": [0.4, 0.3, 1.6, 3], "20m": [0.4, 0.3, 1.6, 6], hurt_10m: [0, 0.32, 0, 3], decay_10m: [0, 0.1, 0, 3] };
 
 for (const tier of tiers) {
   for (const shot of shots) {

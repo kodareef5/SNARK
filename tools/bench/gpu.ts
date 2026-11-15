@@ -14,6 +14,9 @@ import { loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { WOOD, basePieces, crowdScene } from "../../client/core/devicescene.ts";
+import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT } from "../../shared/anim/pose.ts";
+import { V_HEALTH } from "../../shared/sim/vitals.ts";
+import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import { ladder } from "../../client/core/governor.ts";
 import { PASSES, type Effect } from "../../client/core/passes.ts";
 import { startServer } from "../../server/main.ts";
@@ -25,7 +28,7 @@ import { benchHills } from "./terrain.ts";
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
-type Scene = "base" | "wood";
+type Scene = "base" | "wood" | "flock";
 /** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off, a level the governor holds. */
 interface Run {
   scene: Scene;
@@ -51,7 +54,32 @@ export function plan(): Run[] {
     runs.push({ scene, tier, passes: true }, { scene, tier }, ...list.map((off) => ({ scene, tier, off })));
   }
   for (let level = 1; level < ladder(tierOf("high"), 3).length; level++) runs.push({ scene: "base", tier: "high", level });
+  for (const tier of ["medium", "ultra"]) runs.push({ scene: "flock", tier }, { scene: "flock", tier, off: "layers" });
   return runs;
+}
+
+/** Dodos round the spawn point, in two rings so that some fill the view whichever way it turns. */
+export const FLOCK = 40;
+
+/**
+ * The flock: three in four hurt, a third of those at each stage, and one in four a corpse lying at a decay stage, set as
+ * the server sets them.
+ */
+function flock(server: ReturnType<typeof startServer>): void {
+  const { world, records, survival, hurt } = server.host;
+  for (let k = 0; k < FLOCK; k++) {
+    const [ring, turn] = k < FLOCK / 2 ? [2.5, k / (FLOCK / 2)] : [4.5, (k - FLOCK / 2 + 0.5) / (FLOCK / 2)];
+    const e = server.host.spawnCreature("core:dodo", PROVING_SPAWN.x + Math.sin(turn * Math.PI * 2) * ring, PROVING_SPAWN.z + Math.cos(turn * Math.PI * 2) * ring, 10);
+    if (e < 0) continue;
+    const rec = records.byPid.get(world.ents.pid[e]!)!;
+    if (k % 4 === 3) {
+      world.ents.cue[e] = world.ents.cue[e]! | CUE_DEAD | CUE_OUT | (((k >> 2) & 3) << CUE_DECAY_SHIFT);
+      world.history.cued(e);
+    } else {
+      survival.hurt(rec, (rec.vitals!.max[V_HEALTH]! / 1e6) * (0.3 + 0.25 * (k % 4)), 0);
+      hurt.check(rec);
+    }
+  }
 }
 
 const nameOf = (r: Run): string => `${r.scene} ${r.tier}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off} off` : ""}${r.level ? `, level ${r.level}` : ""}`;
@@ -61,7 +89,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
   const out = new Map<string, Record<string, any>[]>();
   const dist = mkdtempSync(join(tmpdir(), "snark-gpu-client-"));
   await buildClient({ stress: true, dist, quick: true });
-  for (const scene of ["base", "wood"] as Scene[]) {
+  for (const scene of ["base", "wood", "flock"] as Scene[]) {
     const mine = runs.filter((r) => r.scene === scene);
     if (mine.length === 0) continue;
     let got: (report: Record<string, any>) => void = () => {};
@@ -85,6 +113,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
       for (const p of crowd.pieces) add(p.id, p.x, ground + p.y, p.z, p.yaw);
       for (const p of basePieces(BASE_PIECES)) add(p.id, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw);
     }
+    if (scene === "flock") flock(server);
     // One profile a scene: the asset cache is warm after the first run, and the page joins as the same survivor.
     const profile = mkdtempSync(join(tmpdir(), "snark-gpu-"));
     for (let k = 0; k < times; k++) {
@@ -140,7 +169,7 @@ export function shares(reports: Map<string, Record<string, any>[]>): Record<stri
 
 /** The rows, from reports of the plan's runs. */
 export function rows(section: Section, record: Row, reports: Map<string, Record<string, any>[]>): void {
-  for (const key of ["base medium", "base high", "wood medium", "wood high"]) {
+  for (const key of ["base medium", "base high", "wood medium", "wood high", "flock medium", "flock ultra"]) {
     const all = reports.get(key);
     const by = reports.get(`${key}, by pass`);
     if (!all) continue;

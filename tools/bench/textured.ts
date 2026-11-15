@@ -5,6 +5,7 @@
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
+import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_HURT_SHIFT } from "../../shared/anim/pose.ts";
 import { STEP0_SIZE, textureBytes } from "../../shared/pack/texture.ts";
 import { sceneSet, sceneWorld } from "../../tests/fixtures/sceneworld.ts";
 import { TUBE } from "../../tests/fixtures/textured.ts";
@@ -116,7 +117,52 @@ export function benchTextured(section: Section, record: Row): void {
   without.sort((a, b) => a - b);
   record("frame build, the same herd drawn flat, median", without[150]!, "ms");
   record("draw calls for it", plain.scene.packet.drawCount, "");
+  layered(section, record, at(0.5));
 }
+
+/**
+ * The same herd with a hurt and decay layer on the tube, unhurt, and then with its forty nearest hurt or dead: three
+ * in four at a hurt stage and one in four a corpse at a decay stage, each drawn with its layer. `before` is the frame
+ * build of the herd above.
+ */
+function layered(section: Section, record: Row, before: number): void {
+  section(`Client frame build (headless): the same herd with hurt and decay layers, none hurt and then ${HURT} of the nearest hurt or dead`);
+  const tier = tierOf("medium");
+  const set = sceneSet(PIXELS, true);
+  const layer = set.manifest.textures!.findIndex((t) => t.role === "layer");
+  const run = (cues: (i: number) => number): { median: number; p: FramePacket; held: boolean; layered: number } => {
+    const w = sceneWorld({}, tier, set);
+    w.scene.viewHeight = VIEW_HEIGHT;
+    herd(w);
+    for (let i = 0; i < BODIES; i++) w.remote.cue[i] = cues(i);
+    for (let f = 0; f < 120; f++) w.frame(FRAME_MS, false);
+    const times: number[] = [];
+    let p = w.scene.packet;
+    for (let f = 0; f < 300; f++) {
+      w.cam.yaw = Math.sin(f / 30) * 0.02;
+      w.remote.tick += 0.5;
+      w.scene.now += FRAME_MS;
+      const t = performance.now();
+      p = w.scene.build(w.cam, w.remote);
+      times.push(performance.now() - t);
+    }
+    times.sort((a, b) => a - b);
+    let drawn = 0;
+    for (let d = 0; d < p.drawCount; d++) if (p.drawLayer[d]! > 0) drawn++;
+    return { median: times[150]!, p, held: w.card.textures.has(layer), layered: drawn };
+  };
+  const none = run(() => 0);
+  record("none hurt: frame build, median (the herd with no layers above)", none.median, "ms", Math.max(1.2, before * 1.5));
+  record("none hurt: draws with a layer; its texture on the card", none.layered + (none.held ? 1 : 0), "", 0);
+  const some = run((i) => (i >= HURT ? 0 : i % 4 === 3 ? CUE_DEAD | (((i >> 2) & 3) << CUE_DECAY_SHIFT) : ((i % 4) + 1) << CUE_HURT_SHIFT));
+  record(`${HURT} hurt or dead: frame build, median`, some.median, "ms", 1.2);
+  record(`${HURT} hurt or dead: draw calls, against none hurt`, some.p.drawCount - none.p.drawCount, "");
+  record(`${HURT} hurt or dead: draws with a layer`, some.layered, "");
+  record("the layer's texture bytes held", some.held ? textureBytes("rgba", "layer", Math.min(tier.texture, PIXELS)) / MB : 0, "MB");
+}
+
+/** The nearest bodies of the herd that are hurt or dead in `layered`. */
+const HURT = 40;
 
 /** Bytes of every copy of a texture the card was sent whole. */
 function texturesUp(w: ReturnType<typeof sceneWorld>): number {
