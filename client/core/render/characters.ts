@@ -9,6 +9,7 @@ import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN
 import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
+import { STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
@@ -230,7 +231,7 @@ export class Characters {
     });
     this.dead = new Corpses(this.creatures.map((c) => c?.anim ?? null), reg.birthScale);
     const st = new AnimState();
-    for (const stance of [0, 1]) {
+    for (const stance of [STANCE_STAND, STANCE_CROUCH]) {
       st.stance = stance;
       st.setAction(ACT_NONE, HOLD_CARRY, 0);
       humanPose(this.anim, st, 0, this.pose);
@@ -302,7 +303,7 @@ export class Characters {
     const at = this.creatures[kind]?.anim.holdAt;
     if (!at || !this.kinds[carrierKind]) return false;
     this.carriedBy.set(id, carrier);
-    const palms = this.cradled[st.stance === 1 ? 1 : 0]!;
+    const palms = this.cradled[st.stance === STANCE_CROUCH ? 1 : 0]!;
     const mx = palms[0]! - at[0]!;
     const mz = palms[2]! - at[2]!;
     const s = Math.sin(yaw);
