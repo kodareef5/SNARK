@@ -15,6 +15,9 @@ import { SLOPE_BLOCKS } from "./slopes.ts";
 import { LETTER_BLOCKS } from "./lettering.ts";
 import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
+import { ROADS } from "./vehicles/roads.ts";
+import { COMPACT_SPECIES } from "./vehicles/compact.ts";
+import { CIVILIAN } from "./civilians.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 const id = (name: string): string => `core:${name}`;
@@ -362,6 +365,9 @@ const ALL: readonly Def[] = [
   { type: "structure", class: "static", id: "core:slab", mesh: "box", color: 2, half: [4, 0.25, 4], hp: 4000 },
   ...BUILDING_CONTENT,
   ...CREATURES,
+  COMPACT_SPECIES,
+  ...ROADS,
+  CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,
   ...CORPSES,

@@ -415,7 +415,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // nodes alone (the eleven the proving ground lists do not move it).
   // It was 1918661154 until the smithy's and the fabricator's grey boxes (content/items/stations.ts, S2) took mesh numbers;
   // without the two stations, their pieces and polymer's and electronics' recipes it is that again.
-  expect(hash).toBe(11868317);
+  // It was 11868317 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
+  expect(hash).toBe(802027835);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -428,7 +429,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1277817829 until the sign letters' and the four resource nodes' grey boxes took mesh numbers, as above:
   // 1675711496 with the letters alone, 3184345957 with the nodes alone.
   // It was 295710133 until the smithy's and the fabricator's grey boxes (S2), as above; without them it is that again.
-  expect(saddled.hash).toBe(738198866);
+  // It was 738198866 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
+  expect(saddled.hash).toBe(850823663);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
