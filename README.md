@@ -57,6 +57,7 @@ raptors that will come for you.
 | T, Y, J, U | Whistle the creature looked at to follow, to stay; all of them to follow, to stay |
 | Building piece in hand | Left button sets it down where it is shown. E turns it, Q takes the next nearest place (held: open ground), R changes a wall to a doorframe or a windowframe, arrow keys raise and lower a foundation |
 | I, P, M, O | Inventory, character (stats, engrams, crafting), map, settings (among them voice volume, and whether B is held or switches the microphone) |
+| L | The other servers of the cluster: choose one to travel there with all you carry ([server/README.md](server/README.md)) |
 | B | Hold to talk to those near; with Alt a whisper, with Shift a yell. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |

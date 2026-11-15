@@ -27,8 +27,9 @@ The Bun process that owns a world. Headless; no rendering or DOM code.
 | `eggs.ts`, `feces.ts` | Eggs as things, taken up, kept and set down; what creatures leave when they go, and the eggs laid in its place |
 | `settings/` | ARK's settings: the catalogue of them (`row.ts`, `rows-*.ts`, `catalog.ts`), the ini reader, the rules they give (`rules.ts`), reading a config folder, a command line and the live file (`config.ts`), lists that name content (`lists.ts`), the settings that change content, as a tuning (`tune.ts`), and those that change the spawn tables (`spawns.ts`) |
 | `console.ts`, `commands/` | The console and its commands: session, admin, combat, social, creatures, settings |
-| `persist/store.ts` | SQLite schema and encoding |
+| `persist/store.ts`, `persist/codec.ts` | SQLite schema, and a record as bytes, the form a save keeps it in and a transfer carries it in |
 | `persist/persistence.ts` | What each commit contains |
+| `cluster/` | The servers of a cluster: the shared folder (`folder.ts`), a transfer's sealed file (`parcel.ts`), travel, recovery and the travel list (`cluster.ts`), and whether the cluster balances (`audit.ts`) |
 
 Nothing but `main.ts` takes a socket or a clock, so tests run a whole server in
 memory. Almost nothing steps: what happens at a moment is a deadline on one
@@ -54,6 +55,28 @@ run in the [operator's guide](../planning/reference/operators.md).
 reads `config/dev` when no other folder is named. It must not be used on a
 public server. `--cert` and `--key` serve over TLS, which a browser asks for
 before it gives a page a microphone anywhere but `localhost`. A login name is not authentication; accounts do not exist yet.
+
+## A cluster
+
+Servers of one cluster share a folder and nothing else; a survivor travels between them with what it carries
+([transfers](../planning/architecture/transfers.md)). Give each the same `-clusterid`, a save of its own, and a port of its
+own. Two maps on one machine, from the repository's root once `bun run build` has made the client and
+`bun tools/mapworld/build.ts miami` and `bun tools/mapworld/build.ts tampa` the maps:
+
+```sh
+bun server/main.ts --dev --host 0.0.0.0 --map var/maps/miami.snmap --port 8798 --db var/cluster/miami.db -clusterid=florida
+bun server/main.ts --dev --host 0.0.0.0 --map var/maps/tampa.snmap --port 8799 --db var/cluster/tampa.db -clusterid=florida
+```
+
+The saves are beside each other, so both servers share the folder `var/cluster/clusters/florida`; `-ClusterDirOverride=<folder>`
+puts it anywhere else on this machine. A new save takes the lowest world id the cluster has not given out; two saves made
+outside a cluster are both world 1, so only one of them can join. Open `http://localhost:8798` (from a phone,
+`http://<this machine's address>:8798`), press L for the travel list and choose Tampa: the page goes to port 8799 and the
+survivor arrives at its spawn point. L there and Miami bring it back to where it stood. `travel` in the console lists and
+leaves the same way. A survivor whose page closed on the way, or that was turned away, is back on the server it left as soon
+as its owner joins there, and by itself after ten minutes. Reached through tunnels, give each server
+`--public-url https://<its own tunnel's host>`, and a page that came by one goes by the other's. An operator's `cluster`
+lists the cluster and who is away, and `cluster audit` says whether every item of it is accounted for.
 
 See [authority](../planning/architecture/authority.md),
 [scheduling](../planning/architecture/scheduling.md), and

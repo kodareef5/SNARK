@@ -13,6 +13,7 @@ import { parsePack } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
+import { V_FOOD } from "../../shared/sim/vitals.ts";
 import { TestCluster, beat, commit, crash, keyAt, places, rec, travel } from "../fixtures/cluster.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 
@@ -67,6 +68,9 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   const carried = new Map(items.held(me));
   const pid = me.pid;
   const stood = [a.h.world.ents.x[a.h.ent(ada)]!, a.h.world.ents.z[a.h.ent(ada)]!];
+  const hunger = -me.vitals!.rate[V_FOOD]!;
+  const fed = me.vitals!.at(V_FOOD, a.h.world.tick);
+  expect(hunger).toBeGreaterThan(0);
   expect(audit(a, b)).toEqual([]);
 
   const ticket = travel(a, ada, b.world);
@@ -97,6 +101,8 @@ test("a survivor goes from one map to another and back with its level, engrams, 
   expect([held.egg!.carrier, held.egg!.hatchAt, binv.ref![binv.item.indexOf(id("dodo_egg_fertile"))]]).toEqual([egg.pid, eggLeft, egg.pid]);
   // Where it arrives is the map's spawn point.
   expect(Math.hypot(b.h.world.ents.x[b.h.ent(there)]! - b.h.world.spawn.x, b.h.world.ents.z[b.h.ent(there)]! - b.h.world.spawn.z)).toBeLessThan(8);
+  // Its own clock stopped while it was away, as a survivor's does out of the world: the half minute cost it no food.
+  expect(fed - at.vitals!.at(V_FOOD, b.h.world.tick)).toBeLessThan(hunger * 2 * TICK_RATE);
   expect(b.h.host.items.audit()).toEqual([]);
   expect(audit(a, b)).toEqual([]);
 
