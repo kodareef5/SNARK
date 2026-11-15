@@ -492,12 +492,13 @@ export class Urban {
       if (e !== host.entity || makeHandle(e, ents.gen[e]!) !== host.handle) continue;
       // A car nobody drives stops on its handbrake, and once at rest is looked at again only once a REST_TICKS, each on
       // its own tick of them, to see whether the ground under it went.
-      if (!this.drivers.has(e) && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
+      const driven = this.drivers.has(e);
+      if (!driven && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
         stepVehicleBody(world, this.body, 0, 0, BTN_JUMP, host.definition, TICK_DT);
         ents.storeBody(e, this.body);
         ents.pose(e, world.tick);
-      }
+      } else if (!driven && ents.vehicleDoors[e] === 0 && !this.opening.has(pid) && !this.occupied(pid, host)) continue;
       this.note(host);
       this.save(e);
       // A seat's door swings open while someone is getting in or out by it, and shut after.
@@ -696,6 +697,13 @@ export class Urban {
     return (ents.flags[e]! & F_GROUNDED) !== 0 && ents.vx[e] === 0 && ents.vz[e] === 0 && still(ents.vy[e]!) &&
       still(ents.vehicleYawRate[e]!) && still(ents.vehiclePitchRate[e]!) && still(ents.vehicleRollRate[e]!) && still(ents.vehicleRideVelocity[e]!);
   }
+
+  /** Whether anyone sits in the vehicle: an asleep car with nobody in it and its doors shut has nothing to do this tick. */
+  private occupied(pid: number, host: HostSeat): boolean {
+    for (const seat of host.definition.seats) if (this.occupancy.occupant(pid, seat.id) !== 0) return true;
+    return false;
+  }
+
   private pin(actor: number, vehicle: number, anchor: readonly [number, number, number], driver: boolean): void {
     const { world } = this.ctx, ents = world.ents;
     const state = this.state(vehicle), seat = [0, 0, 0], rotation = [0, 0, 0, 1], origin = [0, 0, 0];
