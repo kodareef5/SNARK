@@ -131,6 +131,23 @@ export class EntityRecord {
   }
 }
 
+/** Bytes of the SHA-256 of a device key that a survivor record keeps. */
+const KEY_HASH_BYTES = 16;
+
+/** What a survivor record keeps of the device key that owns it (EntityRecord.keyHash). */
+export function hashKey(key: Uint8Array): Uint8Array {
+  return new Bun.CryptoHasher("sha256").update(key).digest().slice(0, KEY_HASH_BYTES);
+}
+
+/**
+ * Team numbers each world makes. A world's are its id times this plus a count of its own, so a team means the same on every
+ * server of a cluster and a survivor keeps its team as it travels. Saves from before held teams below it, numbered with
+ * their records, which no world's range reaches while no world is 0.
+ */
+export const TEAM_RANGE = 1 << 20;
+/** A team number is 32 bits, so this is the highest world id that can make teams. */
+export const MAX_TEAM_WORLD = 4095;
+
 export class Records {
   readonly worldId: number;
   readonly byPid = new Map<number, EntityRecord>();
@@ -140,14 +157,17 @@ export class Records {
   readonly dirty = new Set<number>();
   readonly deleted: number[] = [];
   nextSeq = 1;
+  /** Teams made, saved with the record counter. */
+  nextTeam = 1;
 
   constructor(worldId: number) {
     this.worldId = worldId;
   }
 
-  /** Team ids come from the record counter, so they are saved with it and never repeat. */
+  /** Never repeats, here or on another world of a cluster. */
   newTeam(): number {
-    return this.nextSeq++;
+    if (this.nextTeam >= TEAM_RANGE || this.worldId > MAX_TEAM_WORLD) throw new Error(`world ${this.worldId} has made all the teams it can`);
+    return this.worldId * TEAM_RANGE + this.nextTeam++;
   }
 
   create(kind: number, name = ""): EntityRecord {

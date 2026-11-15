@@ -210,6 +210,61 @@ export class Tribes {
     return "";
   }
 
+  /**
+   * The survivor left for another server of the cluster, in its tribe still. Its team goes with it and what the tribe owns here
+   * keeps it, so it is the tribe's again when the survivor comes back. A tribe is listed where its members are: this one
+   * passes to its longest-standing member here, if its owner left, and with nobody left here it is forgotten here.
+   */
+  departed(rec: EntityRecord): void {
+    this.invites.delete(rec.pid);
+    const tribe = this.of(rec);
+    if (!tribe) return;
+    const at = tribe.members.indexOf(rec.pid);
+    if (at >= 0) tribe.members.splice(at, 1);
+    if (tribe.members.length === 0) this.byId.delete(tribe.id);
+    else if (tribe.owner === rec.pid) {
+      tribe.owner = tribe.members[0]!;
+      const heir = this.records.byPid.get(tribe.owner);
+      if (heir) {
+        heir.rank = RANK_OWNER;
+        this.records.dirty.add(heir.pid);
+      }
+    }
+    for (const pid of tribe.members) this.onNotice?.(pid, `${rec.name} has gone to another server.`);
+    this.version++;
+    this.onSave?.();
+  }
+
+  /**
+   * The survivor came from another server of the cluster, with the team it had there. A tribe of that team here takes it in,
+   * and where there is none it is made under the name it had there (`name`, "" for a survivor in no tribe). One that `owned` it
+   * there owns it here, and one that finds the tribe's owner away holds it until the owner comes.
+   */
+  arrived(rec: EntityRecord, name: string, owned: boolean): void {
+    if (rec.team === 0) return;
+    let tribe = this.byId.get(rec.team);
+    if (!tribe) {
+      const clean = cleanTribeName(name);
+      if (clean === "") return;
+      tribe = { id: rec.team, name: clean, members: [], owner: rec.pid };
+      this.byId.set(tribe.id, tribe);
+    }
+    if (!tribe.members.includes(rec.pid)) tribe.members.push(rec.pid);
+    if (owned || !tribe.members.includes(tribe.owner)) {
+      const was = tribe.owner !== rec.pid ? this.records.byPid.get(tribe.owner) : undefined;
+      if (was) {
+        was.rank = RANK_MEMBER;
+        this.records.dirty.add(was.pid);
+      }
+      tribe.owner = rec.pid;
+    }
+    rec.rank = tribe.owner === rec.pid ? RANK_OWNER : RANK_MEMBER;
+    this.records.dirty.add(rec.pid);
+    for (const pid of tribe.members) if (pid !== rec.pid) this.onNotice?.(pid, `${rec.name} has come from another server.`);
+    this.version++;
+    this.onSave?.();
+  }
+
   private remove(tribe: Tribe, rec: EntityRecord, why: string): void {
     tribe.members.splice(tribe.members.indexOf(rec.pid), 1);
     rec.team = this.records.newTeam();

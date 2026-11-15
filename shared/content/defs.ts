@@ -256,6 +256,11 @@ export interface ItemDef extends Named {
   readonly blueprint?: boolean;
   /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
   readonly use?: UseFacet;
+  /**
+   * False for a thing that may not leave its server, as ARK's Element, tributes and boss trophies may not: a survivor carrying
+   * one is refused travel until it puts it down (ark.wiki.gg CrossARK Transfers, 2026-11-15). Omitted, it travels.
+   */
+  readonly travels?: boolean;
 }
 
 /**

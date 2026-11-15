@@ -86,6 +86,11 @@ export class WorldStore {
   readonly missingContent: string[] = [];
   /** No commit has landed in the file, so it holds no world. */
   readonly fresh: boolean;
+  /**
+   * The save's own name for itself, kept for good from its first commit (a backup has its save's), so a cluster can tell it
+   * from another save of the same world. The world id its records are numbered under is `meta("world_id")`, 1 where absent.
+   */
+  readonly saveId: string;
   /** Writes and reads records against the save's table of content ids. */
   readonly codec: RecordCodec;
 
@@ -153,6 +158,7 @@ export class WorldStore {
       const current = Number(this.meta("schema_version") ?? 0);
       // Every commit writes the tick. A file with tables and no tick is a first start that stopped before its first commit.
       this.fresh = this.meta("tick") === null;
+      this.saveId = String(this.meta("save_id") ?? "") || [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
       if (current > SCHEMA_VERSION) throw new Error(`save has schema ${current}; this build understands up to ${SCHEMA_VERSION}`);
       if (current < SCHEMA_VERSION) {
         // The save as it was, kept beside it before its form changes. An older copy of the same form is left alone.
@@ -369,5 +375,42 @@ export class WorldStore {
       for (let s = 0; s < row.slots; s++) if (missing.has(row.data[1 + s * 2]! | (row.data[2 + s * 2]! << 8))) return true;
     }
     return false;
+  }
+}
+
+/** A save as it was at its last commit, read by another program while its server may run (server/cluster/audit.ts). */
+export interface SaveView {
+  tick: number;
+  world: number;
+  ledger: string | null;
+  records: EntityRecord[];
+  transfers: TransferRow[];
+}
+
+/** Reads a save without holding it or changing it, in one read transaction, so what it gives is one commit's. */
+export function readSave(path: string, reg: Registry): SaveView {
+  const db = new Database(path, { readonly: true });
+  try {
+    db.exec("BEGIN");
+    const meta = (key: string): string | number | null => (db.query("SELECT value FROM meta WHERE key = ?").get(key) as { value: string | number } | null)?.value ?? null;
+    const saved = new Map<string, number>();
+    let high = 0;
+    for (const row of db.query("SELECT idx, id FROM content_ids").all() as { idx: number; id: string }[]) {
+      saved.set(row.id, row.idx);
+      if (row.idx > high) high = row.idx;
+    }
+    // What this build lacks is counted as left out, not refused: the reader is only counting.
+    const codec = new RecordCodec(reg, new Uint16Array(reg.ids.length), idMap(reg, saved, high), true);
+    const records: EntityRecord[] = [];
+    for (const row of db.query("SELECT pid, kind, x, y, z, yaw, data FROM entities").all() as RecordRow[]) {
+      const rec = codec.decode(row);
+      if (rec) records.push(rec);
+    }
+    const ledger = meta("ledger");
+    const transfers = (db.query("SELECT name FROM sqlite_master WHERE name = 'transfers'").get() ? db.query("SELECT id, dir, pid, name, hop, peer, at FROM transfers").all() : []) as TransferRow[];
+    db.exec("COMMIT");
+    return { tick: Number(meta("tick") ?? 0), world: Number(meta("world_id") ?? 1), ledger: typeof ledger === "string" ? ledger : null, records, transfers };
+  } finally {
+    db.close();
   }
 }
