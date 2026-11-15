@@ -252,8 +252,8 @@ export interface Registry {
    */
   readonly missileMul: Float32Array;
   readonly biteStructureMul: Float32Array;
-  // The stations wave's columns (planning/reference/stations-plan.md, S0). `stationBase` and `stationFuel` are read; the
-  // rest are compiled and read by nothing until the project named builds them.
+  // The stations wave's columns (planning/reference/stations-plan.md, S0). `stationBase`, `stationFuel` and `powered` (S2)
+  // are read; the rest are compiled and read by nothing until the project named builds them.
   /**
    * Per structure: the one station it is to what is made at it, the unlit kind of a lit pair and the kind itself otherwise
    * (0 for everything else). `craftAt` holds base kinds, so a fire lit and out is one crafting station (M2).

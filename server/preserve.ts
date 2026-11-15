@@ -10,6 +10,6 @@
 import type { Items } from "./items.ts";
 import type { Stations } from "./stations.ts";
 
-export function preserve(stations: Stations, items: Items): void {
+export function wirePreserve(stations: Stations, items: Items): void {
   stations.onSwap((rec, t, from, to) => items.rekeep(rec, t, from, to));
 }

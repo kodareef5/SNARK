@@ -279,7 +279,10 @@ export interface StructureDef extends Named {
    * (server/preserve.ts).
    */
   readonly keeps?: number;
-  /** Its jobs run only while it burns (M5). A stub until S2. */
+  /**
+   * Its jobs run only while it burns (M5): no job is taken while it is out, and a unit under way when it goes out waits with
+   * its ticks left (Job.rest) until it is lit again. Both kinds of a lit pair say it.
+   */
   readonly powered?: boolean;
   /** It is not lit below the map's sea level (M8). A stub until S1. */
   readonly dry?: boolean;

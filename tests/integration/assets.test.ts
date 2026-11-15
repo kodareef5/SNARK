@@ -126,9 +126,11 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was 98e00881 until the oil rock's, crystal's, obsidian rock's and clam's grey boxes (content/items/nodes.ts) numbered
   // the meshes after them on (43a2ef65 with that alone) and the proving ground listed eleven of them off the plaza's west
   // and east edges; without those four kinds it is that again.
-  // It was f63e1c05 until the pack held the preserving bin's grey box (content/items/stations.ts), which numbers the meshes
-  // after it on; without the bin, its lit kind, its piece and its engram it is that again.
-  expect(hash).toBe("2f5aab3d");
+  // It was f63e1c05 until the smithy's and the fabricator's grey boxes (content/items/stations.ts, S2) numbered the meshes
+  // after them on; without the two stations, their pieces and polymer's and electronics' recipes it is that again.
+  // It was e689ff39 until the preserving bin's grey box (content/items/stations.ts, S3) numbered the meshes after it on;
+  // without the bin, its lit kind, its piece and its engram it is that again.
+  expect(hash).toBe("ff4a48f1");
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -136,6 +138,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   const saddled = frames(true);
   expect([...saddled.drawn].filter((id) => !drawn.has(id))).toEqual([WORN]);
   // It was bf22a69 until the four resource nodes and their grey boxes, as above; without those four kinds it is that again.
-  // It was e968ac75 until the preserving bin's grey box, as above; without the bin it is that again.
-  expect(saddled.hash).toBe("9d881ba9");
+  // It was e968ac75 until the smithy's and the fabricator's grey boxes (S2), as above; without them it is that again.
+  // It was 7d2d1185 until the preserving bin's grey box (S3), as above; without the bin it is that again.
+  expect(saddled.hash).toBe("6a9b6af1");
 });
