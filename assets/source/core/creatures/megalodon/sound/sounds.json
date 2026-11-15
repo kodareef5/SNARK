@@ -22,6 +22,12 @@
         {"file": "takes/hurt/moss-pt-3160-00265.wav", "from": "moss", "start": 0.05, "end": 2.9}
       ]
     },
+    "death": {
+      "range": 80, "level": -18, "vary": 0.5,
+      "takes": [
+        {"file": "takes/death/moss-pt-3170-00000.wav", "from": "moss", "start": 0.0, "end": 7.365}
+      ]
+    },
     "attack": {
       "range": 80, "level": -16, "vary": 0.5,
       "takes": [

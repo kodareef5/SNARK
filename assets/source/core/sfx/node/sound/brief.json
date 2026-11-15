@@ -1,0 +1,68 @@
+{
+  "asset": "core/sfx/node",
+  "review": "../ref/sound",
+  "about": "Trees, rocks and plants used up: felled, crumbled, picked, for every node without its own.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "felled/wood": {
+      "kind": "impact",
+      "range": 120,
+      "level": -12,
+      "vary": 0.4,
+      "want": "a tree falls",
+      "prompts": [
+        {
+          "id": "p2450",
+          "models": [
+            "moss"
+          ],
+          "seed": 2450,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A tall tree is felled: wood cracking and splintering, then a long crashing fall through branches and a heavy thud, one fall. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "crumble/stone": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.5,
+      "want": "a rock breaks apart",
+      "prompts": [
+        {
+          "id": "p2460",
+          "models": [
+            "moss"
+          ],
+          "seed": 2460,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A large rock cracks and crumbles apart into rubble, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "picked/foliage": {
+      "kind": "impact",
+      "range": 15,
+      "level": -24,
+      "vary": 1.0,
+      "want": "a bush stripped by hand",
+      "prompts": [
+        {
+          "id": "p2470",
+          "models": [
+            "moss"
+          ],
+          "seed": 2470,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Leaves and berries are stripped from a bush by hand: rustling twigs and snapping stems, five separate pulls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

@@ -34,6 +34,12 @@
         {"file": "takes/attack/moss-pt-3300-03590.wav", "from": "moss", "start": 0.05, "end": 0.895},
         {"file": "takes/attack/moss-pt-3300-00255.wav", "from": "moss", "start": 0.05, "end": 0.88}
       ]
+    },
+    "step": {
+      "range": 48, "level": -24, "vary": 0.5,
+      "takes": [
+        {"file": "takes/step/moss-pt-3310-04127.wav", "from": "moss", "start": 0.05, "end": 0.59}
+      ]
     }
   }
 }

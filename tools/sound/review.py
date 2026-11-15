@@ -255,7 +255,8 @@ def main():
             sheet(brief, slot, takes, meas, acc, review / f"{slot.replace('/', '-')}.png")
         print(f"{slot}: {len(takes)} takes measured", flush=True)
     if not a.no_sheets:
-        voices(brief, allm, acc, review / "voices.png")
+        if any(slot_kind(brief, sl) == "voice" for sl in brief["slots"]):
+            voices(brief, allm, acc, review / "voices.png")
 
 
 if __name__ == "__main__":

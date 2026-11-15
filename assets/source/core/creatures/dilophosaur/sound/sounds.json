@@ -36,6 +36,12 @@
         {"file": "takes/attack/moss-pt-3420-05930.wav", "from": "moss", "start": 0.05, "end": 1.315},
         {"file": "takes/attack/moss-pt-3420-00430.wav", "from": "moss", "start": 0.05, "end": 1.025}
       ]
+    },
+    "step": {
+      "range": 30, "level": -26, "vary": 0.5,
+      "takes": [
+        {"file": "takes/step/moss-pt-3430-07202.wav", "from": "moss", "start": 0.05, "end": 0.538}
+      ]
     }
   }
 }

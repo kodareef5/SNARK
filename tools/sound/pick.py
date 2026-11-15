@@ -9,7 +9,7 @@ Needs review.py's measures (tools/sound/.work/<asset>/measures.json). For each s
   15 dB under its file's loudest, from
   files that are not clipped and have no noisy floor (impacts and steps also none with a steady tone under them), one
   from each file first, loudest first, then a second from each. `keep` in the slot says how many (default by kind).
-The picks are measured, not heard: the owner listens before anything merges.
+A slot nothing fits takes its loudest events up to 8 s long, a steady tone allowed. The picks are measured, not heard: the owner listens before anything merges.
 """
 
 import argparse
@@ -24,6 +24,7 @@ import generate  # noqa: E402
 KEEP = {"voice": 4, "impact": 4, "step": 6}
 LENGTH = {"voice": (0.25, 3.0), "impact": (0.04, 3.0), "step": (0.08, 0.8)}
 LOOP_LEAD = 1.5
+RELAXED = 8.0
 LOOP_TAIL = 1.75
 
 
@@ -62,6 +63,21 @@ def pick_slot(slot, spec, cands):
             if used.get(c[1], 0) == rnd - 1 and c not in chosen:
                 chosen.append(c)
                 used[c[1]] = used.get(c[1], 0) + 1
+    if not chosen:
+        # Nothing fit the rules: the loudest events of any length up to RELAXED seconds, a steady tone allowed (a deep
+        # thud reads as one), from files with no noisy floor. A roar or a fit of panting is one long event.
+        loose = []
+        for take, m in cands.items():
+            if m.get("clipped") or "noisy floor" in " ".join(m.get("faults", [])):
+                continue
+            loudest = max((e["peak_db"] for e in m["events"]), default=-99)
+            loose += [(e["peak_db"], take, i, e) for i, e in enumerate(m["events"]) if 0.04 <= e["seconds"] <= RELAXED and e["peak_db"] > -30 and e["peak_db"] >= loudest - 15]
+        loose.sort(key=lambda c: -c[0])
+        for c in loose:
+            if len(chosen) >= min(n, 2):
+                break
+            if c[1] not in {x[1] for x in chosen}:
+                chosen.append(c)
     why = "; ".join(f"{t} #{i} {e['start']:.2f}-{e['end']:.2f} {e['peak_db']} dB" for _, t, i, e in chosen) or "nothing fit"
     return [{"take": t, "event": i} for _, t, i, _ in chosen], why
 
