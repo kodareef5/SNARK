@@ -118,8 +118,6 @@ function formLod(f: Form): SourceLod {
       const nrm = unit([Math.sin(a) * flat, Math.cos(a), -(taper - 1) * r0 * flat / length]);
       return [p, nrm, z, arc[i]! * r];
     });
-    // Wound so the outside faces out.
-    for (let k = 0; k < indices.length; k += 3) [indices[k + 1], indices[k + 2]] = [indices[k + 2]!, indices[k + 1]!];
   } else if (f.form === "ball") {
     const [rx, ry, rz] = f.radii ?? [0.2, 0.18, 0.3];
     const n = 160;
@@ -143,7 +141,6 @@ function formLod(f: Form): SourceLod {
       const nrm = unit([p[0]! / (rx * rx), p[1]! / (ry * ry), p[2]! / (rz * rz)]);
       return [p, nrm, along[j]!, (a / (Math.PI * 2)) * Math.PI * (rx + ry)];
     });
-    for (let k = 0; k < indices.length; k += 3) [indices[k + 1], indices[k + 2]] = [indices[k + 2]!, indices[k + 1]!];
   } else {
     // In x and z, bulging up by `camber` at its middle; the under face looks down.
     const w = f.width ?? 1.6;
