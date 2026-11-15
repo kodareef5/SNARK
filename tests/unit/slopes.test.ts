@@ -5,7 +5,7 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { slopeKind } from "../../content/slopes.ts";
-import { compileContent } from "../../shared/content/registry.ts";
+import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { leaning, slopeShape, staticOf, wedge } from "../../shared/content/slopes.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { BTN_JUMP, BTN_SPRINT, Body, stepBody, stepOut, type MoveParams } from "../../shared/sim/character.ts";
@@ -18,8 +18,9 @@ import type { TestWorld } from "../fixtures/world.ts";
 // than a survivor or a wild creature stands on and not than a tame does.
 const LONG = slopeShape("test:shape_long60", "thing", [leaning([2, 0.25, 8], 60)]);
 const STEEP = slopeShape("test:shape_heap47", "thing", [wedge(4, 3, 3.2)]);
-const { registry: reg, errors } = compileContent([...CORE_CONTENT, LONG, STEEP, staticOf("test:long60", LONG, { color: 1, hp: 1000 }), staticOf("test:heap47", STEEP, { color: 1, hp: 1000 })]);
-if (!reg) throw new Error(errors.join("\n"));
+const compiled = compileContent([...CORE_CONTENT, LONG, STEEP, staticOf("test:long60", LONG, { color: 1, hp: 1000 }), staticOf("test:heap47", STEEP, { color: 1, hp: 1000 })]);
+if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
+const reg: Registry = compiled.registry;
 const kind = (id: string): number => reg.index.get(id)!;
 const move = (id: string): MoveParams => reg.move[kind(id)]!;
 const WALKERS = reg.defs.flatMap((d) => (d?.type === "species" && !d.still ? [d.id] : []));
