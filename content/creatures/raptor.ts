@@ -34,6 +34,8 @@ export const RAPTOR: readonly Def[] = [
     // Chosen, near what it gave before bodies were harvested: 7.5 hide and 6 meat in all on average.
     corpse: { health: 135, roll: 10 },
     drops: [{ item: "core:hide", min: 1, max: 1, weight: 7.5, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 6, favoured: "stone" }],
+    // Every creature takes 70% from guns ("all creatures aside from Humans", ark.wiki.gg, Longneck Rifle, 2026-11-15).
+    takes: { bullet: 0.7 },
     zones: { head: 3 },
     killXp: 8,
     torporDrain: 0.3,

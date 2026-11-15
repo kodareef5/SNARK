@@ -32,6 +32,8 @@ export const PARASAUR: readonly Def[] = [
     // Chosen, near what it gave before bodies were harvested: 12 hide and 11 meat in all on average.
     corpse: { health: 230, roll: 10 },
     drops: [{ item: "core:hide", min: 1, max: 1, weight: 12, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 11, favoured: "stone" }],
+    // Every creature takes 70% from guns ("all creatures aside from Humans", ark.wiki.gg, Longneck Rifle, 2026-11-15).
+    takes: { bullet: 0.7 },
     zones: { head: 1.5 },
     killXp: 6,
     torporDrain: 0.3,
