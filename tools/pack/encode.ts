@@ -30,10 +30,10 @@ const BLOCK_FORMATS: readonly BlockFormat[] = ["bc", "astc"];
 /** The encoder a picture goes through, and what it is told of the picture. */
 export type Encoding = { with: "bc5" } | { with: "bc7"; channels: 3 | 4 } | { with: "astc"; kind: AstcKind };
 
-/** How a role is stored in a block variant. `alpha` is whether anything reads the alpha of a base colour. */
+/** How a role is stored in a block variant. `alpha` is whether anything reads the alpha of a base colour. A layer is a base colour whose alpha is always read. */
 export function encodingOf(format: BlockFormat, role: TextureRole, alpha: boolean): Encoding {
-  if (format === "astc") return { with: "astc", kind: role === "base" ? "srgb" : role === "normal" ? "normal" : "linear" };
-  return role === "normal" ? { with: "bc5" } : { with: "bc7", channels: role === "base" && alpha ? 4 : 3 };
+  if (format === "astc") return { with: "astc", kind: role === "base" || role === "layer" ? "srgb" : role === "normal" ? "normal" : "linear" };
+  return role === "normal" ? { with: "bc5" } : { with: "bc7", channels: (role === "base" && alpha) || role === "layer" ? 4 : 3 };
 }
 
 /** What a thread is sent: blocks `from` up to `to` of a picture `size` pixels across. The picture and its blocks are shared memory. */
@@ -169,7 +169,7 @@ export async function encodeTextures(sources: readonly TextureSource[], opts: En
     for (const s of sources) {
       const mips = s.mips();
       if (mips.length !== Math.log2(s.top) + 1 || mips.some((m, i) => m.length !== 4 ** i * 4)) throw new Error(`texture ${s.id}: its pictures are not the sizes from 1 to ${s.top} pixels across`);
-      const alpha = s.role === "base" && (opts.alpha?.has(s.id) ?? false);
+      const alpha = (s.role === "base" && (opts.alpha?.has(s.id) ?? false)) || s.role === "layer";
       const pictures: Promise<Uint8Array>[][] = [[], []];
       mips.forEach((mip, i) => {
         const rgba = new Uint8Array(new SharedArrayBuffer(mip.length));

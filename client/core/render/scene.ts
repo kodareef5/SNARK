@@ -245,7 +245,7 @@ export class Scene {
   private readonly mountState = new AnimState();
   private readonly state = new AnimState();
   /** The characters' draws, given their depth ranges once their instances are written (bodyPasses). */
-  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, NEAR);
+  private readonly drawBody = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number): void => this.draw(mesh, lod, TRANSIENT_BUFFER, first, count, 0, 0, 0, flags, NEAR, 0, layer);
   /** Bases drawn as blocks where the near store does not hold their chunks whole, given a far source and the far mesh. */
   private readonly far: FarBlocks | null;
   /** Nodes past the near node field, given a source of them. */
@@ -1247,9 +1247,10 @@ export class Scene {
   /**
    * Draws `count` instances of a mesh at the level the card has nearest to `wanted`: one draw for each of the level's
    * sections when the card has everything its materials take, and otherwise one flat draw of the whole of it. `passes`
-   * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two.
+   * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two. A section whose
+   * material has its layer on the card draws it at `layer`.
    */
-  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0): void {
+  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0, layer = 0): void {
     const p = this.packet;
     const n = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -1295,6 +1296,7 @@ export class Scene {
       p.drawFlags[d] = material < 0 ? flags : flags | this.materialFlags[material]!;
       p.drawHand[d] = hand;
       if (material < 0) continue;
+      if (layer > 0 && this.assets.layered(material)) p.drawLayer[d] = layer;
       p.drawMaterial[d] = material;
       p.drawFirstIndex[d] = runs[k * 3 + 1]!;
       p.drawIndexCount[d] = runs[k * 3 + 2]!;

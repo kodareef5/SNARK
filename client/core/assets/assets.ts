@@ -129,6 +129,27 @@ export class Assets {
   }
 
   /**
+   * After `wantTextured`, for a body whose hurt and decay layer shows: wants the layer of each material of the level
+   * that has one. False, wanting nothing, where the level is not drawn with materials or none of them has a layer.
+   */
+  wantLayers(mesh: number, level: number, distance: number, size = 1): boolean {
+    const errors = this.table.error[mesh]!;
+    const runs = this.table.sections[mesh]![level < errors.length ? level : errors.length - 1]!;
+    let any = false;
+    for (let k = 0; k < runs.length; k += 3) {
+      const m = runs[k]!;
+      const d = distance > 0.01 ? distance : 0.01;
+      any = this.residency.layer(m, (this.table.materials[m]!.span * size * this.scale) / (d * this.residency.relax), d > 1 ? d : 1) || any;
+    }
+    return any;
+  }
+
+  /** Whether a material drawn this frame has its layer on the card, to draw it with. */
+  layered(material: number): boolean {
+    return this.residency.layered(material);
+  }
+
+  /**
    * Says a material is on screen, on something `distance` metres off drawn `size` times its modelled size. One whole
    * texture of it then covers `span * size * scale / distance` pixels, and the step wanted of its widest texture is
    * the first that is as many pixels across, up to the tier's widest. A texture authored narrower than the widest is

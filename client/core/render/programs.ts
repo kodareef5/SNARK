@@ -14,9 +14,10 @@ import { WATER_FRAGMENT } from "./water.ts";
  * Texture units. 0 to 3 hold the palette, the whole map's heights and tints, and the bones. A material's five maps go
  * on 4 to 8, base colour first, and so do the sky's (the moon on 4, the cloud layers on 7 and 8) and the sea's (its long
  * and short waves on 7 and 8), which are materials. 9 holds the shadow maps, 10 the sky table, and 11 and 12 the
- * terrain window's heights and tints, 13 the far nodes' meshes (packet.ts `atlas`). 14 and 15 are free.
+ * terrain window's heights and tints, 13 the far nodes' meshes (packet.ts `atlas`), 14 a body's hurt and decay layer.
+ * 15 is free.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13, layer: 14 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -45,8 +46,8 @@ function flatOr(tier: Tier, hard: boolean, vertex: string, flat: string, lit: st
 
 /**
  * The programs by name. A lit tier draws flat with LIT where low poly has FLAT, and draws the dome, "sky", where low
- * poly clears to its sky colour. The surface program is made the first time a frame draws with materials, which low
- * poly never does, so it is lit alone, and the see-through one the first time a frame with a split draws something
+ * poly clears to its sky colour. The surface programs are made the first time a frame draws with materials, which low
+ * poly never does, so they are lit alone, and the see-through one the first time a frame with a split draws something
  * see-through, which low poly does not either. The depth programs draw the sun's shadow maps.
  */
 export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText>> = {
@@ -71,6 +72,11 @@ export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureForma
     defines: shadowDefines(tier.shadows, hard),
     samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4, uSkyTable: UNIT.sky, uShadow: UNIT.shadow },
   }),
+  // The same for a body that is hurt or a corpse, which reads its layer too (packet.ts `drawLayer`). Only such a body is drawn with it.
+  surfaceLayer: (tier, format, hard = false) => {
+    const s = PROGRAMS.surface!(tier, format, hard);
+    return { ...s, fragment: surfaceFragment(format, AIR, true), samplers: { ...s.samplers, uLayer: UNIT.layer } };
+  },
   // The dome, and over it the sky material's pictures on its units as a material's: the moon as its base colour and the cloud layers as its two masks.
   sky: () => ({ vertex: SKY_VERTEX, fragment: SKY_FRAGMENT, defines: "", samplers: { uSkyTable: UNIT.sky, uMoon: UNIT.maps, uLow: UNIT.maps + 3, uHigh: UNIT.maps + 4 } }),
   // The sea seen from above on a lit tier: the flat mesh's tiles, the waves as a material's two masks, the ground's heights to know how deep it is, and the sun's shadow.

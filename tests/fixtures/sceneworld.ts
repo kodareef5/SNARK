@@ -17,7 +17,7 @@ import { compileContent, type Registry } from "../../shared/content/registry.ts"
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
-import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
+import { MAP_ROLES } from "../../shared/pack/texture.ts";
 import { GEAR_COUNT, GEAR_HELD } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
@@ -138,7 +138,7 @@ export function sceneSet(pixels = 64): SceneSet {
   // Planks in two browns, with every fourth square of them clear.
   const planks = picture(64, (x, y) => (((x >> 3) + (y >> 3)) & 3) === 0 ? [150, 110, 70, 0] : (x >> 3) & 1 ? [170, 125, 80, 255] : [120, 85, 55, 255]);
   const pictures = tubePictures();
-  for (const role of TEXTURE_ROLES) pictures[role] = enlarged(pictures[role], pixels / pictures[role].width);
+  for (const role of MAP_ROLES) pictures[role] = enlarged(pictures[role], pixels / pictures[role].width);
   const mips: Record<string, ReturnType<typeof materialMips>> = { [TUBE]: materialMips(pictures), [PANEL]: materialMips({ base: planks }) };
   const file = writeTextureFile("rgba", manifest.textures!.map((t) => rgbaTexture(t.role, mips[t.id.slice(0, t.id.lastIndexOf("/"))]![t.role]!)));
   manifest.textures!.forEach((t, i) => (t.in.rgba = { file: files.length, ...file.placed[i]! }));

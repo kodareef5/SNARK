@@ -37,6 +37,7 @@ const MADE_FROM: Readonly<Record<TextureRole, readonly string[]>> = {
   mro: ["normal", "packed", "occlusion", "roughness", "metal"],
   mask: ["regions", "mask", "mask2"],
   mask2: ["regions", "mask", "mask2"],
+  layer: ["hurt", "decay"],
 };
 
 /** The code that makes a texture from its pictures. A change to it makes every texture again. */
