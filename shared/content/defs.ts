@@ -56,6 +56,8 @@ export interface SpeciesDef extends Named {
   readonly equips?: boolean;
   /** Damage of a bare-handed strike. Defaults to 8. */
   readonly fists?: number;
+  /** Torpor a bare-handed strike gives, as a multiple of the damage it does. Defaults to none. */
+  readonly fistsTorpor?: number;
   readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number }[];
   /** Per stat: [base, gain per wild point, gain per tamed point]. */
   readonly stats?: { readonly [S in StatName]?: StatCurve };
@@ -100,6 +102,19 @@ export interface SpeciesDef extends Named {
   readonly regions?: readonly ({ readonly name: string; readonly colors: readonly (readonly [palette: number, weight: number])[] } | null)[];
   /** The palette colours a mutation may give one of its regions. Defaults to MUTATION_COLORS. */
   readonly mutations?: readonly number[];
+  /** When it is hurt, others of its species within this many metres take fright with it. Omitted, none do. */
+  readonly alarm?: number;
+  /** Its sprintMul once tamed. Defaults to its sprintMul. */
+  readonly tamedSprintMul?: number;
+  /** What it weighs to a creature that carries or drags it (the reference's drag weight), and its mass. */
+  readonly drag?: number;
+  readonly mass?: number;
+  /** A survivor may pick it up in both arms, hold it and throw it. */
+  readonly carriable?: boolean;
+  /** The item it leaves when it defecates. Omitted, it does not. */
+  readonly feces?: string;
+  /** The chance, 0 to 1, that a female lays an unfertilised egg in place of her feces: the item her egg prop names. */
+  readonly eggChance?: number;
   // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
   /** What kind of variant of its base it is: "alpha", "event". */
   readonly variant?: string;
@@ -191,6 +206,8 @@ export interface ItemDef extends Named {
   readonly weight?: number;
   /** In-game hours one lasts before it spoils. Omitted for things that keep. */
   readonly spoilHours?: number;
+  /** In-game hours one lies on the ground before it is gone (the reference's "decomposes in"). Omitted, as long as any dropped stack. */
+  readonly decomposeHours?: number;
   /** What eating one restores, in points. */
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** Seconds one of it keeps a fire going. */
@@ -256,6 +273,8 @@ export interface WeaponFacet {
   readonly type?: DamageType;
   /** Melee: reach from the eye, in metres. Defaults to 2.6. */
   readonly reach?: number;
+  /** Melee: torpor a hit gives, as a multiple of the damage it does. Defaults to none. */
+  readonly torpor?: number;
   /** Bow and gun: the ammunition items it takes, and what it multiplies their damage by. */
   readonly ammo?: readonly string[];
   readonly power?: number;
@@ -407,6 +426,10 @@ export interface PropDef extends Named {
   readonly slots?: number;
   /** It is drawn tilted to its pitch as well as turned to its facing, with its mesh's +Z leading, like an arrow stuck where it landed. */
   readonly pitched?: boolean;
+  /** Drawn at this multiple of its mesh's modelled size. 1 where not given. */
+  readonly size?: number;
+  /** An egg: the item it is when picked up. */
+  readonly item?: string;
 }
 
 /**

@@ -23,8 +23,8 @@ const REGIONS = [
   { name: "Beak", colors: [...even(0x8f8a5e, 0xb3a47a, 0x5d6266, 0x38393a, 0x5c4330, 0x5e6b3a), rare(0x6e2e2a)] },
   // ochre, amber (the survivor colour), mustard, dull orange, olive, slate, dull pink
   { name: "Forehead, Neck and Feet", colors: even(0xc4983c, 0xaa7c30, 0xb5a03e, 0xc47a3e, 0x7d7a44, 0x666c70, 0xb98576) },
-  // umber-charcoal, sooty, chestnut, peat brown, slate, ash; white. The sooty is given as the palette's next nearest
-  // to it (0x2c2a28), since the umber-charcoal takes the nearest.
+  // warm umber, sooty, chestnut, peat brown, slate, ash; white. The sooty is the palette's second nearest to 0x2c2a28,
+  // chosen when this region's first colour was an umber-charcoal that took the nearest.
   { name: "Head", colors: [...even(0x433324, 0x24282a, 0x6b3b25, 0x5a4636, 0x4e555b, 0x8e8b85), rare(0xe9e6dd)] },
   // cream, pale buff, ash white, rust, pale olive, pale blue-grey, sooty
   { name: "Wings and Patterning", colors: even(0xe6dcc4, 0xd9c49a, 0xd3d3cc, 0xa8573a, 0xb9b68a, 0xa9b6c2, 0x2f2d2b) },
@@ -46,9 +46,10 @@ export const DODO: readonly Def[] = [
     radius: 0.22,
     height: 0.65,
     eyeHeight: 0.58,
-    // 65 units a second walking, 136.5 running wild, 300 swimming.
+    // 65 units a second walking, 136.5 running wild and 95.55 tamed, 300 swimming.
     walkSpeed: 0.65,
     sprintMul: 2.1,
+    tamedSprintMul: 1.47,
     swimSpeed: 3,
     // It never jumps in ARK. Nothing makes a creature jump here and a dodo cannot be ridden, so this is never used.
     jumpSpeed: 3,
@@ -63,6 +64,15 @@ export const DODO: readonly Def[] = [
     fists: 5,
     bite: { reach: 0.5, ticks: 15, lands: 6 },
     temper: "flees",
+    // Dodos near one that is hurt run with it. Chosen: ARK gives no distance.
+    alarm: 15,
+    // A survivor picks it up in both arms and throws it (ARK patch 241.0). A carrier weighs it as 25; its mass is 50.
+    carriable: true,
+    drag: 25,
+    mass: 50,
+    // ARK's rule for the dodo alone: an egg in place of a female's feces 13 times in 100. ARK's dodo leaves small feces,
+    // and `feces` will name that item when there is one.
+    eggChance: 0.13,
     // ARK has no slot limit for a creature but its weight, and holds 300 stacks at most in any inventory (patches 176.0
     // and 184.0).
     slots: 300,
@@ -87,6 +97,23 @@ export const DODO: readonly Def[] = [
     // Ascended have it; the Dodo page says 3% and its data module 2.5%.
     stats: { health: [40, 0.2, 0.054], stamina: [100, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [450, 0.1, 0.1], weight: [50, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [30, 0.06, 0] },
   },
-  // Drawn with the egg every species has, as large as theirs. ARK's is an extra small egg, off-white.
-  { type: "prop", class: "egg", id: "core:egg_dodo", mesh: "core:egg", color: tone(0xe6e3dc), radius: 0.3, height: 0.7 },
+  // The egg every species has, drawn at a fifth of its size, 14 cm tall: ARK's is an extra small egg, off-white, and no
+  // measure is given. Its body is still as large as theirs.
+  { type: "prop", class: "egg", id: "core:egg_dodo", mesh: "core:egg", color: tone(0xe6e3dc), radius: 0.3, height: 0.7, size: 0.2 },
 ];
+
+/**
+ * The egg in the hand, as the wiki's Dodo Egg item gives it: spoils in 8 days, decomposes on the ground in 30 minutes,
+ * and eaten gives 20 food and 20 health (its 25 stamina has no field). It is not among DODO while item/egg is a stub class.
+ */
+export const DODO_EGG: Def = {
+  type: "item", class: "egg",
+  id: "core:dodo_egg",
+  label: "dodo egg",
+  color: tone(0xe6e3dc),
+  stack: 100,
+  weight: 3,
+  eat: { food: 20, health: 20 },
+  spoilHours: (8 * 24 * 3600) / 140,
+  decomposeHours: (30 * 60) / 140,
+};
