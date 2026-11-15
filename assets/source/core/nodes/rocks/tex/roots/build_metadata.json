@@ -1,0 +1,230 @@
+{
+  "seed": 231114,
+  "size": [
+    2048,
+    2048
+  ],
+  "tile_mm": 750.0,
+  "height_range_mm": 10.0,
+  "pixel_pitch_mm": 0.3662109375,
+  "source_size": [
+    1254,
+    1254
+  ],
+  "source_sha256": "51569f04c00d46326c6b28f8444b2717f20e1a3fd38155b455d5a4b37e385067",
+  "patches": [
+    {
+      "grid": [
+        0,
+        0
+      ],
+      "rotation_degrees": 0,
+      "source_xy": [
+        82,
+        972
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        1,
+        0
+      ],
+      "rotation_degrees": 90,
+      "source_xy": [
+        577,
+        532
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        2,
+        0
+      ],
+      "rotation_degrees": 180,
+      "source_xy": [
+        704,
+        61
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        3,
+        0
+      ],
+      "rotation_degrees": 270,
+      "source_xy": [
+        520,
+        6
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        0,
+        1
+      ],
+      "rotation_degrees": 270,
+      "source_xy": [
+        213,
+        1053
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        1,
+        1
+      ],
+      "rotation_degrees": 0,
+      "source_xy": [
+        240,
+        985
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        2,
+        1
+      ],
+      "rotation_degrees": 90,
+      "source_xy": [
+        886,
+        498
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        3,
+        1
+      ],
+      "rotation_degrees": 180,
+      "source_xy": [
+        896,
+        951
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        0,
+        2
+      ],
+      "rotation_degrees": 180,
+      "source_xy": [
+        52,
+        284
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        1,
+        2
+      ],
+      "rotation_degrees": 270,
+      "source_xy": [
+        988,
+        828
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        2,
+        2
+      ],
+      "rotation_degrees": 0,
+      "source_xy": [
+        64,
+        1149
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        3,
+        2
+      ],
+      "rotation_degrees": 90,
+      "source_xy": [
+        47,
+        394
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        0,
+        3
+      ],
+      "rotation_degrees": 90,
+      "source_xy": [
+        40,
+        300
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        1,
+        3
+      ],
+      "rotation_degrees": 180,
+      "source_xy": [
+        171,
+        361
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        2,
+        3
+      ],
+      "rotation_degrees": 270,
+      "source_xy": [
+        1169,
+        893
+      ],
+      "size": 864,
+      "seam_band": 144
+    },
+    {
+      "grid": [
+        3,
+        3
+      ],
+      "rotation_degrees": 0,
+      "source_xy": [
+        612,
+        980
+      ],
+      "size": 864,
+      "seam_band": 144
+    }
+  ],
+  "lichen_coverage_gt_0_1": 0.011576652526855469,
+  "native_lenticel_count": 460,
+  "native_shallow_crack_count": 11,
+  "native_skin_relief_rms_mm": 0.025374745950102806,
+  "build_seconds": 57.62
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "prompt": "P01",
+    "file": "source/P01_fig_bark.png",
+    "native_size": [
+      1254,
+      1254
+    ],
+    "sha256": "51569f04c00d46326c6b28f8444b2717f20e1a3fd38155b455d5a4b37e385067",
+    "tool": "built-in image_gen",
+    "original_path": "/home/user/.codex/generated_images/01a1dc6f-44dd-7570-9975-a5275af2097d/exec-f7703af3-032f-410a-8c88-c747d438f112.png",
+    "usage": "Material source; retained byte-for-byte."
+  }
+]
