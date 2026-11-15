@@ -306,7 +306,8 @@ test("the class table holds the flyers' fields as stubs, each waiting for its fe
   expect(["fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth"].map((k) => [k, s[k]!.waits])).toEqual([
     ["fly", undefined], ["grab", "flyers"], ["defendsEgg", "flyers"], ["riderWeight", undefined], ["missiles", "flyers"], ["structures", "flyers"], ["tameBonus", "tameBonus"], ["tamedHealth", "tameBonus"],
   ]);
-  expect(s.bite!.stubs).toEqual({ stamina: "flyers" });
+  // A ridden bite's stamina is spent (FL2).
+  expect(s.bite!.stubs).toBeUndefined();
   const survivor = CORE_CONTENT.find((d) => d.id === "core:survivor")!;
   expect(defFaults({ ...survivor, fly: { speed: 1 } } as Def)).toEqual(['core:survivor: class species/survivor may not declare "fly"']);
 });

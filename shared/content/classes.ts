@@ -134,7 +134,7 @@ const SPECIES = {
   temper: f("text"),
   sight: f("number"),
   leash: f("number"),
-  bite: f("facet", "AttackInfos", { stubs: { stamina: "flyers" } }),
+  bite: f("facet", "AttackInfos"),
   taming: f("facet", "RequiredTameAffinity"),
   eats: f("list", "DinoSettings food effectiveness", { refs: { "[].item": "item" }, open: true }),
   torporDrain: f("number"),

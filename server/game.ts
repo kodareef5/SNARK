@@ -61,7 +61,7 @@ import {
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection, type Listener } from "../shared/net/transport.ts";
 import { MAX_VIEW, SentView, VIEW_DEFAULT, VIEW_RING, ViewRing, quantX, quantY, writeViewDelta } from "../shared/net/view.ts";
 import { Body, MODE_GHOST, MODE_NONE, stepBody, stepOut } from "../shared/sim/character.ts";
-import { FISTS, actionOut, stepAction } from "../shared/sim/weapon.ts";
+import { FISTS, actionOut, biteCost, stepAction } from "../shared/sim/weapon.ts";
 import { stepAim } from "../shared/sim/aim.ts";
 import { F_AWAKE, F_PLAYER, F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
@@ -510,6 +510,7 @@ export class GameServer {
           if (jaws) {
             stepAction(b, c.heldButtons, c.pressed, jaws);
             if (actionOut.strike) c.did = DID_BITE;
+            biteCost(b, world.reg.biteStamina[b.kind]!);
           }
           if (stepOut.rolled) c.did |= DID_ROLL;
         }

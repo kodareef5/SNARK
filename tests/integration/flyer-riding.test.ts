@@ -1,12 +1,12 @@
 // Riding a pteranodon as ARK's is ridden (planning/reference/flyers-plan.md, FL2; FUNCTIONS.md sections 4, 5, 8 and 10):
-// its keys in the whole client, the barrel roll's hits, getting off in the air, the water that throws a rider off, a
-// rider's weight on it, and the cues others see.
+// its keys in the whole client, the barrel roll's hits, its bite in the air, getting off in the air, the water that throws
+// a rider off, a rider's weight on it, and the cues others see.
 
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { AnimState, CUE_LAND, CUE_ROLL, CUE_TAKEOFF } from "../../shared/anim/pose.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
-import { BTN_BRAKE, BTN_JUMP, BTN_ROLL, BTN_SPRINT, BTN_USE, MF_NO_JUMP, MF_NO_SPRINT, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
+import { BTN_BRAKE, BTN_JUMP, BTN_PRIMARY, BTN_ROLL, BTN_SPRINT, BTN_USE, MF_NO_JUMP, MF_NO_SPRINT, MF_WINDED, MODE_FLYER, MODE_SWIM, MODE_WALK } from "../../shared/sim/character.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_POOL } from "../../shared/world/proving.ts";
 import { groundUnder } from "../../shared/world/collide.ts";
@@ -195,7 +195,34 @@ test("a barrel roll does ARK's 50 once to each body it passes, by the damage rul
   expect([r.health(a) < before[0]! - 45, r.health(b), r.health(me)]).toEqual([true, before[1], before[2]]);
 });
 
-test("got off 40 m up with the use key, the rider falls and is hurt, and the pteranodon falls and is hurt once", () => {
+test("it bites in the air, for its 5 stamina, predicted with nothing corrected", () => {
+  const r = ridden();
+  const { h, s, run, pilot, ents, e, rec } = r;
+  // Bob stands where it stood; it hovers over him, looking straight down.
+  const bob = h.join("bob");
+  run(800);
+  h.say(bob, "enablecheats");
+  h.say(bob, `tp ${ents.x[e]!.toFixed(3)} ${ents.z[e]!.toFixed(3)}`);
+  pilot.buttons = BTN_JUMP;
+  pilot.pitch = -1.5;
+  run(3000);
+  expect([ents.mode[e], r.speed()]).toEqual([MODE_FLYER, 0]);
+  const settled = [s.stats.corrections, s.stats.stateCorrections];
+  const him = h.host.records.byPid.get(h.client(bob)!.pid)!;
+  const [health, stamina, hits, from] = [r.health(him), ents.stamina[e]!, h.host.combat.hits, h.world.tick];
+  pilot.buttons = BTN_JUMP | BTN_PRIMARY;
+  run(100);
+  pilot.buttons = BTN_JUMP;
+  run(900);
+  // Flying costs 11 units a tick; the bite 5 points more.
+  expect([h.host.combat.hits - hits, h.host.combat.last.by, h.host.combat.last.victim, r.health(him) < health]).toEqual([1, rec.pid, him.pid, true]);
+  expect(stamina - ents.stamina[e]!).toBe((h.world.tick - from) * 11 + 5000);
+  // Its rider's client spent the same, ticks ahead, or a snapshot would have put its stamina right.
+  run(500);
+  expect([s.stats.corrections - settled[0]!, s.stats.stateCorrections - settled[1]!]).toEqual([0, 0]);
+});
+
+test("got off 40 m up with the use key, the rider falls to the ground and is killed by it, and the pteranodon falls and is hurt once", () => {
   const r = ridden();
   const { h, s, c, run, pilot, ents, e, me } = r;
   pilot.buttons = BTN_JUMP;
@@ -218,7 +245,8 @@ test("got off 40 m up with the use key, the rider falls and is hurt, and the pte
   });
   const down = (i: number): boolean => ents.y[i]! - groundUnder(h.world.hf, ents.x[i]!, ents.z[i]!, 0.3) < 0.05;
   expect([c.drive, s.driving, h.host.riding.dismounted, falling, ents.mode[e], down(e), blows, r.health() < its]).toEqual([-1, -1, 1, true, MODE_WALK, true, 1, true]);
-  expect([me.dead || down(rider), me.dead || r.health(me) < mine]).toEqual([true, true]);
+  // A survivor of 100 health does not live through 40 m (D385); the mount's 210 does.
+  expect([down(rider), r.health(me), mine, me.dead]).toEqual([true, 0, 100, true]);
 });
 
 test("skimming the water throws its rider off, and it floats unhurt there; so does setting down on deep water", () => {

@@ -88,7 +88,7 @@ import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
-import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
+import { FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -722,6 +722,7 @@ export class ClientSession {
       if (jaws) {
         const was = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
         stepAction(this.own, buttons, buttons & ~was, jaws);
+        biteCost(this.own, this.registry.biteStamina[this.own.kind]!);
       }
       this.bodies[t & (HISTORY - 1)]!.copy(this.own);
       this.bodyTick[t & (HISTORY - 1)] = t;
