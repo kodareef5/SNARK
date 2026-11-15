@@ -198,9 +198,13 @@ RIDER_CAPSULES = [  # (from, to, radius), a name with _l mirrored for the right
 
 # The clips, who makes them, and what `finish` checks. Frames are a suggestion within [min, max].
 #   owner   move = clips_move.py, act = clips_act.py, life = clips_life.py
-#   start   "ground": frame 0 should be STANCE; "air": the rest pose; "gait": the left hand farthest forward
-#   end     "ground" or "air", the same for the last frame (warned if not)
+#   start   "ground": frame 0 should be STANCE; "air": the rest pose; "beat": the top of the flight's stroke, frame 0
+#           of fly, which fly_fast and hover share; "gait": the left hand farthest forward
+#   end     "ground", "air" or "beat", the same for the last frame (warned if not)
 #   layer   an additive clip may turn only these bones and must start and end unturned
+#   hold    a layer that is those bones' pose, laid in place of their turns rather than on them (the carrying legs):
+#           it starts unturned unless `from` names the clip whose first frame it starts on, and ends unturned unless
+#           `into` names the one it ends on; a held loop holds its own pose throughout
 #   ridden  the rider may be on it: the block-out must keep out of RIDER_CAPSULES
 #   optional  made only if needed; asset.ts lists it once it is made
 _NECK_HEAD = ["neck_1", "neck_2", "neck_3", "neck_4", "skull", "jaw"]
@@ -226,13 +230,18 @@ CLIPS = {
     "swim":         {"owner": "move", "loop": True,  "frames": 30, "min": 20, "max": 45, "optional": True},
     "fall":         {"owner": "move", "loop": True,  "frames": 18, "min": 12, "max": 30},
     "call":         {"owner": "act",  "loop": False, "frames": 50, "min": 30, "max": 75, "start": "ground", "end": "ground", "ridden": True},
-    "attack":       {"owner": "act",  "loop": False, "frames": 18, "min": 10, "max": 20, "start": "ground", "end": "ground", "hit_by": 10, "ridden": True},
-    "attack_air":   {"owner": "act",  "loop": False, "frames": 18, "min": 10, "max": 20, "layer": _NECK_HEAD, "hit_by": 10, "ridden": True},
-    "barrel_roll":  {"owner": "act",  "loop": False, "frames": 30, "min": 20, "max": 45, "start": "air", "end": "air", "ridden": True},
-    "grab":         {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "ridden": True},
-    "carry":        {"owner": "act",  "loop": True,  "frames": 30, "min": 20, "max": 60, "layer": _LEGS, "ridden": True},
-    "release":      {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "ridden": True},
-    "flinch":       {"owner": "act",  "loop": False, "frames": 9, "min": 6, "max": 15, "layer": _FLINCH, "ridden": True},
+    # A wild one taking fright on the ground stands through it before it takes off (server/behavior.ts: flee).
+    "startled":     {"owner": "act",  "loop": False, "frames": 24, "min": 9, "max": 30, "start": "ground", "end": "ground"},
+    # The bite's 20 ticks, ARK's 0.67 s (content/creatures/pteranodon.ts: bite).
+    "attack":       {"owner": "act",  "loop": False, "frames": 20, "min": 10, "max": 20, "start": "ground", "end": "ground", "hit_by": 10, "ridden": True},
+    "attack_air":   {"owner": "act",  "loop": False, "frames": 20, "min": 10, "max": 20, "layer": _NECK_HEAD, "hit_by": 10, "ridden": True},
+    # The roll's second of burst (D496).
+    "barrel_roll":  {"owner": "act",  "loop": False, "frames": 30, "min": 20, "max": 45, "start": "beat", "end": "beat", "ridden": True},
+    "grab":         {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "hold": True, "into": "carry", "ridden": True},
+    # One stroke of fly, so the load's swing keeps time with the wings.
+    "carry":        {"owner": "act",  "loop": True,  "frames": 30, "min": 20, "max": 60, "layer": _LEGS, "hold": True, "ridden": True},
+    "release":      {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "hold": True, "from": "carry", "ridden": True},
+    "flinch":       {"owner": "act",  "loop": False, "frames": 12, "min": 6, "max": 15, "layer": _FLINCH, "ridden": True},
     "carried":      {"owner": "act",  "loop": True,  "frames": 60, "min": 30, "max": 120, "optional": True},
     "torpor_in":    {"owner": "life", "loop": False, "frames": 40, "min": 24, "max": 60, "start": "ground"},
     "torpor_fall":  {"owner": "life", "loop": True,  "frames": 24, "min": 12, "max": 45},
@@ -1609,16 +1618,29 @@ def check_clip(rig, clip):
             if stray or (poses[f]["pelvis"][1] - rest_pose["pelvis"][1]).length > 0.001:
                 errors.append(f"{name}: an additive clip may turn only its layer; frame {f} moves {', '.join(stray) or 'the body'}")
                 break
-        for f in (frames[0], frames[-1]):
-            bad, deg, _ = differs(poses[f], rest_pose)
-            if bad:
-                errors.append(f"{name}: an additive clip must start and end unturned; frame {f} is {deg:.1f} deg off")
+        held = spec.get("hold")
+        for key, f, edge in (("from", frames[0], "start"), ("into", frames[-1], "end")):
+            if held and clip.loop:
+                continue
+            other = spec.get(key) if held else None
+            base = rest_pose if other is None else _action_pose(rig, other, 0)
+            if base is None:
+                warnings.append(f"{name}: {other} is not made, so its {edge} is not checked against it")
+                continue
+            bad, deg, _ = differs(poses[f], base)
+            if bad and other is None:
+                errors.append(f"{name}: a layer must {edge} unturned; frame {f} is {deg:.1f} deg off")
+            elif bad:
+                errors.append(f"{name}: a layer must {edge} on {other}'s first frame; frame {f} is {deg:.1f} deg off it")
     for key, f in (("start", frames[0]), ("end", frames[-1])):
         want = spec.get(key)
-        if want in ("ground", "air"):
-            base = stance_pose if want == "ground" else rest_pose
-            if differs(poses[f], base, 3.0, 0.01)[0]:
-                warnings.append(f"{name}: frame {f} is not the {'stance' if want == 'ground' else 'rest pose'}, so it blends "
+        if want in ("ground", "air", "beat"):
+            base = {"ground": stance_pose, "air": rest_pose}.get(want) or _action_pose(rig, "fly", 0)
+            if base is None:
+                warnings.append(f"{name}: fly is not made, so its {key} is not checked against the beat")
+            elif differs(poses[f], base, 3.0, 0.01)[0]:
+                what = {"ground": "stance", "air": "rest pose", "beat": "top of the beat (fly's frame 0)"}[want]
+                warnings.append(f"{name}: frame {f} is not the {what}, so it blends "
                                 f"{'in from' if key == 'start' else 'out to'} its neighbour with a visible move")
     if "hit_by" in spec:
         if clip.hit is None:
@@ -1655,6 +1677,25 @@ def check_clip(rig, clip):
             warnings.append(f"{name}: the {part} reaches {worst * 100:.0f} cm into the seated rider on frame {at}")
     rig.rest()
     return errors, warnings
+
+
+def _action_pose(rig, name, frame):
+    """A frame of the action `name` as deltas, or None where it is not made, for comparing a clip's ends with it."""
+    action = bpy.data.actions.get(name)
+    if action is None:
+        return None
+    obj = rig.obj
+    saved, slot = obj.animation_data.action, obj.animation_data.action_slot if obj.animation_data.action else None
+    rig.rest()
+    obj.animation_data.action = action
+    if action.slots:
+        obj.animation_data.action_slot = action.slots[0]
+    bpy.context.scene.frame_set(frame)
+    out = deltas(rig)
+    obj.animation_data.action = saved
+    if saved is not None and slot is not None:
+        obj.animation_data.action_slot = slot
+    return out
 
 
 def _stance_pose(rig):
