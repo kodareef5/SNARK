@@ -1,0 +1,56 @@
+{
+ "top": {
+  "iou": 0.887,
+  "concept_missed": 0.02,
+  "blockout_extra": 0.097,
+  "farthest_cm": [
+   36.3,
+   8.5
+  ]
+ },
+ "underside": {
+  "iou": 0.882,
+  "concept_missed": 0.023,
+  "blockout_extra": 0.099,
+  "farthest_cm": [
+   35.9,
+   9.3
+  ]
+ },
+ "front": {
+  "iou": 0.506,
+  "concept_missed": 0.463,
+  "blockout_extra": 0.101,
+  "farthest_cm": [
+   17.0,
+   23.4
+  ]
+ },
+ "side": {
+  "iou": 0.574,
+  "concept_missed": 0.199,
+  "blockout_extra": 0.331,
+  "farthest_cm": [
+   15.9,
+   16.6
+  ]
+ },
+ "folded_side": {
+  "iou": 0.458,
+  "concept_missed": 0.275,
+  "blockout_extra": 0.445,
+  "farthest_cm": [
+   46.1,
+   19.5
+  ]
+ },
+ "folded_front": {
+  "iou": 0.59,
+  "concept_missed": 0.122,
+  "blockout_extra": 0.357,
+  "farthest_cm": [
+   17.6,
+   11.8
+  ]
+ }
+}

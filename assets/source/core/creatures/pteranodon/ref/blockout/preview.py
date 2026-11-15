@@ -139,7 +139,7 @@ def cameras(rig):
         # Saddled, from above and behind its left side.
         "saddle_three": camera("cam_saddle_three", tb((3.4, 3.3, -3.6)), tb((0.0, 1.0, 0.1)), tb((0, 1, 0)), lens=45),
         "pose_side": camera("cam_pose_side", tb((12, 1.1, -0.1)), tb((0, 1.1, -0.1)), tb((0, 1, 0)), 4.6),
-        "pose_three": camera("cam_pose_three", tb((5.5, 3.2, 6.0)), tb((0.4, 0.9, -0.3)), tb((0, 1, 0)), lens=38),
+        "pose_three": camera("cam_pose_three", tb((3.2, 5.0, 8.5)), tb((0.0, 0.8, -0.2)), tb((0, 1, 0)), lens=40),
     }
 
 

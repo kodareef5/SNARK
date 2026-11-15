@@ -276,11 +276,11 @@ FOLD = {
 # =====================================================================================================================
 
 BODY = {  # along the spine from the rump to the front of the chest: centre line, half-width, half-height above, below
-    "path": [(0.0, 0.700, -0.690), (0.0, 0.715, -0.600), (0.0, 0.725, -0.450), (0.0, 0.725, -0.300),
-             (0.0, 0.715, -0.150), (0.0, 0.705, -0.020), (0.0, 0.715, 0.110), (0.0, 0.740, 0.200), (0.0, 0.770, 0.230)],
-    "half_width": [0.020, 0.105, 0.130, 0.150, 0.170, 0.180, 0.160, 0.110, 0.020],
-    "half_top": [0.020, 0.100, 0.135, 0.165, 0.185, 0.205, 0.180, 0.120, 0.020],
-    "half_bottom": [0.020, 0.110, 0.150, 0.180, 0.210, 0.225, 0.200, 0.130, 0.020],
+    "path": [(0.0, 0.700, -0.690), (0.0, 0.715, -0.600), (0.0, 0.735, -0.450), (0.0, 0.750, -0.300),
+             (0.0, 0.755, -0.150), (0.0, 0.755, -0.020), (0.0, 0.765, 0.110), (0.0, 0.785, 0.200), (0.0, 0.800, 0.230)],
+    "half_width": [0.020, 0.095, 0.120, 0.140, 0.155, 0.165, 0.150, 0.100, 0.020],
+    "half_top": [0.020, 0.085, 0.110, 0.130, 0.150, 0.165, 0.150, 0.100, 0.020],
+    "half_bottom": [0.020, 0.090, 0.120, 0.140, 0.160, 0.170, 0.160, 0.110, 0.020],
 }
 NECK = {  # centre line from inside the chest to inside the skull
     "path": [(0.0, 0.800, 0.050), (0.0, 0.880, 0.110), (0.0, 1.021, 0.201), (0.0, 1.167, 0.323), (0.0, 1.273, 0.469),
@@ -325,8 +325,10 @@ SADDLE = {
     "cantle": {"path": [(0.140, 0.950, -0.330), (0.090, 1.070, -0.340), (0.0, 1.110, -0.345), (-0.090, 1.070, -0.340),
                         (-0.140, 0.950, -0.330)], "radius": 0.028},
     "grip_l": [(0.110, 0.900, 0.140), (0.160, 0.990, 0.200), (0.170, 1.035, 0.220), (0.175, 1.090, 0.235)],
-    "girth": {"z": -0.300, "pad": 0.020, "half_width": 0.030},
-    "breast": {"z": 0.150, "pad": 0.018, "half_width": 0.030},
+    # Nothing goes round the body behind the wing roots, where the membrane grows along the flank: the girth goes round
+    # the chest in front of the shoulder joints, the collar round the base of the neck.
+    "girth": {"z": 0.085, "pad": 0.020, "half_width": 0.030},
+    "collar": {"z": 0.170, "pad": 0.016, "half_width": 0.025},
     "rest_l": {"strap": [(0.150, 0.780, 0.190), (0.235, 0.560, 0.320), (0.250, 0.395, 0.380)], "peg": 0.07},
     "halter": [{"z": 0.960, "pad": 0.010}, {"z": 0.610, "pad": 0.012}],
     "rein_l": [(0.060, 1.330, 0.960), (0.090, 1.290, 0.700), (0.120, 1.200, 0.450), (0.160, 1.080, 0.260),
@@ -1399,8 +1401,8 @@ def _assemble(arm_obj, parts, name, materials):
 
 
 def build_saddle(arm_obj=None):
-    """The saddle's block-out on the same armature: pad, cantle, grips, girth and breast strap, foot rests, halter and
-    reins, weighted to the chest, the neck and the skull, never to a wing bone. One material, "pteranodon_saddle"."""
+    """The saddle's block-out on the same armature: pad, cantle, grips, girth and collar, foot rests, halter and reins,
+    weighted to the chest, the neck and the skull, never to a wing bone. One material, "pteranodon_saddle"."""
     arm_obj = arm_obj or find().obj
     if "pteranodon_saddle" not in bpy.data.materials:
         m = bpy.data.materials.new("pteranodon_saddle")
@@ -1431,8 +1433,8 @@ def build_saddle(arm_obj=None):
                                                      [(0.015,) * 3] * 2, ring=6, sub=1)))
         part("rein_" + side, [("chest", 0.5), ("neck_1", 1.0), ("neck_2", 1.0), ("neck_3", 1.0), ("neck_4", 1.0), ("skull", 1.0)],
              lambda bm, side=side: _loft(bm, [tb(mirrored(p, side)) for p in S["rein_l"]], [(0.008,) * 3] * len(S["rein_l"]), ring=6, sub=3))
-    for key, bones in (("girth", [("spine", 1.0), ("chest", 0.6)]), ("breast", [("chest", 1.0), ("neck_1", 0.3)])):
-        part(key, bones, lambda bm, key=key: _band(bm, BODY, S[key]["z"], S[key]["pad"], S[key]["half_width"]))
+    part("girth", [("chest", 1.0)], lambda bm: _band(bm, BODY, S["girth"]["z"], S["girth"]["pad"], S["girth"]["half_width"]))
+    part("collar", [("chest", 1.0), ("neck_1", 0.5)], lambda bm: _band(bm, NECK, S["collar"]["z"], S["collar"]["pad"], S["collar"]["half_width"]))
     for i, h in enumerate(S["halter"]):
         part(f"halter_{i}", [("skull", 1.0)], lambda bm, h=h: _band(bm, HEAD, h["z"], h["pad"], 0.012))
     return _assemble(arm_obj, parts, SADDLE_BLOCKOUT, ["pteranodon_saddle"])
@@ -1509,7 +1511,7 @@ def rider_intrusion(rig, body):
             for vi in poly.vertices:
                 vparts[vi] = layer.data[poly.index].value
     skip = {i for i, n in enumerate(names) if n in ("pad", "cantle", "grip_l", "grip_r", "rest_l", "rest_r", "rein_l", "rein_r",
-                                                    "girth", "breast", "halter_0", "halter_1")}
+                                                    "girth", "collar", "halter_0", "halter_1")}
     for v in m.vertices:
         if vparts.get(v.index) in skip:
             continue
