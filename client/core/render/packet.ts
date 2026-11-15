@@ -251,6 +251,12 @@ export class FramePacket {
   readonly tilePass = new Uint8Array(MAX_TILES);
   /** Per tile: the sample (i, j) of its corner and its stride, in the samples of the pair it reads, and that pair, SOURCE_MAP or SOURCE_WINDOW. */
   readonly tileSource = new Int32Array(MAX_TILES * 4);
+  /**
+   * The terrain window (terrain.ts): the copy of it SOURCE_WINDOW tiles read, 0 or 1 or -1 for none, and the map sample
+   * of its corner; then the copy rows go into this frame, or -1, the corner it is filled round, and the first of those
+   * rows and how many. A renderer copies them from the heightfield before it draws.
+   */
+  readonly groundWindow = Int32Array.of(-1, 0, 0, -1, 0, 0, 0, 0);
 
   transientCount = 0;
   readonly transient = new Uint8Array((MAX_VIEW + MAX_WATER_TILES + 17 + MAX_FALLING + MAX_SKINNED) * INSTANCE_BYTES);
@@ -305,6 +311,7 @@ export class FramePacket {
     this.drawFade.fill(0, 0, this.drawCount);
     this.drawCount = 0;
     this.tileCount = 0;
+    this.groundWindow[3] = -1;
     this.transientCount = 0;
     this.boneCount = 0;
     this.casterCount = 0;

@@ -3,8 +3,9 @@
 
 import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
-import { AXES, LadderPlan, RUNGS, featuresOf, formatsOf, gpuOf, newReport, soakLoad, spread, type RungReport, type Within } from "../../client/core/device.ts";
-import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene, type GlMemory } from "../../client/core/devicescene.ts";
+import { AXES, LadderPlan, RUNGS, featuresOf, formatsOf, gpuOf, judgeRung, newReport, soakLoad, spread, type PhaseReport, type RungReport, type Within } from "../../client/core/device.ts";
+import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene } from "../../client/core/devicescene.ts";
+import { fakeGl } from "../fixtures/gl.ts";
 import { deviceTable, escape, identify, limitsLine } from "../../client/core/devicetext.ts";
 import { PROVING_DIMS, PROVING_SPAWN } from "../../shared/world/proving.ts";
 
@@ -44,7 +45,7 @@ test("features are read off a global object, and what a browser lacks or will no
   expect(String(some.decompress).split(" ")).toEqual(expect.arrayContaining(["gzip", "deflate", "deflate-raw"]));
 });
 
-const params: Record<number, unknown> = { 0x1f00: "WebKit", 0x9245: "Apple Inc.", 0x1f02: "WebGL 2.0", 0x0d33: 16384, 0x88ff: 2048, 0x8d57: 4, 0x8b4c: 16, 0x8872: 16, 0x8824: 8, 0x84ff: 16, 0x0d56: 24 };
+const params: Record<number, unknown> = { 0x1f00: "WebKit", 0x9245: "Apple Inc.", 0x1f02: "WebGL 2.0", 0x0d33: 16384, 0x88ff: 2048, 0x8d57: 4, 0x8b4c: 16, 0x8872: 16, 0x8b4d: 32, 0x8824: 8, 0x84ff: 16, 0x8a30: 16384, 0x8a2b: 12, 0x8a2d: 12, 0x8a2f: 24, 0x8a34: 256, 0x0d56: 24 };
 const context = (exts: string[], debug = true) => ({
   getParameter: (n: number) => params[n],
   getExtension: (name: string) => ((debug && name === "WEBGL_debug_renderer_info") || (name === "EXT_texture_filter_anisotropic" && exts.includes(name)) ? {} : null),
@@ -56,7 +57,7 @@ const context = (exts: string[], debug = true) => ({
 test("a graphics context is read for its limits by WebGL's own numbers, anisotropy only once its extension is on", () => {
   const phone = ["EXT_color_buffer_float", "EXT_color_buffer_half_float", "EXT_clip_control", "EXT_texture_filter_anisotropic", "WEBGL_compressed_texture_astc", "WEBGL_compressed_texture_etc", "WEBGL_multi_draw"];
   const g = gpuOf(context(phone), "Apple GPU", "astc");
-  expect(g).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, textureUnits: 16, drawBuffers: 8, anisotropy: 16, highp: true, antialias: true, depthBits: 24, extensions: phone, variant: "astc" });
+  expect(g).toEqual({ vendor: "Apple Inc.", renderer: "Apple GPU", version: "WebGL 2.0", maxTexture: 16384, maxArrayLayers: 2048, maxSamples: 4, vertexTextures: 16, textureUnits: 16, combinedUnits: 32, drawBuffers: 8, anisotropy: 16, uniformBytes: 16384, uniformBlocks: [12, 12], uniformBindings: 24, uniformAlign: 256, highp: true, antialias: true, depthBits: 24, extensions: phone, variant: "astc" });
   expect(gpuOf(context([], false), "Apple GPU")).toMatchObject({ vendor: "WebKit", anisotropy: 0, variant: "rgba" });
   // What lighting may count on: this phone draws to 32-bit float but cannot filter or blend it.
   expect(limitsLine(g)).toBe("16-bit float targets yes, filtered yes; 32-bit float targets yes, filtered no, blended no; antialiasing up to 4x; 8 targets at once; 16 textures a draw, 16 in vertex shaders; textures to 16384 px; anisotropy 16; depth buffer 24 bits; reversed depth yes; GPU timers no; multi-draw yes; compressed astc etc2");
@@ -100,8 +101,24 @@ test("the ladder climbs each axis of each tier the device takes until a rung bre
   expect(climb(16384, () => false, "medium draws 512").at(-1)).toBe("medium draws 512");
 });
 
+test("a rung holds by its frames only when it drew all it was given, settled, fetched what it asked for and kept its tier", () => {
+  const phase = (o: Partial<PhaseReport> = {}): PhaseReport => ({ tier: "medium", scene: "plain", ratio: 1, canvas: [1, 1], settleMs: 500, settled: true, frames: 90, frameMs: { median: 16.7, p95: 17, p99: 18, worst: 20 }, buildMs: spread([1]), drawMs: spread([0.5]), drawCalls: 50, triangles: 1000, textured: 0, bones: 0, dropped: 0, skipped: 0, fetched: 0, failed: 0, missed: 0, lost: 0, fellTo: null, ...o });
+  expect(judgeRung(phase(), 16.7)).toEqual({ held: true, limit: "", invalid: "" });
+  expect(judgeRung(phase({ frameMs: { median: 33.3, p95: 34, p99: 35, worst: 40 } }), 16.7)).toEqual({ held: false, limit: "the GPU", invalid: "" });
+  expect(judgeRung(phase({ frameMs: { median: 33.3, p95: 34, p99: 35, worst: 40 }, buildMs: spread([30]) }), 16.7)).toEqual({ held: false, limit: "our code", invalid: "" });
+  // A lost context is a result, whatever else went wrong.
+  expect(judgeRung(phase({ lost: 1, dropped: 3 }), 16.7)).toEqual({ held: false, limit: "lost", invalid: "" });
+  const invalid = (o: Partial<PhaseReport>): string => judgeRung(phase(o), 16.7).invalid;
+  expect(invalid({ dropped: 600 })).toBe("600 things dropped");
+  expect(invalid({ skipped: 2 })).toBe("2 draws skipped");
+  expect(invalid({ failed: 1 })).toBe("1 fetches failed");
+  expect(invalid({ fellTo: "lowpoly" })).toBe("the game fell to lowpoly");
+  expect(invalid({ settled: false })).toBe("never settled");
+  expect(judgeRung(phase({ settled: false }), 16.7)).toMatchObject({ held: false, limit: "" });
+});
+
 test("the soak takes half of what the ladder held on its tier, a rung down, or its own amounts without a ladder", () => {
-  const rung = (axis: RungReport["axis"], n: number, held: boolean): RungReport => ({ tier: "high", axis, n, held, limit: "", canvas: [], settled: true, frameMs: spread([]), buildMs: 0, drawMs: 0, calls: 0, tris: 0, bones: 0, mat: 0, fetched: 0, missed: 0 });
+  const rung = (axis: RungReport["axis"], n: number, held: boolean): RungReport => ({ tier: "high", axis, n, held, limit: "", invalid: "", canvas: [], settled: true, frameMs: spread([]), buildMs: 0, drawMs: 0, calls: 0, tris: 0, bones: 0, mat: 0, fetched: 0, missed: 0 });
   const ladder = [rung("bodies", 400, true), rung("bodies", 800, false), rung("pieces", 4096, true), rung("triangles", 64, true), rung("draws", 256, false)];
   expect(soakLoad(ladder, "high")).toEqual({ load: { stress: true, bodies: 200, pieces: 2048, near: 32, far: 0 }, from: "half what the ladder held on high" });
   expect(soakLoad(null, "high").from).toBe("defaults");
@@ -142,20 +159,16 @@ test("the crowd scene stands behind the spawn point: the thatch near, and every 
 function card(room: number, lose = false) {
   const made: object[] = [];
   let error = 0;
-  let unit = 0x84c0;
-  const gl: GlMemory = {
-    createTexture: () => ({}),
-    deleteTexture: (t) => void made.splice(made.indexOf(t as object), 1),
-    bindTexture: (_target, t) => void (t && !made.includes(t as object) && made.push(t as object)),
-    activeTexture: (u) => void (unit = u),
-    texStorage2D: () => void (made.length > room && (error = 0x0505)),
-    compressedTexSubImage2D: () => {},
-    texSubImage2D: () => {},
-    getError: () => [error, (error = 0)][0]!,
-    isContextLost: () => lose && made.length > room,
-    getParameter: () => unit,
-  };
-  return { gl, made, unit: () => unit };
+  const gl = fakeGl({
+    with: {
+      createTexture: () => made[made.push({}) - 1],
+      deleteTexture: (t: object) => void made.splice(made.indexOf(t), 1),
+      texStorage2D: () => void (made.length > room && (error = 0x0505)),
+      getError: () => [error, (error = 0)][0]!,
+      isContextLost: () => lose && made.length > room,
+    },
+  });
+  return { gl, made, unit: () => gl.getParameter(0x84e0) };
 }
 
 test("texture memory grows a megabyte at a time on a spare unit, and says when the context runs out or is lost", () => {

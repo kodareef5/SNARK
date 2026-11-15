@@ -12,6 +12,7 @@ import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
+import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
 import { devicePage } from "./device.ts";
 import { GlRenderer } from "./gl.ts";
@@ -62,9 +63,10 @@ async function boot(): Promise<void> {
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
   // The texture variant is the best this device takes, or the one ?texfmt= names if it takes that.
   const renderer = new GlRenderer(canvas, pack, hf, manifest, params.get("texfmt"));
-  // The ground is one texture, a texel a sample.
+  // The ground's widest picture is the whole map at every fourth sample (client/core/render/terrain.ts).
   const widest = renderer.gl.getParameter(renderer.gl.MAX_TEXTURE_SIZE) as number;
-  if (hf.nx > widest || hf.nz > widest) throw new Error(`this map is ${hf.nx} by ${hf.nz} samples, and this device draws ground of at most ${widest} a side`);
+  const ground = groundSize(hf);
+  if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
   const session = new ClientSession(connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`), {
     name: params.get("name") ?? `survivor${Math.floor(performance.now() * 1000) % 100000}`,
     key: deviceKey(),

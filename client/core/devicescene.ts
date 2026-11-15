@@ -8,6 +8,7 @@ import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { AssetTable } from "./assets/table.ts";
+import { FULL_SCREEN, GL, PROBE_UNITS, compile, framebuffer, saveState, solidBlock, texture2d, type Gl2 } from "./devicegpu.ts";
 import type { Thing } from "./render/scene.ts";
 import type { RemoteSample } from "./session.ts";
 
@@ -163,42 +164,42 @@ export class BodyCopies {
   }
 }
 
-/** What TextureMemory asks of a WebGL 2 context. The numbers are WebGL's own. */
-export interface GlMemory {
-  createTexture(): unknown;
-  deleteTexture(texture: unknown): void;
-  bindTexture(target: number, texture: unknown): void;
-  activeTexture(unit: number): void;
-  texStorage2D(target: number, levels: number, internal: number, width: number, height: number): void;
-  compressedTexSubImage2D(target: number, level: number, x: number, y: number, width: number, height: number, format: number, data: ArrayBufferView): void;
-  texSubImage2D(target: number, level: number, x: number, y: number, width: number, height: number, format: number, type: number, data: ArrayBufferView | null): void;
-  getError(): number;
-  isContextLost(): boolean;
-  getParameter(name: number): unknown;
-}
-const GL = { TEXTURE_2D: 0x0de1, TEXTURE15: 0x84cf, ACTIVE_TEXTURE: 0x84e0, RGBA: 0x1908, RGBA8: 0x8058, UNSIGNED_BYTE: 0x1401, ASTC_4X4: 0x93b0, BPTC: 0x8e8c, OUT_OF_MEMORY: 0x0505, NO_ERROR: 0 };
 /** A tile is a megabyte in every variant: 1,024 pixels square in a compressed one, 512 in RGBA. */
 const TILE = 1048576;
+/** Tiles sampled a frame, and the side of the target the samples are drawn to: each tile is read at 16 by 16 points across it. */
+const TOUCH_TILES = 120;
+const TOUCH_SIDE = 16;
 
 /**
- * Texture memory taken a megabyte at a time, in the variant the renderer draws from, on a unit the renderer does not use.
- * Each tile is filled, so its memory is the device's to find. `grow` adds up to `most` tiles a call, toward `mb`, and says
- * whether the context refused or was lost.
+ * Texture memory taken a megabyte at a time, in the variant the renderer draws from, on units the renderer does not use.
+ * Every tile is one colour, in blocks the variant decodes to it. `grow` adds up to `most` tiles a call, toward `mb`, and
+ * says whether the context refused or was lost. `touch`, once a frame, samples the next TOUCH_TILES tiles, a few to a
+ * small draw, so a browser that would leave a texture nobody reads off the card cannot here. After the last tile it
+ * reads the samples back: the lowest of every tile's must be the colour, or the work was skipped or the memory lost.
  */
 export class TextureMemory {
-  private readonly gl: GlMemory;
+  /** Times every tile has been sampled since the memory was made, and what the last readback said: "right", or what went wrong. */
+  sweeps = 0;
+  read = "";
+  private readonly gl: Gl2;
   private readonly create: () => unknown;
   private readonly tiles: unknown[] = [];
   private readonly internal: number;
   private readonly side: number;
-  private readonly zeros = new Uint8Array(TILE);
+  private readonly fill = new Uint8Array(TILE);
+  private readonly colour: number[];
+  private next = 0;
+  private drawn: { program: unknown; fb: unknown; target: unknown; vao: unknown } | null = null;
 
   /** `create` makes a texture without the probe counting it among the renderer's. */
-  constructor(gl: GlMemory, create: () => unknown, variant: string) {
+  constructor(gl: Gl2, create: () => unknown, variant: string) {
     this.gl = gl;
     this.create = create;
     this.internal = variant === "astc" ? GL.ASTC_4X4 : variant === "bc" ? GL.BPTC : GL.RGBA8;
     this.side = variant === "rgba" ? 512 : 1024;
+    const block = solidBlock(variant);
+    for (let at = 0; at < TILE; at += block.bytes.length) this.fill.set(block.bytes, at);
+    this.colour = block.rgba;
   }
 
   get mb(): number {
@@ -209,13 +210,11 @@ export class TextureMemory {
     const gl = this.gl;
     if (gl.isContextLost()) return "context lost";
     const unit = gl.getParameter(GL.ACTIVE_TEXTURE) as number;
-    gl.activeTexture(GL.TEXTURE15);
+    gl.activeTexture(GL.TEXTURE0 + 15);
     for (let k = 0; k < most && this.tiles.length < mb; k++) {
-      const t = this.create();
-      gl.bindTexture(GL.TEXTURE_2D, t);
-      gl.texStorage2D(GL.TEXTURE_2D, 1, this.internal, this.side, this.side);
-      if (this.internal === GL.RGBA8) gl.texSubImage2D(GL.TEXTURE_2D, 0, 0, 0, this.side, this.side, GL.RGBA, GL.UNSIGNED_BYTE, this.zeros);
-      else gl.compressedTexSubImage2D(GL.TEXTURE_2D, 0, 0, 0, this.side, this.side, this.internal, this.zeros);
+      const t = texture2d(gl, this.internal, this.side, this.side, GL.NEAREST, 1, this.create);
+      if (this.internal === GL.RGBA8) gl.texSubImage2D(GL.TEXTURE_2D, 0, 0, 0, this.side, this.side, GL.RGBA, GL.UNSIGNED_BYTE, this.fill);
+      else gl.compressedTexSubImage2D(GL.TEXTURE_2D, 0, 0, 0, this.side, this.side, this.internal, this.fill);
       this.tiles.push(t);
     }
     gl.bindTexture(GL.TEXTURE_2D, null);
@@ -226,8 +225,84 @@ export class TextureMemory {
     return this.tiles.length < mb ? "growing" : "held";
   }
 
+  touch(): void {
+    const gl = this.gl;
+    if (this.tiles.length === 0 || gl.isContextLost()) return;
+    const restore = saveState(gl, 1);
+    try {
+      try {
+        this.drawn ??= this.make();
+      } catch (e) {
+        this.read = `could not be sampled: ${(e instanceof Error ? e.message : String(e)).slice(0, 200)}`;
+        return;
+      }
+      const d = this.drawn;
+      gl.bindFramebuffer(GL.FRAMEBUFFER, d.fb);
+      gl.viewport(0, 0, TOUCH_SIDE, TOUCH_SIDE);
+      for (const cap of [GL.DEPTH_TEST, GL.CULL_FACE, GL.SCISSOR_TEST, GL.SAMPLE_ALPHA_TO_COVERAGE]) gl.disable(cap);
+      gl.colorMask(true, true, true, true);
+      if (this.next === 0) {
+        gl.clearColor(1, 1, 1, 1);
+        gl.clear(GL.COLOR_BUFFER_BIT);
+      }
+      // Each draw keeps the lowest of what it and those before it read.
+      gl.enable(GL.BLEND);
+      gl.blendEquationSeparate(GL.MIN, GL.MIN);
+      gl.useProgram(d.program);
+      gl.bindVertexArray(d.vao);
+      for (let n = 0; n < TOUCH_TILES && this.next < this.tiles.length; n += PROBE_UNITS.length) {
+        PROBE_UNITS.forEach((u, i) => {
+          gl.activeTexture(GL.TEXTURE0 + u);
+          gl.bindTexture(GL.TEXTURE_2D, this.tiles[Math.min(this.next + i, this.tiles.length - 1)]);
+        });
+        gl.drawArrays(GL.TRIANGLES, 0, 3);
+        this.next += PROBE_UNITS.length;
+      }
+      if (this.next < this.tiles.length) return;
+      const px = new Uint8Array(TOUCH_SIDE * TOUCH_SIDE * 4);
+      gl.readPixels(0, 0, TOUCH_SIDE, TOUCH_SIDE, GL.RGBA, GL.UNSIGNED_BYTE, px);
+      const off = px.findIndex((v, i) => Math.abs(v - this.colour[i % 4]!) > 3);
+      this.read = off < 0 ? "right" : `read back as ${Array.from(px.subarray(off - (off % 4), off - (off % 4) + 4)).join(",")}, not ${this.colour.join(",")}`;
+      this.sweeps++;
+      this.next = 0;
+    } finally {
+      restore();
+    }
+  }
+
+  /** The program that reads a tile on each of PROBE_UNITS, its target and an empty vertex array. */
+  private make(): { program: unknown; fb: unknown; target: unknown; vao: unknown } {
+    const gl = this.gl;
+    const names = PROBE_UNITS.map((_, i) => `t${i}`);
+    const program = compile(gl, `#version 300 es
+${FULL_SCREEN}
+void main() { gl_Position = vec4(corner(), 0.0, 1.0); }`, `#version 300 es
+precision highp float;
+uniform sampler2D ${names.join(", ")};
+out vec4 o;
+void main() {
+  vec2 uv = gl_FragCoord.xy / ${TOUCH_SIDE.toFixed(1)};
+  o = texture(t0, uv);
+${names.slice(1).map((n) => `  o = min(o, texture(${n}, uv));`).join("\n")}
+}`);
+    gl.useProgram(program);
+    names.forEach((n, i) => gl.uniform1i(gl.getUniformLocation(program, n), PROBE_UNITS[i]!));
+    const target = texture2d(gl, GL.RGBA8, TOUCH_SIDE, TOUCH_SIDE, GL.NEAREST, 1, this.create);
+    const fb = framebuffer(gl, (f) => gl.framebufferTexture2D(f, GL.COLOR_ATTACHMENT0, GL.TEXTURE_2D, target, 0), "an RGBA8 texture 16 square");
+    return { program, fb, target, vao: gl.createVertexArray() };
+  }
+
   free(): void {
-    for (const t of this.tiles) this.gl.deleteTexture(t);
+    const gl = this.gl;
+    for (const t of this.tiles) gl.deleteTexture(t);
     this.tiles.length = 0;
+    if (this.drawn) {
+      gl.deleteProgram(this.drawn.program);
+      gl.deleteFramebuffer(this.drawn.fb);
+      gl.deleteTexture(this.drawn.target);
+      gl.deleteVertexArray(this.drawn.vao);
+      this.drawn = null;
+    }
+    [this.next, this.sweeps, this.read] = [0, 0, ""];
   }
 }
