@@ -5,8 +5,8 @@ edit it by hand: change the catalogue and run the tool.
 
 A server is configured as ARK's is ([how](round5-settings.md), and [what the
 values mean](round5-game-ini.md)). Every setting an ARK dedicated server reads
-is listed here, 524 of them: 137 take effect,
-192 wait for a feature that is not built yet, and 195 have no meaning in this
+is listed here, 524 of them: 144 take effect,
+185 wait for a feature that is not built yet, and 195 have no meaning in this
 engine. A setting that does not take effect is still read, checked and
 reported when the server starts.
 
@@ -66,6 +66,11 @@ may change a setting without a restart.
 | `AllowThirdPersonPlayer` | True | The body may be looked at from behind. | yes; clients are told |
 | `ServerCrosshair` | True | A crosshair is shown. | yes; clients are told |
 | `ShowMapPlayerLocation` | True | The map shows where its reader is. | yes; clients are told |
+| `PreventUploadSurvivors` | False | No survivor may leave this server for another of its cluster. | no |
+| `PreventDownloadSurvivors` | False | No survivor may come to this server from another of its cluster. | no |
+| `PreventUploadItems` | False | Nothing may leave this server: a survivor carrying anything may not travel. *Uploading things on their own waits for terminals; what a survivor carries is refused now, as ARK refuses it.* | no |
+| `PreventDownloadItems` | False | Nothing may come to this server: a survivor carrying anything may not come. *Downloading things on their own waits for terminals; a survivor carrying anything is refused now, as ARK refuses it.* | no |
+| `noTributeDownloads` | False | Nothing may come to this server from another: no survivor, creature or thing. | no |
 | `globalVoiceChat` | False | A voice is heard by everyone, wherever they are. | yes |
 | `ProximityChat` | False | What is written reaches only those near. | yes; clients are told |
 | `ServerPassword` | none | Asked of everyone who joins. *A browser gives it in the address it opens: `?password=...`.* | no |
@@ -187,6 +192,8 @@ may change a setting without a restart.
 | `-NoDinosExceptStreamingSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
 | `-NoDinosExceptManualSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
 | `-NoDinosExceptWaterSpawn` | not given | No wild creatures are put in the world but those of one kind: forced, streamed, put by hand, or in water. *Undocumented by ARK's makers. No spawn region here is of those kinds, so each acts as -NoDinos; an admin's spawn still works under all of them.* | no |
+| `-clusterid=` | none | The cluster the server is part of: servers with one cluster id and one folder list each other, and survivors travel between them. *Each needs a save of its own (--db); a new save takes the lowest world id the cluster has not given out.* | no |
+| `-ClusterDirOverride=` | none | The folder the cluster's servers share, on a local disk of this machine. The cluster's files go in a folder of the cluster id inside it. Without it, a folder named clusters beside the save. | no |
 
 ## What waits for a feature
 
@@ -383,14 +390,9 @@ what is built next.
 
 | Setting | Default | What it does | Where |
 | --- | --- | --- | --- |
-| `noTributeDownloads` | False | What may be carried between servers. | GameUserSettings.ini |
-| `PreventDownloadSurvivors` | False | What may be carried between servers. | GameUserSettings.ini |
-| `PreventDownloadItems` | False | What may be carried between servers. | GameUserSettings.ini |
-| `PreventDownloadDinos` | False | What may be carried between servers. | GameUserSettings.ini |
-| `PreventUploadSurvivors` | False | What may be carried between servers. | GameUserSettings.ini |
-| `PreventUploadItems` | False | What may be carried between servers. | GameUserSettings.ini |
-| `PreventUploadDinos` | False | What may be carried between servers. | GameUserSettings.ini |
-| `CrossARKAllowForeignDinoDownloads` | False | What may be carried between servers. | GameUserSettings.ini |
+| `PreventDownloadDinos` | False | What creatures may be carried between servers. | GameUserSettings.ini |
+| `PreventUploadDinos` | False | What creatures may be carried between servers. | GameUserSettings.ini |
+| `CrossARKAllowForeignDinoDownloads` | False | What creatures may be carried between servers. | GameUserSettings.ini |
 | `MinimumDinoReuploadInterval` | 0 | Seconds before a creature may be carried off again. | GameUserSettings.ini |
 | `TributeCharacterExpirationSeconds` | 0 | Seconds an uploaded survivor is kept. 0 is for ever. | GameUserSettings.ini |
 | `TributeDinoExpirationSeconds` | 86400 | Seconds an uploaded creature is kept. | GameUserSettings.ini |
@@ -398,10 +400,8 @@ what is built next.
 | `MaxTributeDinos` | 20 | Creatures that may be uploaded. | GameUserSettings.ini |
 | `MaxTributeItems` | 50 | Things that may be uploaded. | GameUserSettings.ini |
 | `MaxTributeCharacters` | 10 | Survivors that may be uploaded. | GameUserSettings.ini |
-| `-clusterid=` | none | Clusters of servers. | Command line |
-| `-ClusterDirOverride=` | none | Clusters of servers. | Command line |
-| `-NoTransferFromFiltering` | not given | Clusters of servers. | Command line |
-| `-DisableCustomFoldersInTributeInventories` | not given | Clusters of servers. | Command line |
+| `-NoTransferFromFiltering` | not given | ARK data between single player and servers, and its folders. | Command line |
+| `-DisableCustomFoldersInTributeInventories` | not given | ARK data between single player and servers, and its folders. | Command line |
 | `PreventTransferForClassNames` | none | Species that cannot be carried between servers. | Game.ini |
 
 ### Operations: RCON, ban and admin lists, exclusive join, logs, filters, the live file by URL

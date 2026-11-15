@@ -5,11 +5,11 @@
 import { resolve } from "node:path";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { F_ALIVE } from "../../shared/sim/entities.ts";
-import type { EntityRecord, Records } from "../records.ts";
+import { TEAM_RANGE, type EntityRecord, type Records } from "../records.ts";
 import type { ServerWorld } from "../world.ts";
 import type { BackupReport } from "./backup.ts";
 import { inlineKeeper, type Keeper } from "./keeper.ts";
-import { sqliteCode, sqliteIs, type WorldStore } from "./store.ts";
+import { sqliteCode, sqliteIs, type TransferRow, type WorldStore } from "./store.ts";
 
 /** Five seconds. A checkpoint syncs the database file, so this is not every commit. */
 const CHECKPOINT_TICKS = 5 * TICK_RATE;
@@ -74,11 +74,15 @@ interface PendingJournal {
 export class Persistence {
   /** Changes when the world is saved elsewhere (saveAs). */
   store: WorldStore;
+  /** WorldStore.saveId of the file the world was loaded from. A world saved elsewhere keeps it. */
+  readonly saveId: string;
   commits = 0;
   /** Sequence number of the newest journal entry, durable or not. */
   journalSeq = 0;
   durableSeq = 0;
   readonly survivors = new Map<string, number>();
+  /** Every transfer the save records, durable or not: what left the world for another of its cluster, and what came. */
+  readonly transferRows: TransferRow[] = [];
   /** Per-chunk state other than structures. Each provider encodes the chunks it has marked dirty, and `all` marks every chunk it has state for. */
   readonly blobs: { tag: number; dirty: Set<number>; encode(chunk: number): Uint8Array | null; all(): void }[] = [];
   /** Null while commits succeed. */
@@ -107,6 +111,7 @@ export class Persistence {
   private readonly written: number[] = [];
   private readonly pending: PendingJournal[] = [];
   private readonly newSurvivors: [string, number][] = [];
+  private readonly transfers: TransferRow[] = [];
   private callbacks: (() => void)[] = [];
   private cursor = 0;
   private savedAt = 0;
@@ -117,6 +122,7 @@ export class Persistence {
     this.world = world;
     this.records = records;
     this.store = store;
+    this.saveId = store.saveId;
     this.opts = { positionTicks: 1800, journalKeep: 100_000, allowMapMismatch: false, ...opts };
     this.keeper = this.keep(store);
     this.keeper.onBackup = (r) => this.onBackup?.(r);
@@ -140,6 +146,8 @@ export class Persistence {
       world.tick = Number(store.meta("tick") ?? 0);
       world.dayOffset = Number(store.meta("day_offset") ?? 0);
       this.records.nextSeq = Number(store.meta("next_seq") ?? 1);
+      // A save from before teams had worlds numbered them with its records, so its new ones start past every record it made.
+      this.records.nextTeam = Number(store.meta("next_team") ?? Math.max(1, this.records.nextSeq - this.records.worldId * TEAM_RANGE));
     }
     const structures = store.fresh ? world.structs.count : store.loadChunks(world.structs);
     // A fresh save keeps the structures the world was created with, so the first commit writes them all.
@@ -151,6 +159,7 @@ export class Persistence {
     for (const pid of store.dropped.changed) this.records.dirty.add(pid);
     for (const pid of store.dropped.pids) this.records.deleted.push(pid);
     for (const [name, pid] of store.survivors()) this.survivors.set(name, pid);
+    this.transferRows.push(...store.transfers());
     this.journalSeq = this.durableSeq = store.lastJournalSeq();
     return { fresh: store.fresh, tick: world.tick, structures, records: this.records.byPid.size };
   }
@@ -196,6 +205,12 @@ export class Persistence {
   bindSurvivor(name: string, pid: number): void {
     this.survivors.set(name, pid);
     this.newSurvivors.push([name, pid]);
+  }
+
+  /** A transfer that left or came, written in the same commit as what it did to the records. */
+  noteTransfer(t: TransferRow): void {
+    this.transferRows.push(t);
+    this.transfers.push(t);
   }
 
   attach(rec: EntityRecord, ent: number): void {
@@ -290,6 +305,8 @@ export class Persistence {
     for (const s of this.sidecars) s.of.dirty = true;
     this.newSurvivors.length = 0;
     for (const [name, pid] of this.survivors) this.newSurvivors.push([name, pid]);
+    this.transfers.length = 0;
+    this.transfers.push(...this.transferRows);
     try {
       this.commit(true);
     } catch (err) {
@@ -366,9 +383,13 @@ export class Persistence {
         // The journal is an audit trail, not the state, so only the recent part is kept.
         if (this.commits % PRUNE_EVERY === PRUNE_EVERY - 1) store.pruneJournal(this.opts.journalKeep);
         for (const [name, pid] of this.newSurvivors) store.saveSurvivor(name, pid);
+        for (const t of this.transfers) store.saveTransfer(t);
         store.setMeta("tick", world.tick);
         store.setMeta("day_offset", world.dayOffset);
         store.setMeta("next_seq", records.nextSeq);
+        store.setMeta("next_team", records.nextTeam);
+        store.setMeta("world_id", records.worldId);
+        store.setMeta("save_id", this.saveId);
         store.setMeta("map_id", world.mapId);
         store.setMeta("map_hash", world.mapHash);
       });
@@ -392,6 +413,7 @@ export class Persistence {
     records.deleted.length = 0;
     this.pending.length = 0;
     this.newSurvivors.length = 0;
+    this.transfers.length = 0;
     this.durableSeq = this.journalSeq;
     for (const i of this.written) {
       this.sidecars[i]!.of.dirty = false;
@@ -402,7 +424,8 @@ export class Persistence {
     for (const cb of callbacks) cb();
   }
 
-  private capture(rec: EntityRecord, ent: number): void {
+  /** The record takes the entity's position, if the entity lives. */
+  capture(rec: EntityRecord, ent: number): void {
     const ents = this.world.ents;
     if ((ents.flags[ent]! & F_ALIVE) === 0) return;
     rec.x = ents.x[ent]!;

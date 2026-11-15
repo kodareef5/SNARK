@@ -99,6 +99,7 @@ const ITEM = {
   spoilsInto: f("text", "SpoilingItem", { refs: { "": "item" } }),
   blueprint: f("switch", "whether it may be a blueprint (a crafted item may, unless false)"),
   use: f("facet", "UseItemAddCharacterStatusValues and the buffs a consumable gives", { refs: { "buffs[]": "buff" } }),
+  travels: f("switch", "bPreventUpload, inverted"),
 } satisfies Fields<ItemDef>;
 
 const SPECIES = {
@@ -351,7 +352,7 @@ function row<T extends Record<string, Field>>(id: string, type: ClassRow["type"]
   });
 }
 
-const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", "blueprint", "decomposeHours"] as const;
+const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", "blueprint", "decomposeHours", "travels"] as const;
 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
 row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto", "youngFor", "ammo"], slots: { shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "A material: gathered, stacked, and spent in crafting. One a weapon fires, as a slingshot fires stone, has an ammo facet." });

@@ -393,7 +393,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // a cloud as puffs); without the two grenades, their clouds and the poison's buff (content/items/explosives.ts) it is that again.
   // It was 828002586 until Miami's third round of ruins added 160 static box definitions, which take mesh numbers before
   // the grey boxes'; the draws, triangles and uploads are as they were.
-  expect(hash).toBe(3699520576);
+  // It was 3699520576 until the pack held the obelisk's and its terminal's grey boxes (content/terminals.ts); without them,
+  // and the proving ground's obelisk, it is that again.
+  expect(hash).toBe(1227352852);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

@@ -11,6 +11,7 @@ bun tools/mapworld/ruin-walk.ts var/maps/<name>.snmap --all
 bun tools/mapworld/access-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/bridge-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/room-walk.ts var/maps/<name>.snmap
+bun tools/mapworld/obelisk-walk.ts var/maps/<name>.snmap
 bun tools/mapworld/server-bench.ts var/maps/<name>.snmap
 bun tools/mapworld/verify.ts var/maps/<name>.snmap
 bun tools/mapworld/proof-views.ts var/maps/<name>.snmap
@@ -31,6 +32,25 @@ these modules.
 for each box. The site exposes footprints, district data, ground samples and
 plant clearing masks. The ground builder leaves the footprints bare when
 `world.heaps` is false. Resource nodes are placed after all static layers.
+
+## Obelisks
+
+Where survivors leave for another server of the cluster. `world.json` lists
+them as it lists spawn points:
+
+```json
+"obelisks": [{ "name": "Wynwood", "at": [-80.1990, 25.8040], "face": [-80.2000, 25.8015] }]
+```
+
+Each is set on the nearest ground to `at` that is open and dry, level to a
+quarter metre under the obelisk and to half a metre round its terminal, with no
+static piece within 10 m of its middle or 6 m of where its user stands. The
+terminal turns toward `face`. The build adds each one's pieces
+(`shared/world/obelisks.ts`) after every layer's, so the others keep their
+slots, keeps plants 14 m off, and lists the places in `stats.json`.
+`obelisk-walk.ts` finds a way on foot from the nearest spawn point to each
+terminal's front and walks it with the survivor's capsule; move an obelisk it
+cannot reach.
 
 The first input for each footprint is `blocks/labels.json`. Supplied heights
 win over levels and research. Missing values use supplied neighbours, then the
