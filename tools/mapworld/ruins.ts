@@ -181,6 +181,20 @@ export function makeRuins(site: Site): StaticPiece[] {
       site.ground.height[i] = Math.min(stair.y, site.ground.height[i]!);
     }
   }
+  // A lower neighbour's rooms can cut the ground under a door and its corridor after both were planned: floor it again,
+  // unless the floor would stand in the neighbour's rooms.
+  const roomsNear = (x: number, z: number, self: RuinRecord): RuinRecord["rooms"] => records.filter((o) => o !== self && Math.abs(o.x - x) < 80 && Math.abs(o.z - z) < 80).flatMap((o) => o.rooms.filter((room) => room.kind !== "rubble"));
+  for (const r of records) for (const a of r.approaches) {
+    const length = Math.hypot(a.core.x - a.door.x, a.core.z - a.door.z); const yaw = Math.atan2(a.core.x - a.door.x, a.core.z - a.door.z) * 180 / Math.PI;
+    for (let d = 0; d <= length; d += 2) {
+      const t = length ? d / length : 0; const x = a.door.x + (a.core.x - a.door.x) * t; const z = a.door.z + (a.core.z - a.door.z) * t;
+      const p = { kind: "core:zruin_floor4_concrete", x, y: a.core.y - .2, z, yaw };
+      if (site.groundAt(x, z) >= a.core.y - .4 || counts[ckey(p)]! >= v.budgets.maxChunk) continue;
+      if (pieces.slice(r.firstPiece, r.firstPiece + r.blocks).some((q) => q.kind === p.kind && Math.abs(q.x - x) < .5 && Math.abs(q.z - z) < .5)) continue;
+      if (roomsNear(x, z, r).some((room) => obstructs(p, room.points))) continue;
+      pieces.push(p); counts[ckey(p)]!++;
+    }
+  }
   counts.fill(0); for (const key of Object.keys(usedKinds)) delete usedKinds[key];
   for (const p of pieces) { counts[ckey(p)]!++; usedKinds[p.kind] = (usedKinds[p.kind] ?? 0) + 1; }
   for (const r of bridges.records) for (const d of r.deck) if (!d.gap) {
