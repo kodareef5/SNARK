@@ -657,7 +657,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
       // Collision parts are the shape's boxes, or else the one box.
       const shape = d.type === "structure" && d.shape !== undefined ? shapes.get(d.shape)! : null;
       if (shape) {
-        role[i] = PIECE_ROLES.indexOf(shape.role);
+        // A map's static is joined to nothing, so it is no building piece whatever its shape's role: nothing snaps to it,
+        // and it is never judged for support, as a static of one box is not.
+        if (d.type === "structure" && d.class !== "static") role[i] = PIECE_ROLES.indexOf(shape.role);
         if (shape.doorway) doorway[i] = 1;
         for (const b of shape.boxes) partBox.push(b.at[0], b.at[1], b.at[2], b.half[0], b.half[1], b.half[2]);
       } else partBox.push(0, 0, 0, d.half[0], d.half[1], d.half[2]);
