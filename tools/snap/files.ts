@@ -46,7 +46,8 @@ let makers: string | null = null;
 
 /**
  * One of a material's textures in the rgba variant, its pack having it at `top`. It is read from `cache` where the
- * pictures it is made from and the code that makes it are the same bytes as when it was kept there.
+ * pictures it is made from and the code that makes it are the same bytes as when it was kept there, and kept there
+ * where the cache can be written.
  */
 export function rgbaOf(m: Material, role: TextureRole, top: number, cache: string | null = SNAP_CACHE): RgbaTexture {
   const side = topIn("rgba", top);
@@ -62,9 +63,12 @@ export function rgbaOf(m: Material, role: TextureRole, top: number, cache: strin
     const made = rgbaTexture(role, mipsOf(m, role, top)).pictures;
     bytes = new Uint8Array(made.reduce((n, p) => n + p.length, 0));
     made.reduce((at, p) => (bytes!.set(p, at), at + p.length), 0);
+    // A cache that cannot be written to, as from a painter's sandbox, is only read.
     if (file !== null) {
-      mkdirSync(join(cache!, key.slice(0, 2)), { recursive: true });
-      writeFileSync(file, bytes);
+      try {
+        mkdirSync(join(cache!, key.slice(0, 2)), { recursive: true });
+        writeFileSync(file, bytes);
+      } catch {}
     }
   }
   let at = 0;

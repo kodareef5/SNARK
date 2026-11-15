@@ -14,7 +14,7 @@
 //   decay_2m, decay_10m   four corpses lying, fresh and at decay stages 1, 2 and 3, from 2 and 10 m; each also
 //                         enlarged about the birds
 //
-//   bun assets/source/core/creatures/dodo/ref/world/snap.ts [shot ...] [--tier medium|ultra]
+//   bun assets/source/core/creatures/dodo/ref/world/snap.ts [shot ...] [--tier medium|ultra] [--out DIR]
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,8 +37,10 @@ type Shot = (typeof SHOTS)[number];
 
 const args = process.argv.slice(2);
 const tierArg = args.indexOf("--tier");
+const outArg = args.indexOf("--out");
 const tiers = tierArg >= 0 ? [args[tierArg + 1]!] : ["medium", "ultra"];
-const asked = args.filter((a, i) => !a.startsWith("--") && (tierArg < 0 || i !== tierArg + 1));
+const dir = outArg >= 0 ? args[outArg + 1]! : import.meta.dir;
+const asked = args.filter((a, i) => !a.startsWith("--") && (tierArg < 0 || i !== tierArg + 1) && (outArg < 0 || i !== outArg + 1));
 const shots = asked.length > 0 ? (asked as Shot[]) : [...SHOTS];
 const files = await gameFiles(SOURCE);
 
@@ -254,12 +256,12 @@ for (const tier of tiers) {
     view.scene.viewHeight = H;
     scene(view, shot);
     settle(view);
-    const out = join(import.meta.dir, `${shot}_${tier}.png`);
+    const out = join(dir, `${shot}_${tier}.png`);
     writeFileSync(out, encodePng(W, H, view.raster.color));
     const crop = CROPS[shot];
     if (crop) {
       const [px, py] = project(view, crop[0], crop[1], crop[2]);
-      writeFileSync(join(import.meta.dir, `${shot}_${tier}_x${crop[3]}.png`), encodePng(W, H, enlarged(view.raster.color, px, py, crop[3])));
+      writeFileSync(join(dir, `${shot}_${tier}_x${crop[3]}.png`), encodePng(W, H, enlarged(view.raster.color, px, py, crop[3])));
     }
     console.log(`${out}  ${(performance.now() - t0).toFixed(0)} ms`);
   }
