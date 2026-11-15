@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on short dry grass and soft earth: soft padded thuds with a light swish, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6950",
+          "models": [
+            "moss"
+          ],
+          "seed": 6950,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on short dry grass and soft earth: soft padded thuds with a light swish, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/grass": {
       "kind": "impact",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on short dry grass and soft earth, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6960",
+          "models": [
+            "moss"
+          ],
+          "seed": 6960,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on short dry grass and soft earth, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "step/sand": {
       "kind": "step",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on dry beach sand: soft crunchy squeaking steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6970",
+          "models": [
+            "moss"
+          ],
+          "seed": 6970,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on dry beach sand: soft crunchy squeaking steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/sand": {
       "kind": "impact",
@@ -81,8 +117,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on dry beach sand, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6980",
+          "models": [
+            "moss"
+          ],
+          "seed": 6980,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on dry beach sand, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "step/stone": {
       "kind": "step",
@@ -101,8 +149,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on flat stone paving: firm taps with a faint gritty scuff, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6990",
+          "models": [
+            "moss"
+          ],
+          "seed": 6990,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on flat stone paving: firm taps with a faint gritty scuff, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/stone": {
       "kind": "impact",
@@ -121,8 +181,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on flat stone paving, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7000",
+          "models": [
+            "moss"
+          ],
+          "seed": 7000,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on flat stone paving, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "step/dirt": {
       "kind": "step",
@@ -141,8 +213,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on packed dirt path: dull soft thuds with a little grit, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7010",
+          "models": [
+            "moss"
+          ],
+          "seed": 7010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on packed dirt path: dull soft thuds with a little grit, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/dirt": {
       "kind": "impact",
@@ -161,8 +245,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on packed dirt path, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7020",
+          "models": [
+            "moss"
+          ],
+          "seed": 7020,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on packed dirt path, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "step/wood": {
       "kind": "step",
@@ -181,8 +277,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on a hollow wooden plank floor: knocking wooden steps with a faint creak, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7030",
+          "models": [
+            "moss"
+          ],
+          "seed": 7030,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on a hollow wooden plank floor: knocking wooden steps with a faint creak, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/wood": {
       "kind": "impact",
@@ -201,8 +309,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on a hollow wooden plank floor, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7040",
+          "models": [
+            "moss"
+          ],
+          "seed": 7040,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on a hollow wooden plank floor, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "step/metal": {
       "kind": "step",
@@ -221,8 +341,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on a metal plate floor: ringing clanky metallic steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7050",
+          "models": [
+            "moss"
+          ],
+          "seed": 7050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on a metal plate floor: ringing clanky metallic steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/metal": {
       "kind": "impact",
@@ -241,8 +373,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on a metal plate floor, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7060",
+          "models": [
+            "moss"
+          ],
+          "seed": 7060,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on a metal plate floor, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "step/thatch": {
       "kind": "step",
@@ -261,8 +405,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on a floor of dry straw and reeds: crackly rustling steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7070",
+          "models": [
+            "moss"
+          ],
+          "seed": 7070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on a floor of dry straw and reeds: crackly rustling steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/thatch": {
       "kind": "impact",
@@ -281,8 +437,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on a floor of dry straw and reeds, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7080",
+          "models": [
+            "moss"
+          ],
+          "seed": 7080,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on a floor of dry straw and reeds, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "step/water": {
       "kind": "step",
@@ -301,8 +469,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on ankle-deep shallow water: splashy sloshing steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7090",
+          "models": [
+            "moss"
+          ],
+          "seed": 7090,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on ankle-deep shallow water: splashy sloshing steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/water": {
       "kind": "impact",
@@ -321,8 +501,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on ankle-deep shallow water, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7100",
+          "models": [
+            "moss"
+          ],
+          "seed": 7100,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on ankle-deep shallow water, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "step/snow": {
       "kind": "step",
@@ -341,8 +533,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Slow footsteps of a person in soft leather boots walking on fresh deep snow: crunchy compressing steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7110",
+          "models": [
+            "moss"
+          ],
+          "seed": 7110,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Slow footsteps of a person in soft leather boots walking on fresh deep snow: crunchy compressing steps, well spaced single steps. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 10
     },
     "land/snow": {
       "kind": "impact",
@@ -361,8 +565,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A person jumps and lands heavily on fresh deep snow, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7120",
+          "models": [
+            "moss"
+          ],
+          "seed": 7120,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A person jumps and lands heavily on fresh deep snow, four separate landings with long pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/flesh": {
       "kind": "impact",
@@ -381,8 +597,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a heavy blow lands on a side of meat: wet meaty smacks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7130",
+          "models": [
+            "moss"
+          ],
+          "seed": 7130,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a heavy blow lands on a side of meat: wet meaty smacks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/hide": {
       "kind": "impact",
@@ -401,8 +629,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a stick strikes a thick leather hide: dull leathery slaps, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7140",
+          "models": [
+            "moss"
+          ],
+          "seed": 7140,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a stick strikes a thick leather hide: dull leathery slaps, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/chitin": {
       "kind": "impact",
@@ -421,8 +661,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a blow strikes a hard insect shell: sharp hollow cracking clicks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7150",
+          "models": [
+            "moss"
+          ],
+          "seed": 7150,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a blow strikes a hard insect shell: sharp hollow cracking clicks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/wood": {
       "kind": "impact",
@@ -441,8 +693,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: an axe chops into a tree trunk: solid woody thunks with chips, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7160",
+          "models": [
+            "moss"
+          ],
+          "seed": 7160,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: an axe chops into a tree trunk: solid woody thunks with chips, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/stone": {
       "kind": "impact",
@@ -461,8 +725,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a pickaxe strikes a rock: sharp stony clacks with grit, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7170",
+          "models": [
+            "moss"
+          ],
+          "seed": 7170,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a pickaxe strikes a rock: sharp stony clacks with grit, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/metal": {
       "kind": "impact",
@@ -481,8 +757,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a hammer strikes a steel plate: bright clanging metal hits, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7180",
+          "models": [
+            "moss"
+          ],
+          "seed": 7180,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a hammer strikes a steel plate: bright clanging metal hits, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/thatch": {
       "kind": "impact",
@@ -501,8 +789,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a stick beats a bundle of dry straw: crunchy rustling thwacks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7190",
+          "models": [
+            "moss"
+          ],
+          "seed": 7190,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a stick beats a bundle of dry straw: crunchy rustling thwacks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/foliage": {
       "kind": "impact",
@@ -521,8 +821,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a stick swats leafy bushes: leafy whooshing rustles, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7200",
+          "models": [
+            "moss"
+          ],
+          "seed": 7200,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a stick swats leafy bushes: leafy whooshing rustles, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/water": {
       "kind": "impact",
@@ -541,8 +853,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a stick slaps the surface of water: sharp splashing slaps, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7210",
+          "models": [
+            "moss"
+          ],
+          "seed": 7210,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a stick slaps the surface of water: sharp splashing slaps, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/dirt": {
       "kind": "impact",
@@ -561,8 +885,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a shovel strikes packed earth: dull earthy thuds with falling soil, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7220",
+          "models": [
+            "moss"
+          ],
+          "seed": 7220,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a shovel strikes packed earth: dull earthy thuds with falling soil, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "impact/glass": {
       "kind": "impact",
@@ -581,8 +917,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "Five separate hits: a stick knocks on thick glass: hard glassy knocks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7230",
+          "models": [
+            "moss"
+          ],
+          "seed": 7230,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Five separate hits: a stick knocks on thick glass: hard glassy knocks, with pauses in between. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "drag/grass": {
       "kind": "step",

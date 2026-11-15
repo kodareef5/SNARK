@@ -8,6 +8,7 @@
 import type { CreatureAnim } from "../../../shared/anim/creature.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
+import type { DetailSheet } from "../../../shared/pack/details.ts";
 import { Rng } from "../../../shared/rng.ts";
 import { KEYS, type CueKind } from "../../../shared/sound/cues.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
@@ -18,7 +19,7 @@ import { BodySounds, type OwnBody } from "./bodies.ts";
 import { BuildSounds, type Lit } from "./build.ts";
 import { CreatureSounds } from "./creatures.ts";
 import { InlineDecoder, SOUND_BUDGET, SOUND_BUDGET_TOUCH, SoundLibrary, type SoundDecoder } from "./library.ts";
-import { FLAT, KIND_NAMES, KIND_VOCAL, LOOP, Mixer, spread, type Ear } from "./mixer.ts";
+import { FLAT, KIND_NAMES, KIND_STEP, KIND_VOCAL, LOOP, Mixer, spread, type Ear } from "./mixer.ts";
 import { SoundPacket, type SoundSink } from "./packet.ts";
 import { earAxes, semitones } from "./place.ts";
 import { Resolver } from "./resolve.ts";
@@ -82,7 +83,15 @@ const HEARD_WORDS = ["played", "dropped", "not held yet", "no sound"];
 const LOG_LINES = 20;
 
 /** How much each kind of occasion weighs when voices are short, where its producer does not say. */
-const KIND_WEIGHT: Readonly<Record<CueKind, number>> = { vocal: 0.8, step: 0.25, hit: 0.6, weapon: 0.85, build: 0.6, item: 0.4, ui: 1, bed: 1, music: 1 };
+const KIND_WEIGHT: Readonly<Record<CueKind, number>> = { vocal: 0.8, step: 0.25, hit: 0.6, weapon: 0.85, build: 0.6, item: 0.4, ui: 1, bed: 1, music: 1, vehicle: 0.75 };
+/** Semitones a body's own voice sits above or below its kind's, by its id, at most; its steps and blows a third of that. */
+const VOICE_SPREAD = 1.2;
+/** dB a play may be louder or quieter than its sound, at random. */
+const LEVEL_JITTER = 1.5;
+/** Of one sound, at most this many start within CROWD_MS; more are dropped (steps more, being many and short). */
+const CROWD_STARTS = 3;
+const CROWD_STEP_STARTS = 6;
+const CROWD_MS = 250;
 /** Milliseconds a looping sound takes to fade in or out. */
 const FADE_MS = 1500;
 
@@ -118,8 +127,10 @@ export class Sounds {
   private readonly isSurvivor: (kind: number) => boolean;
   private readonly ear: Ear = { x: 0, y: 0, z: 0 };
   private readonly rng = new Rng(11);
-  /** The take of each sound played last, so the next is another. */
-  private readonly last: Int32Array;
+  /** The last two takes of each sound played, so the next is another. */
+  private readonly lastTakes = new Map<number, number[]>();
+  /** When each sound last started, for the crowd's limit. */
+  private readonly started = new Map<number, number[]>();
   private readonly pending: Pending[] = [];
   private readonly crowd = new Map<number, number>();
   private readonly loops = new Map<number, Looping>();
@@ -154,23 +165,38 @@ export class Sounds {
    * `animOf` gives what a kind of creature plays, as it is drawn. A touch-first device keeps less sound. `decoder`
    * decodes away from the frame: in the browser, client/sound's worker.
    */
-  constructor(manifest: Pick<Manifest, "sounds">, port: AssetPort | null, reg: Registry, animOf: (kind: number) => CreatureAnim | null, touch = false, decoder: SoundDecoder = new InlineDecoder()) {
+  constructor(manifest: Pick<Manifest, "sounds">, port: AssetPort | null, reg: Registry, animOf: (kind: number) => CreatureAnim | null, touch = false, decoder: SoundDecoder = new InlineDecoder(), sheets: readonly DetailSheet[] = []) {
     this.library = new SoundLibrary(manifest, port, decoder);
     this.library.budget = touch ? SOUND_BUDGET_TOUCH : SOUND_BUDGET;
     this.resolver = new Resolver(this.library.index);
-    this.creatures = new CreatureSounds(reg, this.library, this.resolver, animOf);
-    this.actions = new ActionSounds(reg);
+    this.creatures = new CreatureSounds(reg, this.library, this.resolver, animOf, sheets);
+    this.actions = new ActionSounds(reg, (id) => this.resolver.owner(id));
     this.build = new BuildSounds(reg, (id) => this.resolver.owner(id));
-    this.last = new Int32Array(this.library.sounds.length).fill(-1);
     this.ui = this.resolver.owner("core:ui");
     const survivor = reg.defs.find((d) => d?.type === "species" && (d as { class?: string }).class === "survivor");
     this.survivor = this.resolver.owner(survivor?.id ?? "core:survivor");
     this.isSurvivor = (kind) => (reg.defs[kind] as { class?: string } | null)?.class === "survivor" && reg.defs[kind]?.type === "species";
-    // The start set: the interface and the player's own body, held from the start so that they are never late.
+    // The start set: the interface and the player's own body, held from the start so that they are never late. A
+    // touch-first device holds only the voice of the player's own sex (pinVoice), being short of memory.
+    this.touch = touch;
+    const own = `${this.resolver.owners[this.survivor]}/sound/`;
     for (let s = 0; s < this.library.sounds.length; s++) {
       const id = this.library.sounds[s]!.id;
-      if (id.startsWith("core:ui/") || id.startsWith(`${this.resolver.owners[this.survivor]}/`) || id.startsWith("core:surface/sound/step/")) this.library.pin(s);
+      if (touch && id.startsWith(`${own}voice/`)) continue;
+      if (id.startsWith("core:ui/") || id.startsWith(own) || id.startsWith("core:surface/sound/step/")) this.library.pin(s);
     }
+  }
+
+  private readonly touch: boolean;
+  private pinnedSex = "";
+
+  /** On a touch-first device, holds the voice of the player's own sex once it is known. */
+  private pinVoice(female: boolean): void {
+    const sex = female ? "female" : "male";
+    if (!this.touch || sex === this.pinnedSex) return;
+    this.pinnedSex = sex;
+    const voice = `${this.resolver.owners[this.survivor]}/sound/voice/${sex}/`;
+    for (let s = 0; s < this.library.sounds.length; s++) if (this.library.sounds[s]!.id.startsWith(voice)) this.library.pin(s);
   }
 
   /** Copies what the session queued since the last frame, before the hit marks and tracers take it. */
@@ -186,6 +212,8 @@ export class Sounds {
     this.lastMs = nowMs;
     const lib = this.library;
     lib.begin(nowMs, p);
+    // What was heard between frames (a click) is wanted again: begin forgets the last frame's wants.
+    for (const e of this.pending) lib.want(e.sound, 10);
     this.mixer.expire(nowMs);
     this.ear.x = ear.x;
     this.ear.y = ear.y;
@@ -200,6 +228,7 @@ export class Sounds {
     for (const l of this.loops.values()) l.target = 0;
     this.creatures.update(remote, hf, ear.x, ear.y, ear.z, this.emit, this.want);
     if (view) {
+      this.pinVoice(view.own.female);
       this.bodies.update(dt, remote, hf, ear.x, ear.y, ear.z, view.ownId, view.body, view.own.female, this.survivor, this.isSurvivor, this.hear);
       this.actions.update(remote, ear.x, ear.y, ear.z, view.own, view.ownId, this.ui, this.survivor, this.isSurvivor, this.hear, (id, owner, key, level, on) => this.loop(id, owner, key, 0, 0, 0, level, on, true));
       this.world.update(nowMs, hf, ear.x, ear.y, ear.z, view.hour, view.trees, (id, key, level, on) => this.loop(id, this.resolver.owner("core:world"), key, 0, 0, 0, level, on, true), (key) => this.hear(this.resolver.owner("core:world"), key, -1, 0, 0, 0, 0, 1, true));
@@ -290,6 +319,8 @@ export class Sounds {
   }
 
   private push(e: Pending): void {
+    // Each body has a voice of its own: two raptors calling together are two raptors, not one twice.
+    if (e.entity >= 0) e.rate *= semitones(voiceOf(e.entity) * (e.kind === KIND_VOCAL ? VOICE_SPREAD : VOICE_SPREAD / 3));
     this.pending.push(e);
     this.crowd.set(e.sound, (this.crowd.get(e.sound) ?? 0) + 1);
   }
@@ -303,17 +334,27 @@ export class Sounds {
     const lib = this.library;
     if (!lib.ready(e.sound)) return HEARD_WAITING;
     const sound = lib.sounds[e.sound]!;
-    // Another take than last time, of those made by `from` if it has any.
+    // A crowd is not a chorus: of one sound, only a few start together.
+    const recent = (this.started.get(e.sound) ?? []).filter((ms) => nowMs - ms < CROWD_MS);
+    if (recent.length >= (e.kind === KIND_STEP ? CROWD_STEP_STARTS : CROWD_STARTS)) return HEARD_DROPPED;
+    // A take neither playing now nor among the last two, of those made by `from` if it has any.
     const takes = sound.takes.map((_, k) => k).filter((k) => this.from === "" || sound.takes[k]!.from === this.from);
     const pool = takes.length > 0 ? takes : sound.takes.map((_, k) => k);
-    const others = pool.length > 1 ? pool.filter((k) => k !== this.last[e.sound]) : pool;
+    const first = lib.first[e.sound]!;
+    const last = this.lastTakes.get(e.sound) ?? [];
+    let others = pool.filter((k) => !last.includes(k) && !this.mixer.playingTake(first + k));
+    if (others.length === 0) others = pool.filter((k) => k !== last[0]);
+    if (others.length === 0) others = pool;
     const take = others[this.rng.int(others.length)]!;
-    this.last[e.sound] = take;
-    const buffer = lib.first[e.sound]! + take;
+    this.lastTakes.set(e.sound, [take, last[0] ?? -1]);
+    const buffer = first + take;
     const rate = e.rate * semitones(sound.vary * this.rng.range(-1, 1));
+    const level = e.level * 10 ** (this.rng.range(-LEVEL_JITTER, LEVEL_JITTER) / 20);
     const delay = e.delay + spread(this.rng, this.crowd.get(e.sound) ?? 1);
-    const serial = this.mixer.play(this.packet, this.ear, nowMs, e.sound, buffer, lib.seconds[buffer]!, sound.range, e.kind, e.weight, e.entity, e.x, e.y, e.z, e.lift, e.level, rate, delay, e.flags);
+    const serial = this.mixer.play(this.packet, this.ear, nowMs, e.sound, buffer, lib.seconds[buffer]!, sound.range, e.kind, e.weight, e.entity, e.x, e.y, e.z, e.lift, level, rate, delay, e.flags);
     if (serial === 0) return HEARD_DROPPED;
+    recent.push(nowMs);
+    this.started.set(e.sound, recent);
     lib.played(e.sound);
     return HEARD_PLAYED;
   }
@@ -333,4 +374,12 @@ export class Sounds {
       .reverse()
       .map((l) => `${KEYS[l.key]!.key} of ${this.resolver.owners[l.owner] ?? "?"}: ${l.sound >= 0 ? this.library.sounds[l.sound]!.id : "-"} (${HEARD_WORDS[l.heard]})`);
   }
+}
+
+/** A body's own voice, from its id: a fixed number from -1 to 1 that stays with it. */
+export function voiceOf(entity: number): number {
+  let h = (entity + 0x9e3779b9) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 0x80000000 - 1;
 }

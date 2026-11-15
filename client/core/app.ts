@@ -727,7 +727,7 @@ export class App {
       const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
       this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
       if (split) {
-        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst, this.soundDecoder ?? undefined);
+        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst, this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
         hearSession(session, this.sounds);
         this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
       }

@@ -1,0 +1,134 @@
+{
+  "asset": "core/creatures/megaloceros",
+  "review": "../ref/sound",
+  "about": "A giant deer with huge antlers.",
+  "notes": "v2 brief: a creature still to come; its sounds are found by id the day its definition exists.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.6,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "v2-8990",
+          "models": [
+            "moss"
+          ],
+          "seed": 8990,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant deer with huge antlers gives a deep bellowing rutting call, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 80,
+      "level": -16,
+      "vary": 0.5,
+      "want": "alarm",
+      "prompts": [
+        {
+          "id": "v2-9000",
+          "models": [
+            "moss"
+          ],
+          "seed": 9000,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant deer with huge antlers lets out an alarmed bark, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "v2-9010",
+          "models": [
+            "moss"
+          ],
+          "seed": 9010,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant deer with huge antlers bleats in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "death": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.3,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "v2-9020",
+          "models": [
+            "moss"
+          ],
+          "seed": 9020,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant deer with huge antlers gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 2
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 40,
+      "level": -16,
+      "vary": 0.5,
+      "want": "attack",
+      "prompts": [
+        {
+          "id": "v2-9030",
+          "models": [
+            "moss"
+          ],
+          "seed": 9030,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant deer with huge antlers: antlers clash and crack with a grunt, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "step": {
+      "kind": "step",
+      "range": 30,
+      "level": -24,
+      "vary": 0.6,
+      "want": "footfalls or movement",
+      "prompts": [
+        {
+          "id": "v2-9040",
+          "models": [
+            "moss"
+          ],
+          "seed": 9040,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Hooves trotting on earth, quick light thuds, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 6
+    }
+  }
+}

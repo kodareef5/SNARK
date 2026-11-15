@@ -37,7 +37,7 @@ const KNOCKED = [VOICE("male", "knocked_out"), VOICE("female", "knocked_out")];
 const WAKE = [VOICE("male", "wake"), VOICE("female", "wake")];
 
 /** Hands an occasion to be heard: `owner` an owner number of the resolver, `key` a cue key, `entity` -1 for none, `flat` at the ear. */
-export type Hear = (owner: number, key: number, entity: number, x: number, y: number, z: number, lift: number, level: number, flat: boolean) => void;
+export type Hear = (owner: number, key: number, entity: number, x: number, y: number, z: number, lift: number, level: number, flat: boolean, delay?: number) => void;
 
 /** What is kept of a body between frames. */
 class Walker {

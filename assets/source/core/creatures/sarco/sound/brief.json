@@ -1,0 +1,134 @@
+{
+  "asset": "core/creatures/sarco",
+  "review": "../ref/sound",
+  "about": "A giant crocodile.",
+  "notes": "v2 brief: a creature still to come; its sounds are found by id the day its definition exists.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 60,
+      "level": -20,
+      "vary": 0.6,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "v2-8270",
+          "models": [
+            "moss"
+          ],
+          "seed": 8270,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A giant crocodile gives deep guttural rumbling bellows, low and vibrating, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 80,
+      "level": -16,
+      "vary": 0.5,
+      "want": "alarm",
+      "prompts": [
+        {
+          "id": "v2-8280",
+          "models": [
+            "moss"
+          ],
+          "seed": 8280,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant crocodile lets out a loud hissing roar, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "v2-8290",
+          "models": [
+            "moss"
+          ],
+          "seed": 8290,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant crocodile hisses and grunts in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "death": {
+      "kind": "voice",
+      "range": 50,
+      "level": -18,
+      "vary": 0.3,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "v2-8300",
+          "models": [
+            "moss"
+          ],
+          "seed": 8300,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant crocodile gives a long fading dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 2
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 40,
+      "level": -16,
+      "vary": 0.5,
+      "want": "attack",
+      "prompts": [
+        {
+          "id": "v2-8310",
+          "models": [
+            "moss"
+          ],
+          "seed": 8310,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A giant crocodile: a giant crocodile snaps its jaws shut with a huge clap and a splash, four separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
+    },
+    "step": {
+      "kind": "step",
+      "range": 30,
+      "level": -24,
+      "vary": 0.6,
+      "want": "footfalls or movement",
+      "prompts": [
+        {
+          "id": "v2-8320",
+          "models": [
+            "moss"
+          ],
+          "seed": 8320,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A heavy crocodile crawling over mud, slow dragging belly and claw steps, well spaced and distinct. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 6
+    }
+  }
+}

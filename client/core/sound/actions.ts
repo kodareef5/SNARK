@@ -7,6 +7,7 @@ import { ZONE_HEAD, ZONE_NONE } from "../../../shared/anim/human.ts";
 import { AnimState } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { EVENT_BLAST, EVENT_DEATH, EVENT_HIT, EVENT_HURT, EVENT_KILL, EVENT_SHOT } from "../../../shared/net/protocol.ts";
+import { GEAR_COUNT, GEAR_HELD } from "../../../shared/sim/entities.ts";
 import { V_FOOD, V_HEALTH, V_WATER, type Vitals } from "../../../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_EQUIP, ACT_RELOAD, ACT_SWING, FISTS, HOLD_NAMES, HOLD_PISTOL, HOLD_RIFLE } from "../../../shared/sim/weapon.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
@@ -32,6 +33,8 @@ const FIRE = by((h) => `fire/${h}`);
 const RELOAD = by((h) => `reload/${h}`);
 const K = {
   equip: cueKey("equip"),
+  pump: cueKey("pump"),
+  shell: cueKey("shell"),
   far: cueKey("fire/far"),
   whiz: cueKey("whiz"),
   ricochet: cueKey("ricochet"),
@@ -96,18 +99,47 @@ export class ActionSounds {
   private water = -1;
   private hungry = false;
 
-  constructor(reg: Registry) {
+  /**
+   * `ownerOf` gives the resolver's owner number of an id: a weapon's sounds are its own (`core:shotgun/sound/fire`), or
+   * its shared family's under its name (`core:weapon/sound/fire/shotgun`), before those of how it is held.
+   */
+  constructor(reg: Registry, ownerOf: (id: string) => number) {
     this.reg = reg;
     this.ammoHold = new Int8Array(reg.defs.length).fill(-1);
+    this.ammoWeapon = new Int32Array(reg.defs.length);
+    this.itemOwner = new Int32Array(reg.defs.length).fill(-1);
     reg.defs.forEach((d, kind) => {
       const w = reg.weapon[kind];
+      if (w && d) this.itemOwner[kind] = ownerOf(d.id);
       const ammo = (d as { weapon?: { ammo?: readonly string[] } } | null)?.weapon?.ammo;
       if (!w || !ammo) return;
       for (const id of ammo) {
         const a = reg.index.get(id);
-        if (a !== undefined && this.ammoHold[a] === -1) this.ammoHold[a] = w.hold;
+        if (a === undefined || this.ammoHold[a] !== -1) continue;
+        this.ammoHold[a] = w.hold;
+        this.ammoWeapon[a] = kind;
       }
     });
+  }
+
+  /** The weapon that fires each kind of ammunition (the first that does), by content index; 0 for none. */
+  private readonly ammoWeapon: Int32Array;
+  /** By content index, the owner number a held item's sounds are found under; -1 for none. */
+  private readonly itemOwner: Int32Array;
+
+  /** Whose sounds a body's action is: the item in its hand, else the body's own (bare hands). */
+  private ownerOf(item: number, body: number): number {
+    return item > 0 && this.itemOwner[item]! >= 0 ? this.itemOwner[item]! : body;
+  }
+
+  /** A gunshot: the gun's report, then its pump if it has one and a spent case for the player's own. */
+  private shot(h: number, item: number, survivor: number, x: number, y: number, z: number, flat: boolean, own: boolean, hear: Hear): void {
+    const o = this.ownerOf(item, survivor);
+    const gun = h === HOLD_RIFLE || h === HOLD_PISTOL;
+    hear(o, gun ? FIRE[h]! : RELEASE[h]!, -1, x, y, z, 0, 1, flat);
+    if (!gun) return;
+    hear(o, K.pump, -1, x, y, z, 0, 0.8, flat, 0.35);
+    if (own) hear(o, K.shell, -1, x, y - 1.4, z, 0, 0.5, flat, 0.5);
   }
 
   /** Copies what the session queued this frame, before others take it. */
@@ -121,13 +153,10 @@ export class ActionSounds {
     const sex = own.female ? 1 : 0;
     const holdOf = (item: number): number => (this.reg.weapon[item] ?? FISTS).hold;
     // ---- The player's own actions, as predicted.
-    if (own.alive && (own.act !== this.act || own.actTicks < this.actTicks)) this.action(own.act, holdOf(own.held), survivor, -1, own.x, own.y, own.z, true, hear);
+    if (own.alive && (own.act !== this.act || own.actTicks < this.actTicks)) this.action(own.act, holdOf(own.held), this.ownerOf(own.held, survivor), -1, own.x, own.y, own.z, true, hear);
     this.act = own.act;
     this.actTicks = own.actTicks;
-    for (const f of this.fired) {
-      const h = this.ammoHold[f.ammo]! >= 0 ? this.ammoHold[f.ammo]! : holdOf(own.held);
-      hear(survivor, h === HOLD_RIFLE || h === HOLD_PISTOL ? FIRE[h]! : RELEASE[h]!, -1, f.x, f.y, f.z, 0, 1, true);
-    }
+    for (const f of this.fired) this.shot(this.ammoHold[f.ammo]! >= 0 ? this.ammoHold[f.ammo]! : holdOf(own.held), own.held, survivor, f.x, f.y, f.z, true, true, hear);
     this.fired.length = 0;
     // ---- Other survivors' actions, from their pose words. Their shots come as events.
     const seen = new Set<number>();
@@ -140,7 +169,8 @@ export class ActionSounds {
       const act = this.st.action & 7;
       const now = act | (this.st.actionStart << 3);
       const was = this.acts.get(id);
-      if (was !== undefined && now !== was && act !== 0) this.action(act, (this.st.action >> 3) & 7, survivor, id, remote.x[i]!, remote.y[i]!, remote.z[i]!, false, hear);
+      const held = remote.gear[i * GEAR_COUNT + GEAR_HELD]!;
+      if (was !== undefined && now !== was && act !== 0) this.action(act, (this.st.action >> 3) & 7, this.ownerOf(held, survivor), id, remote.x[i]!, remote.y[i]!, remote.z[i]!, false, hear);
       this.acts.set(id, now);
     }
     for (const id of this.acts.keys()) if (!seen.has(id)) this.acts.delete(id);
@@ -161,7 +191,8 @@ export class ActionSounds {
         const d = Math.hypot(e.x - ex, e.y - ey, e.z - ez);
         const h = this.ammoHold[e.item]! >= 0 ? this.ammoHold[e.item]! : HOLD_RIFLE;
         const gun = h === HOLD_RIFLE || h === HOLD_PISTOL;
-        hear(survivor, gun && d > SHOT_FAR ? K.far : gun ? FIRE[h]! : RELEASE[h]!, -1, e.x, e.y, e.z, 0, 1, false);
+        if (gun && d > SHOT_FAR) hear(survivor, K.far, -1, e.x, e.y, e.z, 0, 1, false);
+        else this.shot(h, this.ammoWeapon[e.item]!, survivor, e.x, e.y, e.z, false, false, hear);
         if (!e.flies) this.line(e, ex, ey, ez, survivor, hear);
       } else if (e.kind === EVENT_BLAST) {
         const d = Math.hypot(e.x - ex, e.y - ey, e.z - ez);

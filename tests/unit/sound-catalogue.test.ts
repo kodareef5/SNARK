@@ -39,6 +39,8 @@ test("the catalogue is sound: no name twice, every variable known, every fallbac
   // The owner's own sound first, then the fallbacks with their variables filled and their rates.
   expect(candidates("core:rex", KEYS[cueKey("step/sand")]!).map((c) => c.id)).toEqual(["core:rex/sound/step/sand", "core:rex/sound/step", "core:rex/sound/step/grass", "core:surface/sound/step/sand"]);
   expect(candidates("core:rex", KEYS[cueKey("death")]!).at(-1)).toEqual({ id: "core:rex/sound/hurt", rate: 0.88 });
+  // A weapon's sound is its own, else its shared family's under its name, before that of how it is held.
+  expect(candidates("core:shotgun", KEYS[cueKey("fire/rifle")]!).map((c) => c.id)).toEqual(["core:shotgun/sound/fire/rifle", "core:shotgun/sound/fire", "core:weapon/sound/fire/shotgun", "core:weapon/sound/fire/rifle"]);
 });
 
 test("every occasion the client fires by a literal name is in the catalogue, and so is every screen the interface names", () => {
@@ -312,7 +314,7 @@ function ownState(): OwnState {
 }
 
 test("a kill is heard once: the blow that killed and the kill the server credits are one occasion", () => {
-  const a = new ActionSounds(reg);
+  const a = new ActionSounds(reg, () => -1);
   const heard: string[] = [];
   const hear: Hear = (_o, key) => heard.push(KEYS[key]!.key);
   const own = ownState();
@@ -326,7 +328,7 @@ test("a kill is heard once: the blow that killed and the kill the server credits
 });
 
 test("with the button held, every swing of a combo is heard, the player's own and another survivor's", () => {
-  const a = new ActionSounds(reg);
+  const a = new ActionSounds(reg, () => -1);
   const heard: string[] = [];
   const hear: Hear = (_o, key, entity) => heard.push(`${KEYS[key]!.key} ${entity}`);
   const own = ownState();

@@ -21,8 +21,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7260",
+          "models": [
+            "moss"
+          ],
+          "seed": 7260,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Fast punches cut the air: short sharp whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "swing/tool": {
       "kind": "impact",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7270",
+          "models": [
+            "moss"
+          ],
+          "seed": 7270,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small hatchet is swung hard through the air: short swishing whooshes, five separate swings with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "swing/spear": {
       "kind": "impact",
@@ -141,8 +165,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7280",
+          "models": [
+            "moss"
+          ],
+          "seed": 7280,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An arrow is shot from a bow: a sharp string twang and a whoosh, five separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "fire/crossbow": {
       "kind": "impact",
@@ -201,8 +237,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "An old long rifle is fired outdoors: a loud sharp gunshot with a rolling echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7240",
+          "models": [
+            "moss"
+          ],
+          "seed": 7240,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An old long rifle is fired outdoors: a loud sharp gunshot with a rolling echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "fire/pistol": {
       "kind": "impact",
@@ -221,8 +269,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7250",
+          "models": [
+            "moss"
+          ],
+          "seed": 7250,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An old revolver is fired outdoors: a loud sharp crack with a short echo, four separate shots with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "fire/far": {
       "kind": "impact",
@@ -381,8 +441,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-7290",
+          "models": [
+            "moss"
+          ],
+          "seed": 7290,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Bullets whiz close past the head: sharp supersonic cracks and zips, five separate passes with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "ricochet": {
       "kind": "impact",
@@ -647,6 +719,188 @@
         }
       ],
       "space": "ear"
+    },
+    "fire/shotgun": {
+      "kind": "impact",
+      "range": 240,
+      "level": -8,
+      "vary": 0.5,
+      "want": "a pump shotgun blast",
+      "prompts": [
+        {
+          "id": "v2-7300",
+          "models": [
+            "moss"
+          ],
+          "seed": 7300,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A pump-action shotgun is fired outdoors: a huge booming blast with a short echo, three separate shots with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "reload/shotgun": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "shells pushed into a shotgun and a pump",
+      "prompts": [
+        {
+          "id": "v2-7310",
+          "models": [
+            "moss"
+          ],
+          "seed": 7310,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Shotgun shells are pushed into a tube magazine one by one, then the pump is racked, three separate reloads with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pump": {
+      "kind": "impact",
+      "range": 25,
+      "level": -20,
+      "vary": 0.5,
+      "want": "a shotgun pump racked",
+      "prompts": [
+        {
+          "id": "v2-7320",
+          "models": [
+            "moss"
+          ],
+          "seed": 7320,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A pump shotgun is racked hard: a sharp metallic chk-chk, five separate pumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "fire/flare": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.5,
+      "want": "a flare gun fired",
+      "prompts": [
+        {
+          "id": "v2-7330",
+          "models": [
+            "moss"
+          ],
+          "seed": 7330,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A flare gun is fired into the sky: a hollow pop and a rushing fizzing whoosh rising away, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "flare/burn": {
+      "kind": "impact",
+      "range": 30,
+      "level": -24,
+      "vary": 0.5,
+      "want": "a flare burning",
+      "prompts": [
+        {
+          "id": "v2-7340",
+          "models": [
+            "moss"
+          ],
+          "seed": 7340,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A road flare burns: a steady fierce sputtering hiss and crackle. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "throw/bola": {
+      "kind": "impact",
+      "range": 20,
+      "level": -22,
+      "vary": 0.5,
+      "want": "a bola whirled and thrown",
+      "prompts": [
+        {
+          "id": "v2-7350",
+          "models": [
+            "moss"
+          ],
+          "seed": 7350,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A bola with weighted ropes is whirled overhead and thrown: whooshing spins and a release, four separate throws with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "bola/wrap": {
+      "kind": "impact",
+      "range": 20,
+      "level": -20,
+      "vary": 0.5,
+      "want": "a bola wrapping round legs",
+      "prompts": [
+        {
+          "id": "v2-7360",
+          "models": [
+            "moss"
+          ],
+          "seed": 7360,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Weighted ropes wrap tightly around a post: snapping cords and knocking weights, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "gas/hiss": {
+      "kind": "impact",
+      "range": 25,
+      "level": -24,
+      "vary": 0.5,
+      "want": "a smoke or poison grenade venting",
+      "prompts": [
+        {
+          "id": "v2-7370",
+          "models": [
+            "moss"
+          ],
+          "seed": 7370,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A smoke canister vents: a strong steady hissing rush of gas. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "shell/eject": {
+      "kind": "impact",
+      "range": 10,
+      "level": -28,
+      "vary": 0.5,
+      "want": "a spent shell falling",
+      "prompts": [
+        {
+          "id": "v2-7380",
+          "models": [
+            "moss"
+          ],
+          "seed": 7380,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Spent brass shells fall and bounce on a stone floor: small bright tinkles, six separate shells with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
     }
   }
 }

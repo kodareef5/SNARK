@@ -21,8 +21,20 @@
           "takes_moss-pt": 2,
           "seconds": 8,
           "text": "A huge horned herbivore dinosaur gives low grunting snorts and rumbling huffs, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6500",
+          "models": [
+            "moss"
+          ],
+          "seed": 6500,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A huge horned herbivore dinosaur gives low grunting snorts and rumbling huffs, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "startled": {
       "kind": "voice",
@@ -41,8 +53,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A huge horned herbivore dinosaur bellows an angry loud snorting roar, three separate roars with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6510",
+          "models": [
+            "moss"
+          ],
+          "seed": 6510,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A huge horned herbivore dinosaur bellows an angry loud snorting roar, three separate roars with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "hurt": {
       "kind": "voice",
@@ -61,8 +85,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A huge horned herbivore grunts and bellows in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6530",
+          "models": [
+            "moss"
+          ],
+          "seed": 6530,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge horned herbivore grunts and bellows in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 6
     },
     "death": {
       "kind": "voice",
@@ -101,8 +137,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A huge horned animal charges and rams: a heavy snort and a crashing horn impact, four separate charges with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6520",
+          "models": [
+            "moss"
+          ],
+          "seed": 6520,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A huge horned animal charges and rams: a heavy snort and a crashing horn impact, four separate charges with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
     },
     "step": {
       "kind": "step",
@@ -121,8 +169,62 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "Heavy footsteps of a large four-legged animal walking on earth: deep heavy thuds, well spaced. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v2-6540",
+          "models": [
+            "moss"
+          ],
+          "seed": 6540,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Heavy footsteps of a large four-legged animal walking on earth: deep heavy thuds, well spaced, each step distinct. Close-miked, dry, no music, no voices, quiet background."
         }
-      ]
+      ],
+      "keep": 8
+    },
+    "chase": {
+      "kind": "voice",
+      "range": 90,
+      "level": -18,
+      "vary": 0.6,
+      "want": "barks, calls and hisses while chasing",
+      "prompts": [
+        {
+          "id": "v2-6550",
+          "models": [
+            "moss"
+          ],
+          "seed": 6550,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A huge horned dinosaur charges: heavy snorting huffs and an angry bellow while running, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 8
+    },
+    "growl": {
+      "kind": "voice",
+      "range": 54,
+      "level": -20,
+      "vary": 0.5,
+      "want": "a warning growl, aggressive and near",
+      "prompts": [
+        {
+          "id": "v2-6560",
+          "models": [
+            "moss"
+          ],
+          "seed": 6560,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A huge horned dinosaur snorts and grumbles a warning, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "keep": 4
     }
   }
 }

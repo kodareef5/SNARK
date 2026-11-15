@@ -4,7 +4,9 @@
 // build names it, so a new sound for an occasion that exists is only takes and a line in its owner's cue sheet.
 //
 // Names may hold variables in braces, filled from VARIANTS. A fallback is `<owner>/<name>`, where `{owner}` is the asking
-// owner, and may end in `@<rate>` to play the stand-in at that playback rate (a death cried with its pain is lower).
+// owner and `{name}` its id without the pack (`shotgun` for `core:shotgun`), so a shared family may hold one owner's
+// sound under its name; a fallback may end in `@<rate>` to play the stand-in at that rate (a death cried with its pain
+// is lower).
 
 import { HOLD_NAMES } from "../sim/weapon.ts";
 
@@ -21,10 +23,12 @@ export const VARIANTS: Readonly<Record<string, readonly string[]>> = {
   time: ["day", "night"],
   order: ["follow", "stay", "attack", "all"],
   screen: ["inventory", "map", "character", "options", "station", "structure", "tame", "chat"],
+  road: ["asphalt", "gravel", "dirt", "grass", "mud", "sand"],
+  revs: ["idle", "low", "mid", "high"],
 };
 
 /** Which voices a cue takes and how it weighs when they are short: see client/core/sound/mixer.ts. */
-export type CueKind = "vocal" | "step" | "hit" | "weapon" | "build" | "item" | "ui" | "bed" | "music";
+export type CueKind = "vocal" | "step" | "hit" | "weapon" | "build" | "item" | "ui" | "bed" | "music" | "vehicle";
 /** Placed where it happened, following the body that made it, or at the ear and not placed at all. */
 export type CueSpace = "world" | "body" | "ear";
 /**
@@ -80,6 +84,8 @@ cue("torpor_in", CREATURE, "vocal", "body", "built", "CUE_TORPOR as it goes out"
 cue("torpor_out", CREATURE, "vocal", "body", "built", "CUE_TORPOR as it comes round");
 cue("snore", CREATURE, "vocal", "body", "waits:polish", "lying knocked out", { loop: true });
 cue("eat", CREATURE, "item", "body", "built", "LAYER_EAT in the cue word");
+cue("chase", CREATURE, "vocal", "body", "fire", "running (the pose's speed near its run): a call now and then, each body on its own time, so a pack talks as it hunts");
+cue("growl", CREATURE, "vocal", "body", "fire", "a hunter (temper 2) walking within 15 m of the ear, now and then");
 cue("roar", CREATURE, "vocal", "body", "waits:riding", "a rider's roar key", { falls: ["{owner}/startled"] });
 cue("flap", CREATURE, "step", "body", "waits:flyers", "a flyer's wingbeat, by its gait");
 cue("graze", CREATURE, "item", "body", "waits:behaviour", "grazing; there is no cue for it yet");
@@ -110,18 +116,18 @@ cue("hurt/other", SURVIVOR, "vocal", "body", "gap", "another survivor is hurt: n
 cue("knocked_out/other", SURVIVOR, "vocal", "body", "gap", "another survivor is knocked out: only the forced prone stance shows");
 
 // ---- Weapons and tools, by how they are held. Shared family: core:weapon.
-cue("swing/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "act=SWING begins (own: predicted; others: the pose word)", { falls: ["{owner}/swing", "core:weapon/swing/{hold}", "core:weapon/swing/hands"] });
+cue("swing/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "act=SWING begins (own: predicted; others: the pose word)", { falls: ["{owner}/swing", "core:weapon/swing/{name}", "core:weapon/swing/{hold}", "core:weapon/swing/hands"] });
 cue("draw/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "act=DRAW begins", { falls: ["{owner}/draw", "core:weapon/draw/bow"] });
 cue("release/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "a bow's arrow leaves: act goes to COOL after HOLD", { falls: ["{owner}/release", "core:weapon/release/bow"] });
-cue("fire/{hold}", ["item", ...BODIES], "weapon", "world", "fire", "own: session.fired; others: EVENT_SHOT within 260 m", { falls: ["{owner}/fire", "core:weapon/fire/{hold}"] });
+cue("fire/{hold}", ["item", ...BODIES], "weapon", "world", "fire", "own: session.fired; others: EVENT_SHOT within 260 m", { falls: ["{owner}/fire", "core:weapon/fire/{name}", "core:weapon/fire/{hold}"] });
 cue("fire/far", "item", "weapon", "world", "fire", "EVENT_SHOT from beyond 150 m", { falls: ["core:weapon/fire/far"] });
 cue("fire/crossbow", "item", "weapon", "world", "fire", "a crossbow's shot", { falls: ["{owner}/fire", "core:weapon/fire/crossbow"] });
 cue("fire/sling", "item", "weapon", "world", "fire", "a slingshot's shot", { falls: ["{owner}/fire", "core:weapon/fire/sling"] });
 cue("fire/silenced", "item", "weapon", "world", "waits:W0", "EVENT_SHOT's silenced bit (protocol 13)");
-cue("reload/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "act=RELOAD begins", { falls: ["{owner}/reload", "core:weapon/reload/{hold}", "core:weapon/reload/rifle"] });
+cue("reload/{hold}", ["item", ...BODIES], "weapon", "body", "fire", "act=RELOAD begins", { falls: ["{owner}/reload", "core:weapon/reload/{name}", "core:weapon/reload/{hold}", "core:weapon/reload/rifle"] });
 cue("dry", "item", "weapon", "ear", "fire", "the trigger with no rounds loaded", { falls: ["core:weapon/dry"] });
 cue("equip", ["item", ...BODIES], "item", "body", "fire", "act=EQUIP begins", { falls: ["{owner}/equip", "core:weapon/equip"] });
-cue("throw", ["item", ...BODIES], "weapon", "body", "fire", "a throw (hold THROW) begins", { falls: ["{owner}/throw", "core:weapon/throw"] });
+cue("throw", ["item", ...BODIES], "weapon", "body", "fire", "a throw (hold THROW) begins", { falls: ["{owner}/throw", "core:weapon/throw/{name}", "core:weapon/throw"] });
 cue("fly/arrow", "prop", "weapon", "world", "hook", "a flying shot passes the ear (shots.ts flies it)", { falls: ["core:weapon/fly/arrow"] });
 cue("whiz", "prop", "weapon", "world", "fire", "a hitscan shot's line passes within 4 m of the ear", { falls: ["core:weapon/whiz/bullet"] });
 cue("ricochet", "prop", "weapon", "world", "fire", "a hitscan shot ends on the world", { falls: ["core:weapon/ricochet"] });
@@ -138,9 +144,11 @@ cue("kill", "ui", "ui", "ear", "fire", "EVENT_HIT with the killed bit, or EVENT_
 cue("break", "item", "item", "ear", "fire", "a held item's durability reaches 0", { falls: ["core:structure/demolish@1.3"] });
 cue("auto", "item", "weapon", "world", "waits:W2", "automatic fire");
 cue("pellets", "item", "weapon", "world", "waits:W3", "a shotgun's burst");
-cue("bola", "item", "weapon", "world", "waits:W4", "a bola thrown and wrapping");
-cue("smoke", "prop", "weapon", "world", "waits:W5", "a smoke or poison cloud", { loop: true });
-cue("flare", "prop", "weapon", "world", "waits:W6", "a flare burning", { loop: true });
+cue("pump", ["item", ...BODIES], "weapon", "body", "fire", "a pump gun fired: its pump follows the shot", { falls: ["{owner}/pump", "core:weapon/pump/{name}"] });
+cue("shell", ["item", ...BODIES], "item", "body", "fire", "a spent case falls after the player's own gunshot", { falls: ["{owner}/shell", "core:weapon/shell/eject"] });
+cue("bola", "item", "weapon", "world", "hook", "a bola wraps a body (the root buff appears)", { falls: ["core:weapon/bola/wrap"] });
+cue("smoke", "prop", "weapon", "world", "hook", "a smoke or poison cloud near the ear", { loop: true, falls: ["core:weapon/gas/hiss"] });
+cue("flare", "prop", "weapon", "world", "hook", "a flare burning near the ear", { loop: true, falls: ["core:weapon/flare/burn"] });
 cue("attach", "item", "item", "ear", "waits:W7", "an attachment fitted or toggled");
 
 // ---- Building. Shared family core:structure, by tier (the material without its `mat_`).
@@ -198,6 +206,17 @@ cue("waterfall", "world", "bed", "world", "waits:maps", "a waterfall near the ea
 cue("cave", "world", "bed", "ear", "waits:caves", "inside a cave", { loop: true });
 cue("crate/land", "prop", "build", "world", "waits:loot", "a supply crate lands");
 
+// ---- Vehicles (species/vehicle; feat/vehicle-foundation). Shared family core:vehicle; a car's own engine in its folder.
+const VEHICLE = "species/vehicle";
+const WAITS_VEHICLES = "waits:vehicles";
+cue("engine/{revs}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a running engine: four layers looped, faded across by rpm and each played faster or slower to meet it", { loop: true, falls: ["{owner}/engine/{revs}", "core:vehicle/engine/{revs}"] });
+for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the engine: ${n} (the telemetry's engine state)`, { falls: [`{owner}/engine/${n}`, `core:vehicle/engine/${n}`] });
+cue("shift", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the gear changes", { falls: ["{owner}/shift", "core:vehicle/shift"] });
+cue("tire/roll/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "wheels on the ground at speed, by the surface under them (urban:asphalt, gravel, mud)", { loop: true, falls: ["core:vehicle/tire/roll/{road}", "core:vehicle/tire/roll/dirt"] });
+cue("tire/skid/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the wheels slip (the telemetry's slip)", { loop: true, falls: ["core:vehicle/tire/skid/{road}", "core:vehicle/tire/skid/asphalt"] });
+for (const n of ["brake", "handbrake", "horn", "door/open", "door/close", "crash/light", "crash/heavy", "glass/break", "suspension", "splash"]) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the vehicle: ${n.replace("/", " ")}`, { falls: [`{owner}/${n}`, `core:vehicle/${n}`] });
+cue("vehicle/wind", VEHICLE, "bed", "ear", WAITS_VEHICLES, "wind past the cabin at speed, for the driver and passengers", { loop: true, falls: ["core:vehicle/wind"] });
+
 // ---- Music, never placed.
 cue("music/explore/{biome}/{time}", "music", "music", "ear", "waits:music", "quiet stretches, rarely");
 cue("music/combat/{time}", "music", "music", "ear", "waits:music", "hostile creatures aware of the player, or recent harm");
@@ -237,7 +256,8 @@ export function cueKey(key: string): number {
 
 /** The sound ids a key looks for when asked of `owner`, in order, with the playback rate of each. */
 export function candidates(owner: string, k: CueKey): { id: string; rate: number }[] {
-  const fill = (s: string): string => s.replace(/\{(\w+)\}/g, (_, v: string) => (v === "owner" ? owner : (k.vars[v] ?? `{${v}}`)));
+  const name = owner.slice(owner.indexOf(":") + 1);
+  const fill = (s: string): string => s.replace(/\{(\w+)\}/g, (_, v: string) => (v === "owner" ? owner : v === "name" ? name : (k.vars[v] ?? `{${v}}`)));
   const out = [{ id: `${owner}/sound/${k.key}`, rate: 1 }];
   for (const f of k.cue.falls) {
     const [path, rate] = f.split("@") as [string, string | undefined];
@@ -262,7 +282,7 @@ export function cueFaults(): string[] {
     }
     for (const f of c.falls) {
       if (!/^(\{owner\}|[a-z0-9_]+:[a-z0-9_]+)\/[a-z0-9_/{}]+(@[0-9.]+)?$/.test(f)) out.push(`${c.name}: fallback ${f} is not <owner>/<name>[@rate]`);
-      for (const m of f.matchAll(/\{(\w+)\}/g)) if (m[1] !== "owner" && !c.name.includes(`{${m[1]}}`)) out.push(`${c.name}: fallback ${f} uses {${m[1]}}, which the name does not fill`);
+      for (const m of f.matchAll(/\{(\w+)\}/g)) if (m[1] !== "owner" && m[1] !== "name" && !c.name.includes(`{${m[1]}}`)) out.push(`${c.name}: fallback ${f} uses {${m[1]}}, which the name does not fill`);
     }
   }
   if (new Set(KEYS.map((k) => k.key)).size !== KEYS.length) out.push("two cues expand to the same key");
