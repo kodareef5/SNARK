@@ -87,8 +87,8 @@
       {"name": "Runyon Canyon", "at": [-118.3497, 34.1065], "face": [-118.3500, 34.1120]},
       {"name": "Barnsdall Art Park", "face": [-118.2942, 34.1007]},
       {"name": "Pan Pacific Park", "face": [-118.3400, 34.1100]},
-      {"name": "Paramount Studios", "at": [-118.3208, 34.08365], "face": [-118.31765, 34.0844], "why": "OpenStreetMap's Paramount Pictures Studio Tour, named in 24 bytes: a spawn point's name is sent in at most that"},
-      {"name": "Universal CityWalk", "at": [-118.3542, 34.1363], "face": [-118.3300, 34.1300], "why": "OpenStreetMap's Universal CityWalk Hollywood, named in 24 bytes"},
+      {"name": "Paramount Pictures Studio Tour", "face": [-118.31765, 34.0844]},
+      {"name": "Universal CityWalk Hollywood", "face": [-118.3300, 34.1300]},
       {"name": "Dante's View", "face": [-118.3300, 34.1000]}
     ]
   },
