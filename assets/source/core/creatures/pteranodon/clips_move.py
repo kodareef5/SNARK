@@ -587,8 +587,8 @@ BEATS = {
                 curl=0.55, upcurl=0.8, elbow=16.0, elbow_at=0.86, lead=0.0, back=1.0, bob=0.055, nod=3.0),
     "fly_fast": dict(top=18.0, bottom=-32.0, down=0.55, sweep=3.0, swept=-14.0, flex=0.08, flexed=0.12, twist=6.0,
                      lag=0.1, curl=0.45, upcurl=0.5, elbow=4.0, elbow_at=0.88, lead=0.0, back=1.0, bob=0.035, nod=2.0),
-    "hover": dict(top=38.0, bottom=-42.0, down=0.55, sweep=11.0, swept=0.0, flex=0.32, flexed=0.0, twist=14.0,
-                  lag=0.09, curl=0.5, upcurl=0.6, elbow=20.0, elbow_at=0.9, lead=0.08, back=1.8, bob=0.06, nod=4.0),
+    "hover": dict(top=38.0, bottom=-42.0, down=0.55, sweep=11.0, swept=0.0, flex=0.24, flexed=0.0, twist=10.0,
+                  lag=0.09, curl=0.5, upcurl=0.6, elbow=20.0, elbow_at=0.9, lead=0.08, back=1.4, bob=0.06, nod=4.0),
 }
 
 
@@ -672,14 +672,23 @@ def glide(r):
     return make(r, name, N, at)
 
 
+def drive(u):
+    """The shoulders' effort through a stroke at phase u, -1 to 1: they load as the downstroke begins, heave the chest
+    up through it, and let go on the way up."""
+    return Keys([(0.0, -0.5), (0.22, 1.0), (0.55, 0.1), (0.8, -0.4)], period=1.0)(u % 1.0)
+
+
 def flapping(t, n, b):
     """Pose at frame t of a flapping loop of n frames with beat b: the head held still while the body rides the
     stroke, the legs trailing and swinging a little behind the body's bob."""
     u = (t / n) % 1.0
     w, extra, dy, nod = beat(u, b)
+    d = drive(u)
     p = air()
     p["body"] = REST_BODY + Vector((0.0, dy, 0.0))
     p["body_rot"] = (nod, 0.0, 0.0)
+    p["spine"] = (1.5 * d, 0.0, 0.0)
+    p["chest"] = (3.0 * d, 0.0, 0.0)
     for s in "lr":
         p["wing_" + s] = dict(w)
         p["wing_extra_" + s] = dict(extra)
@@ -711,9 +720,10 @@ def fly_fast(r):
         p = flapping(t, N, BEATS[name])
         a, y, r3 = p["body_rot"]
         p["body_rot"] = (a - 5.0, y, r3)
-        p["head"] = within_neck(p, REST_HEAD + Vector((0.0, -0.10, 0.16)))
-        p["neck"] = [(6.0, 0.0, 0.0), (4.0, 0.0, 0.0), (-2.0, 0.0, 0.0), (-4.0, 0.0, 0.0)]
-        p["head_rot"] = (-7.0, 0.0, 0.0)
+        # The neck reaches out along the body, flat, the head carried ahead of the chest rather than above it.
+        p["head"] = on_neck(p, 64.0, 0.94)
+        p["neck"] = [(-10.0, 0.0, 0.0), (-6.0, 0.0, 0.0), (4.0, 0.0, 0.0), (6.0, 0.0, 0.0)]
+        p["head_rot"] = (-6.0, 0.0, 0.0)
         for s in "lr":
             p["foot_" + s] = trailing(p, s, reach=0.975, droop=-6.0, splay=-2.0)
         return p
@@ -729,12 +739,14 @@ def hover_at(u, lift=0.0):
     """The hover at phase u, `lift` metres higher: the body upright, deep slow strokes swept forward and back, legs
     hanging."""
     b = BEATS["hover"]
-    w, extra, dy, nod = beat(u, b)
+    w, extra, _, nod = beat(u, b)
+    dy = beat(u - 0.05, b)[2]  # the body answers the push a beat after the shoulders
+    d = drive(u)
     p = air()
     p["body"] = HOVER_BODY + Vector((0.0, dy + lift, 0.0))
     p["body_rot"] = (HOVER_PITCH + nod, 0.0, 0.0)
-    p["spine"] = (-4.0, 0.0, 0.0)
-    p["chest"] = (-8.0, 0.0, 0.0)
+    p["spine"] = (-4.0 + 2.0 * d, 0.0, 0.0)
+    p["chest"] = (-8.0 + 4.0 * d, 0.0, 0.0)
     for s in "lr":
         p["wing_" + s] = dict(w)
         p["wing_extra_" + s] = dict(extra)
@@ -782,9 +794,10 @@ def dive(r):
             p["foot_" + s] = trailing(p, s, reach=0.975, droop=-8.0, splay=-3.0)
             p["knee_" + s] = body_point(p, REST_KNEE[s])
             p["foot_rot_" + s] = (-10.0, 0.0, 0.0)
-        p["head"] = within_neck(p, REST_HEAD + Vector((0.0, -0.10, 0.06)))
-        p["head_rot"] = (-14.0, 0.0, -0.5 * roll)
-        p["neck"] = [(-6.0, 0.0, 0.0)] * 4
+        # The neck streams out along the line of the dive with the wings, the head low and the beak leading.
+        p["head"] = on_neck(p, 70.0, 0.94)
+        p["head_rot"] = (-20.0, 0.0, -0.5 * roll)
+        p["neck"] = [(-10.0, 0.0, 0.0), (-6.0, 0.0, 0.0), (4.0, 0.0, 0.0), (6.0, 0.0, 0.0)]
         p["tail"] = (8.0, 0.0)
         return p
 
@@ -803,8 +816,9 @@ def take_off(r):
     N = rig.CLIPS[name]["frames"]
     g = rise
     # The pelvis over the ground it leaves; in the clip, that less the engine's lift.
-    world_y = Keys([(0, STANCE_BODY.y), (2, STANCE_BODY.y - 0.04), (4, 0.45), (6, 0.66), (8, 0.99), (11, 1.52),
-                    (14, 1.98), (17, 2.32), (21, 2.62), (25, 2.76), (29, 2.64), (33, 2.42),
+    # The push gives it its speed; it slows as the wings open, and the first stroke lifts it again.
+    world_y = Keys([(0, STANCE_BODY.y), (2, STANCE_BODY.y - 0.04), (4, 0.46), (6, 0.72), (8, 1.00), (11, 1.31),
+                    (14, 1.52), (16, 1.62), (20, 1.96), (24, 2.36), (27, 2.56), (30, 2.56), (33, 2.42),
                     (N - 1, HOVER_BODY.y + rig.TAKE_OFF["rise"])])
     body_z = Keys([(0, STANCE_BODY.z), (2, STANCE_BODY.z - 0.03), (4, STANCE_BODY.z + 0.04), (8, -0.30), (14, -0.40),
                    (N - 1, HOVER_BODY.z)])
@@ -902,13 +916,13 @@ def land(r):
     hold, down = 16.0, 21.0
     body_y = Keys([(0, 0.53), (3, 0.40), (6, 0.335), (9, 0.36), (12, 0.40), (hold, 0.42), (down, STANCE_BODY.y),
                    (N - 1, STANCE_BODY.y)])
-    body_z = Keys([(0, -0.78), (3, -0.62), (6, -0.49), (9, -0.45), (down, STANCE_BODY.z + 0.02), (25, STANCE_BODY.z - 0.005),
+    body_z = Keys([(0, -0.80), (3, -0.60), (6, -0.45), (9, -0.42), (down, STANCE_BODY.z + 0.02), (25, STANCE_BODY.z - 0.005),
                    (30, STANCE_BODY.z), (N - 1, STANCE_BODY.z)])
     pitch = Keys([(0, 30.0), (3, 36.0), (6, 40.0), (hold, 43.0), (down, S["body"]["pitch"]), (N - 1, S["body"]["pitch"])])
     # The shoulders settle onto the planted arms, which give and then hold.
-    settle = Keys([(0, 0.0), (down - 1.0, 0.0), (down + 2.0, 1.0), (down + 6.0, -0.25), (down + 10.0, 0.05),
+    settle = Keys([(0, 0.0), (down - 1.0, 0.0), (down + 3.0, 1.0), (down + 7.0, -0.2), (down + 11.0, 0.04),
                    (N - 1, 0.0)])
-    head_lag = lagging(lambda t: body_y(t) - 0.035 * settle(t), N - 1, False, 2.2, 0.45)
+    head_lag = lagging(lambda t: body_y(t) - 0.06 * settle(t), N - 1, False, 2.2, 0.45)
     bend = Keys([(0, 0.6), (5, 0.8), (hold, 1.0), (N - 1, 1.0)])
     fold = Keys([(0, 0.0), (3, 0.04), (7, 0.22), (12, 0.55, 0.075), (18, 1.0), (N - 1, 1.0)])
     flap = Keys([(0, 22.0), (2, 8.0), (6, 30.0), (12, 18.0), (18, 0.0)])
@@ -922,13 +936,13 @@ def land(r):
         b = bend(t)
         st = settle(t)
         p = ground()
-        p["body"] = Vector((0.0, body_y(t) - 0.035 * st, body_z(t)))
-        p["body_rot"] = (pitch(t) - 1.5 * st, 0.0, 0.0)
+        p["body"] = Vector((0.0, body_y(t) - 0.06 * st, body_z(t)))
+        p["body_rot"] = (pitch(t) - 2.5 * st, 0.0, 0.0)
         p["spine"] = (S["spine"]["pitch"] * b, 0.0, 0.0)
-        p["chest"] = (S["chest"]["pitch"] * b + 6.0 * (1 - b) - 2.5 * st, 0.0, 0.0)
+        p["chest"] = (S["chest"]["pitch"] * b + 6.0 * (1 - b) - 5.0 * st, 0.0, 0.0)
         n = nod(t)
         lk = look(t)
-        lag = head_lag[min(int(round(t)), N - 1)]
+        lag = head_lag[min(int(round(t)), N - 1)] * (1.0 - smooth((t - 27.0) / 7.0))
         p["head"] = within_neck(p, STANCE_HEAD + Vector((0.0, -0.06 * n + 0.10 * (1 - b) + 0.6 * lag,
                                                          0.03 * n - 0.10 * (1 - b))))
         p["head_rot"] = (-5.0 * max(0.0, n), lk, 0.0)
@@ -1117,8 +1131,9 @@ def idle(r):
         w = sway(t)
         sv = shiver(t) * math.sin(2.0 * math.pi * t / 3.0)
         p = ground()
-        p["body"] = STANCE_BODY + Vector((0.010 * w, 0.004 * shrug(t), 0.0))
-        p["body_rot"] = (S["body"]["pitch"], 0.6 * w + 0.03 * yaw(t), 1.2 * w + 1.2 * sv)
+        # The shrug leans its weight onto the right arm as the left shoulder hunches.
+        p["body"] = STANCE_BODY + Vector((0.010 * w - 0.018 * shrug(t), 0.004 * shrug(t), 0.0))
+        p["body_rot"] = (S["body"]["pitch"], 0.6 * w + 0.03 * yaw(t), 1.2 * w + 1.2 * sv - 2.5 * shrug(t))
         p["spine"] = (S["spine"]["pitch"], 0.0, -0.4 * w)
         # The left shoulder hunches up and settles; the right barely follows.
         p["chest"] = (S["chest"]["pitch"] + 1.5 * shrug(t), 0.04 * yaw(t), -0.6 * w - 1.5 * sv - 3.0 * shrug(t))
