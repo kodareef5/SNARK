@@ -1,56 +1,56 @@
 {
  "top": {
-  "iou": 0.946,
-  "concept_missed": 0.025,
-  "blockout_extra": 0.031,
+  "iou": 0.938,
+  "concept_missed": 0.027,
+  "blockout_extra": 0.037,
   "farthest_cm": [
    36.3,
-   6.3
+   12.0
   ]
  },
  "underside": {
-  "iou": 0.945,
-  "concept_missed": 0.025,
-  "blockout_extra": 0.031,
+  "iou": 0.937,
+  "concept_missed": 0.027,
+  "blockout_extra": 0.037,
   "farthest_cm": [
    35.9,
-   7.0
+   13.8
   ]
  },
  "front": {
-  "iou": 0.56,
-  "concept_missed": 0.431,
-  "blockout_extra": 0.029,
+  "iou": 0.567,
+  "concept_missed": 0.42,
+  "blockout_extra": 0.037,
   "farthest_cm": [
-   17.8,
-   20.5
+   17.5,
+   17.5
   ]
  },
  "side": {
-  "iou": 0.702,
-  "concept_missed": 0.148,
-  "blockout_extra": 0.2,
+  "iou": 0.646,
+  "concept_missed": 0.164,
+  "blockout_extra": 0.26,
   "farthest_cm": [
-   9.3,
-   9.4
+   11.2,
+   11.2
   ]
  },
  "folded_side": {
-  "iou": 0.36,
-  "concept_missed": 0.333,
-  "blockout_extra": 0.561,
+  "iou": 0.305,
+  "concept_missed": 0.459,
+  "blockout_extra": 0.589,
   "farthest_cm": [
-   50.9,
-   38.3
+   46.5,
+   45.2
   ]
  },
  "folded_front": {
-  "iou": 0.428,
-  "concept_missed": 0.09,
-  "blockout_extra": 0.554,
+  "iou": 0.499,
+  "concept_missed": 0.224,
+  "blockout_extra": 0.418,
   "farthest_cm": [
-   36.5,
-   23.7
+   17.4,
+   31.5
   ]
  }
 }
