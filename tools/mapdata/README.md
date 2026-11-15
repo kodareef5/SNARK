@@ -37,7 +37,7 @@ install and give byte-identical layers on 3.12. Run every Python tool with `-I`:
 The settings `city.json` holds, beyond the sources: `tiger.counties` (a frame may span counties), `dem.fill` (older
 lidar projects used only where the newest has no ground), `footprints.split_by_osm` and `split_cover`,
 `succession.perched_above_sea_m` (2 m), `world` (`seaNavd88`, `minY`, `report`, `yard_districts`,
-`container_district`, extra district seeds as `places`, `styles`, and `spawn_places` with what each faces), `ruins`
+`container_district`, extra district seeds as `places`, `styles`, `spawn_places` with what each faces, and `obelisks`), `ruins`
 (`rules_from`, `blocks_per_footprint`) and `future` (spans by road, wrecks by position). The named places'
 compositions are `ruins/compositions.json` with `ruins/places.json`, written by hand.
 

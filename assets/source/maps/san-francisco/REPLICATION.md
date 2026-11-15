@@ -1,15 +1,16 @@
 # Building a third city: what San Francisco needed
 
-San Francisco was chosen to break relief and great bridges. It took one agent about two hours and a half
-(12:41 to about 15:15 local, 2026-11-15), 25 minutes of it downloading 2.6 GB of lidar. Miami's third round of ruins
-landed on main half way through; the city was moved onto it, and its two generator changes, first written as patches,
-were made in place. The ruins were not tuned.
+San Francisco was chosen to break relief and great bridges. It took one agent about three hours and a half
+(12:41 to about 16:15 local, 2026-11-15), 25 minutes of it downloading 2.6 GB of lidar. Miami's third round of ruins,
+then server clusters and true slopes, landed on main while it worked; the city was moved onto each, and its two
+generator changes, first written as patches, were made in place. The ruins were not tuned.
 
 ```sh
 bun tools/mapdata/city.ts san-francisco                 # frame, fetch, prepare, attributes, split, future, fine,
                                                         # bathymetry, labels, ways, world, vocabulary, build
-bun tools/mapworld/build.ts san-francisco               # only the map file, from what is committed: 140 s
+bun tools/mapworld/build.ts san-francisco               # only the map file, from what is committed: 62 to 140 s
 bun tools/mapworld/verify.ts var/maps/san-francisco.snmap
+bun tools/mapworld/obelisk-walk.ts var/maps/san-francisco.snmap
 bun tools/mapdata/steep.ts var/maps/san-francisco.snmap 15 [--no-plants | --ground-only]
 bun run build && bun server/main.ts --dev --map var/maps/san-francisco.snmap --port 8799 --db var/san-francisco.db
 ```
@@ -22,17 +23,17 @@ approaches and 3 of 9,276 room routes. San Francisco's are round three.
 | | Miami | Tampa | San Francisco |
 |---|---|---|---|
 | Map file | 76.9 MB, 15.3 MB gzipped | 91.3 MB, 21.5 MB | 104.1 MB, 28.1 MB |
-| Build | 9.7 s, 3.9 GB peak | 12.7 s, 4.8 GB | 140 s (136 s of it round three's ruins), 6.0 GB peak, 7.0 GB maximum resident; 19 to 34 s on round two |
+| Build | 9.7 s, 3.9 GB peak | 12.7 s, 4.8 GB | 62 to 140 s by the machine's load, most of it round three's ruins; 5.0 to 7.8 GB peak, 7.1 GB maximum resident; 19 to 34 s on round two |
 | Footprints | 11,919 | 31,688 | 44,269: 10,638 from USA Structures, 4,817 of them split into 37,167 OpenStreetMap buildings, and 1,281 buildings it lacks added |
 | Labelled with a kind and a height | 76% | 90% (heights wrong, Tampa's finding 9) | 84% (a kind 88%, a height 94%) |
 | Blocks; buildings built | 1,188,264; 11,845 | 2,091,633; 31,542 | 2,889,065; 43,654 of 44,287 parts (455 over budget, 178 too small for a tile) |
 | Busiest chunk (cap 1,000) | 1,000 | 939 | 1,000 |
 | Mapped ways built | 809 of 809 | 590 of 591 | 1,281 of 1,281, and the Golden Gate's 2 towers and 8 cable spans |
 | Ground | | -16 to 24 m | -110.7 to 173.9 m |
-| Land; walkable at 50° | 30.1 km²; 99.9% | 54.4 km²; 99.9% | 40.4 km²; 99.14% (98.72% at 44.8°: 0.17 km² more lost) |
+| Land; walkable | 30.1 km²; 99.9% at 50° | 54.4 km²; 99.9% at 50° | 40.4 km²; 98.71% at 44.8° (99.14% at 50°) |
 | Resource nodes; spawn regions | 121,892; 333 | 245,853; 282 | 145,083; 281 |
-| Walks | spawns 10/10, bridges 1,303/0, approaches 2,700/0, stairs 1,613/0, escapes 1,172/0 | spawns 10/10, bridges 866/0, approaches 2,392/1, stairs 1,349/0, escapes 967/0 | spawns 10/10, bridges 2,067/3, approaches 22,958/4, stairs 2,630/3, escapes 1,704/1, rooms 16,690/13 |
-| Server | | host 0.8 s, 1.0 GB; listening 1.9 s | host 2.3 s, 1.0 GB; listening in about 3 s at 1.2 GB |
+| Walks | spawns 10/10, bridges 1,303/0, approaches 2,700/0, stairs 1,613/0, escapes 1,172/0 | spawns 10/10, bridges 866/0, approaches 2,392/1, stairs 1,349/0, escapes 967/0 | at 44.8°: spawns 10/10, obelisks 3/3, bridges 2,067/3, approaches 22,957/5, stairs 2,630/3, escapes 1,704/1, rooms 16,690/13 |
+| Server | | host 0.8 s, 1.0 GB; listening 1.9 s | host 1.5 s, 1.2 GB; listening in about 3 s at 1.2 GB |
 
 Figures are `passed/failed`. 27 building cores have no street approach, 9 of them named (Alcatraz's Main Prison, the
 Four Fifty Sutter Building, Pier 2's Herbst Pavilion among them): `reports/ruins3/access-test.json`.
@@ -100,21 +101,25 @@ Four Fifty Sutter Building, Pier 2's Herbst Pavilion among them): `reports/ruins
 13. **The ground falls under the footprints.** Even split, 12,377 footprints stand on ground falling more than 2 m, 3,377
     more than 4 m and 438 more than 8 m (Tampa: 87, 7 and 2); each is levelled at its median, so rows of houses step
     down a hill in terraces with walls at their ends. The street is left as surveyed between them.
-14. **The steepest streets and stairs** (`reports/steep*.json`; the slope limit is 50°, the step 0.5 m):
+14. **The steepest streets and stairs** (`reports/steep*.json`, at ARK's 44.8° since D483, a step of 0.5 m). On the
+    built ground 0.52 km² of the land (1.3%) and 0.47% of the street surface (2.7 ha) stand past 44.8°. A survivor
+    meeting such ground stops at its foot, or stands on it where it already is; nothing slides yet.
     - 56 of 1,413 TIGER street lines cross a cliff (a 4 m stretch over 45°): paper streets drawn up Telegraph Hill's
       quarried face (Alta, Union, Greenwich, Chestnut), lines beside retaining walls (Harrison and Beale on Rincon Hill),
-      the Presidio's bluffs. They are counted apart.
-    - The steepest stretches over 30 m are 25° on Filbert Street, 24.6° on Vallejo Street, 23.8° on Farnsworth Lane and
-      22.4° to 17.8° on eleven more (TIGER puts its lines up the Filbert and Vallejo steps; the city's own steepest
-      blocks are 31.5%, 17.5°). On the bare ground, 6 of these 15 are walked up and down; 9 stop at a 2 m step of 28 to
-      81° where the line meets a stair riser, a retaining wall or a levelled ruin's edge. With the ruins and plants in
-      place, fewer: round three's wrecked cars and buses stand in the lanes, and trees on 5 of them.
+      the Presidio's bluffs. They are counted apart, not walked.
+    - The steepest stretches over 30 m are 25.4° on Filbert Street, 24.6° on Vallejo Street, 23.8° on Farnsworth Lane
+      and 22.7° to 17.8° on twelve more (TIGER puts its lines up the Filbert and Vallejo steps; the city's own steepest
+      blocks are 31.5%, 17.5°). On the bare ground 4 of these 15 are walked up and down (Joice St, Flint St, Marion Pl,
+      Arbol Ln; 6 were at 50°); the other 11 stop where a 2 m cell of the line rises 28 to 81°: stair risers (Filbert,
+      Vallejo, Vulcan, Monument Way, Priest St), retaining walls, a levelled ruin's edge. With the ruins and plants in
+      place 3 are walked: round three's wrecked cars and buses stand in the lanes, and trees on some.
     - Of 758 mapped stairs, the tallest rise 49 m (the Sand Ladder, 14.8°), 38 m (Vulcan, 14.4°), 33 m (Greenwich
       Steps, 23.3°, 35° at its steepest 6 m), 28 m (Vallejo Street, 19.9°) and 22 m (Lyon Street, 29.1°). On the bare
-      ground 8 of the 15 tallest are walked; the others stop at risers of 33 to 83° (Greenwich Steps, Filbert Steps,
-      the Peter Macchiarini Steps, Baker Street, Farnsworth Lane). The lidar sees a flight as a ramp with steps of 2 m
-      cells, so the sloped pieces now in hand would carry these as ramps.
-    - At 44.8°, 0.17 km² more of the land is too steep (98.72% walkable against 99.14%).
+      ground 7 of the 15 tallest are walked (8 at 50°); the others stop at risers of 28 to 83° (Greenwich Steps,
+      Filbert Steps, the Peter Macchiarini Steps, Baker Street, Farnsworth Lane, Vallejo Street, Vulcan). The lidar sees
+      a flight as a ramp broken by steps of a 2 m cell. Every such stair is mapped (`blocks/stairs.json`, with its
+      points, rise and step count), so a generator rule laying the new one-piece flights (under 40°) along mapped
+      stairs, and ramps along the street stretches the lidar steps, would carry all of them; it is not made here.
 15. **The busiest chunks are full.** 455 footprint parts were refused for the chunk budget of 1,000 blocks or the map's
     bounds (Tampa: 75); of those in a district, most are downtown (Chinatown 42, Union Square 35, the Financial District
     24), where small buildings stand among towers.
@@ -156,3 +161,12 @@ Still to do:
    Transamerica Pyramid have parts in OpenStreetMap that the tower recipe does not read.
 3. A taper or setback rule for towers whose `roof:shape` is pyramidal, so the pyramid needs no composition.
 4. The generator's kind for `man_made=lighthouse` (it labels as a utility and would build a ring of tanks).
+5. Flights along `blocks/stairs.json` and ramps where a street's lidar steps (finding 14), now that sloped pieces exist.
+
+## Obelisks and the walkable count
+
+San Francisco's three obelisks (`world.obelisks` in `city.json`, written into `world.json` by `world.py`) stand at Marina
+Green, by the Embarcadero beside the Ferry Building, and in the Panhandle, each walked to from its spawn point in 41 to
+48 s. A first one at Civic Center Plaza was 1.4 km from the nearest spawn point and the walk stuck downtown, so it
+moved. `tools/mapworld/build.ts` counted walkable land at a fixed 50°; it now reads the survivor's own limit from the
+content, the one generator line changed for the slopes.
