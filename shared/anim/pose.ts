@@ -31,10 +31,10 @@ export const DIR_STEPS = 16;
 export const PITCH_STEPS = 31;
 
 /**
- * A creature in its own flight (MODE_FLYER), protocol 14 (planning/reference/flyers-plan.md, FL0), has its motion bits laid
- * out anew, since in flight it neither crouches, strafes, swims nor stands: its speed through the air in FLY_SPEED_STEP
- * units in the speed bits (30 m/s at most), its bank in the direction bits, ANIM_FLYING in the stance bits, and its climb in
- * the two bits a swimmer and a faller use. Any other body packs as it did. FL4 poses it.
+ * A creature in its own flight (MODE_FLYER), with the flyers' contracts (planning/reference/flyers-plan.md, FL0), has
+ * its motion bits laid out anew, since in flight it neither crouches, strafes, swims nor stands: its speed through the air
+ * in FLY_SPEED_STEP units in the speed bits (30 m/s at most), its bank in the direction bits, ANIM_FLYING in the stance
+ * bits, and its climb in the two bits a swimmer and a faller use. Any other body packs as it did. FL4 poses it.
  */
 export const FLY_SPEED_STEP = 2;
 /** The stance bits' value for a body in flight. No stance is 3. */
@@ -68,9 +68,9 @@ export const CUE_LAND = 2;
 /** Going down when knocked out, getting up when not. */
 export const CUE_TORPOR = 3;
 /**
- * Protocol 14 (planning/reference/flyers-plan.md): a flyer taking off, and its barrel roll. 6 and 7 are free. A creature
- * that carries in its feet has HOLD_CARRY as its hold, as a survivor carrying in her arms does, so its grab and its letting
- * go can begin at its action's start and need no cue.
+ * The flyers' contracts (planning/reference/flyers-plan.md): a flyer taking off, and its barrel roll. 6 and 7 are free.
+ * A creature that carries in its feet has HOLD_CARRY as its hold, as a survivor carrying in her arms does, so its grab
+ * and its letting go can begin at its action's start and need no cue.
  */
 export const CUE_TAKEOFF = 4;
 export const CUE_ROLL = 5;

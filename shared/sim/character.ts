@@ -4,7 +4,7 @@
 import { WORLD_MAX_Y, WORLD_MIN_Y, YAW_UNITS } from "../coords.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
 import { sortU32 } from "../sort.ts";
-import { SETTLE_ITERATIONS, SETTLE_MARGIN, SKIN, capsuleBox, capsuleFree, ground, groundUnder, nothingBuilt, push, restsOnStructure, stepOnto, type CollisionWorld } from "../world/collide.ts";
+import { SKIN, capsuleBox, capsuleFree, ground, groundUnder, nothingBuilt, push, restingAt, settleOnto, stepOnto, type CollisionWorld } from "../world/collide.ts";
 import { Found } from "../world/structures.ts";
 
 export const BTN_JUMP = 1;
@@ -37,8 +37,8 @@ export const MODE_GHOST = 3;
 /** Flight as a ghost's, but meeting the ground, pieces and nodes. Set only by the server (admins). */
 export const MODE_FLY = 4;
 /**
- * A creature's own flight, protocol 14 (planning/reference/flyers-plan.md): stepped by its species' numbers (the `fly`
- * fields of MoveParams), not the admin's. Nothing sets it until FL1 builds the step; 6 and 7 are free.
+ * A creature's own flight, with the flyers' contracts (planning/reference/flyers-plan.md): stepped by its species' numbers
+ * (the `fly` fields of MoveParams), not the admin's. Nothing sets it until FL1 builds the step; 6 and 7 are free.
  */
 export const MODE_FLYER = 5;
 /** The most ticks either flight counter of a body holds (Body.regenWait, Body.rollWait): 10 bits on the wire, 34 s. */
@@ -182,9 +182,9 @@ export class Body {
   bloom = 0;
   kick = 0;
   /**
-   * Flight state, protocol 14 (planning/reference/flyers-plan.md), stepped by FL1: the ticks before stamina may come back
-   * (a flyer gets none in the air, and none on the ground for MoveParams.regenWaitTicks after it flew), and the ticks before
-   * it may roll again. Each counts down to 0, which a body that never flew has, and holds at most FLIGHT_TICKS_MAX. Not
+   * Flight state, with the flyers' contracts (planning/reference/flyers-plan.md), stepped by FL1: the ticks before stamina
+   * may come back (a flyer gets none in the air, and none on the ground for MoveParams.regenWaitTicks after it flew), and
+   * the ticks before it may roll again. Each counts down to 0, which a body that never flew has, and holds at most FLIGHT_TICKS_MAX. Not
    * saved: both run out within seconds.
    */
   regenWait = 0;
@@ -389,6 +389,12 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
   const maxSide2 = r * r;
   const maxRise = (p.stepUp > r ? p.stepUp : r) + maxStep;
   const tall = height > 2 * r ? height : 2 * r;
+  const slope = p.slopeCos;
+  /** The last surface this tick a falling body slid along, as a unit normal. */
+  let slid = false;
+  let slideX = 0;
+  let slideY = 0;
+  let slideZ = 0;
 
   let x = b.x;
   let y = b.y;
@@ -452,36 +458,66 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
         for (let k = 0; k < count; k++) {
           if (!capsuleBox(store, found.refs[k]!, nx, ny, nz, r, height, 0)) continue;
           moved = true;
-          if (walking && push.y > 0 && push.depth < r) {
-            // The piece meets the lower sphere `down` below its centre. Higher than a step, it is a wall to a body on foot, which
-            // leaves it sideways, to where the sphere is as wide as it is there, and not up over its edge.
+          // Where it touches, both the way out and the surface must be level enough for it to stand.
+          const stands = push.y > slope * push.depth && push.up > slope;
+          if (walking && push.y > 0 && !(push.face && stands)) {
+            // The piece meets the lower sphere `down` below its centre. Higher than a step, or too steep there to stand on, it is
+            // a wall to a body on foot, which leaves it level and is not pushed up it: off a face as far as clears its plane, off an
+            // edge to where the sphere is as wide as it is there.
             const gap = r - push.depth;
             const down = (push.y * gap) / push.depth;
             const side = Math.sqrt(push.x * push.x + push.z * push.z);
-            if (side > 0 && ny + r - down > top + SKIN) {
-              const out = (Math.sqrt(r * r - down * down) - (side * gap) / push.depth) / side;
+            if (side > 0 && (push.up <= slope || (push.depth < r && ny + r - down > top + SKIN))) {
+              const out = push.face ? (push.depth * push.depth) / (side * side) : (Math.sqrt(r * r - down * down) - (side * gap) / push.depth) / side;
               nx += push.x * out;
               nz += push.z * out;
               blocked = true;
               continue;
             }
           }
-          if (push.hull && push.y > 0.7 * push.depth) {
-            // A sloped part it stands on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
+          if (push.hull && stands) {
+            // A sloped part it can stand on lifts it straight up, as the ground does, so a ramp is climbed at a full stride.
             ny += (push.depth * push.depth) / push.y;
           } else {
             nx += push.x;
             ny += push.y;
             nz += push.z;
           }
-          if (push.y > 0.7 * push.depth) {
+          if (stands) {
             if (vy < 0) {
               if (-vy > fall) fall = -vy;
               vy = 0;
             }
-          } else {
-            blocked = true;
-            if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
+            continue;
+          }
+          blocked = true;
+          if (push.y < -0.7 * push.depth && vy > 0) vy = 0;
+          else if (push.y > 0 && !walking) {
+            // What holds a falling body up too steeply to stand on, it slides along, losing what of its speed went into it, so
+            // it banks no speed there to land with. Pressed into a second such surface, it slides along their crease.
+            const ux = push.x / push.depth;
+            const uy = push.y / push.depth;
+            const uz = push.z / push.depth;
+            const into = vx * ux + vy * uy + vz * uz;
+            if (into < 0) {
+              vx -= ux * into;
+              vy -= uy * into;
+              vz -= uz * into;
+              const cx = slideY * uz - slideZ * uy;
+              const cy = slideZ * ux - slideX * uz;
+              const cz = slideX * uy - slideY * ux;
+              const c2 = cx * cx + cy * cy + cz * cz;
+              if (slid && c2 > 1e-6 && vx * slideX + vy * slideY + vz * slideZ < -1e-9) {
+                const along = (vx * cx + vy * cy + vz * cz) / c2;
+                vx = cx * along;
+                vy = cy * along;
+                vz = cz * along;
+              }
+            }
+            slideX = ux;
+            slideY = uy;
+            slideZ = uz;
+            slid = true;
           }
         }
       }
@@ -505,7 +541,7 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
       if (tz < r) tz = r;
       else if (tz > maxZ) tz = maxZ;
       if (capsuleFree(w, x, top, z, r, height) && capsuleFree(w, tx, top, tz, r, height)) {
-        const on = stepOnto(w, tx, tz, y, top, r, height);
+        const on = stepOnto(w, tx, tz, y, top, r, height, slope);
         if (!Number.isNaN(on)) {
           nx = tx;
           ny = on;
@@ -531,29 +567,34 @@ export function stepBody(w: CollisionWorld, b: Body, moveX: number, moveZ: numbe
     z = nz;
   }
 
-  // Grounded means resting on terrain or a structure, or close enough above support to follow it down (slopes, stairs, kerbs).
+  // Grounded means resting on terrain or on a structure it can stand on, held where it has no way down, or close enough above
+  // support to follow it down (slopes, stairs, kerbs). A sloped part it can stand on is followed as far down as the steepest
+  // such slope falls over the way the body went this tick, so a ramp is kept at any speed.
   let grounded = false;
   if (vy <= 0) {
     const under = groundUnder(hf, x, z, r);
     const low = y - p.stepDown;
+    let lowest = low;
+    if (walking) {
+      const ddx = x - b.x;
+      const ddz = z - b.z;
+      const fallsTo = y - Math.sqrt((ddx * ddx + ddz * ddz) * (1 / (slope * slope) - 1));
+      if (fallsTo < low) lowest = fallsTo;
+    }
     if (y - under <= GROUND_PROBE) grounded = true;
-    else if (walking && nothingBuilt(w, x, z, r, low, y + tall)) {
+    else if (walking && nothingBuilt(w, x, z, r, lowest, y + tall)) {
       // Only the ground is near, and where the body rests on it is known.
       if (under >= low) {
         y = under;
         grounded = true;
       }
-    } else if (restsOnStructure(w, x, y, z, r, height, GROUND_PROBE)) grounded = true;
-    else if (walking && !capsuleFree(w, x, low, z, r, height)) {
-      let lo = low;
-      let hi = y;
-      for (let k = 0; k < SETTLE_ITERATIONS; k++) {
-        const mid = (lo + hi) * 0.5;
-        if (capsuleFree(w, x, mid - SETTLE_MARGIN, z, r, height)) hi = mid;
-        else lo = mid;
+    } else {
+      let on = restingAt(w, x, y, z, r, height, GROUND_PROBE, slope);
+      if (Number.isNaN(on) && walking) on = settleOnto(w, x, z, lowest, low, y, r, height, slope);
+      if (!Number.isNaN(on)) {
+        y = on;
+        grounded = true;
       }
-      y = hi;
-      grounded = true;
     }
     if (grounded) {
       if (-vy > fall) fall = -vy;
@@ -767,7 +808,7 @@ function stepSwim(w: CollisionWorld, b: Body, moveX: number, moveZ: number, yaw:
   let grounded = false;
   if (hf.seaLevel - y < p.height * SWIM_EXIT) {
     b.mode = MODE_WALK;
-    if (y - groundUnder(hf, x, z, r) <= GROUND_PROBE || restsOnStructure(w, x, y, z, r, p.height, GROUND_PROBE)) {
+    if (y - groundUnder(hf, x, z, r) <= GROUND_PROBE || !Number.isNaN(restingAt(w, x, y, z, r, p.height, GROUND_PROBE, p.slopeCos))) {
       grounded = true;
       vy = 0;
     }

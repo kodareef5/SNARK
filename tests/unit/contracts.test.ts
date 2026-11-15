@@ -51,7 +51,7 @@ test("a hurt stage is a quarter of health wide, and never more than a glance sho
 test("the new codes are each one of their kind, and deadlines have kinds of their own", () => {
   const ops = Object.entries(P).filter(([k]) => k.startsWith("CMD_")).map(([, v]) => v);
   expect(new Set(ops).size).toBe(ops.length);
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 13]);
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 14]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
@@ -63,7 +63,8 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
 test("the new columns change nothing for content that does not use them", () => {
   for (let i = 1; i < reg.defs.length; i++) {
     const d = reg.defs[i]!;
-    if (d.type === "species" && d.tamedSprintMul === undefined) expect(reg.tamedMove[i]).toBe(reg.move[i]);
+    // A tame stands on steeper ground than a wild one; past that, its numbers are its species' but for a tamed sprint.
+    if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...(d.tamedSprintMul === undefined ? {} : { sprintMul: d.tamedSprintMul }) });
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual([0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
@@ -106,7 +107,7 @@ test("the dodo's numbers: runs at 95.55 units a second tamed, weighs 25 to a car
   const dodo = at("core:dodo");
   expect(reg.move[dodo]!.walkSpeed * reg.tamedMove[dodo]!.sprintMul).toBeCloseTo(0.9555, 6);
   expect(reg.move[dodo]!.walkSpeed * reg.move[dodo]!.sprintMul).toBeCloseTo(1.365, 6);
-  expect({ ...reg.tamedMove[dodo]!, sprintMul: 0 }).toEqual({ ...reg.move[dodo]!, sprintMul: 0 });
+  expect({ ...reg.tamedMove[dodo]!, sprintMul: 0, slopeCos: 0 }).toEqual({ ...reg.move[dodo]!, sprintMul: 0, slopeCos: 0 });
   expect([reg.alarm[dodo], reg.drag[dodo], reg.mass[dodo], reg.carriable[dodo], reg.eggChance[dodo]]).toEqual([15, 25, 50, 1, Math.fround(0.13)]);
   const egg = at("core:egg_dodo");
   expect([(reg.defs[egg] as Extract<Def, { type: "prop" }>).mesh, reg.drawSize[egg]]).toEqual(["core:egg_xs", 1]);

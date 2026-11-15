@@ -4,6 +4,8 @@ import { Rng } from "../../shared/rng.ts";
 import { Body, MODE_WALK, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { GROUND_FREE, GROUND_SOLID, GROUND_STEEP, GROUND_WATER, PATH_BUDGET, PATH_FOUND, PATH_LEG, PATH_NONE, PATH_REACH, PATH_SHORT, PathFinder, groundAt } from "../../shared/world/path.ts";
 import { PROVING_POOL, SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
+import { slopeKind } from "../../content/slopes.ts";
+import { capsuleFree } from "../../shared/world/collide.ts";
 import { flatWorld, provingWorld, sealedRoom, type TestWorld } from "../fixtures/world.ts";
 
 const survivor = (w: TestWorld): MoveParams => w.reg.move[w.kind("core:survivor")]!;
@@ -272,6 +274,39 @@ test("the ground the way finder may walk ends where a body walking up to a slope
     const free = groundAt(w, p, x, z) === GROUND_FREE;
     if (z < stop - 0.02 && !free) wrong.push(`${z.toFixed(2)} is not free short of where the body stops, ${stop.toFixed(3)}`);
     if (z > stop + 0.02 && free) wrong.push(`${z.toFixed(2)} is free past where the body stops, ${stop.toFixed(3)}`);
+  }
+  expect(wrong).toEqual([]);
+});
+
+test("over sloped pieces the way finder may walk where a body steps onto them from the ground, and stops where a face too steep to stand on stops it", () => {
+  const wrong: string[] = [];
+  for (const id of ["core:survivor", "core:dodo", "core:raptor", "core:parasaur"]) {
+    const w = flatWorld();
+    const p = w.reg.move[w.kind(id)]!;
+    // Up the rubble's middle: free while where the body touches it, standing on it, is no more than a step up, then not. On a
+    // slope of 1.5 in 4 the lower sphere touches it r (1 - cos) above the feet.
+    const rubble = w.kind(slopeKind("rubble"));
+    const heap = w.structs.add(rubble, 64, w.reg.halfY[rubble]!, 64, 0, 0, 1);
+    const touch = p.radius * (1 - 4 / Math.hypot(4, 1.5));
+    for (let z = 61; z < 66; z += 0.05) {
+      let y = 2;
+      while (y > 0 && capsuleFree(w, 64, y - 0.002, z, p.radius, p.height)) y -= 0.002;
+      const free = groundAt(w, p, 64, z) === GROUND_FREE;
+      if (y + touch < p.stepUp - 0.02 && !free) wrong.push(`${id} on the rubble at ${z.toFixed(2)}, ${y.toFixed(3)} m up: not free`);
+      if (y > p.stepUp + 0.02 && free) wrong.push(`${id} on the rubble at ${z.toFixed(2)}, ${y.toFixed(3)} m up: free`);
+    }
+    w.structs.remove(heap);
+    // Into the slab leaning at 60 degrees: free short of where a body walking into it stops, and not past it.
+    const slab = w.kind(slopeKind("slab60"));
+    w.structs.add(slab, 64, w.reg.halfY[slab]!, 64, 0, 0, 1);
+    const b = new Body();
+    [b.x, b.z, b.grounded] = [64, 60 - p.radius, true];
+    for (let tick = 0; tick < 150; tick++) stepBody(w, b, 0, 127, 0, 0, 0, p, TICK_DT);
+    for (let z = 61.5 - p.radius; z < 64; z += 0.01) {
+      const free = groundAt(w, p, 64, z) === GROUND_FREE;
+      if (z < b.z - 0.02 && !free) wrong.push(`${id}: ${z.toFixed(2)} is not free short of where the body stops at the slab, ${b.z.toFixed(3)}`);
+      if (z > b.z + 0.02 && free) wrong.push(`${id}: ${z.toFixed(2)} is free past where the body stops at the slab, ${b.z.toFixed(3)}`);
+    }
   }
   expect(wrong).toEqual([]);
 });

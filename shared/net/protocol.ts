@@ -1,10 +1,10 @@
 // Message layouts live here and nowhere else. Every message starts with its type, and each type has a fixed channel. A client's
-// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 14 to 255 are free.
+// type is 4 bits. The server's is a byte, since it has many more kinds of message to tell apart: ids 15 to 255 are free.
 //
 //   client -> server
 //     HELLO     reliable     version u16, content hash u32 (of the definitions as written, untuned), clip hash u32,
 //                            name string, flags u8, device key (16 bytes), with HELLO_LOOK a look (28 bytes),
-//                            password string ("" for none)
+//                            with HELLO_TICKET a travel ticket (32 bytes), password string ("" for none)
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
 //                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
 //                            one bit: 1 = same as the one before.
@@ -22,12 +22,13 @@
 //                            and per run: first slot minus the end of the run before svarint, length-1 varint.
 //                            Rows are read first. A removal leaves alone any row newer than itself.
 //     CHUNK_DROP reliable    chunk u16
-//     REJECT    reliable     reason u8
+//     REJECT    reliable     reason u8, and for REJECT_TRAVEL why, as a string
 //     RESULT    reliable     command sequence u16 (0 when no command asked), code u8
 //     TEXT      reliable     channel u8, text string
 //     OWN       reliable     component u8, then that component's fields
 //     NODES     reliable     chunk u16, version u32, count u8, used-up slots (u8 each)
 //     EVENT     reliable     kind u8, then that kind's fields (see EVENT_*)
+//     TRAVEL    reliable     travel ticket (32 bytes), destination's world id u16; the connection then closes
 //
 // The server never trusts a position or a target. Neither INPUT nor COMMAND has room for a coordinate of the client's own
 // body or the identity of something to hit. Commands are applied at most once and never resent after a reconnect. The
@@ -37,9 +38,9 @@ import { BitReader, BitWriter } from "./codec.ts";
 import { LOOK_BYTES } from "../anim/look.ts";
 import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
-export const PROTOCOL_VERSION = 14;
+export const PROTOCOL_VERSION = 15;
 
-// Protocol 14: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
+// Protocol 15: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
 // flight layout of a pose's motion bits and CUE_TAKEOFF and CUE_ROLL (shared/anim/pose.ts), and the two flight counters
 // at the end of writeBody.
@@ -93,6 +94,11 @@ export const S_MARKS = 12;
  * whole, and an emptied one is sent empty. Protocol 9.
  */
 export const S_FAR = 13;
+/**
+ * Protocol 14. The survivor has left for another server of the cluster: the travel ticket (TICKET_BYTES) and the destination's
+ * world id u16. The page takes the ticket to the destination, whose HELLO carries it, and the server closes this connection.
+ */
+export const S_TRAVEL = 14;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;
@@ -103,13 +109,22 @@ export const REJECT_NAME = 5;
 export const REJECT_DENIED = 6;
 export const REJECT_KICKED = 7;
 export const REJECT_PASSWORD = 8;
+/**
+ * Protocol 14. A travel ticket, or a survivor that is away on another server, was turned away. A string says why: the ticket
+ * was used, has expired, is for another name, or its survivor went back; this server will not take the survivor; or it is away.
+ */
+export const REJECT_TRAVEL = 9;
 export const MAX_PASSWORD_BYTES = 64;
 export const MAX_TUNING_BYTES = 1 << 20;
 
 export const HELLO_SPECTATE = 1;
 /** A look follows the key. A new survivor gets it at once and skips the creator. */
 export const HELLO_LOOK = 2;
+/** Protocol 14. A travel ticket follows the look: the survivor arrives from another server of the cluster (S_TRAVEL). */
+export const HELLO_TICKET = 4;
 export const KEY_BYTES = 16;
+/** A transfer's id (16 bytes), then the secret that lets one browser take it (16 bytes). */
+export const TICKET_BYTES = 32;
 
 export const SESSION_ALIVE = 0;
 export const SESSION_DEAD = 1;
@@ -224,6 +239,11 @@ export const CMD_CRAFT_AT = 29;
  * station (INVALID), and without the ingredients (SHORT).
  */
 export const CMD_CRAFT_BLUEPRINT = 30;
+/**
+ * Protocol 14. The survivor leaves for another server of the cluster: its world id u16. Refused (DENIED, with a notice that
+ * says why) where it may not go; on success the answer is S_TRAVEL, once its leaving is saved.
+ */
+export const CMD_TRAVEL = 31;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;
@@ -456,8 +476,8 @@ export class InputBuffer {
 
 /**
  * 380 bits: position and velocity exactly, then the rest of the predicted state. Protocol 13 added the aim's bloom and the
- * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them), and protocol 14 the
- * flight counters.
+ * recoil's kick (a byte each, always 0 until W1 of planning/reference/weapons-plan.md steps them), and the flyers'
+ * contracts (protocol 15) the flight counters.
  */
 export function writeBody(w: BitWriter, b: Body): void {
   w.f32(b.x);
@@ -513,16 +533,18 @@ export function readBody(r: BitReader, b: Body): void {
   readFlight(r, b);
 }
 
-/** `key` must be KEY_BYTES long. */
-export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = ""): void {
+/** `key` must be KEY_BYTES long, and a `ticket` TICKET_BYTES. */
+export function writeHello(w: BitWriter, version: number, contentHash: number, clipHash: number, name: string, flags: number, key: Uint8Array, look: Uint8Array | null = null, password = "", ticket: Uint8Array | null = null): void {
   w.bits(C_HELLO, 4);
   w.u16(version);
   w.u32(contentHash);
   w.u32(clipHash);
   w.string(name);
-  w.u8(look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK);
+  const marked = look ? flags | HELLO_LOOK : flags & ~HELLO_LOOK;
+  w.u8(ticket ? marked | HELLO_TICKET : marked & ~HELLO_TICKET);
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
   if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
+  if (ticket) for (let i = 0; i < TICKET_BYTES; i++) w.u8(ticket[i] ?? 0);
   w.string(password);
 }
 

@@ -94,7 +94,7 @@ export class EntityStore {
   /** Aim state (Body.bloom, Body.kick): 0 until planning/reference/weapons-plan.md's W1 steps them. */
   bloom: Uint8Array;
   kick: Uint8Array;
-  /** Flight state (Body.regenWait, Body.rollWait), protocol 14: 0 until FL1 of planning/reference/flyers-plan.md steps them. */
+  /** Flight state (Body.regenWait, Body.rollWait): 0 until FL1 of planning/reference/flyers-plan.md steps them. */
   regenWait: Uint16Array;
   rollWait: Uint16Array;
   /** HOLD_*, for the pose. Set with its gear. */

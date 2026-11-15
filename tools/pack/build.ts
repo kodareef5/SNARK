@@ -4,7 +4,8 @@
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
-import type { Def } from "../../shared/content/defs.ts";
+import type { Def, ShapeBox } from "../../shared/content/defs.ts";
+import { hullOf, hullPoint, type HullDef } from "../../shared/world/convex.ts";
 import { FAR_HEIGHT, FAR_MESH, FAR_TILE_METRES } from "../../client/core/render/far.ts";
 import { WATER_TILE } from "../../client/core/render/shading.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
@@ -14,7 +15,7 @@ import { SOURCE, filesUnder, readPacks, type SourceArt } from "../art/source.ts"
 import { importGlb } from "./glb.ts";
 import { mannequinMeshes } from "./mannequin.ts";
 import { weaponMeshes } from "./weapons.ts";
-import { boxMesh, buildPack, type SourceMesh } from "./write.ts";
+import { boxMesh, buildPack, type SourceLod, type SourceMesh } from "./write.ts";
 
 export const MISSING_MESH = "core:missing";
 export const WATER_MESH = "core:water";
@@ -71,6 +72,47 @@ function eggMesh(): SourceMesh {
   return { id: EGG_MESH, lods: [{ positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(REGION_BASE), indices: Uint32Array.from(indices) }] };
 }
 
+/**
+ * Boxes and convex parts as one level: each face of a part its corners round it, in a fan. With `cull`, a face whose every
+ * corner is in one of the other parts is left out, as a flight's treads hide each other's backs.
+ */
+function partsMesh(boxes: readonly ShapeBox[], hulls: readonly HullDef[], cull = false): SourceLod {
+  // Each part as its faces, each face its corners round it seen from outside.
+  const parts: number[][][][] = [];
+  for (const b of boxes) {
+    const one = boxMesh(b.half, REGION_BASE);
+    const at = (v: number): number[] => [0, 1, 2].map((a) => one.positions[v * 3 + a]! + b.at[a]!);
+    parts.push(Array.from({ length: 6 }, (_, f) => [0, 1, 2, 3].map((k) => at(f * 4 + k))));
+  }
+  for (const h of hulls) {
+    const made = hullOf(h);
+    if (typeof made === "string") throw new Error(made);
+    parts.push(made.rings.map((ring) => ring.map((c) => hullPoint(h.corners[c]!, h.sixty === true))));
+  }
+  // A face's outward normal by Newell's sum, which three corners in a line along its edge do not spoil.
+  const inside = (part: number[][][], q: number[]): boolean =>
+    part.every((face) => {
+      const n = [0, 0, 0];
+      face.forEach((p, k) => {
+        const r = face[(k + 1) % face.length]!;
+        for (let a = 0; a < 3; a++) n[a]! += (p[(a + 1) % 3]! - r[(a + 1) % 3]!) * (p[(a + 2) % 3]! + r[(a + 2) % 3]!);
+      });
+      const a = face[0]!;
+      return n[0]! * (q[0]! - a[0]!) + n[1]! * (q[1]! - a[1]!) + n[2]! * (q[2]! - a[2]!) <= 1e-6 * Math.hypot(n[0]!, n[1]!, n[2]!);
+    });
+  const positions: number[] = [];
+  const indices: number[] = [];
+  parts.forEach((faces, i) => {
+    for (const face of faces) {
+      if (cull && parts.some((other, j) => j !== i && face.every((q) => inside(other, q)))) continue;
+      const first = positions.length / 3;
+      for (const q of face) positions.push(q[0]!, q[1]!, q[2]!);
+      for (let k = 2; k < face.length; k++) indices.push(first, first + k - 1, first + k);
+    }
+  });
+  return { positions: Float32Array.from(positions), colors: new Uint8Array(positions.length / 3).fill(REGION_BASE), indices: Uint32Array.from(indices) };
+}
+
 /** Their single colour is region 0, so the definition's colour applies per instance. */
 export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
   // The beam marks where a survivor died, visible from far off.
@@ -81,17 +123,11 @@ export function grayboxMeshes(defs: readonly Def[]): SourceMesh[] {
     if (d.type === "structure" && d.mesh === "shape") {
       const shape = defs.find((s) => s.type === "shape" && s.id === d.shape);
       if (shape?.type !== "shape") continue;
-      const positions: number[] = [];
-      const colors: number[] = [];
-      const indices: number[] = [];
-      for (const b of shape.boxes) {
-        const one = boxMesh(b.half, REGION_BASE);
-        const first = positions.length / 3;
-        for (let i = 0; i < one.positions.length; i++) positions.push(one.positions[i]! + b.at[i % 3]!);
-        colors.push(...one.colors);
-        for (const v of one.indices) indices.push(v + first);
-      }
-      meshes.push({ id: d.id, lods: [{ positions: Float32Array.from(positions), colors: Uint8Array.from(colors), indices: Uint32Array.from(indices) }] });
+      const walked = partsMesh(shape.boxes, shape.hulls ?? []);
+      // A shape drawn otherwise than it is walked, a flight's treads over its ramp, is drawn as walked at its coarsest level.
+      // Its look is the first two, since low poly draws from the second.
+      const look = shape.look ? partsMesh(shape.look.boxes ?? [], shape.look.hulls ?? [], true) : null;
+      meshes.push({ id: d.id, lods: look ? [look, look, walked] : [walked] });
       continue;
     }
     if ((d.type !== "species" && d.type !== "structure" && d.type !== "prop" && d.type !== "node") || d.mesh !== "box") continue;

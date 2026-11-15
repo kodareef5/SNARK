@@ -78,6 +78,8 @@ const PASS = 0.35;
 const LAST_STEPS = 4;
 /** The way is looked over this often. Less than STUCK_M gained in that time, while walking, is being stuck. */
 const CHECK_MS = 1000;
+/** How long an arrival is left to choose where to rise before it rises at the first place ready. */
+const ARRIVAL_MS = 15_000;
 const STUCK_M = 0.3;
 const JUMP_MS = 200;
 const STUCK_PLANS = 3;
@@ -398,9 +400,10 @@ export class Controller {
     if (s.sessionState === SESSION_DEAD) {
       if (!this.dead) {
         this.dead = true;
-        this.deaths++;
-        this.wakeAt = now + CHECK_MS;
-        fresh.push("you died");
+        // One that arrived from another server is let choose where to rise (the travel tool does) before it is woken.
+        if (!s.arriving) this.deaths++;
+        this.wakeAt = now + (s.arriving ? ARRIVAL_MS : CHECK_MS);
+        fresh.push(s.arriving ? "you arrived: choose where to rise" : "you died");
       } else if (now >= this.wakeAt && s.respawnPoints.length > 0) {
         // It wakes at the first place that is ready, as a player who presses the first button would.
         const ready = s.respawnPoints.findIndex((p) => p.wait === 0);
