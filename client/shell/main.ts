@@ -3,7 +3,6 @@
 import { CORE_CONTENT } from "../../content/core.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
-import { KEY_BYTES } from "../../shared/net/protocol.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
@@ -12,6 +11,7 @@ import { LEVEL_COLOURS, SKY_COLOR } from "../../shared/pack/palette.ts";
 import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchJson, fetchText } from "../core/fetched.ts";
+import { loadIdentity } from "../core/identity.ts";
 import { heldTo, probePasses, provingProbes, type Probe } from "../core/selfcheck.ts";
 import { BenchRun, PassClock } from "../core/passes.ts";
 import { groundSize } from "../core/render/terrain.ts";
@@ -30,23 +30,6 @@ const bench = params.has("bench") ? new BenchRun() : null;
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
-
-/** Made once and kept in local storage. The key owns a survivor's name. */
-function deviceKey(): Uint8Array {
-  const key = new Uint8Array(KEY_BYTES);
-  try {
-    const saved = localStorage.getItem("snark.key");
-    if (saved && saved.length === KEY_BYTES * 2) {
-      for (let i = 0; i < KEY_BYTES; i++) key[i] = parseInt(saved.slice(i * 2, i * 2 + 2), 16);
-      return key;
-    }
-  } catch {}
-  crypto.getRandomValues(key);
-  try {
-    localStorage.setItem("snark.key", Array.from(key, (b) => b.toString(16).padStart(2, "0")).join(""));
-  } catch {}
-  return key;
-}
 
 async function boot(): Promise<void> {
   const reg = compileContent(CORE_CONTENT).registry!;
@@ -69,8 +52,7 @@ async function boot(): Promise<void> {
   const ground = groundSize(hf);
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
   const session = new ClientSession(connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`), {
-    name: params.get("name") ?? `survivor${Math.floor(performance.now() * 1000) % 100000}`,
-    key: deviceKey(),
+    ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, params.get("name")),
     spectate: params.has("spectate"),
     password: params.get("password") ?? "",
     registry: reg,
