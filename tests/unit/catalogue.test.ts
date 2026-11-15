@@ -51,10 +51,11 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "prop/container": 2,
     "prop/projectile": 2,
     buff: 7,
-    spawns: 3,
+    spawns: 4,
+    map: 1,
     rename: 75,
   });
-  expect(rest.length).toBe(324);
+  expect(rest.length).toBe(326);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length);
   const brought: Record<string, number> = {};
