@@ -192,16 +192,17 @@ export class Eggs {
   }
 
   /**
-   * A female of `species` lays an unfertilised egg at (x, y, z), or none if EGG_LIMIT of them already lie near or there is
-   * no room. `team` is hers, 0 for a wild one. Returns the egg's record, or null.
+   * A female of `species` lays an unfertilised egg on the ground at (x, z), no lower than `y`, or where she stands at
+   * (bx, y, bz) if that place is shut in; or none if EGG_LIMIT of them already lie near or there is no room. `team` is
+   * hers, 0 for a wild one. Returns the egg's record, or null.
    */
-  lay(species: number, team: number, x: number, y: number, z: number, yaw: number): EntityRecord | null {
+  lay(species: number, team: number, x: number, y: number, z: number, yaw: number, bx = x, bz = z): EntityRecord | null {
     const { world, items } = this.ctx;
     const reg = world.reg;
     const prop = reg.breedEgg[species]!;
     const item = prop !== 0xffff && prop !== 0 ? reg.propItem[prop]! : 0;
     if (item === 0 || world.ents.room < STORE_RESERVE || this.near(prop, x, z) >= EGG_LIMIT) return null;
-    const at = this.ground(prop, x, z, x, y, z);
+    const at = this.ground(prop, x, z, bx, y, bz);
     const egg = this.lie(prop, species, team, at[0]!, at[1]!, at[2]!, yaw);
     if (items.mint(egg, item, 1, 0, 0, -1, "laid") !== 1) {
       this.ctx.records.delete(egg.pid);
@@ -225,8 +226,11 @@ export class Eggs {
     return n;
   }
 
-  /** Where an egg of `prop` set down at (x, z) lies: on the ground there, or where the body stands if that is higher or the place is shut in. */
-  private ground(prop: number, x: number, z: number, bx: number, by: number, bz: number): [number, number, number] {
+  /**
+   * Where a prop of kind `prop` put down at (x, z) by a body standing at (bx, by, bz) lies: on the ground there, or no lower
+   * than the body's feet, as on a floor; or where the body stands if the place is shut in.
+   */
+  ground(prop: number, x: number, z: number, bx: number, by: number, bz: number): [number, number, number] {
     const world = this.ctx.world;
     const reg = world.reg;
     const g = groundUnder(world.hf, x, z, reg.bodyRadius[prop]!);

@@ -9,10 +9,10 @@ import { boneToModel, solve } from "../shared/anim/skeleton.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { TAU } from "../shared/math/scalar.ts";
 import { fecesWait, youngScale } from "../shared/sim/breeding.ts";
+import { MODE_SWIM } from "../shared/sim/character.ts";
 import { F_ALIVE, F_AWAKE, F_HELD, F_PLAYER, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
 import { Rng } from "../shared/rng.ts";
 import { BAG_TICKS } from "./death.ts";
 import type { Eggs } from "./eggs.ts";
@@ -68,7 +68,8 @@ export class Feces {
     const e = records.entOf.get(pid);
     const rec = records.byPid.get(pid);
     if (!rec || e === undefined || (world.ents.flags[e]! & F_AWAKE) === 0) return;
-    if (!rec.dead && !rec.out && (world.ents.flags[e]! & F_HELD) === 0) this.go(rec, e);
+    // Chosen: nothing is left while it is out cold, held, or swimming, where it would sink out of reach.
+    if (!rec.dead && !rec.out && (world.ents.flags[e]! & F_HELD) === 0 && world.ents.mode[e] !== MODE_SWIM) this.go(rec, e);
     this.time(pid);
   }
 
@@ -91,29 +92,27 @@ export class Feces {
     const reg = world.reg;
     const kind = rec.kind;
     this.where(e);
-    const [x, y, z] = this.vent as [number, number, number];
+    // It falls from the vent to the ground under it, or no lower than the feet, or lies where it stands if that place is shut in.
+    const ents = world.ents;
+    const [x, , z] = this.vent as [number, number, number];
     const chance = reg.eggChance[kind]!;
     if (chance > 0 && rec.genome?.female && rec.grown === 0 && this.rng.float() < chance) {
-      const egg = eggs.lay(kind, rec.team, x, y, z, this.rng.int(65536));
+      const egg = eggs.lay(kind, rec.team, x, ents.y[e]!, z, this.rng.int(65536), ents.x[e]!, ents.z[e]!);
       if (egg) {
         this.laid++;
         return egg;
       }
     }
-    return this.drop(reg.feces[kind]!, x, y, z, world.ents.y[e]!);
+    return this.drop(reg.feces[kind]!, x, z, e);
   }
 
-  private drop(item: number, x: number, y: number, z: number, feet: number): EntityRecord | null {
-    const { world, records, items, rules } = this.ctx;
+  private drop(item: number, x: number, z: number, e: number): EntityRecord | null {
+    const { world, records, items, rules, eggs } = this.ctx;
     const reg = world.reg;
-    if (item === 0 || this.heap === 0 || world.ents.room < STORE_RESERVE) return null;
-    const r = reg.bodyRadius[this.heap]!;
-    const g = groundUnder(world.hf, x, z, r);
+    const ents = world.ents;
+    if (item === 0 || this.heap === 0 || ents.room < STORE_RESERVE) return null;
     const heap = records.create(this.heap, (reg.defs[item] as { label?: string } | null)?.label ?? "feces");
-    heap.x = x;
-    heap.y = g > feet ? g : feet;
-    heap.z = z;
-    if (!capsuleFree(world, heap.x, heap.y, heap.z, r, reg.bodyHeight[this.heap]!)) heap.y = Math.max(heap.y, y);
+    [heap.x, heap.y, heap.z] = eggs.ground(this.heap, x, z, ents.x[e]!, ents.y[e]!, ents.z[e]!);
     heap.yaw = this.rng.int(65536);
     heap.inv = new Inventory(1);
     if (items.mint(heap, item, 1, 0, 0, -1, "feces") !== 1) {

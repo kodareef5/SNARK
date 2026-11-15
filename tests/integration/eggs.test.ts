@@ -174,6 +174,8 @@ test("a female dodo, wild or tamed, lays an unfertilised egg at her vent in plac
     if (k < 20) {
       expect(dx * look[0]! + dz * look[2]!).toBeLessThan(-0.05);
       expect(Math.hypot(dx, dz)).toBeLessThan(0.4);
+      // Fallen to the level ground she stands on.
+      expect(Math.abs(left.y - ents.y[hen.e]!)).toBeLessThan(0.01);
     }
     if (left.egg) {
       counts.egg++;
