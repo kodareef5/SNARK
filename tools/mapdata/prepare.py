@@ -92,9 +92,9 @@ def buildings(m):
 def elevation(m):
     n = m.n
     out = np.full((n, n), -9999, dtype=np.float32)
-    scale = m.city['dem']['z_to_m']
     tiles = json.loads((m.root / 'dem_selection.json').read_text())
     for i, t in enumerate(tiles):
+        scale = t.get('z_to_m', m.city['dem']['z_to_m'])
         with rasterio.open(m.raw / 'dem' / t['name']) as src:
             b = transform_bounds(src.crs, m.crs, *src.bounds, densify_pts=21)
             c0 = max(0, math.floor((b[0] - m.grid.c) / 2) - 2)
@@ -108,6 +108,8 @@ def elevation(m):
                       dst_transform=win_transform(Window(c0, r0, c1 - c0, r1 - r0), m.grid), dst_crs=m.crs,
                       dst_nodata=-9999, resampling=Resampling.bilinear)
             good = dst != -9999
+            if t.get('fill'):
+                good &= out[r0:r1, c0:c1] == -9999
             out[r0:r1, c0:c1][good] = dst[good] * scale
         if i % 20 == 0:
             print('height', i, '/', len(tiles), flush=True)

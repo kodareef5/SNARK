@@ -26,6 +26,8 @@ def main():
            'north': 'grid north; true north on central meridian',
            'pixel_convention': 'images pixel-is-area; base PNG samples at grid vertices, inclusive endpoints',
            'center_lon_lat': [lon, lat]}
+    if m.city.get('bathymetry'):
+        cfg['bathymetry'] = f"bathymetry/{m.city['bathymetry']['file']}"
     path = m.root / 'map.json'
     if path.exists() and json.loads(path.read_text())['center_lon_lat'] != cfg['center_lon_lat'] and '--force' not in sys.argv:
         raise SystemExit('map.json already holds another frame; the downloads and layers follow it (--force to move it)')

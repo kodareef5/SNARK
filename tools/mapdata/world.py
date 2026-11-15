@@ -1,9 +1,11 @@
 """Propose a map's districts and spawn points from its data, for a person to accept: world/proposed.json, and
-world/world.json too when the map has none yet. Districts are the cells round OpenStreetMap's named suburbs, quarters,
+world/world.json too when the map has none yet or when
+--accept is given. city.json's "world" may add district seeds ("places"), restyle districts ("styles") and name the
+spawn points' places and what each faces ("spawn_places"), so the accepted world is still made by this tool. Districts are the cells round OpenStreetMap's named suburbs, quarters,
 neighbourhoods and islands (a single default district where it names none), each styled by what its footprints are:
 concrete where towers stand, industrial where warehouses do, residential elsewhere. Spawn points are named parks,
 beaches and viewpoints on dry land, picked far apart, facing the frame's middle. Run after labels.py.
-python tools/mapdata/world.py <map folder>"""
+python tools/mapdata/world.py <map folder> [--accept]"""
 import collections
 import json
 import math
@@ -16,7 +18,7 @@ from shapely.ops import voronoi_diagram
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import folder_arg  # noqa: E402
 
-PLACES = ('suburb', 'quarter', 'neighbourhood', 'island')
+PLACES = ('suburb', 'quarter', 'neighbourhood', 'island', 'islet')
 SPAWN_KINDS = {'park': 3, 'garden': 2, 'beach': 3, 'viewpoint': 1, 'marina': 1}
 
 
@@ -33,8 +35,17 @@ def main():
             e, n = to_map.transform(c['lon'], c['lat'])
             if frame.contains(Point(e, n)):
                 seeds[t['name']].append((e, n))
-    points = sorted((name, (sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps))) for name, ps in seeds.items())
+    settings = m.city.get('world', {})
+    for extra in settings.get('places', []):
+        seeds[extra['name']] = [to_map.transform(*extra['at'])]
     labels = json.loads((m.root / 'blocks/labels.json').read_text())
+    # An island or islet is a district only where a footprint stands within 60 m of its middle.
+    islands = {el.get('tags', {}).get('name') for el in json.loads((m.raw / 'osm/all.json').read_text())['elements'] if el.get('tags', {}).get('place') in ('island', 'islet')}
+    for name in [n for n in seeds if n in islands]:
+        e, n = seeds[name][0]
+        if not any(math.hypot(v['e'] - e, v['n'] - n) < 60 for v in labels.values()):
+            del seeds[name]
+    points = sorted((name, (sum(p[0] for p in ps) / len(ps), sum(p[1] for p in ps) / len(ps))) for name, ps in seeds.items())
     cells = []
     if len(points) >= 2:
         diagram = voronoi_diagram(MultiPoint([p for _, p in points]), envelope=frame.buffer(4000))
@@ -49,7 +60,7 @@ def main():
         area = sum(v['area_m2'] for v in inside) or 1
         tall = sum(v['area_m2'] for v in inside if (v['height_m'] or 0) >= 32) / area
         works = sum(v['area_m2'] for v in inside if v['kind'] in ('warehouse', 'utility', 'port')) / area
-        style = 'concrete' if tall >= .12 else 'industrial' if works >= .35 else 'residential'
+        style = settings.get('styles', {}).get(name) or ('concrete' if tall >= .12 else 'industrial' if works >= .35 else 'residential')
         ring = [[round(c, 5) for c in to_lonlat.transform(x, y)] for x, y in cell.simplify(20).exterior.coords[:-1]]
         districts.append({'name': name, 'style': style, 'tall': round(min(1, max(.1, tall * 3)), 2), 'ring': ring,
                           'footprints': len(inside), 'tall_share': round(tall, 3), 'works_share': round(works, 3)})
@@ -65,9 +76,18 @@ def main():
         if not frame.buffer(-150).contains(q) or any(water[i][0].contains(q) for i in wet.query(q)):
             continue
         candidates.append((SPAWN_KINDS[p['kind']], p))
-    chosen = []
-    # The first is the best-ranked place nearest the middle; each next the farthest from those chosen, best kind first.
-    for _ in range(10):
+    chosen, faces = [], {}
+    # Places a person named come first, facing what they name; then the best-ranked place nearest the middle, and each
+    # next the farthest from those chosen, best kind first.
+    for want in settings.get('spawn_places', []):
+        name = want if isinstance(want, str) else want['name']
+        found = next((p for p in json.loads((m.root / 'blocks/places.json').read_text()) if p.get('name') == name), None)
+        if found is None:
+            raise ValueError(f'no place called {name} in blocks/places.json')
+        chosen.append(found)
+        if isinstance(want, dict) and want.get('face'):
+            faces[name] = to_map.transform(*want['face'])
+    for _ in range(10 - len(chosen)):
         best, score = None, -1
         for rank, p in candidates:
             gap = min((math.hypot(p['e'] - c['e'], p['n'] - c['n']) for c in chosen), default=4000 - math.hypot(p['e'], p['n']))
@@ -81,7 +101,7 @@ def main():
     spawns = []
     for p in chosen:
         d = math.hypot(p['e'], p['n']) or 1
-        face = (p['e'] - p['e'] / d * 300, p['n'] - p['n'] / d * 300)
+        face = faces.get(p['name']) or (p['e'] - p['e'] / d * 300, p['n'] - p['n'] / d * 300)
         spawns.append({'name': p['name'], 'at': [round(c, 4) for c in to_lonlat.transform(p['e'], p['n'])],
                        'face': [round(c, 4) for c in to_lonlat.transform(*face)], 'ground': 'sand' if p['kind'] == 'beach' else 'open'})
     proposal = {'districts': districts, 'spawns': spawns,
@@ -91,11 +111,16 @@ def main():
     (m.root / 'world').mkdir(exist_ok=True)
     (m.root / 'world/proposed.json').write_text(json.dumps(proposal, indent=1, ensure_ascii=False) + '\n')
     path = m.root / 'world/world.json'
-    if not path.exists():
+    if not path.exists() or '--accept' in sys.argv:
         settings = m.city.get('world', {})
         world = {'id': f"core:{m.city['name']}", 'label': m.city['label'], 'seaNavd88': settings.get('seaNavd88', .3),
                  'minY': settings.get('minY', -32), 'stepY': .015625, 'heaps': False, 'containerHeaps': False,
-                 'districts': [{k: d[k] for k in ('name', 'style', 'tall', 'ring')} for d in districts], 'spawns': spawns}
+                 'districts': [{k: d[k] for k in ('name', 'style', 'tall', 'ring')} for d in districts], 'spawns': spawns,
+                 # Read by the generator from Miami's third round on: the authored gap layer, the report folder, and
+                 # the yards and container district a port has (none unless named).
+                 'bridgeGapLayer': 'bridge_gaps', 'ruins': {'report': settings.get('report', 'ruins2'), 'yardDistricts': settings.get('yard_districts', [])}}
+        if settings.get('container_district'):
+            world['containerDistrict'] = settings['container_district']
         path.write_text(json.dumps(world, indent=1, ensure_ascii=False) + '\n')
         print('world.json written from the proposal')
     print(len(districts), 'districts proposed:', collections.Counter(d['style'] for d in districts), '|', len(spawns), 'spawns:', [s['name'] for s in spawns])

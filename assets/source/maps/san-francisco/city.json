@@ -18,7 +18,11 @@
     "dataset": "Original Product Resolution (OPR) Digital Elevation Model (DEM)",
     "z_to_m": 1,
     "source": "USGS 3DEP Original Product Resolution DEM, CA_SanFrancisco_B23 (published 2024-08-21)",
-    "licence": "USGS public domain. Access constraints: \"None.\" Credit: \"Acknowledgement of the USGS 3D Elevation Program would be appreciated in products derived from these data.\""
+    "licence": "USGS public domain. Access constraints: \"None.\" Credit: \"Acknowledgement of the USGS 3D Elevation Program would be appreciated in products derived from these data.\"",
+    "fill": [
+      {"project": "CA_NoCal_Wildfires_B5b_QL1_2018", "z_to_m": 1, "source": "USGS 3DEP Original Product Resolution DEM, CA_NoCal_Wildfires_B5b_QL1_2018 (published 2020-01-14), where the 2023 survey stops at the Marin County line"},
+      {"project": "CA_NoCAL_Wildfires_B5b_2018", "z_to_m": 1, "source": "USGS 3DEP Original Product Resolution DEM, CA_NoCAL_Wildfires_B5b_2018 (published 2020-03-18), where neither newer survey reaches"}
+    ]
   },
   "nlcd": {
     "url": "https://www.mrlc.gov/geoserver/mrlc_display/NLCD_2021_Land_Cover_L48/ows",
@@ -65,14 +69,36 @@
   "world": {
     "seaNavd88": 0.97,
     "sea_source": "NOAA CO-OPS station 9414290 San Francisco, mean sea level 1983-2001 epoch: 2.773 m above station datum, NAVD88 at 1.804",
-    "minY": -128
+    "minY": -128,
+    "places": [
+      {"name": "Presidio", "at": [-122.4662, 37.7989], "why": "a national park of 6 km2 with its own posts and barracks, mapped as a park, not a neighbourhood"}
+    ],
+    "styles": {"Alcatraz Island": "concrete", "Presidio": "terracotta"},
+    "spawn_places": [
+      {"name": "Golden Gate Bridge Vista Point", "face": [-122.4776, 37.8141]},
+      {"name": "Presidio Tunnel Tops", "face": [-122.4780, 37.8190]},
+      {"name": "Marina Green", "face": [-122.4780, 37.8180]},
+      {"name": "Alcatraz Island", "face": [-122.4100, 37.8000]},
+      {"name": "Washington Square Park", "face": [-122.4058, 37.8024]},
+      {"name": "Union Square", "face": [-122.4028, 37.7952]},
+      {"name": "Embarcadero Plaza", "face": [-122.3935, 37.7955]},
+      {"name": "Alamo Square", "face": [-122.4328, 37.7762]},
+      {"name": "Lafayette Park", "face": [-122.4270, 37.8000]},
+      {"name": "Panhandle", "face": [-122.4600, 37.7710]}
+    ]
   },
   "ruins": {
     "rules_from": "miami",
     "blocks_per_footprint": 130
   },
   "future": {
+    "spans_why": "None: the bridges over water in the frame are the Golden Gate, kept whole as the map's landmark, and the Bay Bridge's west approach, whose spans lie past the east edge",
     "spans": [],
-    "wrecks": []
+    "wrecks": [
+      {"e": 1541, "n": 2442, "length_m": 72, "width_m": 12, "angle_degrees": 25, "why": "A freighter down in the channel south of Alcatraz"},
+      {"e": 2200, "n": 1700, "length_m": 40, "width_m": 10, "angle_degrees": -10, "why": "A ferry sunk off Pier 39 on its way to the island"},
+      {"e": -200, "n": 1250, "length_m": 20, "width_m": 6, "angle_degrees": 70, "why": "A yacht off Marina Green"},
+      {"e": -1800, "n": 1100, "length_m": 26, "width_m": 8, "angle_degrees": 160, "why": "A tug off Crissy Field, under the bridge's eye"}
+    ]
   }
 }

@@ -44,7 +44,29 @@ def tiger(m, man):
 
 
 def dem(m, man):
-    d = m.city['dem']
+    # The newest project first; older ones named in "fill" only cover what it leaves bare, as a frame past its county.
+    main = m.city['dem']
+    tiles = []
+    for k, d in enumerate([main] + main.get('fill', [])):
+        d = {**main, 'fill': None, **d}
+        for t in dem_tiles(m, man, d):
+            tiles.append({**t, 'project': d.get('project'), 'z_to_m': d['z_to_m'], 'fill': k > 0})
+    (m.root / 'dem_selection.json').write_text(json.dumps(tiles, indent=1) + '\n')
+    print('DEM tiles selected:', len(tiles), flush=True)
+    for d in [main] + main.get('fill', []):
+        first = next((t for t in tiles if t['project'] == d.get('project')), None)
+        # Some projects name an index page rather than a metadata file.
+        if first and (first.get('metadata') or '').endswith('.xml'):
+            keep(m, man, 'dem/' + first['name'].replace('.tif', '.xml'), first['metadata'], d.get('source', main['source']), d.get('licence', main['licence']))
+    sources = {d.get('project'): (d.get('source', main['source']), d.get('licence', main['licence'])) for d in [main] + main.get('fill', [])}
+    with ThreadPoolExecutor(4) as pool:
+        for k, _ in enumerate(pool.map(lambda t: keep(m, man, 'dem/' + t['name'], t['url'], *sources[t['project']]), tiles)):
+            if k % 10 == 0:
+                print('DEM', k, '/', len(tiles), flush=True)
+    print('DEM done', flush=True)
+
+
+def dem_tiles(m, man, d):
     if d['kind'] == 'tnm':
         w, s, e, n = m.lonlat_bounds(0.002)
         items, offset = [], 0
@@ -75,16 +97,7 @@ def dem(m, man):
                 tiles.append({'name': f, 'url': d['base'] + f})
     else:
         raise ValueError(f"unknown elevation source kind {d['kind']}")
-    (m.root / 'dem_selection.json').write_text(json.dumps(tiles, indent=1) + '\n')
-    print('DEM tiles selected:', len(tiles), flush=True)
-    # Some projects name an index page rather than a metadata file.
-    if tiles and (tiles[0].get('metadata') or '').endswith('.xml'):
-        keep(m, man, 'dem/' + tiles[0]['name'].replace('.tif', '.xml'), tiles[0]['metadata'], d['source'], d['licence'])
-    with ThreadPoolExecutor(4) as pool:
-        for k, _ in enumerate(pool.map(lambda t: keep(m, man, 'dem/' + t['name'], t['url'], d['source'], d['licence']), tiles)):
-            if k % 10 == 0:
-                print('DEM', k, '/', len(tiles), flush=True)
-    print('DEM done', flush=True)
+    return tiles
 
 
 def nlcd(m, man):
