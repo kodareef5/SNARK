@@ -262,8 +262,8 @@ def startled(r):
     free, hold, down = 5.0, 13.0, 17.0
     rear = Keys([(0, 0.0), (1, 0.0), (4, 1.0), (9, 0.88), (hold, 0.35), (down, -0.12), (20, 0.03), (n - 1, 0.0)])
     # The wings open once the hands are off the ground, or the folded skin would swing into it.
-    fold = Keys([(0, 1.0), (2, 1.0), (6, 0.45), (9, 0.47), (hold - 1, 1.0)])
-    raise_ = Keys([(0, 0.0), (2, 0.0), (6, 30.0), (9, 27.0), (hold - 1, 4.0), (down, 0.0)])
+    fold = Keys([(0, 1.0), (2, 1.0), (7, 0.34), (9, 0.36), (hold - 1, 1.0)])
+    raise_ = Keys([(0, 0.0), (2, 0.0), (7, 30.0), (9, 28.0), (hold - 1, 4.0), (down, 0.0)])
     look = Keys([(0, 0.0), (6, 0.0), (8, 28.0), (11, 26.0), (14, 0.0)])
     gasp = Keys([(0, 0.0), (1, 0.0), (3, 0.5), (6, 0.3), (8, 0.0)])
 
@@ -390,7 +390,6 @@ def barrel_roll(r):
 
 # The carry. Where each ankle goes to hold a body on the `grab` socket: forward of the hips and under them, the foot
 # pointing down and forward and the toes curled back under the load. The talons shut round it, not all the way.
-GRIP = Vector(rig.SOCKETS["grab"][1])
 CARRY_ANKLE = Vector((0.105, 0.425, -0.465))
 CARRY_FOOT = (98.0, -8.0, 0.0)
 GRIP_TALONS = 0.85
@@ -399,88 +398,55 @@ OPEN_TALONS = -0.45
 
 def carry_legs(p, u=0.0):
     """The legs holding a load at phase u of fly's beat: as the body rises on the downstroke the load lags and the legs
-    stretch a little, and as it sinks they give; the load swings slowly from side to side."""
+    stretch, and as it sinks they give; the load swings slowly from side to side."""
     b = mv.BEATS["fly"]
     give = mv.beat(u - 0.15, b)[2] - mv.beat(u, b)[2]
     sway = math.sin(2.0 * math.pi * u)
     for s in "lr":
         sign = 1.0 if s == LEFT else -1.0
-        ankle = mx(CARRY_ANKLE, s) + Vector((0.006 * sway, 0.5 * give, -0.15 * give))
+        ankle = mx(CARRY_ANKLE, s) + Vector((0.015 * sway, 1.5 * give, -0.5 * give))
         p["foot_" + s] = ankle
-        p["foot_rot_" + s] = mv.mrot((CARRY_FOOT[0] + 120.0 * give, CARRY_FOOT[1], CARRY_FOOT[2] - 2.0 * sway * sign), s)
+        p["foot_rot_" + s] = mv.mrot((CARRY_FOOT[0] + 200.0 * give, CARRY_FOOT[1], CARRY_FOOT[2] - 3.0 * sway * sign), s)
         p["knee_" + s] = mv.knee_ahead(p, s, ankle, ahead=0.5, up=0.1)
-        p["talons_" + s] = GRIP_TALONS + 0.6 * give
+        p["talons_" + s] = GRIP_TALONS + 2.0 * give
 
 
-def rest_legs(p):
+def swung(p, swing, talons):
+    """The trailing legs swung `swing` degrees forward about the hips, straight as they rest, the toes curled by
+    `talons`: what a grab or a release lays on the carry as the engine fades it in or out."""
+    m = rot(pitch=swing)
     for s in "lr":
-        p["foot_" + s] = mv.REST_FOOT[s].copy()
-        p["foot_rot_" + s] = (0.0, 0.0, 0.0)
-        p["knee_" + s] = mv.REST_KNEE[s].copy()
-        p["talons_" + s] = 0.0
-
-
-def legs_between(a, b, s):
-    """The legs of pose a moved toward pose b's by s."""
-    out = air()
-    for side in "lr":
-        for k in ("foot_", "foot_rot_", "knee_", "talons_"):
-            out[k + side] = mv.mix(a[k + side], b[k + side], s)
-    return out
-
-
-def within_leg(p):
-    """Each ankle kept within the leg's length of its hip: the legs rest straight, so a path near the trailing rest
-    would pull them past it."""
-    for s in "lr":
-        v = p["foot_" + s] - hip(p, s)
-        if v.length > mv.LEG_LENGTH:
-            p["foot_" + s] = hip(p, s) + v.normalized() * mv.LEG_LENGTH
+        h = hip(p, s)
+        p["foot_" + s] = h + turned(m, mv.REST_FOOT[s] - h)
+        p["foot_rot_" + s] = (swing, 0.0, 0.0)
+        p["knee_" + s] = h + turned(m, mv.REST_KNEE[s] - h)
+        p["talons_" + s] = talons
 
 
 def grab(r):
-    """Hovering or flying over a body, it swings its legs forward from where they trail, reaching down and ahead with
-    the toes spread wide; they close on it with a snap, the click a rider hears, and the legs draw up and bend under
-    the weight into the carry."""
+    """Taking hold, laid on the legs while the engine fades the carry in under it by its frames (D550), so it starts and
+    ends unturned and adds only what the fade lacks: the legs swing on past the carry as they come, reaching ahead
+    with the toes spread wide, the talons shut with a snap on frame 7, the click a rider hears, and the legs give a
+    little under the weight."""
     name = "grab"
     n = rig.CLIPS[name]["frames"]
     held = air()
     carry_legs(held, 0.0)
-    trail = air()
-    rest_legs(trail)
-    # Reaching: legs out ahead of the grip and a little lower, the feet pointing at the load, the toes spread.
-    reach = air()
-    for s in "lr":
-        ankle = mx(CARRY_ANKLE, s) + Vector((0.01, -0.10, 0.10))
-        reach["foot_" + s] = ankle
-        reach["foot_rot_" + s] = mv.mrot((84.0, -4.0, 0.0), s)
-        reach["knee_" + s] = mv.knee_ahead(reach, s, ankle, ahead=0.5, up=0.1)
-        reach["talons_" + s] = OPEN_TALONS
-    swing = Keys([(0, 0.0), (5, 1.0)])
-    close = Keys([(0, 0.0), (5, 0.0), (6, 0.6), (8, 1.0)])
-    sag = Keys([(0, 0.0), (6, 0.0), (8, 1.0), (10, -0.3), (n - 1, 0.0)])
     shut = held["talons_l"]
+    reach = Keys([(0, 0.0), (3, 14.0), (5, 18.0), (7, 6.0), (9, -4.0), (n - 1, 0.0)])
+    # How far the talons are shut, all told; the carry's share of it grows with the fade.
     talons = Keys([(0, 0.0), (3, OPEN_TALONS), (5, OPEN_TALONS), (6, 0.2), (7, shut + 0.12), (9, shut - 0.03), (n - 1, shut)])
 
     def at(t):
-        # From trailing, the feet swing down under the body and forward; a straight line would pass them through the
-        # tail and belly.
-        k = swing(t)
-        p = legs_between(trail, reach, smooth(k))
-        for s in "lr":
-            p["foot_" + s] = p["foot_" + s] + Vector((0.0, -0.10 * math.sin(math.pi * k), 0.0))
-        p = legs_between(p, held, close(t))
-        for s in "lr":
-            p["foot_" + s] = p["foot_" + s] + Vector((0.0, -0.03 * sag(t), 0.0))
-            p["talons_" + s] = talons(t)
-        within_leg(p)
+        p = air()
+        swung(p, reach(t), talons(t) - shut * t / (n - 1))
         return p
 
     return make(r, name, n, at)
 
 
 def carry(r):
-    """Holding a body in its feet, one stroke of fly long, laid in place of the flight's legs."""
+    """Holding a body in its feet, one stroke of fly long, laid on the flight's legs."""
     name = "carry"
     n = rig.CLIPS[name]["frames"]
 
@@ -493,32 +459,19 @@ def carry(r):
 
 
 def release(r):
-    """Letting go: the talons spring open, the legs kick down and forward off the load, then swing back to trail."""
+    """Letting go, laid on the legs while the engine fades the carry out under it: the talons spring open, the legs
+    kick down off the load and then swing back faster than the fade, and the toes relax as they come to trail."""
     name = "release"
     n = rig.CLIPS[name]["frames"]
     held = air()
     carry_legs(held, 0.0)
-    trail = air()
-    rest_legs(trail)
-    kick = air()
-    for s in "lr":
-        ankle = mx(CARRY_ANKLE, s) + Vector((0.01, -0.08, 0.06))
-        kick["foot_" + s] = ankle
-        kick["foot_rot_" + s] = mv.mrot((88.0, -2.0, 0.0), s)
-        kick["knee_" + s] = mv.knee_ahead(kick, s, ankle, ahead=0.5, up=0.1)
-        kick["talons_" + s] = OPEN_TALONS
-    out = Keys([(0, 0.0), (2, 1.0), (4, 1.0)])
-    back = Keys([(0, 0.0), (3, 0.0), (n - 1, 1.0)])
-    talons = Keys([(0, held["talons_l"]), (1, 0.2), (2, OPEN_TALONS), (5, OPEN_TALONS + 0.1), (9, -0.05), (n - 1, 0.0)])
+    shut = held["talons_l"]
+    kick = Keys([(0, 0.0), (2, 10.0), (5, -8.0), (8, -4.0), (n - 1, 0.0)])
+    talons = Keys([(0, shut), (1, 0.2), (2, OPEN_TALONS), (5, OPEN_TALONS + 0.1), (9, -0.05), (n - 1, 0.0)])
 
     def at(t):
-        p = legs_between(held, kick, out(t))
-        k = back(t)
-        p = legs_between(p, trail, smooth(k))
-        for s in "lr":
-            p["foot_" + s] = p["foot_" + s] + Vector((0.0, -0.08 * math.sin(math.pi * k), 0.0))
-            p["talons_" + s] = talons(t)
-        within_leg(p)
+        p = air()
+        swung(p, kick(t), talons(t) - shut * (1.0 - t / (n - 1)))
         return p
 
     return make(r, name, n, at)
@@ -557,7 +510,10 @@ def flinch(r):
 
 
 # Where a carrier's jaws hold it in `carried`: the carry_point socket on the top of the back, 15 cm above its rest place.
+# The body hangs from there, so its root moves as it swings (`--check` notes the loop walks; it has no ground). It
+# struggles in beats of STRUGGLE frames, two a second.
 CARRY_AT = Vector(rig.SOCKETS["carry_point"][1]) + Vector((0.0, 0.15, 0.0))
+STRUGGLE = 15.0
 
 
 def carried(r):
@@ -568,7 +524,7 @@ def carried(r):
     n = rig.CLIPS[name]["frames"]
     effort = Keys([(0, 0.05), (8, 0.05), (14, 1.0), (34, 1.0), (42, 0.1)], period=n)
     snap = Keys([(0, 0.0), (16, 0.0), (19, 1.0), (21, 0.0), (26, 0.0), (29, 1.0), (31, 0.0)], period=n)
-    swing = mv.follow(lambda t: effort(t) * math.sin(2.0 * math.pi * t / 10.0), n, True, 0.9, 0.12)
+    swing = mv.follow(lambda t: effort(t) * math.sin(2.0 * math.pi * t / STRUGGLE), n, True, 0.9, 0.12)
     peak = max(abs(x) for x in swing) or 1.0
     lean0, ext0 = lean_of(air(), mv.REST_HEAD)
 
@@ -582,7 +538,7 @@ def carried(r):
         e = effort(t)
         sw = swing[f] / peak
         p = air()
-        p["body_rot"] = (-24.0 + 4.0 * e * math.sin(2.0 * math.pi * t / 10.0 + 1.0), 4.0 * sw, 9.0 * sw)
+        p["body_rot"] = (-24.0 + 4.0 * e * math.sin(2.0 * math.pi * t / STRUGGLE + 1.0), 4.0 * sw, 9.0 * sw)
         p["spine"] = (-6.0, 0.0, 2.0 * sw)
         p["chest"] = (-8.0 + 3.0 * e, 0.0, 0.0)
         p["body"] = p["body"] + (CARRY_AT - cp_offset(p))
@@ -594,11 +550,11 @@ def carried(r):
         p["beak"] = 0.1 + 0.7 * snap(t)
         for s in "lr":
             lag = 0.0 if s == LEFT else 1.2
-            beat_ = e * math.sin(2.0 * math.pi * (t - lag) / 10.0)
+            beat_ = e * math.sin(2.0 * math.pi * (t - lag) / STRUGGLE)
             # Hanging limp the wings fall from the shoulders, half spread, the fingers drooping; struggling they beat.
             p["wing_" + s] = wing(fold=0.24 - 0.12 * e, flap=-48.0 + 22.0 * e + 26.0 * beat_, sweep=-4.0 + 5.0 * beat_,
                                   twist=-6.0 + 8.0 * beat_, curl=16.0 - 8.0 * e)
-            ph = 2.0 * math.pi * (t / 10.0 + (0.0 if s == LEFT else 0.5))
+            ph = 2.0 * math.pi * (t / STRUGGLE + (0.0 if s == LEFT else 0.5))
             dangle = mv.leg_hanging(p, s, 0.45 - 0.08 * e * (1 + math.cos(ph)) / 2, 0.05 + 0.10 * e * math.sin(ph), 0.04)
             p["foot_" + s] = dangle
             p["foot_rot_" + s] = (70.0 + 25.0 * e * math.sin(ph), 0.0, 0.0)

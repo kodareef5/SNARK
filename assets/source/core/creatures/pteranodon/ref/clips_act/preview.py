@@ -6,14 +6,19 @@
 The asset's scripts are run as the build runs them (rig.py, model.py with --model, clips_move.py, clips_act.py). Each
 frame is then taken as the engine takes a clip, every bone's turn against its parent and the root's place, and the
 animal is drawn from those turns alone, its controls switched off. A layer is laid over the clip it plays on as the
-engine lays one (shared/anim/creature.ts: layer): an added layer's turns on each bone's own; the carrying legs in place of
-the flight's. So the sheets show the bite in the air over fly and over hover, the grab, carry and release over both, and
-the flinch over the idle and over fly.
+engine lays one (shared/anim/creature.ts: layer), each frame's turns on each bone's own, by a share where it fades: the
+carry comes in under the grab over the grab's frames and goes out under the release (D550). So the sheets show the bite
+in the air over fly and over hover, the grab, carry and release over both, and the flinch over the idle and over fly.
+The two `carry_*_in_place` cases lay the carry in place of the flight's legs instead, by its share, which is what keeps
+the feet on the `grab` socket whatever the flight does with its legs; each carrying case prints how far the feet's grip
+lies from the socket.
 
 For each case, into DIR (default: this folder):
-- <case>.jpg, a contact sheet: a column for each frame and rows from the side, the front, three-quarter above and, in
-  the air, from below against the sky; for the roll from behind as a rider's camera follows; then the animal as a
-  player sees it far off, about 90 and 36 pixels tall on the ground and across in the air;
+- <case>.jpg, a contact sheet: a column for each frame (or every second or third) and rows from the side (for the legs
+  cut away past the near wing), close on the head, the front, three-quarter above and, in the air, from below against
+  the sky; for the roll from behind as a rider's camera follows; then the animal as a player sees it far off, about 90
+  and 36 pixels tall on the ground and across in the air. A dark tick under a column is a frame of the clip, a light one
+  the flight going on alone;
 - <case>.mp4, a short film; a one-shot is held a moment at each end.
 
 A ridden clip has the seated rider drawn on its seat as capsules (rig.RIDER_CAPSULES). While it carries, a body of a
@@ -29,7 +34,7 @@ import tempfile
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Matrix, Vector
+from mathutils import Matrix, Quaternion, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FOLDER = os.path.dirname(os.path.dirname(HERE))
@@ -85,19 +90,29 @@ def frames_of(rig, name):
     return spec["frames"] if spec["loop"] else spec["frames"] - 1
 
 
-def compose(r, rig, base, base_f, layer=None, layer_f=0):
-    """base at base_f, with `layer` laid on it at layer_f as the engine lays it."""
+def compose(r, rig, base, base_f, layers=()):
+    """base at base_f, with each of `layers` (clip, frame, share) laid on it in turn as the engine lays one; a layer
+    given as (clip, frame, share, "place") is laid in place of its bones' turns instead, by its share."""
     out = dict(sample(r, rig, base, base_f % (frames_of(rig, base) + (0 if rig.CLIPS[base]["loop"] else 1))))
-    if layer is None:
-        return out
-    spec = rig.CLIPS[layer]
-    over = sample(r, rig, layer, min(layer_f, frames_of(rig, layer)))
-    for b in spec["layer"]:
-        if spec.get("hold"):
-            out[b] = (over[b][0], out[b][1])
-        else:
-            out[b] = ((out[b][0] @ over[b][0]).normalized(), out[b][1])
+    for name, f, share, *how in layers:
+        spec = rig.CLIPS[name]
+        n = frames_of(rig, name)
+        over = sample(r, rig, name, f % n if spec["loop"] else min(f, n))
+        for b in spec["layer"]:
+            if how:
+                out[b] = (nlerp(over[b][0], share, out[b][0]), out[b][1])
+                continue
+            q = nlerp(over[b][0], share) if share < 1.0 else over[b][0]
+            out[b] = ((out[b][0] @ q).normalized(), out[b][1])
     return out
+
+
+def nlerp(q, share, start=None):
+    """The engine's share of the way from `start` (no turn) toward q, normalised (shared/math/quat.ts: quatNlerp)."""
+    start = start or Quaternion()
+    if start.dot(q) < 0:
+        q = -q
+    return Quaternion([(1.0 - share) * a + share * b for a, b in zip(start, q)]).normalized()
 
 
 def place(r, pose):
@@ -288,23 +303,39 @@ def _last(clip):
     return RIG.CLIPS[clip]["frames"] - 1
 
 
+# A step of a case: (the clip under it, its frame, the layers laid on it as (clip, frame, share), and the clip and frame
+# the step is of, for its mark).
+
 def over(base, layer, start=0):
     """`layer` once through over `base` playing on from its frame `start`."""
-    return [(base, start + f, layer, f) for f in range(_last(layer) + 1)]
+    return [(base, start + f, ((layer, f, 1.0),), (layer, f)) for f in range(_last(layer) + 1)]
 
 
-def carrying(base):
-    """Grab, two strokes of carry and release over `base`, played on through them."""
+def carrying(base, *how):
+    """Taking hold, two strokes of carrying and letting go over `base`, played on through them, as the engine lays
+    them: the carry comes in under the grab by its frames and goes out under the release (D550). With "place", the
+    carry is laid in place of the flight's legs rather than on them."""
     seq, t = [], 0
-    for layer, n in (("grab", 12), ("carry", 30), ("carry", 30), ("release", 12)):
-        for f in range(n):
-            seq.append((base, t, layer, f))
-            t += 1
+    g, rl = _last("grab"), _last("release")
+    for f in range(g + 1):
+        seq.append((base, t, (("carry", t, f / g, *how), ("grab", f, 1.0)) if f < g else (("carry", t, 1.0, *how),),
+                    ("grab", f)))
+        t += 1
+    for f in range(60):
+        seq.append((base, t, (("carry", t, 1.0, *how),), ("carry", t)))
+        t += 1
+    for f in range(rl + 1):
+        seq.append((base, t, (("carry", t, 1.0 - f / rl, *how), ("release", f, 1.0)) if f < rl else (), ("release", f)))
+        t += 1
     return seq
 
 
 def alone(clip):
-    return [(clip, f, None, 0) for f in range(_last(clip) + 1)]
+    return [(clip, f, (), (clip, f)) for f in range(_last(clip) + 1)]
+
+
+def flying(base, frames):
+    return [(base, f, (), (base, f)) for f in frames]
 
 
 def cases():
@@ -319,27 +350,38 @@ def cases():
                              "views": ["side", "front", "three"]},
         "flinch_fly": {"where": "air", "seq": over("fly", "flinch"), "every": 1, "views": ["side", "head", "front", "below"]},
         # The roll between the last strokes of fly before it and the first after it.
-        "roll": {"where": "air", "seq": [("fly", f, None, 0) for f in range(26, 30)] + alone("barrel_roll")
-                 + [("fly", f, None, 0) for f in range(0, 4)], "every": 1, "views": ["behind", "side", "front", "below"]},
+        "roll": {"where": "air", "seq": flying("fly", range(26, 30)) + alone("barrel_roll") + flying("fly", range(4)),
+                 "every": 1, "views": ["behind", "side", "front", "below"]},
         "carry_hover": {"where": "legs", "seq": carrying("hover"), "every": 2},
         "carry_fly": {"where": "legs", "seq": carrying("fly"), "every": 2},
+        # The carry laid in place of the flight's legs instead, as the engine would need to for the feet to keep hold of
+        # what hangs from the grab socket while the flight swings its legs or hangs them.
+        "carry_fly_in_place": {"where": "legs", "seq": carrying("fly", "place"), "every": 2},
+        "carry_hover_in_place": {"where": "legs", "seq": carrying("hover", "place"), "every": 2},
         "carried": {"where": "air", "seq": alone("carried")[:-1], "every": 3, "views": ["side", "front", "three"]},
     }
 
 
 def show(r, rig, step, body, load):
     """Poses one step of a case and shows or hides the rider and the load."""
-    base, bf, layer, lf = step
-    pose = compose(r, rig, base, bf, layer, lf)
+    base, bf, layers, (clip, f) = step
+    pose = compose(r, rig, base, bf, layers)
     place(r, pose)
-    ridden = rig.CLIPS[layer or base].get("ridden", False) and base != "carried"
+    ridden = rig.CLIPS[clip].get("ridden", False) and base != "carried"
     if body is not None:
         body.hide_render = not ridden
-    held = (layer == "grab" and lf >= 7) or layer == "carry" or (layer == "release" and lf < 2)
+    held = (clip == "grab" and f >= 7) or clip == "carry" or (clip == "release" and f < 2)
     load.hide_render = not held
     if held:
         load.matrix_world = Matrix.Translation(Vector(rig.to_blender(r.socket("grab"))))
     return pose
+
+
+def grip_miss(r, rig):
+    """How far the middle of the four toe and foot ends lies from the grab socket, in metres."""
+    bones = r.obj.pose.bones
+    ends = [bones[b].tail for b in ("foot_l", "foot_r", "toes_l", "toes_r")]
+    return (sum(ends, Vector()) / 4 - Vector(rig.to_blender(r.socket("grab")))).length
 
 
 def sheet(r, rig, name, case, out, tmp, stage_, body, load):
@@ -358,8 +400,11 @@ def sheet(r, rig, name, case, out, tmp, stage_, body, load):
     cols = min(len(seq), 20)
     blocks = (len(seq) + cols - 1) // cols
     canvas = np.ones((blocks * (band + gap), cols * CELL, 3), dtype=np.float32) * np.array(BACKGROUND, dtype=np.float32)
+    misses = []
     for k, step in enumerate(seq):
         show(r, rig, step, body, load)
+        if step[3][0] == "carry":
+            misses.append(grip_miss(r, rig))
         col, block = k % cols, k // cols
         top = block * (band + gap)
         y = top
@@ -377,12 +422,13 @@ def sheet(r, rig, name, case, out, tmp, stage_, body, load):
             canvas[y:y + crop.shape[0], x0:x0 + crop.shape[1]] = crop
             y += tall + 8
         # A mark for the step: dark under a frame of the layer or one-shot, light under the base going on alone.
-        clip_f = step[3] if step[2] else step[1]
-        mark = 0.2 if (step[2] or step[0] not in ("fly", "hover", "idle")) else 0.55
+        clip, clip_f = step[3]
+        mark = 0.2 if clip not in ("fly", "hover", "idle") else 0.55
         canvas[top + band - 3:top + band, col * CELL + 4:col * CELL + 4 + (40 if clip_f % 10 == 0 else 12)] = mark
         canvas[top:top + band, col * CELL:col * CELL + 1] = 0.6
     save_jpeg(canvas[::-1], os.path.join(out, f"{name}.jpg"))
-    print(f"preview: {name}.jpg, {len(seq)} columns")
+    said = f"; carrying, the feet's grip {min(misses) * 100:.0f} to {max(misses) * 100:.0f} cm from the grab socket" if misses else ""
+    print(f"preview: {name}.jpg, {len(seq)} columns{said}")
 
 
 def film(r, rig, name, case, out, tmp, stage_, body, load):

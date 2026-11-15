@@ -214,9 +214,8 @@ RIDER_CAPSULES = [  # (from, to, radius), a name with _l mirrored for the right
 #           of fly, which fly_fast and hover share; "gait": the left hand farthest forward
 #   end     "ground", "air" or "beat", the same for the last frame (warned if not)
 #   layer   an additive clip may turn only these bones and must start and end unturned
-#   hold    a layer that is those bones' pose, laid in place of their turns rather than on them (the carrying legs):
-#           it starts unturned unless `from` names the clip whose first frame it starts on, and ends unturned unless
-#           `into` names the one it ends on; a held loop holds its own pose throughout
+#   held    a looping layer held while it lasts, which the engine fades in and out by weight (the carrying legs, D550):
+#           its frames are its bones' turns from rest, so it need not start or end unturned
 #   ridden  the rider may be on it: the block-out must keep out of RIDER_CAPSULES
 #   lifted  the engine lifts the body from its first frame (take_off_lift), so the ground it left falls away under it
 #   optional  made only if needed; asset.ts lists it once it is made
@@ -250,10 +249,10 @@ CLIPS = {
     "attack_air":   {"owner": "act",  "loop": False, "frames": 20, "min": 10, "max": 20, "layer": _NECK_HEAD, "hit_by": 10, "ridden": True},
     # The roll's second of burst (D496).
     "barrel_roll":  {"owner": "act",  "loop": False, "frames": 30, "min": 20, "max": 45, "start": "beat", "end": "beat", "ridden": True},
-    "grab":         {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "hold": True, "into": "carry", "ridden": True},
+    "grab":         {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "ridden": True},
     # One stroke of fly, so the load's swing keeps time with the wings.
-    "carry":        {"owner": "act",  "loop": True,  "frames": 30, "min": 20, "max": 60, "layer": _LEGS, "hold": True, "ridden": True},
-    "release":      {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "hold": True, "from": "carry", "ridden": True},
+    "carry":        {"owner": "act",  "loop": True,  "frames": 30, "min": 20, "max": 60, "layer": _LEGS, "held": True, "ridden": True},
+    "release":      {"owner": "act",  "loop": False, "frames": 12, "min": 8, "max": 20, "layer": _LEGS, "ridden": True},
     "flinch":       {"owner": "act",  "loop": False, "frames": 12, "min": 6, "max": 15, "layer": _FLINCH, "ridden": True},
     "carried":      {"owner": "act",  "loop": True,  "frames": 60, "min": 30, "max": 120, "optional": True},
     "torpor_in":    {"owner": "life", "loop": False, "frames": 40, "min": 24, "max": 60, "start": "ground"},
@@ -1632,20 +1631,10 @@ def check_clip(rig, clip):
             if stray or (poses[f]["pelvis"][1] - rest_pose["pelvis"][1]).length > 0.001:
                 errors.append(f"{name}: an additive clip may turn only its layer; frame {f} moves {', '.join(stray) or 'the body'}")
                 break
-        held = spec.get("hold")
-        for key, f, edge in (("from", frames[0], "start"), ("into", frames[-1], "end")):
-            if held and clip.loop:
-                continue
-            other = spec.get(key) if held else None
-            base = rest_pose if other is None else _action_pose(rig, other, 0)
-            if base is None:
-                warnings.append(f"{name}: {other} is not made, so its {edge} is not checked against it")
-                continue
-            bad, deg, _ = differs(poses[f], base)
-            if bad and other is None:
-                errors.append(f"{name}: a layer must {edge} unturned; frame {f} is {deg:.1f} deg off")
-            elif bad:
-                errors.append(f"{name}: a layer must {edge} on {other}'s first frame; frame {f} is {deg:.1f} deg off it")
+        for f in (frames[0], frames[-1]) if not spec.get("held") else ():
+            bad, deg, _ = differs(poses[f], rest_pose)
+            if bad:
+                errors.append(f"{name}: an additive clip must start and end unturned; frame {f} is {deg:.1f} deg off")
     for key, f in (("start", frames[0]), ("end", frames[-1])):
         want = spec.get(key)
         if want in ("ground", "air", "beat"):
