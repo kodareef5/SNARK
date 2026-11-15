@@ -23,6 +23,7 @@ import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
+import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { FarNodes, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
@@ -242,6 +243,8 @@ export class Scene {
   /** The piece shown where it would be built. kind is 0 for none, x, y, z are metres, yaw is in wire units, color is a palette index. */
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
+  /** A bag of one stack, drawn as its item lying (dropped.ts). */
+  private readonly dropped: Dropped;
   /** Null draws no body for the viewer. The app sets it before build(). */
   own: OwnBody | null = null;
   /** Index of an entity to leave out of the remote bodies, because `own` is that body as the viewer predicts it (a mount). -1 for none. */
@@ -366,6 +369,7 @@ export class Scene {
     this.transientF32 = new Float32Array(t.buffer, t.byteOffset, t.byteLength >> 2);
     this.transientU16 = new Uint16Array(t.buffer, t.byteOffset, t.byteLength >> 1);
     this.characters = new Characters(reg, pack, this.assets);
+    this.dropped = new Dropped(reg, bind);
     const p = this.packet as unknown as Record<string, unknown>;
     this.columns = Object.keys(p).filter((k) => k.startsWith("draw") && k !== "drawPass" && ArrayBuffer.isView(p[k])).map((k) => p[k] as Uint8Array);
     let reach = 0;
@@ -1206,7 +1210,9 @@ export class Scene {
     const bodies = this.characters;
     for (let i = 0; i < remote.count; i++) {
       if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0) continue;
-      const mesh = this.meshOfKind[remote.kind[i]!]!;
+      // A bag of one stack is drawn as its item, where the item has a lying mesh.
+      const lies = this.dropped.item(remote.kind[i]!, remote.gear, i * GEAR_COUNT);
+      const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[remote.kind[i]!]!;
       const r = this.radiusOfMesh[mesh]!;
       const x = remote.x[i]! - cam.x;
       const y = remote.y[i]! - cam.y;
@@ -1221,14 +1227,17 @@ export class Scene {
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
       if (bodies.has(kind) || this.pitched[kind] !== 0) continue;
-      const mesh = this.meshOfKind[kind]!;
+      const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
+      const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
       const r = this.radiusOfMesh[mesh]!;
       const x = remote.x[i]! - cam.x;
       const y = remote.y[i]! - cam.y;
       const z = remote.z[i]! - cam.z;
       if (!cam.boxVisible(x - r, y - r, z - r, x + r, y + r, z + r)) continue;
       const at = this.cursor[mesh]!++;
-      this.transient.set(at, x, y, z, Math.round((remote.yaw[i]! / (2 * Math.PI)) * 65536) & 0xffff, this.colorOfKind[kind]!);
+      const yaw = Math.round((remote.yaw[i]! / (2 * Math.PI)) * 65536) & 0xffff;
+      if (lies !== 0) this.transient.set(at, x, y, z, this.dropped.yaw(remote.id[i]!, yaw), this.dropped.colorOf(lies));
+      else this.transient.set(at, x, y, z, yaw, this.colorOfKind[kind]!);
       this.transient.regions(at, remote.colors, i * 6);
       p.transientIds[at] = remote.id[i]!;
     }

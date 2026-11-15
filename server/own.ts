@@ -3,7 +3,7 @@
 
 import type { ItemDef } from "../shared/content/defs.ts";
 import type { BitReader } from "../shared/net/codec.ts";
-import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { TEXT_NOTICE, BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_CRAFT, CMD_CRAFT_AT, CMD_CREATE, CMD_DETACH, CMD_DROP, CMD_LEARN, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_RESPAWN, CMD_SELECT, CMD_SPEND, CMD_UNLOAD, CMD_USE, OWN_BUFFS, OWN_HELD, OWN_RULES, RULE_CORPSE_LOCATOR, RULE_CROSSHAIR, RULE_DAMAGE_NUMBERS, RULE_GLOBAL_CHAT, RULE_HIT_MARKERS, RULE_MAP_LOCATION, RULE_THIRD_PERSON, OWN_LOOK, OWN_MARKERS, OWN_OPEN, OWN_PROGRESSION, OWN_RESPAWN, OWN_SLOTS, OWN_SUBJECT, OWN_TRIBE, OWN_VITALS, OWN_VOICE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT, RESULT_STALE, SESSION_CREATING, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { LOOK_BYTES, validLook } from "../shared/anim/look.ts";
 import { TOKEN_BYTES } from "../shared/voice/packet.ts";
 import { HOTBAR_SLOTS, type Inventory } from "../shared/sim/items.ts";
@@ -12,10 +12,12 @@ import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Progression } from "./progression.ts";
+import { sendStation } from "./stations.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Survival } from "./survival.ts";
 import type { Tribes } from "./tribes.ts";
 import type { Subject } from "./taming.ts";
+import type { Use } from "./use.ts";
 import type { Voice } from "./voice.ts";
 import type { ServerWorld } from "./world.ts";
 import { event } from "./events/bus.ts";
@@ -76,6 +78,8 @@ export interface OwnContext {
   rearm(rec: EntityRecord): void;
   /** See `Death.drop`. */
   drop(rec: EntityRecord, slot: number, n: number): boolean;
+  /** What using an item does beyond eating it (server/use.ts). */
+  readonly use: Use;
 }
 
 /** Sends the slots of `inv` changed after version `since`, or every occupied slot if `full`. */
@@ -273,6 +277,8 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       c.sentOpenVersion = box.version;
     }
   }
+  // An open station's queue follows its slots.
+  sendStation(game, c, open);
 
   if (rec.markersVersion !== c.sentMarkers) {
     const w = game.beginOwn(OWN_MARKERS);
@@ -402,6 +408,14 @@ export function addOwnCommands(ctx: OwnContext): void {
     const rec = mine(c);
     return r.overflow ? RESULT_INVALID : rec ? ctx.progression.craft(rec, item, count) : RESULT_DENIED;
   });
+  // Made at the station the session has open, from what lies in it. The open box is the server's, so no station is named.
+  ctx.game.handle(CMD_CRAFT_AT, (c: Client, r: BitReader) => {
+    const item = r.u16();
+    const count = r.u8();
+    const rec = mine(c);
+    const station = ctx.openOf(c);
+    return r.overflow ? RESULT_INVALID : rec && station ? ctx.progression.craftAt(rec, station, item, count) : RESULT_DENIED;
+  });
 
   const reg = ctx.world.reg;
   const itemDef = (kind: number): ItemDef | null => {
@@ -524,13 +538,18 @@ export function addOwnCommands(ctx: OwnContext): void {
       if (to < 0) return RESULT_FULL;
       return ctx.items.move(rec, slot, rec, to, 0) > 0 ? RESULT_OK : RESULT_INVALID;
     }
-    const eat = (ctx.world.reg.defs[item] as ItemDef).eat;
-    if (!eat) return RESULT_INVALID;
+    const def = ctx.world.reg.defs[item] as ItemDef;
+    const eat = def.eat;
+    const use = def.use;
+    if (!eat && !use) return RESULT_INVALID;
     if (!asked(ctx, c, ITEM_USE, { byPid: c.pid, item: reg.ids[item]! })) return RESULT_DENIED;
+    // A vessel is drunk from or filled, and kept.
+    if (use?.holds) return ctx.use.vessel(c, rec, slot, def);
     if (!ctx.items.burn(rec, slot, 1)) return RESULT_STALE;
-    if (eat.food) ctx.survival.add(rec, V_FOOD, eat.food);
-    if (eat.water) ctx.survival.add(rec, V_WATER, eat.water);
-    if (eat.health) ctx.mend(rec, eat.health);
+    if (eat?.food) ctx.survival.add(rec, V_FOOD, eat.food);
+    if (eat?.water) ctx.survival.add(rec, V_WATER, eat.water);
+    if (eat?.health) ctx.mend(rec, eat.health);
+    if (use) ctx.use.apply(rec, use);
     ctx.dose(rec, item, c.pid);
     return RESULT_OK;
   });

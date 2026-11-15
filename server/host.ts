@@ -53,6 +53,7 @@ import { Modules } from "./events/modules.ts";
 import { workerKeeper } from "./persist/keeper.ts";
 import { WorldStore, type StoreOptions } from "./persist/store.ts";
 import { Records, type EntityRecord } from "./records.ts";
+import { Use } from "./use.ts";
 import { Rules, timersOf } from "./settings/rules.ts";
 import { CATALOG, rowOf } from "./settings/catalog.ts";
 import { Lists } from "./settings/lists.ts";
@@ -869,6 +870,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: WorldStore[]): H
   };
   const own: OwnContext = {
     world, game, records, items, survival, progression, rules, tribes, voice,
+    use: new Use({ world, game, records, items, survival, buffs }),
     online: (pid) => sessionOf(pid) !== null,
     openOf: (c) => death.openOf(c),
     closeOpen: (c) => death.close(c),

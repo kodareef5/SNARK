@@ -1,0 +1,44 @@
+[
+  {
+    "file": "leaves_generated.png",
+    "origin": "../mangrove_leaves/source/set2/leaves_generated.png",
+    "sha256": "d75c79e643ed9d6e0506a9a0af65a4f4d78e7f325c36e541b0753098d607c605",
+    "operation": "unmodified copy"
+  },
+  {
+    "file": "generation_prompt.txt",
+    "origin": "../mangrove_leaves/source/set2/generation_prompt.txt",
+    "sha256": "64b3542728aa1dec9680ea99148bcc33cda5aa8f499ef09cb88bf248a9e4141c",
+    "operation": "unmodified copy"
+  },
+  {
+    "file": "mangrove_lineup.png",
+    "origin": "../../ref/concept/broadleaf/mangrove_lineup.png",
+    "sha256": "711d2e8094df451f36c97d4642c8d332973a970e6f74d46484c4d9f45ace50dc",
+    "operation": "unmodified copy"
+  },
+  {
+    "file": "leaves_concept.png",
+    "origin": "../../ref/concept/broadleaf/leaves.png",
+    "sha256": "1d4dfbd8e8552710a2510cb335bbbe18bee6bbe2cb463f472a7afd005c2e00b1",
+    "operation": "unmodified copy"
+  },
+  {
+    "file": "sprays_base.png",
+    "origin": "../mangrove_leaves/mangrove_leaves_base.png",
+    "sha256": "f4e1ab22167fae883789b086d653cf8dae5e13e6f68281f7eb7e8729c18a9c55",
+    "operation": "top-left 1024 square crop, pixels unchanged"
+  },
+  {
+    "file": "sprays_normal.png",
+    "origin": "../mangrove_leaves/mangrove_leaves_normal.png",
+    "sha256": "06cde1995fc1f64316d1a0adf65ae9e9847ef70370ba05db30858ed930c7dd79",
+    "operation": "top-left 1024 square crop, pixels unchanged"
+  },
+  {
+    "file": "sprays_orm.png",
+    "origin": "../mangrove_leaves/mangrove_leaves_orm.png",
+    "sha256": "2a408a4f0b3f15951a145b59370e0ee2f323d597147e01d23ee9dc284e084434",
+    "operation": "top-left 1024 square crop, pixels unchanged"
+  }
+]

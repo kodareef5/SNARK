@@ -1,0 +1,5 @@
+Updated sun heads to **(140, 146, 72)** and middle heads to **(108, 120, 64)**. Brightest sun faces average **(179, 177, 90)**.
+
+Leaf shapes, deep folds, protected rows and physical maps remain unchanged. **249 checks pass**, with a byte-identical rebuild. Superseded files were removed.
+
+[Updated report](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/oak_crown/REPORT.md) · [Before/after comparison](/home/user/dev/SNARK/.claude/worktrees/agent-aaafd0cc34ffdc1a7/assets/source/core/nodes/trees/tex/oak_crown/checks/round3_colour_comparison.png)

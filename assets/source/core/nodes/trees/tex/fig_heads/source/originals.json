@@ -1,0 +1,27 @@
+{
+  "method": "built-in imagegen",
+  "sources": {
+    "interior_generated.png": {
+      "size": [
+        1254,
+        1254
+      ],
+      "sha256": "bfb515778ae27970923185b153f6f588b30abd3555be58bd4306206ceadfc385"
+    },
+    "top_heads_generated.png": {
+      "size": [
+        1024,
+        1536
+      ],
+      "sha256": "505f0178cbd7ec66293662100fd76faa685a0601f2d1f0bba0027fff194e8799"
+    },
+    "underside_generated.png": {
+      "size": [
+        1254,
+        1254
+      ],
+      "sha256": "ae0e83caebe9172c54a37329b9dccf3eb7798d2999da1071e10cd49614f5dcde"
+    }
+  },
+  "source_policy": "Generated from words informed by the project art. No external imagery."
+}

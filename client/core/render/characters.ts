@@ -198,8 +198,10 @@ export class Characters {
       if (!sets.includes(d.wear.set)) sets.push(d.wear.set);
       return { slot: SLOT_NAMES.indexOf(d.wear.slot), set: sets.indexOf(d.wear.set), colors: d.wear.colors };
     });
+    // Any item whose class gives it a held slot (shared/content/classes.ts) is drawn in the hand by its mesh there: a
+    // weapon's code-made box, or a piece converted onto a prop bone (tools/art/build.ts, heldOn).
     this.held = reg.defs.map((d) => {
-      const mesh = d?.type === "item" && d.weapon ? human(bind.own(d.id, "held")) : -1;
+      const mesh = d?.type === "item" ? human(bind.own(d.id, "held")) : -1;
       return mesh < 0 ? null : { mesh, bone: table.bone[mesh]! };
     });
     /** One piece of each armor set for each part. Its `worn` slot says where the set's mesh for a body is. */

@@ -7,6 +7,7 @@ import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LO
 import { ARMOR_SLOTS, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, type Inventory } from "../../../shared/sim/items.ts";
 import type { ClientSession } from "../session.ts";
 import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import { StationPanel } from "./station.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
 
 export const KEY_INV_PANEL = 290;
@@ -73,6 +74,8 @@ export class InventoryScreen {
   private pages = 1;
   /** As of the last build. pointer() uses it to tell a load or an attach from a move. */
   private registry: Registry | null = null;
+  /** What an open crafting station makes, and its queue. */
+  private readonly station = new StationPanel();
 
   private box(session: ClientSession, which: number): Inventory | null {
     return which === BOX_OPEN ? (session.open?.inventory ?? null) : session.inventory;
@@ -107,6 +110,7 @@ export class InventoryScreen {
       this.hover = slot;
       return;
     }
+    if (kind === 0 && this.registry && this.station.click(key, session, this.registry)) return;
     const subject = session.subject;
     if (kind === 0 && subject?.owned && subject.id >= 0 && key >= KEY_OPEN_ORDER && key <= KEY_OPEN_UNSADDLE) {
       // Orders to an owned creature: follow or stay, the next stance, saddle off, or a level into a stat.
@@ -302,6 +306,7 @@ export class InventoryScreen {
         }
       }
       grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + subjectH + 4, this.page * this.pageSize, onPage);
+      this.station.build(f, session, reg, x0, y, w);
       y += otherH + 8;
     }
     f.add(KEY_INV_PANEL, K_PANEL, x0, y, w, ownH, S_PANEL);
@@ -343,6 +348,9 @@ export class InventoryScreen {
         if (inv.ammo[shown] !== 0) info += `  ${inv.loaded[shown]} ${itemLabel(reg, inv.ammo[shown]!)}`;
         if (inv.attach[shown] !== 0) info += `  + ${itemLabel(reg, inv.attach[shown]!)}`;
       }
+      // A vessel holds its water as its durability (server/use.ts).
+      const holds = (reg.defs[item] as ItemDef | null)?.use?.holds;
+      if (holds) info += `  water ${inv.dur[shown]}/${holds.water}`;
     }
     f.text(KEY_INV_INFO, x0 + PAD, y + ownH - PAD - infoH, w - PAD * 2, S_LABEL, info.slice(0, Math.floor((w - PAD * 2) / 7.2)));
   }

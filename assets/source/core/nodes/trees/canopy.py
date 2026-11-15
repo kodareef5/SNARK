@@ -116,7 +116,7 @@ def surface(balls, cell):
     return points, tris, owners
 
 
-def nets(balls, cell):
+def nets(balls, cell, least=0.01):
     """The union's surface by surface nets: a point in each cube the surface passes through, at the mean of where it
     crosses the cube's edges, and for each edge of the grid it crosses a quad of the four cubes round that edge, wound
     outward and cut along its shorter diagonal. About half the triangles of `surface` for the same grid."""
@@ -196,7 +196,7 @@ def nets(balls, cell):
                 f = tuple(ring[x] for x in t)
                 if len(set(f)) == 3:
                     tris.append(f)
-    tris = whole(points, tris)
+    tris = whole(points, tris, least)
     return smoothed(points, tris, balls, cell), tris, owners
 
 
@@ -226,9 +226,9 @@ def smoothed(points, tris, balls, cell, rounds=3):
     return out
 
 
-def whole(points, tris):
-    """The triangles of the surface's parts that enclose something, outward: a part pinched off by the grid with no
-    room inside it, or turned inside out where two sheets met in a cube, is left out."""
+def whole(points, tris, least=0.01):
+    """The triangles of the surface's parts that enclose `least` cubic metres or more, outward: a part pinched off by
+    the grid with no room inside it, or turned inside out where two sheets met in a cube, is left out."""
     parent = list(range(len(points)))
 
     def find(i):
@@ -256,7 +256,7 @@ def whole(points, tris):
         v = (pa[0] * (pb[1] * pc[2] - pb[2] * pc[1]) + pa[1] * (pb[2] * pc[0] - pb[0] * pc[2]) + pa[2] * (pb[0] * pc[1] - pb[1] * pc[0])) / 6
         r = find(a)
         volume[r] = volume.get(r, 0.0) + v
-    return [t for t in tris if volume[find(t[0])] > 0.01]
+    return [t for t in tris if volume[find(t[0])] > least]
 
 
 def facing(ball, p):
