@@ -171,11 +171,23 @@ function familyOccasions(id: string, have: ReadonlyMap<string, ManifestSound>): 
     kind: cues[0]!.kind,
     loop: cues.some((c) => c.loop === true),
     want: "",
-    variants: expand(pattern).map((e) => {
+    variants: (pattern.includes("{name}") ? named(id, pattern, have) : expand(pattern)).map((e) => {
       const sound = `${id}/sound/${e.key}`;
       return { key: e.key, word: Object.values(e.vars).join(" "), by: have.has(sound) ? ("own" as const) : ("none" as const), sound: have.has(sound) ? sound : null, rate: 1 };
     }),
   })).sort((a, b) => rank(a.kind) - rank(b.kind));
+}
+
+/** A family's sounds under owners' names (`fire/{name}`): those it has, each with the name it is under. */
+function named(id: string, pattern: string, have: ReadonlyMap<string, ManifestSound>): { key: string; vars: Record<string, string> }[] {
+  const re = new RegExp(`^${pattern.replace(/\{name\}/g, "([a-z0-9_]+)").replace(/\{(\w+)\}/g, "[a-z0-9_]+")}$`);
+  const out: { key: string; vars: Record<string, string> }[] = [];
+  for (const sound of have.keys()) {
+    if (!sound.startsWith(`${id}/sound/`)) continue;
+    const m = re.exec(sound.slice(id.length + 7));
+    if (m) out.push({ key: sound.slice(id.length + 7), vars: { name: m[1]! } });
+  }
+  return out;
 }
 
 /** The takes of a sound, as the board shows each: its length, its maker, its file and what made it. */

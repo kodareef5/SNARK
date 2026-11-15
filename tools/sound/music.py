@@ -97,7 +97,11 @@ def main():
                 raise SystemExit(f"{tid}/{name} varies {track['base']}, which is not made yet")
             if model is None:
                 t = time.time()
-                model = StableAudioModel.from_pretrained(track.get("model", "medium"))
+                # Halved on the CPU and then moved: loaded straight to the GPU, Medium is held in full precision
+                # first and does not fit an 8 GB card.
+                model = StableAudioModel.from_pretrained(track.get("model", "medium"), device="cpu", model_half=True)
+                model.model.to("cuda")
+                model.device = "cuda"
                 print(f"model loaded in {time.time() - t:.0f}s", flush=True)
             prompt = f"{track['style']} {layer['prompt']} {track['bpm']} BPM, {track['key']}."
             kw = {}
