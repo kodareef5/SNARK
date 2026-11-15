@@ -8,6 +8,10 @@ import {
   SWING_TICKS, W_BOW, W_GUN, W_MELEE, W_THROWN, actionOut, stepAction, type WeaponParams,
 } from "../../shared/sim/weapon.ts";
 import { ZONE_FOOT_L, ZONE_HEAD, ZONE_LEG_R, ZONE_TORSO } from "../../shared/anim/human.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
+import type { Def, ItemDef, WeaponFacet } from "../../shared/content/defs.ts";
+import { compileContent } from "../../shared/content/registry.ts";
+import { launchSpeed } from "../../shared/sim/projectiles.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -33,8 +37,9 @@ function hold(b: Body, w: WeaponParams, buttons: number, ticks: number, first = 
 test("content compiles into weapon timings: a swing, a draw, a reload and a clip per weapon", () => {
   expect(params("hatchet")).toEqual({ kind: W_MELEE, hold: HOLD_TOOL, swingTicks: SWING_TICKS, strikeTick: 5, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true });
   expect(params("spear").hold).toBe(HOLD_SPEAR);
-  // A bow draws for 1.2 s, can be loosed from a quarter of that, and nocks in two thirds of a second.
-  expect(params("bow")).toEqual({ kind: W_BOW, hold: HOLD_BOW, swingTicks: 6, strikeTick: 2, drawTicks: 36, minDrawTicks: 9, reloadTicks: 20, clip: 1, wet: false });
+  // A bow draws for 1.2 s, can be loosed from a quarter of that (Base Damage: 0.3 s), and nocks in two thirds of a second.
+  // Its blow, as every ranged weapon's, is a swing of half a second that lands a third of the way through.
+  expect(params("bow")).toEqual({ kind: W_BOW, hold: HOLD_BOW, swingTicks: 6, strikeTick: 2, drawTicks: 36, minDrawTicks: 9, reloadTicks: 20, clip: 1, wet: false, meleeTicks: 15, meleeStrikeTick: 5 });
   expect(params("rifle")).toMatchObject({ kind: W_GUN, hold: HOLD_RIFLE, reloadTicks: 135, clip: 1, wet: false });
   expect(params("crossbow")).toMatchObject({ kind: W_GUN, wet: true, reloadTicks: 78 });
   expect(params("pistol")).toMatchObject({ kind: W_GUN, hold: HOLD_PISTOL, clip: 6, swingTicks: 11 });
@@ -97,11 +102,18 @@ test("a bow is drawn while the button is held and looses when it is let go, hard
   expect(b.act).toBe(ACT_HOLD);
   out = hold(b, bow, 0, 1, BTN_PRIMARY);
   expect(out.draws).toEqual([1]);
-  // The melee button lets a drawn bow down without loosing.
+  // The melee button lets a drawn bow down without loosing, and strikes with it ("It is possible to cancel a shot by
+  // performing a weapon melee attack", Bow). A weapon with no blow only lets the string down.
   b.act = ACT_NONE;
   b.rounds = 1;
   hold(b, bow, BTN_PRIMARY, 20);
   out = hold(b, bow, BTN_PRIMARY | BTN_MELEE, 1, BTN_PRIMARY);
+  expect([out.fires.length, b.rounds, b.act]).toEqual([0, 1, ACT_SWING]);
+  out = hold(b, bow, 0, SWING_TICKS, BTN_PRIMARY | BTN_MELEE);
+  expect([out.strikes, out.fires.length, b.rounds, b.act]).toEqual([[5], 0, 1, ACT_NONE]);
+  const plain: WeaponParams = { ...bow, meleeTicks: undefined, meleeStrikeTick: undefined };
+  hold(b, plain, BTN_PRIMARY, 20);
+  out = hold(b, plain, BTN_PRIMARY | BTN_MELEE, 1, BTN_PRIMARY);
   expect([out.fires.length, b.rounds, b.act]).toEqual([0, 1, ACT_NONE]);
   b.rounds = 0;
   b.reloadTo = 0;
@@ -145,6 +157,141 @@ test("a gun fires once a press, pauses between shots, and reloads when asked or 
   out = hold(b, rifle, 0, 5);
   stepAction(b, BTN_PRIMARY, BTN_PRIMARY, rifle);
   expect([actionOut.fire, b.act]).toEqual([false, ACT_NONE]);
+});
+
+/** The core content with one weapon's facet changed, compiled; or its errors. */
+function withWeapon(name: string, change: Partial<WeaponFacet>): { w: WeaponParams | null; errors: string[] } {
+  const defs = CORE_CONTENT.map((d): Def => (d.id === `core:${name}` && d.type === "item" ? { ...(d as ItemDef), weapon: { ...(d as ItemDef).weapon!, ...change } } : d));
+  const made = compileContent(defs);
+  return { w: made.registry ? made.registry.weapon[made.registry.index.get(`core:${name}`)!]! : null, errors: made.errors };
+}
+
+test("an automatic gun fires every pause while its button is held and no more; a tap fires once", () => {
+  const made = withWeapon("pistol", { auto: true });
+  expect(made.errors).toEqual([]);
+  const auto = made.w!;
+  expect([auto.auto, auto.swingTicks, auto.reloadTicks]).toEqual([true, params("pistol").swingTicks, params("pistol").reloadTicks]);
+  const pause = auto.swingTicks;
+  const b = new Body();
+  b.rounds = 6;
+  b.reloadTo = 6;
+  // Six rounds a pause apart; the empty gun reloads by itself after the last pause, and fires the tick the reload ends.
+  let out = hold(b, auto, BTN_PRIMARY, 2 + pause * 6 + auto.reloadTicks);
+  expect(out.fires).toEqual([1, 1 + pause, 1 + pause * 2, 1 + pause * 3, 1 + pause * 4, 1 + pause * 5, 2 + pause * 6 + auto.reloadTicks]);
+  expect(out.reloads).toEqual([1 + pause * 6 + auto.reloadTicks]);
+  expect(b.rounds).toBe(5);
+  // Let go, it stops at once. A tap of one tick (D185 keeps a short one) fires one round.
+  out = hold(b, auto, 0, 60, BTN_PRIMARY);
+  expect(out.fires).toEqual([]);
+  out = hold(b, auto, BTN_PRIMARY, 1);
+  expect(out.fires).toEqual([1]);
+  out = hold(b, auto, 0, 60, BTN_PRIMARY);
+  expect([out.fires, b.rounds]).toEqual([[], 4]);
+  // A gun that is not automatic fires once however long it is held.
+  expect(hold(b, params("pistol"), BTN_PRIMARY, 60).fires).toEqual([1]);
+});
+
+test("a reload of a round at a time loads one a reload, up to the clip or what there is, and a press makes the round under way its last", () => {
+  const made = withWeapon("pistol", { reloadEach: true, reload: 0.66 });
+  expect(made.errors).toEqual([]);
+  const shells = made.w!;
+  const each = shells.reloadTicks;
+  expect([shells.reloadEach, each]).toEqual([true, 20]);
+  const b = new Body();
+  b.rounds = 2;
+  b.reloadTo = 6;
+  stepAction(b, BTN_RELOAD, BTN_RELOAD, shells);
+  expect(b.act).toBe(ACT_RELOAD);
+  let out = hold(b, shells, 0, each * 4 + 10);
+  expect([out.reloads, b.rounds, b.act]).toEqual([[each, each * 2, each * 3, each * 4], 6, ACT_NONE]);
+  // Empty, it starts by itself and stops at what the body carries.
+  b.rounds = 0;
+  b.reloadTo = 3;
+  out = hold(b, shells, 0, each * 3 + 10);
+  expect([out.reloads, b.rounds, b.act]).toEqual([[each + 1, each * 2 + 1, each * 3 + 1], 3, ACT_NONE]);
+  // A tap mid-round fires nothing, and the reload ends when that round is in.
+  b.reloadTo = 6;
+  stepAction(b, BTN_RELOAD, BTN_RELOAD, shells);
+  hold(b, shells, 0, 5);
+  out = hold(b, shells, BTN_PRIMARY, 1);
+  expect([out.fires, b.act, b.rounds]).toEqual([[], ACT_RELOAD, 3]);
+  out = hold(b, shells, 0, each * 3, BTN_PRIMARY);
+  expect([out.reloads, out.fires, b.rounds, b.act]).toEqual([[each - 6], [], 4, ACT_NONE]);
+  // Held, it fires on the tick the round goes in.
+  stepAction(b, BTN_RELOAD, BTN_RELOAD, shells);
+  hold(b, shells, 0, 5);
+  out = hold(b, shells, BTN_PRIMARY, each);
+  expect([out.reloads, out.fires, b.rounds, b.act]).toEqual([[each - 5], [each - 5], 4, ACT_COOL]);
+  // The count a round's reload keeps within a byte bounds it: a round may take at most 4.1 s.
+  expect(withWeapon("pistol", { reloadEach: true, reload: 4.3 }).errors).toEqual(["core:pistol: weapon.reload of a round at a time must be at most 4.1 seconds"]);
+  // A whole-clip reload is not cut short.
+  const pistol = params("pistol");
+  b.rounds = 1;
+  b.act = ACT_NONE;
+  stepAction(b, BTN_RELOAD, BTN_RELOAD, pistol);
+  hold(b, pistol, BTN_PRIMARY, 5);
+  expect([b.act, b.rounds]).toEqual([ACT_RELOAD, 1]);
+});
+
+test("a gun strikes with its butt on the melee button, once a press; one without a blow does nothing with it", () => {
+  const pistol = params("pistol");
+  expect([pistol.meleeTicks, pistol.meleeStrikeTick]).toEqual([SWING_TICKS, 5]);
+  const k = reg.index.get("core:pistol")!;
+  // Base Damage: "Melee attack of any Ranged Weapon", 10 damage and 14 torpor.
+  expect(reg.blowDamage[k]).toBe(10);
+  expect(reg.blowTorpor[k]! * reg.blowDamage[k]!).toBeCloseTo(14, 5);
+  const b = new Body();
+  b.rounds = 6;
+  b.reloadTo = 6;
+  let out = hold(b, pistol, BTN_MELEE, SWING_TICKS * 3);
+  expect([out.strikes, out.fires, b.rounds, b.act]).toEqual([[6], [], 6, ACT_NONE]);
+  // Empty with nothing to load, it still strikes; during the pause after a shot it does not.
+  b.rounds = 0;
+  b.reloadTo = 0;
+  expect(hold(b, pistol, BTN_MELEE, SWING_TICKS).strikes).toEqual([6]);
+  b.rounds = 2;
+  b.act = ACT_NONE;
+  stepAction(b, BTN_PRIMARY, BTN_PRIMARY, pistol);
+  out = hold(b, pistol, BTN_MELEE, 3, 0);
+  expect([out.strikes, b.act]).toEqual([[], ACT_COOL]);
+  // A rifle under water is put away, blow and all; a gun with no blow ignores the button.
+  const w = new Body();
+  w.mode = MODE_SWIM;
+  expect(hold(w, params("rifle"), BTN_MELEE, SWING_TICKS).strikes).toEqual([]);
+  const plain: WeaponParams = { ...pistol, meleeTicks: undefined, meleeStrikeTick: undefined };
+  const p = new Body();
+  expect([hold(p, plain, BTN_MELEE, SWING_TICKS).strikes, p.act]).toEqual([[], ACT_NONE]);
+});
+
+test("a thrown thing with a draw is held as a bow is drawn and leaves on release, faster the longer it was held", () => {
+  const made = withWeapon("grenade", { draw: 1.6 });
+  expect(made.errors).toEqual([]);
+  const charged = made.w!;
+  expect([charged.kind, charged.drawTicks, charged.minDrawTicks]).toEqual([W_THROWN, 48, 12]);
+  const b = new Body();
+  // A click is not enough (Bola: "A single LMB click is not enough", "roughly 0.4 seconds").
+  hold(b, charged, BTN_PRIMARY, 5);
+  expect(b.act).toBe(ACT_DRAW);
+  let out = hold(b, charged, 0, 2, BTN_PRIMARY);
+  expect([out.fires, b.act]).toEqual([[], ACT_NONE]);
+  hold(b, charged, BTN_PRIMARY, 20);
+  out = hold(b, charged, 0, 1, BTN_PRIMARY);
+  expect(out.fires).toEqual([1]);
+  const short = out.draws[0]!;
+  expect(short).toBeCloseTo(19 / 48, 6);
+  hold(b, charged, 0, charged.swingTicks);
+  hold(b, charged, BTN_PRIMARY, 100);
+  expect(b.act).toBe(ACT_HOLD);
+  out = hold(b, charged, 0, 1, BTN_PRIMARY);
+  expect(out.draws).toEqual([1]);
+  // The draw goes to the throw as a bow's does to its arrow ("Charging up the Bola will increase its velocity", Bola).
+  expect(launchSpeed(18, short)).toBeLessThan(launchSpeed(18, 1));
+  // The melee button lets it down unthrown. Only a bow or a thrown weapon is drawn.
+  hold(b, charged, 0, charged.swingTicks);
+  hold(b, charged, BTN_PRIMARY, 20);
+  out = hold(b, charged, BTN_PRIMARY | BTN_MELEE, 1, BTN_PRIMARY);
+  expect([out.fires, b.act]).toEqual([[], ACT_NONE]);
+  expect(withWeapon("pistol", { draw: 1 }).errors).toEqual(["core:pistol: weapon.draw is a bow's, or a thrown weapon's that is charged"]);
 });
 
 test("a thrown thing leaves the hand partway through the swing; taking something in hand takes a moment; water stops what is not made for it", () => {
@@ -225,10 +372,12 @@ test("damage is one multiplication in a fixed order, and armor is worn by what i
   hit.zone = 3;
   resolveDamage();
   expect(harm.health).toBeCloseTo(280 * 1.2 * 0.7 * 3, 6);
-  // A bow undrawn gives a quarter, half drawn five eighths, and never more than all.
+  // A bow undrawn gives half (Bow, patch 190.0: "Raised minimum wooden bow damage for shortest-pulled arrows to 50%, up
+  // from 25%"), its shortest pull five eighths, half drawn three quarters, and never more than all.
   resetHit();
   hit.base = 55;
-  for (const [draw, share] of [[0, DRAW_MIN], [0.5, 0.625], [1, 1], [3, 1]] as const) {
+  expect(DRAW_MIN).toBe(0.5);
+  for (const [draw, share] of [[0, 0.5], [0.25, 0.625], [0.5, 0.75], [1, 1], [3, 1]] as const) {
     hit.draw = draw;
     resolveDamage();
     expect(harm.health).toBeCloseTo(55 * share, 6);
