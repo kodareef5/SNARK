@@ -2,7 +2,7 @@ import { tierOf } from "../../client/core/assets/tiers.ts";
 import { expect, test } from "bun:test";
 import { Found } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, FramePacket, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
+import { DRAW_BLEND, DRAW_NEAR, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_WATER, FramePacket, TRANSIENT_BUFFER } from "../../client/core/render/packet.ts";
 import { UNDERWATER_VIEW } from "../../client/core/render/shading.ts";
 import { lit, shown } from "../../client/core/render/surface.ts";
 import { NODE_BUFFERS, bodySeed, type OwnBody } from "../../client/core/render/scene.ts";
@@ -101,10 +101,11 @@ test("nothing behind the camera or beyond the view distance is submitted", () =>
   const view = provingView(W, H);
   view.cam.yaw = Math.PI; // facing south, away from every structure
   const south = view.render();
-  // No structure is drawn. What is left is the nodes to the south, with the water surface last.
+  // No structure is drawn. What is left is the nodes to the south, with the water surface last, drawn on this lit tier
+  // as the sea seen from above.
   expect(south.drawCount).toBeGreaterThan(1);
   for (let d = 0; d < south.drawCount - 1; d++) expect(south.drawBuffer[d]!).toBeGreaterThanOrEqual(NODE_BUFFERS);
-  expect(south.drawFlags[south.drawCount - 1]).toBe(DRAW_BLEND);
+  expect(south.drawFlags[south.drawCount - 1]).toBe(DRAW_BLEND | DRAW_WATER);
   expect(south.tileCount).toBeGreaterThan(0);
 
   view.cam.yaw = 0;
@@ -168,7 +169,7 @@ test("water lies over the pool, tints what is under it, and changes the view fro
   const wet = rgb(at(0.5, 0.5));
   expect(wet[2]! - wet[0]!).toBeGreaterThan(40);
   expect(view.raster.pickKind[at(0.5, 0.5)]).toBe(PICK_TERRAIN);
-  expect(above.drawFlags[above.drawCount - 1]).toBe(DRAW_BLEND);
+  expect(above.drawFlags[above.drawCount - 1]).toBe(DRAW_BLEND | DRAW_WATER);
   // Nothing else is see-through. Nodes are drawn at their sizes.
   for (let d = 0; d < above.drawCount - 1; d++) expect(above.drawFlags[d]! & ~DRAW_SIZED).toBe(0);
   expect(above.fogEnd).toBe(4000);

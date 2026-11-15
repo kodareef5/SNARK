@@ -18,8 +18,8 @@ export const MAX_WATER_TILES = 256;
 /** Structures a frame may show falling. The nearest to the camera are shown. */
 export const MAX_FALLING = 1024;
 /**
- * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 256 are taken; the next flag takes 512, then 1024, up to
- * 32768. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth.
+ * DRAW_ flags, a bit each of `drawFlags`, which holds 16. Bits 1 to 512 are taken; the next flag takes 1024, then 2048, up
+ * to 32768. A blended draw is see-through. It comes after everything opaque, shows both faces and writes no depth.
  */
 export const DRAW_BLEND = 1;
 /**
@@ -49,6 +49,11 @@ export const DRAW_CUTOUT = 128;
  */
 export const DRAW_SIZED = 256;
 export const SIZE_REGION = 5;
+/**
+ * The sea seen from above on a lit tier (render/water.ts), a see-through draw of the flat mesh `core:water` whose
+ * `drawMaterial` holds the waves' pictures. Where this bit is not understood it is the see-through flat draw it always was.
+ */
+export const DRAW_WATER = 512;
 
 /** Floats per bone: three rows of a 3 x 4 matrix, each row x, y, z, translation. */
 export const BONE_FLOATS = 12;
@@ -134,15 +139,21 @@ export const FRAME = {
   clouds: 32,
   /** fCloudSun: the sun's light as the low cloud layer sees it, from higher than the ground does. */
   cloudSun: 36,
+  /** fWaves: where the camera is over each of the sea's two wave pictures, wind and all, as a share of a tile along its axes: the long waves', then the short (water.ts). */
+  waves: 40,
+  /** fGround: where the camera is in the samples of the terrain window drawn, from its corner (far outside while there is none), and in the whole map's pair's. */
+  ground: 44,
+  /** fSea: sea level in the heights' units over the lowest, metres a unit, samples a metre in the window (a COARSE-th of that in the whole map's pair), and how strong the waves are. */
+  sea: 48,
   /** fSpheres: each cascade's sphere round its slice of the view, its camera-relative centre and radius. A pixel takes the finest that holds it. */
-  spheres: 40,
+  spheres: 52,
   /** fCascades: each cascade's matrix, from camera-relative space to its clip space, as `viewProj` is for the view. */
-  cascades: 56,
+  cascades: 68,
 } as const;
 export const FRAME_FLOATS = FRAME.cascades + MAX_CASCADES * 16;
 /** The frame block as GLSL declares it, for any program that reads it. */
 export const FRAME_BLOCK = `layout(std140) uniform Frame {
-  highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun;
+  highp vec4 fSun, fSunColor, fMoon, fMoonColor, fSkyAbove, fSkyBelow, fHaze, fView, fClouds, fCloudSun, fWaves, fGround, fSea;
   highp vec4 fSpheres[${MAX_CASCADES}];
   highp mat4 fCascades[${MAX_CASCADES}];
 };
