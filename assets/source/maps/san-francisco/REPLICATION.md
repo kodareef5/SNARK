@@ -12,7 +12,7 @@ bun tools/mapworld/build.ts san-francisco               # only the map file, fro
 bun tools/mapworld/verify.ts var/maps/san-francisco.snmap
 bun tools/mapworld/obelisk-walk.ts var/maps/san-francisco.snmap
 bun tools/mapdata/steep.ts var/maps/san-francisco.snmap 15 [--no-plants | --ground-only]
-bun run build && bun server/main.ts --dev --map var/maps/san-francisco.snmap --port 8799 --db var/san-francisco.db
+bun run build && bun server/main.ts --dev --map var/maps/san-francisco.snmap --port 8797 --db var/san-francisco.db
 ```
 
 ## Beside Miami and Tampa
