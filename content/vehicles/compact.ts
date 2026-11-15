@@ -43,6 +43,8 @@ export const COMPACT_VEHICLE: VehicleDefinition = {
   ],
   steeringWheel: { bone: "steering_wheel", axis: [0, 0, 1], ratio: -4.5 },
   actionTicks: 18,
+  // The door sills: the side windows are down and the screens open in the middle (DESIGN.md).
+  beltline: 0.95,
 };
 
 /** Uses normal entity health, cargo and ownership; the vehicle controller supplies all movement. */

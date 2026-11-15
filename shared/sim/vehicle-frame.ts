@@ -1,4 +1,18 @@
 import { quatAxis, quatMul, quatRotate, type Numbers } from "../math/quat.ts";
+import { detCos, detSin } from "../math/scalar.ts";
+import { rayBox } from "../world/ray.ts";
+import type { VehicleDefinition } from "./vehicle.ts";
+
+/**
+ * Distance along a ray (unit direction) to a vehicle's hull at (x, y, z) turned `yaw` radians, or Infinity. The hull is the
+ * chassis' footprint from the ground up to `top`: its roof for what a look meets, its belt line for what a shot meets, so
+ * a shot through the open cabin reaches the people in it. It is the mechanical shape, whatever mesh draws the vehicle.
+ */
+export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, top: number): number {
+  const s = def.spec, sn = detSin(yaw), cs = detCos(yaw), rx = ox - x, rz = oz - z;
+  // Into the chassis frame: +X the driver's left (cos, -sin), +Z forward (sin, cos).
+  return rayBox(cs * rx - sn * rz, oy - y, sn * rx + cs * rz, cs * dx - sn * dz, dy, sn * dx + cs * dz, -s.halfWidth, 0, -s.halfLength, s.halfWidth, top, s.halfLength);
+}
 
 export interface VehicleFrame { x: number; y: number; z: number; yaw: number; pitch: number; roll: number }
 const yaw = new Float64Array(4), roll = new Float64Array(4), pitch = new Float64Array(4), rotation = new Float64Array(4);

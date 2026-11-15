@@ -92,6 +92,8 @@ export interface VehicleDefinition {
   readonly steeringWheel?: { readonly bone: string; readonly axis: readonly [number, number, number]; readonly ratio: number };
   /** Ticks a door action takes: getting in, getting out, pulling a driver out. */
   readonly actionTicks: number;
+  /** Metres up from the ground to where the body shell ends and the open cabin begins: a shot above it reaches whoever sits inside. */
+  readonly beltline: number;
 }
 
 /** Content checks beyond the spec's, so a definition that compiles always registers and draws. Throws on the first fault. */
@@ -110,6 +112,7 @@ export function validateVehicleDefinition(d: VehicleDefinition): void {
   const s = d.steeringWheel;
   if (s !== undefined && (!bone(s.bone) || !vec(s.axis) || !Number.isFinite(s.ratio) || Math.abs(s.ratio) > 50)) throw new Error("invalid steering wheel");
   if (!Number.isInteger(d.actionTicks) || d.actionTicks < 1 || d.actionTicks > 300) throw new Error("invalid vehicle action ticks");
+  if (!Number.isFinite(d.beltline) || d.beltline <= d.spec.clearance || d.beltline > d.spec.height) throw new Error("invalid vehicle belt line");
   const names = new Set<string>();
   let drivers = 0;
   for (const seat of d.seats) {

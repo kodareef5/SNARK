@@ -29,6 +29,7 @@ export const PICKUP: VehicleDefinition = {
   wheels: [{ bone: "hub_fl", steers: true }, { bone: "hub_fr", steers: true }, { bone: "hub_rl" }, { bone: "hub_rr" }],
   steeringWheel: { bone: "wheel", axis: [0, 0, 1], ratio: -6 },
   actionTicks: 24,
+  beltline: 1.15,
 };
 
 test("a second kind compiles beside the compact as content, with its own seats, doors and wheels", () => {
@@ -52,6 +53,7 @@ test("a vehicle that would not register or draw is refused when it compiles, wit
   expect(bad({ doors: [...PICKUP.doors, PICKUP.doors[0]!] })).toBe("a vehicle has at most 4 doors");
   expect(bad({ doors: [{ ...PICKUP.doors[0]!, openTicks: 0 }, ...PICKUP.doors.slice(1)] })).toBe("invalid vehicle door");
   expect(bad({ actionTicks: 0 })).toBe("invalid vehicle action ticks");
+  expect(bad({ beltline: 2 })).toBe("invalid vehicle belt line");
   expect(bad({ steeringWheel: { bone: "", axis: [0, 0, 1], ratio: 1 } })).toBe("invalid steering wheel");
   const species: SpeciesDef = { ...COMPACT_SPECIES, id: "t:broken", aliases: [], radius: 1, height: 1.9, vehicle: { ...PICKUP, id: "t:broken", doors: [] } };
   const wide: SpeciesDef = { ...COMPACT_SPECIES, id: "t:wide", aliases: [], vehicle: { ...PICKUP, id: "t:wide" } };
