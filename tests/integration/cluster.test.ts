@@ -2,125 +2,27 @@
 // and nothing is lost or made twice whichever server stops, is restored from a backup, or is raced (planning/architecture/transfers.md).
 
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { App } from "../../client/core/app.ts";
-import type { ClientSession } from "../../client/core/session.ts";
 import { arrivalOf } from "../../client/core/travel.ts";
 import { KEY_TRAVEL_BUTTON } from "../../client/core/ui/travel.ts";
-import { clusterList } from "../../server/main.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
-import { corePackBytes } from "../fixtures/pack.ts";
-import { CORE_CONTENT } from "../../content/core.ts";
-import { auditCluster } from "../../server/cluster/audit.ts";
 import { TICKET_SECONDS } from "../../server/cluster/cluster.ts";
-import type { ClusterFolder } from "../../server/cluster/folder.ts";
-import { hex, openParcel } from "../../server/cluster/parcel.ts";
-import type { HostOptions } from "../../server/host.ts";
-import { hashKey, type EntityRecord } from "../../server/records.ts";
-import { loadConfig } from "../../server/settings/config.ts";
-import { compileContent, type Registry } from "../../shared/content/registry.ts";
+import { clusterList } from "../../server/main.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { CMD_TRAVEL, REJECT_TRAVEL } from "../../shared/net/protocol.ts";
+import { REJECT_TRAVEL } from "../../shared/net/protocol.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
 import { rollWild } from "../../shared/sim/genome.ts";
 import { FLAG_BLUEPRINT } from "../../shared/sim/items.ts";
-import { Harness, testKey } from "../fixtures/net.ts";
-import { coreRegistry } from "../fixtures/world.ts";
+import { TestCluster, beat, commit, crash, keyAt, places, rec, travel } from "../fixtures/cluster.ts";
+import { corePackBytes } from "../fixtures/pack.ts";
 
-const dir = mkdtempSync(join(tmpdir(), "snark-cluster-"));
-afterAll(() => rmSync(dir, { recursive: true, force: true }));
-const reg = coreRegistry();
-const id = (name: string): number => reg.index.get(`core:${name}`)!;
-
-/** The wall clock every server of a test reads. */
-interface Clock {
-  ms: number;
-}
-
-interface Server {
-  h: Harness;
-  log: string[];
-  db: string;
-  world: number;
-}
-
-interface ServerOptions {
-  argv?: string[];
-  host?: HostOptions;
-  reg?: Registry;
-  maxClients?: number;
-}
-
-/** A server of the cluster in folder `folder`, named `name`, with its save in the test folder. */
-function server(name: string, folder: string, clock: Clock, opts: ServerOptions = {}): Server {
-  const log: string[] = [];
-  const db = join(dir, `${folder}-${name}.db`);
-  const { rules } = loadConfig({}, ["-clusterid=test", `-ClusterDirOverride=${join(dir, folder)}`, `?SessionName=${name}`, ...(opts.argv ?? [])]);
-  const h = new Harness(opts.maxClients ? { maxClients: opts.maxClients } : {}, 1, 60, { dbPath: db, config: rules, log: (line) => log.push(line), ...opts.host }, opts.reg ?? reg);
-  const cluster = h.host.cluster!;
-  cluster.now = () => clock.ms;
-  cluster.listening(0, "");
-  return { h, log, db, world: cluster.world };
-}
-
-/** A server stopped as by a crash: what it had not committed is lost, and it writes nothing more. */
-function crash(s: Server): void {
-  s.h.host.persistence!.close();
-  s.h.host.cluster!.stop();
-}
-
-/** Each server says it is running and looks at what it sent, as it does every few seconds. */
-function beat(...servers: Server[]): void {
-  for (const s of servers) s.h.host.cluster!.step(0);
-}
-
-function commit(...servers: Server[]): void {
-  for (const s of servers) s.h.host.persistence!.commit();
-}
-
-function rec(s: Server, name: string): EntityRecord | undefined {
-  const pid = s.h.host.persistence!.survivors.get(name);
-  return pid === undefined ? undefined : s.h.host.records.byPid.get(pid);
-}
-
-const keyAt = (name: string, world: number): Uint8Array => testKey(`${name}@${world}`);
-
-/** Asks to travel to world `to`. Returns the ticket the server sent, or the code it refused with. */
-function travel(s: Server, session: ClientSession, to: number): Uint8Array | number {
-  let code = -1;
-  session.onResult = (seq, c) => void (seq !== 0 && (code = c));
-  session.command(CMD_TRAVEL, (w) => w.u16(to));
-  s.h.run(400);
-  return session.travelled ? session.travelled.ticket : code;
-}
-
-/** Where record `pid` is among the running servers and the files still sealed: exactly one place, when nothing is lost or doubled. */
-function places(pid: number, folder: ClusterFolder, ...servers: Server[]): string[] {
-  const out: string[] = [];
-  for (const s of servers) if (s.h.host.records.byPid.has(pid)) out.push(`world ${s.world}`);
-  for (const p of folder.places()) if (p.by === 0 && openParcel(folder.read(p)!).head.pids.includes(pid)) out.push("sealed");
-  return out;
-}
-
-/** Commits every server named, then asks whether the cluster balances. The lines that say it does not, or none. */
-function audit(...servers: Server[]): string[] {
-  commit(...servers);
-  const a = auditCluster(servers[0]!.h.host.cluster!.folder, reg);
-  return a.ok ? [] : a.lines;
-}
-
-/** Joins `name` on `s` with the key that page has, and makes a survivor carrying 40 stone and a hatchet. */
-function survivor(s: Server, name: string): { session: ClientSession; me: EntityRecord } {
-  const session = s.h.join(name, {}, { key: keyAt(name, s.world) });
-  s.h.run(300);
-  const me = rec(s, name)!;
-  s.h.host.items.mint(me, id("stone"), 40);
-  s.h.host.items.mint(me, id("hatchet"), 1, 3);
-  s.h.run(100);
-  return { session, me };
-}
+const t = new TestCluster();
+afterAll(() => t.cleanup());
+const reg = t.reg;
+const id = (name: string): number => t.id(name);
+const server = t.server.bind(t);
+const audit = t.audit.bind(t);
+const survivor = t.survivor.bind(t);
 
 test("a survivor goes from one map to another and back with its level, engrams, look, tribe and all it carries, while its base and tames stay", () => {
   const clock = { ms: Date.now() };
