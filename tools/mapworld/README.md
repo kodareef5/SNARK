@@ -37,6 +37,11 @@ win over levels and research. Missing values use supplied neighbours, then the
 map's district and area rules. `blocks/research.json` accepts era, style,
 materials and lore keyed by footprint id. Historical square surveys enrich by
 unambiguous name only. `blocks/ways.json` supplies bridge and pier geometry.
+A way OpenStreetMap marks `bridge:structure=suspension` or `cable-stayed` keeps
+the deck height it left the land at and stands on no piers over the water;
+`suspension.ts` fills its towers from `blocks/supports.json` (parts mapped with
+`min_height` and `height`, in `zmass8` and `crown` solids) and hangs two cables
+and their hangers from the tower tops.
 
 The shared box kit is `content/ruins.ts`. Dimensions are full metres. Add a
 shape there, its palette/material variants, then use its name in an assembly.
