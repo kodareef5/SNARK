@@ -4,7 +4,7 @@
 
 import { Pose } from "../anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../anim/human.ts";
-import { AnimState, CUE_LAND, CUE_NONE, CUE_STARTLE, CUE_TORPOR, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
+import { AnimState, CUE_LAND, CUE_NONE, CUE_ROLL, CUE_STARTLE, CUE_TAKEOFF, CUE_TORPOR, HumanAnim, LAYER_EAT, LAYER_FLINCH, LAYER_NONE, humanPose } from "../anim/pose.ts";
 import { ACT_COOL, ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "./weapon.ts";
 import { Solved, rayZones, solve, zoneHit } from "../anim/skeleton.ts";
 import { creaturePose, rayCreature, type CreatureAnim } from "../anim/creature.ts";
@@ -13,7 +13,7 @@ import { compileContent, type Registry } from "../content/registry.ts";
 import { deriveRegistry, type Tuning } from "../content/tuning.ts";
 import { TICK_DT } from "../coords.ts";
 import { Rng } from "../rng.ts";
-import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stepBody } from "./character.ts";
+import { BTN_BRAKE, BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_ROLL, BTN_SPRINT, Body, MF_NO_JUMP, MF_NO_SPRINT, MF_OUT, MF_ROOTED, MF_WINDED, MODE_FLYER, MODE_GHOST, MODE_SWIM, MODE_WALK, STAMINA_UNITS, stepBody } from "./character.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { buildProvingHeightfield, populateProving, PROVING_DIMS } from "../world/proving.ts";
 import { castWorld, lookDirection, rayHit } from "../world/ray.ts";
@@ -390,7 +390,8 @@ export function snapHash(reg: Registry): string {
 /**
  * Every creature at every third speed, striking and not, at whole and fractional ticks. Then each through a knock-out,
  * fed twice and waking; a flinch over a walk and over a strike; a startle into a run, a fall and its landing, swimming, and
- * standing long enough for its idles. Hashes its bone transforms and what two rays hit.
+ * standing long enough for its idles; and one that flies through its flight, taking off, banked, pitched, rolling and
+ * landing. Hashes its bone transforms and what two rays hit.
  */
 export function creatureHash(anims: Iterable<CreatureAnim>): string {
   const st = new AnimState();
@@ -492,6 +493,27 @@ export function creatureHash(anims: Iterable<CreatureAnim>): string {
       st.seed = seed;
       for (let tick = 2000; tick < 3800; tick += 11.5) pose(tick, false);
     }
+    if (!a.flies) continue;
+    // In the air: each speed, look, bank and climb in turn, taking off and rolling now and then, and landing.
+    for (let k = 0; k < 96; k++) {
+      const tick = 4000 + k * 3.25;
+      st.unpack(0);
+      st.mode = MODE_FLYER;
+      st.grounded = false;
+      st.seed = (k * 37) % 1024;
+      st.speed = k % 11;
+      st.pitch = ((k * 7) % 61) - 30;
+      st.bank = (k % 15) - 7;
+      st.climb = k % 4;
+      st.cue = k % 5 === 0 ? CUE_TAKEOFF : k % 5 === 1 ? CUE_ROLL : CUE_NONE;
+      st.cueStart = (Math.floor(tick) - (k % 70)) & 255;
+      pose(tick, true);
+    }
+    st.unpack(0);
+    st.mode = MODE_WALK;
+    st.cue = CUE_LAND;
+    st.cueStart = 4500 & 255;
+    for (let tick = 4500; tick < 4550; tick += 1.5) pose(tick, false);
   }
   return (h1 >>> 0).toString(16).padStart(8, "0") + (h2 >>> 0).toString(16).padStart(8, "0");
 }
