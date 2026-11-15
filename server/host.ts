@@ -461,7 +461,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       tribes,
       game,
       bus,
-      mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+      mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first: it stays here" : urban.riding(c) ? "get out of the vehicle first: it stays here" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
       suspend: (rec, off) => survival.suspend(rec, off),
       adopt: (rec) => {
         survival.restore(rec, false);
@@ -566,7 +566,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       records.dirty.add(rec.pid);
       return RESULT_OK;
     },
-    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
+    mayLeave: (c, rec) => (rec.out ? "you are unconscious" : riding.riding(c) ? "get off your mount first" : urban.riding(c) ? "get out of the vehicle first" : carry.holding(c) >= 0 ? "put down what is in your arms first" : ""),
     drop: (rec, x, y, z) => void death.dropAll(rec, x, y, z),
   });
   if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
