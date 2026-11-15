@@ -1,0 +1,405 @@
+{
+  "version": 3,
+  "sets": {
+    "quills": {
+      "size_px": [
+        2048,
+        2048
+      ],
+      "span_m": 0.341,
+      "tiles": false,
+      "cutout": true,
+      "two_sided": true,
+      "alpha_cutoff": 0.5,
+      "height_mm": 1.4,
+      "regions": [
+        0,
+        5
+      ],
+      "root_direction": "top",
+      "normal_convention": "OpenGL +Y; image y increases down",
+      "normal_derivative": "central differences of saved 16-bit height, physical scale, wrapped",
+      "base_mean_linear": 0.5,
+      "elements": [
+        {
+          "id": "tail_center",
+          "kind": "tail",
+          "index": 0,
+          "length_m": 0.11,
+          "width_m": 0.03,
+          "symmetric": true,
+          "master_size": [
+            1024,
+            1024
+          ],
+          "master_span_m": 0.12515555555555555,
+          "master_root_px": [
+            511.5,
+            62.0
+          ],
+          "master_tip_px": [
+            511.5,
+            962.0
+          ],
+          "barb_curves": 1367,
+          "band_intervals_from_root_mm": [
+            [
+              92.0,
+              96.5
+            ],
+            [
+              101.5,
+              106.0
+            ]
+          ],
+          "source": "source/tail_center",
+          "box_px": [
+            190,
+            220,
+            371,
+            883
+          ],
+          "root_px": [
+            279.633,
+            219.677
+          ],
+          "tip_px": [
+            279.633,
+            880.323
+          ],
+          "direction_deg": 0,
+          "mirror_on_bird": false
+        },
+        {
+          "id": "tail_side_1",
+          "kind": "tail",
+          "index": 1,
+          "length_m": 0.11,
+          "width_m": 0.0295,
+          "symmetric": false,
+          "master_size": [
+            1024,
+            1024
+          ],
+          "master_span_m": 0.12515555555555555,
+          "master_root_px": [
+            531.9902398215281,
+            62.0
+          ],
+          "master_tip_px": [
+            524.515008467072,
+            962.0
+          ],
+          "barb_curves": 1344,
+          "band_intervals_from_root_mm": [
+            [
+              92.0,
+              96.5
+            ],
+            [
+              101.5,
+              106.0
+            ]
+          ],
+          "source": "source/tail_side_1",
+          "box_px": [
+            674,
+            220,
+            847,
+            883
+          ],
+          "root_px": [
+            774.674,
+            219.677
+          ],
+          "tip_px": [
+            769.187,
+            880.323
+          ],
+          "direction_deg": 0,
+          "mirror_on_bird": true
+        },
+        {
+          "id": "tail_side_2",
+          "kind": "tail",
+          "index": 2,
+          "length_m": 0.108,
+          "width_m": 0.03,
+          "symmetric": false,
+          "master_size": [
+            1024,
+            1024
+          ],
+          "master_span_m": 0.12288,
+          "master_root_px": [
+            610.8023952095808,
+            62.0
+          ],
+          "master_tip_px": [
+            535.8798409542933,
+            962.0
+          ],
+          "barb_curves": 1345,
+          "band_intervals_from_root_mm": [
+            [
+              90.0,
+              94.5
+            ],
+            [
+              99.5,
+              104.0
+            ]
+          ],
+          "source": "source/tail_side_2",
+          "box_px": [
+            1151,
+            226,
+            1330,
+            874
+          ],
+          "root_px": [
+            1311.207,
+            225.683
+          ],
+          "tip_px": [
+            1257.21,
+            874.317
+          ],
+          "direction_deg": 0,
+          "mirror_on_bird": true
+        },
+        {
+          "id": "tail_side_3",
+          "kind": "tail",
+          "index": 3,
+          "length_m": 0.105,
+          "width_m": 0.029,
+          "symmetric": false,
+          "master_size": [
+            1024,
+            1024
+          ],
+          "master_span_m": 0.11946666666666667,
+          "master_root_px": [
+            634.2864802757564,
+            62.0
+          ],
+          "master_tip_px": [
+            524.256567975192,
+            962.0
+          ],
+          "barb_curves": 1301,
+          "band_intervals_from_root_mm": [
+            [
+              87.0,
+              91.5
+            ],
+            [
+              96.5,
+              101.0
+            ]
+          ],
+          "source": "source/tail_side_3",
+          "box_px": [
+            1634,
+            235,
+            1808,
+            868
+          ],
+          "root_px": [
+            1805.684,
+            234.692
+          ],
+          "tip_px": [
+            1728.588,
+            865.308
+          ],
+          "direction_deg": 0,
+          "mirror_on_bird": true
+        },
+        {
+          "id": "wing_finger_1",
+          "kind": "wing",
+          "index": 0,
+          "length_m": 0.05,
+          "width_m": 0.018,
+          "symmetric": false,
+          "master_size": [
+            1024,
+            1024
+          ],
+          "master_span_m": 0.05688888888888889,
+          "master_root_px": [
+            511.16494845360825,
+            62.0
+          ],
+          "master_tip_px": [
+            524.5138244056881,
+            962.0
+          ],
+          "barb_curves": 638,
+          "band_intervals_from_root_mm": [],
+          "source": "source/wing_finger_1",
+          "box_px": [
+            228,
+            1290,
+            335,
+            1594
+          ],
+          "root_px": [
+            279.721,
+            1289.853
+          ],
+          "tip_px": [
+            284.175,
+            1590.147
+          ],
+          "direction_deg": 0,
+          "mirror_on_bird": false
+        },
+        {
+          "id": "wing_finger_2",
+          "kind": "wing",
+          "index": 1,
+          "length_m": 0.051,
+          "width_m": 0.0178,
+          "symmetric": false,
+          "master_size": [
+            1024,
+            1024
+          ],
+          "master_span_m": 0.058026666666666664,
+          "master_root_px": [
+            590.733384262796,
+            62.0
+          ],
+          "master_tip_px": [
+            512.3175060183248,
+            962.0
+          ],
+          "barb_curves": 666,
+          "band_intervals_from_root_mm": [],
+          "source": "source/wing_finger_2",
+          "box_px": [
+            707,
+            1287,
+            815,
+            1597
+          ],
+          "root_px": [
+            786.796,
+            1286.85
+          ],
+          "tip_px": [
+            760.108,
+            1593.15
+          ],
+          "direction_deg": 0,
+          "mirror_on_bird": false
+        },
+        {
+          "id": "wing_finger_3",
+          "kind": "wing",
+          "index": 2,
+          "length_m": 0.048,
+          "width_m": 0.0185,
+          "symmetric": false,
+          "master_size": [
+            1024,
+            1024
+          ],
+          "master_span_m": 0.05461333333333333,
+          "master_root_px": [
+            493.53003246753246,
+            62.0
+          ],
+          "master_tip_px": [
+            513.4119551663939,
+            962.0
+          ],
+          "barb_curves": 621,
+          "band_intervals_from_root_mm": [],
+          "source": "source/wing_finger_3",
+          "box_px": [
+            1186,
+            1296,
+            1295,
+            1588
+          ],
+          "root_px": [
+            1234.084,
+            1295.859
+          ],
+          "tip_px": [
+            1240.452,
+            1584.141
+          ],
+          "direction_deg": 0,
+          "mirror_on_bird": false
+        },
+        {
+          "id": "wing_finger_4",
+          "kind": "wing",
+          "index": 3,
+          "length_m": 0.049,
+          "width_m": 0.018,
+          "symmetric": false,
+          "master_size": [
+            1024,
+            1024
+          ],
+          "master_span_m": 0.05575111111111111,
+          "master_root_px": [
+            567.9183673469388,
+            62.0
+          ],
+          "master_tip_px": [
+            516.401848117577,
+            962.0
+          ],
+          "barb_curves": 648,
+          "band_intervals_from_root_mm": [],
+          "source": "source/wing_finger_4",
+          "box_px": [
+            1667,
+            1293,
+            1777,
+            1589
+          ],
+          "root_px": [
+            1738.285,
+            1292.856
+          ],
+          "tip_px": [
+            1721.439,
+            1587.144
+          ],
+          "direction_deg": 0,
+          "mirror_on_bird": false
+        }
+      ],
+      "revision": "round 3: approved envelopes and bands; explicit barb filaments, fringed alpha and dark tail rachis",
+      "band_design": {
+        "shape": "two tip-concentric elliptical crescents with barb-carried irregularity",
+        "width_mm": 4.5,
+        "shaft_gap_mm": 5.0,
+        "shaft_tip_margin_mm": 4.0
+      },
+      "relief_components_mm": {
+        "vane_crown": 0.06,
+        "shaft": 0.16,
+        "source_barbs_amplitude": 0.02,
+        "filament_relief_scale": 0.035,
+        "constant_datum": 0.22
+      },
+      "box_convention": "[left,top,right,bottom], right/bottom exclusive, alpha >= 0.5",
+      "transparent_padding": "nearest covered RGB throughout; categorical region 24 px gutter; height/roughness 32 px then flat neutral field",
+      "backface_note": "two-sided material; renderer must flip the tangent frame on backfaces; mirror normal tangent X when mirroring UVs",
+      "usage": "one central plus mirrored pairs of tail_side_1..3; four wing fingers per wing; card mesh supplies forward curl",
+      "source_sha256": {
+        "tail_r2_original.png": "ca9fadaa6d0d9886db6199e9b48e612a6c7a3ef9e26a8fb820d5701a3e16034f",
+        "wing_r2_original.png": "580bd174da93532a5de5baf433bf28d995bdfc5c7a6af97b4623bef7eae1ec45"
+      }
+    }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "frozen_at": "2026-11-14T17:17:45.427892",
+  "sha256": {
+    "body_plain_base.png": "82da37f7368550276136d9ae210ca6be957c47873f407ac17a38b86cf6b500e3",
+    "body_barred_packed.png": "1822aed5a65f80fefe1033bef465ee4404965622c8d40ec1a6518b500f4aebae",
+    "body_barred_normal.png": "ce195bc543eea13badbf8e72b8e837fb16b9b8566a05ddbebe98113aee73b6e0",
+    "body_barred_height.png": "3d898ce88ec65068e16053a8c5a7a50931d5430dcc80f05b6348fb9221de3735",
+    "body_tips_packed.png": "62e27a7ff0f8a6b35f1cdb2aab09f1fdfc905eea981c0279b8c3f5109897886a",
+    "body_tips_normal.png": "fa715332add6b00d13c37a57c5da5f1633f97274a27e975d6f3720c6574513e3",
+    "body_tips_base.png": "6e91dbe8770325a2d93651d91bc68b50f10664fc38f0968a1c8612db448db888",
+    "body_tips_height.png": "9e4b4da3c7e810a37ad65eb1310f71d0602bf9230c88fbe3657a76a1f24edafd",
+    "body_plain_height.png": "3d898ce88ec65068e16053a8c5a7a50931d5430dcc80f05b6348fb9221de3735",
+    "body_barred_regions.png": "0b56e592bfd36fd4c828d1302d9630e5def3acd202329f086cdc03698f24456e",
+    "body_plain_normal.png": "ce195bc543eea13badbf8e72b8e837fb16b9b8566a05ddbebe98113aee73b6e0",
+    "body_plain_regions.png": "05c05b6fd7a673095495c6bc59a719e384893dc3138c454c4c1669044590e2b0",
+    "body_plain_packed.png": "1822aed5a65f80fefe1033bef465ee4404965622c8d40ec1a6518b500f4aebae",
+    "body_tips_regions.png": "63d5fc10ad5d1f9b68f6adc3e485cbb0b6c1c27363133972ad11da00c9ca0424",
+    "body_barred_base.png": "8ff0c77ab64eccd147fe0fdd4e6af1fb0d7a2fc3f9ea0e3bae33f18af18600e4",
+    "build.py": "ef78bed4afcb24b7abc356f24c4f802da144cbbf4b68dab3cc13beb8a76e9148",
+    "check.py": "42de3acc527dd17ad22640517ba92a006c75afe6ea0d3006b4ac9867904cd0c0",
+    "study.json": "f343606e1972001fb059c5567011c88362fd0db6ca3770f27f23464292b7591b",
+    "validation.json": "8fe52a43085fbdd78aba60dcadc66f4f4b4a5541226aade73a8e49b3838d9821",
+    "REPORT.md": "ad0ca1426224a4ff6500b67f268ea528d8a1f286520f2069c4b0f5d60e1edddb",
+    "source/layout.json": "ffd968c3418672e86a9d5e95ef3a0b0211990f7fbe79186d6f4659f822cfb971",
+    "source/tile_ownership.npz": "ac83c2127c5121927e322d26be4f15e64115d4ecdf3f69c388cbf7b9c295d131"
+  }
+}

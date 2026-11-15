@@ -1,0 +1,26 @@
+checks/
+__pycache__/
+superseded/
+# Made again byte for byte by build.py from the originals in source/, checked when the folder was trimmed.
+/beak_side_base.png
+/beak_side_height.png
+/beak_side_normal.png
+/beak_side_packed.png
+/beak_side_regions.png
+/horn_base.png
+/horn_height.png
+/horn_normal.png
+/horn_packed.png
+/horn_regions.png
+/source/beak_bands.png
+/source/beak_chips.png
+/source/beak_grooves.png
+/source/beak_lower_mask.png
+/source/beak_nostril.png
+/source/beak_pepper.png
+/source/beak_pores_depth.png
+/source/beak_scratch_lips.png
+/source/beak_scratches.png
+/source/beak_stain.png
+/source/beak_upper_mask.png
+/source/beak_wear.png

@@ -1,0 +1,122 @@
+[
+  {
+    "id": "feather_01",
+    "base_and_shaft": "source/feather_01_layers.npz",
+    "height": "source/tile_volume/feather_01_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_01_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_01_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_02",
+    "base_and_shaft": "source/feather_02_layers.npz",
+    "height": "source/tile_volume/feather_02_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_02_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_02_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_03",
+    "base_and_shaft": "source/feather_03_layers.npz",
+    "height": "source/tile_volume/feather_03_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_03_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_03_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_04",
+    "base_and_shaft": "source/feather_04_layers.npz",
+    "height": "source/tile_volume/feather_04_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_04_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_04_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_05",
+    "base_and_shaft": "source/feather_05_layers.npz",
+    "height": "source/tile_volume/feather_05_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_05_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_05_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_06",
+    "base_and_shaft": "source/feather_06_layers.npz",
+    "height": "source/tile_volume/feather_06_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_06_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_06_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_07",
+    "base_and_shaft": "source/feather_07_layers.npz",
+    "height": "source/tile_volume/feather_07_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_07_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_07_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_08",
+    "base_and_shaft": "source/feather_08_layers.npz",
+    "height": "source/tile_volume/feather_08_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_08_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_08_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_09",
+    "base_and_shaft": "source/feather_09_layers.npz",
+    "height": "source/tile_volume/feather_09_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_09_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_09_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_10",
+    "base_and_shaft": "source/feather_10_layers.npz",
+    "height": "source/tile_volume/feather_10_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_10_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_10_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_11",
+    "base_and_shaft": "source/feather_11_layers.npz",
+    "height": "source/tile_volume/feather_11_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_11_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_11_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  },
+  {
+    "id": "feather_12",
+    "base_and_shaft": "source/feather_12_layers.npz",
+    "height": "source/tile_volume/feather_12_height.png",
+    "height_mm": 4,
+    "alpha": "source/tile_volume/feather_12_rooted_alpha.png",
+    "layers": "source/tile_volume/feather_12_volume.npz",
+    "placement_height": "0.60 + bed_offset_mm + volume_gain * volume_mm; blend uses the soft mask",
+    "root_fade": "Bare stem fades into the bed over first 9 percent; source alpha and accepted fringe unchanged."
+  }
+]

@@ -1,0 +1,467 @@
+{
+ "size": 2048,
+ "pieces": [
+  {
+   "number": 1,
+   "name": "beak",
+   "regions": [
+    2
+   ],
+   "box": [
+    10,
+    33,
+    1200,
+    545
+   ],
+   "texels": 338180,
+   "mm_per_texel": 0.2173
+  },
+  {
+   "number": 2,
+   "name": "beak_palate",
+   "regions": [
+    6
+   ],
+   "box": [
+    1538,
+    1928,
+    1783,
+    2037
+   ],
+   "texels": 9621,
+   "mm_per_texel": 0.5642
+  },
+  {
+   "number": 3,
+   "name": "brow_l",
+   "regions": [
+    3
+   ],
+   "box": [
+    1260,
+    1667,
+    1518,
+    2042
+   ],
+   "texels": 74566,
+   "mm_per_texel": 0.3102
+  },
+  {
+   "number": 4,
+   "name": "eye_l",
+   "regions": [
+    6
+   ],
+   "box": [
+    1582,
+    993,
+    1933,
+    1361
+   ],
+   "texels": 93363,
+   "mm_per_texel": 0.2109
+  },
+  {
+   "number": 5,
+   "name": "jaw",
+   "regions": [
+    2
+   ],
+   "box": [
+    1043,
+    322,
+    1813,
+    504
+   ],
+   "texels": 107720,
+   "mm_per_texel": 0.2545
+  },
+  {
+   "number": 6,
+   "name": "jaw_floor",
+   "regions": [
+    6
+   ],
+   "box": [
+    261,
+    1985,
+    482,
+    2033
+   ],
+   "texels": 5142,
+   "mm_per_texel": 0.7705
+  },
+  {
+   "number": 7,
+   "name": "leg_l",
+   "regions": [
+    3
+   ],
+   "box": [
+    380,
+    477,
+    713,
+    973
+   ],
+   "texels": 144935,
+   "mm_per_texel": 0.4464
+  },
+  {
+   "number": 8,
+   "name": "lid_l_in",
+   "regions": [
+    1
+   ],
+   "box": [
+    289,
+    1931,
+    329,
+    1958
+   ],
+   "texels": 783,
+   "mm_per_texel": 1.1313
+  },
+  {
+   "number": 9,
+   "name": "lid_l_out",
+   "regions": [
+    1
+   ],
+   "box": [
+    1218,
+    120,
+    1516,
+    316
+   ],
+   "texels": 41937,
+   "mm_per_texel": 0.1805
+  },
+  {
+   "number": 10,
+   "name": "pouch_in",
+   "regions": [
+    3
+   ],
+   "box": [
+    97,
+    1441,
+    116,
+    1509
+   ],
+   "texels": 937,
+   "mm_per_texel": 1.5075
+  },
+  {
+   "number": 11,
+   "name": "pouch_out",
+   "regions": [
+    3
+   ],
+   "box": [
+    11,
+    1518,
+    116,
+    1876
+   ],
+   "texels": 28286,
+   "mm_per_texel": 0.2832
+  },
+  {
+   "number": 12,
+   "name": "shell_body",
+   "regions": [
+    0
+   ],
+   "box": [
+    19,
+    824,
+    1282,
+    2043
+   ],
+   "texels": 970146,
+   "mm_per_texel": 0.4678
+  },
+  {
+   "number": 13,
+   "name": "shell_face",
+   "regions": [
+    1,
+    6
+   ],
+   "box": [
+    773,
+    405,
+    1638,
+    1155
+   ],
+   "texels": 371295,
+   "mm_per_texel": 0.1759
+  },
+  {
+   "number": 14,
+   "name": "shell_hood",
+   "regions": [
+    4
+   ],
+   "box": [
+    1134,
+    1105,
+    1850,
+    1952
+   ],
+   "texels": 204048,
+   "mm_per_texel": 0.3301
+  },
+  {
+   "number": 15,
+   "name": "shoulder_l",
+   "regions": [
+    0
+   ],
+   "box": [
+    113,
+    1740,
+    202,
+    1820
+   ],
+   "texels": 5157,
+   "mm_per_texel": 1.0402
+  },
+  {
+   "number": 16,
+   "name": "toe4_+188",
+   "regions": [
+    3,
+    6
+   ],
+   "box": [
+    197,
+    602,
+    342,
+    831
+   ],
+   "texels": 23849,
+   "mm_per_texel": 0.3875
+  },
+  {
+   "number": 17,
+   "name": "toe4_+30",
+   "regions": [
+    3,
+    6
+   ],
+   "box": [
+    1783,
+    111,
+    1938,
+    423
+   ],
+   "texels": 34622,
+   "mm_per_texel": 0.3895
+  },
+  {
+   "number": 18,
+   "name": "toe4_+4",
+   "regions": [
+    3,
+    6
+   ],
+   "box": [
+    11,
+    621,
+    173,
+    984
+   ],
+   "texels": 41971,
+   "mm_per_texel": 0.3902
+  },
+  {
+   "number": 19,
+   "name": "toe4_-24",
+   "regions": [
+    3,
+    6
+   ],
+   "box": [
+    1696,
+    1407,
+    1851,
+    1734
+   ],
+   "texels": 36162,
+   "mm_per_texel": 0.3898
+  },
+  {
+   "number": 20,
+   "name": "tongue",
+   "regions": [
+    6
+   ],
+   "box": [
+    639,
+    997,
+    853,
+    1044
+   ],
+   "texels": 7874,
+   "mm_per_texel": 0.4544
+  },
+  {
+   "number": 21,
+   "name": "wing_l_in",
+   "regions": [
+    0
+   ],
+   "box": [
+    11,
+    1841,
+    289,
+    2036
+   ],
+   "texels": 37158,
+   "mm_per_texel": 0.6424
+  },
+  {
+   "number": 22,
+   "name": "wing_l_out",
+   "regions": [
+    0
+   ],
+   "box": [
+    1531,
+    525,
+    1933,
+    822
+   ],
+   "texels": 83704,
+   "mm_per_texel": 0.4507
+  }
+ ],
+ "cards": {
+  "tail": {
+   "rect": [
+    0.0,
+    0.0,
+    0.25,
+    0.58
+   ],
+   "mm_per_texel": [
+    0.08276,
+    0.10837
+   ],
+   "card_mm": [
+    42.4,
+    128.7
+   ]
+  },
+  "finger": {
+   "rect": [
+    0.25,
+    0.0,
+    0.38,
+    0.3
+   ],
+   "mm_per_texel": [
+    0.08507,
+    0.08843
+   ],
+   "card_mm": [
+    22.6,
+    54.3
+   ]
+  },
+  "forehead": {
+   "rect": [
+    0.25,
+    0.3,
+    0.38,
+    0.42
+   ],
+   "mm_per_texel": [
+    0.09052,
+    0.04953
+   ],
+   "card_mm": [
+    24.1,
+    12.2
+   ]
+  },
+  "mane": {
+   "rect": [
+    0.38,
+    0.0,
+    0.7,
+    0.42
+   ],
+   "mm_per_texel": [
+    0.20348,
+    0.09381
+   ],
+   "card_mm": [
+    133.4,
+    80.7
+   ]
+  },
+  "hood": {
+   "rect": [
+    0.0,
+    0.58,
+    1.0,
+    0.68
+   ],
+   "mm_per_texel": [
+    0.03486,
+    0.06554
+   ],
+   "card_mm": [
+    71.4,
+    13.4
+   ]
+  },
+  "body": {
+   "rect": [
+    0.0,
+    0.68,
+    1.0,
+    0.84
+   ],
+   "mm_per_texel": [
+    0.04811,
+    0.10072
+   ],
+   "card_mm": [
+    98.5,
+    33.0
+   ]
+  },
+  "trousers": {
+   "rect": [
+    0.0,
+    0.84,
+    1.0,
+    1.0
+   ],
+   "mm_per_texel": [
+    0.11081,
+    0.18109
+   ],
+   "card_mm": [
+    226.9,
+    59.3
+   ]
+  }
+ },
+ "position_box": {
+  "min": [
+   -0.1451,
+   -0.0012000000000000001,
+   -0.2187
+  ],
+  "max": [
+   0.1451,
+   0.6547,
+   0.351
+  ]
+ },
+ "note": "pieces.png: red channel is the piece number. The bird's left side; the right is its mirror. position_x/y/z.png: the bird-frame position of each texel, 16 bits over position_box. texel_mm.png: millimetres a texel spans, value / 1000."
+}

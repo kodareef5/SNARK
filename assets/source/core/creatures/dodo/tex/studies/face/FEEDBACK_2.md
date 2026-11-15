@@ -1,0 +1,10 @@
+# Face study, round 2: closer, sent back once more
+
+Real progress: the base carries the drawing now, the folds exist, the brow has a grain, the pouch varies. Your `checks/concept_scale.png` is exactly the right check; set it up again and look at each row:
+
+- **Skin: crazed mud, not pebbles.** The cells are flat-topped polygons separated by wide dark cracks, like dried mud or crazed glaze. The concept's pebbles are smaller (about two thirds of yours: 1 to 1.5 mm on the cheek, finer toward the eye and beak), each one a little rounded dome, packed close, with narrow creases between them. Rounder tops, narrower and lighter creases, smaller cells.
+- **Folds: still shallow ripples.** The concept's under-eye rolls are thick and heavy: each one a fleshy roll about 3 mm thick standing well proud of the cheek, with a deep, dark crease above it, the top one the heaviest. Yours are low undulations that the pebbling almost hides. The mouth-corner fold in the concept is a thick, rounded roll of flesh turning down, about 4 mm across, with a deep crease on its inner side; yours is a shallow groove. Twice the depth and roundness, at least, with the pebbles carried over the rolls and finer in the creases.
+- **Brow: too busy.** The grain is now a dense, even net of small cells with strong lines, like crocodile leather. The concept's brow is a smooth satin shelf with faint, finer lines enclosing larger, irregular cells (about 1.5 to 3 mm), barely raised. Fewer, fainter lines; larger cells; smoother.
+- **Pouch: too wavy.** In round 1 the pleats were too machined; now they are soft waves, like rippled sand or cloth. The concept's pleats are crisp: rounded ridges about 2 mm apart, separated by narrow, dark, well-defined grooves, very nearly parallel. Keep that crispness and regularity, with only small variations (a ridge a little wider or narrower, the odd one that forks or ends).
+
+Same sets, names and scales; update the report for this round and finish with the same concept-scale comparison.

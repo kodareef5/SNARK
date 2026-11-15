@@ -1,0 +1,501 @@
+{
+  "study": "face",
+  "round": 4,
+  "schema_version": 1,
+  "seed": 186225,
+  "resolution": 2048,
+  "normal_convention": "OpenGL +Y; pixel y increases downward. N=normalize(-dh/dx,+dh/dy,1), derivatives in mm/mm using wrapped central differences of the delivered 16-bit height.",
+  "height_encoding": "All regular height maps: millimetres=(uint16/65535 - 0.5)*height_mm. White is high; zero is the nominal plane. height_mm is the full 0\u201365535 range, not the used range.",
+  "packed_channels": {
+    "R": "linear ambient occlusion (1=unoccluded)",
+    "G": "linear perceptual roughness",
+    "B": "metalness (zero)"
+  },
+  "colour_space": {
+    "base": "sRGB, RGB channels equal, continuous alpha linear",
+    "height_normal_packed_regions_alpha": "linear data"
+  },
+  "dye": "Decode base to linear, multiply by linear dye / 0.50; then light. Default skin/folds #DDA089, brow/pouch #C49C58.",
+  "region_ring": "Each standalone sheet has one pure region. Final atlas joins must add >=4 px black undyed creases at 2048 between non-neighbour regions, as COMMON.md specifies.",
+  "build_arguments": {
+    "detail_scale": 1,
+    "fold_scale": 1,
+    "pouch_angle": 0,
+    "reuse_grain": false
+  },
+  "sets": {
+    "skin": {
+      "span_m": 0.205,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 8.0,
+      "height_zero": 0.5,
+      "actual_relief_mm": [
+        -0.14520478248596191,
+        0.09735250473022461
+      ],
+      "regions": [
+        1
+      ],
+      "mean_linear_grey": {
+        "1": 0.5000020908398627
+      },
+      "mean_srgb_grey": 187.31734251976013,
+      "roughness_min_mean_max": [
+        0.4300000071525574,
+        0.4900180995464325,
+        0.5600000023841858
+      ],
+      "maps": {
+        "base": "skin_base.png",
+        "height": "skin_height.png",
+        "normal": "skin_normal.png",
+        "packed": "skin_packed.png",
+        "regions": "skin_regions.png"
+      },
+      "nominal_centre_spacing_mm": 1.18,
+      "cell_count": 30276,
+      "equivalent_cell_diameter_p10_p50_p90_mm": [
+        1.0655503385243585,
+        1.3074688996947297,
+        1.5691252917167813
+      ],
+      "crease_width_mm": 0.09990655333892372,
+      "diameter_measurement": "Equivalent-circle diameter of shared polygon territory; same seeds and domed crown profile as round 3",
+      "crease_width_measurement": "Authored full width at half maximum before subpixel antialias filtering",
+      "contact": "All pixels belong to a pebble cell or its shared narrow crease; lower flanks extend to every cell boundary",
+      "feature_scale_mm": "Round 3 crown size and curvature, with full touching polygonal flanks and a continuous approximately 0.10 mm crease network. Finer sampling toward the eye/beak remains a placement choice."
+    },
+    "folds": {
+      "span_m": 0.205,
+      "tiles": false,
+      "cutout": false,
+      "height_mm": 8.0,
+      "height_zero": 0.5,
+      "actual_relief_mm": [
+        -0.38544297218322754,
+        3.241321563720703
+      ],
+      "regions": [
+        1
+      ],
+      "mean_linear_grey": {
+        "1": 0.5000009091393682
+      },
+      "mean_srgb_grey": 187.40127778053284,
+      "roughness_min_mean_max": [
+        0.4300000071525574,
+        0.4900180995464325,
+        0.5600000023841858
+      ],
+      "maps": {
+        "base": "folds_base.png",
+        "height": "folds_height.png",
+        "normal": "folds_normal.png",
+        "packed": "folds_packed.png",
+        "regions": "folds_regions.png"
+      },
+      "alpha_mode": "continuous layer opacity; never alpha-test",
+      "alpha": "folds_alpha.png",
+      "delta_height": "folds_delta_height.png",
+      "delta_decode": "millimetres = (uint16 - 32768) * 8 / 65535",
+      "elements": [
+        {
+          "name": "under_eye_four_folds",
+          "box_px": [
+            80,
+            80,
+            848,
+            848
+          ],
+          "root_px": [
+            359,
+            288
+          ],
+          "tip_px": [
+            569,
+            288
+          ],
+          "kind": "Four concentric lower-eye rolls, top heaviest: 3.50/3.25/3.05/2.85 mm elliptic profiles, 3.20/2.85/2.55/2.20 mm peak elevation, deep upper creases, 3.80 mm centre-path spacing. Eye centre [464,280]. Mirror/rotate along the face.",
+          "opacity": "folds_alpha.png",
+          "box_convention": "[left, top, right, bottom), origin top-left",
+          "roll_width_mm": [
+            3.5,
+            3.25,
+            3.05,
+            2.85
+          ],
+          "roll_amplitude_mm": [
+            3.2,
+            2.85,
+            2.55,
+            2.2
+          ],
+          "crease_depth_mm": [
+            0.8,
+            0.74,
+            0.68,
+            0.6
+          ],
+          "centre_path_pitch_mm": 3.8037109375,
+          "files": {
+            "base": "elements/under_eye_four_folds/base.png",
+            "height": "elements/under_eye_four_folds/height.png",
+            "normal": "elements/under_eye_four_folds/normal.png",
+            "packed": "elements/under_eye_four_folds/packed.png",
+            "regions": "elements/under_eye_four_folds/regions.png",
+            "alpha": "elements/under_eye_four_folds/alpha.png",
+            "delta_height": "elements/under_eye_four_folds/delta_height.png"
+          },
+          "span_m": 0.076875,
+          "height_mm": 8.0,
+          "local_root_px": [
+            279,
+            208
+          ],
+          "local_tip_px": [
+            489,
+            208
+          ]
+        },
+        {
+          "name": "mouth_corner_downturn",
+          "box_px": [
+            1120,
+            80,
+            1888,
+            848
+          ],
+          "root_px": [
+            1395,
+            350
+          ],
+          "tip_px": [
+            1462,
+            494
+          ],
+          "kind": "Downturned 4 mm rounded crescent standing 3.1 mm proud, with a 0.9 mm deep crease on its inner side; no black mouth interior.",
+          "opacity": "folds_alpha.png",
+          "box_convention": "[left, top, right, bottom), origin top-left",
+          "roll_width_mm": 4.0,
+          "roll_amplitude_mm": 3.1,
+          "crease_depth_mm": 0.9,
+          "crease_side": "inner / left of the descending roll",
+          "files": {
+            "base": "elements/mouth_corner_downturn/base.png",
+            "height": "elements/mouth_corner_downturn/height.png",
+            "normal": "elements/mouth_corner_downturn/normal.png",
+            "packed": "elements/mouth_corner_downturn/packed.png",
+            "regions": "elements/mouth_corner_downturn/regions.png",
+            "alpha": "elements/mouth_corner_downturn/alpha.png",
+            "delta_height": "elements/mouth_corner_downturn/delta_height.png"
+          },
+          "span_m": 0.076875,
+          "height_mm": 8.0,
+          "local_root_px": [
+            275,
+            270
+          ],
+          "local_tip_px": [
+            342,
+            414
+          ]
+        },
+        {
+          "name": "crease_long",
+          "box_px": [
+            80,
+            1120,
+            656,
+            1696
+          ],
+          "root_px": [
+            155,
+            1356
+          ],
+          "tip_px": [
+            581,
+            1381
+          ],
+          "kind": "Single soft crease; start=root and end=tip, not feather semantics.",
+          "opacity": "folds_alpha.png",
+          "box_convention": "[left, top, right, bottom), origin top-left",
+          "files": {
+            "base": "elements/crease_long/base.png",
+            "height": "elements/crease_long/height.png",
+            "normal": "elements/crease_long/normal.png",
+            "packed": "elements/crease_long/packed.png",
+            "regions": "elements/crease_long/regions.png",
+            "alpha": "elements/crease_long/alpha.png",
+            "delta_height": "elements/crease_long/delta_height.png"
+          },
+          "span_m": 0.05765625,
+          "height_mm": 8.0,
+          "local_root_px": [
+            75,
+            236
+          ],
+          "local_tip_px": [
+            501,
+            261
+          ]
+        },
+        {
+          "name": "crease_medium",
+          "box_px": [
+            736,
+            1072,
+            1312,
+            1648
+          ],
+          "root_px": [
+            872,
+            1327
+          ],
+          "tip_px": [
+            1173,
+            1359
+          ],
+          "kind": "Single soft crease; start=root and end=tip, not feather semantics.",
+          "opacity": "folds_alpha.png",
+          "box_convention": "[left, top, right, bottom), origin top-left",
+          "files": {
+            "base": "elements/crease_medium/base.png",
+            "height": "elements/crease_medium/height.png",
+            "normal": "elements/crease_medium/normal.png",
+            "packed": "elements/crease_medium/packed.png",
+            "regions": "elements/crease_medium/regions.png",
+            "alpha": "elements/crease_medium/alpha.png",
+            "delta_height": "elements/crease_medium/delta_height.png"
+          },
+          "span_m": 0.05765625,
+          "height_mm": 8.0,
+          "local_root_px": [
+            136,
+            255
+          ],
+          "local_tip_px": [
+            437,
+            287
+          ]
+        },
+        {
+          "name": "crease_short",
+          "box_px": [
+            1408,
+            1280,
+            1984,
+            1856
+          ],
+          "root_px": [
+            1605,
+            1530
+          ],
+          "tip_px": [
+            1791,
+            1560
+          ],
+          "kind": "Single soft crease; start=root and end=tip, not feather semantics.",
+          "opacity": "folds_alpha.png",
+          "box_convention": "[left, top, right, bottom), origin top-left",
+          "files": {
+            "base": "elements/crease_short/base.png",
+            "height": "elements/crease_short/height.png",
+            "normal": "elements/crease_short/normal.png",
+            "packed": "elements/crease_short/packed.png",
+            "regions": "elements/crease_short/regions.png",
+            "alpha": "elements/crease_short/alpha.png",
+            "delta_height": "elements/crease_short/delta_height.png"
+          },
+          "span_m": 0.05765625,
+          "height_mm": 8.0,
+          "local_root_px": [
+            197,
+            250
+          ],
+          "local_tip_px": [
+            383,
+            280
+          ]
+        }
+      ],
+      "composition": "At matching UVs, mix skin and folds maps with folds_alpha; normalize normals. Delta height includes the roll and local finer-skin transition relative to this exact skin tile. For arbitrary placement, alpha-blend the complete height/base patch into destination skin at matching density, then derive normals and AO. RGB and height equal plain skin at alpha=0; all maps equal skin on box borders."
+    },
+    "brow": {
+      "span_m": 0.256,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 0.3,
+      "height_zero": 0.5,
+      "actual_relief_mm": [
+        -0.028013277798891068,
+        0.012133205309510231
+      ],
+      "regions": [
+        3
+      ],
+      "mean_linear_grey": {
+        "3": 0.49996770068229557
+      },
+      "mean_srgb_grey": 187.49943852424622,
+      "roughness_min_mean_max": [
+        0.30000001192092896,
+        0.34491974115371704,
+        0.4000000059604645
+      ],
+      "maps": {
+        "base": "brow_base.png",
+        "height": "brow_height.png",
+        "normal": "brow_normal.png",
+        "packed": "brow_packed.png",
+        "regions": "brow_regions.png"
+      },
+      "nominal_centre_spacing_mm": 2.05,
+      "cell_count": 15625,
+      "equivalent_cell_diameter_p10_p50_p90_mm": [
+        1.761681409986482,
+        2.2699430130732603,
+        2.799710868514077
+      ],
+      "crease_width_mm": 0.084,
+      "diameter_measurement": "Equivalent-circle diameter of the delivered warped dome/cell territory; crease width is nominal before pixel filtering",
+      "feature_scale_mm": "Sparse, faint hairline reticulation enclosing approximately 1.5\u20133 mm irregular cells. Barely raised satin grain; large brow shelf belongs to the mesh."
+    },
+    "pouch": {
+      "span_m": 0.256,
+      "tiles": true,
+      "cutout": false,
+      "height_mm": 1.6,
+      "height_zero": 0.5,
+      "actual_relief_mm": [
+        -0.4314641058444977,
+        0.1715235710144043
+      ],
+      "regions": [
+        3
+      ],
+      "mean_linear_grey": {
+        "3": 0.5000020825041813
+      },
+      "mean_srgb_grey": 187.42398405075073,
+      "roughness_min_mean_max": [
+        0.4099999964237213,
+        0.46990954875946045,
+        0.5400000214576721
+      ],
+      "maps": {
+        "base": "pouch_base.png",
+        "height": "pouch_height.png",
+        "normal": "pouch_normal.png",
+        "packed": "pouch_packed.png",
+        "regions": "pouch_regions.png"
+      },
+      "pleat_count": 128.0,
+      "wave_vector": [
+        0,
+        128
+      ],
+      "nominal_pitch_mm": 2.0,
+      "row_variation_period_cycles": 128,
+      "prescribed_row_pitch_min_max_mm": [
+        1.9200789165725576,
+        2.0783382557581485
+      ],
+      "prescribed_row_depth_factor_min_max": [
+        0.92104168455948,
+        1.078595725221365
+      ],
+      "requested_angle_deg": 0,
+      "actual_angle_deg": 0.0,
+      "branches": [
+        {
+          "x_start_px": 143,
+          "length_px": 260,
+          "phase_start": 16.5,
+          "max_fork_width_mm": 0.76
+        },
+        {
+          "x_start_px": 1070,
+          "length_px": 235,
+          "phase_start": 9.5,
+          "max_fork_width_mm": 0.76
+        },
+        {
+          "x_start_px": 650,
+          "length_px": 190,
+          "phase_start": 39.5,
+          "max_fork_width_mm": 0.76
+        },
+        {
+          "x_start_px": 1590,
+          "length_px": 220,
+          "phase_start": 57.5,
+          "max_fork_width_mm": 0.76
+        },
+        {
+          "x_start_px": 285,
+          "length_px": 245,
+          "phase_start": 74.5,
+          "max_fork_width_mm": 0.76
+        },
+        {
+          "x_start_px": 1050,
+          "length_px": 175,
+          "phase_start": 88.5,
+          "max_fork_width_mm": 0.76
+        },
+        {
+          "x_start_px": 1540,
+          "length_px": 270,
+          "phase_start": 102.5,
+          "max_fork_width_mm": 0.76
+        }
+      ],
+      "tile_origin_translation_px": [
+        0,
+        -300
+      ]
+    }
+  },
+  "provenance": {
+    "image_tool": "built-in image_gen; originals copied unchanged from automatic tool cache",
+    "sources": {
+      "skin_relief_original.png": {
+        "sha256": "debebb8a5785c81975e54caeddb66f9164e607782fc156d7e4b1f7f040e0e537",
+        "size_px": [
+          1254,
+          1254
+        ]
+      },
+      "brow_relief_original.png": {
+        "sha256": "23a8ec5577ecf75f06c600c51d5c99f8a8692c57c5ba8ae1856cdcc3a94bcb42",
+        "size_px": [
+          1254,
+          1254
+        ]
+      }
+    },
+    "prompts": [
+      "source/skin_prompt.txt",
+      "source/brow_prompt.txt"
+    ],
+    "source_roles": {
+      "skin_relief_original.png": "Micrograin only; rounded pebble geometry is reconstructed procedurally.",
+      "brow_relief_original.png": "Low-amplitude tissue detail only; brow polygon grain and pouch pleats reconstructed at physical scale."
+    }
+  },
+  "build_seconds": 31.14,
+  "accepted_asset_hashes": "source/accepted_sha256.json",
+  "folds_reference_skin": {
+    "base": "fields/fold_reference_skin/skin_base.png",
+    "height": "fields/fold_reference_skin/skin_height.png",
+    "normal": "fields/fold_reference_skin/skin_normal.png",
+    "packed": "fields/fold_reference_skin/skin_packed.png",
+    "regions": "fields/fold_reference_skin/skin_regions.png"
+  },
+  "folds_placement_note": "Accepted folds retain their original substrate, regenerated under fields/fold_reference_skin. Blend their complete height/base patch with continuous alpha onto the revised skin, then derive normals/AO; do not treat their delta as relative to the standalone skin.",
+  "accepted_rebuild": {
+    "png_count": 57,
+    "sha256_exact": true
+  }
+}

@@ -1,0 +1,642 @@
+[
+  {
+    "id": "feather_01",
+    "atlas_box": [
+      0,
+      0,
+      315,
+      312
+    ],
+    "box_px": [
+      58,
+      10,
+      277,
+      300
+    ],
+    "root_px": [
+      167.5,
+      13
+    ],
+    "tip_px": [
+      156,
+      299
+    ],
+    "length_mm": 59.593838037936806,
+    "width_mm": 48.33411482854645,
+    "pixel_mm": [
+      0.22070372067829427,
+      0.20549599323426485
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_01_original.png",
+      "cutout": "feather_01_cutout.png",
+      "height": "feather_01_height.png",
+      "shaft": "feather_01_shaft.png",
+      "free_edge_distance": "feather_01_free_edge_distance.png",
+      "free_edge": "feather_01_free_edge.png"
+    },
+    "layers": "feather_01_layers.npz"
+  },
+  {
+    "id": "feather_02",
+    "atlas_box": [
+      315,
+      0,
+      630,
+      312
+    ],
+    "box_px": [
+      59,
+      9,
+      264,
+      299
+    ],
+    "root_px": [
+      164.0,
+      12
+    ],
+    "tip_px": [
+      179,
+      298
+    ],
+    "length_mm": 55.50772300842568,
+    "width_mm": 54.390131100747844,
+    "pixel_mm": [
+      0.26531771268657484,
+      0.19140594140836442
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_02_original.png",
+      "cutout": "feather_02_cutout.png",
+      "height": "feather_02_height.png",
+      "shaft": "feather_02_shaft.png",
+      "free_edge_distance": "feather_02_free_edge_distance.png",
+      "free_edge": "feather_02_free_edge.png"
+    },
+    "layers": "feather_02_layers.npz"
+  },
+  {
+    "id": "feather_03",
+    "atlas_box": [
+      630,
+      0,
+      946,
+      312
+    ],
+    "box_px": [
+      49,
+      12,
+      260,
+      295
+    ],
+    "root_px": [
+      166.0,
+      15
+    ],
+    "tip_px": [
+      147,
+      294
+    ],
+    "length_mm": 55.52939648465525,
+    "width_mm": 51.06391889349852,
+    "pixel_mm": [
+      0.2420090942819835,
+      0.19621694870902914
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_03_original.png",
+      "cutout": "feather_03_cutout.png",
+      "height": "feather_03_height.png",
+      "shaft": "feather_03_shaft.png",
+      "free_edge_distance": "feather_03_free_edge_distance.png",
+      "free_edge": "feather_03_free_edge.png"
+    },
+    "layers": "feather_03_layers.npz"
+  },
+  {
+    "id": "feather_04",
+    "atlas_box": [
+      946,
+      0,
+      1261,
+      312
+    ],
+    "box_px": [
+      53,
+      11,
+      266,
+      297
+    ],
+    "root_px": [
+      160.0,
+      14
+    ],
+    "tip_px": [
+      153,
+      296
+    ],
+    "length_mm": 56.656389845366675,
+    "width_mm": 49.997411695505875,
+    "pixel_mm": [
+      0.23472963237326702,
+      0.19809926519358978
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_04_original.png",
+      "cutout": "feather_04_cutout.png",
+      "height": "feather_04_height.png",
+      "shaft": "feather_04_shaft.png",
+      "free_edge_distance": "feather_04_free_edge_distance.png",
+      "free_edge": "feather_04_free_edge.png"
+    },
+    "layers": "feather_04_layers.npz"
+  },
+  {
+    "id": "feather_05",
+    "atlas_box": [
+      0,
+      312,
+      315,
+      624
+    ],
+    "box_px": [
+      52,
+      10,
+      274,
+      296
+    ],
+    "root_px": [
+      165.5,
+      13
+    ],
+    "tip_px": [
+      166,
+      295
+    ],
+    "length_mm": 56.22449694755336,
+    "width_mm": 55.15600653085003,
+    "pixel_mm": [
+      0.2484504798686938,
+      0.1965891501662705
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_05_original.png",
+      "cutout": "feather_05_cutout.png",
+      "height": "feather_05_height.png",
+      "shaft": "feather_05_shaft.png",
+      "free_edge_distance": "feather_05_free_edge_distance.png",
+      "free_edge": "feather_05_free_edge.png"
+    },
+    "layers": "feather_05_layers.npz"
+  },
+  {
+    "id": "feather_06",
+    "atlas_box": [
+      315,
+      312,
+      630,
+      624
+    ],
+    "box_px": [
+      44,
+      11,
+      279,
+      298
+    ],
+    "root_px": [
+      162.0,
+      14
+    ],
+    "tip_px": [
+      156,
+      297
+    ],
+    "length_mm": 56.62657854117448,
+    "width_mm": 54.95230975910478,
+    "pixel_mm": [
+      0.23383961599619055,
+      0.19730515171140933
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_06_original.png",
+      "cutout": "feather_06_cutout.png",
+      "height": "feather_06_height.png",
+      "shaft": "feather_06_shaft.png",
+      "free_edge_distance": "feather_06_free_edge_distance.png",
+      "free_edge": "feather_06_free_edge.png"
+    },
+    "layers": "feather_06_layers.npz"
+  },
+  {
+    "id": "feather_07",
+    "atlas_box": [
+      630,
+      312,
+      946,
+      624
+    ],
+    "box_px": [
+      50,
+      11,
+      268,
+      294
+    ],
+    "root_px": [
+      160.0,
+      14
+    ],
+    "tip_px": [
+      132,
+      293
+    ],
+    "length_mm": 57.5035491966978,
+    "width_mm": 53.2152308824065,
+    "pixel_mm": [
+      0.24410656368076378,
+      0.2031927533452219
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_07_original.png",
+      "cutout": "feather_07_cutout.png",
+      "height": "feather_07_height.png",
+      "shaft": "feather_07_shaft.png",
+      "free_edge_distance": "feather_07_free_edge_distance.png",
+      "free_edge": "feather_07_free_edge.png"
+    },
+    "layers": "feather_07_layers.npz"
+  },
+  {
+    "id": "feather_08",
+    "atlas_box": [
+      946,
+      312,
+      1261,
+      624
+    ],
+    "box_px": [
+      47,
+      11,
+      268,
+      296
+    ],
+    "root_px": [
+      159.0,
+      14
+    ],
+    "tip_px": [
+      151,
+      295
+    ],
+    "length_mm": 57.28165674805834,
+    "width_mm": 53.826959311854395,
+    "pixel_mm": [
+      0.24356090186359455,
+      0.20098826929143276
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_08_original.png",
+      "cutout": "feather_08_cutout.png",
+      "height": "feather_08_height.png",
+      "shaft": "feather_08_shaft.png",
+      "free_edge_distance": "feather_08_free_edge_distance.png",
+      "free_edge": "feather_08_free_edge.png"
+    },
+    "layers": "feather_08_layers.npz"
+  },
+  {
+    "id": "feather_09",
+    "atlas_box": [
+      0,
+      624,
+      315,
+      935
+    ],
+    "box_px": [
+      52,
+      8,
+      275,
+      293
+    ],
+    "root_px": [
+      170.5,
+      11
+    ],
+    "tip_px": [
+      174,
+      292
+    ],
+    "length_mm": 61.04093166843709,
+    "width_mm": 55.97986302581707,
+    "pixel_mm": [
+      0.25103077590052497,
+      0.21417870760855118
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_09_original.png",
+      "cutout": "feather_09_cutout.png",
+      "height": "feather_09_height.png",
+      "shaft": "feather_09_shaft.png",
+      "free_edge_distance": "feather_09_free_edge_distance.png",
+      "free_edge": "feather_09_free_edge.png"
+    },
+    "layers": "feather_09_layers.npz"
+  },
+  {
+    "id": "feather_10",
+    "atlas_box": [
+      315,
+      624,
+      630,
+      935
+    ],
+    "box_px": [
+      44,
+      8,
+      280,
+      291
+    ],
+    "root_px": [
+      169.5,
+      11
+    ],
+    "tip_px": [
+      147,
+      290
+    ],
+    "length_mm": 61.27102396337878,
+    "width_mm": 49.76131569719731,
+    "pixel_mm": [
+      0.21085303261524285,
+      0.216505385029607
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_10_original.png",
+      "cutout": "feather_10_cutout.png",
+      "height": "feather_10_height.png",
+      "shaft": "feather_10_shaft.png",
+      "free_edge_distance": "feather_10_free_edge_distance.png",
+      "free_edge": "feather_10_free_edge.png"
+    },
+    "layers": "feather_10_layers.npz"
+  },
+  {
+    "id": "feather_11",
+    "atlas_box": [
+      630,
+      624,
+      946,
+      935
+    ],
+    "box_px": [
+      49,
+      9,
+      261,
+      292
+    ],
+    "root_px": [
+      166.5,
+      12
+    ],
+    "tip_px": [
+      146,
+      291
+    ],
+    "length_mm": 59.04353283240505,
+    "width_mm": 55.811405820141516,
+    "pixel_mm": [
+      0.2632613482082147,
+      0.2086343916339401
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_11_original.png",
+      "cutout": "feather_11_cutout.png",
+      "height": "feather_11_height.png",
+      "shaft": "feather_11_shaft.png",
+      "free_edge_distance": "feather_11_free_edge_distance.png",
+      "free_edge": "feather_11_free_edge.png"
+    },
+    "layers": "feather_11_layers.npz"
+  },
+  {
+    "id": "feather_12",
+    "atlas_box": [
+      946,
+      624,
+      1261,
+      935
+    ],
+    "box_px": [
+      48,
+      7,
+      272,
+      291
+    ],
+    "root_px": [
+      161.5,
+      10
+    ],
+    "tip_px": [
+      150,
+      290
+    ],
+    "length_mm": 58.17330266766852,
+    "width_mm": 48.509733982215785,
+    "pixel_mm": [
+      0.2165613124206062,
+      0.20483557277348072
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_12_original.png",
+      "cutout": "feather_12_cutout.png",
+      "height": "feather_12_height.png",
+      "shaft": "feather_12_shaft.png",
+      "free_edge_distance": "feather_12_free_edge_distance.png",
+      "free_edge": "feather_12_free_edge.png"
+    },
+    "layers": "feather_12_layers.npz"
+  },
+  {
+    "id": "feather_13",
+    "atlas_box": [
+      0,
+      935,
+      315,
+      1247
+    ],
+    "box_px": [
+      54,
+      3,
+      275,
+      291
+    ],
+    "root_px": [
+      169.5,
+      6
+    ],
+    "tip_px": [
+      173,
+      290
+    ],
+    "length_mm": 58.39899591929753,
+    "width_mm": 48.430485183494,
+    "pixel_mm": [
+      0.219142466893638,
+      0.20277429138644976
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_13_original.png",
+      "cutout": "feather_13_cutout.png",
+      "height": "feather_13_height.png",
+      "shaft": "feather_13_shaft.png",
+      "free_edge_distance": "feather_13_free_edge_distance.png",
+      "free_edge": "feather_13_free_edge.png"
+    },
+    "layers": "feather_13_layers.npz"
+  },
+  {
+    "id": "feather_14",
+    "atlas_box": [
+      315,
+      935,
+      630,
+      1247
+    ],
+    "box_px": [
+      57,
+      5,
+      267,
+      290
+    ],
+    "root_px": [
+      163.0,
+      8
+    ],
+    "tip_px": [
+      135,
+      289
+    ],
+    "length_mm": 56.61317727344637,
+    "width_mm": 50.47803795880634,
+    "pixel_mm": [
+      0.24037160932764923,
+      0.19864272727525042
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_14_original.png",
+      "cutout": "feather_14_cutout.png",
+      "height": "feather_14_height.png",
+      "shaft": "feather_14_shaft.png",
+      "free_edge_distance": "feather_14_free_edge_distance.png",
+      "free_edge": "feather_14_free_edge.png"
+    },
+    "layers": "feather_14_layers.npz"
+  },
+  {
+    "id": "feather_15",
+    "atlas_box": [
+      630,
+      935,
+      946,
+      1247
+    ],
+    "box_px": [
+      45,
+      5,
+      269,
+      290
+    ],
+    "root_px": [
+      159.5,
+      8
+    ],
+    "tip_px": [
+      174,
+      289
+    ],
+    "length_mm": 59.40405525024008,
+    "width_mm": 52.16477468422386,
+    "pixel_mm": [
+      0.23287845841171365,
+      0.20843528157978974
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_15_original.png",
+      "cutout": "feather_15_cutout.png",
+      "height": "feather_15_height.png",
+      "shaft": "feather_15_shaft.png",
+      "free_edge_distance": "feather_15_free_edge_distance.png",
+      "free_edge": "feather_15_free_edge.png"
+    },
+    "layers": "feather_15_layers.npz"
+  },
+  {
+    "id": "feather_16",
+    "atlas_box": [
+      946,
+      935,
+      1261,
+      1247
+    ],
+    "box_px": [
+      46,
+      5,
+      273,
+      290
+    ],
+    "root_px": [
+      159.0,
+      8
+    ],
+    "tip_px": [
+      148,
+      289
+    ],
+    "length_mm": 59.66648328231365,
+    "width_mm": 49.9040318686869,
+    "pixel_mm": [
+      0.21984155008232115,
+      0.20935608169232858
+    ],
+    "height_mm": 4.0,
+    "free_edge_distance_range_mm": 64.0,
+    "files": {
+      "original": "feather_16_original.png",
+      "cutout": "feather_16_cutout.png",
+      "height": "feather_16_height.png",
+      "shaft": "feather_16_shaft.png",
+      "free_edge_distance": "feather_16_free_edge_distance.png",
+      "free_edge": "feather_16_free_edge.png"
+    },
+    "layers": "feather_16_layers.npz"
+  }
+]

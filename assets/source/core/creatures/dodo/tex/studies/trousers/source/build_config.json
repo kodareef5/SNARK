@@ -1,0 +1,299 @@
+{
+  "metadata": {
+    "study": "trousers",
+    "schema_version": 1,
+    "source_elements": "source/elements.json",
+    "coordinates": "Pixel coordinates: origin top left, x right, y down; boxes [left,top,right,bottom), root and tip [x,y].",
+    "direction": "Roots at top; tips downward by default.",
+    "shader": "Decode base as sRGB; dye in linear light as base * dye / 0.5. Packed R AO, G roughness, B metalness.",
+    "height_note": "Tile: 4 mm full encoding with rounded feather and lock relief. Accepted fringe: unchanged 2 mm encoding and flat 24-pixel borders.",
+    "revision": 3,
+    "placement_note": "At opaque body/leg or pouch region boundaries, painter must add >=4 px natural dark undyed gap at 2048. Cards are separate geometry.",
+    "source_tool": "Built-in image_gen; three untouched 1254x1254 RGBA sheets; prompts in source/prompt_*.txt.",
+    "source_sha256": {
+      "generated_b.png": "18db18b6c63807ede3da7231c0e3a981f07d51036e574de11c5d65912de168ae",
+      "generated_c.png": "2b89c1e57ee288b3b0e43a98d27aa0111de86a63e6a966af8a877646a3388239",
+      "generated_a.png": "5e502b0f2ed473bb07b2cfa491cd6cfb8d7e98db2138c5a1eea5356aef1f4a5c"
+    },
+    "tile_volume_sources": "source/tile_volume",
+    "build_config": "source/build_config.json"
+  },
+  "accepted_png_sha256": {
+    "trousers_base.png": "2971abc6a68f77626bfb9c7db4a420facee3e3ff87d578292beba81b79d66e9f",
+    "trousers_height.png": "63af7995eca6d3d35bd05988c7f4d9cc41b4306a3f0f78daebb234ab8b0304e3",
+    "trousers_normal.png": "717be928e92ef9ae34c39d0aece9ae5e9b366a0af8c834ecf90e430bf7cdf341",
+    "trousers_packed.png": "7449e89a01b3180338e3721152fe40b2027c878aa0d595218b012a0da1fa3d15",
+    "trousers_regions.png": "48989a2704865b7b43e9276050ad1f1d6ae9bb2eeba6a079a03728105e0c9d9a",
+    "trousers_fringe_base.png": "2f62a7d5b714ac56764edb6969e1500488e2fe539116714591edbbc6b3578315",
+    "trousers_fringe_height.png": "c4e11b7d8e218386e4680d7c06f48cc3ddc01442c4a9d8a2b9b887d00ecb846d",
+    "trousers_fringe_normal.png": "6e635c153a6193dc4ac2cbb3bffdb2101246026c3bae1e2a4e5645b2be3c54cc",
+    "trousers_fringe_packed.png": "f06c478e83d0c76b757d6d762984af2c551d2a67218c2b18f1df53002d388ec5",
+    "trousers_fringe_regions.png": "48989a2704865b7b43e9276050ad1f1d6ae9bb2eeba6a079a03728105e0c9d9a"
+  },
+  "accepted_fringe_metadata": {
+    "span_m": 0.341,
+    "tiles": false,
+    "cutout": true,
+    "height_mm": 2.0,
+    "regions": [
+      0
+    ],
+    "resolution": [
+      2048,
+      2048
+    ],
+    "mean_grey_linear": 0.500003143142978,
+    "mean_grey_srgb": 187.0129275907372,
+    "normal_convention": "OpenGL +Y (green points toward picture top)",
+    "alpha_cutoff": 0.5,
+    "files": {
+      "base": "trousers_fringe_base.png",
+      "height": "trousers_fringe_height.png",
+      "normal": "trousers_fringe_normal.png",
+      "packed": "trousers_fringe_packed.png",
+      "regions": "trousers_fringe_regions.png"
+    },
+    "elements": [
+      {
+        "id": "feather_01",
+        "box": [
+          147,
+          103,
+          364,
+          577
+        ],
+        "root": [
+          299.535,
+          103.702
+        ],
+        "tip": [
+          196.5,
+          576.5
+        ],
+        "source": "source/feather_01_cutout.png",
+        "length_m": 0.079,
+        "width_m": 0.036
+      },
+      {
+        "id": "feather_02",
+        "box": [
+          664,
+          123,
+          874,
+          556
+        ],
+        "root": [
+          765.215,
+          124.388
+        ],
+        "tip": [
+          757.0,
+          555.5
+        ],
+        "source": "source/feather_02_cutout.png",
+        "length_m": 0.072,
+        "width_m": 0.035
+      },
+      {
+        "id": "feather_03",
+        "box": [
+          1153,
+          85,
+          1406,
+          590
+        ],
+        "root": [
+          1281.45,
+          85.79
+        ],
+        "tip": [
+          1282.5,
+          589.5
+        ],
+        "source": "source/feather_03_cutout.png",
+        "length_m": 0.084,
+        "width_m": 0.042
+      },
+      {
+        "id": "feather_04",
+        "box": [
+          1694,
+          131,
+          1893,
+          546
+        ],
+        "root": [
+          1802.839,
+          131.336
+        ],
+        "tip": [
+          1820.5,
+          545.5
+        ],
+        "source": "source/feather_04_cutout.png",
+        "length_m": 0.069,
+        "width_m": 0.033
+      },
+      {
+        "id": "feather_05",
+        "box": [
+          166,
+          759,
+          341,
+          1282
+        ],
+        "root": [
+          250.404,
+          759.559
+        ],
+        "tip": [
+          326.0,
+          1281.5
+        ],
+        "source": "source/feather_05_cutout.png",
+        "length_m": 0.087,
+        "width_m": 0.029
+      },
+      {
+        "id": "feather_06",
+        "box": [
+          656,
+          794,
+          884,
+          1251
+        ],
+        "root": [
+          803.5,
+          794.195
+        ],
+        "tip": [
+          717.5,
+          1250.5
+        ],
+        "source": "source/feather_06_cutout.png",
+        "length_m": 0.076,
+        "width_m": 0.038
+      },
+      {
+        "id": "feather_07",
+        "box": [
+          1169,
+          778,
+          1392,
+          1264
+        ],
+        "root": [
+          1293.582,
+          779.105
+        ],
+        "tip": [
+          1303.5,
+          1263.5
+        ],
+        "source": "source/feather_07_cutout.png",
+        "length_m": 0.081,
+        "width_m": 0.037
+      },
+      {
+        "id": "feather_08",
+        "box": [
+          1690,
+          803,
+          1895,
+          1240
+        ],
+        "root": [
+          1795.52,
+          803.667
+        ],
+        "tip": [
+          1792.5,
+          1239.5
+        ],
+        "source": "source/feather_08_cutout.png",
+        "length_m": 0.073,
+        "width_m": 0.034
+      },
+      {
+        "id": "feather_09",
+        "box": [
+          162,
+          1439,
+          349,
+          1968
+        ],
+        "root": [
+          269.747,
+          1440.134
+        ],
+        "tip": [
+          257.5,
+          1967.5
+        ],
+        "source": "source/feather_09_cutout.png",
+        "length_m": 0.088,
+        "width_m": 0.031
+      },
+      {
+        "id": "feather_10",
+        "box": [
+          638,
+          1504,
+          897,
+          1907
+        ],
+        "root": [
+          773.0,
+          1504.759
+        ],
+        "tip": [
+          751.5,
+          1906.5
+        ],
+        "source": "source/feather_10_cutout.png",
+        "length_m": 0.067,
+        "width_m": 0.043
+      },
+      {
+        "id": "feather_11",
+        "box": [
+          1166,
+          1454,
+          1395,
+          1953
+        ],
+        "root": [
+          1255.693,
+          1454.539
+        ],
+        "tip": [
+          1260.0,
+          1952.5
+        ],
+        "source": "source/feather_11_cutout.png",
+        "length_m": 0.083,
+        "width_m": 0.038
+      },
+      {
+        "id": "feather_12",
+        "box": [
+          1691,
+          1478,
+          1894,
+          1929
+        ],
+        "root": [
+          1800.364,
+          1479.202
+        ],
+        "tip": [
+          1802.5,
+          1928.5
+        ],
+        "source": "source/feather_12_cutout.png",
+        "length_m": 0.075,
+        "width_m": 0.034
+      }
+    ]
+  }
+}

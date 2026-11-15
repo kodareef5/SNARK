@@ -1,0 +1,374 @@
+[
+  {
+    "id": "feather_01",
+    "original": "generated_a.png",
+    "original_box": [
+      173,
+      0,
+      533,
+      608
+    ],
+    "padding_px": 8,
+    "size_px": [
+      376,
+      624
+    ],
+    "root": [
+      257.1681213378906,
+      14.0
+    ],
+    "tip": [
+      94.0,
+      607.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_01_cutout.png",
+    "height": "source/feather_01_height.png",
+    "shaft": "source/feather_01_shaft.png",
+    "alpha": "source/feather_01_alpha.png",
+    "layers": "source/feather_01_layers.npz",
+    "original_crop": "source/feather_01_original.png",
+    "original_alpha": "source/feather_01_original_alpha.png"
+  },
+  {
+    "id": "feather_02",
+    "original": "generated_a.png",
+    "original_box": [
+      722,
+      0,
+      1008,
+      604
+    ],
+    "padding_px": 8,
+    "size_px": [
+      302,
+      620
+    ],
+    "root": [
+      147.01490783691406,
+      14.0
+    ],
+    "tip": [
+      135.5,
+      602.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_02_cutout.png",
+    "height": "source/feather_02_height.png",
+    "shaft": "source/feather_02_shaft.png",
+    "alpha": "source/feather_02_alpha.png",
+    "layers": "source/feather_02_layers.npz",
+    "original_crop": "source/feather_02_original.png",
+    "original_alpha": "source/feather_02_original_alpha.png"
+  },
+  {
+    "id": "feather_03",
+    "original": "generated_a.png",
+    "original_box": [
+      172,
+      627,
+      579,
+      1248
+    ],
+    "padding_px": 8,
+    "size_px": [
+      423,
+      637
+    ],
+    "root": [
+      213.2481689453125,
+      8.0
+    ],
+    "tip": [
+      216.0,
+      620.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_03_cutout.png",
+    "height": "source/feather_03_height.png",
+    "shaft": "source/feather_03_shaft.png",
+    "alpha": "source/feather_03_alpha.png",
+    "layers": "source/feather_03_layers.npz",
+    "original_crop": "source/feather_03_original.png",
+    "original_alpha": "source/feather_03_original_alpha.png"
+  },
+  {
+    "id": "feather_04",
+    "original": "generated_a.png",
+    "original_box": [
+      685,
+      627,
+      1027,
+      1229
+    ],
+    "padding_px": 8,
+    "size_px": [
+      358,
+      618
+    ],
+    "root": [
+      196.0,
+      8.0
+    ],
+    "tip": [
+      224.0,
+      601.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_04_cutout.png",
+    "height": "source/feather_04_height.png",
+    "shaft": "source/feather_04_shaft.png",
+    "alpha": "source/feather_04_alpha.png",
+    "layers": "source/feather_04_layers.npz",
+    "original_crop": "source/feather_04_original.png",
+    "original_alpha": "source/feather_04_original_alpha.png"
+  },
+  {
+    "id": "feather_05",
+    "original": "generated_b.png",
+    "original_box": [
+      247,
+      13,
+      516,
+      607
+    ],
+    "padding_px": 8,
+    "size_px": [
+      285,
+      610
+    ],
+    "root": [
+      134.22406005859375,
+      14.0
+    ],
+    "tip": [
+      241.0,
+      588.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_05_cutout.png",
+    "height": "source/feather_05_height.png",
+    "shaft": "source/feather_05_shaft.png",
+    "alpha": "source/feather_05_alpha.png",
+    "layers": "source/feather_05_layers.npz",
+    "original_crop": "source/feather_05_original.png",
+    "original_alpha": "source/feather_05_original_alpha.png"
+  },
+  {
+    "id": "feather_06",
+    "original": "generated_b.png",
+    "original_box": [
+      658,
+      13,
+      1023,
+      607
+    ],
+    "padding_px": 8,
+    "size_px": [
+      381,
+      610
+    ],
+    "root": [
+      243.19834899902344,
+      14.0
+    ],
+    "tip": [
+      114.5,
+      591.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_06_cutout.png",
+    "height": "source/feather_06_height.png",
+    "shaft": "source/feather_06_shaft.png",
+    "alpha": "source/feather_06_alpha.png",
+    "layers": "source/feather_06_layers.npz",
+    "original_crop": "source/feather_06_original.png",
+    "original_alpha": "source/feather_06_original_alpha.png"
+  },
+  {
+    "id": "feather_07",
+    "original": "generated_b.png",
+    "original_box": [
+      207,
+      630,
+      519,
+      1234
+    ],
+    "padding_px": 8,
+    "size_px": [
+      328,
+      620
+    ],
+    "root": [
+      181.65267944335938,
+      14.0
+    ],
+    "tip": [
+      193.5,
+      600.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_07_cutout.png",
+    "height": "source/feather_07_height.png",
+    "shaft": "source/feather_07_shaft.png",
+    "alpha": "source/feather_07_alpha.png",
+    "layers": "source/feather_07_layers.npz",
+    "original_crop": "source/feather_07_original.png",
+    "original_alpha": "source/feather_07_original_alpha.png"
+  },
+  {
+    "id": "feather_08",
+    "original": "generated_b.png",
+    "original_box": [
+      726,
+      630,
+      992,
+      1234
+    ],
+    "padding_px": 8,
+    "size_px": [
+      282,
+      620
+    ],
+    "root": [
+      144.74044799804688,
+      14.0
+    ],
+    "tip": [
+      138.0,
+      601.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_08_cutout.png",
+    "height": "source/feather_08_height.png",
+    "shaft": "source/feather_08_shaft.png",
+    "alpha": "source/feather_08_alpha.png",
+    "layers": "source/feather_08_layers.npz",
+    "original_crop": "source/feather_08_original.png",
+    "original_alpha": "source/feather_08_original_alpha.png"
+  },
+  {
+    "id": "feather_09",
+    "original": "generated_c.png",
+    "original_box": [
+      206,
+      5,
+      482,
+      604
+    ],
+    "padding_px": 8,
+    "size_px": [
+      292,
+      615
+    ],
+    "root": [
+      164.69766235351562,
+      14.0
+    ],
+    "tip": [
+      147.0,
+      594.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_09_cutout.png",
+    "height": "source/feather_09_height.png",
+    "shaft": "source/feather_09_shaft.png",
+    "alpha": "source/feather_09_alpha.png",
+    "layers": "source/feather_09_layers.npz",
+    "original_crop": "source/feather_09_original.png",
+    "original_alpha": "source/feather_09_original_alpha.png"
+  },
+  {
+    "id": "feather_10",
+    "original": "generated_c.png",
+    "original_box": [
+      638,
+      9,
+      1122,
+      590
+    ],
+    "padding_px": 8,
+    "size_px": [
+      500,
+      597
+    ],
+    "root": [
+      258.5801086425781,
+      14.0
+    ],
+    "tip": [
+      221.0,
+      580.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_10_cutout.png",
+    "height": "source/feather_10_height.png",
+    "shaft": "source/feather_10_shaft.png",
+    "alpha": "source/feather_10_alpha.png",
+    "layers": "source/feather_10_layers.npz",
+    "original_crop": "source/feather_10_original.png",
+    "original_alpha": "source/feather_10_original_alpha.png"
+  },
+  {
+    "id": "feather_11",
+    "original": "generated_c.png",
+    "original_box": [
+      212,
+      627,
+      546,
+      1240
+    ],
+    "padding_px": 8,
+    "size_px": [
+      350,
+      629
+    ],
+    "root": [
+      140.6309356689453,
+      8.0
+    ],
+    "tip": [
+      147.5,
+      613.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_11_cutout.png",
+    "height": "source/feather_11_height.png",
+    "shaft": "source/feather_11_shaft.png",
+    "alpha": "source/feather_11_alpha.png",
+    "layers": "source/feather_11_layers.npz",
+    "original_crop": "source/feather_11_original.png",
+    "original_alpha": "source/feather_11_original_alpha.png"
+  },
+  {
+    "id": "feather_12",
+    "original": "generated_c.png",
+    "original_box": [
+      703,
+      627,
+      1050,
+      1238
+    ],
+    "padding_px": 8,
+    "size_px": [
+      363,
+      627
+    ],
+    "root": [
+      194.55787658691406,
+      9.0
+    ],
+    "tip": [
+      199.0,
+      610.0
+    ],
+    "height_mm": 2.0,
+    "cutout": "source/feather_12_cutout.png",
+    "height": "source/feather_12_height.png",
+    "shaft": "source/feather_12_shaft.png",
+    "alpha": "source/feather_12_alpha.png",
+    "layers": "source/feather_12_layers.npz",
+    "original_crop": "source/feather_12_original.png",
+    "original_alpha": "source/feather_12_original_alpha.png"
+  }
+]

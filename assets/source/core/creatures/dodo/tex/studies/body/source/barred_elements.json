@@ -1,0 +1,802 @@
+[
+  {
+    "id": "barred_feather_01",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      0,
+      0,
+      328,
+      300
+    ],
+    "box_px": [
+      58,
+      10,
+      269,
+      286
+    ],
+    "root_px": [
+      166.0,
+      29
+    ],
+    "tip_px": [
+      168,
+      285
+    ],
+    "length_mm": 53.47873949928239,
+    "width_mm": 54.458416135741246,
+    "pixel_mm": [
+      0.2580967589371623,
+      0.19376354891044345
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_01_original.png",
+      "physical_original": "barred_feather_01_physical_original.png",
+      "cutout": "barred_feather_01_cutout.png",
+      "height": "barred_feather_01_height.png",
+      "shaft": "barred_feather_01_shaft.png",
+      "free_edge_distance": "barred_feather_01_free_edge_distance.png",
+      "free_edge": "barred_feather_01_free_edge.png",
+      "bar_regions": "barred_feather_01_bar_regions.png"
+    },
+    "layers": "barred_feather_01_layers.npz"
+  },
+  {
+    "id": "barred_feather_02",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      328,
+      0,
+      656,
+      300
+    ],
+    "box_px": [
+      50,
+      10,
+      277,
+      287
+    ],
+    "root_px": [
+      165.0,
+      27
+    ],
+    "tip_px": [
+      169,
+      286
+    ],
+    "length_mm": 51.781889485927294,
+    "width_mm": 51.07402916490644,
+    "pixel_mm": [
+      0.22499572319342045,
+      0.18693822919107325
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_02_original.png",
+      "physical_original": "barred_feather_02_physical_original.png",
+      "cutout": "barred_feather_02_cutout.png",
+      "height": "barred_feather_02_height.png",
+      "shaft": "barred_feather_02_shaft.png",
+      "free_edge_distance": "barred_feather_02_free_edge_distance.png",
+      "free_edge": "barred_feather_02_free_edge.png",
+      "bar_regions": "barred_feather_02_bar_regions.png"
+    },
+    "layers": "barred_feather_02_layers.npz"
+  },
+  {
+    "id": "barred_feather_03",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      656,
+      0,
+      984,
+      300
+    ],
+    "box_px": [
+      61,
+      10,
+      270,
+      285
+    ],
+    "root_px": [
+      160.5,
+      31
+    ],
+    "tip_px": [
+      161,
+      284
+    ],
+    "length_mm": 50.051810818682405,
+    "width_mm": 51.337304425536715,
+    "pixel_mm": [
+      0.2456330355288838,
+      0.18200658479520876
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_03_original.png",
+      "physical_original": "barred_feather_03_physical_original.png",
+      "cutout": "barred_feather_03_cutout.png",
+      "height": "barred_feather_03_height.png",
+      "shaft": "barred_feather_03_shaft.png",
+      "free_edge_distance": "barred_feather_03_free_edge_distance.png",
+      "free_edge": "barred_feather_03_free_edge.png",
+      "bar_regions": "barred_feather_03_bar_regions.png"
+    },
+    "layers": "barred_feather_03_layers.npz"
+  },
+  {
+    "id": "barred_feather_04",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      984,
+      0,
+      1312,
+      300
+    ],
+    "box_px": [
+      47,
+      10,
+      270,
+      285
+    ],
+    "root_px": [
+      162.5,
+      31
+    ],
+    "tip_px": [
+      164,
+      284
+    ],
+    "length_mm": 51.68026579016252,
+    "width_mm": 54.599373175449,
+    "pixel_mm": [
+      0.24484023845492828,
+      0.18792823923695462
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_04_original.png",
+      "physical_original": "barred_feather_04_physical_original.png",
+      "cutout": "barred_feather_04_cutout.png",
+      "height": "barred_feather_04_height.png",
+      "shaft": "barred_feather_04_shaft.png",
+      "free_edge_distance": "barred_feather_04_free_edge_distance.png",
+      "free_edge": "barred_feather_04_free_edge.png",
+      "bar_regions": "barred_feather_04_bar_regions.png"
+    },
+    "layers": "barred_feather_04_layers.npz"
+  },
+  {
+    "id": "barred_feather_05",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      0,
+      300,
+      328,
+      600
+    ],
+    "box_px": [
+      57,
+      7,
+      272,
+      284
+    ],
+    "root_px": [
+      157.5,
+      26
+    ],
+    "tip_px": [
+      165,
+      283
+    ],
+    "length_mm": 50.94033644266518,
+    "width_mm": 54.90038001022363,
+    "pixel_mm": [
+      0.25535060469871457,
+      0.18390013156196816
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_05_original.png",
+      "physical_original": "barred_feather_05_physical_original.png",
+      "cutout": "barred_feather_05_cutout.png",
+      "height": "barred_feather_05_height.png",
+      "shaft": "barred_feather_05_shaft.png",
+      "free_edge_distance": "barred_feather_05_free_edge_distance.png",
+      "free_edge": "barred_feather_05_free_edge.png",
+      "bar_regions": "barred_feather_05_bar_regions.png"
+    },
+    "layers": "barred_feather_05_layers.npz"
+  },
+  {
+    "id": "barred_feather_06",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      328,
+      300,
+      656,
+      600
+    ],
+    "box_px": [
+      55,
+      7,
+      276,
+      283
+    ],
+    "root_px": [
+      164.0,
+      25
+    ],
+    "tip_px": [
+      167,
+      282
+    ],
+    "length_mm": 55.38574600304515,
+    "width_mm": 54.14558882105271,
+    "pixel_mm": [
+      0.2450026643486548,
+      0.20067299276465633
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_06_original.png",
+      "physical_original": "barred_feather_06_physical_original.png",
+      "cutout": "barred_feather_06_cutout.png",
+      "height": "barred_feather_06_height.png",
+      "shaft": "barred_feather_06_shaft.png",
+      "free_edge_distance": "barred_feather_06_free_edge_distance.png",
+      "free_edge": "barred_feather_06_free_edge.png",
+      "bar_regions": "barred_feather_06_bar_regions.png"
+    },
+    "layers": "barred_feather_06_layers.npz"
+  },
+  {
+    "id": "barred_feather_07",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      656,
+      300,
+      984,
+      600
+    ],
+    "box_px": [
+      58,
+      7,
+      270,
+      282
+    ],
+    "root_px": [
+      167.0,
+      27
+    ],
+    "tip_px": [
+      161,
+      281
+    ],
+    "length_mm": 52.33757995144522,
+    "width_mm": 52.417749333766125,
+    "pixel_mm": [
+      0.24725353459323643,
+      0.19031847255070988
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_07_original.png",
+      "physical_original": "barred_feather_07_physical_original.png",
+      "cutout": "barred_feather_07_cutout.png",
+      "height": "barred_feather_07_height.png",
+      "shaft": "barred_feather_07_shaft.png",
+      "free_edge_distance": "barred_feather_07_free_edge_distance.png",
+      "free_edge": "barred_feather_07_free_edge.png",
+      "bar_regions": "barred_feather_07_bar_regions.png"
+    },
+    "layers": "barred_feather_07_layers.npz"
+  },
+  {
+    "id": "barred_feather_08",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      984,
+      300,
+      1312,
+      600
+    ],
+    "box_px": [
+      51,
+      7,
+      276,
+      281
+    ],
+    "root_px": [
+      156.5,
+      25
+    ],
+    "tip_px": [
+      161,
+      280
+    ],
+    "length_mm": 54.61406368323926,
+    "width_mm": 51.75689691260643,
+    "pixel_mm": [
+      0.23003065294491745,
+      0.19932140030379292
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_08_original.png",
+      "physical_original": "barred_feather_08_physical_original.png",
+      "cutout": "barred_feather_08_cutout.png",
+      "height": "barred_feather_08_height.png",
+      "shaft": "barred_feather_08_shaft.png",
+      "free_edge_distance": "barred_feather_08_free_edge_distance.png",
+      "free_edge": "barred_feather_08_free_edge.png",
+      "bar_regions": "barred_feather_08_bar_regions.png"
+    },
+    "layers": "barred_feather_08_layers.npz"
+  },
+  {
+    "id": "barred_feather_09",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      0,
+      600,
+      328,
+      899
+    ],
+    "box_px": [
+      57,
+      8,
+      272,
+      278
+    ],
+    "root_px": [
+      165.0,
+      25
+    ],
+    "tip_px": [
+      162,
+      277
+    ],
+    "length_mm": 55.9281187524198,
+    "width_mm": 54.33077848120166,
+    "pixel_mm": [
+      0.25270129526140306,
+      0.20714118056451777
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_09_original.png",
+      "physical_original": "barred_feather_09_physical_original.png",
+      "cutout": "barred_feather_09_cutout.png",
+      "height": "barred_feather_09_height.png",
+      "shaft": "barred_feather_09_shaft.png",
+      "free_edge_distance": "barred_feather_09_free_edge_distance.png",
+      "free_edge": "barred_feather_09_free_edge.png",
+      "bar_regions": "barred_feather_09_bar_regions.png"
+    },
+    "layers": "barred_feather_09_layers.npz"
+  },
+  {
+    "id": "barred_feather_10",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      328,
+      600,
+      656,
+      899
+    ],
+    "box_px": [
+      54,
+      8,
+      274,
+      275
+    ],
+    "root_px": [
+      171.0,
+      26
+    ],
+    "tip_px": [
+      163,
+      274
+    ],
+    "length_mm": 55.98577403007087,
+    "width_mm": 50.790593881527144,
+    "pixel_mm": [
+      0.2308663358251234,
+      0.20968454692910438
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_10_original.png",
+      "physical_original": "barred_feather_10_physical_original.png",
+      "cutout": "barred_feather_10_cutout.png",
+      "height": "barred_feather_10_height.png",
+      "shaft": "barred_feather_10_shaft.png",
+      "free_edge_distance": "barred_feather_10_free_edge_distance.png",
+      "free_edge": "barred_feather_10_free_edge.png",
+      "bar_regions": "barred_feather_10_bar_regions.png"
+    },
+    "layers": "barred_feather_10_layers.npz"
+  },
+  {
+    "id": "barred_feather_11",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      656,
+      600,
+      984,
+      899
+    ],
+    "box_px": [
+      52,
+      8,
+      276,
+      275
+    ],
+    "root_px": [
+      164.5,
+      25
+    ],
+    "tip_px": [
+      171,
+      274
+    ],
+    "length_mm": 52.05556337195953,
+    "width_mm": 53.702893932726056,
+    "pixel_mm": [
+      0.2397450621996699,
+      0.19496465682381847
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_11_original.png",
+      "physical_original": "barred_feather_11_physical_original.png",
+      "cutout": "barred_feather_11_cutout.png",
+      "height": "barred_feather_11_height.png",
+      "shaft": "barred_feather_11_shaft.png",
+      "free_edge_distance": "barred_feather_11_free_edge_distance.png",
+      "free_edge": "barred_feather_11_free_edge.png",
+      "bar_regions": "barred_feather_11_bar_regions.png"
+    },
+    "layers": "barred_feather_11_layers.npz"
+  },
+  {
+    "id": "barred_feather_12",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      984,
+      600,
+      1312,
+      899
+    ],
+    "box_px": [
+      61,
+      8,
+      271,
+      276
+    ],
+    "root_px": [
+      164.5,
+      25
+    ],
+    "tip_px": [
+      166,
+      275
+    ],
+    "length_mm": 53.68728799507802,
+    "width_mm": 51.98732937883773,
+    "pixel_mm": [
+      0.24755871132779872,
+      0.20032570147417172
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_12_original.png",
+      "physical_original": "barred_feather_12_physical_original.png",
+      "cutout": "barred_feather_12_cutout.png",
+      "height": "barred_feather_12_height.png",
+      "shaft": "barred_feather_12_shaft.png",
+      "free_edge_distance": "barred_feather_12_free_edge_distance.png",
+      "free_edge": "barred_feather_12_free_edge.png",
+      "bar_regions": "barred_feather_12_bar_regions.png"
+    },
+    "layers": "barred_feather_12_layers.npz"
+  },
+  {
+    "id": "barred_feather_13",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      0,
+      899,
+      328,
+      1199
+    ],
+    "box_px": [
+      57,
+      5,
+      270,
+      278
+    ],
+    "root_px": [
+      167.0,
+      24
+    ],
+    "tip_px": [
+      166,
+      277
+    ],
+    "length_mm": 50.106014175850795,
+    "width_mm": 52.668254036285205,
+    "pixel_mm": [
+      0.2472687982924188,
+      0.18353851346465494
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_13_original.png",
+      "physical_original": "barred_feather_13_physical_original.png",
+      "cutout": "barred_feather_13_cutout.png",
+      "height": "barred_feather_13_height.png",
+      "shaft": "barred_feather_13_shaft.png",
+      "free_edge_distance": "barred_feather_13_free_edge_distance.png",
+      "free_edge": "barred_feather_13_free_edge.png",
+      "bar_regions": "barred_feather_13_bar_regions.png"
+    },
+    "layers": "barred_feather_13_layers.npz"
+  },
+  {
+    "id": "barred_feather_14",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      328,
+      899,
+      656,
+      1199
+    ],
+    "box_px": [
+      50,
+      5,
+      278,
+      282
+    ],
+    "root_px": [
+      166.5,
+      23
+    ],
+    "tip_px": [
+      170,
+      281
+    ],
+    "length_mm": 54.568029987122436,
+    "width_mm": 50.57469546694657,
+    "pixel_mm": [
+      0.22181883976730954,
+      0.19699649814845646
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_14_original.png",
+      "physical_original": "barred_feather_14_physical_original.png",
+      "cutout": "barred_feather_14_cutout.png",
+      "height": "barred_feather_14_height.png",
+      "shaft": "barred_feather_14_shaft.png",
+      "free_edge_distance": "barred_feather_14_free_edge_distance.png",
+      "free_edge": "barred_feather_14_free_edge.png",
+      "bar_regions": "barred_feather_14_bar_regions.png"
+    },
+    "layers": "barred_feather_14_layers.npz"
+  },
+  {
+    "id": "barred_feather_15",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      656,
+      899,
+      984,
+      1199
+    ],
+    "box_px": [
+      48,
+      5,
+      270,
+      275
+    ],
+    "root_px": [
+      169.5,
+      23
+    ],
+    "tip_px": [
+      158,
+      274
+    ],
+    "length_mm": 55.464982583804286,
+    "width_mm": 55.313027475104356,
+    "pixel_mm": [
+      0.249157781419389,
+      0.20542586142149735
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_15_original.png",
+      "physical_original": "barred_feather_15_physical_original.png",
+      "cutout": "barred_feather_15_cutout.png",
+      "height": "barred_feather_15_height.png",
+      "shaft": "barred_feather_15_shaft.png",
+      "free_edge_distance": "barred_feather_15_free_edge_distance.png",
+      "free_edge": "barred_feather_15_free_edge.png",
+      "bar_regions": "barred_feather_15_bar_regions.png"
+    },
+    "layers": "barred_feather_15_layers.npz"
+  },
+  {
+    "id": "barred_feather_16",
+    "atlas": "generated_barred_atlas_round5_beards.png",
+    "atlas_box": [
+      984,
+      899,
+      1312,
+      1199
+    ],
+    "box_px": [
+      53,
+      5,
+      277,
+      278
+    ],
+    "root_px": [
+      169.5,
+      22
+    ],
+    "tip_px": [
+      162,
+      277
+    ],
+    "length_mm": 51.23004217991003,
+    "width_mm": 54.085912002072334,
+    "pixel_mm": [
+      0.24145496429496577,
+      0.18765583216084258
+    ],
+    "height_mm": 4.0,
+    "physical_profile": {
+      "terminal_start": 0.7,
+      "terminal_length_factor": 1.15,
+      "total_length_preserved": true
+    },
+    "free_edge_distance_range_mm": 64.0,
+    "free_edge_definition": "Euclidean mm to the generated alpha-0.5 distal contour.",
+    "bar_field_definition": "Generated warm ivory strands: (R-B)+0.6(R-G)>7.5 byte levels in lower vane. No analytic tip mask.",
+    "files": {
+      "original": "barred_feather_16_original.png",
+      "physical_original": "barred_feather_16_physical_original.png",
+      "cutout": "barred_feather_16_cutout.png",
+      "height": "barred_feather_16_height.png",
+      "shaft": "barred_feather_16_shaft.png",
+      "free_edge_distance": "barred_feather_16_free_edge_distance.png",
+      "free_edge": "barred_feather_16_free_edge.png",
+      "bar_regions": "barred_feather_16_bar_regions.png"
+    },
+    "layers": "barred_feather_16_layers.npz"
+  }
+]

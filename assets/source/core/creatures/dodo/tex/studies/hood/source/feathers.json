@@ -1,0 +1,1214 @@
+[
+  {
+    "id": "cap_round_r3_01",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      312,
+      329
+    ],
+    "root_px": [
+      159.0153045654297,
+      11.0
+    ],
+    "tip_px": [
+      169.5,
+      320.0
+    ],
+    "source_box_px": [
+      21,
+      20,
+      333,
+      349
+    ],
+    "cutout": "source/cap_round_r3_01_cutout.png",
+    "height": "source/cap_round_r3_01_height.png",
+    "shaft": "source/cap_round_r3_01_shaft.png",
+    "alpha": "source/cap_round_r3_01_alpha.png",
+    "layers": "source/cap_round_r3_01_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_02",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      333,
+      337
+    ],
+    "root_px": [
+      168.56341552734375,
+      6.0
+    ],
+    "tip_px": [
+      159.17241379310346,
+      328.0
+    ],
+    "source_box_px": [
+      382,
+      13,
+      715,
+      350
+    ],
+    "cutout": "source/cap_round_r3_02_cutout.png",
+    "height": "source/cap_round_r3_02_height.png",
+    "shaft": "source/cap_round_r3_02_shaft.png",
+    "alpha": "source/cap_round_r3_02_alpha.png",
+    "layers": "source/cap_round_r3_02_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_03",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      315,
+      330
+    ],
+    "root_px": [
+      184.03512573242188,
+      11.0
+    ],
+    "tip_px": [
+      119.5,
+      321.0
+    ],
+    "source_box_px": [
+      743,
+      18,
+      1058,
+      348
+    ],
+    "cutout": "source/cap_round_r3_03_cutout.png",
+    "height": "source/cap_round_r3_03_height.png",
+    "shaft": "source/cap_round_r3_03_shaft.png",
+    "alpha": "source/cap_round_r3_03_alpha.png",
+    "layers": "source/cap_round_r3_03_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_04",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      328,
+      331
+    ],
+    "root_px": [
+      179.8490753173828,
+      12.0
+    ],
+    "tip_px": [
+      121.81818181818181,
+      321.0
+    ],
+    "source_box_px": [
+      1100,
+      14,
+      1428,
+      345
+    ],
+    "cutout": "source/cap_round_r3_04_cutout.png",
+    "height": "source/cap_round_r3_04_height.png",
+    "shaft": "source/cap_round_r3_04_shaft.png",
+    "alpha": "source/cap_round_r3_04_alpha.png",
+    "layers": "source/cap_round_r3_04_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_05",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      309,
+      330
+    ],
+    "root_px": [
+      175.34375,
+      11.0
+    ],
+    "tip_px": [
+      146.375,
+      318.0
+    ],
+    "source_box_px": [
+      28,
+      376,
+      337,
+      706
+    ],
+    "cutout": "source/cap_round_r3_05_cutout.png",
+    "height": "source/cap_round_r3_05_height.png",
+    "shaft": "source/cap_round_r3_05_shaft.png",
+    "alpha": "source/cap_round_r3_05_alpha.png",
+    "layers": "source/cap_round_r3_05_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_06",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      310,
+      335
+    ],
+    "root_px": [
+      201.13743591308594,
+      10.0
+    ],
+    "tip_px": [
+      130.66666666666666,
+      324.0
+    ],
+    "source_box_px": [
+      386,
+      374,
+      696,
+      709
+    ],
+    "cutout": "source/cap_round_r3_06_cutout.png",
+    "height": "source/cap_round_r3_06_height.png",
+    "shaft": "source/cap_round_r3_06_shaft.png",
+    "alpha": "source/cap_round_r3_06_alpha.png",
+    "layers": "source/cap_round_r3_06_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_07",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      325,
+      319
+    ],
+    "root_px": [
+      165.59384155273438,
+      8.0
+    ],
+    "tip_px": [
+      147.8,
+      308.0
+    ],
+    "source_box_px": [
+      743,
+      384,
+      1068,
+      703
+    ],
+    "cutout": "source/cap_round_r3_07_cutout.png",
+    "height": "source/cap_round_r3_07_height.png",
+    "shaft": "source/cap_round_r3_07_shaft.png",
+    "alpha": "source/cap_round_r3_07_alpha.png",
+    "layers": "source/cap_round_r3_07_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_08",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      316,
+      337
+    ],
+    "root_px": [
+      164.09774780273438,
+      13.0
+    ],
+    "tip_px": [
+      103.25,
+      327.0
+    ],
+    "source_box_px": [
+      1107,
+      375,
+      1423,
+      712
+    ],
+    "cutout": "source/cap_round_r3_08_cutout.png",
+    "height": "source/cap_round_r3_08_height.png",
+    "shaft": "source/cap_round_r3_08_shaft.png",
+    "alpha": "source/cap_round_r3_08_alpha.png",
+    "layers": "source/cap_round_r3_08_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_09",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      317,
+      333
+    ],
+    "root_px": [
+      193.96214294433594,
+      7.0
+    ],
+    "tip_px": [
+      153.0,
+      322.0
+    ],
+    "source_box_px": [
+      20,
+      739,
+      337,
+      1072
+    ],
+    "cutout": "source/cap_round_r3_09_cutout.png",
+    "height": "source/cap_round_r3_09_height.png",
+    "shaft": "source/cap_round_r3_09_shaft.png",
+    "alpha": "source/cap_round_r3_09_alpha.png",
+    "layers": "source/cap_round_r3_09_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_10",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      331,
+      332
+    ],
+    "root_px": [
+      168.2703857421875,
+      10.0
+    ],
+    "tip_px": [
+      152.72222222222223,
+      321.0
+    ],
+    "source_box_px": [
+      382,
+      739,
+      713,
+      1071
+    ],
+    "cutout": "source/cap_round_r3_10_cutout.png",
+    "height": "source/cap_round_r3_10_height.png",
+    "shaft": "source/cap_round_r3_10_shaft.png",
+    "alpha": "source/cap_round_r3_10_alpha.png",
+    "layers": "source/cap_round_r3_10_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_11",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      327,
+      331
+    ],
+    "root_px": [
+      186.1814727783203,
+      8.0
+    ],
+    "tip_px": [
+      128.5,
+      321.0
+    ],
+    "source_box_px": [
+      744,
+      740,
+      1071,
+      1071
+    ],
+    "cutout": "source/cap_round_r3_11_cutout.png",
+    "height": "source/cap_round_r3_11_height.png",
+    "shaft": "source/cap_round_r3_11_shaft.png",
+    "alpha": "source/cap_round_r3_11_alpha.png",
+    "layers": "source/cap_round_r3_11_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "cap_round_r3_12",
+    "kind": "cap",
+    "original": "cap_plush_r3_original.png",
+    "selected": true,
+    "size_px": [
+      334,
+      337
+    ],
+    "root_px": [
+      184.0185546875,
+      12.0
+    ],
+    "tip_px": [
+      157.21428571428572,
+      324.0
+    ],
+    "source_box_px": [
+      1099,
+      735,
+      1433,
+      1072
+    ],
+    "cutout": "source/cap_round_r3_12_cutout.png",
+    "height": "source/cap_round_r3_12_height.png",
+    "shaft": "source/cap_round_r3_12_shaft.png",
+    "alpha": "source/cap_round_r3_12_alpha.png",
+    "layers": "source/cap_round_r3_12_layers.npz",
+    "height_encoding": "normalized to destination set height_mm",
+    "shape_revision": "round 3: rounded tuft atlas; broad soft pale tips; no open-card tail blend"
+  },
+  {
+    "id": "mane_full_r2_01",
+    "kind": "mane",
+    "original": "mane_full_r2_original.png",
+    "selected": true,
+    "size_px": [
+      221,
+      497
+    ],
+    "root_px": [
+      186.74737548828125,
+      4.0
+    ],
+    "tip_px": [
+      102.5,
+      491.0
+    ],
+    "source_box_px": [
+      95,
+      6,
+      316,
+      503
+    ],
+    "cutout": "source/mane_full_r2_01_cutout.png",
+    "height": "source/mane_full_r2_01_height.png",
+    "shaft": "source/mane_full_r2_01_shaft.png",
+    "alpha": "source/mane_full_r2_01_alpha.png",
+    "layers": "source/mane_full_r2_01_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_full_r2_02",
+    "kind": "mane",
+    "original": "mane_full_r2_original.png",
+    "selected": true,
+    "size_px": [
+      162,
+      493
+    ],
+    "root_px": [
+      73.01641082763672,
+      4.0
+    ],
+    "tip_px": [
+      56.6,
+      485.0
+    ],
+    "source_box_px": [
+      509,
+      7,
+      671,
+      500
+    ],
+    "cutout": "source/mane_full_r2_02_cutout.png",
+    "height": "source/mane_full_r2_02_height.png",
+    "shaft": "source/mane_full_r2_02_shaft.png",
+    "alpha": "source/mane_full_r2_02_alpha.png",
+    "layers": "source/mane_full_r2_02_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_full_r2_03",
+    "kind": "mane",
+    "original": "mane_full_r2_original.png",
+    "selected": true,
+    "size_px": [
+      260,
+      495
+    ],
+    "root_px": [
+      231.8489990234375,
+      3.0
+    ],
+    "tip_px": [
+      126.0,
+      488.0
+    ],
+    "source_box_px": [
+      840,
+      8,
+      1100,
+      503
+    ],
+    "cutout": "source/mane_full_r2_03_cutout.png",
+    "height": "source/mane_full_r2_03_height.png",
+    "shaft": "source/mane_full_r2_03_shaft.png",
+    "alpha": "source/mane_full_r2_03_alpha.png",
+    "layers": "source/mane_full_r2_03_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_full_r2_04",
+    "kind": "mane",
+    "original": "mane_full_r2_original.png",
+    "selected": true,
+    "size_px": [
+      161,
+      494
+    ],
+    "root_px": [
+      81.8601303100586,
+      4.0
+    ],
+    "tip_px": [
+      63.0,
+      487.0
+    ],
+    "source_box_px": [
+      1272,
+      7,
+      1433,
+      501
+    ],
+    "cutout": "source/mane_full_r2_04_cutout.png",
+    "height": "source/mane_full_r2_04_height.png",
+    "shaft": "source/mane_full_r2_04_shaft.png",
+    "alpha": "source/mane_full_r2_04_alpha.png",
+    "layers": "source/mane_full_r2_04_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_full_r2_05",
+    "kind": "mane",
+    "original": "mane_full_r2_original.png",
+    "selected": true,
+    "size_px": [
+      244,
+      498
+    ],
+    "root_px": [
+      190.0414276123047,
+      4.0
+    ],
+    "tip_px": [
+      122.33333333333333,
+      491.0
+    ],
+    "source_box_px": [
+      73,
+      516,
+      317,
+      1014
+    ],
+    "cutout": "source/mane_full_r2_05_cutout.png",
+    "height": "source/mane_full_r2_05_height.png",
+    "shaft": "source/mane_full_r2_05_shaft.png",
+    "alpha": "source/mane_full_r2_05_alpha.png",
+    "layers": "source/mane_full_r2_05_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_full_r2_06",
+    "kind": "mane",
+    "original": "mane_full_r2_original.png",
+    "selected": true,
+    "size_px": [
+      166,
+      495
+    ],
+    "root_px": [
+      77.69464874267578,
+      4.0
+    ],
+    "tip_px": [
+      40.5,
+      489.0
+    ],
+    "source_box_px": [
+      505,
+      517,
+      671,
+      1012
+    ],
+    "cutout": "source/mane_full_r2_06_cutout.png",
+    "height": "source/mane_full_r2_06_height.png",
+    "shaft": "source/mane_full_r2_06_shaft.png",
+    "alpha": "source/mane_full_r2_06_alpha.png",
+    "layers": "source/mane_full_r2_06_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_full_r2_07",
+    "kind": "mane",
+    "original": "mane_full_r2_original.png",
+    "selected": true,
+    "size_px": [
+      240,
+      499
+    ],
+    "root_px": [
+      182.72581481933594,
+      3.0
+    ],
+    "tip_px": [
+      100.5,
+      494.0
+    ],
+    "source_box_px": [
+      830,
+      517,
+      1070,
+      1016
+    ],
+    "cutout": "source/mane_full_r2_07_cutout.png",
+    "height": "source/mane_full_r2_07_height.png",
+    "shaft": "source/mane_full_r2_07_shaft.png",
+    "alpha": "source/mane_full_r2_07_alpha.png",
+    "layers": "source/mane_full_r2_07_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_full_r2_08",
+    "kind": "mane",
+    "original": "mane_full_r2_original.png",
+    "selected": true,
+    "size_px": [
+      191,
+      494
+    ],
+    "root_px": [
+      166.3915557861328,
+      4.0
+    ],
+    "tip_px": [
+      90.0,
+      488.0
+    ],
+    "source_box_px": [
+      1248,
+      517,
+      1439,
+      1011
+    ],
+    "cutout": "source/mane_full_r2_08_cutout.png",
+    "height": "source/mane_full_r2_08_height.png",
+    "shaft": "source/mane_full_r2_08_shaft.png",
+    "alpha": "source/mane_full_r2_08_alpha.png",
+    "layers": "source/mane_full_r2_08_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_r2_01",
+    "kind": "mane_card",
+    "original": "mane_r2_original.png",
+    "selected": true,
+    "size_px": [
+      236,
+      605
+    ],
+    "root_px": [
+      175.92530822753906,
+      3.0
+    ],
+    "tip_px": [
+      112.5,
+      594.0
+    ],
+    "source_box_px": [
+      42,
+      10,
+      278,
+      615
+    ],
+    "cutout": "source/mane_r2_01_cutout.png",
+    "height": "source/mane_r2_01_height.png",
+    "shaft": "source/mane_r2_01_shaft.png",
+    "alpha": "source/mane_r2_01_alpha.png",
+    "layers": "source/mane_r2_01_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_r2_02",
+    "kind": "mane_card",
+    "original": "mane_r2_original.png",
+    "selected": true,
+    "size_px": [
+      220,
+      607
+    ],
+    "root_px": [
+      132.27503967285156,
+      3.0
+    ],
+    "tip_px": [
+      89.0,
+      599.0
+    ],
+    "source_box_px": [
+      366,
+      10,
+      586,
+      617
+    ],
+    "cutout": "source/mane_r2_02_cutout.png",
+    "height": "source/mane_r2_02_height.png",
+    "shaft": "source/mane_r2_02_shaft.png",
+    "alpha": "source/mane_r2_02_alpha.png",
+    "layers": "source/mane_r2_02_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_r2_03",
+    "kind": "mane_card",
+    "original": "mane_r2_original.png",
+    "selected": true,
+    "size_px": [
+      232,
+      607
+    ],
+    "root_px": [
+      182.07579040527344,
+      4.0
+    ],
+    "tip_px": [
+      173.5,
+      599.0
+    ],
+    "source_box_px": [
+      654,
+      9,
+      886,
+      616
+    ],
+    "cutout": "source/mane_r2_03_cutout.png",
+    "height": "source/mane_r2_03_height.png",
+    "shaft": "source/mane_r2_03_shaft.png",
+    "alpha": "source/mane_r2_03_alpha.png",
+    "layers": "source/mane_r2_03_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_r2_04",
+    "kind": "mane_card",
+    "original": "mane_r2_original.png",
+    "selected": true,
+    "size_px": [
+      224,
+      607
+    ],
+    "root_px": [
+      75.2894515991211,
+      3.0
+    ],
+    "tip_px": [
+      72.0,
+      600.0
+    ],
+    "source_box_px": [
+      992,
+      10,
+      1216,
+      617
+    ],
+    "cutout": "source/mane_r2_04_cutout.png",
+    "height": "source/mane_r2_04_height.png",
+    "shaft": "source/mane_r2_04_shaft.png",
+    "alpha": "source/mane_r2_04_alpha.png",
+    "layers": "source/mane_r2_04_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_r2_05",
+    "kind": "mane_card",
+    "original": "mane_r2_original.png",
+    "selected": true,
+    "size_px": [
+      250,
+      604
+    ],
+    "root_px": [
+      196.5885009765625,
+      4.0
+    ],
+    "tip_px": [
+      177.66666666666666,
+      593.0
+    ],
+    "source_box_px": [
+      22,
+      635,
+      272,
+      1239
+    ],
+    "cutout": "source/mane_r2_05_cutout.png",
+    "height": "source/mane_r2_05_height.png",
+    "shaft": "source/mane_r2_05_shaft.png",
+    "alpha": "source/mane_r2_05_alpha.png",
+    "layers": "source/mane_r2_05_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_r2_06",
+    "kind": "mane_card",
+    "original": "mane_r2_original.png",
+    "selected": true,
+    "size_px": [
+      176,
+      606
+    ],
+    "root_px": [
+      115.761474609375,
+      4.0
+    ],
+    "tip_px": [
+      74.5,
+      597.0
+    ],
+    "source_box_px": [
+      377,
+      635,
+      553,
+      1241
+    ],
+    "cutout": "source/mane_r2_06_cutout.png",
+    "height": "source/mane_r2_06_height.png",
+    "shaft": "source/mane_r2_06_shaft.png",
+    "alpha": "source/mane_r2_06_alpha.png",
+    "layers": "source/mane_r2_06_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_r2_07",
+    "kind": "mane_card",
+    "original": "mane_r2_original.png",
+    "selected": true,
+    "size_px": [
+      254,
+      607
+    ],
+    "root_px": [
+      69.88041687011719,
+      3.0
+    ],
+    "tip_px": [
+      60.0,
+      599.0
+    ],
+    "source_box_px": [
+      663,
+      636,
+      917,
+      1243
+    ],
+    "cutout": "source/mane_r2_07_cutout.png",
+    "height": "source/mane_r2_07_height.png",
+    "shaft": "source/mane_r2_07_shaft.png",
+    "alpha": "source/mane_r2_07_alpha.png",
+    "layers": "source/mane_r2_07_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "mane_r2_08",
+    "kind": "mane_card",
+    "original": "mane_r2_original.png",
+    "selected": true,
+    "size_px": [
+      224,
+      603
+    ],
+    "root_px": [
+      90.94648742675781,
+      3.0
+    ],
+    "tip_px": [
+      113.5,
+      588.0
+    ],
+    "source_box_px": [
+      990,
+      636,
+      1214,
+      1239
+    ],
+    "cutout": "source/mane_r2_08_cutout.png",
+    "height": "source/mane_r2_08_height.png",
+    "shaft": "source/mane_r2_08_shaft.png",
+    "alpha": "source/mane_r2_08_alpha.png",
+    "layers": "source/mane_r2_08_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_01",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      266,
+      390
+    ],
+    "root_px": [
+      171.43698120117188,
+      4.0
+    ],
+    "tip_px": [
+      140.5,
+      383.0
+    ],
+    "source_box_px": [
+      24,
+      14,
+      290,
+      404
+    ],
+    "cutout": "source/cap_r2_01_cutout.png",
+    "height": "source/cap_r2_01_height.png",
+    "shaft": "source/cap_r2_01_shaft.png",
+    "alpha": "source/cap_r2_01_alpha.png",
+    "layers": "source/cap_r2_01_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_02",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      227,
+      393
+    ],
+    "root_px": [
+      128.7315216064453,
+      5.0
+    ],
+    "tip_px": [
+      124.0,
+      386.0
+    ],
+    "source_box_px": [
+      355,
+      13,
+      582,
+      406
+    ],
+    "cutout": "source/cap_r2_02_cutout.png",
+    "height": "source/cap_r2_02_height.png",
+    "shaft": "source/cap_r2_02_shaft.png",
+    "alpha": "source/cap_r2_02_alpha.png",
+    "layers": "source/cap_r2_02_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_03",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      271,
+      392
+    ],
+    "root_px": [
+      153.98651123046875,
+      5.0
+    ],
+    "tip_px": [
+      107.5,
+      385.0
+    ],
+    "source_box_px": [
+      647,
+      14,
+      918,
+      406
+    ],
+    "cutout": "source/cap_r2_03_cutout.png",
+    "height": "source/cap_r2_03_height.png",
+    "shaft": "source/cap_r2_03_shaft.png",
+    "alpha": "source/cap_r2_03_alpha.png",
+    "layers": "source/cap_r2_03_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_04",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      255,
+      391
+    ],
+    "root_px": [
+      143.41201782226562,
+      4.0
+    ],
+    "tip_px": [
+      154.5,
+      383.0
+    ],
+    "source_box_px": [
+      974,
+      14,
+      1229,
+      405
+    ],
+    "cutout": "source/cap_r2_04_cutout.png",
+    "height": "source/cap_r2_04_height.png",
+    "shaft": "source/cap_r2_04_shaft.png",
+    "alpha": "source/cap_r2_04_alpha.png",
+    "layers": "source/cap_r2_04_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_05",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      258,
+      393
+    ],
+    "root_px": [
+      152.37271118164062,
+      5.0
+    ],
+    "tip_px": [
+      106.5,
+      385.0
+    ],
+    "source_box_px": [
+      23,
+      427,
+      281,
+      820
+    ],
+    "cutout": "source/cap_r2_05_cutout.png",
+    "height": "source/cap_r2_05_height.png",
+    "shaft": "source/cap_r2_05_shaft.png",
+    "alpha": "source/cap_r2_05_alpha.png",
+    "layers": "source/cap_r2_05_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_06",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      228,
+      393
+    ],
+    "root_px": [
+      116.95857238769531,
+      4.0
+    ],
+    "tip_px": [
+      65.5,
+      386.0
+    ],
+    "source_box_px": [
+      361,
+      429,
+      589,
+      822
+    ],
+    "cutout": "source/cap_r2_06_cutout.png",
+    "height": "source/cap_r2_06_height.png",
+    "shaft": "source/cap_r2_06_shaft.png",
+    "alpha": "source/cap_r2_06_alpha.png",
+    "layers": "source/cap_r2_06_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_07",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      268,
+      380
+    ],
+    "root_px": [
+      164.55661010742188,
+      5.0
+    ],
+    "tip_px": [
+      127.17647058823529,
+      372.0
+    ],
+    "source_box_px": [
+      645,
+      429,
+      913,
+      809
+    ],
+    "cutout": "source/cap_r2_07_cutout.png",
+    "height": "source/cap_r2_07_height.png",
+    "shaft": "source/cap_r2_07_shaft.png",
+    "alpha": "source/cap_r2_07_alpha.png",
+    "layers": "source/cap_r2_07_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_08",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      267,
+      387
+    ],
+    "root_px": [
+      167.2989959716797,
+      6.0
+    ],
+    "tip_px": [
+      114.0,
+      376.0
+    ],
+    "source_box_px": [
+      969,
+      428,
+      1236,
+      815
+    ],
+    "cutout": "source/cap_r2_08_cutout.png",
+    "height": "source/cap_r2_08_height.png",
+    "shaft": "source/cap_r2_08_shaft.png",
+    "alpha": "source/cap_r2_08_alpha.png",
+    "layers": "source/cap_r2_08_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_09",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      257,
+      379
+    ],
+    "root_px": [
+      158.91940307617188,
+      5.0
+    ],
+    "tip_px": [
+      63.4375,
+      371.0
+    ],
+    "source_box_px": [
+      26,
+      849,
+      283,
+      1228
+    ],
+    "cutout": "source/cap_r2_09_cutout.png",
+    "height": "source/cap_r2_09_height.png",
+    "shaft": "source/cap_r2_09_shaft.png",
+    "alpha": "source/cap_r2_09_alpha.png",
+    "layers": "source/cap_r2_09_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_10",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      249,
+      389
+    ],
+    "root_px": [
+      173.01393127441406,
+      5.0
+    ],
+    "tip_px": [
+      146.41666666666666,
+      379.0
+    ],
+    "source_box_px": [
+      330,
+      844,
+      579,
+      1233
+    ],
+    "cutout": "source/cap_r2_10_cutout.png",
+    "height": "source/cap_r2_10_height.png",
+    "shaft": "source/cap_r2_10_shaft.png",
+    "alpha": "source/cap_r2_10_alpha.png",
+    "layers": "source/cap_r2_10_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_11",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      237,
+      392
+    ],
+    "root_px": [
+      145.82386779785156,
+      5.0
+    ],
+    "tip_px": [
+      94.5,
+      383.0
+    ],
+    "source_box_px": [
+      663,
+      846,
+      900,
+      1238
+    ],
+    "cutout": "source/cap_r2_11_cutout.png",
+    "height": "source/cap_r2_11_height.png",
+    "shaft": "source/cap_r2_11_shaft.png",
+    "alpha": "source/cap_r2_11_alpha.png",
+    "layers": "source/cap_r2_11_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  },
+  {
+    "id": "cap_r2_12",
+    "kind": "cap_card",
+    "original": "cap_r2_original.png",
+    "selected": true,
+    "size_px": [
+      267,
+      386
+    ],
+    "root_px": [
+      160.68670654296875,
+      6.0
+    ],
+    "tip_px": [
+      102.05882352941177,
+      378.0
+    ],
+    "source_box_px": [
+      964,
+      845,
+      1231,
+      1231
+    ],
+    "cutout": "source/cap_r2_12_cutout.png",
+    "height": "source/cap_r2_12_height.png",
+    "shaft": "source/cap_r2_12_shaft.png",
+    "alpha": "source/cap_r2_12_alpha.png",
+    "layers": "source/cap_r2_12_layers.npz",
+    "height_encoding": "normalized to destination set height_mm"
+  }
+]

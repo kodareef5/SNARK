@@ -1,9 +1,10 @@
 // The device probe. A page opened with ?device=<token> asks which test to run, then measures the device it is on by
 // itself and reports to tools/device.ts. Every test loads the game, reads the self-check's probes and runs the
-// simulation's hashes. Then the quick look measures each graphics tier in three light scenes; the load ladder adds
-// bodies, building pieces, triangles and draws a rung at a time until frames break, then texture memory until the device
-// refuses it; the soak turns through a heavy scene for ten minutes. What it adds is in devicescene.ts, and the table and
-// pages it shows in devicetext.ts. What only a browser can say comes from the shell (client/shell/device.ts).
+// simulation's hashes. Then the quick look asks the GPU questions round 8 leans on (devicegpu.ts) and measures each
+// graphics tier in three light scenes; the load ladder adds bodies, building pieces, triangles and draws a rung at a time
+// until frames break, then texture memory, sampled as it is drawn, until the device refuses it; the soak turns through a
+// heavy scene for ten minutes. What it adds is in devicescene.ts, and the table and pages it shows in devicetext.ts. What
+// only a browser can say comes from the shell (client/shell/device.ts).
 
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
@@ -17,19 +18,26 @@ import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
-import { BodyCopies, LOOK, TextureMemory, rocks, type GlMemory } from "./devicescene.ts";
+import { FrameTimer, GpuQuestions, type Gl2, type GpuReport } from "./devicegpu.ts";
+import { BodyCopies, LOOK, TextureMemory, rocks } from "./devicescene.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
-import { DRAW_TEXTURED, type FramePacket } from "./render/packet.ts";
+import { DRAW_TEXTURED, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
+import { groundSize } from "./render/terrain.ts";
 import type { Thing } from "./render/scene.ts";
 import { probePasses, provingProbes } from "./selfcheck.ts";
 import { stressThings } from "./stress.ts";
 
-export type Mode = "quick" | "ladder" | "soak";
-export const MODES: readonly Mode[] = ["quick", "ladder", "soak"];
+/** The terrain flight runs on a server of its own, on the 8 km map (tools/device.ts --terrain); the others on the proving ground. */
+export type Mode = "quick" | "ladder" | "soak" | "terrain";
+export const MODES: readonly Mode[] = ["quick", "ladder", "soak", "terrain"];
 
-/** The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the crowd. */
-export type SceneName = "plain" | "stress" | "crowd";
+/**
+ * The quick look's scenes: the proving ground as the self-check sees it; with the stress meshes; turned round to the
+ * crowd; and on a tier of two depth ranges (D252), the crowd again in one, to set the two against each other.
+ */
+export type SceneName = "plain" | "stress" | "crowd" | "crowd1";
 export const SCENES: readonly SceneName[] = ["plain", "stress", "crowd"];
+export const scenesOf = (tier: Tier): readonly SceneName[] => (tier.split > 0 ? [...SCENES, "crowd1"] : SCENES);
 
 /**
  * What the ladder adds, a rung at a time. Bodies: copies of the crowd, posed. Pieces: stone and wood houses the server
@@ -46,14 +54,24 @@ export interface Timing {
   /** A phase or rung is measured this long once what it shows has settled. */
   measureMs: number;
   rungMs: number;
-  /** How long a step may take to settle, and loading to reach full detail, before the run goes on without. */
+  /** How long a step may take to settle, or a held amount of texture memory to be sampled, and loading to reach full detail, before the run goes on without. */
   settleMs: number;
   loadMs: number;
   /** How long the soak turns, and how long a held amount of texture memory is watched. */
   soakMs: number;
   holdMs: number;
+  /** How long the terrain flight flies on each tier, and how often it jumps. */
+  flightMs: number;
+  teleportMs: number;
 }
-export const TIMING: Timing = { measureMs: 5000, rungMs: 1500, settleMs: 10000, loadMs: 60000, soakMs: 600000, holdMs: 1500 };
+export const TIMING: Timing = { measureMs: 5000, rungMs: 1500, settleMs: 10000, loadMs: 60000, soakMs: 600000, holdMs: 1500, flightMs: 60000, teleportMs: 10000 };
+/** The terrain flight: its tiers, how fast and how high it flies, how fast it turns, and the least jump. */
+const FLIGHT_TIERS = ["medium", "lowpoly"];
+export const FLIGHT_TIER_COUNT = FLIGHT_TIERS.length;
+const FLIGHT_SPEED = 100;
+const FLIGHT_UP = 60;
+const FLIGHT_TURN = (2 * Math.PI) / 30;
+const JUMP = 2000;
 /** Frames in a row with nothing on its way and nothing waiting to go on the graphics card: settled then. */
 const STILL = 30;
 /** A quick phase this slow, in ms a frame, and the tiers above it are not tried. */
@@ -63,6 +81,8 @@ const STALL_MS = 15000;
 /** A rung holds the display's rate when its median frame is within this share of the display's, and its 95th within the next. */
 const HOLD_MEDIAN = 1.12;
 const HOLD_P95 = 1.5;
+/** A frame this many display intervals or longer is long: the screen missed two or more. */
+export const LONG = 3;
 /** Texture memory taken a frame, in megabytes, so that frames keep coming while it grows. */
 const MEMORY_STEP = 16;
 
@@ -74,6 +94,13 @@ export interface Spread {
 }
 
 const tenth = (x: number): number => Math.round(x * 10) / 10;
+
+/** Draws a frame asked to have drawn with their materials. */
+function texturedDraws(p: FramePacket): number {
+  let n = 0;
+  for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) n++;
+  return n;
+}
 
 /** Rounded to a tenth. Nothing gives zeros. */
 export function spread(values: readonly number[]): Spread {
@@ -119,8 +146,10 @@ export interface RungReport {
   axis: Axis;
   n: number;
   held: boolean;
-  /** Where a rung that did not hold spent its frame: "our code", "the GPU", or "lost" for a lost context. Empty if it held. */
+  /** Where a rung that broke spent its frame: "our code", "the GPU", or "lost" for a lost context. Empty if it held or is invalid. */
   limit: string;
+  /** Why the rung's frames do not stand for its load, so it neither held nor broke. Empty if they do. */
+  invalid: string;
   canvas: number[];
   settled: boolean;
   frameMs: Spread;
@@ -139,12 +168,14 @@ export interface MemoryReport {
   variant: string;
   /** Megabytes of textures the game itself held on the card besides, when the step ended. */
   gameMB: number;
-  /** The most held and watched with frames still coming, and the amount at which the device refused, or null if it never did. */
+  /** The most held, sampled and watched with frames still coming, and the amount at which the device refused, or null if it never did. */
   heldMB: number;
   failedMB: number | null;
+  /** The first amount whose frames did not keep the display's rate (D246's test), or null. */
+  slowMB: number | null;
   how: string;
-  /** For each amount held: the median frame while it was. */
-  rungs: { mb: number; frameMs: number }[];
+  /** For each amount held: its frames while every tile was sampled, our code's ms a frame in sampling, and whether it kept the rate. */
+  rungs: { mb: number; frameMs: number; p95: number; worst: number; oursMs: number; held: boolean }[];
 }
 
 export interface SoakReport {
@@ -153,10 +184,39 @@ export interface SoakReport {
   load: { bodies: number; pieces: number; near: number; far: number; stress: boolean };
   from: string;
   minutesWanted: number;
-  minutes: { minute: number; frames: number; frameMs: Spread; buildMs: number; drawMs: number; missed: number }[];
+  /** Each minute's frames, with `long` the frames of LONG display intervals or more while the page was shown, and `mat` the most draws with materials in one. */
+  minutes: { minute: number; frames: number; frameMs: Spread; long: number; buildMs: number; drawMs: number; missed: number; mat: number }[];
   /** Times the page was hidden, and how long in all. The soak's clock stops while it is. */
   hidden: number;
   hiddenMs: number;
+}
+
+/** One tier's terrain flight (D253): frames, and those that carried rows of the terrain window against those that did not. */
+export interface FlightReport {
+  tier: string;
+  frames: number;
+  frameMs: Spread;
+  /** Frames that carried window rows, the worst of them, and the median of frames that carried none. */
+  windowFrames: number;
+  windowWorst: number;
+  plainMedian: number;
+  /** Medians of our code's ms handing the frame to WebGL, and of the GPU's ms for the frame by timer query (null without), with rows and without. */
+  drawWindow: number;
+  drawPlain: number;
+  gpuWindow: number | null;
+  gpuPlain: number | null;
+  /** For each jump, frames until the new window was in (-1 if not before the next), and the mean of TerrainLod.coarser over those frames. */
+  fills: number[];
+  coarser: number;
+}
+
+export interface TerrainReport {
+  /** The map's side in metres, the terrain pictures' bytes (groundSize) and all the card has reserved for what is not an asset. */
+  side: number;
+  groundBytes: number;
+  reservedBytes: number;
+  minutesWanted: number;
+  flights: FlightReport[];
 }
 
 export interface DeviceInfo {
@@ -178,10 +238,16 @@ export interface GpuInfo {
   maxArrayLayers: number;
   maxSamples: number;
   vertexTextures: number;
-  /** Textures a draw may read, colour targets it may write at once, and the most anisotropy, 0 for none. */
+  /** Textures a draw may read in its fragments and in all, colour targets it may write at once, and the most anisotropy, 0 for none. */
   textureUnits: number;
+  combinedUnits: number;
   drawBuffers: number;
   anisotropy: number;
+  /** A uniform block's most bytes, blocks a vertex and a fragment program may read, bindings, and the step a block's offset is in. */
+  uniformBytes: number;
+  uniformBlocks: number[];
+  uniformBindings: number;
+  uniformAlign: number;
   highp: boolean;
   antialias: boolean;
   /** Bits of the canvas's depth buffer. Two depth ranges (D252) are worked out for 24. */
@@ -244,6 +310,9 @@ export interface DeviceReport {
   again: PhaseReport | null;
   ladder: { display: number; rungs: RungReport[]; memory: MemoryReport | null } | null;
   soak: SoakReport | null;
+  terrain: TerrainReport | null;
+  /** The quick look's answers to what round 8's depth, sky and shadows lean on (devicegpu.ts). */
+  gpuTests: GpuReport | null;
   skipped: string[];
   /** Textures the renderer made once the game had started. A material is drawn from them. */
   texturesMade: number;
@@ -258,7 +327,7 @@ export function newReport(run: string, mode: Mode = "quick"): DeviceReport {
   return {
     run, mode, seq: 0, stage: "starting", done: false, device: null, gpu: null, idleFrameMs: null, wakeLock: "not asked",
     link: { httpMs: null, gameMs: null, snapshots: 0, missed: 0, missedLoading: 0, missedHidden: 0, server: null, longestGapMs: 0, bytesIn: 0, clockJumps: 0, corrections: 0, undecodable: 0 },
-    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
+    load: null, probes: null, hashes: null, phases: [], again: null, ladder: null, soak: null, terrain: null, gpuTests: null, skipped: [], texturesMade: 0, hidden: [], errors: [], reloadedDuring: null,
   };
 }
 
@@ -312,7 +381,7 @@ export interface GlLike {
   getShaderPrecisionFormat(shader: number, type: number): { precision: number } | null;
   getContextAttributes(): { antialias?: boolean } | null;
 }
-const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245, DEPTH_BITS: 0x0d56 };
+const GL = { VENDOR: 0x1f00, VERSION: 0x1f02, MAX_TEXTURE_SIZE: 0x0d33, MAX_ARRAY_TEXTURE_LAYERS: 0x88ff, MAX_SAMPLES: 0x8d57, MAX_VERTEX_TEXTURE_IMAGE_UNITS: 0x8b4c, MAX_TEXTURE_IMAGE_UNITS: 0x8872, MAX_COMBINED_TEXTURE_IMAGE_UNITS: 0x8b4d, MAX_DRAW_BUFFERS: 0x8824, MAX_ANISOTROPY: 0x84ff, FRAGMENT_SHADER: 0x8b30, HIGH_FLOAT: 0x8df2, UNMASKED_VENDOR_WEBGL: 0x9245, MAX_UNIFORM_BLOCK_SIZE: 0x8a30, MAX_VERTEX_UNIFORM_BLOCKS: 0x8a2b, MAX_FRAGMENT_UNIFORM_BLOCKS: 0x8a2d, MAX_UNIFORM_BUFFER_BINDINGS: 0x8a2f, UNIFORM_BUFFER_OFFSET_ALIGNMENT: 0x8a34, DEPTH_BITS: 0x0d56 };
 
 export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
   const n = (name: number): number => Number(gl.getParameter(name));
@@ -325,11 +394,16 @@ export function gpuOf(gl: GlLike, renderer: string, variant = "rgba"): GpuInfo {
     maxSamples: n(GL.MAX_SAMPLES),
     vertexTextures: n(GL.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
     textureUnits: n(GL.MAX_TEXTURE_IMAGE_UNITS),
+    combinedUnits: n(GL.MAX_COMBINED_TEXTURE_IMAGE_UNITS),
     drawBuffers: n(GL.MAX_DRAW_BUFFERS),
     // Asked only once the extension is on, or the question is an error.
     anisotropy: gl.getExtension("EXT_texture_filter_anisotropic") ? n(GL.MAX_ANISOTROPY) : 0,
     highp: (gl.getShaderPrecisionFormat(GL.FRAGMENT_SHADER, GL.HIGH_FLOAT)?.precision ?? 0) > 0,
     antialias: gl.getContextAttributes()?.antialias === true,
+    uniformBytes: n(GL.MAX_UNIFORM_BLOCK_SIZE),
+    uniformBlocks: [n(GL.MAX_VERTEX_UNIFORM_BLOCKS), n(GL.MAX_FRAGMENT_UNIFORM_BLOCKS)],
+    uniformBindings: n(GL.MAX_UNIFORM_BUFFER_BINDINGS),
+    uniformAlign: n(GL.UNIFORM_BUFFER_OFFSET_ALIGNMENT),
     depthBits: n(GL.DEPTH_BITS),
     extensions: gl.getSupportedExtensions() ?? [],
     variant,
@@ -362,6 +436,8 @@ export interface Load {
   pieces: number;
   near: number;
   far: number;
+  /** Drawn in one depth range on a tier of two. */
+  oneRange?: boolean;
 }
 
 interface Step {
@@ -383,6 +459,19 @@ export function rungLoad(tier: Tier, axis: Axis, n: number): Load {
   return load;
 }
 
+/**
+ * A rung's verdict (D246). A lost context is a result. Otherwise its frames count only if it drew everything it was
+ * given, settled, fetched all it asked for and kept its tier; if not, it is invalid and neither held nor broke.
+ */
+export function judgeRung(p: PhaseReport, display: number): { held: boolean; limit: string; invalid: string } {
+  if (p.lost > 0) return { held: false, limit: "lost", invalid: "" };
+  const why = [p.dropped > 0 ? `${p.dropped} things dropped` : "", p.skipped > 0 ? `${p.skipped} draws skipped` : "", p.failed > 0 ? `${p.failed} fetches failed` : "", p.fellTo ? `the game fell to ${p.fellTo}` : "", p.settled ? "" : "never settled"];
+  const invalid = why.filter((w) => w !== "").join(", ");
+  if (invalid) return { held: false, limit: "", invalid };
+  const held = p.frameMs.median <= display * HOLD_MEDIAN && p.frameMs.p95 <= display * HOLD_P95;
+  return { held, limit: held ? "" : p.buildMs.median + p.drawMs.median >= p.frameMs.median * 0.75 ? "our code" : "the GPU", invalid };
+}
+
 /** The tiers a device whose textures go up to `maxTexture` wide can take. */
 const takes = (maxTexture: number): Tier[] => TIERS.filter((t) => t.texture <= maxTexture);
 
@@ -401,7 +490,7 @@ export class LadderPlan {
     this.tiers = takes(maxTexture);
   }
 
-  /** The next rung after one that `held` or not, or was `lost`. Null at the end. */
+  /** The next rung after one that `held` or not (broke or invalid), or was `lost`. Null at the end. */
   next(held: boolean, lost: boolean): { tier: Tier; axis: Axis; n: number } | null {
     if (lost) this.tier = this.tiers.length;
     else if (this.rung >= 0 && !held) [this.axis, this.rung] = [this.axis + 1, -1];
@@ -447,11 +536,15 @@ export interface DeviceSide {
   base(n: number): Promise<number | null>;
   /** Texture memory for the ladder's last step, in the renderer's variant. Null where the renderer gives none. */
   memory: TextureMemory | null;
+  /** The GPU questions, made when the quick look comes to them, once the canvas has its size. Null where the renderer gives none. */
+  questions: (() => GpuQuestions) | null;
+  /** The GPU's time for whole frames where the browser has timer queries; null where the renderer gives none. */
+  frames: FrameTimer | null;
   /** The display's interval between frames, which a rung holds or not. */
   display: number;
 }
 
-type Stage = "load" | "probes" | "hashes" | "steps" | "memory" | "soak" | "done";
+type Stage = "load" | "probes" | "hashes" | "gpu" | "steps" | "memory" | "soak" | "terrain" | "done";
 
 export class DeviceRun {
   readonly report: DeviceReport;
@@ -499,13 +592,25 @@ export class DeviceRun {
   private snapAt = 0;
   private longestGap = 0;
   private readonly rtt: number[] = [];
-  /** The memory step's amount under way, and how long it has held it. */
+  /** The memory step's amount under way, how long it has held it, and the sweeps over every tile when it began to. */
   private memoryRung = 0;
   private heldSince = -1;
+  private sweepsAt = 0;
+  /** Whether the scene is drawn in one depth range, and the scene whose build looks at it. */
+  private flat = false;
+  /** Where the terrain flight puts the camera, if it does. */
+  private fly: { x: number; y: number; z: number; yaw: number; pitch: number } | null = null;
+  /** The terrain flight under way: its tier, clock, heading, jumps, and the jump whose window is awaited. */
+  private flight: { tier: number; ms: number; heading: number; jumps: number; wait: { frames: number; coarser: number } | null; fills: number[]; coarser: number[]; rows: boolean[]; gpu: { ms: number; tag: boolean }[] } | null = null;
+  private wrapped: object | null = null;
+  /** The quick look's GPU questions, while they are asked. */
+  private questions: GpuQuestions | null = null;
   /** The soak's amounts, clock and minute under way. */
   private readonly soakFrom: { load: Omit<Load, "tier" | "yaw">; from: string };
   private soakMs = 0;
   private hiddenAt = -1;
+  /** From the page being hidden until the first frame after it is shown again: the soak's clock leaves that time out. */
+  private away = false;
 
   /** `skipLoad` for a test begun on a page whose game is loaded already. `held` is a ladder's rungs from before, for the soak. */
   constructor(report: DeviceReport, side: DeviceSide, mode: Mode, timing: Timing = TIMING, skipLoad = false, held: readonly RungReport[] | null = null) {
@@ -513,13 +618,13 @@ export class DeviceRun {
     this.side = side;
     this.timing = timing;
     this.mode = mode;
-    this.plan = TIERS.flatMap((tier) => SCENES.map((scene) => ({ tier, scene })));
+    this.plan = TIERS.flatMap((tier) => scenesOf(tier).map((scene) => ({ tier, scene })));
     this.ladder = new LadderPlan(side.maxTexture);
     this.soakFrom = soakLoad(held, this.soakTier().name);
     if (mode === "ladder") report.ladder = { display: side.display, rungs: [], memory: null };
     if (skipLoad) {
       this.lastFrameAt = side.now();
-      this.begin();
+      this.ask();
     }
   }
 
@@ -543,9 +648,11 @@ export class DeviceRun {
     if (this.stage === "load") news = this.load(now);
     else if (this.stage === "probes") news = this.probes(read);
     else if (this.stage === "hashes") news = this.hashes();
+    else if (this.stage === "gpu") news = this.gpu();
     else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
     else if (this.stage === "memory") news = this.memory(now, gap);
-    else if (this.stage === "soak") news = this.soak(now, gap, buildMs, drawMs);
+    else if (this.stage === "soak") news = this.soak(now, gap, p, buildMs, drawMs);
+    else if (this.stage === "terrain") news = this.terrain(now, gap, p, drawMs);
     if (news) this.sync();
     return news;
   }
@@ -556,6 +663,7 @@ export class DeviceRun {
     const s = this.side.app.session;
     this.hiddenBase = { snapshots: s.stats.snapshots, latest: s.latestSnapshot };
     this.hiddenAt = this.side.now();
+    this.away = true;
     this.report.hidden.push(this.report.stage);
     if (this.stage === "steps") this.show();
   }
@@ -572,6 +680,7 @@ export class DeviceRun {
 
   lost(): void {
     this.lostCount++;
+    this.questions?.lost();
   }
 
   /** About once a second while the page is shown. True if the run had to end, because nothing was drawn for too long. */
@@ -614,8 +723,9 @@ export class DeviceRun {
     load.diskBytes = r.stats.cached;
     load.failed = this.failures();
     load.cache = r.cache?.mode ?? "none";
-    this.stage = "probes";
-    this.report.stage = "probes";
+    // The probes look at the proving ground, which the terrain flight's map is not.
+    this.stage = this.mode === "terrain" ? "hashes" : "probes";
+    this.report.stage = this.stage;
     return true;
   }
 
@@ -639,7 +749,31 @@ export class DeviceRun {
       const got = run();
       return { name, got, want: side.expected?.[name] ?? null, ms: tenth(side.now() - t) };
     });
-    this.begin();
+    this.ask();
+    return true;
+  }
+
+  /** The quick look asks the GPU questions first, where the renderer gives them. The other tests begin at once. */
+  private ask(): void {
+    const make = this.side.questions;
+    if (this.mode !== "quick" || !make) return this.begin();
+    this.questions = make();
+    this.report.gpuTests = this.questions.report;
+    this.stage = "gpu";
+    this.report.stage = "gpu questions";
+  }
+
+  /** A step of the GPU questions after the game's frame. News when one is answered. */
+  private gpu(): boolean {
+    const q = this.questions!;
+    const was = q.stage;
+    if (q.frame()) {
+      this.questions = null;
+      this.begin();
+      return true;
+    }
+    if (q.stage === was) return false;
+    this.report.stage = `gpu ${q.stage}`;
     return true;
   }
 
@@ -648,6 +782,13 @@ export class DeviceRun {
     const s = this.side.app.session;
     if (this.base) this.report.link.missedLoading = this.missedSince(this.base);
     this.base ??= s.latestSnapshot > 0 ? { snapshots: s.stats.snapshots, latest: s.latestSnapshot } : null;
+    if (this.mode === "terrain") {
+      const hf = this.side.hf;
+      const r = this.side.app.scene!.assets.residency;
+      this.report.terrain = { side: (hf.nx - 1) * hf.cell, groundBytes: groundSize(hf).bytes, reservedBytes: r.reserved, minutesWanted: (this.timing.flightMs * FLIGHT_TIERS.length) / 60000, flights: [] };
+      this.stage = "terrain";
+      return this.takeOff(0);
+    }
     if (this.mode === "soak") {
       const tier = this.soakTier();
       this.report.soak = { tier: tier.name, load: this.soakFrom.load, from: this.soakFrom.from, minutesWanted: this.timing.soakMs / 60000, minutes: [], hidden: 0, hiddenMs: 0 };
@@ -685,11 +826,8 @@ export class DeviceRun {
       this.report.phases.push(phase);
       this.next(phase);
     } else {
-      const display = this.side.display;
-      const held = phase.frameMs.median <= display * HOLD_MEDIAN && phase.frameMs.p95 <= display * HOLD_P95 && phase.lost === 0;
-      const ours = phase.buildMs.median + phase.drawMs.median;
-      const limit = held ? "" : phase.lost > 0 ? "lost" : ours >= phase.frameMs.median * 0.75 ? "our code" : "the GPU";
-      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, missed: phase.missed });
+      const { held, limit, invalid } = judgeRung(phase, this.side.display);
+      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, invalid, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, missed: phase.missed });
       this.nextRung(held, phase.lost > 0);
     }
     return true;
@@ -703,9 +841,7 @@ export class DeviceRun {
     s.calls.push(drawCalls);
     s.tris.push(p.triangles);
     s.bones.push(p.boneCount);
-    let textured = 0;
-    for (let d = 0; d < p.drawCount; d++) if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) textured++;
-    s.textured.push(textured);
+    s.textured.push(texturedDraws(p));
     this.dropped += p.dropped;
     this.skipped += p.skipped;
     if (s.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));
@@ -741,8 +877,9 @@ export class DeviceRun {
     }
     const again = this.index >= this.plan.length;
     const { tier, scene } = this.plan[again ? 0 : this.index]!;
-    const load = bare(tier, scene === "crowd" ? LOOK.crowd : 0);
+    const load = bare(tier, scene.startsWith("crowd") ? LOOK.crowd : 0);
     load.stress = scene === "stress";
+    load.oneRange = scene === "crowd1";
     this.go({ kind: again ? "again" : "phase", load, scene }, `${again ? "again " : ""}${tier.name} ${scene}`);
   }
 
@@ -751,7 +888,7 @@ export class DeviceRun {
     if (!rung) {
       this.apply(bare(tierOf(DEFAULT_TIER), 0));
       this.stage = this.side.memory ? "memory" : "done";
-      if (this.side.memory) this.report.ladder!.memory = { variant: this.report.gpu?.variant ?? "rgba", gameMB: 0, heldMB: 0, failedMB: null, how: "", rungs: [] };
+      if (this.side.memory) this.report.ladder!.memory = { variant: this.report.gpu?.variant ?? "rgba", gameMB: 0, heldMB: 0, failedMB: null, slowMB: null, how: "", rungs: [] };
       return this.stage === "done" ? this.end() : void (this.report.stage = `memory ${MEMORY_MB[0]} MB`);
     }
     this.go({ kind: "rung", load: rungLoad(rung.tier, rung.axis, rung.n), axis: rung.axis, n: rung.n }, `${rung.tier.name} ${rung.axis} ${rung.n}`);
@@ -761,6 +898,127 @@ export class DeviceRun {
     this.step = step;
     this.report.stage = name;
     this.show();
+  }
+
+  /**
+   * Whether the scene draws in one depth range on a tier of two. The game sets the tier on its scene each frame, so the
+   * scene's build is wrapped once to put a copy with no split in its place. A copy a tier, since the renderer keeps its
+   * programs by the tier.
+   */
+  private oneRange(on: boolean): void {
+    const scene = this.side.app.scene!;
+    this.flat = on;
+    if (this.wrapped === scene) return;
+    this.wrapped = scene;
+    const build = scene.build.bind(scene);
+    const copies = new Map<Tier, Tier>();
+    scene.build = (cam, remote) => {
+      const t = scene.assets.tier;
+      if (this.flat && t.split > 0) scene.assets.tier = copies.get(t) ?? copies.set(t, { ...t, split: 0 }).get(t)!;
+      // The flight moves the camera as it builds; the body stays where the server has it.
+      if (this.fly) [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [this.fly.x, this.fly.y, this.fly.z, this.fly.yaw, this.fly.pitch];
+      return build(cam, remote);
+    };
+  }
+
+  /**
+   * The terrain flight on its `k`th tier: the camera FLIGHT_UP over the ground, FLIGHT_SPEED a second, turning, and
+   * every teleportMs at a spot JUMP or more away (a third of the map's side on a smaller map). Once the tier has
+   * settled, flightMs of frames are measured.
+   */
+  private takeOff(k: number): void {
+    const name = FLIGHT_TIERS[k];
+    if (name === undefined) {
+      this.fly = null;
+      this.side.frames?.stop();
+      return this.end();
+    }
+    this.apply(bare(tierOf(name), 0));
+    this.flight = { tier: k, ms: 0, heading: 0, jumps: 0, wait: null, fills: [], coarser: [], rows: [], gpu: [] };
+    this.place(this.spot(0));
+    [this.measuring, this.at] = [false, -1];
+    this.report.stage = `terrain ${name}`;
+  }
+
+  /** The jump `n`'s spot: points spread by the golden ratio over the map less 300 m round, the first far enough from the last. */
+  private spot(n: number): { x: number; z: number } {
+    const side = this.report.terrain!.side;
+    const from = this.fly ?? { x: side / 2, z: side / 2 };
+    const [least, edge] = [Math.min(JUMP, side / 3), Math.min(300, side / 4)];
+    for (let i = n * 7; ; i++) {
+      const x = edge + ((i * 0.618034 + 0.3) % 1) * (side - 2 * edge);
+      const z = edge + ((i * 0.754878 + 0.6) % 1) * (side - 2 * edge);
+      if (Math.hypot(x - from.x, z - from.z) >= least || i > n * 7 + 500) return { x, z };
+    }
+  }
+
+  private place(at: { x: number; z: number }): void {
+    const f = this.flight!;
+    const hf = this.side.hf;
+    const side = this.report.terrain!.side;
+    const [x, z] = [Math.min(Math.max(at.x, 0), side), Math.min(Math.max(at.z, 0), side)];
+    this.fly = { x, y: Math.max(hf.heightAt(x, z), hf.seaLevel) + FLIGHT_UP, z, yaw: f.heading, pitch: -0.3 };
+  }
+
+  private terrain(now: number, gap: number, p: FramePacket, drawMs: number): boolean {
+    const f = this.flight!;
+    const g = p.groundWindow;
+    const rows = g[3]! >= 0;
+    this.side.frames?.tick(rows);
+    if (this.at < 0) this.at = now;
+    if (!this.measuring) {
+      if (this.still < STILL && now - this.at < this.timing.settleMs) return false;
+      this.measuring = true;
+      for (const list of Object.values(this.samples)) list.length = 0;
+      this.side.frames?.take();
+      return false;
+    }
+    if (gap <= 0) return false;
+    if (this.away) {
+      if (this.hiddenAt < 0) this.away = false;
+      return false;
+    }
+    const s = this.samples;
+    s.frame.push(gap);
+    s.draw.push(drawMs);
+    f.rows.push(rows);
+    f.gpu.push(...(this.side.frames?.take() ?? []));
+    // The jump's new window is in once the window drawn lies near where one round the camera, as it was for this frame,
+    // would: held inside the map, so a spot near its edge counts too.
+    const hf = this.side.hf;
+    const w = groundSize(hf).width[SOURCE_WINDOW]!;
+    const near = (at: number, corner: number, n: number): boolean => Math.abs(corner - Math.min(Math.max(at / hf.cell - (w - 1) / 2, 0), n - w)) < w / 4;
+    if (f.wait) {
+      f.wait.frames++;
+      f.wait.coarser += this.side.app.scene!.terrain.coarser;
+      if (g[0]! >= 0 && near(this.fly!.x, g[1]!, hf.nx) && near(this.fly!.z, g[2]!, hf.nz)) {
+        f.fills.push(f.wait.frames);
+        f.coarser.push(f.wait.coarser / f.wait.frames);
+        f.wait = null;
+      }
+    }
+    f.ms += gap;
+    f.heading = (f.heading + (FLIGHT_TURN * gap) / 1000) % (2 * Math.PI);
+    const jump = Math.floor(f.ms / this.timing.teleportMs) > f.jumps && f.ms < this.timing.flightMs;
+    if (jump) {
+      f.jumps++;
+      if (f.wait) f.fills.push(-1);
+      f.wait = { frames: 0, coarser: 0 };
+      this.place(this.spot(f.jumps));
+    } else this.place({ x: this.fly!.x + Math.sin(f.heading) * FLIGHT_SPEED * (gap / 1000), z: this.fly!.z + Math.cos(f.heading) * FLIGHT_SPEED * (gap / 1000) });
+    if (f.ms < this.timing.flightMs) return false;
+    if (f.wait) f.fills.push(-1);
+    const pick = (list: number[], with_: boolean): number[] => list.filter((_, i) => f.rows[i] === with_);
+    const gpu = (tag: boolean): number | null => (this.side.frames?.on ? spread(f.gpu.filter((x) => x.tag === tag).map((x) => x.ms)).median : null);
+    const windowed = pick(s.frame, true);
+    this.report.terrain!.flights.push({
+      tier: FLIGHT_TIERS[f.tier]!, frames: s.frame.length, frameMs: spread(s.frame),
+      windowFrames: windowed.length, windowWorst: spread(windowed).worst, plainMedian: spread(pick(s.frame, false)).median,
+      drawWindow: spread(pick(s.draw, true)).median, drawPlain: spread(pick(s.draw, false)).median, gpuWindow: gpu(true), gpuPlain: gpu(false),
+      fills: f.fills, coarser: tenth(f.coarser.reduce((a, b) => a + b, 0) / Math.max(1, f.coarser.length)),
+    });
+    this.takeOff(f.tier + 1);
+    return true;
   }
 
   /** Begins the step under way afresh. */
@@ -778,6 +1036,7 @@ export class DeviceRun {
     const assets = app.scene!.assets;
     app.scene!.things = [...(load.stress ? this.stressed() : []), ...(load.near + load.far > 0 ? rocks(assets.table, hf, load.near, load.far) : [])];
     bodies.n = load.bodies;
+    this.oneRange(load.oneRange === true);
     if (load.pieces !== this.pieces) {
       this.asking = true;
       this.pieces = load.pieces;
@@ -808,15 +1067,26 @@ export class DeviceRun {
     const state = mem.grow(want, MEMORY_STEP);
     if (state === "out of memory" || state === "context lost" || this.lostCount > this.lostAt) return finish(state === "growing" || state === "held" ? "context lost" : state, want);
     if (state === "growing") return false;
+    const t = this.side.now();
+    mem.touch();
+    const ours = this.side.now() - t;
+    if (mem.read !== "" && mem.read !== "right") return finish(`the textures ${mem.read}`, want);
     if (this.heldSince < 0) {
-      this.heldSince = now;
-      this.samples.frame.length = 0;
+      [this.heldSince, this.sweepsAt] = [now, mem.sweeps];
+      this.samples.frame.length = this.samples.build.length = 0;
       return false;
     }
     this.samples.frame.push(gap);
-    if (now - this.heldSince < this.timing.holdMs) return false;
+    this.samples.build.push(ours);
+    // Held for its time, and every tile sampled in it: two sweeps ended means one ran wholly inside.
+    const sampled = mem.sweeps - this.sweepsAt >= 2;
+    if (!sampled && now - this.heldSince > this.timing.settleMs) return finish(`did not finish: every texture was not sampled within ${this.timing.settleMs / 1000} s`, want);
+    if (now - this.heldSince < this.timing.holdMs || !sampled) return false;
+    const frames = spread(this.samples.frame);
+    const held = frames.median <= this.side.display * HOLD_MEDIAN && frames.p95 <= this.side.display * HOLD_P95;
     report.heldMB = want;
-    report.rungs.push({ mb: want, frameMs: spread(this.samples.frame).median });
+    report.rungs.push({ mb: want, frameMs: frames.median, p95: frames.p95, worst: frames.worst, oursMs: spread(this.samples.build).median, held });
+    if (!held) report.slowMB ??= want;
     this.heldSince = -1;
     this.memoryRung++;
     // Said before it is tried, so a page the browser has to reload says which amount it was trying.
@@ -825,7 +1095,7 @@ export class DeviceRun {
   }
 
   /** The soak: the camera turns once a minute through every scene at once, and each minute is measured by itself. */
-  private soak(now: number, gap: number, buildMs: number, drawMs: number): boolean {
+  private soak(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number): boolean {
     const report = this.report.soak!;
     if (this.at < 0) this.at = now;
     if (!this.measuring) {
@@ -835,17 +1105,24 @@ export class DeviceRun {
       this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
       return false;
     }
-    // A gap of a second or more is the page coming back from hidden, which the soak's clock leaves out.
-    if (gap <= 0 || gap >= 1000) return false;
+    if (gap <= 0) return false;
+    // The page's own events say when it was hidden: any frame then, and the first after, is left out. A long frame
+    // while it was shown is a stall, and counts.
+    if (this.away) {
+      if (this.hiddenAt < 0) this.away = false;
+      return false;
+    }
     this.soakMs += gap;
     this.side.app.controls.yaw = ((this.soakMs / 60000) * 2 * Math.PI) % (2 * Math.PI);
     const s = this.samples;
     s.frame.push(gap);
     s.build.push(buildMs);
     s.draw.push(drawMs);
+    s.textured.push(texturedDraws(p));
     const minute = report.minutes.length;
     if (this.soakMs < (minute + 1) * 60000 && this.soakMs < this.timing.soakMs) return false;
-    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase) });
+    const long = s.frame.filter((g) => g >= this.side.display * LONG).length;
+    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured) });
     for (const list of Object.values(s)) list.length = 0;
     this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
     if (this.soakMs >= this.timing.soakMs) this.end();
@@ -959,7 +1236,7 @@ export interface DeviceBrowser {
 
 /** What the probe reads of the shell's renderer. A WebGL 2 context is a GlLike with these besides. */
 export interface RendererLike {
-  gl: GlLike & GlMemory & { canvas: unknown; drawingBufferWidth: number; drawingBufferHeight: number };
+  gl: GlLike & Gl2 & { canvas: unknown; drawingBufferWidth: number; drawingBufferHeight: number };
   rendererName: string;
   /** The texture variant it took. */
   format?: string;
@@ -984,6 +1261,8 @@ export class DeviceProbe {
   private readonly b: DeviceBrowser;
   private readonly timing: Timing;
   private readonly recovered: boolean;
+  /** The tests this page's server offers, which its link names in `tests`: the terrain flight on its own map, or the rest. */
+  private readonly offered: readonly Mode[];
   private run: DeviceRun | null = null;
   private side: DeviceSide | null = null;
   private renderer: RendererLike | null = null;
@@ -1016,6 +1295,8 @@ export class DeviceProbe {
       saved = JSON.parse(browser.load() ?? "null") as Saved;
     } catch {}
     this.recovered = saved !== null && saved.token === token && saved.report?.done === false;
+    const named = (browser.query("tests") ?? "").split(",");
+    this.offered = MODES.filter((m) => (named[0] === "" ? m !== "terrain" : named.includes(m)));
     this.report = this.recovered ? saved!.report! : newReport(browser.id);
     if (this.recovered) this.report.reloadedDuring = this.report.stage;
   }
@@ -1026,7 +1307,7 @@ export class DeviceProbe {
    */
   async before(): Promise<boolean> {
     if (this.recovered) this.finish();
-    else this.b.show(startPage(this.report, this.b.global), PAGE);
+    else this.b.show(startPage(this.report, this.b.global, this.offered), PAGE);
     void this.wake();
     const within: Within = (f, ms, or) => this.within(f, ms, or);
     const pings: number[] = [];
@@ -1046,7 +1327,7 @@ export class DeviceProbe {
     const device = deviceOf(this.b.global, features);
     const idle = frames ? spread(frames.slice(1).map((t, i) => t - frames[i]!)).median : null;
     const http = pings.length > 0 ? spread(pings) : null;
-    const auto = MODES.find((m) => m === this.b.query("mode"));
+    const auto = this.offered.find((m) => m === this.b.query("mode"));
     if (auto) this.start(auto);
     const mode = await this.chosen;
     if (this.recovered) this.report = newReport(this.nextId(), mode);
@@ -1061,7 +1342,7 @@ export class DeviceProbe {
 
   /** A test was tapped, or named in the address. On a page done with one test, the next begins with the game as it is. */
   start(name: string): void {
-    const mode = MODES.find((m) => m === name);
+    const mode = this.offered.find((m) => m === name);
     if (!mode) return;
     if (this.mode === null) {
       [this.mode, this.finished] = [mode, false];
@@ -1106,6 +1387,8 @@ export class DeviceProbe {
       bodies: new BodyCopies(side.app.session, side.hf),
       base: (n) => this.within(() => b.fetch(`base/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
       memory: new TextureMemory(gl, create, gpu.variant),
+      questions: () => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight]),
+      frames: new FrameTimer(gl),
       display: this.report.idleFrameMs ?? 16.7,
     };
     this.run = new DeviceRun(this.report, this.side, this.mode ?? "quick", this.timing);
@@ -1204,7 +1487,7 @@ export class DeviceProbe {
   }
 
   private page(status: string): void {
-    this.b.show(donePage(this.report, this.b.global, status), PAGE);
+    this.b.show(donePage(this.report, this.b.global, status, this.offered), PAGE);
   }
 
   /** Posts go one after another, so the server has them in order. The last is tried four times. */

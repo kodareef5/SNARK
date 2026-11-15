@@ -1,0 +1,33 @@
+{
+  "id": "tail_side_3",
+  "kind": "tail",
+  "index": 3,
+  "length_m": 0.105,
+  "width_m": 0.029,
+  "symmetric": false,
+  "master_size": [
+    1024,
+    1024
+  ],
+  "master_span_m": 0.11946666666666667,
+  "master_root_px": [
+    634.2864802757564,
+    62.0
+  ],
+  "master_tip_px": [
+    524.256567975192,
+    962.0
+  ],
+  "barb_curves": 1301,
+  "band_intervals_from_root_mm": [
+    [
+      87.0,
+      91.5
+    ],
+    [
+      96.5,
+      101.0
+    ]
+  ],
+  "source": "source/tail_side_3"
+}
