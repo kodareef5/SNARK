@@ -1,6 +1,7 @@
 // An agent that plays, driven in process: its tools are called over the protocol while the harness runs the world.
 
 import { afterAll, expect, test } from "bun:test";
+import { TICK_RATE } from "../../shared/coords.ts";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -77,12 +78,10 @@ test("say is heard by another survivor, the sixth line at once is refused, and t
 test("status tells what is carried, eat feeds, craft makes what is known, and move_item moves a stack", async () => {
   const p = play();
   expect((await p.call("console", { line: "enablecheats" })).state).toBe("done");
-  // A second line in the same instant is one too many.
-  expect(await p.call("console", { line: "give berry 10" })).toEqual({ state: "refused", reason: "one console line every 200 ms" });
-  for (const line of ["give berry 10", "give stone 3", "give wood 3", "give thatch 30"]) {
-    p.run(200);
-    expect((await p.call("console", { line })).lines).toEqual([`gave ${line.split(" ")[2]} core:${line.split(" ")[1]}`]);
-  }
+  // The server takes a line every 200 ms: lines asked sooner wait their turn and are all taken, in order.
+  const tick = p.h.world.tick;
+  for (const line of ["give berry 10", "give stone 3", "give wood 3", "give thatch 30"]) expect((await p.call("console", { line })).lines).toEqual([`gave ${line.split(" ")[2]} core:${line.split(" ")[1]}`]);
+  expect((p.h.world.tick - tick) / TICK_RATE).toBeGreaterThanOrEqual(0.6);
   let status = await p.call("status");
   expect(status).toMatchObject({ state: "done", self: { x: 256, z: 240, facing: "N", alive: true, health: [100, 100], food: [100, 100], level: 1, held: null } });
   expect(status.inventory).toEqual([[0, "berry", 10], [1, "stone", 3], [2, "wood", 3], [3, "thatch", 30]]);
@@ -194,5 +193,5 @@ test("a call left waiting when the server goes is answered, and so is every call
   p.h.ends[0]!.peer.close();
   expect(await walking).toEqual({ state: "refused", reason: "not connected (reason -1)" });
   expect(await p.call("status")).toEqual({ state: "refused", reason: "not connected (reason -1)" });
-  expect((await p.ask("tools/list"))!.result.tools.length).toBe(11);
+  expect((await p.ask("tools/list"))!.result.tools.length).toBe(15);
 });
