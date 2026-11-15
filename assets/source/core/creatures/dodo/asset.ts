@@ -14,10 +14,11 @@ export default {
   // 29 deforming bones. The five ctl_* bones are Blender controls whose effect is baked into the others.
   skeleton: { id: "dodo", root: "pelvis", drop: /^ctl_/, bones: 32 },
   // ARK's dodo takes three times the damage to its head and the top bone of its neck, and once everywhere else
-  // (content: SpeciesDef.zones). Each capsule is fitted to the vertices of the bones it covers when the asset is built;
-  // the body, the tail, the skull and the toes run along their vertices' own longest axis, since no two joints lie along
-  // them. The folded wing lies flush with the flank, as far out as the body, so it has no capsule and a hit there is the
-  // body's, as ARK counts it. `bun tools/fit-zones.ts core:dodo` measures where each zone is hit against where it is drawn.
+  // (content: SpeciesDef.zones). Each capsule is fitted to the vertices of the bones it covers when the asset is built,
+  // leaving out the feather cards, so it holds the body under the plumage; the tail, which is all quills, is fitted to
+  // its cards. The body, the tail, the skull and the toes run along their vertices' own longest axis, since no two
+  // joints lie along them. The folded wing lies flush with the flank, as far out as the body, so it has no capsule and a
+  // hit there is the body's, as ARK counts it. `bun tools/fit-zones.ts core:dodo` measures where each zone is hit against where it is drawn.
   zones: [
     { zone: "head", on: "skull", covers: ["skull", "jaw", "throat", "lid_l", "lid_r", "hood"] },
     { zone: "head", on: "neck_4", from: "neck_4", to: "skull", covers: ["neck_4"] },
@@ -129,10 +130,9 @@ export default {
   // The death clip has it down on its side by frame 27 and still from 30, so it goes limp at 27, as it comes to rest,
   // and the ragdoll lays it on whatever ground is there. The body and the head are its bodies, as the sample dinosaurs'
   // are without their neck: the neck, wings, legs and tail stay as the clip left them against the body. Measured on
-  // tests/unit/ragdoll.test.ts's slope and floor: with the neck, the legs or the tail as bodies too it shivered for 4 to 8
-  // seconds before it slept, and with the head's twist past the 65 degrees the clips turn it, the floor took over 3. Like
-  // this it slept within 2.1 seconds on the slope and 2.7 on the floor, where its round body rolls a little on its side
-  // before the head stops it.
+  // tests/unit/ragdoll.test.ts's slope and floor from 64 yaws: like this it sleeps within 1.2 seconds on the slope, nine
+  // in ten within 0.9, and within 1 on the floor. With the neck or the tail as a body too it sleeps within 2.3; with the
+  // legs it can shiver past 10.
   ragdoll: {
     limp: 27,
     bodies: [
