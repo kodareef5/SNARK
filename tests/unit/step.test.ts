@@ -304,6 +304,29 @@ test("a survivor walks onto a stone of one box 0.5 m high and onto none from 0.5
   expect(wrong).toEqual([]);
 });
 
+test("a raptor turning as it walks round an elder's trunk is not stepped up onto nothing at its corner, into the trunk (D360)", () => {
+  // Facing +Z and looking at the trunk from side 44 of 64, 7 m off, it turns as it comes and grazes the corner. A step up
+  // onto nothing there once lifted it 3.9 mm and set it where the step was going, 2 mm and a rounding into the trunk.
+  const forms = nodeForms(reg);
+  const form = forms.mesh.indexOf("core:oak_3");
+  const w = flatWorld(2);
+  const nodes = new StructureStore(w.dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+  nodes.put(0, 0, form, 32, 0, 32, 0, 0, 1, 1);
+  const world = { hf: w.hf, structs: w.structs, nodes };
+  const p = reg.move[kind("core:raptor")]!;
+  const box = forms.parts.box;
+  const first = forms.parts.start[form]! * 6;
+  const yaw = 44 * 1024;
+  const a = (yaw / 65536) * 2 * Math.PI;
+  const b = new Body();
+  [b.x, b.z, b.grounded] = [32 + box[first]! - Math.sin(a) * 7, 32 + box[first + 2]! - Math.cos(a) * 7, true];
+  for (let t = 0; t < 150; t++) {
+    stepBody(world, b, 0, 127, yaw, 0, 0, p, TICK_DT);
+    if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`in the trunk at tick ${t}: ${b.x}, ${b.y}, ${b.z}`);
+    expect(b.y).toBe(0);
+  }
+});
+
 test("fuzz: among blocks higher than a step, turned and overlapping, no body of any species gets onto one without jumping, and none enters one", () => {
   const w = world();
   const rng = new Rng(51);
