@@ -1,0 +1,98 @@
+{
+ "material dodo": {
+  "size": 2048,
+  "dodo_layout.png": "the texture's pieces in soft region colours, named: the bird's left side. The right side is the left mirrored, so paint each piece once.",
+  "dodo_pieces.png": "each texel's piece in the piece's colour (below), black where there is none: a mask for each piece. The layout is pinned (model.py: layout.json); draw.py stops if a piece's outline moves.",
+  "pieces": {
+   "beak": "#454948",
+   "beak_palate": "#6CDDAC",
+   "brow_l": "#7D7A5F",
+   "eye_l": "#DB5670",
+   "jaw": "#676F7D",
+   "jaw_floor": "#F16647",
+   "leg_l": "#EEB472",
+   "lid_l_in": "#5F5ECE",
+   "lid_l_out": "#8182C7",
+   "pouch_in": "#E24373",
+   "pouch_out": "#D499DE",
+   "shell_body": "#6AA9FC",
+   "shell_face": "#A467FD",
+   "shell_hood": "#57C4BB",
+   "shoulder_l": "#6BC0D7",
+   "toe4_+188": "#637274",
+   "toe4_+30": "#4FE450",
+   "toe4_+4": "#F5435E",
+   "toe4_-24": "#426AA8",
+   "tongue": "#4CD994",
+   "wing_l_in": "#A25884",
+   "wing_l_out": "#628A8D"
+  },
+  "dodo_regions.png": "colour regions in the build's colours: red body, green face, blue beak, cyan forehead neck and feet, magenta hood, yellow wings and patterning; black is never dyed (eye, claws, inside of the mouth, tongue). The bars of the back and the tail bands are yours to paint as yellow.",
+  "dodo_position.png": "each texel's place on the bird at rest, (x left, y up, z forward) scaled from the box below to 0..1",
+  "position_box": {
+   "min": [
+    -0.1431,
+    0.0008,
+    -0.2167
+   ],
+   "max": [
+    0.1431,
+    0.6527,
+    0.349
+   ]
+  },
+  "dodo_normal_object.png": "the smooth surface normal in the bird's frame (x left, y up, z forward), 0.5 + 0.5 n",
+  "dodo_feather_direction.png": "which way the feathers lie, as a direction in the picture: red = 0.5 + 0.5 u, green = 0.5 + 0.5 v (v up the picture); blue 1 where it is defined (shell, wings, legs), 0 elsewhere",
+  "dodo_curvature.png": "grey 0.5 is flat; lighter bulges, darker hollows",
+  "dodo_occlusion.png": "ambient occlusion from the opaque surface alone, the cards left out"
+ },
+ "material dodo_cards": {
+  "size": 512,
+  "dodo_cards_layout.png": "each kind of card and its rectangle; every card of a kind is drawn from it. Strips (hood, body, trousers, mane, forehead) hang from the top of their rectangle, roots up and tips down; tail and finger feathers stand root down, tip up. A strip's u runs along its length. The card is cut out by your alpha.",
+  "dodo_cards_regions.png": "the region each rectangle belongs to; tail bands and any pale tips are yellow where you paint them",
+  "rectangles": {
+   "tail": [
+    0.0,
+    0.0,
+    0.25,
+    0.58
+   ],
+   "finger": [
+    0.25,
+    0.0,
+    0.38,
+    0.3
+   ],
+   "forehead": [
+    0.25,
+    0.3,
+    0.38,
+    0.42
+   ],
+   "mane": [
+    0.38,
+    0.0,
+    0.7,
+    0.42
+   ],
+   "hood": [
+    0.0,
+    0.58,
+    1.0,
+    0.68
+   ],
+   "body": [
+    0.0,
+    0.68,
+    1.0,
+    0.84
+   ],
+   "trousers": [
+    0.0,
+    0.84,
+    1.0,
+    1.0
+   ]
+  }
+ }
+}

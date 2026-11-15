@@ -106,7 +106,7 @@ export default {
   budgets: {
     // Only level 0 is the model's; the build makes the rest. Estimated to be first drawn about 84, 46, 19, 8, 3 and
     // 1 pixels tall on medium. Level 6 is the triangle bird: round body, neck at the front, big head and beak.
-    triangles: [6000, 3500, 2000, 900, 400, 160, 48],
+    triangles: [8500, 3500, 2000, 900, 400, 160, 72],
     // dodo at 2,048 and dodo_cards at 512: 27.0 MB in the rgba variant, 15.6 MB in bc and astc.
     texture: { top: 2048, megabytes: 28 },
   },
