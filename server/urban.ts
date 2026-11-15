@@ -6,7 +6,7 @@ import { defaultLook, lookScales, LOOK_SEX, SEX_IDS } from '../shared/anim/look.
 import type { PackRig } from '../shared/pack/pack.ts';
 import { createMountMotion, mountOrigin, mountPose } from '../shared/anim/mount.ts';
 import { Solved, solve } from '../shared/anim/skeleton.ts';
-import { TICK_DT } from '../shared/coords.ts';
+import { CHUNK_SIZE, TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
@@ -70,9 +70,18 @@ export class Urban {
   private readonly motion = createMountMotion();
   private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly rests = new Map<string, Float32Array>();
+  /** The farthest any body or vehicle reaches from its origin across the ground, for finding what is near a point. */
+  private readonly reach: number;
 
   constructor(ctx: UrbanContext) {
     this.ctx = ctx;
+    const reg = ctx.world.reg;
+    let reach = 0;
+    for (let k = 0; k < reg.defs.length; k++) {
+      const v = reg.vehicle[k];
+      reach = Math.max(reach, reg.bodyRadius[k] ?? 0, v ? Math.hypot(v.spec.halfWidth, v.spec.halfLength) : 0);
+    }
+    this.reach = reach;
     for (const rig of ctx.rigs) if (rig.rest.length === HUMAN_BONES * 3) this.rests.set(rig.id, Float32Array.from(rig.rest));
     this.occupancy = new Occupancy({
       actor: pid => {
@@ -457,12 +466,16 @@ export class Urban {
       vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!, grounded: (ents.flags[e]! & F_GROUNDED) !== 0, yawRate: ents.vehicleYawRate[e]!, pitchRate: ents.vehiclePitchRate[e]!, rollRate: ents.vehicleRollRate[e]!, groundPitch: ents.vehicleGroundPitch[e]!, groundRoll: ents.vehicleGroundRoll[e]!, rideOffset: ents.vehicleRideOffset[e]!, rideVelocity: ents.vehicleRideVelocity[e]!, steering: ents.steering[e]!, wheelAngle: ents.wheelAngle[e]!, fuel: ents.fuel[e]!, gear: ents.vehicleGear[e]!, engineRpm: ents.vehicleRpm[e]!, shiftTime: ents.vehicleShiftTime[e]!, payloadMass: ents.vehiclePayloadMass[e]! };
   }
   private free(p: Point, actor: number, ignored: readonly number[], ignoredHost = 0, height?: number): boolean {
-    const { world } = this.ctx, ents = world.ents;
+    const { world, records } = this.ctx, ents = world.ents;
     const ae = this.entity(actor), move = ae >= 0 ? world.reg.move[ents.kind[ae]!] : null;
     if (!move || !capsuleFree(world, p.x, p.y, p.z, move.radius, height ?? move.height)) return false;
-    // Seat corridors may cross their own chassis, never another live body or car.
-    for (const [pid, e] of this.ctx.records.entOf) {
-      if (ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0) continue;
+    // Seat corridors may cross their own chassis, never another live body or car: those in the chunks within reach.
+    const pad = move.radius + this.reach;
+    const x0 = Math.max(0, Math.floor((p.x - pad) / CHUNK_SIZE)), x1 = Math.min(world.dims.chunksX - 1, Math.floor((p.x + pad) / CHUNK_SIZE));
+    const z0 = Math.max(0, Math.floor((p.z - pad) / CHUNK_SIZE)), z1 = Math.min(world.dims.chunksZ - 1, Math.floor((p.z + pad) / CHUNK_SIZE));
+    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
+      const pid = ents.pid[e]!;
+      if (pid === 0 || records.entOf.get(pid) !== e || ignored.includes(pid) || pid === ignoredHost || (ents.flags[e]! & F_ALIVE) === 0) continue;
       if (p.y >= ents.y[e]! + world.reg.bodyHeight[ents.kind[e]!]! || p.y + (height ?? move.height) <= ents.y[e]!) continue;
       const vehicle = world.reg.vehicle[ents.kind[e]!];
       const dx = p.x - ents.x[e]!, dz = p.z - ents.z[e]!;
