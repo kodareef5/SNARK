@@ -36,6 +36,49 @@ const percentile = (values: number[], q: number): number => {
 };
 
 /**
+ * A hit capsule fitted to vertices `verts` of `positions`: along the line from joint `from` to joint `to`, or, without
+ * them, along the vertices' own longest axis through their middle. It reaches as far along as they do and its radius
+ * holds 85% of them. Its two ends are in model space.
+ */
+export function fitCapsule(positions: ArrayLike<number>, verts: readonly number[], from: readonly number[] | null, to: readonly number[] | null): { a: number[]; b: number[]; radius: number } | null {
+  if (verts.length === 0) return null;
+  let origin: number[];
+  let d: number[];
+  if (from && to) {
+    origin = [...from];
+    d = [0, 1, 2].map((k) => to[k]! - from[k]!);
+  } else {
+    origin = [0, 1, 2].map((k) => verts.reduce((s, v) => s + positions[v * 3 + k]!, 0) / verts.length);
+    const spread = [0, 1, 2].map((i) => [0, 1, 2].map((j) => verts.reduce((s, v) => s + (positions[v * 3 + i]! - origin[i]!) * (positions[v * 3 + j]! - origin[j]!), 0)));
+    // The largest of the spread's three axes, by repeated multiplication from a start no real body lies across.
+    d = [0.31, 0.47, 0.83];
+    for (let k = 0; k < 64; k++) {
+      const n = [0, 1, 2].map((i) => spread[i]![0]! * d[0]! + spread[i]![1]! * d[1]! + spread[i]![2]! * d[2]!);
+      const l = Math.hypot(n[0]!, n[1]!, n[2]!);
+      if (l < 1e-12) break;
+      d = n.map((c) => c / l);
+    }
+  }
+  const length = Math.hypot(d[0]!, d[1]!, d[2]!);
+  if (length < 1e-6) return null;
+  d = d.map((c) => c / length);
+  const along: number[] = [];
+  const away: number[] = [];
+  for (const v of verts) {
+    const r = [0, 1, 2].map((k) => positions[v * 3 + k]! - origin[k]!);
+    const t = r[0]! * d[0]! + r[1]! * d[1]! + r[2]! * d[2]!;
+    along.push(t);
+    away.push(Math.hypot(r[0]! - t * d[0]!, r[1]! - t * d[1]!, r[2]! - t * d[2]!));
+  }
+  const radius = Math.max(0.03, percentile(away, 0.85));
+  // The round ends reach past the segment, so the segment stops short of where the vertices end.
+  let t0 = percentile(along, 0.03) + radius * 0.6;
+  let t1 = percentile(along, 0.97) - radius * 0.6;
+  if (t1 < t0) t0 = t1 = (t0 + t1) / 2;
+  return { a: d.map((c, k) => origin[k]! + c * t0), b: d.map((c, k) => origin[k]! + c * t1), radius };
+}
+
+/**
  * `rig` with what its asset says of how it moves and dies, by bone index: its feet, the stride of each gait, and the
  * bodies of its ragdoll with their limits. What names a bone the rig lacks is a fault. `clips` are its own.
  */
@@ -219,30 +262,13 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset): Conve
       caps.push(carrier, ZONES[z.zone], ...z.a, ...z.b, z.radius);
       continue;
     }
-    const from = jointAt(z.from);
-    const to = jointAt(z.to);
-    const d = [0, 1, 2].map((k) => to[k]! - from[k]!);
-    const length = Math.hypot(d[0]!, d[1]!, d[2]!);
     const verts = vertsOf(z.covers);
-    if (length < 1e-6 || verts.length === 0) {
+    const fitted = verts.length === 0 ? null : fitCapsule(positions, verts, z.from === undefined ? null : jointAt(z.from), z.to === undefined ? null : jointAt(z.to));
+    if (!fitted) {
       warnings.push(`zone on "${z.on}" covers nothing: left out`);
       continue;
     }
-    for (let k = 0; k < 3; k++) d[k] = d[k]! / length;
-    const along: number[] = [];
-    const away: number[] = [];
-    for (const v of verts) {
-      const r = [0, 1, 2].map((k) => positions[v * 3 + k]! - from[k]!);
-      const t = r[0]! * d[0]! + r[1]! * d[1]! + r[2]! * d[2]!;
-      along.push(t);
-      away.push(Math.hypot(r[0]! - t * d[0]!, r[1]! - t * d[1]!, r[2]! - t * d[2]!));
-    }
-    const radius = Math.max(0.03, percentile(away, 0.85));
-    // The round ends reach past the segment, so the segment stops short of where the vertices end.
-    let t0 = percentile(along, 0.03) + radius * 0.6;
-    let t1 = percentile(along, 0.97) - radius * 0.6;
-    if (t1 < t0) t0 = t1 = (t0 + t1) / 2;
-    caps.push(carrier, ZONES[z.zone], ...[t0, t1].flatMap((t) => d.map((c, k) => +(from[k]! + c * t - rest[carrier * 3 + k]!).toFixed(4))), +radius.toFixed(4));
+    caps.push(carrier, ZONES[z.zone], ...[fitted.a, fitted.b].flatMap((p) => p.map((c, k) => +(c - rest[carrier * 3 + k]!).toFixed(4))), +fitted.radius.toFixed(4));
   }
 
   // Socket positions are relative to the bone that carries them.
