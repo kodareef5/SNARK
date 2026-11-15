@@ -51,6 +51,8 @@ const VEHICLE_COMPONENT = 0x757262;
 const VEHICLE_QUARANTINE = 0x757263;
 const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
 const PLAIN = defaultLook();
+/** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
+const REST_TICKS = 30;
 
 export class Urban {
   readonly occupancy: Occupancy;
@@ -61,6 +63,11 @@ export class Urban {
   private readonly hosts = new Map<number, HostSeat>();
   private readonly scopes = new Map<number, Scope>();
   private readonly preserveComponent = new Set<number>();
+  /** The entities sessions drive this tick. */
+  private readonly drivers = new Set<number>();
+  /** The bytes a car's mechanical component would be saved as, made again each tick without allocating. */
+  private readonly saving = new Uint8Array(2 + VEHICLE_FIELDS.length * 4);
+  private readonly savingView = new DataView(this.saving.buffer);
   /** Per host this tick, a bit for each door someone is getting in or out by. */
   private readonly opening = new Map<number, number>();
   private epochs = 0;
@@ -407,7 +414,6 @@ export class Urban {
     for (const [pid, host] of this.hosts) {
       // Destroyed, removed or recycled: nobody may stay seated in a slot that is no longer this car.
       if (this.entity(pid) !== host.entity || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) { this.evict(pid); continue; }
-      if (ents.driven[host.entity] === 2) ents.driven[host.entity] = 0;
     }
     for (const [pid] of this.scopes) {
       const rec = this.ctx.records.byPid.get(pid), e = this.entity(pid);
@@ -469,16 +475,18 @@ export class Urban {
       const door = host?.definition.seats.find(seat => seat.id === action!.seat)?.door;
       if (door !== undefined) this.opening.set(action!.host, (this.opening.get(action!.host) ?? 0) | (1 << door));
     }
+    this.drivers.clear();
+    for (const c of game.clients) if (c?.active && c.drive >= 0) this.drivers.add(c.drive);
     for (const [pid, host] of this.hosts) {
       const e = this.entity(pid);
       if (e !== host.entity || makeHandle(e, ents.gen[e]!) !== host.handle) continue;
-      const client = game.clients.find(c => c?.active && c.drive === e);
-      if (!client) {
+      // A car nobody drives stops on its handbrake, and once at rest is looked at again only once a REST_TICKS, each on
+      // its own tick of them, to see whether the ground under it went.
+      if (!this.drivers.has(e) && (!this.resting(e) || (world.tick + e) % REST_TICKS === 0)) {
         ents.loadBody(e, this.body);
         stepVehicleBody(world, this.body, 0, 0, BTN_JUMP, host.definition, TICK_DT);
         ents.storeBody(e, this.body);
         ents.pose(e, world.tick);
-        ents.driven[e] = 2; // Reserved only between ticks; beforeStep clears this before game.take.
       }
       this.note(host);
       this.save(e);
@@ -662,14 +670,20 @@ export class Urban {
     const { world, records } = this.ctx, ents = world.ents;
     const rec = records.byPid.get(ents.pid[e]!);
     if (!rec || this.preserveComponent.has(rec.pid)) return;
-    const bytes = new Uint8Array(2 + VEHICLE_FIELDS.length * 4), view = new DataView(bytes.buffer);
+    const bytes = this.saving, view = this.savingView;
     bytes[0] = 4;
-    const values = VEHICLE_FIELDS.map(field => ents[field][e]!);
-    for (let i = 0; i < values.length; i++) view.setFloat32(1 + i * 4, values[i]!, true);
+    for (let i = 0; i < VEHICLE_FIELDS.length; i++) view.setFloat32(1 + i * 4, ents[VEHICLE_FIELDS[i]!][e]!, true);
     bytes[bytes.length - 1] = (ents.flags[e]! & F_GROUNDED) !== 0 ? 1 : 0;
     const old = rec.extra.get(VEHICLE_COMPONENT);
     if (old?.length === bytes.length && bytes.every((v, i) => old[i] === v)) return;
-    rec.extra.set(VEHICLE_COMPONENT, bytes); records.dirty.add(rec.pid);
+    rec.extra.set(VEHICLE_COMPONENT, bytes.slice()); records.dirty.add(rec.pid);
+  }
+
+  /** A car on its wheels that has stopped: no speed, and its springs and turn as good as settled. */
+  private resting(e: number): boolean {
+    const ents = this.ctx.world.ents, still = (n: number): boolean => Math.abs(n) < 1e-3;
+    return (ents.flags[e]! & F_GROUNDED) !== 0 && ents.vx[e] === 0 && ents.vz[e] === 0 && still(ents.vy[e]!) &&
+      still(ents.vehicleYawRate[e]!) && still(ents.vehiclePitchRate[e]!) && still(ents.vehicleRollRate[e]!) && still(ents.vehicleRideVelocity[e]!);
   }
   private pin(actor: number, vehicle: number, anchor: readonly [number, number, number], driver: boolean): void {
     const { world } = this.ctx, ents = world.ents;

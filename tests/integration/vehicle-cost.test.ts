@@ -4,6 +4,7 @@ import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { RESULT_OK } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
 import { flatGround } from "../fixtures/arena.ts";
+import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
 
 function setup() {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });
@@ -17,6 +18,40 @@ function setup() {
   const car = h.host.spawnVehicle("core:compact", x, z, h.host.records.byPid.get(me.pid)!.team, 0);
   return { h, me, car };
 }
+
+test("a parked car at rest is stepped once a second, not every tick, and wakes when something moves it", () => {
+  const { h, car } = setup();
+  try {
+    h.run(2000);
+    const ents = h.world.ents;
+    const own = StaticVehicleWorld.prototype.support;
+    let probes = 0;
+    StaticVehicleWorld.prototype.support = function (this: StaticVehicleWorld, ...args: Parameters<typeof own>) { probes++; return own.apply(this, args); };
+    try {
+      h.run(3000);
+      // Stepped every tick, 90 ticks of four substeps of eight wheel probes would be some 2,900.
+      expect(probes).toBeLessThan(400);
+      const z = ents.z[car]!;
+      ents.vz[car] = 2;
+      h.run(100);
+      expect(ents.z[car]!).toBeGreaterThan(z + 0.05);
+    } finally {
+      StaticVehicleWorld.prototype.support = own;
+    }
+  } finally {
+    h.host.shutdown();
+  }
+});
+
+test("a parked car is nobody's mount, so a snapshot ranks it with what is idle and not with the players", () => {
+  const { h, car } = setup();
+  try {
+    h.run(1000);
+    expect(h.world.ents.driven[car]).toBe(0);
+  } finally {
+    h.host.shutdown();
+  }
+});
 
 test("a door check looks at the bodies near the car, not at every record in the world", () => {
   const { h, me, car } = setup();

@@ -252,6 +252,8 @@ export class Creatures {
     let stepped = 0;
     for (this.cursor = this.awakeCount - 1; this.cursor >= 0; this.cursor--) {
       const e = this.awake[this.cursor]!;
+      // A vehicle's wheels move it (server/urban.ts), and nothing breathes in it.
+      if (world.reg.vehicle[ents.kind[e]!]) continue;
       // A driven creature is stepped with its session's body, and breathes as it goes. A held one moves with whoever holds it.
       if (ents.driven[e] !== 0 || (ents.flags[e]! & F_HELD) !== 0) {
         if (ents.driven[e] !== 0) this.breathe(e, world.reg.tamedMove[ents.kind[e]!]!);
