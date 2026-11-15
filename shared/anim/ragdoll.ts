@@ -10,7 +10,7 @@ import { chunkAt } from "../coords.ts";
 import { detAtan2, detCos, detSin } from "../math/scalar.ts";
 import { quatRotate, quatUnrotate } from "../math/quat.ts";
 import type { CollisionWorld } from "../world/collide.ts";
-import { capsuleHull, hullPush } from "../world/convex.ts";
+import { capsuleHull, hullPush, type HullTable } from "../world/convex.ts";
 import { frame, frameOf } from "../world/frame.ts";
 import type { Heightfield } from "../world/heightfield.ts";
 import { Found, type StructureStore } from "../world/structures.ts";
@@ -685,11 +685,16 @@ export class Ragdoll {
         this.contact(i, wx * tt - mx * r, wy * tt - ny * r, wz * tt - mz * r, mx, ny, mz, deep);
       }
     }
-    // Its convex parts the same way, as spheres at the ends and at the point nearest the part. The part is placed in the world's
-    // axes about the structure's middle, so the capsule is measured from there unturned.
     const hulls = structs.parts.hulls;
-    if (!hulls) return;
-    const yaw = t.yaw[slot]!;
+    if (hulls && hulls.start[kind + 1]! > hulls.start[kind]!) this.parts(hulls, kind, t.yaw[slot]!, i, ex, ey, ez, wx, wy, wz, r, reach, len);
+  }
+
+  /**
+   * Pushes body `i` out of the convex parts of a structure of `kind` turned `yaw`, as out of its boxes: as spheres at the ends
+   * of its capsule and at the point of it nearest each part. A part is placed in the world's axes about the structure's
+   * middle, so the capsule's centre (ex, ey, ez) and half segment (wx, wy, wz) are measured from there unturned.
+   */
+  private parts(hulls: HullTable, kind: number, yaw: number, i: number, ex: number, ey: number, ez: number, wx: number, wy: number, wz: number, r: number, reach: number, len: number): void {
     for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) {
       if (!capsuleHull(hulls, p, yaw, ex, ez, ey, ey, reach, reach)) continue;
       for (let k = 0; k < 3; k++) {
