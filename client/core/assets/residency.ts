@@ -12,7 +12,7 @@
 // comes off the budget, and what goes onto the card that is not an asset is spent from the same frame's allowance.
 
 import type { Manifest, ManifestLevel } from "../../../shared/pack/manifest.ts";
-import type { Pack } from "../../../shared/pack/pack.ts";
+import { VERTEX_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { LAST_STEP, STEP0_SIZE, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import { Rng } from "../../../shared/rng.ts";
 import type { TextureUpload } from "../render/packet.ts";
@@ -607,6 +607,31 @@ export class Residency {
   private startOf(slot: number): number {
     const level = this.levelAt(slot);
     return slot < this.levels ? level.at : level.surface ? level.surface.at : level.at + level.parts[0]!.bytes;
+  }
+
+  /**
+   * A level of a mesh as the boot pack holds it, or null where it does not: its vertices in metres from the mesh's
+   * origin, as the flat programs place them, their palette colours, and its triangles' corners.
+   */
+  bootLevel(mesh: number, level: number): { positions: Float32Array; colors: Uint8Array; indices: Uint32Array } | null {
+    const slot = this.slot(mesh, level);
+    if (level >= this.manifest.meshes[mesh]!.levels.length || this.inBoot[slot] !== 1) return null;
+    const at = this.startOf(slot) - this.boot.blobAt;
+    const data = this.boot.blob.subarray(at, at + this.size[slot]!);
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const { tris, index } = this.levelAt(slot);
+    const indices = new Uint32Array(tris * 3);
+    for (let i = 0; i < indices.length; i++) indices[i] = index === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
+    const from = (indices.length * index + 3) & ~3;
+    const n = (data.length - from) / VERTEX_BYTES;
+    const { center, half } = this.manifest.meshes[mesh]!;
+    const positions = new Float32Array(n * 3);
+    const colors = new Uint8Array(n);
+    for (let v = 0; v < n; v++) {
+      for (let a = 0; a < 3; a++) positions[v * 3 + a] = center[a]! + (Math.max(-32767, view.getInt16(from + v * VERTEX_BYTES + a * 2, true)) / 32767) * half[a]!;
+      colors[v] = data[from + v * VERTEX_BYTES + 6]!;
+    }
+    return { positions, colors, indices };
   }
 
   private upload(slot: number, data: Uint8Array, out: AssetUpload[]): void {

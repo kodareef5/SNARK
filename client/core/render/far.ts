@@ -13,6 +13,7 @@ import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import { TACTICAL_CELL, farTopMetres, pieceShapes, type FarCells } from "../../../shared/world/tactical.ts";
 import type { FarStore } from "../farcells.ts";
 import type { Camera } from "./camera.ts";
+import { FADE_ORDER } from "./hand.ts";
 import type { FramePacket } from "./packet.ts";
 import { linearToSrgb, srgbToLinear } from "./surface.ts";
 
@@ -46,9 +47,6 @@ const SIDE = CHUNK_SIZE / TACTICAL_CELL;
 const CELLS = SIDE * SIDE;
 /** The four ways a side can face, as steps to the neighbouring cell. */
 const WAYS: readonly (readonly [number, number])[] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-/** The 4 by 4 ordered pattern the fade drops fragments by, row after row from the bottom left of the screen. */
-export const FADE_ORDER: readonly number[] = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
 
 /**
  * Whether the far fade keeps a fragment `dist` metres off at window pixel (x, y), counted from the bottom left, of a

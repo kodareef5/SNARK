@@ -24,8 +24,9 @@ import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
-import { FarNodes, type FarNodeSource } from "./farnodes.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { FarNodes, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
+import { HAND_NEAR } from "./hand.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
@@ -363,7 +364,8 @@ export class Scene {
     const far = table.find(FAR_MESH);
     const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : this.meshOfKind[k]!);
     this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
-    const looks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris };
+    const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.bootLevel(mesh, table.tris[mesh]!.length - 1);
+    const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last };
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
@@ -402,6 +404,7 @@ export class Scene {
     p.camZ = cam.z;
     // The sun rises at six, peaks at noon and sets at eighteen. At night the light comes from a fixed moon and is dimmer.
     p.light = flatLight(this.hour, p.sun);
+    [p.frame[FRAME.handFrom], p.frame[FRAME.handTo]] = this.assets.tier.nodes.band;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
     if (p.tier.lit) {
       skyFrame(this.hour, theSky(), p.frame);
@@ -649,14 +652,22 @@ export class Scene {
     this.nodesFar!.draw(cam, this.drawFarNodes);
   }
 
-  /** A run of far nodes at its mesh's last level, which the boot pack holds. */
-  private readonly drawFarNodes = (mesh: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, fade: number, distance: number): void => {
+  /** A run of far nodes of every mesh, each its mesh's row of the atlas (farnodes.ts), gone at its row's reach. */
+  private readonly drawFarNodes = (slot: number, mesh: number, indices: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, passes: number, hand: number, reach: number): void => {
     const p = this.packet;
-    const from = p.drawCount;
-    const last = this.assets.table.error[mesh]!.length - 1;
-    this.assets.want(mesh, last, distance / this.reachOfMesh[mesh]!);
-    this.draw(mesh, last, buffer, first, count, ox, oy, oz, DRAW_SIZED, passes);
-    p.drawFade.fill(fade, from, p.drawCount);
+    const d = p.drawCount;
+    const copies = passes === (NEAR | FAR) ? 2 : 1;
+    if (d + this.doubled + copies > MAX_DRAWS) {
+      p.dropped++;
+      return;
+    }
+    [p.drawMesh[d], p.drawLod[d], p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawInstances[d], p.drawFlags[d]] = [mesh, 0, slot, buffer, first, count, DRAW_PULLED];
+    p.drawOffset.set([ox, oy, oz], d * 3);
+    [p.drawFade[d], p.drawHand[d]] = [reach, hand];
+    this.passOf[d] = passes;
+    p.drawCount = d + 1;
+    this.doubled += copies - 1;
+    p.triangles += (indices / 3) * count * copies;
   };
 
   private bodies(cam: Camera, remote: RemoteSample | null): void {
@@ -962,7 +973,8 @@ export class Scene {
       const dy = ay > 0 ? ay : by < 0 ? -by : 0;
       const dz = az > 0 ? az : bz < 0 ? -bz : 0;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      const seen = cam.boxVisible(ax, ay, az, bx, by, bz) && dist <= this.viewDistance && dist <= this.structureDistance;
+      // Nodes past the tier's hand-over band are the far store's to draw (farnodes.ts).
+      const seen = cam.boxVisible(ax, ay, az, bx, by, bz) && dist <= this.viewDistance && dist <= this.structureDistance && (sizeOf === null || dist < this.assets.tier.nodes.band[1]);
       // A chunk out of view may still cast into it.
       const casts = this.casting ? this.castBox(ax, ay, az, bx, by, bz) : 0;
       if (!seen && casts === 0) continue;
@@ -988,11 +1000,14 @@ export class Scene {
 
   /**
    * Draws a chunk of nodes `dist` metres off. A mesh's level is chosen as if each node of it were its kind's largest, and a
-   * cell holding nodes of two kinds of it as if all were the larger kind's largest. Where
-   * the chunk's nearest and farthest points ask for the same level, each mesh is one draw; otherwise each cell takes the level
-   * the nearest of its nodes asks for, measured to its trunk. Every draw of the chunk is in the depth ranges `passes`.
+   * cell holding nodes of two kinds of it as if all were the larger kind's largest. Where the chunk's nearest and
+   * farthest points ask for the same level and all of it is short of the tier's hand-over band, each mesh is one draw;
+   * otherwise each cell takes the level the nearest of its nodes asks for, measured to its trunk. A cell all past the band
+   * is left to the far store, and one that reaches into it fades out over it as the far store's draw fades in (hand.ts).
+   * Every draw of the chunk is in the depth ranges `passes`.
    */
   private nodeRanges(cam: Camera, b: ChunkBatch, id: number, dist: number, x0: number, z0: number, passes: number): void {
+    const [from, to] = this.assets.tier.nodes.band;
     const cells = b.cells;
     const first = b.cellFirst!;
     const box = b.cellBox!;
@@ -1007,7 +1022,7 @@ export class Scene {
       const errors = this.assets.table.error[mesh]!;
       const reach = b.reach![q]!;
       const near = this.assets.choose(errors, dist / reach, b.level[q]!);
-      if (near === this.assets.choose(errors, far / reach, b.level[q]!)) {
+      if (far <= from && near === this.assets.choose(errors, far / reach, b.level[q]!)) {
         b.level[q] = near;
         levels.fill(near, q * cells, (q + 1) * cells);
         this.assets.wantTextured(mesh, near, dist / reach);
@@ -1016,8 +1031,9 @@ export class Scene {
       }
       b.level[q] = -1;
       // Runs of neighbouring cells, each drawn at the finest level any of its cells asks for. A cell joins the run before it
-      // when they ask for the same level, or for levels one apart and drawing the coarser at the finer costs fewer triangles
-      // than a draw does. So no node is drawn more than one level finer than its own cell asks.
+      // when they ask for the same level, or for levels one apart and drawing the coarser at the finer costs fewer
+      // triangles than a draw does. So no node is drawn more than one level finer than its own cell asks. A run fades
+      // over the band where a cell of it reaches into it, which keeps every pixel of a node short of it.
       const tris = this.trisOfMesh[mesh]!;
       const runs = this.runs;
       runs.length = 0;
@@ -1029,23 +1045,27 @@ export class Scene {
         const dx = Math.max(box[k]! - cam.x, cam.x - box[k + 3]!, 0);
         const dy = Math.max(box[k + 1]! - cam.y, cam.y - box[k + 4]!, 0);
         const dz = Math.max(box[k + 2]! - cam.z, cam.z - box[k + 5]!, 0);
-        const seen = Math.sqrt(dx * dx + dy * dy + dz * dz) / b.cellReach![q * cells + c]!;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d >= to) continue;
+        const most = Math.hypot(Math.max(Math.abs(box[k]! - cam.x), Math.abs(box[k + 3]! - cam.x)), Math.max(Math.abs(box[k + 1]! - cam.y), Math.abs(box[k + 4]! - cam.y)), Math.max(Math.abs(box[k + 2]! - cam.z), Math.abs(box[k + 5]! - cam.z)));
+        const hand = most > from ? HAND_NEAR : 0;
+        const seen = d / b.cellReach![q * cells + c]!;
         const level = (levels[q * cells + c] = this.assets.choose(errors, seen, levels[q * cells + c]!));
-        // A run is its first and end instance, its level, the coarsest level a cell of it asked for, its nearest distance, and how many of it asked for that coarsest.
+        // A run is its first and end instance, its level, the coarsest level a cell of it asked for, its nearest distance, and its hand-over.
         const last = runs.length - 6;
         if (last >= 0 && runs[last + 1] === first[at]) {
           const [finer, coarser] = [Math.min(runs[last + 2]!, level), Math.max(runs[last + 3]!, level)];
           const coarse = level > runs[last + 2]! ? n : level < runs[last + 2]! ? runs[last + 1]! - runs[last]! : 0;
           if (coarser - finer <= 1 && coarse * ((tris[finer] ?? 0) - (tris[coarser] ?? 0)) <= RUN_TRIANGLES) {
-            [runs[last + 1], runs[last + 2], runs[last + 3], runs[last + 4]] = [first[at + 1]!, finer, coarser, Math.min(runs[last + 4]!, seen)];
+            [runs[last + 1], runs[last + 2], runs[last + 3], runs[last + 4], runs[last + 5]] = [first[at + 1]!, finer, coarser, Math.min(runs[last + 4]!, seen), runs[last + 5]! | hand];
             continue;
           }
         }
-        runs.push(first[at]!, first[at + 1]!, level, level, seen, 0);
+        runs.push(first[at]!, first[at + 1]!, level, level, seen, hand);
       }
       for (let k = 0; k < runs.length; k += 6) {
         this.assets.wantTextured(mesh, runs[k + 2]!, runs[k + 4]!);
-        this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, DRAW_SIZED, passes);
+        this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, DRAW_SIZED, passes, runs[k + 5]!);
       }
     }
   }
@@ -1229,7 +1249,7 @@ export class Scene {
    * sections when the card has everything its materials take, and otherwise one flat draw of the whole of it. `passes`
    * are the depth ranges it is drawn in (Camera.passes), and a draw in both takes the room of two.
    */
-  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number): void {
+  private draw(mesh: number, wanted: number, buffer: number, first: number, count: number, ox: number, oy: number, oz: number, flags: number, passes: number, hand = 0): void {
     const p = this.packet;
     const n = p.drawCount;
     const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -1273,6 +1293,7 @@ export class Scene {
       p.drawOffset[d * 3 + 1] = oy;
       p.drawOffset[d * 3 + 2] = oz;
       p.drawFlags[d] = material < 0 ? flags : flags | this.materialFlags[material]!;
+      p.drawHand[d] = hand;
       if (material < 0) continue;
       p.drawMaterial[d] = material;
       p.drawFirstIndex[d] = runs[k * 3 + 1]!;

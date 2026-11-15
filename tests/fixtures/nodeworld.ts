@@ -30,7 +30,7 @@ import { Rasterizer } from "../../tools/snap/raster.ts";
 
 /** A tree of two variants: the first has three levels, a trunk and crown, a smaller crown, and one box; the second is one box. */
 export const WOOD = "test:wood";
-/** The chunks round the body's that the near field holds: the session's NODE_RADIUS. */
+/** The chunks round the body's that the near field holds on low poly and medium (tiers.ts `nodes`); high and ultra hold more. */
 export const HELD = 3;
 
 const DEFS: readonly Def[] = [
@@ -123,22 +123,25 @@ export function nodeWorld(o: NodeWorldOptions) {
   const card = new Map<number, { data: Uint8Array; slots: Uint16Array }>();
   const w = new BitWriter(1024);
   const r = new BitReader();
-  let center = -1;
+  let [center, radius] = [-1, 0];
   return {
     reg, dims, hf, source, field, changes, gone, cells, scene, cam, raster, card, W, H, pack: thePack,
     /** The card keeps copies of what is uploaded. A benchmark timing frames turns it off, so the copies make no garbage. */
     holdCard: true,
     kind: (id: string): number => reg.index.get(id)!,
     mesh: (id: string): number => scene.assets.table.find(id),
-    /** The body stands at (x, z), and the near field holds the chunks round its chunk, taking them before letting the old ones go, as the session does. */
+    /**
+     * The body stands at (x, z), and the near field holds the chunks round its chunk that the tier says, taking them
+     * before letting the old ones go, as the session does.
+     */
     stand(x: number, z: number): void {
       const chunk = chunkAt(dims, x, z);
-      if (chunk === center) return;
+      const chunks = scene.assets.tier.nodes.chunks;
+      if (chunk === center && chunks === radius) return;
       const told = (c: number, i: number): boolean => gone.get(c)?.includes(i) ?? false;
-      field.retain(chunk, HELD, 1, told);
-      if (center >= 0) field.retain(center, HELD, -1, told);
-      changes.moved(center, chunk, HELD);
-      center = chunk;
+      field.retain(chunk, chunks, 1, told);
+      if (center >= 0) field.retain(center, radius, -1, told);
+      [center, radius] = [chunk, chunks];
     },
     /** The server says which nodes of `chunk` are used up, as S_NODES does. */
     tell(chunk: number, slots: number[]): void {

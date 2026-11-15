@@ -4,8 +4,8 @@
 
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
-import { FADE_ORDER } from "./far.ts";
-import { BONES_PER_ROW, FRAME_BLOCK } from "./packet.ts";
+import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONES_PER_ROW, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
 import { AIR } from "./atmosphere.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
@@ -148,17 +148,60 @@ export const FLAT_SPLIT_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main
 export const LIT_SPLIT_FRAGMENT = LIT_FRAGMENT.replace("void main() {\n", `${SEE_THROUGH_SPLIT}void main() {\n  dropNearer();\n`);
 
 /**
- * The far fade, whose twin is far.ts `fadeKeeps`: a far draw is gone at `uFade` metres, and over the last share of that,
+ * The far fade, whose twin is far.ts `fadeKeeps`: a far draw is gone at `vGone` metres, and over the last share of that,
  * fView.w, a fragment is dropped where its pixel's place in a 4 by 4 ordered pattern says, so its coverage falls evenly
- * to none. A program calls fadeOut() first, before anything is lit.
+ * to none. A node's draw also drops what the hand-over between the stores says (hand.ts). A program calls fadeOut()
+ * first, before anything is lit.
  */
-export const FAR_FADE = `uniform float uFade;
-const float FADE_ORDER[16] = float[16](${FADE_ORDER.map((v) => v.toFixed(1)).join(", ")});
+export const FAR_FADE = `${HAND_GLSL}flat in float vGone;
 void fadeOut() {
   ivec2 q = ivec2(gl_FragCoord.xy) & 3;
-  if ((uFade - length(vRel)) * 16.0 <= (FADE_ORDER[q.y * 4 + q.x] + 0.5) * uFade * fView.w) discard;
+  if (vGone > 0.0 && (vGone - length(vRel)) * 16.0 <= (FADE_ORDER[q.y * 4 + q.x] + 0.5) * vGone * fView.w) discard;
+  if (handDrops()) discard;
 }
 `;
+
+/**
+ * FLAT's vertex text for the far programs: where the draw is gone, `uFade`, and how far the instance's foot is, an
+ * instance its hand-over keeps none of put out of view.
+ */
+export const FAR_MESH_VERTEX = FLAT_MESH_VERTEX.replace("out vec3 vRel;\n", `out vec3 vRel;\n${FRAME_BLOCK}${HAND_VERTEX}uniform float uFade;\nflat out float vGone, vAt;\n`)
+  .replace("  vRel = p;\n", "  vRel = p;\n  vGone = uFade;\n  vAt = length(iPos + uOffset);\n")
+  .replace("  gl_Position = uViewProj * vec4(p, 1.0);\n", "  gl_Position = handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : uViewProj * vec4(p, 1.0);\n");
+
+/**
+ * The vertex text of a DRAW_PULLED draw: the instance's mesh is the row of the atlas its region ATLAS_REGION names, and
+ * this vertex is that row's texel after the first, as FLAT's would be, sized and turned. An instance past the row's
+ * reach, or one its hand-over keeps none of, is put out of view, and an index past the row's vertices finds a texel of
+ * zeros, a triangle of no size.
+ */
+export const PULLED_VERTEX = `#version 300 es
+layout(location=2) in vec3 iPos;
+layout(location=3) in float iYaw;
+layout(location=4) in uvec4 iRegA;
+layout(location=5) in uvec2 iRegB;
+uniform mat4 uViewProj;
+uniform vec3 uOffset;
+uniform sampler2D uPalette;
+uniform highp sampler2D uAtlas;
+out vec3 vRel;
+flat out vec3 vColor;
+flat out float vGone, vAt;
+${FRAME_BLOCK}${HAND_VERTEX}void main() {
+  int row = int(iRegB.x);
+  vec4 v = gl_VertexID < ${ATLAS_WIDTH - 1} ? texelFetch(uAtlas, ivec2(gl_VertexID + 1, row), 0) : vec4(0.0);
+  float t = iYaw * 6.283185307;
+  float s = sin(t), c = cos(t);
+  vec3 l = v.xyz * (float(iRegB.y) / ${SIZE_UNITS.toFixed(1)});
+  vec3 p = vec3(c * l.x + s * l.z, l.y, c * l.z - s * l.x) + iPos + uOffset;
+  uint i = uint(v.w);
+  if (i >= ${REGION_BASE}u) { uint r = i - ${REGION_BASE}u; i = r < ${ATLAS_REGION}u ? iRegA[r] : 0u; }
+  vColor = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;
+  vRel = p;
+  vGone = texelFetch(uAtlas, ivec2(0, row), 0).x;
+  vAt = length(iPos + uOffset);
+  gl_Position = vAt < vGone && !handGone(vAt) ? uViewProj * vec4(p, 1.0) : vec4(0.0, 0.0, 2.0, 1.0);
+}`;
 
 /** FLAT's fragment text with the far fade, which low poly draws far blocks with. */
 export const FLAT_FAR_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `out vec4 o;\n${FRAME_BLOCK}${FAR_FADE}void main() {\n  fadeOut();\n`);

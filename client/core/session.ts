@@ -197,7 +197,7 @@ const MAX_STEPS_PER_UPDATE = 8;
 /** Time constant of the fade that hides a correction, and the largest correction hidden, in metres. */
 const SMOOTH_MS = 90;
 const SMOOTH_LIMIT = 3;
-/** Chunks around the body whose nodes stay filled. Collision needs one, drawing wants more. */
+/** Chunks around the body whose nodes stay filled until the tier says how many (assets/tiers.ts `nodes`). Collision needs one, drawing wants more. */
 const NODE_RADIUS = 3;
 /** A view or far request the server was too busy to take is sent again this long after. The server reads either once a second. */
 const ASK_AGAIN_MS = 1000;
@@ -344,8 +344,9 @@ export class ClientSession {
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
   private nodeChunk = -1;
+  private nodeRadius = NODE_RADIUS;
   private readonly nodeGone = new Map<number, number[]>();
-  /** Chunks the node field took or let go of, or whose used-up nodes were told, for the far nodes. */
+  /** Chunks whose used-up nodes were told, for the far nodes. */
   private nodeChanges: NodeChanges | null = null;
   /** Bodies the server said died, by id, and the ids one snapshot said so of. */
   private readonly died = new Map<number, number>();
@@ -755,6 +756,17 @@ export class ClientSession {
     this.nodeChanges?.touch(chunk);
   }
 
+  /** The near node field holds `chunks` round the body's chunk from now on, as the tier says. */
+  holdNodes(chunks: number): void {
+    if (chunks === this.nodeRadius) return;
+    const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;
+    if (this.nodeField && this.nodeChunk >= 0) {
+      this.nodeField.retain(this.nodeChunk, chunks, 1, gone);
+      this.nodeField.retain(this.nodeChunk, this.nodeRadius, -1, gone);
+    }
+    this.nodeRadius = chunks;
+  }
+
   private recenterNodes(): void {
     const field = this.nodeField;
     const world = this.world;
@@ -762,9 +774,8 @@ export class ClientSession {
     const chunk = chunkAt(world.dims, this.own.x, this.own.z);
     if (chunk === this.nodeChunk) return;
     const gone = (c: number, i: number): boolean => this.nodeGone.get(c)?.includes(i) ?? false;
-    field.retain(chunk, NODE_RADIUS, 1, gone);
-    if (this.nodeChunk >= 0) field.retain(this.nodeChunk, NODE_RADIUS, -1, gone);
-    this.nodeChanges?.moved(this.nodeChunk, chunk, NODE_RADIUS);
+    field.retain(chunk, this.nodeRadius, 1, gone);
+    if (this.nodeChunk >= 0) field.retain(this.nodeChunk, this.nodeRadius, -1, gone);
     this.nodeChunk = chunk;
   }
 

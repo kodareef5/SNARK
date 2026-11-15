@@ -3,6 +3,7 @@
 
 import { Assets } from "../../client/core/assets/assets.ts";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
+import { PULL_SLOTS } from "../../client/core/render/farnodes.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
@@ -59,7 +60,10 @@ export class Card {
     for (const u of p.assetUploads) {
       const level = this.manifest.meshes[u.mesh]!.levels[u.level]!;
       if (this.held.has(u.slot)) throw new Error(`slot ${u.slot} uploaded twice`);
-      if (u.of === undefined) {
+      // The far nodes' pulled draws name levels core makes, which no file holds.
+      if (u.slot >= PULL_SLOTS) {
+        if (u.slot >= PULL_SLOTS + 3 || u.indexBytes !== 2) throw new Error(`slot ${u.slot} is no level of a pulled draw`);
+      } else if (u.of === undefined) {
         if (partHash(u.data) !== level.parts[0]!.hash) throw new Error(`slot ${u.slot} uploaded with the wrong bytes`);
         if (u.indexCount !== level.tris * 3 || u.indexBytes !== level.index) throw new Error(`slot ${u.slot} uploaded with the wrong counts`);
       } else {

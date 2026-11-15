@@ -573,6 +573,7 @@ export class App {
     this.scene.assets.tier = tierOf(this.ui.settings.tier);
     session.view(this.scene.assets.tier.view, this.ui.settings.snapshotBytes);
     session.askFar(this.scene.assets.tier.reach.bases);
+    session.holdNodes(this.scene.assets.tier.nodes.chunks);
     const packet = this.scene.build(cam, this.remote);
     updateHud(hud, session, this.remote, this.fps, height / CANVAS_HEIGHT);
     this.feedback.absorb(session, this.reg, nowMs);

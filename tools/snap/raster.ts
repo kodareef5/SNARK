@@ -3,7 +3,8 @@
 
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { nearKeeps } from "../../client/core/render/hand.ts";
+import { ATLAS_REGION, ATLAS_WIDTH, BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear } from "../../client/core/render/surface.ts";
@@ -245,6 +246,13 @@ export class Rasterizer {
   /** For a draw that fades out (`drawFade`): where it is gone, and the share of that it fades over. 0 for any other. */
   private fade = 0;
   private fadeShare = 0;
+  /** For a draw of nodes in their hand-over (hand.ts): its HAND_ value, the band, and how far the instance's foot is. */
+  private hand = 0;
+  private handFrom = 0;
+  private handTo = 0;
+  private handAt = 0;
+  /** The far nodes' meshes as the card holds them (packet.ts `atlas`). */
+  private atlas = new Float32Array(0);
   private scratch = new Float32Array(3 * 1024);
   // Clip scratch: a triangle, then up to 5 vertices of (camera-relative x, y, z, screen x, y, 1/w, NDC depth), and room between clips.
   private readonly tri = new Float64Array(3 * 7);
@@ -311,6 +319,11 @@ export class Rasterizer {
       this.making.delete(slot);
     }
     for (const u of packet.texUploads) this.texture(u);
+    if (packet.atlasRows > 0) {
+      const rows = packet.atlas.subarray(0, packet.atlasRows * ATLAS_WIDTH * 4);
+      if (this.atlas.length < rows.length) this.atlas = new Float32Array(rows.length);
+      this.atlas.set(rows);
+    }
 
     const sky = [packet.sky[0]! * 255, packet.sky[1]! * 255, packet.sky[2]! * 255];
     for (let i = 0; i < this.width * this.height; i++) {
@@ -471,7 +484,7 @@ export class Rasterizer {
   /** The terrain tiles in depth range `range`. */
   private terrain(p: FramePacket, range: number): void {
     const hf = this.hf;
-    this.fade = 0;
+    this.fade = this.hand = 0;
     this.drawing = -1;
     const row = TILE_QUADS + 1;
     const pos = new Float32Array(row * row * 3);
@@ -508,6 +521,8 @@ export class Rasterizer {
 
   private draw(p: FramePacket, d: number): void {
     this.drawing = d;
+    [this.hand, this.handFrom, this.handTo] = [p.drawHand[d]!, p.frame[FRAME.handFrom]!, p.frame[FRAME.handTo]!];
+    if ((p.drawFlags[d]! & DRAW_PULLED) !== 0) return this.pulled(p, d);
     if ((p.drawFlags[d]! & DRAW_TEXTURED) !== 0) return this.textured(p, d);
     const meshIndex = p.drawMesh[d]!;
     const lod = this.decode(meshIndex, p.drawLod[d]!, p.drawSlot[d]!);
@@ -550,6 +565,7 @@ export class Rasterizer {
         const ix = view.getFloat32(at, true) + ox;
         const iy = view.getFloat32(at + 4, true) + oy;
         const iz = view.getFloat32(at + 8, true) + oz;
+        this.handAt = Math.hypot(ix, iy, iz);
         const k = sized ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
         for (let v = 0; v < n; v++) {
           const lx = lod.positions[v * 3]! * k;
@@ -567,6 +583,47 @@ export class Rasterizer {
         if (color >= REGION_BASE) color = data[at + 14 + color - REGION_BASE]!;
         this.bone = skinned ? lod.bones[last]! + 1 : 0;
         this.triangle(out, lod.indices[t]!, lod.indices[t + 1]!, last, color, true, kind, id, (p.drawFlags[d]! & DRAW_BLEND) !== 0);
+      }
+    }
+  }
+
+  /**
+   * A DRAW_PULLED draw: each instance as its mesh's row of the atlas, as PULLED_VERTEX reads it, to the row's reach and
+   * faded over the last of it.
+   */
+  private pulled(p: FramePacket, d: number): void {
+    const buffer = this.buffers.get(p.drawBuffer[d]!);
+    if (!buffer) throw new Error(`draw ${d} uses buffer ${p.drawBuffer[d]} which was never uploaded`);
+    const { data } = buffer;
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const [ox, oy, oz] = [p.drawOffset[d * 3]!, p.drawOffset[d * 3 + 1]!, p.drawOffset[d * 3 + 2]!];
+    this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0;
+    this.fadeShare = p.frame[FRAME.fade]!;
+    const out = this.scratch.length >= ATLAS_WIDTH * 3 ? this.scratch : (this.scratch = new Float32Array(ATLAS_WIDTH * 3));
+    const atlas = this.atlas;
+    for (let k = 0; k < p.drawInstances[d]!; k++) {
+      const inst = p.drawFirst[d]! + k;
+      const at = inst * INSTANCE_BYTES;
+      const row = data[at + 14 + ATLAS_REGION]! * ATLAS_WIDTH * 4;
+      const [ix, iy, iz] = [view.getFloat32(at, true) + ox, view.getFloat32(at + 4, true) + oy, view.getFloat32(at + 8, true) + oz];
+      this.handAt = Math.hypot(ix, iy, iz);
+      this.fade = atlas[row]!;
+      if (this.handAt >= this.fade) continue;
+      const n = atlas[row + 1]!;
+      const yaw = (view.getUint16(at + 12, true) / 65536) * Math.PI * 2;
+      const [s, c] = [Math.sin(yaw), Math.cos(yaw)];
+      const size = data[at + 14 + SIZE_REGION]! / SIZE_UNITS;
+      for (let v = 0; v < n; v++) {
+        const o = row + (v + 1) * 4;
+        const [lx, ly, lz] = [atlas[o]! * size, atlas[o + 1]! * size, atlas[o + 2]! * size];
+        out[v * 3] = c * lx + s * lz + ix;
+        out[v * 3 + 1] = ly + iy;
+        out[v * 3 + 2] = -s * lx + c * lz + iz;
+      }
+      for (let v = 0; v + 2 < n; v += 3) {
+        let color = atlas[row + (v + 3) * 4 + 3]!;
+        if (color >= REGION_BASE) color = color - REGION_BASE < ATLAS_REGION ? data[at + 14 + color - REGION_BASE]! : 0;
+        this.triangle(out, v, v + 1, v + 2, color, true, PICK_FAR, p.drawSlot[d]!);
       }
     }
   }
@@ -652,6 +709,7 @@ export class Rasterizer {
       const inst = p.drawFirst[d]! + k;
       const at = inst * INSTANCE_BYTES;
       this.pose(p, d, lod, surface, view, at);
+      this.handAt = Math.hypot(view.getFloat32(at, true) + p.drawOffset[d * 3]!, view.getFloat32(at + 4, true) + p.drawOffset[d * 3 + 1]!, view.getFloat32(at + 8, true) + p.drawOffset[d * 3 + 2]!);
       regionDyes(this.dyes, this.pack.palette, data, at + 14, material.grey);
       // A sized instance's last region is its size, and dyes nothing.
       if ((flags & DRAW_SIZED) !== 0) this.dyes.fill(1, SIZE_REGION * 3, SIZE_REGION * 3 + 3);
@@ -803,6 +861,7 @@ export class Rasterizer {
           const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
           // A far draw drops its fragment as FAR_FADE does, before anything is kept of it. The pattern counts rows from the bottom.
           if (this.fade > 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
+          if (this.hand !== 0 && nearKeeps(this.handAt, this.handFrom, this.handTo, px, H - 1 - py) !== this.hand > 0) continue;
           if (!blend) {
             this.depth[at] = z;
             this.pickKind[at] = pickKind;
@@ -931,6 +990,7 @@ export class Rasterizer {
           const z = this.stored(e0 * poly[v0 + CARRIED + 3]! + e1 * poly[v1 + CARRIED + 3]! + e2 * poly[v2 + CARRIED + 3]!);
           const at = py * W + px;
           if (z >= this.depth[at]!) continue;
+          if (this.hand !== 0 && nearKeeps(this.handAt, this.handFrom, this.handTo, px, H - 1 - py) !== this.hand > 0) continue;
           const q0 = e0 * i0, q1 = e1 * i1, q2 = e2 * i2;
           const qs = 1 / (q0 + q1 + q2);
           for (let i = 0; i < CARRIED; i++) carried[i] = (q0 * poly[v0 + i]! + q1 * poly[v1 + i]! + q2 * poly[v2 + i]!) * qs;

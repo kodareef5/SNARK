@@ -5,7 +5,7 @@
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
 import { AIR, SKY_FRAGMENT, SKY_VERTEX } from "./atmosphere.ts";
-import { FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT } from "./glsl.ts";
+import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT, PULLED_VERTEX } from "./glsl.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_VERTEX, surfaceFragment } from "./surface.ts";
 import { WATER_FRAGMENT } from "./water.ts";
@@ -14,9 +14,9 @@ import { WATER_FRAGMENT } from "./water.ts";
  * Texture units. 0 to 3 hold the palette, the whole map's heights and tints, and the bones. A material's five maps go
  * on 4 to 8, base colour first, and so do the sky's (the moon on 4, the cloud layers on 7 and 8) and the sea's (its long
  * and short waves on 7 and 8), which are materials. 9 holds the shadow maps, 10 the sky table, and 11 and 12 the
- * terrain window's heights and tints. 13 to 15 are free.
+ * terrain window's heights and tints, 13 the far nodes' meshes (packet.ts `atlas`). 14 and 15 are free.
  */
-export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12 } as const;
+export const UNIT = { palette: 0, heights: 1, tint: 2, bones: 3, maps: 4, shadow: 9, sky: 10, windowHeights: 11, windowTint: 12, atlas: 13 } as const;
 
 export interface ProgramText {
   readonly vertex: string;
@@ -60,8 +60,11 @@ export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureForma
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
   seeThrough: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH),
-  // Far blocks (far.ts), which fade out over the last of their reach. A program of their own keeps the discard out of the rest.
-  far: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
+  // Far blocks (far.ts), which fade out over the last of their reach, and nodes in the hand-over between the near store
+  // and the far one (hand.ts). A program of their own keeps the discard out of the rest.
+  far: (tier, _, hard = false) => flatOr(tier, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
+  // Far nodes of every mesh in one draw (packet.ts DRAW_PULLED), their vertices read from the atlas.
+  pulled: (tier, _, hard = false) => flatOr(tier, hard, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas }),
   surface: (tier, format, hard = false) => ({
     vertex: SURFACE_VERTEX,
     fragment: surfaceFragment(format, AIR),

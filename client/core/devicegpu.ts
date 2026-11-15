@@ -392,21 +392,29 @@ void main() {
 /** What FLAT's, LIT's and the far blocks' fragments take from their vertices, on a wall `metres` off filling the target, 16 m across at 12 m. */
 const wallVertex = (metres: number): string => `#version 300 es
 ${FULL_SCREEN}
+uniform float uFade;
 out vec3 vRel;
 flat out vec3 vColor;
+flat out float vGone, vAt;
 void main() {
   vec2 c = corner();
   vRel = vec3(c * 8.0, -12.0) * ${(metres / 12).toFixed(4)};
   vColor = vec3(0.6, 0.55, 0.5);
+  vGone = uFade;
+  vAt = 0.0;
   gl_Position = vec4(c, 0.0, 1.0);
 }`;
 /** The same on a wall 4 m across `metres` off, which is as far off as that across all of it. */
 const edgeVertex = (metres: number): string => `#version 300 es
 ${FULL_SCREEN}
+uniform float uFade;
 out vec3 vRel;
 flat out vec3 vColor;
+flat out float vGone, vAt;
 void main() {
   vec2 c = corner();
+  vGone = uFade;
+  vAt = 0.0;
   vRel = vec3(c * 2.0, -${metres.toFixed(2)});
   vColor = vec3(0.6, 0.55, 0.5);
   gl_Position = vec4(c, 0.0, 1.0);
@@ -419,8 +427,10 @@ out vec3 vRel, vNormal;
 out vec4 vTangent;
 out vec2 vUv;
 flat out mat3 vDye, vDye2;
+flat out float vAt;
 void main() {
   vec2 c = corner();
+  vAt = 0.0;
   vRel = vec3(c * 8.0, -12.0);
   vNormal = normalize(vec3(c * 0.3, 1.0));
   vTangent = vec4(1.0, 0.0, 0.0, 1.0);

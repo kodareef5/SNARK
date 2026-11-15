@@ -22,8 +22,8 @@ import { Summary, FAR_RADIUS, bakeChunk, pieceShapes } from "../../shared/world/
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FAR_SLOTS, farPart } from "../../client/core/render/far.ts";
 import { FAR_NODE_BUFFERS, farNodeOf } from "../../client/core/render/farnodes.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
+import { ATLAS_REGION, type FramePacket } from "../../client/core/render/packet.ts";
+import { INSTANCE_BYTES, parsePack } from "../../shared/pack/pack.ts";
 import { castle, farWorld } from "../../tests/fixtures/farworld.ts";
 import { nodeWorld } from "../../tests/fixtures/nodeworld.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
@@ -155,7 +155,16 @@ export function benchFarNodes(section: (title: string) => void, record: Record):
   };
   const nodeDraws = (p: FramePacket): number[] => [...Array(p.drawCount).keys()].filter((d) => p.drawBuffer[d]! >= FAR_NODE_BUFFERS && p.drawBuffer[d]! < FAR_NODE_BUFFERS * 2);
   const tris = w.scene.assets.table.tris;
-  const triangles = (p: FramePacket): number => nodeDraws(p).reduce((n, d) => n + tris[p.drawMesh[d]!]![p.drawLod[d]!]! * p.drawInstances[d]!, 0);
+  // A far draw holds every mesh, each instance its row of the atlas at its mesh's last level.
+  const each = (data: Uint8Array, i: number): number => tris[far.meshOfRow(data[i * INSTANCE_BYTES + 14 + ATLAS_REGION]!)]!.at(-1)!;
+  const triangles = (p: FramePacket): number => {
+    let n = 0;
+    for (const d of nodeDraws(p)) {
+      const { data } = w.card.get(p.drawBuffer[d]!)!;
+      for (let i = p.drawFirst[d]!; i < p.drawFirst[d]! + p.drawInstances[d]!; i++) n += each(data, i);
+    }
+    return n;
+  };
   /** Triangles of the far nodes drawn that stand in view and within their kind's reach: what the plan's rows count. */
   const inView = (p: FramePacket): number => {
     let n = 0;
@@ -169,7 +178,9 @@ export function benchFarNodes(section: (title: string) => void, record: Record):
       for (let i = p.drawFirst[d]!; i < p.drawFirst[d]! + p.drawInstances[d]!; i++) {
         const [x, y, z] = [0, 1, 2].map((a) => f32[i * 5 + a]! + p.drawOffset[d * 3 + a]!);
         const [chunk, slot] = farNodeOf(w.dims, p.drawBuffer[d]!, slots[i]!);
-        if (Math.hypot(x!, y!, z!) < far.reachOf(w.field.kindAt(chunk, slot)) && w.cam.boxVisible(x!, y!, z!, x!, y!, z!)) n += tris[p.drawMesh[d]!]![p.drawLod[d]!]!;
+        // A node short of the band, which a draw fading it in keeps none of, is the near store's.
+        const kept = p.drawHand[d] === 0 || Math.hypot(x!, y!, z!) > w.scene.assets.tier.nodes.band[0];
+        if (kept && Math.hypot(x!, y!, z!) < far.reachOf(w.field.kindAt(chunk, slot)) && w.cam.boxVisible(x!, y!, z!, x!, y!, z!)) n += each(data, i);
       }
     }
     return n;

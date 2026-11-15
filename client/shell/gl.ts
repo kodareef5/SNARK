@@ -1,7 +1,7 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DRAW_BLEND, DRAW_CUTOUT, DRAW_PLAIN, DRAW_PULLED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
 import { WATER_ALPHA } from "../core/render/shading.ts";
@@ -165,6 +165,7 @@ export class GlRenderer {
     this.windows = [0, 1, 0, 1].map((k) => texture(UNIT.windowHeights + k, k ? gl.R8UI : gl.R16UI, g.width[SOURCE_WINDOW]!, g.height[SOURCE_WINDOW]!, gl.RED_INTEGER, k ? gl.UNSIGNED_BYTE : gl.UNSIGNED_SHORT, null));
     // Each bone is three texels of four floats, read by exact texel. The texture stays bound on its unit.
     texture(UNIT.bones, gl.RGBA32F, BONES_PER_ROW * 3, BONE_ROWS, gl.RGBA, gl.FLOAT, null);
+    texture(UNIT.atlas, gl.RGBA32F, ATLAS_WIDTH, ATLAS_ROWS, gl.RGBA, gl.FLOAT, null);
     // The sky table, filtered between its texels and held at its edges, stays bound on its unit too.
     gl.activeTexture(gl.TEXTURE0 + UNIT.sky);
     gl.bindTexture(gl.TEXTURE_3D, gl.createTexture());
@@ -442,6 +443,10 @@ export class GlRenderer {
       gl.bufferData(gl.ARRAY_BUFFER, p.transient.subarray(0, p.transientCount * INSTANCE_BYTES), gl.DYNAMIC_DRAW);
     }
 
+    if (p.atlasRows > 0) {
+      gl.activeTexture(gl.TEXTURE0 + UNIT.atlas);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, ATLAS_WIDTH, p.atlasRows, gl.RGBA, gl.FLOAT, p.atlas);
+    }
     if (p.boneCount > 0) {
       const rows = Math.ceil(p.boneCount / BONES_PER_ROW);
       gl.activeTexture(gl.TEXTURE0 + UNIT.bones);
@@ -466,10 +471,15 @@ export class GlRenderer {
       const blend = (flags & DRAW_BLEND) !== 0;
       const fade = p.drawFade[d]!;
       const water = (flags & DRAW_WATER) !== 0;
-      const prog = this.use(textured ? "surface" : fade > 0 ? "far" : water ? "water" : blend && p.split > 0 ? "seeThrough" : "flat", p);
+      const hand = p.drawHand[d]!;
+      const prog = this.use(textured ? "surface" : (flags & DRAW_PULLED) !== 0 ? "pulled" : fade > 0 || hand !== 0 ? "far" : water ? "water" : blend && p.split > 0 ? "seeThrough" : "flat", p);
       this.set(blend, !blend && (flags & DRAW_TWO_SIDED) === 0, (flags & DRAW_CUTOUT) !== 0);
       gl.uniform1f(prog.uniform("uSkin"), skinMode(flags, textured && lod.skin));
-      if (fade > 0) gl.uniform1f(prog.uniform("uFade"), fade);
+      const fades = prog.uniform("uHand");
+      if (fades) {
+        gl.uniform1f(prog.uniform("uFade"), fade);
+        gl.uniform1f(fades, hand);
+      }
       if (textured) this.material(prog, p.drawMaterial[d]!, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0);
       else if (water) this.maps(this.materials[p.drawMaterial[d]!]);
       else {

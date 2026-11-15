@@ -9,6 +9,7 @@
 
 import type { TextureFormat, TextureRole } from "../../../shared/pack/texture.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
+import { HAND_GLSL, HAND_VERTEX } from "./hand.ts";
 import { BONES_PER_ROW, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, FRAME, FRAME_BLOCK, type FramePacket } from "./packet.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 
@@ -253,7 +254,8 @@ out vec3 vRel, vNormal;
 out vec4 vTangent;
 out vec2 vUv;
 flat out mat3 vDye, vDye2;
-mat3x4 bone(int i) {
+flat out float vAt;
+${FRAME_BLOCK}${HAND_VERTEX}mat3x4 bone(int i) {
   int n = i * 3;
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
@@ -285,10 +287,11 @@ void main() {
   vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));
   vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 ? 0u : iRegB.y));
   vRel = p;
+  vAt = length(iPos + uOffset);
   vNormal = normalize(n);
   vTangent = vec4(normalize(t), aTangent.w);
   vUv = uUv.xy + aUv * uUv.zw;
-  gl_Position = uViewProj * vec4(p, 1.0);
+  gl_Position = handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : uViewProj * vec4(p, 1.0);
 }`;
 
 /**
@@ -378,7 +381,8 @@ vec3 skyFrom(vec3 r) {
  * cut-out draw and 0 for any other. A cut-out draw writes as alpha how much of the pixel lies on the solid side, for
  * alpha to coverage to take as samples. The rasterizer tests each pixel's middle, so the two differ only along a cut.
  * `air` is the sky table's lookup, which smooth surfaces mirror, and the air (atmosphere.ts AIR). The sun's shadow is
- * looked up off the surface along the mesh's normal, turned to the side seen.
+ * looked up off the surface along the mesh's normal, turned to the side seen. A node's draw first drops what its
+ * hand-over between the near store and the far one says (hand.ts).
  */
 export function surfaceFragment(format: TextureFormat, air: string): string {
   return `#version 300 es
@@ -392,7 +396,7 @@ uniform sampler2D uBase, uNormal, uMro, uMask, uMask2;
 uniform vec3 uTint;
 uniform float uCutoff;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${air}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
+${LIGHT}${HAND_GLSL}${SHADOW_GLSL}${air}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
   return base * uTint * (1.0 - dot(mask + mask2, vec3(1.0)) + vDye * mask + vDye2 * mask2);
 }
 vec3 bumped(vec2 b) {
@@ -401,6 +405,7 @@ vec3 bumped(vec2 b) {
   return gl_FrontFacing ? n : -n;
 }
 void main() {
+  if (handDrops()) discard;
   vec4 base = texture(uBase, vUv);
   vec3 mask = texture(uMask, vUv).rgb;
   vec3 mask2 = texture(uMask2, vUv).rgb;

@@ -54,6 +54,19 @@ export const SIZE_REGION = 5;
  * `drawMaterial` holds the waves' pictures. Where this bit is not understood it is the see-through flat draw it always was.
  */
 export const DRAW_WATER = 512;
+/**
+ * Far trees, rocks and bushes of every mesh in one draw (farnodes.ts): each instance names its mesh's row of `atlas` in
+ * colour region ATLAS_REGION and is drawn as that row's vertices, sized and turned as DRAW_SIZED has it, to the row's
+ * reach. The level the draw names is only a run of indices from 0, as many as the longest of its rows.
+ */
+export const DRAW_PULLED = 1024;
+export const ATLAS_REGION = 4;
+/**
+ * The far nodes' meshes as a float texture ATLAS_WIDTH texels wide, a row a mesh: in its first texel its reach and its
+ * vertices, and then each vertex of its last level, triangle by triangle, as x, y, z in metres and its palette colour.
+ */
+export const ATLAS_WIDTH = 193;
+export const ATLAS_ROWS = 128;
 
 /** Floats per bone: three rows of a 3 x 4 matrix, each row x, y, z, translation. */
 export const BONE_FLOATS = 12;
@@ -159,6 +172,9 @@ export const FRAME = {
   skySide: 136,
   skySun: 140,
   skyAlong: 144,
+  /** fHandFrom and fHandTo, in the fourth lanes of fSkySide and fSkySun: the tier's band over which near nodes hand over to far ones (hand.ts). */
+  handFrom: 139,
+  handTo: 143,
 } as const;
 export const FRAME_FLOATS = FRAME.skyAlong + 4;
 /** The frame block as GLSL declares it, for any program that reads it. */
@@ -170,6 +186,8 @@ export const FRAME_BLOCK = `layout(std140) uniform Frame {
 };
 #define fSkyScale fSkyAbove.w
 #define fTrueSun (-fMoon.xyz)
+#define fHandFrom fSkySide.w
+#define fHandTo fSkySun.w
 `;
 
 export interface BufferUpload {
@@ -272,6 +290,8 @@ export class FramePacket {
   readonly drawPass = new Uint8Array(MAX_DRAWS);
   /** Where a draw that fades out with distance is gone, in metres, having faded over the tier's `fade` share of that. 0 for any other. */
   readonly drawFade = new Float32Array(MAX_DRAWS);
+  /** How a draw of nodes takes part in their hand-over from the near store to the far one: hand.ts HAND_NEAR, HAND_FAR, or 0. */
+  readonly drawHand = new Int8Array(MAX_DRAWS);
 
   tileCount = 0;
   /** Per tile: camera-relative x and z of its corner, metres per quad, sample stride. */
@@ -324,6 +344,10 @@ export class FramePacket {
 
   triangles = 0;
 
+  /** Rows of `atlas` to put on the card before this frame's draws, from the first; 0 for none. The card keeps them. */
+  atlasRows = 0;
+  readonly atlas = new Float32Array(ATLAS_WIDTH * ATLAS_ROWS * 4);
+
   /** Metres from the camera at which the far depth range begins, 0 for one range. It is kept in `frame`. */
   get split(): number {
     return this.frame[FRAME.split]!;
@@ -343,7 +367,9 @@ export class FramePacket {
     this.skipped = 0;
     this.dropped = 0;
     this.drawFade.fill(0, 0, this.drawCount);
+    this.drawHand.fill(0, 0, this.drawCount);
     this.drawCount = 0;
+    this.atlasRows = 0;
     this.tileCount = 0;
     this.groundWindow[3] = -1;
     this.transientCount = 0;
