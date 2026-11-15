@@ -25,7 +25,7 @@ import type { Falling } from "../rubble.ts";
 import type { Shots } from "../shots.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Camera } from "./camera.ts";
-import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
+import { Characters, showMaterials, type BodyShadows, type CastFn, type VehicleRenderPose, type VehicleSeatPose } from "./characters.ts";
 import { Clouds } from "./clouds.ts";
 import { Dropped } from "./dropped.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
@@ -76,6 +76,9 @@ export interface OwnBody {
   /** Laid out as EntityStore.gear. */
   readonly gear: Uint16Array;
   id: number;
+  generation?: number;
+  vehicle?: VehicleRenderPose;
+  attachment?: { host: number; slot: number; generation: number };
 }
 
 /** Instance buffers of the node store are numbered from here, clear of chunk indices. */
@@ -268,6 +271,7 @@ export class Scene {
   /** The piece shown where it would be built. kind is 0 for none, x, y, z are metres, yaw is in wire units, color is a palette index. */
   readonly ghost = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, color: 0 };
   readonly characters: Characters;
+  private readonly vehicleSeats: (VehicleSeatPose | undefined)[] = new Array(MAX_VIEW);
   /** Small details: feathers knocked loose, dust thrown up. */
   readonly details: Details;
   /** Smoke and gas: each prop/cloud drawn as puffs over its reach, with the details (clouds.ts). */
@@ -809,6 +813,7 @@ export class Scene {
     ch.begin();
     let unseen = 0;
     if (remote) {
+      this.vehicleSeats.fill(undefined, 0, remote.count);
       // First which bodies are in view and where, then which of them the frame has the bones to pose.
       const from = this.bodyFrom;
       const place = this.bodyAt;
@@ -831,25 +836,29 @@ export class Scene {
           const at = this.seatAt;
           const held = (remote.cue[i]! & CUE_HELD) !== 0;
           let found = false;
-          if (own && own.id === on) {
-            found = held ? ch.heldAt(remote.id[i]!, kind, on, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, at) : ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at);
+          if (own && own.id === on && (remote.seatSlot[i] === 0 || own.generation === remote.seatGen[i])) {
+            found = held ? ch.heldAt(remote.id[i]!, kind, on, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, at) : ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at, remote.seatSlot[i]!, own.vehicle);
             yaw = own.yaw;
+            if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!);
           } else {
             for (let j = 0; j < remote.count && !found; j++) {
               if (remote.id[j] !== on) continue;
+              if (remote.seatSlot[i] !== 0 && remote.seatGen[i] !== remote.gen[j]) continue;
               const ms = this.mountState;
               ms.unpack(remote.anim[j]!, remote.cue[j]!);
               ms.seed = bodySeed(on);
-              found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at);
+              const vehicle = this.remoteVehicle(remote, j);
+              found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle);
               yaw = remote.yaw[j]!;
+              if (found && !held && ch.vehicle(remote.kind[j]!)) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
             }
           }
           if (found) {
             x = at[0]!;
             y = at[1]!;
             z = at[2]!;
-            // A rider sits in its seat's whole frame.
-            if (!held) {
+            // A rider sits in its seat's whole frame; one in a vehicle's seat is posed in the vehicle's (vehicleSeats).
+            if (!held && !this.vehicleSeats[i]) {
               this.seated[i] = 1;
               for (let q = 0; q < 9; q++) this.seatTurn[i * 9 + q] = at[3 + q]!;
             }
@@ -911,7 +920,18 @@ export class Scene {
     }
     // Then the shots in the air.
     this.shots?.draw(ch, p, cam, this.shotTick);
-    if (own && ch.has(own.kind)) ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson);
+    if (own && ch.has(own.kind)) {
+      let seat: VehicleSeatPose | undefined;
+      if (own.attachment && remote) for (let j = 0; j < remote.count; j++) {
+        if (remote.id[j] !== own.attachment.host || remote.gen[j] !== own.attachment.generation || !ch.vehicle(remote.kind[j]!)) continue;
+        const vehicle = this.remoteVehicle(remote, j), at = this.seatAt;
+        if (ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, this.mountState, remote.tick, at, own.attachment.slot, vehicle)) {
+          seat = ch.seatPose(remote.kind[j]!, own.attachment.slot, vehicle, at, remote.yaw[j]!, own.yaw);
+        }
+        break;
+      }
+      ch.add(p, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, own.look, 0, own.colors, 0, own.gear, 0, own.id, own.firstPerson, own.firstPerson, 1, false, false, null, 0, own.vehicle, seat);
+    }
     if (remote && unseen > 0) this.poseUnseen(remote, unseen);
     const from = p.drawCount;
     ch.flush(p, this.transient, false, this.drawBody, this.casting ? this.castBody : null);
@@ -926,7 +946,11 @@ export class Scene {
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9);
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.remoteVehicle(remote, i), this.vehicleSeats[i]);
+  }
+
+  private remoteVehicle(remote: RemoteSample, i: number): VehicleRenderPose {
+    return { pitch: remote.vehiclePitch[i]!, roll: remote.vehicleRoll[i]!, steering: remote.steering[i]!, wheelAngle: remote.wheelAngle[i]!, groundPitch: remote.vehicleGroundPitch[i]!, groundRoll: remote.vehicleGroundRoll[i]!, rideOffset: remote.vehicleRideOffset[i]!, grounded: remote.vehicleGrounded[i] !== 0, doors: remote.vehicleDoors[i]! };
   }
 
   /**

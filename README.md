@@ -52,7 +52,8 @@ raptors that will come for you.
 | R | Reload |
 | G | Let a drawn bow down without loosing. With a melee weapon in hand, swing it |
 | V | Look from behind the body, or from its eyes |
-| E | At an obelisk's terminal, the other servers of the cluster to travel to with all you carry ([server/README.md](server/README.md)). Pick a bush, open a cache or a box, open a door, get on a saddled creature of your tribe and off it, take a young creature that is nobody's, look into one that is unconscious or yours. Held on something built: what can be done to it |
+| E | At an obelisk's terminal, the other servers of the cluster to travel to with all you carry ([server/README.md](server/README.md)). Pick a bush, open a cache or a box, open a door, get on a saddled creature of your tribe and off it, get into a car by the door you stand at (the driver's or the passenger's) and out of it, pull a car's driver out, take a young creature that is nobody's, look into one that is unconscious or yours. Held on something built: what can be done to it |
+| In a car | W and S throttle and brake (held S reverses once stopped), A and D steer, Space the handbrake, E get out. A passenger looks and shoots out of the window |
 | F | Look into the creature you ride or look at: follow or stay, its stance, its saddle, whether it may mate, its levels |
 | T, Y, J, U | Whistle the creature looked at to follow, to stay; all of them to follow, to stay |
 | Building piece in hand | Left button sets it down where it is shown. E turns it, Q takes the next nearest place (held: open ground), R changes a wall to a doorframe or a windowframe, arrow keys raise and lower a foundation |
@@ -70,7 +71,7 @@ weapon to the hotbar in the inventory and press its number), `dummy flak` for
 something to shoot, `armor flak` to wear a set, `place wall_wood` for something
 to burn, `give piece_foundation_wood 10` and `give piece_wall_wood 20` for
 something to build with (move them to the hotbar), `buff burning`, and `settings`
-and `setting <name> [value]` for the server's rules. For creatures: `spawn parasaur 20`, `forcetame` on the one
+and `setting <name> [value]` for the server's rules. For a car: `spawn compact` sets one down 4 m ahead, anyone's to take. For creatures: `spawn parasaur 20`, `forcetame` on the one
 you look at, `give saddle_parasaur 1`, and for breeding two of them told they
 may mate, then `hatch` on the egg and `grow` on what hatches. A development
 server reads `config/dev`: taming, hatching and growing up turned up, so that
