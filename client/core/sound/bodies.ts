@@ -87,7 +87,8 @@ export class BodySounds {
       const x = remote.x[i]!;
       const y = remote.y[i]!;
       const z = remote.z[i]!;
-      if (Math.hypot(x - ex, y - ey, z - ez) > STEP_REACH * 2) {
+      // One on a mount, or held, goes where it is carried and is heard afresh once on its own feet.
+      if (remote.seat[i] !== 0 || Math.hypot(x - ex, y - ey, z - ez) > STEP_REACH * 2) {
         this.walkers.delete(id);
         continue;
       }

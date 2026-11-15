@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { VARIANTS, CUES, KEYS, candidates, cueFaults, cueKey } from "../../shared/sound/cues.ts";
+import { AnimState } from "../../shared/anim/pose.ts";
 import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
@@ -229,4 +230,38 @@ test("coverage counts the occasions heard through shared sounds, by owners' own 
   expect(row("thunder").shared).toBeNull();
   expect(c.shared + c.ownOnly + c.silent).toBe(KEYS.length);
   expect(c.silentWaiting).toBeGreaterThan(0);
+});
+
+test("a survivor riding is carried, not walking: no steps, jumps or landings of its own as its mount goes", () => {
+  const heard: string[] = [];
+  const hear: Hear = (_o, key) => heard.push(KEYS[key]!.key);
+  const b = new BodySounds();
+  const remote = new RemoteSample();
+  const st = new AnimState();
+  remote.count = 1;
+  remote.id[0] = 40;
+  remote.kind[0] = 1;
+  remote.seat[0] = 12;
+  let x = 380;
+  const z = 380;
+  const frame = (): void => {
+    remote.x[0] = x;
+    remote.y[0] = hf.heightAt(x, z) + 1.2;
+    remote.z[0] = z;
+    remote.anim[0] = st.pack();
+    b.update(1 / 30, remote, hf, 375, hf.heightAt(375, z) + 1.6, z, -1, null, false, 0, (k) => k === 1, hear);
+  };
+  st.setMotion(4, 0, 0, 0);
+  for (let k = 0; k < 90; k++) {
+    x += 4 / 30;
+    frame();
+  }
+  expect(heard).toEqual([]);
+  // Off its mount and on its own feet, it is heard walking again.
+  remote.seat[0] = 0;
+  for (let k = 0; k < 30; k++) {
+    x += 4 / 30;
+    frame();
+  }
+  expect(heard.filter((h) => h.startsWith("step/")).length).toBeGreaterThan(0);
 });
