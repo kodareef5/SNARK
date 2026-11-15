@@ -15,6 +15,7 @@ import { CORE_CONTENT } from "../content/core.ts";
 import { contentFor, createHost, type Host } from "../server/host.ts";
 import type { Client } from "../server/game.ts";
 import { NODES_TOLD } from "../server/harvest.ts";
+import { settle } from "../server/place.ts";
 import { loadConfig, loadConfigFolder } from "../server/settings/config.ts";
 import { Rules } from "../server/settings/rules.ts";
 import { WorldStore } from "../server/persist/store.ts";
@@ -350,6 +351,10 @@ section("Resource nodes: map data plus a sparse overlay");
   t0 = performance.now();
   for (const chunk of far) field.retain(chunk, 0, 1, () => false);
   record("fill one chunk of nodes", (performance.now() - t0) / far.length, "ms", 0.2);
+  // As the chunk wakes, its bodies and those beside it are tested for being inside a node or a piece.
+  t0 = performance.now();
+  for (const chunk of far) settle(world, [chunk]);
+  record("look for bodies inside something round a chunk that wakes", (performance.now() - t0) / far.length, "ms");
   for (const chunk of far) field.retain(chunk, 0, -1, () => false);
   record("work out every node on the map once (not done in play)", scan, "ms");
 }

@@ -59,6 +59,8 @@ export class Harvest {
   hits = 0;
   /** Bytes of used-up slots sent, to every client. */
   told = 0;
+  /** A node whose boxes reach `reach` from (x, z) grew back in a chunk that is loaded, so a body may now be inside it. */
+  onGrown: ((x: number, z: number, reach: number) => void) | null = null;
 
   private readonly world: ServerWorld;
   private readonly game: GameServer;
@@ -216,6 +218,7 @@ export class Harvest {
     this.field.set(chunk, index, true);
     this.version[chunk] = this.version[chunk]! + 1;
     this.dirty.add(chunk);
+    if (this.field.isLoaded(chunk)) this.onGrown?.(this.spot.x, this.spot.z, this.field.store.spread[this.spot.form]!);
   }
 
   /** Whether a survivor, or a foundation or pillar built there, keeps a node at (x, z) whose boxes reach `reach` from it from growing back. */
