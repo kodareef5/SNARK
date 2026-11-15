@@ -27,8 +27,11 @@ bun install --frozen-lockfile
 PORT=8790 bun tools/dev.ts         # builds client/dist first: several minutes for the textures
 ```
 
-- http://localhost:8790/sounds.html: every take by name, labelled `stable` or `moss`, with "any stable" and
-  "any moss" buttons where a sound has both, and a distance and a side to hear it from.
+- http://localhost:8790/sounds.html, the sound board: every owner, then every occasion it has, with what sets it
+  off in play and how this build hears it (its own takes, a stand-in, a shared sound, or no take yet), each take
+  playable with its file, length and recipe, and links to each owner's brief and recipes. It is an admin's page:
+  open on a `--dev` server (as `tools/dev.ts` runs), elsewhere only with `ServerAdminPassword` at the browser's
+  sign-in. The "not all its own" box lists what is still to make.
 - http://localhost:8790/: click in, open the console with the backquote or Tab, type `enablecheats`, then
   `spawn dodo 1 40`, walk among them and strike one. `sound` lists the sounds, `sound call` plays one three metres
   ahead, `sound from moss` (or `stable`, `all`) chooses whose takes the game plays. The settings (O) have
