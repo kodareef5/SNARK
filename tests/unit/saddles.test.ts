@@ -31,7 +31,7 @@ import { splitPack } from "../../tools/pack/split.ts";
 import { unpackMeshes } from "../../tools/pack/write.ts";
 import { frozenPack } from "../fixtures/pack.ts";
 import { RAPTOR, SADDLE, SADDLED, SADDLE_OBJECT, WORN, saddleAsset, saddleGlb, saddledFrozenPack, type Ways } from "../fixtures/saddles.ts";
-import { TUBE, tubeGlb, tubePictures, writeGlb } from "../fixtures/textured.ts";
+import { tubeGlb, tubePictures, writeGlb } from "../fixtures/textured.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const built = (): Built => ({ meshes: [], rigs: [], clips: [], lines: [], warnings: [], faults: [] });
