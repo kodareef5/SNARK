@@ -163,10 +163,13 @@ function checkPolicy(): void {
   console.log(`  assets size  ${assetLines}/${ASSETS_MAX_LINES} lines`);
 }
 
-async function run(cmd: string[], quiet: boolean, env: Record<string, string | undefined> = process.env): Promise<{ ok: boolean; out: string }> {
+/** `cpu` is the CPU-seconds of the process and of the processes it waited for. */
+async function run(cmd: string[], quiet: boolean, env: Record<string, string | undefined> = process.env): Promise<{ ok: boolean; out: string; cpu: number }> {
   const proc = Bun.spawn(cmd, { cwd: ROOT, env, stdout: quiet ? "pipe" : "inherit", stderr: quiet ? "pipe" : "inherit" });
   const out = quiet ? (await new Response(proc.stdout).text()) + (await new Response(proc.stderr).text()) : "";
-  return { ok: (await proc.exited) === 0, out };
+  const ok = (await proc.exited) === 0;
+  const used = proc.resourceUsage()?.cpuTime;
+  return { ok, out, cpu: used ? Number(used.user + used.system) / 1e6 : 0 };
 }
 
 async function checkTypes(): Promise<void> {
@@ -221,7 +224,8 @@ async function checkTests(dir: string, env: Record<string, string>): Promise<voi
   const r = await run(["bun", "test", "--parallel", "--timeout", String(hung), ...timed, "--reporter=junit", `--reporter-outfile=${report}`], true, { ...process.env, ...env });
   if (r.ok) keepTimes(readFileSync(report, "utf8"));
   if (!r.ok) fail(`tests failed:\n${r.out.trim()}`);
-  else console.log("  " + (r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()).join(", ")));
+  // CPU-seconds move far less with the machine's load than the clock does, so a slow change shows on a busy day too.
+  else console.log("  " + [...r.out.trim().split("\n").filter((l) => /^\s*\d+ (pass|fail|skip)/.test(l)).map((l) => l.trim()), `${r.cpu.toFixed(0)} CPU-seconds`].join(", "));
 }
 
 const t0 = performance.now();
