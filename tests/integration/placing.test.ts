@@ -97,8 +97,7 @@ test("a survivor's spawn, an admin's teleport and creature, and an egg are never
   expect(field.isLoaded(chunkAt(dims, B, B))).toBe(false);
 
   // A survivor last seen inside B is not put there.
-  const saved = h.host.game.savedPosition!;
-  h.host.game.savedPosition = (name) => (name === "bo" ? { x: B, y: hf.heightAt(B, B), z: B, yaw: 0 } : saved(name));
+  lastSeen(h, "bo", B, B, 0);
   const bo = h.join("bo");
   h.run(500);
   expect(clear(h, h.ent(bo))).toBe(true);
