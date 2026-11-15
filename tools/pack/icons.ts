@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join, resolve } from "node:path";
 import { deflateSync, inflateRawSync } from "node:zlib";
 import { CORE_CONTENT } from "../../content/core.ts";
-import type { Def } from "../../shared/content/defs.ts";
+import type { Def, ItemDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { slotsOf } from "../../shared/content/slots.ts";
 import { ICONS_A_SHEET, ICON_SIZE, SHEET_COLUMNS, iconAt, sheetShapes, type ManifestIcons } from "../../shared/pack/icons.ts";
@@ -65,18 +65,24 @@ export interface IconSubject {
 
 /**
  * The items of `defs` that get a picture, in content order: each whose own `#dropped` mesh is in the pack, else whose
- * own `#held` mesh is. A slot's stand-in (the bag a dropped stack is drawn as) does not count.
+ * own `#held` mesh is. A slot's stand-in (the bag a dropped stack is drawn as) does not count. An item that is set down
+ * as a structure and has neither is drawn as it will stand: from its own `#preview` mesh, else from the mesh of the
+ * first structure it places (that slot's stand-in, `#mesh`), in that structure's colour (stations-plan.md, S5).
  */
 export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) => boolean): IconSubject[] {
-  const items = defs.filter((d): d is Def => d !== null && d.type === "item");
-  const uses = slotsOf(items);
+  const items = defs.filter((d): d is ItemDef => d !== null && d.type === "item");
+  const structures = new Map(defs.filter((d): d is Def => d !== null && d.type === "structure").map((d) => [d.id, d]));
+  const uses = slotsOf([...items, ...structures.values()]);
   const own = (owner: string, slot: string): string => uses.find((u) => u.owner === owner && u.slot === slot && u.id !== "" && has(u.id))?.id ?? "";
+  const colour = (d: Def): number => (d as { color?: number }).color ?? 15;
   const out: IconSubject[] = [];
   for (const d of items) {
     const icon = uses.find((u) => u.owner === d.id && u.slot === "icon")?.id ?? "";
-    const mesh = own(d.id, "dropped") || own(d.id, "held");
+    let [mesh, colors] = [own(d.id, "dropped") || own(d.id, "held"), colour(d)];
+    const placed = mesh === "" && d.class === "structure" ? structures.get(d.places?.[0] ?? "") : undefined;
+    if (placed) [mesh, colors] = [own(d.id, "preview") || own(placed.id, "mesh"), colour(placed)];
     if (icon === "" || mesh === "") continue;
-    out.push({ icon, owner: d.id, mesh, colors: [(d as { color?: number }).color ?? 15, 0, 0, 0, 0, 0] });
+    out.push({ icon, owner: d.id, mesh, colors: [colors, 0, 0, 0, 0, 0] });
   }
   return out;
 }
