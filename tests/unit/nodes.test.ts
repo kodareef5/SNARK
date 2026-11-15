@@ -470,8 +470,7 @@ function walkAt(form: number): { climbed: number; rose: number; reached: number;
       if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`in ${forms.mesh[form]} from side ${side}`);
       const near = Math.hypot(b.x - cx, b.z - cz);
       rose = Math.max(rose, b.y);
-      // It climbs a stone if it comes to stand on it. Slid along a box's corner, a body may be lifted a step and fall
-      // back, which is the step's way at any corner and not a climb.
+      // It climbs a stone if it comes to stand on it.
       if (b.grounded && b.y > 0.05) stood = true;
       if (rose < 0.05 && near < closest) [standX, standZ, closest] = [b.x, b.z, near];
     }
@@ -505,11 +504,9 @@ function lowestOfTall(form: number): [number, number] {
 const WAIST = 1;
 const NO_LEDGE = 0.6;
 
-test("no stone taller than a survivor's waist has a box that rises a step or less from the ground, at any size, and the low slabs are walked onto", () => {
+test("no stone taller than a survivor's waist has a box that rises a step or less from the ground, or is walked onto from any side, at any size, and the low slabs are walked onto", () => {
   // Every size of every stone: its sides rise more than a step at once, so it is jumped onto, as in the reference game,
-  // and not walked up. A walk is stopped by a box that rises more than the step (0.5 m) once the step-up holds to it;
-  // today's step-up still climbs about 0.7 m head on, and up to 0.86 m at a corner between boxes, so some of the
-  // smaller tall stones are walked up yet.
+  // and not walked up. A walk is stopped by a box that rises more than the step, 0.5 m.
   let tall = 0;
   for (const id of ["core:rock", "core:rubble", "core:metal_rock"]) {
     const k = kind(id);
@@ -517,19 +514,64 @@ test("no stone taller than a survivor's waist has a box that rises a step or les
       const [lowest] = lowestOfTall(form);
       if (lowest === 0) continue;
       tall++;
-      expect([forms.mesh[form], lowest >= NO_LEDGE]).toEqual([forms.mesh[form], true]);
+      expect([forms.mesh[form], lowest >= NO_LEDGE, walkAt(form).climbed]).toEqual([forms.mesh[form], true, 0]);
     }
   }
   expect(tall).toBeGreaterThan(100);
-  // The low slabs, no taller than the waist at any size, are walked onto from every side, at their least and most.
+  // The low slabs, no taller than the waist at any size, are walked onto from every side at their least and most, but for
+  // one side of rock_5 at its largest, where its 0.56 m box meets its 0.38 m one.
   for (const mesh of ["core:rock_4", "core:rock_5"]) {
     const k = kind("core:rock");
     const v = forms.mesh.indexOf(mesh) - forms.first[k]!;
-    for (const step of [0, forms.steps[k]! - 1]) expect([mesh, step, walkAt(forms.first[k]! + v + step).climbed]).toEqual([mesh, step, 8]);
+    for (const step of [0, forms.steps[k]! - 1]) expect([mesh, step, walkAt(forms.first[k]! + v + step).climbed]).toEqual([mesh, step, mesh === "core:rock_5" && step > 0 ? 7 : 8]);
   }
 });
 
-test("a pick's swing meets every stone and broken base from where a survivor stands at it, and the tallest boulders at their largest are walked onto from no side", () => {
+/** From how many of eight sides a body of species `who`, walking at the middle of a node of `form` on level ground, steps onto it and on past it. */
+function overFrom(form: number, who: string): number {
+  const w = flatWorld(2);
+  const nodes = new StructureStore(w.dims, forms.halfX, forms.halfY, forms.halfZ, forms.soft, forms.parts);
+  const [cx, cz] = [32, 32];
+  nodes.put(0, 0, form, cx, 0, cz, 0, 0, 1, 1);
+  const world = { hf: w.hf, structs: w.structs, nodes };
+  const p = reg.move[kind(who)]!;
+  const box = forms.parts.box;
+  const first = forms.parts.start[form]! * 6;
+  const from = Math.max(box[first + 3]!, box[first + 5]!) + p.radius + 1;
+  let over = 0;
+  for (let side = 0; side < 8; side++) {
+    const yaw = Math.round((side * 65536) / 8) & 0xffff;
+    const [ux, uz] = [Math.sin((yaw / 65536) * TAU), Math.cos((yaw / 65536) * TAU)];
+    const b = new Body();
+    [b.x, b.y, b.z, b.yaw, b.grounded] = [cx - ux * from, 0, cz - uz * from, yaw, true];
+    let rose = 0;
+    for (let t = 0; t < Math.ceil(((3 * from) / p.walkSpeed) * 30); t++) {
+      stepBody(world, b, 0, 127, yaw, 0, 0, p, TICK_DT);
+      if (!capsuleFree(world, b.x, b.y, b.z, p.radius, p.height)) throw new Error(`${who} in ${forms.mesh[form]} from side ${side}`);
+      rose = Math.max(rose, b.y);
+    }
+    if (rose > 0.05 && (b.x - cx) * ux + (b.z - cz) * uz > from - 0.5) over++;
+  }
+  return over;
+}
+
+test("every tree's stump but a mangrove's, at its least and largest size, is stepped onto and over by a survivor and every creature from every side, and a mangrove's cage of roots bars the way", () => {
+  const walkers = ["core:survivor", ...reg.ids.filter((id, k) => (reg.defs[k] as { class?: string } | undefined)?.class === "creature" && reg.move[k])];
+  expect(walkers.length).toBeGreaterThan(3);
+  for (const id of ["core:tree", "core:palm", "core:oak", "core:fig", "core:banyan", "core:mangrove"]) {
+    const k = kind(id);
+    const steps = forms.steps[k]!;
+    for (let v = 0; v < forms.sums[k]!.length; v++) {
+      for (const step of [0, steps - 1]) {
+        const stump = forms.left[forms.first[k]! + v * steps + step]!;
+        const caged = id === "core:mangrove";
+        for (const who of caged ? ["core:survivor"] : walkers) expect([forms.mesh[stump], who, overFrom(stump, who)]).toEqual([forms.mesh[stump], who, caged ? 0 : 8]);
+      }
+    }
+  }
+});
+
+test("a pick's swing meets every stone and broken base from where a survivor stands at it", () => {
   for (const id of ["core:rock", "core:rubble", "core:metal_rock"]) {
     const k = kind(id);
     const steps = forms.steps[k]!;
@@ -537,10 +579,7 @@ test("a pick's swing meets every stone and broken base from where a survivor sta
       for (const step of [0, steps - 1]) {
         const form = forms.first[k]! + v * steps + step;
         for (const f of [form, forms.left[form]!]) {
-          const { climbed, reached } = walkAt(f);
-          expect([forms.mesh[f], reached]).toEqual([forms.mesh[f], 8]);
-          // Every boulder whose boxes rise more than today's step-up climbs is walked onto from no side.
-          if (lowestOfTall(f)[0] > 0.9) expect([forms.mesh[f], step, climbed]).toEqual([forms.mesh[f], step, 0]);
+          expect([forms.mesh[f], walkAt(f).reached]).toEqual([forms.mesh[f], 8]);
         }
       }
     }

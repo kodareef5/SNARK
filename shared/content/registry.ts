@@ -159,6 +159,31 @@ export interface Registry {
   readonly throwSpeed: Float32Array;
   readonly fuseTicks: Uint16Array;
   readonly blast: Float32Array;
+  /** Torpor of one melee hit, as a multiple of its damage: a melee weapon's, and for a species its bare hands'. */
+  readonly meleeTorpor: Float32Array;
+  /**
+   * Per species: how far off others of its species take fright with it (0 for none), how it moves once tamed (the very
+   * object `move` holds where taming does not change it), its drag weight and mass (0 where not given), 1 if a survivor may
+   * pick it up, the item it leaves when it defecates (0 for none), and the chance a female lays an egg in its place.
+   */
+  readonly alarm: Float32Array;
+  readonly tamedMove: readonly (MoveParams | null)[];
+  readonly drag: Float32Array;
+  readonly mass: Float32Array;
+  readonly carriable: Uint8Array;
+  readonly feces: Uint16Array;
+  readonly eggChance: Float32Array;
+  /** Per prop: the multiple of its mesh's modelled size it is drawn at, 1 for everything else; for an egg, the item it is once picked up (0 for none). */
+  readonly drawSize: Float32Array;
+  readonly propItem: Uint16Array;
+  /** Per prop: for an egg, the item it is once picked up fertilised (0 for none). */
+  readonly propFertile: Uint16Array;
+  /**
+   * Per item: the ticks one lies on the ground before it is gone, or 0 for as long as any dropped stack; and what a young
+   * body gives in its place (0 for itself).
+   */
+  readonly decomposeTicks: Uint32Array;
+  readonly youngItem: Uint16Array;
 }
 
 /** Default reach of bare hands and of a melee weapon, in metres. */
@@ -230,7 +255,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.turn !== undefined) positive(d, "turn", d.turn, 3600);
       // The pack decides which skeletons exist, so only an empty name is an error here.
       if (d.skeleton !== undefined && d.skeleton.length === 0) errors.push(`${d.id}: a skeleton must be named`);
-      if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
+      if (d.stamina && !(d.stamina.sprint >= 0 && d.stamina.regen >= 0 && d.stamina.jump >= 0 && (d.stamina.walk ?? 0) >= 0)) errors.push(`${d.id}: stamina costs must not be negative`);
       if (d.height < 2 * d.radius) errors.push(`${d.id}: height must be at least twice the radius`);
       if (!(d.eyeHeight > 0 && d.eyeHeight <= d.height)) errors.push(`${d.id}: eyeHeight must be within the body`);
       for (const [name, st] of [["crouch", d.crouch], ["prone", d.prone]] as const) {
@@ -258,9 +283,16 @@ export function compileContent(all: readonly Def[]): CompileResult {
         }
       }
       if (Array.isArray(d.mutations) && !(d.mutations.length > 0 && d.mutations.every(paletteIndex))) errors.push(`${d.id}: mutations must be palette indices, and at least one`);
+      if (d.alarm !== undefined) positive(d, "alarm", d.alarm, 1000);
+      if (d.tamedSprintMul !== undefined) positive(d, "tamedSprintMul", d.tamedSprintMul, 4);
+      if (d.drag !== undefined) positive(d, "drag", d.drag, 1e6);
+      if (d.mass !== undefined) positive(d, "mass", d.mass, 1e6);
+      if (d.eggChance !== undefined && !(d.eggChance >= 0 && d.eggChance <= 1)) errors.push(`${d.id}: eggChance must be from 0 to 1`);
+      if (d.fistsTorpor !== undefined && !(d.fistsTorpor >= 0)) errors.push(`${d.id}: fistsTorpor must not be negative`);
     } else if (d.type === "prop") {
       positive(d, "radius", d.radius, 8);
       positive(d, "height", d.height, 32);
+      if (d.size !== undefined) positive(d, "size", d.size, 8);
     } else if (d.type === "node") {
       for (let a = 0; a < 3; a++) positive(d, `half[${a}]`, d.half[a]!, MAX_STRUCTURE_HALF);
       positive(d, "hits", d.hits, MAX_NODE_HITS);
@@ -320,6 +352,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if (v !== undefined && !(v >= 0 && v <= 100)) errors.push(`${d.id}: ${name} must be from 0 to 100`);
       }
       if (!(Number.isInteger(d.color) && d.color >= 0 && d.color < 256)) errors.push(`${d.id}: color must be a palette index`);
+      if (d.damage !== undefined && !DAMAGE_TYPES.includes(d.damage)) errors.push(`${d.id}: damage must name a kind of damage`);
     } else if (d.type === "structure") {
       positive(d, "half[0]", d.half[0], MAX_STRUCTURE_HALF);
       positive(d, "half[1]", d.half[1], MAX_STRUCTURE_HALF);
@@ -352,6 +385,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.fuel !== undefined) positive(d, "fuel", d.fuel, MAX_BURN_SECONDS);
       if (d.cooks !== undefined) positive(d, "cooks.seconds", d.cooks.seconds, MAX_BURN_SECONDS);
       if (d.spoilHours !== undefined && !(d.spoilHours > 0 && d.spoilHours <= MAX_SPOIL_HOURS)) errors.push(`${d.id}: spoilHours must be above 0 and at most ${MAX_SPOIL_HOURS}`);
+      if (d.decomposeHours !== undefined && !(d.decomposeHours > 0 && d.decomposeHours <= MAX_SPOIL_HOURS)) errors.push(`${d.id}: decomposeHours must be above 0 and at most ${MAX_SPOIL_HOURS}`);
       // Anything that wears out, holds rounds or takes an attachment cannot stack.
       if ((d.weapon || d.wear || d.tool) && d.stack !== 1 && d.weapon?.kind !== "thrown") errors.push(`${d.id}: a tool, weapon or worn piece must have stack 1`);
       const w = d.weapon;
@@ -361,6 +395,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         if ((w.kind === "bow" || w.kind === "gun") && !(w.ammo && w.ammo.length > 0)) errors.push(`${d.id}: a ${w.kind} needs the ammunition it takes`);
         if (w.kind === "bow" && !(w.draw! > 0)) errors.push(`${d.id}: a bow needs a draw time`);
         if (w.clip !== undefined && !(Number.isInteger(w.clip) && w.clip >= 1 && w.clip <= 255)) errors.push(`${d.id}: weapon.clip must be a whole number from 1 to 255`);
+        if (w.torpor !== undefined && !(w.kind === "melee" && w.torpor >= 0)) errors.push(`${d.id}: weapon.torpor is a melee weapon's, and not negative`);
         for (const [name, v] of [["reload", w.reload], ["draw", w.draw], ["interval", w.interval]] as const) {
           if (v !== undefined && !(v > 0 && v * TICK_RATE <= MAX_ACT_TICKS)) errors.push(`${d.id}: weapon.${name} must be above 0 and at most ${MAX_ACT_TICKS / TICK_RATE} seconds`);
         }
@@ -383,7 +418,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
   errors.push(...refFaults(input));
   const shapes = new Map(input.flatMap((d) => (d.type === "shape" ? [[d.id, d] as const] : [])));
   const crafted = new Set(input.flatMap((d) => (d.type === "item" && d.craft ? [d.id] : [])));
+  const noAmmo = new Set(input.flatMap((d) => (d.type === "item" && !d.ammo ? [d.id] : [])));
   const taught = new Map<string, string>();
+  const young = new Map<string, string>();
   for (const d of input) {
     if (d.type === "engram" && typeof d.item === "string") {
       if (!crafted.has(d.item)) errors.push(`${d.id}: "${d.item}" cannot be made, so there is nothing to learn`);
@@ -398,6 +435,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (holds && holds.some((v, a) => Math.abs(v - d.half[a]!) > 1e-6)) errors.push(`${d.id}: half must be [${holds.join(", ")}], the box that holds ${d.shape}`);
     }
     if (d.type === "item" && d.places && d.places.length === 0) errors.push(`${d.id}: places must name at least one structure`);
+    for (const a of d.type === "item" ? (d.weapon?.ammo ?? []) : []) if (noAmmo.has(a)) errors.push(`${d.id}: "${a}" has no ammo facet, so it cannot be fired`);
+    if (d.type === "item" && d.youngFor !== undefined) {
+      const other = young.get(d.youngFor);
+      if (other !== undefined) errors.push(`${d.id}: ${other} is already given in place of "${d.youngFor}"`);
+      young.set(d.youngFor, d.id);
+    }
+    if (d.type === "prop" && d.fertile !== undefined && input.some((o) => o.id === d.fertile && o.type === "item" && o.stack !== 1)) errors.push(`${d.id}: its fertile item must stack to 1`);
   }
   if (input.length >= 65535) errors.push("too many definitions for a 16-bit index");
   if (errors.length > 0) return { registry: null, errors };
@@ -476,6 +520,19 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const throwSpeed = new Float32Array(n);
   const fuseTicks = new Uint16Array(n);
   const blast = new Float32Array(n);
+  const meleeTorpor = new Float32Array(n);
+  const alarm = new Float32Array(n);
+  const tamedMove: (MoveParams | null)[] = new Array(n).fill(null);
+  const drag = new Float32Array(n);
+  const mass = new Float32Array(n);
+  const carriable = new Uint8Array(n);
+  const feces = new Uint16Array(n);
+  const eggChance = new Float32Array(n);
+  const drawSize = new Float32Array(n).fill(1);
+  const propItem = new Uint16Array(n);
+  const propFertile = new Uint16Array(n);
+  const decomposeTicks = new Uint32Array(n);
+  const youngItem = new Uint16Array(n);
   const materials = new Map(sorted.flatMap((o) => (o.type === "material" ? [[o.id, o] as const] : [])));
   let hash = hashString("snark-content-1");
   for (let i = 1; i < n; i++) {
@@ -514,8 +571,15 @@ export function compileContent(all: readonly Def[]): CompileResult {
     } else if (d.type === "species" || d.type === "prop") {
       if (d.type === "species") {
         move[i] = moveParams(d);
+        tamedMove[i] = d.tamedSprintMul === undefined ? move[i] : { ...move[i]!, sprintMul: d.tamedSprintMul };
         damage[i] = d.fists ?? 8;
+        meleeTorpor[i] = d.fistsTorpor ?? 0;
         reach[i] = FIST_REACH;
+        alarm[i] = d.alarm ?? 0;
+        drag[i] = d.drag ?? 0;
+        mass[i] = d.mass ?? 0;
+        if (d.carriable) carriable[i] = 1;
+        eggChance[i] = d.eggChance ?? 0;
         takes[i] = Float32Array.from(DAMAGE_TYPES, (t) => d.takes?.[t] ?? 1);
         const zones = new Float32Array(ZONE_COUNT).fill(1);
         for (const [group, v] of Object.entries(d.zones ?? {})) for (const z of ZONE_GROUPS[group]!) zones[z] = v;
@@ -523,11 +587,13 @@ export function compileContent(all: readonly Def[]): CompileResult {
       }
       bodyRadius[i] = d.radius;
       bodyHeight[i] = d.height;
+      if (d.type === "prop") drawSize[i] = d.size ?? 1;
     } else if (d.type === "item") {
       stack[i] = d.stack;
       weight[i] = d.weight ?? 0.1;
       // At least 1 tick, because 0 means the item never spoils.
       spoilTicks[i] = d.spoilHours !== undefined ? Math.max(1, Math.round(d.spoilHours * GAME_HOUR_TICKS)) : 0;
+      decomposeTicks[i] = d.decomposeHours !== undefined ? Math.max(1, Math.round(d.decomposeHours * GAME_HOUR_TICKS)) : 0;
       if (d.wear) wearSlot[i] = WEAR_SLOTS.indexOf(d.wear.slot);
       uses[i] = d.wear?.uses ?? d.weapon?.uses ?? d.tool?.uses ?? 0;
       armor[i] = d.wear?.armor ?? 0;
@@ -538,6 +604,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
         throwSpeed[i] = d.weapon.speed ?? 0;
         fuseTicks[i] = Math.min(65535, Math.round((d.weapon.fuse ?? 0) * TICK_RATE));
         blast[i] = d.weapon.blast ?? 0;
+        meleeTorpor[i] = d.weapon.torpor ?? 0;
       }
       if (d.ammo) {
         ammoSpeed[i] = d.ammo.speed ?? 0;
@@ -582,6 +649,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       if (d.eats) eats[i] = d.eats.flatMap((f) => [index.get(f.item)!, f.food, f.affinity]);
       leash[i] = d.leash ?? 60;
       keeps[i] = d.keeps ?? 1;
+      if (d.feces !== undefined) feces[i] = index.get(d.feces)!;
       if (d.breeds) {
         breedEgg[i] = d.breeds.egg !== undefined ? index.get(d.breeds.egg)! : 0;
         incubateTicks[i] = Math.round(d.breeds.incubate * TICK_RATE);
@@ -596,6 +664,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
         weapon[i] = { kind: W_MELEE, hold: HOLD_HANDS, swingTicks: d.bite.ticks ?? 27, strikeTick: d.bite.lands ?? 11, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true };
       }
     }
+    if (d.type === "prop" && d.item !== undefined) propItem[i] = index.get(d.item)!;
+    if (d.type === "prop" && d.fertile !== undefined) propFertile[i] = index.get(d.fertile)!;
+    if (d.type === "item" && d.youngFor !== undefined) youngItem[index.get(d.youngFor)!] = i;
     if (d.type === "item" && d.saddle) {
       saddleFits[i] = index.get(d.saddle.fits)!;
       saddleArmor[i] = d.saddle.armor;
@@ -628,7 +699,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, recipeOf, recipeMakes, move, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;
@@ -708,6 +779,8 @@ function moveParams(d: SpeciesDef): MoveParams {
     staminaSprint: Math.round(((d.stamina?.sprint ?? STAMINA_DEFAULT.sprint) * STAMINA_UNITS) / TICK_RATE),
     staminaRegen: Math.round(((d.stamina?.regen ?? STAMINA_DEFAULT.regen) * STAMINA_UNITS) / TICK_RATE),
     staminaJump: Math.round((d.stamina?.jump ?? STAMINA_DEFAULT.jump) * STAMINA_UNITS),
+    // A cost that would round to nothing is a unit.
+    staminaWalk: d.stamina?.walk ? Math.max(1, Math.round((d.stamina.walk * STAMINA_UNITS) / TICK_RATE)) : 0,
     // Whole units per tick, so both sides turn the same.
     turnRate: d.turn === undefined ? 0 : Math.max(1, Math.round(((d.turn / 360) * 65536) / TICK_RATE)),
     strafe: d.strafe !== false,

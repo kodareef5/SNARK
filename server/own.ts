@@ -70,6 +70,8 @@ export interface OwnContext {
   refresh(rec: EntityRecord): void;
   /** Food gives `points` of health. */
   mend(rec: EntityRecord, points: number): void;
+  /** See `Taming.dose`. */
+  dose(rec: EntityRecord, item: number, by: number): void;
   /** The item in this survivor's hands was replaced by a move, perhaps by another of its kind. It takes a moment to be ready, as a change of hotbar slot does. */
   rearm(rec: EntityRecord): void;
   /** See `Death.drop`. */
@@ -94,6 +96,8 @@ function sendSlots(ctx: OwnContext, c: Client, box: number, inv: Inventory, sinc
     if (inv.item[s] !== 0) {
       w.u16(inv.count[s]!);
       w.u8(inv.quality[s]!);
+      // Flags (SLOT_ bits): none is set until blueprints are built.
+      w.u8(0);
       w.u16(inv.dur[s]!);
       w.u32(inv.spoilAt[s]!);
       const holds = inv.ammo[s] !== 0 || inv.attach[s] !== 0;
@@ -232,7 +236,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       c.sentSubject = -1;
     }
   } else if (ctx.world.tick - c.sentSubjectAt >= 6) {
-    const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000), subject.id, subject.points, subject.stance, subject.following ? 1 : 0, subject.saddled ? 1 : 0, (subject.breeds ? 1 : 0) | (subject.mating ? 2 : 0) | (subject.female ? 4 : 0) | (subject.stage << 3), Math.round(subject.maturity * 1000), Math.round(subject.mate * 1000), subject.wait];
+    const q = [subject.taming ? 1 : 0, subject.owned ? 1 : 0, subject.level, Math.round(subject.progress * 1000), Math.round(subject.te * 1000), Math.round(subject.torpor * 1000), Math.round(subject.food * 1000), subject.id, subject.points, subject.stance, (subject.following ? 1 : 0) | (subject.wandering ? 2 : 0), subject.saddled ? 1 : 0, (subject.breeds ? 1 : 0) | (subject.mating ? 2 : 0) | (subject.female ? 4 : 0) | (subject.stage << 3), Math.round(subject.maturity * 1000), Math.round(subject.mate * 1000), subject.wait];
     const sum = q.reduce((h, v) => (Math.imul(h, 31) + v) | 0, 7) >>> 0;
     if (sum !== c.sentSubject) {
       const w = game.beginOwn(OWN_SUBJECT);
@@ -248,6 +252,7 @@ export function syncOwn(ctx: OwnContext, c: Client): void {
       w.u8(subject.points);
       w.bits(subject.stance, 2);
       w.bool(subject.following);
+      w.bool(subject.wandering);
       w.bool(subject.saddled);
       w.bool(subject.breeds);
       w.bool(subject.mating);
@@ -526,6 +531,7 @@ export function addOwnCommands(ctx: OwnContext): void {
     if (eat.food) ctx.survival.add(rec, V_FOOD, eat.food);
     if (eat.water) ctx.survival.add(rec, V_WATER, eat.water);
     if (eat.health) ctx.mend(rec, eat.health);
+    ctx.dose(rec, item, c.pid);
     return RESULT_OK;
   });
 }

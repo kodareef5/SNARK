@@ -11,7 +11,8 @@ import { Solved } from "./skeleton.ts";
 
 import { TICK_RATE } from "../coords.ts";
 import { MODE_SWIM, MODE_WALK, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND } from "../sim/character.ts";
-import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
+import { ACT_COOL, ACT_DRAW, ACT_EQUIP, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, EQUIP_TICKS, HOLD_BOW, HOLD_CARRY, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_THROW, SWING_TICKS } from "../sim/weapon.ts";
+import { cradle } from "./hold.ts";
 
 /** The three parts of a packed AnimState. Replication sends each part only when it changes. */
 export const ANIM_MOTION_BITS = 12;
@@ -32,9 +33,11 @@ export const PITCH_STEPS = 31;
 /**
  * A creature's cues (shared/anim/creature.ts), sent beside the pose state as one word: knocked out in bit 0, then a CUE_
  * for what its whole body goes through and the low byte of its first tick, then a LAYER_ for what plays over that and
- * the low byte of its first tick. The server clears a cue before its start can be counted twice.
+ * the low byte of its first tick. The server clears a cue before its start can be counted twice. Then states that last
+ * (protocol 11): held in bit 22 (CUE_HELD), a corpse in bit 23 (CUE_DEAD), its hurt stage in two bits from bit 24, a
+ * corpse's decay stage in two from bit 26, and its pair's mating in three from bit 28.
  */
-export const CUE_BITS = 22;
+export const CUE_BITS = 31;
 export const CUE_NONE = 0;
 export const CUE_STARTLE = 1;
 export const CUE_LAND = 2;
@@ -44,6 +47,26 @@ export const LAYER_NONE = 0;
 export const LAYER_FLINCH = 1;
 export const LAYER_EAT = 2;
 export const CUE_OUT = 1;
+/** In a survivor's arms or carried by a creature. */
+export const CUE_HELD = 1 << 22;
+/** A body that lies where it fell, to be harvested. */
+export const CUE_DEAD = 1 << 23;
+export const CUE_HURT_SHIFT = 24;
+export const CUE_DECAY_SHIFT = 26;
+export const CUE_MATING_SHIFT = 28;
+/** The worst hurt and decay stage. 0 is unhurt, or fresh. */
+export const STAGE_WORST = 3;
+/** The last step of a pair's mating: 1 as it begins, rising to this as it ends, 0 when not mating. */
+export const MATING_STEPS = 7;
+
+/**
+ * A living body's hurt stage, as every client sees it: 0 above three quarters of its health, then one more for each
+ * quarter lost. Its health itself is never sent, so the stage tells no more than a glance at it would.
+ */
+export function hurtStage(health: number, max: number): number {
+  if (!(max > 0) || health >= max * 0.75) return 0;
+  return health >= max * 0.5 ? 1 : health >= max * 0.25 ? 2 : 3;
+}
 
 /** Everything a pose depends on besides the tick, as whole numbers. */
 export class AnimState {
@@ -67,6 +90,13 @@ export class AnimState {
   cueStart = 0;
   layer = LAYER_NONE;
   layerStart = 0;
+  held = false;
+  dead = false;
+  /** 0 to STAGE_WORST. */
+  hurt = 0;
+  decay = 0;
+  /** 0, or 1 to MATING_STEPS. */
+  mating = 0;
 
   /** Everything but the seed and the cues as one 32-bit number: motion in the low 12 bits, then the look, then the action. */
   pack(): number {
@@ -78,7 +108,8 @@ export class AnimState {
   packCue(): number {
     const cue = this.cue === CUE_NONE ? 0 : (this.cue << 1) | ((this.cueStart & 255) << 4);
     const layer = this.layer === LAYER_NONE ? 0 : (this.layer << 12) | ((this.layerStart & 255) << 14);
-    return (this.out ? CUE_OUT : 0) | cue | layer;
+    const lasting = (this.held ? CUE_HELD : 0) | (this.dead ? CUE_DEAD : 0) | ((this.hurt & 3) << CUE_HURT_SHIFT) | ((this.decay & 3) << CUE_DECAY_SHIFT) | ((this.mating & 7) << CUE_MATING_SHIFT);
+    return ((this.out ? CUE_OUT : 0) | cue | layer | lasting) >>> 0;
   }
 
   /** ACT_NONE stores a start of 0. */
@@ -93,6 +124,11 @@ export class AnimState {
     this.cueStart = (cue >>> 4) & 255;
     this.layer = (cue >>> 12) & 3;
     this.layerStart = (cue >>> 14) & 255;
+    this.held = (cue & CUE_HELD) !== 0;
+    this.dead = (cue & CUE_DEAD) !== 0;
+    this.hurt = (cue >>> CUE_HURT_SHIFT) & 3;
+    this.decay = (cue >>> CUE_DECAY_SHIFT) & 3;
+    this.mating = (cue >>> CUE_MATING_SHIFT) & 7;
   }
 
   unpack(word: number, cue = 0): void {
@@ -354,7 +390,7 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     }
   }
 
-  if (act === ACT_SWING) {
+  if (act === ACT_SWING && hold !== HOLD_CARRY) {
     const clip = hold === HOLD_HANDS ? ((st.actionStart & 1) !== 0 ? (anim.punchCross ?? anim.punch) : anim.punch) : hold === HOLD_THROW ? anim.throwing : anim.toolSwing;
     const k = e < SWING_IN ? e / SWING_IN : (SWING_TICKS - e) / SWING_OUT;
     if (clip && k > 0) {
@@ -387,6 +423,8 @@ export function humanPose(anim: HumanAnim, st: AnimState, tick: number, out: Pos
     turn(out, B_SHOULDER_L, 1, 0, 0, -lift);
     turn(out, B_SHOULDER_R, 1, 0, 0, -lift);
   }
+  // Arms round a creature hold it where they hold it, however the back has turned.
+  if (hold === HOLD_CARRY) cradle(out, st.stance);
 }
 
 /** Turns the whole body about an axis through (0, pivotY, 0) in model space. */

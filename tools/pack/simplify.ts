@@ -8,6 +8,7 @@
 // interpolated. A point with more than one wedge lies on a seam, a crease or a border between materials, and moves
 // only along it.
 
+import { len3 } from "../../shared/math/scalar.ts";
 import { baker, flatOf, painted, placed } from "./bake.ts";
 import { surfaceError } from "./error.ts";
 import { fourHeaviest, tangentsOf } from "./surface.ts";
@@ -197,14 +198,14 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   let area = 0;
   for (let f = 0; f < faces; f++) {
     normal(f, n);
-    area += Math.hypot(n[0]!, n[1]!, n[2]!);
+    area += len3(n[0]!, n[1]!, n[2]!);
   }
   const mean = area / Math.max(faces, 1) || 1;
   /** The faces on each edge, to find the edges where the surface ends or changes colour. */
   const onEdge = new Map<number, number[]>();
   for (let f = 0; f < faces; f++) {
     normal(f, n);
-    const len = Math.hypot(n[0]!, n[1]!, n[2]!);
+    const len = len3(n[0]!, n[1]!, n[2]!);
     if (len === 0) continue;
     const [a, b, c] = [n[0]! / len, n[1]! / len, n[2]! / len];
     const p = corners[f * 3]! * 3;
@@ -228,7 +229,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
       // The plane through the edge that stands square to the face.
       normal(f, n);
       let a = ey * n[2]! - ez * n[1]!, b = ez * n[0]! - ex * n[2]!, c = ex * n[1]! - ey * n[0]!;
-      const len = Math.hypot(a, b, c);
+      const len = len3(a, b, c);
       if (len === 0) continue;
       a /= len;
       b /= len;
@@ -251,7 +252,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   const dense = new Float64Array(textured ? faces : 0);
   for (let f = 0; f < dense.length; f++) {
     normal(f, n);
-    dense[f] = Math.abs(spread(f)) / (Math.hypot(n[0]!, n[1]!, n[2]!) || 1);
+    dense[f] = Math.abs(spread(f)) / (len3(n[0]!, n[1]!, n[2]!) || 1);
   }
   /** The bones each point is weighted to, with weights that sum to 1. */
   const skins = !textured || !fine.bones ? null : origin.map((v) => {
@@ -301,7 +302,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
       normal(f, before);
       normal(f, after, from, to);
       const size = before[0]! * before[0]! + before[1]! * before[1]! + before[2]! * before[2]!;
-      const held = Math.abs(now) / Math.hypot(after[0]!, after[1]!, after[2]!) / dense[f]!;
+      const held = Math.abs(now) / len3(after[0]!, after[1]!, after[2]!) / dense[f]!;
       if (was * now <= 0 || !(held <= STRETCH && held >= 1 / STRETCH)) return Infinity;
       // Where `to` lies in the triangle as it is now: how much of it each corner has, `from` first. The triangle
       // with a corner moved to `to` has that corner's share of the size.
@@ -343,7 +344,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
       normal(f, before);
       normal(f, after, from, to);
       const dot = before[0]! * after[0]! + before[1]! * after[1]! + before[2]! * after[2]!;
-      if (dot <= 0.2 * Math.hypot(before[0]!, before[1]!, before[2]!) * Math.hypot(after[0]!, after[1]!, after[2]!)) return true;
+      if (dot <= 0.2 * len3(before[0]!, before[1]!, before[2]!) * len3(after[0]!, after[1]!, after[2]!)) return true;
     }
     return false;
   };

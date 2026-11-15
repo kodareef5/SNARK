@@ -340,7 +340,7 @@ test("wrong PINs are counted against the survivor who gives them, and each one p
   expect([1, 2].map((pin) => guess(cy, pin))).toEqual([RESULT_DENIED, RESULT_DENIED]);
 });
 
-test("a tame that dies leaves what it carried and its saddle where it fell, for anyone to take, as its body does in the reference", () => {
+test("a tame that dies leaves what it carried and its saddle in its body where it fell, for anyone to take, as in the reference", () => {
   const { h, sessions, recs, at } = arena(["ada", "bob"]);
   const bob = sessions[1]!;
   const { records, items } = h.host;
@@ -366,10 +366,11 @@ test("a tame that dies leaves what it carried and its saddle where it fell, for 
   h.host.survival.add(tame, V_HEALTH, -1e9);
   h.run(200);
   expect(records.byPid.has(tame.pid)).toBe(false);
-  // A cache lies where it fell, with everything in it. Out of the creature, the meat has a quarter of the time it had left.
-  const left = [...records.byPid.values()].filter((r) => r.kind === id("cache"));
-  expect(left.map((r) => r.name)).toEqual(["Dolly's cache"]);
-  const cache = left[0]!;
+  // Its body lies where it fell, with everything in it (server/corpses.ts). Out of the creature, the meat has a quarter of
+  // the time it had left.
+  const left = [...h.host.corpses.bodies.values()];
+  expect(left.map((b) => b.rec.name)).toEqual(["Dolly"]);
+  const cache = left[0]!.rec;
   const inv = items.inv(cache);
   expect([inv.total(ingot), inv.total(meat), inv.total(saddle)]).toEqual([30, 5, 1]);
   expect(Math.hypot(cache.x - x, cache.z - z)).toBeLessThan(0.5);
@@ -380,14 +381,17 @@ test("a tame that dies leaves what it carried and its saddle where it fell, for 
   expect([lies > h.host.death.lifetime(id("cache")) - 10, lies <= h.host.death.lifetime(id("cache"))]).toEqual([true, true]);
   expect(items.audit()).toEqual([]);
 
-  // Bob, who is not of her tribe, walks up, opens it and takes the saddle.
-  h.say(bob, `tp ${(cache.x - 1.5).toFixed(3)} ${cache.z.toFixed(3)}`);
+  // Bob, who is not of her tribe, walks up once it has come to rest, opens it and takes the saddle.
+  h.run(3000);
+  expect(left[0]!.fall!.still).toBe(true);
+  const mid = h.host.corpses.middle(left[0]!);
+  h.say(bob, `tp ${(mid.x - 1.5).toFixed(3)} ${mid.z.toFixed(3)}`);
   const pilot = h.pilots[1]!;
   pilot.yaw = Math.PI / 2;
-  pilot.pitch = Math.atan2(0.25 - 1.62, 1.5);
+  pilot.pitch = Math.atan2(mid.y - (ents.y[h.ent(bob)]! + 1.62), 1.5);
   h.run(200);
   press(h, bob, BTN_USE);
-  expect(bob.open?.name).toBe("Dolly's cache");
+  expect(bob.open?.name).toBe("Dolly");
   const from = bob.open!.inventory.item.indexOf(saddle);
   bob.command(CMD_MOVE, (w: BitWriter) => (w.bits(BOX_OPEN, 1), w.varint(from), w.bits(BOX_SELF, 1), w.varint(0), w.u16(0), w.u16(saddle)));
   h.run(200);

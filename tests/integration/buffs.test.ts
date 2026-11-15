@@ -228,7 +228,8 @@ test("a flame arrow sets its mark burning: eight health a second for eight secon
   expect(h.host.records.byPid.has(g.rec.pid)).toBe(false);
   expect(rec.xp).toBeGreaterThan(xp);
   expect(s.events.some((ev) => ev.kind === EVENT_KILL && ev.name === "grazer")).toBe(true);
-  expect(h.host.items.inv(rec).total(id("hide"))).toBeGreaterThanOrEqual(4);
+  // Its body lies there for a tool; the kill itself gives the archer nothing to carry.
+  expect([h.host.items.inv(rec).total(id("hide")), h.host.corpses.count]).toEqual([0, 1]);
   expect(h.host.items.audit()).toEqual([]);
 });
 

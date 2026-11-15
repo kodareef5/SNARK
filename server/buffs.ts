@@ -3,6 +3,7 @@
 
 import type { BuffDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
+import { DAMAGE_TYPES } from "../shared/sim/damage.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Survival } from "./survival.ts";
@@ -156,10 +157,12 @@ export class Buffs {
     let torpor = 0;
     let by = 0;
     let immune = false;
+    const takes = this.world.reg.takes[rec.kind];
     for (const b of rec.buffs) {
       const def = this.def(b.buff);
       if (!def) continue;
-      const h = def.health ?? 0;
+      // Harm of a kind is what the body takes of it, as a blow of that kind is: a herbivore burns for three eighths.
+      const h = (def.health ?? 0) * (def.damage !== undefined && (def.health ?? 0) < 0 && takes ? takes[DAMAGE_TYPES.indexOf(def.damage)]! : 1);
       health += h;
       torpor += (def.torpor ?? 0) + b.torpor;
       // The giver of a harmful buff gets the kill if the record dies of it.

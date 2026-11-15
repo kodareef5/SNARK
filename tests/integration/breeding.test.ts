@@ -521,7 +521,7 @@ test("a development server reads a folder of its own, with taming, hatching and 
   expect(rec.vitals!.max[V_HEALTH]! / 1e6).toBeCloseTo(statOf(reg.defs[rec.kind] as SpeciesDef, rec.genome, STAT_HEALTH, 0), 3);
 });
 
-test("a whole client, looking at an egg, is told when it will hatch; looking at what hatched, that it is there to take; and taking it with the use key, is asked its name", () => {
+test("a whole client, looking at an egg, is told when it will hatch and takes it up with the use key; set down, it hatches, and looking at what hatched, that it is there to take; and taking it with the use key, is asked its name", () => {
   const h = new Harness({}, 1, 60, { dev: true });
   const app = new App(h.join("ada", { latencyMs: 20 }, { manual: true }), h.reg, parsePack(corePackBytes()));
   const run = (ms: number): void => h.run(ms, (now) => void app.frame(now, 1280, 720));
@@ -547,18 +547,27 @@ test("a whole client, looking at an egg, is told when it will hatch; looking at 
   const [ux, uz] = [(egg.x - ents.x[f.e]!) / off, (egg.z - ents.z[f.e]!) / off];
   say(`tp ${(egg.x + ux * 1.5).toFixed(3)} ${(egg.z + uz * 1.5).toFixed(3)}`);
   app.controls.yaw = Math.atan2(-ux, -uz);
-  app.controls.pitch = Math.atan2(0.25 - 1.62, 1.5);
+  app.controls.pitch = Math.atan2(reg.bodyHeight[egg.kind]! / 2 - 1.62, 1.5);
   run(400);
   const left = Math.ceil((egg.egg!.hatchAt - h.world.tick) / TICK_RATE);
-  expect(app.ui.frame.find(KEY_PROMPT)!.text).toBe(`parasaur egg  hatches in ${Math.floor(left / 3600)}h ${Math.floor((left % 3600) / 60)}m`);
+  expect(app.ui.frame.find(KEY_PROMPT)!.text).toBe(`E  take parasaur egg  ${Math.floor(left / 3600)}h ${Math.floor((left % 3600) / 60)}m to hatch`);
   app.key("KeyE", true);
   run(100);
   app.key("KeyE", false);
   run(300);
-  expect([app.session.open, h.host.records.byPid.has(egg.pid)]).toEqual([null, true]);
+  // Taken up, it is a fertilised egg in her bag and no longer lies there; nothing was opened.
+  const inv = h.host.items.inv(me);
+  const slot = inv.item.indexOf(id("parasaur_egg_fertile"));
+  expect([app.session.open, h.host.records.byPid.has(egg.pid), h.host.records.entOf.has(egg.pid), slot >= 0 && inv.refOf(slot) === egg.pid]).toEqual([null, true, false, true]);
+  // Set down, it lies ahead of her, and the hatch cheat finds it.
+  expect(h.host.eggs.put(me, slot, 0)).toBe(true);
   for (const other of eggs(h)) h.host.breeding.hatchNow(other);
   run(400);
   const baby = young(h).find((r) => r.x === egg.x && r.z === egg.z)!;
+  const [bx, bz] = [baby.x - ents.x[h.ent(app.session)]!, baby.z - ents.z[h.ent(app.session)]!];
+  app.controls.yaw = Math.atan2(bx, bz);
+  app.controls.pitch = Math.atan2(0.25 - 1.62, Math.hypot(bx, bz));
+  run(400);
   expect([baby.team, app.ui.frame.find(KEY_PROMPT)!.text]).toEqual([0, "E  take the young parasaur"]);
   app.key("KeyE", true);
   run(100);

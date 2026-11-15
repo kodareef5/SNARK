@@ -93,6 +93,12 @@ export interface MaterialSpec {
   readonly regions?: string | { readonly mask: string; readonly mask2?: string };
   /** Kept for the record. `--check` holds the normal map against it. */
   readonly height?: string;
+  /**
+   * Layers over the base colour on the same layout: wounds that show as a creature is hurt, and the wear of its corpse
+   * as it decays. Not read yet.
+   */
+  readonly hurt?: string;
+  readonly decay?: string;
   /** The same pictures at a smaller size, where the set was made small first. `--check` holds each large one, shrunk, against its small one. */
   readonly small?: { readonly base?: string; readonly normal?: string };
   readonly twoSided?: boolean;
@@ -232,6 +238,16 @@ export interface CreatureAsset {
  * Rigid meshes made by one set of scripts: the pieces of a structure tier, say. A piece whose id is a structure's takes
  * the place of that structure's grey box. Collision stays the content's.
  */
+/** One piece of a pieces asset: see `PiecesAsset.pieces`. */
+export interface PieceSpec {
+  readonly id: string;
+  readonly object: string;
+  readonly errors?: readonly number[];
+  readonly hold?: "prop_r" | "prop_l";
+  readonly dropped?: "auto" | string;
+  readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number };
+}
+
 export interface PiecesAsset {
   readonly kind: "pieces";
   readonly source: { readonly scripts: readonly string[] };
@@ -244,8 +260,16 @@ export interface PiecesAsset {
    * lies from the finest's, in place of measuring how far its points moved. It is for levels a measure of points
    * cannot judge, such as a crown that is other leaves in the same outline. A level it leaves out is measured.
    * `--check` and the sheet print both, and where each level is then first drawn on each tier.
+   *
+   * An item's piece (planning/reference/items-plan.md) may also say, though nothing reads these until tasks A and B:
+   * - `hold`: the piece is held, in the right or left hand, on that hand's prop bone of the human skeleton. Modelled
+   *   with the grip at the origin, its length along +Z and its top along +Y, as tools/pack/weapons.ts draws the boxes.
+   * - `dropped`: the piece as it lies on the ground, `<id>/dropped`. "auto" lays the held piece on its broadest side;
+   *   the name of another Blender object gives a lying piece of its own.
+   * - `icon`: the view its inventory picture is drawn from, where the usual three-quarter view does not suit it.
+   *   Angles in radians round and above, `roll` about the view, `zoom` past the framing that fits it.
    */
-  readonly pieces: readonly { readonly id: string; readonly object: string; readonly errors?: readonly number[] }[];
+  readonly pieces: readonly PieceSpec[];
   /**
    * The pictures of each Blender material, by its name. A piece is drawn with them on its levels that have texture
    * coordinates, and flat in the palette colour nearest each material's mean colour.

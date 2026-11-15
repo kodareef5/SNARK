@@ -125,6 +125,9 @@ const INJURED = 30 * MICRO;
 /** Metres per second a landing may have without harm, and the health each metre per second above that costs. */
 const SAFE_LANDING = 12;
 const LANDING_DAMAGE = 7;
+/** A creature's: a third more speed before it is hurt, and a third less harm (ARK patch 176.0, against its survivors'). */
+const CREATURE_SAFE_LANDING = SAFE_LANDING * (4 / 3);
+const CREATURE_LANDING_DAMAGE = LANDING_DAMAGE * (2 / 3);
 
 /** Nothing is stepped. A change of circumstance sets new rates and one deadline for the next tick a vital runs out. */
 const DAMAGE = event("damage");
@@ -306,13 +309,14 @@ export class Survival {
 
   /** `speed` is in metres per second. */
   landed(rec: EntityRecord, speed: number): void {
-    const safe = SAFE_LANDING * (this.rules ? this.rules.num("MaxFallSpeedMultiplier") : 1);
+    const person = rec.kind === this.survivor;
+    const safe = (person ? SAFE_LANDING : CREATURE_SAFE_LANDING) * (this.rules ? this.rules.num("MaxFallSpeedMultiplier") : 1);
     if (!(speed > safe)) return;
     // A fall is a blow with nobody behind it, and a module is asked of it as of any other.
     const asked = { target: "body", victim: rec.pid, kind: this.world.reg.ids[rec.kind]!, team: rec.team, byPid: 0, byTeam: 0, item: "", type: "fall", zone: 0, scale: 1 };
     if (this.bus.n[DAMAGE] !== 0 && this.bus.before(DAMAGE, asked) !== "") return;
     const scale = Number(asked.scale);
-    this.add(rec, V_HEALTH, -(speed - safe) * LANDING_DAMAGE * (scale >= 0 ? scale : 1), CAUSE_FALL);
+    this.add(rec, V_HEALTH, -(speed - safe) * (person ? LANDING_DAMAGE : CREATURE_LANDING_DAMAGE) * (scale >= 0 ? scale : 1), CAUSE_FALL);
   }
 
   /** Call when a record is deleted. */

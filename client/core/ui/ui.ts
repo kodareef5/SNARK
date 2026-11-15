@@ -15,7 +15,7 @@ import { RespawnScreen, buildMap } from "./screens.ts";
 import { Settings } from "../settings.ts";
 import { buildSettings, settingsClick } from "./settings.ts";
 import { StructMenu } from "./structure.ts";
-import { KEY_NAME_INPUT, NamePrompt } from "./tame.ts";
+import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 
 /** The channel each key opens the chat box on. */
@@ -164,6 +164,8 @@ export class Ui {
     this.creating = session?.sessionState === SESSION_CREATING;
     // A survivor still in the creator has no vitals, no position and nothing to aim at.
     if (!this.creating) {
+      // Marks over creatures are under the rest of the HUD.
+      buildOverhead(f, hud.overhead);
       buildHud(f, hud);
       buildCombat(f, hud.combat);
       // Chat is built over the HUD and under every screen.

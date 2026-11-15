@@ -42,8 +42,8 @@ export interface SpeciesDef extends Named {
   readonly strafe?: boolean;
   /** Metres per second in water. Defaults to 60% of the walk speed. */
   readonly swimSpeed?: number;
-  /** Stamina points: per second of sprinting, per second of rest, per jump. Defaults to 5, 8 and 6. */
-  readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number };
+  /** Stamina points: per second of sprinting, per second of rest, per jump, and per second of walking. Defaults to 5, 8, 6 and none. */
+  readonly stamina?: { readonly sprint: number; readonly regen: number; readonly jump: number; readonly walk?: number };
   /** Food capacity and loss per in-game hour. Omitted for species that do not eat. */
   readonly food?: { readonly max: number; readonly perHour: number };
   /** Water lost per in-game hour. Omitted for species that do not drink. */
@@ -56,7 +56,15 @@ export interface SpeciesDef extends Named {
   readonly equips?: boolean;
   /** Damage of a bare-handed strike. Defaults to 8. */
   readonly fists?: number;
-  readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number }[];
+  /** Torpor a bare-handed strike gives, as a multiple of the damage it does. Defaults to none. */
+  readonly fistsTorpor?: number;
+  /**
+   * What its body gives to the blows that harvest it (server/corpses.ts). Each roll gives `min` to `max` of one drop,
+   * picked by `weight` (1 where not given). A tool whose `tool.on` is a drop's `favoured` picks that drop half as often again.
+   */
+  readonly drops?: readonly { readonly item: string; readonly min: number; readonly max: number; readonly weight?: number; readonly favoured?: string }[];
+  /** The harvest damage its grown body takes before it is used up, and the harvest damage of each roll. */
+  readonly corpse?: { readonly health: number; readonly roll: number };
   /** Per stat: [base, gain per wild point, gain per tamed point]. */
   readonly stats?: { readonly [S in StatName]?: StatCurve };
   /** Multiplier on each type of damage it takes. 1 where not given. */
@@ -100,6 +108,19 @@ export interface SpeciesDef extends Named {
   readonly regions?: readonly ({ readonly name: string; readonly colors: readonly (readonly [palette: number, weight: number])[] } | null)[];
   /** The palette colours a mutation may give one of its regions. Defaults to MUTATION_COLORS. */
   readonly mutations?: readonly number[];
+  /** When it is hurt, others of its species within this many metres take fright with it. Omitted, none do. */
+  readonly alarm?: number;
+  /** Its sprintMul once tamed. Defaults to its sprintMul. */
+  readonly tamedSprintMul?: number;
+  /** What it weighs to a creature that carries or drags it (the reference's drag weight), and its mass. */
+  readonly drag?: number;
+  readonly mass?: number;
+  /** A survivor may pick it up in both arms, hold it and throw it. */
+  readonly carriable?: boolean;
+  /** The item it leaves when it defecates. Omitted, it does not. */
+  readonly feces?: string;
+  /** The chance, 0 to 1, that a female lays an unfertilised egg in place of her feces: the item her egg prop names. */
+  readonly eggChance?: number;
   // The rest are stubs: declared, checked and read by nothing yet. The catalogue says what each waits for.
   /** What kind of variant of its base it is: "alpha", "event". */
   readonly variant?: string;
@@ -183,7 +204,7 @@ export interface MaterialDef extends Named {
 
 export interface ItemDef extends Named {
   readonly type: "item";
-  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "egg" | "shield" | "costume" | "skin" | "dye" | "artifact";
+  readonly class: "resource" | "consumable" | "weapon" | "ammo" | "attachment" | "armor" | "saddle" | "structure" | "egg" | "feces" | "shield" | "costume" | "skin" | "dye" | "artifact";
   readonly id: string;
   /** Largest stack. 1 for things that carry their own quality and durability. */
   readonly stack: number;
@@ -191,6 +212,10 @@ export interface ItemDef extends Named {
   readonly weight?: number;
   /** In-game hours one lasts before it spoils. Omitted for things that keep. */
   readonly spoilHours?: number;
+  /** In-game hours one lies on the ground before it is gone (the reference's "decomposes in"). Omitted, as long as any dropped stack. */
+  readonly decomposeHours?: number;
+  /** A young body gives this in place of the item named, as a young creature gives prime meat in place of meat. */
+  readonly youngFor?: string;
   /** What eating one restores, in points. */
   readonly eat?: { readonly food?: number; readonly water?: number; readonly health?: number };
   /** Seconds one of it keeps a fire going. */
@@ -224,6 +249,21 @@ export interface ItemDef extends Named {
   readonly spoilsInto?: string;
   /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
   readonly blueprint?: boolean;
+  /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
+  readonly use?: UseFacet;
+}
+
+/**
+ * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives.
+ * A stub until task C of planning/reference/items-plan.md builds it.
+ */
+export interface UseFacet {
+  /** A stat changed by `amount`: at once, or spread over `seconds`. */
+  readonly adds?: readonly { readonly stat: StatName; readonly amount: number; readonly seconds?: number }[];
+  /** Buffs given on use. */
+  readonly buffs?: readonly string[];
+  /** A vessel that holds water: `water` points when full, `each` drunk a use, filled again standing in water. */
+  readonly holds?: { readonly water: number; readonly each: number };
 }
 
 /** How an item is made. ARK keeps this on the item too. */
@@ -256,6 +296,8 @@ export interface WeaponFacet {
   readonly type?: DamageType;
   /** Melee: reach from the eye, in metres. Defaults to 2.6. */
   readonly reach?: number;
+  /** Melee: torpor a hit gives, as a multiple of the damage it does. Defaults to none. */
+  readonly torpor?: number;
   /** Bow and gun: the ammunition items it takes, and what it multiplies their damage by. */
   readonly ammo?: readonly string[];
   readonly power?: number;
@@ -407,6 +449,12 @@ export interface PropDef extends Named {
   readonly slots?: number;
   /** It is drawn tilted to its pitch as well as turned to its facing, with its mesh's +Z leading, like an arrow stuck where it landed. */
   readonly pitched?: boolean;
+  /** Drawn at this multiple of its mesh's modelled size. 1 where not given. */
+  readonly size?: number;
+  /** An egg: the item it is when picked up. */
+  readonly item?: string;
+  /** An egg: the item it is when picked up fertilised, which stacks to 1 and keeps the young it holds. */
+  readonly fertile?: string;
 }
 
 /**
@@ -427,6 +475,8 @@ export interface BuffDef extends Named {
   /** Health per second (negative harms) and torpor per second while it lasts. */
   readonly health?: number;
   readonly torpor?: number;
+  /** The kind of damage its harm to health is, scaled by what the body takes of that kind. Omitted, none scales it. */
+  readonly damage?: DamageType;
   /** Multipliers on the body's speed, the damage it deals and the damage it takes. */
   readonly speed?: number;
   readonly dealt?: number;

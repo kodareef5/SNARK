@@ -10,8 +10,6 @@ export const MAX_CASCADES = 4;
 export const MAX_REACH = 192;
 /** A caster whose radius is under this many of a cascade's texels is left out of that cascade. */
 export const SMALLEST_CASTER = 1.5;
-/** The sine of 2 degrees under the horizon. A sun lower than this casts nothing. */
-export const NIGHT_SUN = Math.sin((-2 * Math.PI) / 180);
 /** The share of its radius the farthest cascade's square grows by when it is drawn every other frame. */
 export const KEPT_MARGIN = 1 / 16;
 /** Steps of a 16-bit depth map. */
@@ -99,11 +97,6 @@ export function lightBasis(sx: number, sy: number, sz: number, out: Float64Array
   out[8] = sz;
 }
 
-/** Whether a sun whose unit vector climbs `sunY` casts at all. */
-export function sunCasts(sunY: number): boolean {
-  return sunY > NIGHT_SUN;
-}
-
 /**
  * How far along the light a caster `height` metres over the ground can be from the ground it shades, under a sun whose
  * unit vector climbs `sunY`: its height over the sine of the sun's elevation, at most MAX_REACH.
@@ -161,11 +154,7 @@ export class Cascades {
     sy /= sl;
     sz /= sl;
     this.drawn = 0;
-    if (n <= 0 || !sunCasts(sy)) {
-      this.count = 0;
-      this.half.fill(0);
-      return;
-    }
+    if (n <= 0) return this.clear();
     const b = this.basis;
     const turned = sx !== this.sun[0] || sy !== this.sun[1] || sz !== this.sun[2];
     if (turned) {

@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { Cascades, DEPTH_STEPS, MAX_REACH, casterLevel, reach, sliceSphere, splitDepths, sunCasts, type ShadowSetup } from "../../client/core/render/shadow.ts";
+import { Cascades, DEPTH_STEPS, MAX_REACH, casterLevel, reach, sliceSphere, splitDepths, type ShadowSetup } from "../../client/core/render/shadow.ts";
 import { Rng } from "../../shared/rng.ts";
 
 const MEDIUM: ShadowSetup = tierOf("medium").shadows;
@@ -275,23 +275,19 @@ test("no caster that can shade a receiver in a cascade is ever left out of it", 
   expect(checked).toBe(4000);
 });
 
-test("the sun casts down to 2 degrees under the horizon, and at midnight nothing is taken", () => {
+test("cleared, as the scene clears them while the sun casts nothing, the cascades take nothing, and the farthest is drawn again after", () => {
   const c = new Cascades();
   const cam = camera(1000, 1.7, 1000);
   const big: [number, number, number, number, number, number, number, number] = [-50, -2, -50, 50, 30, 50, 5, MAX_REACH];
-  c.fit(cam, ...sun(-1.5, 90), HIGH, 0);
-  expect(c.count).toBe(3);
-  expect(c.mask(...big)).toBe(0b111);
-  for (const elevation of [-2.5, -30, -66.7, -90]) {
-    c.fit(cam, ...sun(elevation, 90), HIGH, 0);
-    expect(sunCasts(sun(elevation, 90)[1])).toBe(false);
-    expect([c.count, c.drawn, c.mask(...big), c.sphereMask(0, 0, 5, 5, MAX_REACH)]).toEqual([0, 0, 0, 0]);
-  }
+  c.fit(cam, ...sun(10, 90), HIGH, 0);
+  expect([c.count, c.mask(...big)]).toEqual([3, 0b111]);
+  c.clear();
+  expect([c.count, c.drawn, c.mask(...big), c.sphereMask(0, 0, 5, 5, MAX_REACH)]).toEqual([0, 0, 0, 0]);
   // After a night the farthest cascade is drawn again, even on a frame it would otherwise have kept.
   c.fit(cam, ...sun(1, 90), PHONE, 0);
   c.fit(cam, ...sun(1, 90), PHONE, 1);
   expect(c.drawn).toBe(0b01);
-  c.fit(cam, ...sun(-3, 90), PHONE, 2);
+  c.clear();
   c.fit(cam, ...sun(1, 90), PHONE, 3);
   expect(c.drawn).toBe(0b11);
 });

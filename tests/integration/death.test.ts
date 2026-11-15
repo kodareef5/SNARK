@@ -39,7 +39,8 @@ const contents = (inv: Inventory): string[] => {
   for (let i = 0; i < inv.cap; i++) if (inv.item[i] !== 0) out.push(`${i}:${inv.item[i]}x${inv.count[i]}@${inv.spoilAt[i]}`);
   return out;
 };
-const caches = (h: Harness): EntityRecord[] => [...h.host.records.byPid.values()].filter((r) => r.expiresAt > 0);
+/** What lies with a deadline and is not a creature's body (server/corpses.ts). */
+const caches = (h: Harness): EntityRecord[] => [...h.host.records.byPid.values()].filter((r) => r.expiresAt > 0 && !h.host.corpses.bodies.has(r.pid));
 const move = (s: ClientSession, fromBox: number, from: number, toBox: number, to: number, item: number): number =>
   s.command(CMD_MOVE, (w: BitWriter) => {
     w.bits(fromBox, 1);
@@ -292,7 +293,8 @@ test("a starving creature dies on its tick with nobody in the world, and kill an
   expect(quiet.host.survival.starving.has(pid)).toBe(true);
   quiet.server.tick();
   expect(quiet.host.records.byPid.has(pid)).toBe(false);
-  expect(quiet.world.ents.count).toBe(0);
+  // Its body is all that is left of it.
+  expect([quiet.world.ents.count, quiet.host.corpses.count]).toEqual([1, 1]);
   expect(quiet.host.death.count).toBe(1);
   expect(quiet.host.survival.starving.has(pid)).toBe(false);
 
@@ -303,7 +305,7 @@ test("a starving creature dies on its tick with nobody in the world, and kill an
   expect(h.say(s, "spawn grazer 5")[0]).toContain("spawned");
   expect(ents.count).toBe(2);
   expect(h.say(s, "kill")).toEqual(["killed core:grazer"]);
-  expect(ents.count).toBe(1);
+  expect([ents.count, h.host.corpses.count]).toEqual([2, 1]);
   expect(h.say(s, "kill")).toEqual(["nothing alive there"]);
   // The tp to y = 60 is a long fall. It kills without god mode.
   expect(h.say(s, "god")).toEqual(["god on"]);

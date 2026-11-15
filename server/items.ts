@@ -24,10 +24,13 @@ export class Items {
   private readonly reg: Registry;
   private readonly records: Records;
   private readonly world: ServerWorld;
-  private readonly spoiled = (item: number, n: number): void => {
+  private readonly spoiled = (item: number, n: number, ref: number): void => {
     this.burned[item] = this.burned[item]! + n;
     this.dirty = true;
+    if (ref !== 0) this.onRefGone?.(ref);
   };
+  /** A one of a kind (Inventory.ref) was burned, eaten or spoiled, so the record it stood for goes too (server/eggs.ts). */
+  onRefGone: ((ref: number) => void) | null = null;
 
   constructor(world: ServerWorld, records: Records) {
     this.world = world;
@@ -49,7 +52,11 @@ export class Items {
     } else if (species?.equips && inv.hotbar < 0) {
       // A save from before equipment gets the gear slots it lacked.
       const grown = new Inventory(inv.cap + GEAR_SLOTS, inv.cap);
-      for (let s = 0; s < inv.cap; s++) if (inv.item[s] !== 0) grown.set(s, inv.item[s]!, inv.count[s]!, inv.quality[s]!, inv.dur[s]!, inv.spoilAt[s]!);
+      for (let s = 0; s < inv.cap; s++) {
+        if (inv.item[s] === 0) continue;
+        grown.set(s, inv.item[s]!, inv.count[s]!, inv.quality[s]!, inv.dur[s]!, inv.spoilAt[s]!);
+        grown.setRef(s, inv.refOf(s));
+      }
       inv = rec.inv = grown;
       this.records.dirty.add(rec.pid);
     }
@@ -131,11 +138,32 @@ export class Items {
     return made;
   }
 
+  /**
+   * Creates one of a kind standing for record `ref` in a free bag slot of `rec`. Returns the slot, or -1 if there is
+   * none or the item stacks: only an item that stacks to 1 may stand for a record.
+   */
+  mintRef(rec: EntityRecord, item: number, ref: number): number {
+    if (this.table.stack[item] !== 1 || ref === 0) return -1;
+    const inv = this.inv(rec);
+    const slot = inv.free();
+    if (slot < 0) return -1;
+    inv.set(slot, item, 1, 0, this.maxDur(item, 0), 0);
+    inv.setRef(slot, ref);
+    // Its spoil clock starts as any new item's does.
+    const spoil = this.table.spoilTicks[item]!;
+    if (spoil > 0) inv.spoilAt[slot] = Math.min(0xffffffff, this.world.tick + Math.round(spoil * inv.keep));
+    this.minted[item] = this.minted[item]! + 1;
+    this.dirty = true;
+    this.records.dirty.add(rec.pid);
+    return slot;
+  }
+
   /** Returns false, changing nothing, if the slot holds fewer than `n`. `raw` skips settling the inventory first. */
   burn(rec: EntityRecord, slot: number, n: number, raw = false): boolean {
     const inv = raw ? rec.inv! : this.inv(rec);
     if (slot >= inv.cap || !(n > 0) || inv.count[slot]! < n) return false;
     const item = inv.item[slot]!;
+    const ref = inv.refOf(slot);
     // Loaded rounds and an attachment are burned with the weapon.
     if (inv.loaded[slot]! > 0) this.burned[inv.ammo[slot]!] = this.burned[inv.ammo[slot]!]! + inv.loaded[slot]!;
     if (inv.attach[slot] !== 0) this.burned[inv.attach[slot]!] = this.burned[inv.attach[slot]!]! + 1;
@@ -143,6 +171,7 @@ export class Items {
     this.burned[item] = this.burned[item]! + n;
     this.dirty = true;
     this.records.dirty.add(rec.pid);
+    if (ref !== 0) this.onRefGone?.(ref);
     return true;
   }
 
@@ -229,7 +258,19 @@ export class Items {
 
   /** Burns `n` of an item from any slots. All or nothing. */
   burnItem(rec: EntityRecord, item: number, n: number): boolean {
-    if (!(n > 0) || !this.inv(rec).take(item, n)) return false;
+    const inv = this.inv(rec);
+    if (!(n > 0) || inv.total(item) < n) return false;
+    if (inv.ref) {
+      // Last slots first, as Inventory.take goes, one slot at a time so that what each stood for goes with it.
+      for (let s = inv.cap - 1; s >= 0 && n > 0; s--) {
+        if (inv.item[s] !== item) continue;
+        const k = Math.min(n, inv.count[s]!);
+        this.burn(rec, s, k, true);
+        n -= k;
+      }
+      return true;
+    }
+    inv.take(item, n);
     this.burned[item] = this.burned[item]! + n;
     this.dirty = true;
     this.records.dirty.add(rec.pid);
@@ -268,6 +309,7 @@ export class Items {
         if (to < 0) throw new Error("room was checked");
         dst.set(to, item, 1, src.quality[s]!, src.dur[s]!, spoilAt);
         dst.setGear(to, src.ammo[s]!, src.loaded[s]!, src.attach[s]!);
+        dst.setRef(to, src.refOf(s));
       } else if (dst.add(item, k, src.quality[s]!, src.dur[s]!, tick, this.table, spoilAt) !== 0) throw new Error("room was checked");
       src.remove(s, k);
       n -= k;

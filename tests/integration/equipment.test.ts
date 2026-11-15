@@ -101,13 +101,15 @@ test("the content hangs together: every engram can be reached, every thing that 
   const points = levels.type === "levels" ? levels.engramPoints.reduce((a, b) => a + b, 0) : 0;
   expect(points).toBeGreaterThan(engrams.reduce((a, e) => a + e.cost, 0));
   const weapons = items.filter((d) => d.weapon);
-  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bow", "crossbow", "grenade", "hatchet", "pick", "pistol", "rifle", "spear"]);
+  expect(weapons.map((d) => d.id.slice(5)).sort()).toEqual(["bow", "club", "crossbow", "grenade", "hatchet", "pick", "pistol", "rifle", "slingshot", "spear"]);
+  // Ammunition is made, or gathered as a slingshot's stone is.
+  const gathered = new Set(reg.defs.flatMap((d) => (d?.type === "node" ? d.yields.map((y) => y.item) : [])));
   for (const d of weapons) {
     // A weapon mesh is skinned to the human skeleton, so it follows a hand.
     const mesh = pack.header.meshes[pack.meshIndex.get(d.weapon!.mesh!)!]!;
     expect(mesh.skeleton, d.id).toBe("human");
     for (const a of d.weapon!.ammo ?? []) expect(items.find((x) => x.id === a)?.ammo, a).toBeDefined();
-    if (d.weapon!.ammo) expect(d.weapon!.ammo.some((a) => made.some((r) => r.id === a))).toBe(true);
+    if (d.weapon!.ammo) expect(d.weapon!.ammo.some((a) => made.some((r) => r.id === a) || gathered.has(a))).toBe(true);
     expect(d.craft !== undefined, d.id).toBe(true);
   }
   // Four tiers of five pieces.
@@ -120,7 +122,7 @@ test("the content hangs together: every engram can be reached, every thing that 
     expect(d.craft !== undefined, d.id).toBe(true);
   }
   for (const need of made.flatMap((r) => r.craft!.needs)) expect(reg.index.has(need.item), need.item).toBe(true);
-  for (const mesh of ["core:arrow", "core:dart"]) expect(pack.meshIndex.has(mesh)).toBe(true);
+  for (const mesh of ["core:arrow", "core:dart", "core:stone_shot"]) expect(pack.meshIndex.has(mesh)).toBe(true);
 });
 
 test("a survivor takes things in hand and puts armor on, and everyone sees it", () => {

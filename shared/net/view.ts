@@ -5,11 +5,11 @@
 //   count varint, then per op in ascending id order:
 //     id gap varint: this id minus the previous id (first: id + 1), so always >= 1
 //     op 2 bits: 0 update, 1 create, 2 remove, 3 remove because it died
-//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][22], then its appearance:
+//     create: kind varint, generation 12 bits, x 22, y 20, z 22, yaw 10, flags 4, pose state 32, [cues? 1][31], then its appearance:
 //             revision 4, level varint, [colours? 1][6 x 8], [name? 1][string], [look? 1][28 x 8], [gear? 1][6 x 16],
 //             [team? 1][varint], [seat? 1][varint], [young? 1][span 32, grown 32]
 //     update: [pos? 1][small? 1][3 x s8 | 22+20+22] [yaw? 1][10] [flags? 1][4]
-//             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][22]]: the action is sent again with a change of cues
+//             [motion? 1][12] [look? 1][6] [action? 1][14 [cues? 1][31]]: the action is sent again with a change of cues
 //
 // Appearance is sent only on create. A change bumps the entity's revision, and the next delta then sends a create for it again.
 // Only a remove is sent whatever it costs. Every other op waits its turn when a snapshot is full.

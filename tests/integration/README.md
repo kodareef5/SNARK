@@ -40,6 +40,7 @@
 | `retime.test.ts`, `clock.test.ts` | What is under way timed again when its rule changes, live and across a restart; the live file; the day at the server's scales |
 | `round5.test.ts` | Round 5's exit condition as four stories: operator, live, client, catalogue |
 | `listen.test.ts` | The address a server listens on: a development server on this machine only, unless asked |
+| `contracts.test.ts` | The creature packages' places in a host: carrying, taking an egg and the new orders refused until built; a held creature left where its holder puts it |
 | `agent.test.ts`, `agent-play.test.ts` | An agent that plays, its tools called over the protocol: the protocol itself, the key file, observe, the tools that need no walking; then walking round the wall, a crate set down in the way, gathering, opening, and stopping for danger |
 
 `fixtures/net.ts` runs a real server and real client sessions in one process on

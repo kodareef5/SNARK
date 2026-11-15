@@ -19,6 +19,7 @@ from here.
 | `art.ts`, `art/`, `blender/` | `bun run art -- core:raptor`, with `--all`, `--check`, `--sheet`, `--repack` | Builds an asset folder under `assets/source` into its pack, measures it and draws its review sheet ([layout](../assets/source/README.md)). Building needs Blender; the check, the sheet and the game do not |
 | `fit-zones.ts` | `bun tools/fit-zones.ts`, `bun tools/fit-zones.ts core:dodo` | Fits the hit capsules to the modelled bodies and measures the match; given a creature, measures the capsules its build fitted |
 | `map.ts`, `map/` | `bun tools/map.ts build <folder> <out.snmap>`, and `unpack`, `proving`, `info` | Builds a map file from a folder of plain layers, turns one back into its folder, writes the proving ground as a file, and says what a file holds. The folder's layout is in the tool's header and in [maps as files](../planning/reference/maps.md) |
+| `mapworld/` | `bun tools/mapworld/build.ts miami`, and `walk.ts`, `views.ts`, `pictures.ts` | A playable map file from a painted map's base layers: ground, colour, nodes, spawn points and regions, with a slot for layers of statics. See its [README](mapworld/README.md) |
 | `settings.ts` | `bun run settings` | Writes `planning/reference/settings.md` from the catalogue of server settings; a test fails if the page is stale |
 | `sky/` | `bun tools/sky/build.ts`, `bun tools/sky/base.ts`, `bun tools/sky/preview.ts --sheet file` | The sky on lit tiers: the physical sky (after Hillaire 2020) graded to the mood keys and written as the table `client/core/render/skytable.ts` and `assets/source/core/sky/table.png`; the panoramas the keys are painted over; and those panoramas under the table's sky |
 
@@ -27,7 +28,9 @@ the shell line budget, and the check time budget. Changing any of them is a
 decision recorded in [decisions](../planning/decisions.md).
 
 `snap` options: `--pos x,y,z --yaw degrees --pitch degrees --size WxH --out file`.
-Yaw 0 faces +Z (north) and positive yaw turns toward +X.
+Yaw 0 faces +Z (north) and positive yaw turns toward +X. `--map file.snmap`
+draws that map in place of the proving ground, from its first spawn point
+unless `--pos` says otherwise.
 Scenes: `--ui`, `--poses N`, `--looks`, `--gear`, `--fight bow`, `--creator`,
 `--house`, `--build`, `--falling`, and `--creatures` (with `--near` for a rider
 up close, `--young` for each species at four ages beside its egg).

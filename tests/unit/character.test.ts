@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
-import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, Body, MODE_GHOST, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { BTN_CROUCH, BTN_JUMP, BTN_PRONE, BTN_SPRINT, Body, MODE_FLY, MODE_GHOST, MODE_SWIM, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceEye, stanceHeight, stepBody, type MoveParams } from "../../shared/sim/character.ts";
 import { SKIN, capsuleFree } from "../../shared/world/collide.ts";
 import { SLOPE_WIDTH, SLOPE_X0, SLOPE_Z0 } from "../../shared/world/proving.ts";
 import { flatWorld, provingWorld, sealedRoom, type TestWorld } from "../fixtures/world.ts";
@@ -296,4 +296,34 @@ test("a body with a turn rate comes round to where it is asked to look at that r
   b.mode = MODE_GHOST;
   step(1, 0, 0, 50000);
   expect(b.yaw).toBe(50000);
+});
+
+test("a ghost or a flyer holding sprint starts at five times its speed, gains 150 m/s a second to 600 and no more, and lets go back to 12 at once", () => {
+  const w = flatWorld(16);
+  const p = survivor(w);
+  for (const mode of [MODE_GHOST, MODE_FLY]) {
+    const b = bodyAt(w, 512, 512);
+    b.y = 40;
+    b.mode = mode;
+    const speed = (): number => Math.hypot(b.vx, b.vy, b.vz);
+    const speeds: number[] = [];
+    // Round and round, level, with nothing in the way: turning keeps the speed.
+    for (let t = 0; t < 150; t++) {
+      stepBody(w, b, 0, FWD, (t * 512) & 0xffff, 0, BTN_SPRINT, p, TICK_DT);
+      speeds.push(speed());
+    }
+    expect(speeds[0]).toBeCloseTo(60, 3);
+    expect(speeds[30]).toBeCloseTo(60 + 150, 2);
+    expect(speeds.findIndex((v) => v > 599.99)).toBe(108);
+    expect(Math.max(...speeds)).toBeLessThan(600.001);
+    // Rising as it goes is no faster.
+    stepBody(w, b, 0, FWD, 0, 0, BTN_SPRINT | BTN_JUMP, p, TICK_DT);
+    expect(speed()).toBeLessThan(600.001);
+    stepBody(w, b, 0, FWD, 0, 0, 0, p, TICK_DT);
+    expect(speed()).toBeCloseTo(12, 4);
+    // Stopping, it starts again from five times its speed.
+    stepBody(w, b, 0, 0, 0, 0, BTN_SPRINT, p, TICK_DT);
+    stepBody(w, b, 0, FWD, 0, 0, BTN_SPRINT, p, TICK_DT);
+    expect([mode, speed()]).toEqual([mode, expect.closeTo(60, 3)]);
+  }
 });

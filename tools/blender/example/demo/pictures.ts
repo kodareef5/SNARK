@@ -4,6 +4,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { PI, detSin, len3 } from "../../../../shared/math/scalar.ts";
 import { encodePng, type Picture } from "../../../pack/image.ts";
 
 const SIZE = 64;
@@ -24,7 +25,7 @@ function layers(folder: string, name: string, height: (x: number, y: number) => 
   // Red leans away from a rise to the right. Green points up the picture, so it leans up from a rise further down.
   write(folder, `${name}_normal.png`, 3, 8, (x, y) => {
     const n = [(h(x - 1, y) - h(x + 1, y)) * 2, (h(x, y + 1) - h(x, y - 1)) * 2, 1];
-    const length = Math.hypot(n[0]!, n[1]!, n[2]!);
+    const length = len3(n[0]!, n[1]!, n[2]!);
     return n.map((c) => Math.round((c / length / 2 + 0.5) * 255));
   });
   // Occlusion in red, darker in the hollows. Roughness in green. Nothing is metal.
@@ -34,14 +35,14 @@ function layers(folder: string, name: string, height: (x: number, y: number) => 
 // The crate's planks: four boards across a picture one metre wide, with a groove between each and a faint grain. The
 // picture wraps in the middle of a board.
 const groove = (x: number): number => Math.min(1, Math.min((x + 8) % 16, 15 - ((x + 8) % 16)) / 2);
-const grain = (x: number, y: number): number => 0.5 + 0.5 * Math.sin((y * Math.PI) / 16 + (((x + 8) % SIZE) >> 4) * 2);
+const grain = (x: number, y: number): number => 0.5 + 0.5 * detSin((y * PI) / 16 + (((x + 8) % SIZE) >> 4) * 2);
 layers("structures/crate/tex", "planks", (x, y) => groove(x) * (0.85 + 0.15 * grain(x, y)), (x, y, h) => [150, 112, 70].map((c) => Math.round(c * (0.55 + 0.45 * h) * (0.94 + 0.06 * grain(x, y + 5)))), 0.8);
 
 // The pup's hide, laid out as model.py maps it: the body over the top three quarters, the legs along the bottom. It is
 // light grey where a region dyes it. The snout, the last rows of the body, is dark and is never dyed.
 const BODY = SIZE * 0.75;
 const SNOUT = BODY - 4;
-const fur = (x: number, y: number): number => 0.5 + 0.25 * Math.sin((x * Math.PI) / 4) * Math.sin((y * Math.PI) / 8) + 0.25 * Math.sin((x * Math.PI) / 16);
+const fur = (x: number, y: number): number => 0.5 + 0.25 * detSin((x * PI) / 4) * detSin((y * PI) / 8) + 0.25 * detSin((x * PI) / 16);
 layers("creatures/pup/tex", "hide", fur, (x, y, h) => (y >= SNOUT && y < BODY ? [58, 48, 46] : [0, 0, 0].map(() => Math.round(176 + 48 * h))), 0.9);
 // The region map, in flat colours: red is region 0, the coat, and green region 1, the legs. Black takes no dye.
 write("creatures/pup/tex", "hide_regions.png", 3, 8, (_x, y) => (y >= BODY ? [0, 255, 0] : y >= SNOUT ? [0, 0, 0] : [255, 0, 0]));

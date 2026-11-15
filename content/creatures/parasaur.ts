@@ -28,13 +28,19 @@ export const PARASAUR: readonly Def[] = [
     food: { max: 1500, perHour: 0.27 },
     // The reference game's times, in seconds.
     breeds: { egg: "core:egg_parasaur", incubate: 5142, mature: 95238 },
-    drops: [{ item: "core:hide", min: 8, max: 16 }, { item: "core:meat", min: 8, max: 14 }],
+    feces: "core:feces_medium",
+    // Chosen, near what it gave before bodies were harvested: 12 hide and 11 meat in all on average.
+    corpse: { health: 230, roll: 10 },
+    drops: [{ item: "core:hide", min: 1, max: 1, weight: 12, favoured: "wood" }, { item: "core:meat", min: 1, max: 1, weight: 11, favoured: "stone" }],
     zones: { head: 1.5 },
     killXp: 6,
     torporDrain: 0.3,
     stats: { health: [200, 0.2, 0.054], stamina: [200, 0.1, 0.1], oxygen: [150, 0.1, 0.1], food: [1500, 0.1, 0.1], weight: [255, 0.02, 0.04], melee: [1, 0.05, 0.017], speed: [1, 0, 0.01], torpidity: [150, 0.06, 0] },
   },
-  { type: "prop", class: "egg", id: "core:egg_parasaur", mesh: "core:egg", color: 9, radius: 0.3, height: 0.7 },
+  // ARK's Parasaur Egg, as the wiki gives it: an extra small egg of 5, eaten as 25 food and 25 health, that spoils in 8 hours.
+  { type: "prop", class: "egg", id: "core:egg_parasaur", mesh: "core:egg_xs", color: 9, radius: 0.04, height: 0.11, item: "core:parasaur_egg", fertile: "core:parasaur_egg_fertile" },
+  { type: "item", class: "egg", id: "core:parasaur_egg", label: "parasaur egg", color: 9, stack: 100, weight: 5, eat: { food: 25, health: 25 }, spoilHours: (8 * 3600) / 140, decomposeHours: (30 * 60) / 140 },
+  { type: "item", class: "egg", id: "core:parasaur_egg_fertile", label: "fertilised parasaur egg", color: 9, stack: 1, weight: 5, eat: { food: 25, health: 25 }, spoilHours: (8 * 3600) / 140 },
   { type: "item", class: "saddle", id: "core:saddle_parasaur", stack: 1, weight: 10, label: "parasaur saddle", color: 3, saddle: { fits: "core:parasaur", armor: 25 } },
   crafting("core:saddle_parasaur", { needs: [{ item: "core:hide", count: 80 }, { item: "core:fiber", count: 50 }, { item: "core:wood", count: 15 }], seconds: 10, xp: 6 }),
   { type: "engram", id: "core:engram-saddle_parasaur", label: "Parasaur saddle", level: 9, cost: 9, item: "core:saddle_parasaur" },

@@ -4,15 +4,16 @@
 import { TICK_RATE } from "../shared/coords.ts";
 import { EVENT_TAMED, ORDER_MATE, RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, S_EVENT } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
-import { GROWN, MATE_RANGE, MATE_TICKS, growthStep, leftAtPeriod, leftAtSpeed, litter, mateWait, maturity, regrow, stageOf, stepTick } from "../shared/sim/breeding.ts";
+import { GROWN, MATE_TICKS, growthStep, leftAtPeriod, leftAtSpeed, litter, mateRange, mateWait, maturity, regrow, stageOf, stepTick } from "../shared/sim/breeding.ts";
 import { MF_NO_SPRINT } from "../shared/sim/character.ts";
 import { F_AWAKE } from "../shared/sim/entities.ts";
 import { breed } from "../shared/sim/genome.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
+import { groundUnder } from "../shared/world/collide.ts";
 import type { Creatures } from "./creatures.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Persistence } from "./persist/persistence.ts";
+import { placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { Lists } from "./settings/lists.ts";
@@ -54,6 +55,14 @@ export interface BreedingContext {
 /** A speed rule divides a time. A rule at or below 0.001 counts as 0.001, the slowest a rule can make it. */
 const speed = (rule: number): number => (rule > 0.001 ? rule : 0.001);
 
+/**
+ * An egg holds its young until it hatches. One taken up is an item in an inventory that stands for its record
+ * (server/eggs.ts): the record is then carried by itself, its `carrier` its own pid and its `hatchAt` the ticks it has
+ * left, and it does not hatch. An unfertilised egg has no genome and never hatches.
+ */
+export const fertile = (rec: EntityRecord): boolean => rec.egg !== null && rec.genome !== null;
+export const held = (rec: EntityRecord): boolean => rec.egg !== null && rec.egg.carrier === rec.pid;
+
 export class Breeding {
   /** Counters. `laid` includes young carried, and `hatched` includes young born. */
   mated = 0;
@@ -66,7 +75,7 @@ export class Breeding {
   private readonly ctx: BreedingContext;
   private readonly rng: Rng;
   /** Pairs by the female's pid: the male's pid, the ticks the mating takes, and the tick it finishes. */
-  private readonly pairs = new Map<number, { male: number; span: number; due: number }>();
+  readonly pairs = new Map<number, { male: number; span: number; due: number }>();
   private readonly grew: [number, number] = [0, 0];
   /** Scratch for one pass: the willing awake females and males as entity indices, and the pids of females whose pair stands. */
   private readonly females: number[] = [];
@@ -83,6 +92,7 @@ export class Breeding {
     const { world, records, deadlines } = this.ctx;
     for (const rec of records.byPid.values()) {
       if (rec.egg) {
+        if (!fertile(rec) || held(rec)) continue;
         const e = records.entOf.get(rec.pid);
         if (e !== undefined) world.ents.setYoung(e, rec.egg.span, rec.egg.hatchAt);
         const at = rec.egg.hatchAt > world.tick ? rec.egg.hatchAt : world.tick + 1;
@@ -105,12 +115,13 @@ export class Breeding {
     const ents = this.ctx.world.ents;
     const dx = ents.x[a]! - ents.x[b]!;
     const dz = ents.z[a]! - ents.z[b]!;
-    return dx * dx + dz * dz <= MATE_RANGE * MATE_RANGE;
+    const range = mateRange(this.ctx.world.reg.bodyRadius[ents.kind[a]!]!);
+    return dx * dx + dz * dz <= range * range;
   }
 
   /**
    * Works once every PAIR_TICKS. Each willing female with no pair takes the nearest willing male of her kind and tribe
-   * within MATE_RANGE. A pair is parted when either one has gone, moved out of range, or is no longer willing.
+   * within her species' mating range. A pair is parted when either one has gone, moved out of range, or is no longer willing.
    */
   step(tick: number): void {
     if (tick % PAIR_TICKS !== 0) return;
@@ -132,14 +143,15 @@ export class Breeding {
       const pid = ents.pid[f]!;
       const pair = this.pairs.get(pid);
       let best = -1;
-      let near = MATE_RANGE * MATE_RANGE;
+      const range = mateRange(world.reg.bodyRadius[ents.kind[f]!]!);
+      let near = range * range;
       let kept = false;
       for (const m of males) {
         if (ents.kind[m] !== ents.kind[f] || ents.team[m] !== ents.team[f]) continue;
         const dx = ents.x[m]! - ents.x[f]!;
         const dz = ents.z[m]! - ents.z[f]!;
         const d2 = dx * dx + dz * dz;
-        if (d2 > MATE_RANGE * MATE_RANGE) continue;
+        if (d2 > range * range) continue;
         if (pair && ents.pid[m] === pair.male) kept = true;
         if (best < 0 || d2 < near) {
           near = d2;
@@ -184,7 +196,7 @@ export class Breeding {
       return;
     }
     if (rec.egg) {
-      if (rec.egg.hatchAt === stamp) this.hatch(rec);
+      if (rec.egg.hatchAt === stamp && fertile(rec) && !held(rec)) this.hatch(rec);
       return;
     }
     if (rec.grown !== 0) {
@@ -222,6 +234,8 @@ export class Breeding {
       const egg = records.create(eggKind !== 0 ? eggKind : mother.kind, `${what} egg`);
       egg.genome = breed(mother.genome!, father.genome!, mother.pid, father.pid, this.rng, reg.mutationColors[mother.kind]!);
       egg.egg = { species: mother.kind, span, hatchAt, carrier: eggKind !== 0 ? 0 : mother.pid };
+      // Whose creature laid it. Anyone may take an egg, as in ARK; a tribe's never angers the wild.
+      if (eggKind !== 0) egg.team = mother.team;
       this.ctx.game.bus.after(BREED_EGG, { mother: mother.pid, father: father.pid, pid: egg.pid });
       // The egg lies just behind her, and several fan out. If there is no room there, it lies under her.
       const a = facing + Math.PI + (k - (n - 1) / 2) * 0.7;
@@ -230,7 +244,7 @@ export class Breeding {
       egg.z = ents.z[e]! + Math.cos(a) * off;
       const ground = eggKind !== 0 ? groundUnder(world.hf, egg.x, egg.z, reg.bodyRadius[eggKind]!) : world.hf.heightAt(egg.x, egg.z);
       egg.y = ground > ents.y[e]! ? ground : ents.y[e]!;
-      if (eggKind !== 0 && !capsuleFree(world, egg.x, egg.y, egg.z, reg.bodyRadius[eggKind]!, reg.bodyHeight[eggKind]!)) {
+      if (eggKind !== 0 && !placeFree(world, egg.x, egg.y, egg.z, reg.bodyRadius[eggKind]!, reg.bodyHeight[eggKind]!)) {
         egg.x = ents.x[e]!;
         egg.y = ents.y[e]!;
         egg.z = ents.z[e]!;
@@ -257,6 +271,26 @@ export class Breeding {
     const e = records.entOf.get(egg.pid);
     if (e !== undefined) world.ents.destroy(e);
     records.delete(egg.pid);
+  }
+
+  /** The egg was taken up into an inventory, and its body is gone. It keeps the time it has left. */
+  takenUp(egg: EntityRecord): void {
+    const info = egg.egg!;
+    info.hatchAt = Math.max(1, info.hatchAt - this.ctx.world.tick);
+    info.carrier = egg.pid;
+    this.ctx.records.dirty.add(egg.pid);
+  }
+
+  /** The held egg was set down and has its body again. It hatches the time it had left from now. */
+  setDown(egg: EntityRecord): void {
+    const { world, records, deadlines } = this.ctx;
+    const info = egg.egg!;
+    info.hatchAt = world.tick + info.hatchAt;
+    info.carrier = 0;
+    records.dirty.add(egg.pid);
+    const e = records.entOf.get(egg.pid);
+    if (e !== undefined) world.ents.setYoung(e, info.span, info.hatchAt);
+    deadlines.push(info.hatchAt, DEADLINE_BREED, egg.pid, info.hatchAt);
   }
 
   /** The young creature enters the world unclaimed. */
@@ -343,8 +377,16 @@ export class Breeding {
     const grew = this.grew;
     for (const rec of records.byPid.values()) {
       const egg = rec.egg;
+      if (egg && held(rec)) {
+        // A held egg's hatchAt is the time it has left.
+        if (hatch === speed(was.hatch) || !fertile(rec)) continue;
+        egg.span = Math.max(1, Math.round((egg.span * speed(was.hatch)) / hatch));
+        egg.hatchAt = leftAtSpeed(egg.hatchAt, speed(was.hatch), hatch);
+        records.dirty.add(rec.pid);
+        continue;
+      }
       if (egg) {
-        if (hatch === speed(was.hatch) || egg.hatchAt <= tick) continue;
+        if (hatch === speed(was.hatch) || egg.hatchAt <= tick || !fertile(rec)) continue;
         egg.span = Math.max(1, Math.round((egg.span * speed(was.hatch)) / hatch));
         egg.hatchAt = tick + leftAtSpeed(egg.hatchAt - tick, speed(was.hatch), hatch);
         deadlines.push(egg.hatchAt, DEADLINE_BREED, rec.pid, egg.hatchAt);
@@ -383,9 +425,9 @@ export class Breeding {
     }
   }
 
-  /** A cheat. False if it is not an egg. */
+  /** A cheat. False if it is not an egg that hatches where it lies. */
   hatchNow(egg: EntityRecord): boolean {
-    if (!egg.egg) return false;
+    if (!egg.egg || !fertile(egg) || held(egg)) return false;
     egg.egg.hatchAt = this.ctx.world.tick;
     this.hatch(egg);
     return true;

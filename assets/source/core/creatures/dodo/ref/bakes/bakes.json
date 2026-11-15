@@ -44,7 +44,9 @@
   "dodo_normal_object.png": "the smooth surface normal in the bird's frame (x left, y up, z forward), 0.5 + 0.5 n",
   "dodo_feather_direction.png": "which way the feathers lie, as a direction in the picture: red = 0.5 + 0.5 u, green = 0.5 + 0.5 v (v up the picture); blue 1 where it is defined (shell, wings, legs), 0 elsewhere",
   "dodo_curvature.png": "grey 0.5 is flat; lighter bulges, darker hollows",
-  "dodo_occlusion.png": "ambient occlusion from the opaque surface alone, the cards left out"
+  "dodo_occlusion.png": "ambient occlusion from the opaque surface alone, the cards left out",
+  "dodo_occlusion_apart.png": "the same with the wings and legs taken a metre out to their sides",
+  "dodo_covered.png": "white where a wing or a leg hides the surface at rest, or is the side of it that is hidden; compose.py takes the occlusion there from the bake apart"
  },
  "material dodo_cards": {
   "size": 512,
