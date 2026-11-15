@@ -104,17 +104,19 @@ test("each pistol shot blooms the cone a degree, to four at most, and it closes 
   b.reloadTo = 6;
   const cones: number[] = [];
   let t = 1000;
-  // Six shots as fast as it fires: a press every 11 ticks.
+  // Six shots as fast as it fires: a press every 14 ticks (2.1 a second, Simple Pistol).
   for (let n = 0; n < 6; n++) {
     tick(b, w, BTN_PRIMARY, BTN_PRIMARY, t++);
     expect(actionOut.fire).toBe(true);
     cones.push(shotCone(b, 0, w, survivor, true));
-    for (let k = 0; k < 10; k++) tick(b, w, 0, 0, t++);
+    for (let k = 0; k < 13; k++) tick(b, w, 0, 0, t++);
   }
-  // The first goes within the hip's 1.5. Each later one sees what the last left, less 11 ticks of closing.
+  // The first goes within the hip's 1.5. Each later one sees what the last left, less 14 ticks of closing.
   expect(cones[0]).toBeCloseTo(1.5, 9);
   for (let n = 1; n < 6; n++) expect(cones[n]!).toBeGreaterThan(cones[n - 1]!);
-  expect(cones[5]!).toBeGreaterThan(3);
+  // Each gap of 14 ticks closes 44.8 of the 64 units a shot opens, so the sixth sees five times 19.2: a cone of 3.
+  expect(cones[5]!).toBeCloseTo(1.5 + (5 * (64 - 14 * 3.2)) / 64, 9);
+  expect(cones[5]!).toBeCloseTo(3, 9);
   expect(cones[5]!).toBeLessThanOrEqual(1.5 + 4);
   // Units: 64 a shot, at most 255; it closes 1.5 / 1 * 64 / 30 = 3.2 units a tick, exactly over any run of ticks.
   expect(BLOOM_SHOT).toBe(64);
@@ -362,4 +364,5 @@ test("through a scope a long gun sways, less crouched and much less prone but ne
 });
 
 const RAYS_HASH = 3894479009;
-const FIGHT_HASH = 2813827489;
+// The fight is fought with the pistol's timings, so it moved with its 2.1 shots a second and 3.33 s reload (Simple Pistol).
+const FIGHT_HASH = 755183566;

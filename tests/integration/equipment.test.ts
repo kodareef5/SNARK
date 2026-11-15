@@ -273,7 +273,8 @@ test("loading and fitting keep carried weight, moving gear transfers it, and fir
   give("round_rifle");
   const scope = give("scope");
   const weight = inv().weight(items.table);
-  expect(weight).toBeCloseTo(9.6);
+  // A long rifle of 15, a rifle round of 0.1 and a scope of 0.1 (Longneck Rifle, Simple Rifle Ammo, Scope Attachment).
+  expect(weight).toBeCloseTo(15.2);
   expect(items.load(rec, rifle, id("round_rifle"), 1)).toBe(1);
   expect(inv().weight(items.table)).toBeCloseTo(weight);
   expect(send(CMD_ATTACH, (w) => (w.varint(rifle), w.varint(scope)))).toBe(RESULT_OK);

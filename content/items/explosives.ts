@@ -9,10 +9,15 @@ import { making } from "../craft.ts";
 const id = (name: string): string => `core:${name}`;
 
 export const EXPLOSIVES: readonly Def[] = [
-  { type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 1, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
+  // ark.wiki.gg, Grenade, infobox and text, 2026-11-15: weight 0.5, stacksize 10; it "detonates 5 seconds after the pin is
+  // pulled". Its damage and reach (175 within 6 m to bodies) are W6's, with the structure factor of D435; until then the
+  // 788 within 5 m stands (DEV31).
+  { type: "item", class: "weapon", id: id("grenade"), stack: 10, weight: 0.5, color: 7, weapon: { kind: "thrown", damage: 788, type: "explosive", speed: 18, fuse: 5, blast: 5, uses: 1, mesh: id("grenade"), hold: "tool" } },
 
-  // The level is the reference game's.
-  ...making("grenade", "Grenade", 42, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2]]),
+  // From the same infobox on 2026-11-15: requiredlevel 38, engrampoints 20, the ingredients and the Crafting XP shown (its
+  // craftingxp 11.4 times the global 4 of patches 253.0 and 313.5). Its 4 oil wait for oil (DEV140); it is made at the smithy,
+  // not built (DEV136); the page gives no craftingtime (DEV135). The level, points and oil were in its revision of 2018 too.
+  ...making("grenade", "Grenade", 38, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2]], 45.6),
 
   // The bola (W4; ark.wiki.gg Bola, read 2026-11-15): thrown, not lobbed. Its ammo facet is its own, so it flies as an arrow
   // does and hits the first body or the world (M5). No harm, but a hit provokes as any does; stack 10, weight 0.5, single
