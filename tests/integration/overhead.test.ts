@@ -363,4 +363,14 @@ test("a client that reads everything it is sent learns nothing ARK would not sho
     else if (t.id === bolt.e) expect([t.fields[0]! >= 0, t.fields[1]! >= 0, t.tribe]).toEqual([true, true, ""]);
     else expect([t.fields, t.tribe]).toEqual([[-1, -1, -1, -1, -1, -1], "Lagoon"]);
   }
+
+  // A wall between Bob and the wild one: aimed at it, he is told nothing of it.
+  const ents = h.world.ents;
+  const me = h.ent(bob);
+  if (wild.rec.out === false) h.host.survival.add(wild.rec, V_TORPOR, wild.rec.vitals!.max[V_TORPOR]! / 1e6 + 1);
+  h.world.structs.add(h.reg.index.get("core:wall")!, (ents.x[me]! + ents.x[wild.e]!) / 2, ents.y[me]! + 1.5, (ents.z[me]! + ents.z[wild.e]!) / 2, 0, 0, 1);
+  const before = toBob.length;
+  aim(h, bob, wild.e);
+  h.run(1000);
+  expect([h.host.overhead.lookedAt(h.client(bob)!), bob.looked, toBob.length]).toEqual([-1, null, before]);
 });
