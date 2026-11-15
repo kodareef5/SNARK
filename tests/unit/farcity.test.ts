@@ -4,10 +4,12 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { slopeKind } from "../../content/slopes.ts";
-import { tierOf } from "../../client/core/assets/tiers.ts";
+import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
 import { fadeKeeps } from "../../client/core/render/far.ts";
 import { CITY_BUFFER } from "../../client/core/render/farcity.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
+import { NODE_BUFFERS } from "../../client/core/render/scene.ts";
+import { PICK_STRUCTURE } from "../../tools/snap/raster.ts";
 import type { ShapeBox, ShapeDef } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { slopeShape, staticOf } from "../../shared/content/slopes.ts";
@@ -75,6 +77,61 @@ test("a chunk's statics are drawn far until the near store holds it whole, then 
   let differ = 0;
   for (let i = 0; i < near.length; i += 4) if (Math.abs(near[i]! - colours[i]!) + Math.abs(near[i + 1]! - colours[i + 1]!) + Math.abs(near[i + 2]! - colours[i + 2]!) > 6) differ++;
   expect(differ / sum(drawnFar)).toBeLessThan(0.01);
+});
+
+test("near pieces are drawn alike on every tier at one camera, whatever frames came before: no near draw takes a far draw's fade", () => {
+  // A bus wreck 10 m off as Miami's ruins lay one (hull, windows each side, wheel blocks under), a frame building beside
+  // it, all held near; and a street of towers drawn far from 250 m to 2.6 km, across every tier's fade into the mass.
+  const [bx, bz] = [300, 2048];
+  const bus: MapStatic[] = [{ kind: "core:zruin_zbus_clay", x: bx, y: 1, z: bz, yaw: 0 }];
+  for (const u of [-3, 0, 3]) for (const v of [-1.3, 1.3]) bus.push({ kind: "core:zruin_zsign_blue", x: bx + v, y: 1.5, z: bz + u, yaw: 16384 });
+  for (const u of [-3, 3]) bus.push({ kind: "core:zruin_zcover_steel", x: bx, y: 0.05, z: bz + u, yaw: 16384 });
+  const near = [...bus, ...building(bx + 14, bz + 16, 0, 2)];
+  const statics = [...near];
+  for (let d = 250, k = 0; d <= 2600; d += CHUNK_SIZE, k++) statics.push(...building(bx + d, bz + (k % 2 === 0 ? 40 : -40), 0, 4 + ((k * 7) % 9), 2, (k * 3100) % 16384));
+  const w = cityWorld({ chunks: 64, statics, width: 480, height: 270 });
+  for (const s of near) w.rows(w.chunkOf(s.x, s.z));
+  w.look(bx, 1.2, bz, 10, Math.PI / 2, 4.1);
+  // Each near piece's pixels in the last frame, by its pick id.
+  const seen = (): Map<number, number> => {
+    const out = new Map<number, number>();
+    w.raster.pickKind.forEach((k, at) => k === PICK_STRUCTURE && out.set(w.raster.pickId[at]!, (out.get(w.raster.pickId[at]!) ?? 0) + 1));
+    return out;
+  };
+  const nearFades = (p: FramePacket): number[] => [...p.drawBuffer.subarray(0, p.drawCount).keys()].filter((d) => p.drawBuffer[d]! < NODE_BUFFERS && p.drawFade[d] !== 0).map((d) => p.drawFade[d]!);
+  const shots: { name: string; pieces: Map<number, number>; fades: number[] }[] = [];
+  for (const tier of TIERS) {
+    w.scene.assets.tier = tier;
+    // As the picture tools settle a view (tools/snap.ts settle): frames they do not keep are cut to no draws, then drawn.
+    for (let k = 0; k < 3; k++) {
+      w.scene.now += 1000 / 60;
+      const p = w.scene.build(w.cam, null);
+      p.drawCount = p.tileCount = 0;
+      w.raster.render(p);
+    }
+    const p = w.frame();
+    expect(cityDraws(p).length).toBeGreaterThan(0);
+    expect(p.drawFade.subarray(0, p.drawCount).some((f) => f < 0)).toBe(true);
+    shots.push({ name: `${tier.name}, settled`, pieces: seen(), fades: nearFades(p) });
+    // As the client draws: every frame whole.
+    w.frame();
+    shots.push({ name: `${tier.name}, every frame drawn`, pieces: seen(), fades: nearFades(w.frame()) });
+  }
+  const drawn = shots[1]!.pieces;
+  const kindOf = (id: number): string => w.reg.defs[w.structs.chunks[Math.floor(id / 65536)]!.kind[id % 65536]!]!.id;
+  // The hull, the windows and wheel blocks on the near side, and the building's pieces are in view.
+  const kinds = [...drawn.keys()].map(kindOf);
+  expect(kinds.filter((k) => k === "core:zruin_zsign_blue").length).toBeGreaterThanOrEqual(3);
+  expect(kinds).toContain("core:zruin_zcover_steel");
+  expect(kinds).toContain(WALL);
+  expect(drawn.get([...drawn.keys()].find((id) => kindOf(id) === "core:zruin_zbus_clay") ?? -1) ?? 0).toBeGreaterThan(2000);
+  // The same pieces on every tier and either way, each to a pixel in fifty where a window meets the hull: low poly's one
+  // depth range parts them a little otherwise than the lit tiers' two.
+  for (const s of shots) {
+    expect({ shot: s.name, fades: s.fades }).toEqual({ shot: s.name, fades: [] });
+    const off = [...drawn].filter(([id, n]) => Math.abs((s.pieces.get(id) ?? 0) - n) > n * 0.02).map(([id]) => kindOf(id));
+    expect({ shot: s.name, pieces: s.pieces.size, off }).toEqual({ shot: s.name, pieces: drawn.size, off: [] });
+  }
 });
 
 test("the lattice leaves out steps and rubble and changes 1% of a street's pixels or fewer; the mass is the buildings' solid shape", () => {
