@@ -244,59 +244,77 @@ def film(r, rig, clip, out, tmp, lines, cams):
 
 def skinned():
     return next(o for o in bpy.context.scene.objects if o.type == "MESH" and any(m.type == "ARMATURE" for m in o.modifiers)
-                and o.name != "saddle_blockout")
+                and o.name not in ("saddle_blockout", "rider") and not o.name.startswith("saddle"))
 
 
-def triangles(obj, parts=None):
+def face_sets(obj):
+    """Each wing's membrane, the part of it not grown into the body or the arm, and the solid body, as faces of the
+    block-out or of model.py's mesh (as its ref/wing/check.py has them)."""
+    me = obj.data
+    centre = [p.center.copy() for p in me.polygons]
+    if obj.get("parts"):
+        names = list(obj["parts"])
+        part = [names[v.value] for v in me.attributes["part"].data]
+        grown = [v.value for v in me.attributes["attached"].data]
+        wing = {s: [f for f in range(len(part)) if part[f] in ("membrane_" + s, "front_" + s)] for s in "lr"}
+        inner = {s: [f for f in wing[s] if not grown[f]] for s in "lr"}
+        solid = [f for f in range(len(part)) if part[f] in ("body", "neck", "head", "jaw", "crest", "tail", "thigh_l",
+                                                             "shin_l", "thigh_r", "shin_r")]
+        return wing, inner, solid
+    names = list(obj["islands"])
+    piece = [names[v.value] for v in me.attributes["island"].data]
+    cell = [v.value for v in me.attributes["cell"].data]
+    side = lambda f: "l" if centre[f].x > 0 else "r"
+    wing = {s: [f for f in range(len(piece)) if piece[f].startswith("membrane") and cell[f] >= 0 and side(f) == s]
+            for s in "lr"}
+    inner = {s: [f for f in wing[s] if cell[f] // 256 >= 2 and cell[f] % 256 >= 1] for s in "lr"}
+    solid = [f for f in range(len(piece)) if piece[f] in ("torso", "neck", "head", "beak", "leg")]
+    return wing, inner, solid
+
+
+def measure_frame(obj, sets):
+    """Pairs of a wing's triangles that cross (sharing no corner, no corners within 2 cm), of its inner skin crossing
+    the body, of the two wings crossing, and how far the lowest point of the mesh is under the ground."""
+    wing, inner, solid = sets
     ev = obj.evaluated_get(bpy.context.evaluated_depsgraph_get())
     m = ev.to_mesh()
-    names = obj.get("parts", [])
-    layer, attached = m.attributes.get("part"), m.attributes.get("attached")
-    keep = None if parts is None else {i for i, n in enumerate(names) if n in parts}
-    verts = [obj.matrix_world @ v.co for v in m.vertices]
-    tris = []
     m.calc_loop_triangles()
+    verts = [obj.matrix_world @ v.co for v in m.vertices]
+    by_face = {}
     for t in m.loop_triangles:
-        if keep is not None and (layer is None or layer.data[t.polygon_index].value not in keep):
-            continue
-        if attached is not None and attached.data[t.polygon_index].value:
-            continue
-        tris.append(tuple(t.vertices))
+        by_face.setdefault(t.polygon_index, []).append(tuple(t.vertices))
     ev.to_mesh_clear()
-    return verts, tris
 
+    def tris(faces):
+        return [t for f in faces for t in by_face.get(f, [])]
 
-def crossing(obj, a, b=None):
-    va, ta = triangles(obj, a)
-    vb, tb_ = (va, ta) if b is None else triangles(obj, b)
-    if not ta or not tb_:
-        return 0
-    ba = BVHTree.FromPolygons(va, ta, epsilon=0.0)
-    pairs = ba.overlap(ba if b is None else BVHTree.FromPolygons(vb, tb_, epsilon=0.0))
-    if b is None:
-        pairs = [(i, j) for i, j in pairs if i < j and not set(ta[i]) & set(ta[j])
-                 and min((va[x] - va[y]).length for x in ta[i] for y in ta[j]) > 0.02]
-    return len(pairs)
+    def tree(ts):
+        return BVHTree.FromPolygons(verts, ts, epsilon=0.0) if ts else None
+
+    row = {}
+    for s in "lr":
+        ts = tris(wing[s])
+        tw = tree(ts)
+        row[f"skin_{s}_self"] = 0 if tw is None else sum(
+            1 for i, j in tw.overlap(tw) if i < j and not set(ts[i]) & set(ts[j])
+            and min((verts[a] - verts[b]).length for a in ts[i] for b in ts[j]) > 0.02)
+        ti, tb_ = tree(tris(inner[s])), tree(tris(solid))
+        row[f"skin_{s}_into_body"] = 0 if ti is None or tb_ is None else len(ti.overlap(tb_))
+    tl, tr = tree(tris(wing["l"])), tree(tris(wing["r"]))
+    row["wings_meet"] = 0 if tl is None or tr is None else len(tl.overlap(tr))
+    row["under_cm"] = round(-min(v.z for v in verts) * 100, 1)
+    return row
 
 
 def measure(r, rig, clip):
     obj = skinned()
+    sets = face_sets(obj)
     play(r, clip)
-    solid = ["body", "neck", "head", "jaw", "crest", "tail", "thigh_l", "shin_l", "thigh_r", "shin_r"]
-    bones = {s: [f"{n}_{s}" for n in ("forearm", "hand", "wing_1", "wing_2", "wing_3", "wing_4")] for s in "lr"}
     rows = {}
     last = int(bpy.data.actions[clip].frame_range[1])
     for f in sorted(set(list(range(0, last + 1, 3)) + [last])):
         bpy.context.scene.frame_set(f)
-        row = {}
-        if obj.get("parts"):
-            for s in "lr":
-                row[f"skin_{s}_self"] = crossing(obj, [f"membrane_{s}"])
-                row[f"skin_{s}_into_body"] = crossing(obj, [f"membrane_{s}", f"front_{s}"], solid)
-            row["wings_meet"] = crossing(obj, ["membrane_l", "front_l"] + bones["l"], ["membrane_r", "front_r"] + bones["r"])
-        verts, _ = triangles(obj)
-        row["under_cm"] = round(-min(v.z for v in verts) * 100, 1)
-        rows[f] = row
+        rows[f] = measure_frame(obj, sets)
     r.rest()
     print(f"preview: {clip}: " + "; ".join(f"{f} {row}" for f, row in rows.items()))
     return rows
@@ -326,14 +344,7 @@ def main():
             row = np.concatenate([render(cams[v], 640, os.path.join(tmp, "v.png"))[::-1] for v in views], axis=1)
             save_jpeg(row[::-1], os.path.join(out, f"still_{clip}_{f}.jpg"))
             obj = skinned()
-            if obj.get("parts"):
-                low = {}
-                for name in obj["parts"]:
-                    verts, tris = triangles(obj, [name])
-                    if tris:
-                        low[name] = round(min(verts[i].z for t in tris for i in t) * 100, 1)
-                print("preview: still:", {s: crossing(obj, [f"membrane_{s}"]) for s in "lr"},
-                      "lowest cm", sorted(low.items(), key=lambda kv: kv[1])[:6])
+            print("preview: still:", measure_frame(obj, face_sets(obj)))
             chosen = []
         if "strip" in opts:
             # --strip CLIP:VIEW[:EVERY], frames of one view in rows of six, large.
