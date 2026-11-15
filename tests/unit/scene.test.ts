@@ -356,8 +356,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // it, and its four young variants and the elders' boxes alone leave it as it was. It was 3734161494 until the pack held
   // four meshes more, numbered after or among the others: the wooden club, the slingshot and its stone (2299377612 with
   // those alone) and the grey box of feces lying (3294409758 with that alone). The draws, the triangles and the uploads
-  // are as they were. It was 4244515908 until Miami's ruin blocks took mesh numbers of their own.
-  expect(hash).toBe(1069497684);
+  // are as they were. It was 4244515908 until Miami's ruin blocks took mesh numbers of their own, then 1069497684 until
+  // the pack held the mortar and pestle's grey box (content/items/stations.ts); without it and sparkpowder it is that again.
+  expect(hash).toBe(543691550);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

@@ -245,7 +245,7 @@ export interface ItemDef extends Named {
   readonly description?: string;
   /** Where it sits in the inventory and crafting lists: "Structures/Wood". */
   readonly folder?: string;
-  /** The item a spoiled one becomes. */
+  /** The item a spoiled one becomes, one for one, as ARK's meat becomes spoiled meat (server/items.ts). Omitted, it is gone. */
   readonly spoilsInto?: string;
   /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
   readonly blueprint?: boolean;
@@ -254,15 +254,21 @@ export interface ItemDef extends Named {
 }
 
 /**
- * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives.
- * A stub until task C of planning/reference/items-plan.md builds it.
+ * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives
+ * (server/use.ts). Using one burns it, after what eating it gives, unless it is a vessel, which is kept.
  */
 export interface UseFacet {
-  /** A stat changed by `amount`: at once, or spread over `seconds`. */
+  /**
+   * A stat changed by `amount`: at once (health, stamina, oxygen, food, water, torpidity), or spread over `seconds`
+   * (health and torpidity only, and only adding, carried by a buff as a meal's health and a dose's torpor are).
+   */
   readonly adds?: readonly { readonly stat: StatName; readonly amount: number; readonly seconds?: number }[];
   /** Buffs given on use. */
   readonly buffs?: readonly string[];
-  /** A vessel that holds water: `water` points when full, `each` drunk a use, filled again standing in water. */
+  /**
+   * A vessel that holds water: `water` points when full, `each` drunk a use, filled again by a use while standing in water
+   * and not swimming. It stacks to 1 and holds its water as the slot's durability. Made, it is empty.
+   */
   readonly holds?: { readonly water: number; readonly each: number };
 }
 
@@ -275,8 +281,10 @@ export interface CraftFacet {
   readonly xp: number;
   /** How many one crafting makes. One, where not given. */
   readonly count?: number;
-  // Stubs, read by nothing yet.
-  /** The station it is made at. Omitted, it is made in the hands. */
+  /**
+   * The station it is made at: only there, from what lies in the station, and the product lands there. Omitted, it is made
+   * in the hands from the survivor's own inventory.
+   */
   readonly at?: string;
   /** The level below which it cannot be made, engram or no. */
   readonly level?: number;

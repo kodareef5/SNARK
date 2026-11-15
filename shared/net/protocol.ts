@@ -191,8 +191,9 @@ export const CARRY_THROW = 2;
 /** Protocol 11. Takes into the bag what lies in the world at an entity index u32: an egg. */
 export const CMD_TAKE = 28;
 /**
- * Protocol 12, reserved for crafting at a station (planning/reference/items-plan.md, task D): item u16, count u8, made at the
- * station the session has open, from that station's inventory. Refused until it is built.
+ * Protocol 12. Crafting at a station: item u16, count u8. Queued on the station the session has open, made from what lies in
+ * it and put there; the session's survivor must know the engram, and gets the experience. Refused for an item made
+ * elsewhere, and with no station open.
  */
 export const CMD_CRAFT_AT = 29;
 /** Protocol 12, reserved for crafting from a blueprint (items-plan.md, task E): own slot varint, count u8. Refused until it is built. */
@@ -295,7 +296,10 @@ export const OWN_SUBJECT = 14;
  * effectiveness (10 bits each), its pair's mating progress (1 bit, 10 bits), its tribe's name (1 bit, string).
  */
 export const OWN_OVERHEAD = 15;
-/** Protocol 12, reserved for the open station's queue (items-plan.md, task D): count u8, then per job: item u16, units left u8, done tick u32. */
+/**
+ * Protocol 12. The open station's queue, sent when it changes: the station's kind u16 (0 when what is open is no longer a
+ * station, and nothing follows but a count of 0), count u8, then per job: item u16, units left u8, done tick u32.
+ */
 export const OWN_STATION = 16;
 
 export const MARKER_DEATH = 1;

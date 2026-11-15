@@ -421,8 +421,8 @@ const ALL: readonly Def[] = [
   // A slingshot's ammunition. Its speed is chosen.
   { type: "item", class: "resource", id: "core:stone", stack: 100, weight: 0.5, color: 15, ammo: { damage: 14, type: "melee", speed: 35, gravity: 9.81, torpor: { instant: 1.35, over: 0, seconds: 0 }, mesh: "core:stone_shot" } },
   { type: "item", class: "consumable", id: "core:berry", stack: 100, weight: 0.1, spoilHours: minutes(10), eat: { food: 4, water: 2 }, color: 8 },
-  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 } },
-  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 35, health: 8 }, color: 3, label: "cooked meat" },
+  { type: "item", class: "consumable", id: "core:meat", stack: 40, weight: 0.1, spoilHours: minutes(10), eat: { food: 25, health: 5 }, color: 3, label: "raw meat", cooks: { into: "core:meat_cooked", seconds: 20 }, spoilsInto: "core:spoiled_meat" },
+  { type: "item", class: "consumable", id: "core:meat_cooked", stack: 50, weight: 0.1, spoilHours: minutes(20), eat: { food: 35, health: 8 }, color: 3, label: "cooked meat", spoilsInto: "core:spoiled_meat" },
   { type: "item", class: "resource", id: "core:wood", stack: 100, weight: 0.5, color: 3, fuel: 30 },
   { type: "item", class: "resource", id: "core:thatch", stack: 200, weight: 0.02, color: 18, fuel: 7.5 },
   { type: "item", class: "resource", id: "core:flint", stack: 100, weight: 0.05, color: 4 },
