@@ -20,9 +20,10 @@ export const EXPLOSIVES: readonly Def[] = [
   },
 
   // From the same infobox on 2026-11-15: requiredlevel 38, engrampoints 20, the ingredients and the Crafting XP shown (its
-  // craftingxp 11.4 times the global 4 of patches 253.0 and 313.5). Its 4 oil wait for oil (DEV140); it is made at the smithy,
-  // not built (DEV136); the page gives no craftingtime (DEV135). The level, points and oil were in its revision of 2018 too.
-  ...making("grenade", "Grenade", 38, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2]], 45.6),
+  // craftingxp 11.4 times the global 4 of patches 253.0 and 313.5); made at the smithy, with its 4 oil now that oil exists
+  // (stations S6); the page gives no craftingtime (DEV135). The level, points and oil were in its
+  // revision of 2018 too.
+  ...making("grenade", "Grenade", 38, 20, 1, 8, [["fiber", 15], ["stone", 20], ["gunpowder", 30], ["hide", 5], ["ingot", 2], ["oil", 4]], 45.6, "smithy"),
 
   // The bola (W4; ark.wiki.gg Bola, read 2026-11-15): thrown, not lobbed. Its ammo facet is its own, so it flies as an arrow
   // does and hits the first body or the world (M5). No harm, but a hit provokes as any does; stack 10, weight 0.5, single

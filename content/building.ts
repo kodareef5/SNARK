@@ -135,12 +135,17 @@ function store(s: (typeof STORES)[number]): Def[] {
 
 type Needs = readonly (readonly [item: string, count: number])[];
 
-/** One material's recipes. level is the level at which a piece's engram can be learnt, and cost the points it takes. */
+/**
+ * One material's recipes. level is the level at which a piece's engram can be learnt, and cost the points it takes: the
+ * piece's own, else the material's. xp is the piece's crafting experience, else a third of its level. at is the station
+ * its pieces are made at, else the hand.
+ */
 interface Making {
   readonly label: string;
   readonly weight: number;
-  readonly cost: number;
-  readonly pieces: { readonly [piece: string]: { readonly level: number; readonly needs: Needs } };
+  readonly cost?: number;
+  readonly at?: string;
+  readonly pieces: { readonly [piece: string]: { readonly level: number; readonly cost?: number; readonly xp?: number; readonly needs: Needs } };
 }
 
 const MAKING: { readonly [tier: string]: Making } = {
@@ -181,17 +186,21 @@ const MAKING: { readonly [tier: string]: Making } = {
       stairs: { level: 27, needs: [["stone", 60], ["wood", 30], ["thatch", 20]] },
     },
   },
+  // ark.wiki.gg, Metal Foundation, Metal Wall, Metal Ceiling, Metal Door, Metal Pillar and Metal Stairs, infoboxes,
+  // 2026-11-15 (stations S6): made at the smithy; each piece's level, engram points, ingredients and craftingxp, shown
+  // times the global 4 of patches 253.0 and 313.5 (D465); each weighs 4. No page gives a crafting time: 5 s is ours. The
+  // wall also places the doorframe and windowframe, whose own engrams (Metal Doorframe, Metal Windowframe) are not ours.
   metal: {
     label: "Metal",
     weight: 4,
-    cost: 12,
+    at: "core:smithy",
     pieces: {
-      foundation: { level: 45, needs: [["ingot", 50], ["paste", 15]] },
-      wall: { level: 45, needs: [["ingot", 25], ["paste", 7]] },
-      ceiling: { level: 46, needs: [["ingot", 35], ["paste", 10]] },
-      door: { level: 47, needs: [["ingot", 20], ["paste", 4]] },
-      pillar: { level: 46, needs: [["ingot", 25], ["paste", 7]] },
-      stairs: { level: 47, needs: [["ingot", 35], ["paste", 10]] },
+      foundation: { level: 45, cost: 24, xp: 92, needs: [["ingot", 50], ["paste", 15]] },
+      wall: { level: 45, cost: 15, xp: 18.4, needs: [["ingot", 25], ["paste", 7]] },
+      ceiling: { level: 45, cost: 15, xp: 51.2, needs: [["ingot", 35], ["paste", 10]] },
+      door: { level: 45, cost: 12, xp: 11.6, needs: [["ingot", 10], ["paste", 4]] },
+      pillar: { level: 46, cost: 18, xp: 27.2, needs: [["ingot", 25], ["paste", 7]] },
+      stairs: { level: 47, cost: 12, xp: 64, needs: [["ingot", 35], ["paste", 10]] },
     },
   },
 };
@@ -202,11 +211,11 @@ function kit(tier: Tier, name: string): Def[] {
   const forms = name === "wall" ? ["wall", "doorframe", "windowframe"].filter((f) => f in tier.hp) : [name];
   const item = `core:piece_${name}_${tier.name}`;
   const label = `${m.label} ${name}`;
-  const { level, needs } = m.pieces[name]!;
+  const { level, needs, cost, xp } = m.pieces[name]!;
   return [
     { type: "item", class: "structure", id: item, stack: 100, weight: m.weight, label: label.toLowerCase(), color: tier.color, places: forms.map((f) => `core:${f}_${tier.name}`) },
-    crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: Math.max(1, Math.round(level / 3)) }),
-    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: m.cost, item: `core:piece_${name}_${tier.name}` },
+    crafting(item, { needs: needs.map(([n, count]) => ({ item: `core:${n}`, count })), seconds: 5, xp: xp ?? Math.max(1, Math.round(level / 3)), ...(m.at ? { at: m.at } : {}) }),
+    { type: "engram", id: `core:engram-piece_${name}_${tier.name}`, label, level, cost: cost ?? m.cost!, item: `core:piece_${name}_${tier.name}` },
   ];
 }
 
