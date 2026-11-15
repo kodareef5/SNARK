@@ -49,8 +49,8 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // The music as it is played: each track's layers as Opus, music.json listing them, and the lab to hear them.
   const music = join(root, "assets/source/core/music");
   if (existsSync(join(music, "music.json"))) {
-    cpSync(music, join(dist, "assets/music"), { recursive: true, filter: (f) => statSync(f).isDirectory() || /\.(opus|json)$/.test(f) && !f.includes(`${sep}sound${sep}`) });
-    if (existsSync(join(music, "listen.html"))) copyFileSync(join(music, "listen.html"), join(dist, "music.html"));
+    // The lab goes beside the files it plays: assets/music/listen.html on the dev server.
+    cpSync(music, join(dist, "assets/music"), { recursive: true, filter: (f) => statSync(f).isDirectory() || (/\.(opus|json|js|html)$/.test(f) && !f.includes(`${sep}sound${sep}`)) });
   }
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));
   const split = splitPack(core, "core");

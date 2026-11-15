@@ -47,6 +47,8 @@ def main():
         size = sum((out / f"{n}.opus").stat().st_size for n in names) / 1e6
         print(f"{tid}: {len(names)} layers, {size:.1f} MB")
     (OUT / "music.json").write_text(json.dumps({"tracks": listed}, indent=1) + "\n")
+    # The lab page (listen.html) reads this one: a script loads from a folder on disk, where fetch does not.
+    (OUT / "music.js").write_text("window.MUSIC = " + json.dumps({"tracks": listed}) + ";\n")
     print(f"{len(listed)} tracks listed in {OUT / 'music.json'}")
 
 
