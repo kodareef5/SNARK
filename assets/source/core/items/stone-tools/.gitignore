@@ -15,3 +15,13 @@ tex/stone/flint_*[a-z].png
 tex/stone/flint_orm_made*.png
 # Blender's backup copies of the concept's masters.
 *.blend1
+# The concept's second round is kept (its folder name would match round[0-9]*/ in assets/source/.gitignore), less what
+# its scripts render again from the masters: raw renders, guides, the copied texture and the hero scene.
+!ref/concept/round2/
+ref/concept/renders/
+ref/concept/round2/renders/
+ref/concept/round2/guides/
+ref/concept/round2/textures/
+ref/concept/round2/source/hero_scene.blend
+ref/concept/round2/source/paint_guide_scene.blend
+ref/concept/source/hero_scene.blend
