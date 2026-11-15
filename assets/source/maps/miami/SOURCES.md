@@ -48,3 +48,17 @@ waterway, broad flats and eastern submerged bands inform the paint. Fine wash
 edges, ripple strokes, wreck interiors and the future city are illustration.
 No coral-habitat source was acquired: offshore bands are not asserted to be
 surveyed coral reefs. Existing world layers retain their previous values.
+
+## World build: what the footprints' source says of each building
+
+Fetched 2026-11-15 by `tools/mapworld/fetch-attributes.ts` from the same FEMA /
+ORNL USA Structures delivery service as the footprints, by the object id each
+footprint keeps: `HEIGHT`, `OCC_CLS`, `PRIM_OCC`, `SEC_OCC`, `OUTBLDG`,
+`SQMETERS`, `SOURCE`, `VAL_METHOD` and `IMAGE_DATE`, for all 11,919. No address,
+place or population field was asked for. Kept as
+[base/buildings_attributes.json](base/buildings_attributes.json), under the same
+CC BY 4.0 attribution as the footprints above. 10,756 carry a height (median
+5.3 m, 99th percentile 38.9 m, highest 122.1 m; heights are the source's and
+are low for Miami's towers); 7,145 are residential, 991 commercial, 524
+government, 283 education, 270 industrial, 81 assembly and 2,622 unclassified.
+The world build uses the height for the stand-in rubble heaps.

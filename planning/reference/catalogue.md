@@ -11,7 +11,7 @@ list is refused. Names and ids are this engine's own. The ARK column says what
 the class corresponds to, so that what is known of ARK carries over.
 
 There are 40 classes: 25 built, 4 partly built, and 11 stubs that
-wait for a feature. The core pack holds 260 definitions, and 77 renames of ids
+wait for a feature. The core pack holds 262 definitions, and 77 renames of ids
 that are no longer defined.
 
 An asset slot is addressed `owner#slot`, or `owner#slot/key` for a slot with
@@ -280,7 +280,7 @@ Packs may add to: `from`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `spawns` | NPCSpawnEntriesContainer | built | `entries` | `limits` | 3 |
+| `spawns` | NPCSpawnEntriesContainer | built | `entries` | `limits` | 4 |
 
 - **`spawns`** on shelf `spawns`. Which creatures live in a place, in what share and in what groups. A map's spawn zones name these.
 
@@ -294,7 +294,7 @@ Packs may add to: `entries`.
 
 | Class | ARK | Standing | Must | May | In core |
 | --- | --- | --- | --- | --- | --- |
-| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 0 |
+| `map` | a level and the game data it names | partial: maps | `chunks` | `label`, `seaLevel`, `game`, `zones` | 1 |
 
 - **`map`** on shelf `maps`. A world. Its ground is the map file that carries its id, and its zones say what spawns, grows and drops where. A spawn zone with a spawns definition is kept stocked from it; one without is where a test's starting creatures are put.
 
@@ -393,6 +393,8 @@ built.
 
 **`buff`** (7): burning, tranquilized, drugged, stunned, injured, fed, god.
 
-**`spawns`** (3): spawns_beach, spawns_proving_herd, spawns_proving_hunters.
+**`spawns`** (4): spawns_beach, spawns_jungle, spawns_proving_herd, spawns_proving_hunters.
+
+**`map`** (1): miami.
 
 **`rename`** (77): 73 of `make-<item>`, the recipe id an item had before recipes were folded into items; and engram-cloth, engram-hide, engram-chitin, engram-flak.

@@ -19,6 +19,15 @@ export const SPAWNS: readonly Def[] = [
     ],
     limits: [{ species: dodo, share: 0.6 }, { species: para, share: 0.2 }],
   },
+  // ARK's jungle, keeping its parasaur and raptor groups: what lives in the hammocks, gardens and ruins of Miami.
+  {
+    type: "spawns",
+    id: "core:spawns_jungle",
+    entries: [
+      { name: "Para (1-3)", weight: 0.2, group: [para, para, para], chances: [1, 0.6, 0.3], offsets: [[0, 0], [0, 6.8], [0, -6.8]] },
+      { name: "Raptor (1-2)", weight: 0.13, group: [raptor, raptor], chances: [1, 0.5], offsets: [[0, -2.5], [0, 2.5]] },
+    ],
+  },
   // The proving ground's herd and hunters, each one species, in the groups ARK's jungle gives them.
   { type: "spawns", id: "core:spawns_proving_herd", entries: [{ name: "Para (1-3)", weight: 0.2, group: [para, para, para], chances: [1, 0.6, 0.3], offsets: [[0, 0], [0, 6.8], [0, -6.8]] }] },
   { type: "spawns", id: "core:spawns_proving_hunters", entries: [{ name: "Raptor (1-2)", weight: 0.13, group: [raptor, raptor], chances: [1, 0.5], offsets: [[0, -2.5], [0, 2.5]] }] },
