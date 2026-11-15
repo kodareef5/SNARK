@@ -317,6 +317,8 @@ export class GlRenderer {
     const text = PROGRAMS[name]!(tier, this.format, this.shadowLookup === "hard");
     const key = name + text.defines + text.vertex + text.fragment;
     made.set(name, (prog = this.linked.get(key) ?? this.linked.set(key, this.link(text)).get(key)!));
+    // A hurt body's program is made with the surface program, so the first one hurt in view waits on no compile.
+    if (name === "surface") this.program("surfaceLayer", tier);
     return prog;
   }
 

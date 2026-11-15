@@ -11,8 +11,9 @@
 // or `--self governed` (with --soak-minutes n), or `--self terrain`, the test that the probe works, not part of the
 // check. With `--texfmt astc` the page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a
 // made-up link (delay ms, KB/s, % lost), and with `--rebuild` a plain build of client/dist starts once the page has the
-// game, as `bun run build` in another terminal would. --port n, and --minutes n before it stops by itself (30). CHROME
-// and CLOUDFLARED name the programs.
+// game, as `bun run build` in another terminal would. With --flock forty dodos stand round the spawn point, hurt and
+// dead (tools/bench/gpu.ts `flock`). --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED
+// name the programs.
 //
 // While the tunnel is up anyone may reach the server. The short path has four letters nobody is told and closes after
 // 64 wrong guesses, the probe's routes need a 128-bit token, joining needs a random password, and cheats are off. What a
@@ -34,6 +35,7 @@ import { compileContent } from "../shared/content/registry.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { writeMap } from "../shared/world/mapfile.ts";
+import { flock } from "./bench/gpu.ts";
 import { benchHills } from "./bench/terrain.ts";
 import { buildClient } from "./build-client.ts";
 
@@ -365,6 +367,8 @@ if (import.meta.main) {
   const scene = terrain ? { bodies: [], floor: { x: 0, z: 0 }, pieces: [] } : crowdScene();
   const world = running.host.world;
   const crowd = scene.bodies.filter((s) => running.host.spawnCreature(s.species, s.x, s.z, 1) >= 0).length;
+  // With --flock, forty dodos round the spawn point, hurt and dead as the GPU bench has them.
+  const flocked = !terrain && process.argv.includes("--flock") ? flock(running) : 0;
   const ground = world.hf.heightAt(scene.floor.x, scene.floor.z);
   const pieces = scene.pieces.filter((p) => {
     const kind = world.reg.index.get(p.id) ?? 0;
@@ -424,7 +428,7 @@ if (import.meta.main) {
     say(through ? "a request through the tunnel reached the server" : "a request through the tunnel did not reach the server from here yet; a phone may still get through");
   }
 
-  console.log(terrain ? `\nSNARK device probe on the bench's 8 km map, for the terrain flight; reports go to ${dir}` : `\nSNARK device probe: ${crowd} bodies in the crowd and ${pieces} pieces of thatch; reports go to ${dir}`);
+  console.log(terrain ? `\nSNARK device probe on the bench's 8 km map, for the terrain flight; reports go to ${dir}` : `\nSNARK device probe: ${crowd} bodies in the crowd${flocked > 0 ? `, ${flocked} hurt and dead dodos round the spawn point` : ""} and ${pieces} pieces of thatch; reports go to ${dir}`);
   const tests = terrain ? "&tests=terrain,soak,governed" : "";
   console.log(`  open on the device:  ${base0}/d/${code}`);
   console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}${tests}`);

@@ -63,14 +63,16 @@ export const FLOCK = 40;
 
 /**
  * The flock: three in four hurt, a third of those at each stage, and one in four a corpse lying at a decay stage, set as
- * the server sets them.
+ * the server sets them. Returns how many there are: a dodo whose place is taken is left out.
  */
-function flock(server: ReturnType<typeof startServer>): void {
+export function flock(server: ReturnType<typeof startServer>): number {
   const { world, records, survival, hurt } = server.host;
+  let n = 0;
   for (let k = 0; k < FLOCK; k++) {
     const [ring, turn] = k < FLOCK / 2 ? [2.5, k / (FLOCK / 2)] : [4.5, (k - FLOCK / 2 + 0.5) / (FLOCK / 2)];
     const e = server.host.spawnCreature("core:dodo", PROVING_SPAWN.x + Math.sin(turn * Math.PI * 2) * ring, PROVING_SPAWN.z + Math.cos(turn * Math.PI * 2) * ring, 10);
     if (e < 0) continue;
+    n++;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
     if (k % 4 === 3) {
       world.ents.cue[e] = world.ents.cue[e]! | CUE_DEAD | CUE_OUT | (((k >> 2) & 3) << CUE_DECAY_SHIFT);
@@ -80,6 +82,7 @@ function flock(server: ReturnType<typeof startServer>): void {
       hurt.check(rec);
     }
   }
+  return n;
 }
 
 const nameOf = (r: Run): string => `${r.scene} ${r.tier}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off} off` : ""}${r.level ? `, level ${r.level}` : ""}`;
