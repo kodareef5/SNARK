@@ -5,7 +5,7 @@ import { readBody, writeBody } from "../../shared/net/protocol.ts";
 import { EntityView, SentView, readViewDelta, writeViewDelta } from "../../shared/net/view.ts";
 import { Body, BTN_JUMP } from "../../shared/sim/character.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
-import { packVehiclePose, packVehicleRide, packVehicleDoors, packVehicleDrive, quantVehicleWheel, stepVehicleBody, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering } from "../../shared/sim/vehicle-body.ts";
+import { packVehiclePose, packVehicleRide, withVehicleDoor, packVehicleDrive, quantVehicleWheel, stepVehicleBody, unpackVehicleGear, unpackVehicleRpm, vehicleShifting, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering } from "../../shared/sim/vehicle-body.ts";
 import { flatWorld } from "../fixtures/world.ts";
 
 test("a vehicle restores through the real Body wire and replays exactly from a mid-turn snapshot", () => {
@@ -77,7 +77,7 @@ test("vehicle-only visual changes travel in entity deltas and preserve the occup
   expect(unpackVehicleSteering(changed)).toBeCloseTo(-0.3, 2);
   // Suspension and a door can change with no position, steering or wheel change.
   cur.vehicleRide[0] = packVehicleRide(.09, -.06, .075, true);
-  cur.vehicleDoors[0] = packVehicleDoors(.8, .2);
+  cur.vehicleDoors[0] = withVehicleDoor(withVehicleDoor(0, 0, .8), 1, .2);
   const suspended = new SentView(), shown = new EntityView(); w.reset();
   writeViewDelta(w, next, cur, suspended, 8192, 0, store);
   r.reset(w.bytes()); expect(readViewDelta(r, updated, shown)).toBe(true);

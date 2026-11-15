@@ -83,7 +83,8 @@ export class EntityStore {
   vehicleGroundRoll: Float32Array;
   vehicleRideOffset: Float32Array;
   vehicleRideVelocity: Float32Array;
-  vehicleDoors: Uint16Array;
+  /** Four doors, 8 bits each of how far open (shared/sim/vehicle-body.ts). */
+  vehicleDoors: Uint32Array;
 
   vehiclePitch: Float32Array;
   vehicleRoll: Float32Array;
@@ -190,7 +191,7 @@ export class EntityStore {
     this.vehicleGroundRoll = new Float32Array(cap);
     this.vehicleRideOffset = new Float32Array(cap);
     this.vehicleRideVelocity = new Float32Array(cap);
-    this.vehicleDoors = new Uint16Array(cap);
+    this.vehicleDoors = new Uint32Array(cap);
 
     this.vehiclePitch = new Float32Array(cap);
     this.vehicleRoll = new Float32Array(cap);

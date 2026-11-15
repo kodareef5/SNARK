@@ -836,7 +836,7 @@ export class Scene {
           if (own && own.id === on && (remote.seatSlot[i] === 0 || own.generation === remote.seatGen[i])) {
             found = held ? ch.heldAt(remote.id[i]!, kind, on, own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, at) : ch.seat(own.kind, own.x - cam.x, own.y - cam.y, own.z - cam.z, own.yaw, own.state, own.tick, at, remote.seatSlot[i]!, own.vehicle);
             yaw = own.yaw;
-            if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = { ...own.vehicle!, x: at[0]!, y: at[1]!, z: at[2]!, yaw, driver: remote.seatSlot[i] !== 2, aimYaw: remote.yaw[i]! };
+            if (found && !held && ch.vehicle(own.kind)) this.vehicleSeats[i] = ch.seatPose(own.kind, remote.seatSlot[i]!, own.vehicle!, at, yaw, remote.yaw[i]!);
           } else {
             for (let j = 0; j < remote.count && !found; j++) {
               if (remote.id[j] !== on) continue;
@@ -847,7 +847,7 @@ export class Scene {
               const vehicle = this.remoteVehicle(remote, j);
               found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle);
               yaw = remote.yaw[j]!;
-              if (found && !held && ch.vehicle(remote.kind[j]!)) this.vehicleSeats[i] = { ...vehicle, x: at[0]!, y: at[1]!, z: at[2]!, yaw, driver: remote.seatSlot[i] !== 2, aimYaw: remote.yaw[i]! };
+              if (found && !held && ch.vehicle(remote.kind[j]!)) this.vehicleSeats[i] = ch.seatPose(remote.kind[j]!, remote.seatSlot[i]!, vehicle, at, yaw, remote.yaw[i]!);
             }
           }
           if (found) {
@@ -918,7 +918,7 @@ export class Scene {
         if (remote.id[j] !== own.attachment.host || remote.gen[j] !== own.attachment.generation || !ch.vehicle(remote.kind[j]!)) continue;
         const vehicle = this.remoteVehicle(remote, j), at = this.seatAt;
         if (ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, this.mountState, remote.tick, at, own.attachment.slot, vehicle)) {
-          seat = { ...vehicle, x: at[0]!, y: at[1]!, z: at[2]!, yaw: remote.yaw[j]!, driver: own.attachment.slot !== 2, aimYaw: own.yaw };
+          seat = ch.seatPose(remote.kind[j]!, own.attachment.slot, vehicle, at, remote.yaw[j]!, own.yaw);
         }
         break;
       }
@@ -942,7 +942,7 @@ export class Scene {
   }
 
   private remoteVehicle(remote: RemoteSample, i: number): VehicleRenderPose {
-    return { pitch: remote.vehiclePitch[i]!, roll: remote.vehicleRoll[i]!, steering: remote.steering[i]!, wheelAngle: remote.wheelAngle[i]!, groundPitch: remote.vehicleGroundPitch[i]!, groundRoll: remote.vehicleGroundRoll[i]!, rideOffset: remote.vehicleRideOffset[i]!, grounded: remote.vehicleGrounded[i] !== 0, doorLeft: remote.vehicleDoorLeft[i]!, doorRight: remote.vehicleDoorRight[i]! };
+    return { pitch: remote.vehiclePitch[i]!, roll: remote.vehicleRoll[i]!, steering: remote.steering[i]!, wheelAngle: remote.wheelAngle[i]!, groundPitch: remote.vehicleGroundPitch[i]!, groundRoll: remote.vehicleGroundRoll[i]!, rideOffset: remote.vehicleRideOffset[i]!, grounded: remote.vehicleGrounded[i] !== 0, doors: remote.vehicleDoors[i]! };
   }
 
   /**

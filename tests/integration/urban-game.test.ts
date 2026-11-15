@@ -3,9 +3,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { NO_CLIPS } from '../../shared/anim/clip.ts';
+import { TICK_RATE } from '../../shared/coords.ts';
 import { RESULT_OK } from '../../shared/net/protocol.ts';
 import { Body, BTN_JUMP, BTN_USE, stanceEye } from '../../shared/sim/character.ts';
 import { F_GROUNDED } from '../../shared/sim/entities.ts';
+import { vehicleDoor } from '../../shared/sim/vehicle-body.ts';
 import { RemoteSample } from '../../client/core/session.ts';
 import { Harness } from '../fixtures/net.ts';
 import { flatGround } from '../fixtures/arena.ts';
@@ -190,5 +192,24 @@ test('vehicle payload follows cargo and every occupant, and a dead passenger rel
     expect(h.host.records.entOf.has(rec.pid)).toBe(false);
     expect(h.host.urban.occupancy.occupant(cargo.pid, 'passenger')).toBe(0);
     expect(ents.vehiclePayloadMass[car]).toBeCloseTo(before + 30 - lost, 3);
+  } finally { h.host.shutdown(); }
+});
+
+test('a seat opens its own door while someone gets in by it, and the door swings shut after', () => {
+  const { h, me, car } = setup();
+  try {
+    const ents = h.world.ents, def = h.reg.vehicle[ents.kind[car]!]!;
+    const driverDoor = def.seats.find((s) => s.driver)!.door!, other = def.seats.find((s) => !s.driver)!.door!;
+    expect(h.host.urban.mount(me, car)).toBe(RESULT_OK);
+    let most = 0;
+    for (let t = 0; t <= def.actionTicks; t++) {
+      h.run(1000 / TICK_RATE);
+      most = Math.max(most, vehicleDoor(ents.vehicleDoors[car]!, driverDoor));
+      expect(vehicleDoor(ents.vehicleDoors[car]!, other)).toBe(0);
+    }
+    expect(most).toBe(1);
+    expect(me.drive).toBe(car);
+    h.run(1000);
+    expect(vehicleDoor(ents.vehicleDoors[car]!, driverDoor)).toBe(0);
   } finally { h.host.shutdown(); }
 });

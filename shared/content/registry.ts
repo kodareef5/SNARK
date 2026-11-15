@@ -2,7 +2,7 @@
 // Index 0 is reserved. It marks an empty structure slot and stands in for content that no longer exists.
 
 import { validVehicleSurface } from "../world/vehicle-surface.ts";
-import { validateVehicleSpec, type VehicleDefinition } from "../sim/vehicle.ts";
+import { validateVehicleDefinition, type VehicleDefinition } from "../sim/vehicle.ts";
 import { BIRTH_SCALE } from "../sim/breeding.ts";
 import type { TameParams } from "../sim/taming.ts";
 import { TICK_RATE } from "../coords.ts";
@@ -316,17 +316,9 @@ export function compileContent(all: readonly Def[]): CompileResult {
     if (d.type === "species") {
       if (d.vehicle) {
         try {
-          validateVehicleSpec(d.vehicle.spec);
-          if (d.vehicle.id !== d.id || d.vehicle.seats.length < 1 || d.vehicle.seats.length > 16) throw new Error("invalid vehicle identity or seats");
-          const names = new Set<string>();
-          let drivers = 0;
-          for (const seat of d.vehicle.seats) {
-            // The same names and count server/occupancy.ts accepts, so content that compiles always spawns.
-            if (!/^[a-z][a-z0-9_]{0,47}$/.test(seat.id) || names.has(seat.id) || seat.anchor.length !== 3 || seat.entry.length !== 3 || ![...seat.anchor, ...seat.entry].every(Number.isFinite)) throw new Error("invalid vehicle seat");
-            names.add(seat.id); if (seat.driver) drivers++;
-          }
-          if (drivers !== 1) throw new Error("a vehicle must have one driver seat");
-        } catch { errors.push(`${d.id}: invalid wheel specification or seats`); }
+          if (d.vehicle.id !== d.id) throw new Error("its vehicle must carry its own id");
+          validateVehicleDefinition(d.vehicle);
+        } catch (e) { errors.push(`${d.id}: ${(e as Error).message}`); }
       }
       positive(d, "radius", d.radius, 8);
       positive(d, "height", d.height, 32);

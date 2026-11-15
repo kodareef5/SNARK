@@ -87,8 +87,9 @@ import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { BTN_JUMP, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
-import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, unpackVehicleDoorLeft, unpackVehicleDoorRight, unpackVehicleGear, unpackVehicleRpm, vehicleShifting } from "../../shared/sim/vehicle-body.ts";
+import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting } from "../../shared/sim/vehicle-body.ts";
 import { FISTS, actionOut, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
@@ -179,8 +180,8 @@ export class RemoteSample {
   readonly vehicleGroundRoll = new Float32Array(MAX_VIEW);
   readonly vehicleRideOffset = new Float32Array(MAX_VIEW);
   readonly vehicleGrounded = new Uint8Array(MAX_VIEW);
-  readonly vehicleDoorLeft = new Float32Array(MAX_VIEW);
-  readonly vehicleDoorRight = new Float32Array(MAX_VIEW);
+  /** Each door's open share, 8 bits a door (shared/sim/vehicle-body.ts vehicleDoor). */
+  readonly vehicleDoors = new Uint32Array(MAX_VIEW);
   readonly vehicleGear = new Int8Array(MAX_VIEW);
   readonly vehicleRpm = new Float32Array(MAX_VIEW);
   readonly vehicleShifting = new Uint8Array(MAX_VIEW);
@@ -679,8 +680,7 @@ export class ClientSession {
       out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(ride);
       out.vehicleRideOffset[n] = unpackVehicleRideOffset(ride);
       out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
-      out.vehicleDoorLeft[n] = unpackVehicleDoorLeft(b.vehicleDoors[j]!);
-      out.vehicleDoorRight[n] = unpackVehicleDoorRight(b.vehicleDoors[j]!);
+      out.vehicleDoors[n] = b.vehicleDoors[j]!;
       const drive = b.vehicleDrive[j]!;
       out.vehicleGear[n] = unpackVehicleGear(drive);
       out.vehicleRpm[n] = unpackVehicleRpm(drive);
@@ -695,8 +695,12 @@ export class ClientSession {
         out.vehicleGroundRoll[n] = unpackVehicleGroundRoll(oldRide) + (out.vehicleGroundRoll[n]! - unpackVehicleGroundRoll(oldRide)) * k;
         out.vehicleRideOffset[n] = unpackVehicleRideOffset(oldRide) + (out.vehicleRideOffset[n]! - unpackVehicleRideOffset(oldRide)) * k;
         out.vehicleGrounded[n] = vehicleRideGrounded(k < .5 ? oldRide : ride) ? 1 : 0;
-        out.vehicleDoorLeft[n] = unpackVehicleDoorLeft(a!.vehicleDoors[i]!) + (out.vehicleDoorLeft[n]! - unpackVehicleDoorLeft(a!.vehicleDoors[i]!)) * k;
-        out.vehicleDoorRight[n] = unpackVehicleDoorRight(a!.vehicleDoors[i]!) + (out.vehicleDoorRight[n]! - unpackVehicleDoorRight(a!.vehicleDoors[i]!)) * k;
+        let doors = 0;
+        for (let d = 0; d < MAX_VEHICLE_DOORS; d++) {
+          const was = vehicleDoor(a!.vehicleDoors[i]!, d);
+          doors = withVehicleDoor(doors, d, was + (vehicleDoor(b.vehicleDoors[j]!, d) - was) * k);
+        }
+        out.vehicleDoors[n] = doors;
         const oldDrive = a!.vehicleDrive[i]!;
         out.vehicleGear[n] = unpackVehicleGear(k < .5 ? oldDrive : drive);
         out.vehicleRpm[n] = unpackVehicleRpm(oldDrive) + (out.vehicleRpm[n]! - unpackVehicleRpm(oldDrive)) * k;

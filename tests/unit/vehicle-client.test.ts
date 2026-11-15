@@ -56,7 +56,7 @@ function transform(packet: FramePacket, bone: number, point: ArrayLike<number>):
   return out;
 }
 function close(a: ArrayLike<number>, b: ArrayLike<number>): void { for (let i = 0; i < 3; i++) expect(a[i]!).toBeCloseTo(b[i]!, 5); }
-const seat: VehicleSeatPose = { x: 4, y: 2, z: 8, yaw: .7, pitch: .2, roll: -.15, steering: .25, wheelAngle: 1.2, driver: false, aimYaw: .7 };
+const seat: VehicleSeatPose = { x: 4, y: 2, z: 8, yaw: .7, pitch: .2, roll: -.15, steering: .25, wheelAngle: 1.2, driver: false, aimYaw: .7, steer: .25 / .55 };
 
 test("seated survivors retain real body bindings, proportions, appearance and equipped meshes", () => {
   const { characters, packet } = fixture();
@@ -106,7 +106,7 @@ test("native car chassis and both seat sockets share full attitude; steering aff
 
 test("suspension holds all wheel hubs on the support plane while chassis, occupants and doors follow the sprung body", () => {
   const { characters, packet } = fixture(), state = new AnimState(), expected = [0, 0, 0];
-  const frame = { ...seat, pitch: -.12, roll: .18, rideOffset: .09, groundPitch: .08, groundRoll: -.04, grounded: true, doorLeft: 1, doorRight: 1 };
+  const frame = { ...seat, pitch: -.12, roll: .18, rideOffset: .09, groundPitch: .08, groundRoll: -.04, grounded: true, doors: 0xffff };
   characters.add(packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, frame);
   for (const wheel of [1, 2, 3, 4]) {
     const pivot = carRig.rest.slice(wheel * 3, wheel * 3 + 3);
@@ -122,7 +122,7 @@ test("suspension holds all wheel hubs on the support plane while chassis, occupa
     close(transform(packet, door, pivot), expected);
   }
   const closed = fixture();
-  closed.characters.add(closed.packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, { ...frame, doorLeft: 0, doorRight: 0, steering: 0 });
+  closed.characters.add(closed.packet, compact, frame.x, frame.y, frame.z, frame.yaw, state, 2, null, 0, colors, 0, null, 0, 9, false, false, 1, false, false, { ...frame, doors: 0, steering: 0 });
   expect(transform(packet, 5, [.84, .76, -.35])).not.toEqual(transform(closed.packet, 5, [.84, .76, -.35]));
   expect(transform(packet, 7, [.42, 1.05, .55])).not.toEqual(transform(closed.packet, 7, [.42, 1.05, .55]));
 });

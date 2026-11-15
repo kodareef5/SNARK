@@ -69,9 +69,12 @@ export const unpackVehicleGroundPitch = (n: number): number => unpack(n);
 export const unpackVehicleGroundRoll = (n: number): number => unpack(n >>> 10);
 export const unpackVehicleRideOffset = (n: number): number => { const v = (n >>> 20) & 1023; return (v & 512 ? v - 1024 : v) / 1022; };
 export const vehicleRideGrounded = (n: number): boolean => (n & 0x40000000) !== 0;
-export const packVehicleDoors = (left: number, right: number): number => Math.round(clamp(left, 0, 1) * 255) | (Math.round(clamp(right, 0, 1) * 255) << 8);
-export const unpackVehicleDoorLeft = (n: number): number => (n & 255) / 255;
-export const unpackVehicleDoorRight = (n: number): number => (n >>> 8) / 255;
+/** How far open each door is, door d (VehicleDefinition.doors) in bits 8d to 8d + 7: up to MAX_VEHICLE_DOORS. */
+export const vehicleDoor = (packed: number, door: number): number => ((packed >>> (door * 8)) & 255) / 255;
+export function withVehicleDoor(packed: number, door: number, open: number): number {
+  const shift = door * 8;
+  return ((packed & ~(255 << shift)) | (Math.round(clamp(open, 0, 1) * 255) << shift)) >>> 0;
+}
 
 /** Observer engine state is presentation data; the driver's prediction receives the full mechanical Body. */
 export function packVehicleDrive(gear: number, rpm: number, shifting: boolean): number {

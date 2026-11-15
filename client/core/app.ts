@@ -806,7 +806,7 @@ export class App {
         else {
           const pose = { pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, steering: r.steering[i]!, wheelAngle: r.wheelAngle[i]! };
           if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.spot, session.own.seatSlot, pose) &&
-            ch.seatedOrigin(session.ownKind, session.ownLook, { ...pose, x: this.spot[0]!, y: this.spot[1]!, z: this.spot[2]!, yaw: heading, driver: session.own.seatSlot === 1 }, this.spot)) {
+            ch.seatedOrigin(session.ownKind, session.ownLook, ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.spot, heading)!, this.spot)) {
             // Preserve the authority's root + stance-eye contract; an authored seated eye/muzzle must change combat too.
             px = this.spot[0]!; py = this.spot[1]! + eye; pz = this.spot[2]!;
           }
@@ -895,7 +895,7 @@ export class App {
       const r = this.remote;
       for (let i = 0; i < r.count; i++) {
         if (r.id[i] !== session.driving) continue;
-        if (body.vehicle) { body.vehicle.doorLeft = r.vehicleDoorLeft[i]!; body.vehicle.doorRight = r.vehicleDoorRight[i]!; }
+        if (body.vehicle) body.vehicle.doors = r.vehicleDoors[i]!;
         body.generation = r.gen[i]!;
         body.colors.set(r.colors.subarray(i * 6, i * 6 + 6));
         body.state.unpackCue(r.cue[i]!);
