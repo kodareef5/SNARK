@@ -186,6 +186,17 @@ With 12 GB of GPU and 64 GB of memory the full models are open again. Try first:
 3. Port `tools/sound/` to Linux: a CUDA `requirements.txt`, `flock` for the render lock, `time -v`. Takes remade on
    CUDA will be close to the MLX ones, not identical; keep each take's real model, revision and settings in its recipe.
 
+## The owner has listened (2026-11-15) and v1 is on main
+
+The owner heard the takes and the sound board, and v1 merged into main (`284969a3`). Their words: "the sounds are good....this is a solid foundation and it looks like a good pipeline to produce whatever else we will need...im noting we will want to increase the in game variety...a pack of raptors all garggling the same audio sounds demonic lol...more variety for sure." On the board: "that ui is rough but serves the purpose".
+
+What that asks of the next round, as I read it:
+- **More takes per occasion**, most for what is heard in a crowd: calls, alarms, idle sounds and steps of pack and herd creatures first.
+- **Each individual sounds like itself**: a voice is pitched and timed by the body (size, age, sex, a per-individual seed that stays the same for that creature), so two raptors calling together differ, and a baby is not its parent.
+- **A crowd is not a chorus**: the same sound started by many bodies in the same moment is staggered, thinned to a few voices, and never played twice from one take at once.
+
+The reviewer's open findings in the merge also stand for this round: fold the creature occasions into each creature's `cues.json` (D426) so there is one list; hold only the player's own sex's survivor voice on a phone; let a creature with no rig hear its cue-word occasions (the grey-box pteranodon is silent); drop the render lock from `generate.py` on the Mac (the Mac runs with no locks now).
+
 ## Rules that still hold
 
 - Every accepted take keeps its prompt, seed, model, repository and revision, settings and licence beside it
@@ -193,5 +204,5 @@ With 12 GB of GPU and 64 GB of memory the full models are open again. Try first:
 - No outside encoder in `bun run build`: everything after the model is our own code. Tools on the side (ffmpeg, the
   models) are for making art only.
 - No personal details in any prompt or request, and no game's audio as an input or reference.
-- One heavy job at a time under the render lock, and no process holding a model between jobs.
-- Nothing merges until the owner has listened.
+- One heavy job at a time, and no process holding a model between jobs.
+- Nothing merges until the owner has listened. (v1 was heard and merged on 2026-11-15.)
