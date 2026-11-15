@@ -10,6 +10,8 @@ export const RUIN_SHAPES = {
   zcover: [3, 1.1, 1], zcounter: [4, 1, .8], zbed: [2, .5, 1.4],
   zcar: [4.5, 1, 1.9], zcab: [2.1, .8, 1.7], zbus: [10, 2, 2.5],
   zsign: [2, 1, .25], zpole: [.25, 6, .25], zwreck: [6, .35, 3],
+  // A solid for structures mapped in three dimensions, such as a bridge's towers.
+  zmass8: [8, 8, 8],
   floor4: [4, 0.4, 4], floor8: [8, 0.4, 8], floor16: [16, 0.4, 16],
   beam4: [4, 0.6, 0.5], beam8: [8, 0.6, 0.5], beam16: [16, 0.8, 0.6],
   pier4: [0.7, 4, 0.7], pier8: [0.9, 8, 0.9], pier16: [1.2, 16, 1.2],

@@ -17,11 +17,14 @@ import { heldTo, probePasses, provingProbes, type Probe } from "../core/selfchec
 import { BenchRun, PassClock } from "../core/passes.ts";
 import { groundSize } from "../core/render/terrain.ts";
 import { ClientSession } from "../core/session.ts";
+import { arrivalOf, type ClusterList } from "../core/travel.ts";
 import { devicePage } from "./device.ts";
 import { GlRenderer } from "./gl.ts";
 import { bindInput } from "./input.ts";
 import { connect } from "./socket.ts";
 import { VoiceIo } from "../voice/voice.ts";
+import { SoundIo } from "../sound/sound.ts";
+import { WorkerDecoder } from "../sound/decoder.ts";
 import { UiView } from "./ui.ts";
 
 const params = new URLSearchParams(location.search);
@@ -31,6 +34,8 @@ const bench = params.has("bench") ? new BenchRun() : null;
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
+/** A survivor arriving from another server of the cluster, with its ticket (client/core/travel.ts). */
+const arrival = arrivalOf(location.hash);
 
 async function boot(): Promise<void> {
   const reg = compileContent(CORE_CONTENT).registry!;
@@ -53,7 +58,8 @@ async function boot(): Promise<void> {
   const ground = groundSize(hf);
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
   const session = new ClientSession(connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`), {
-    ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, params.get("name")),
+    ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, arrival?.name ?? params.get("name"), arrival !== null),
+    ...(arrival ? { ticket: arrival.ticket } : {}),
     spectate: params.has("spectate"),
     password: params.get("password") ?? "",
     registry: reg,
@@ -71,15 +77,26 @@ async function boot(): Promise<void> {
   app.plainSky = selfcheck;
   [app.ui.settings.touchFirst, app.dpr] = [matchMedia("(pointer: coarse)").matches, devicePixelRatio];
   app.address((name) => params.get(name), selfcheck || bench !== null || device !== null);
+  app.page = {
+    origin: location.origin,
+    protocol: location.protocol,
+    hostname: location.hostname,
+    go: (url) => location.assign(url),
+    arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
+    cluster: async () => (await fetchJson(fetch, "cluster.json")) as ClusterList,
+  };
   const clock = (renderer.passes = device ? null : new PassClock(renderer.gl, bench !== null && params.has("passes")));
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
   // Voice plays once the session has its token and the viewer has touched the page.
-  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`);
+  // The world's sounds and the voices share one audio context.
+  const sound = SoundIo.supported ? new SoundIo(app.ui.settings.touchFirst) : null;
+  app.sound = sound;
+  if (sound && typeof Worker !== "undefined") app.soundDecoder = new WorkerDecoder();
+  const voice = new VoiceIo(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice`, sound ? () => sound.shared() : null);
   app.voice = voice;
-  addEventListener("pointerdown", () => voice.unlock());
-  addEventListener("keydown", () => voice.unlock());
+  for (const gesture of ["pointerdown", "pointerup", "keydown"]) addEventListener(gesture, () => (voice.unlock(), sound?.unlock()));
   /** With ?voice=1 the self-check talks to itself. Its own voice must come back from the server and play. */
   const voiceCheck = selfcheck && params.get("voice") === "1";
   /** With ?voice=listen it only listens to another page, and reports whose voice it played. */
@@ -134,6 +151,11 @@ async function boot(): Promise<void> {
     app.drawn(packet, ours, gpu);
     device?.frame(now, packet, t0, built);
     if (frames === 30) loser?.loseContext();
+    // The self-check asks for a call and listens for it leaving the volume.
+    if (selfcheck && sound && frames >= 0) {
+      if (frames === 30) app.ui.local?.("sound call");
+      sound.listen();
+    }
     if (frames === 45) loser?.restoreContext();
     times.push(performance.now() - t0);
     const r = app.scene!.assets.residency;
@@ -162,11 +184,12 @@ async function boot(): Promise<void> {
       const misplaced = view.misplaced(app.ui.frame);
       const report = {
         // A listening page has the talking page's body in view, so its picture is not the fixed one and the probes do not count.
-        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level),
+        ok: (voiceListen || probes.every((p) => p.ok)) && misplaced === 0 && heard && restored === (params.has("lose") ? 1 : 0) && packet.skipped === 0 && packet.dropped === 0 && stressed.length === (app.stress ? 3 : 0) && rocks.every((m) => m.drawn === m.level) && (!app.sounds?.library.index.has("core:dodo/sound/call") || sound!.peak > 0.001),
         rocks: rocks.map((m) => [m.level, m.drawn]),
         restored,
         assets: { ...app.scene?.assets.residency.stats, kept: port.cache },
         ...(voiced ? { voice: voice.report } : {}),
+        ...(app.sounds ? { sound: { line: app.sounds.line(), peak: sound!.peak } } : {}),
         userAgent: navigator.userAgent,
         renderer: renderer.rendererName,
         textures: { format: renderer.format, takes: renderer.formats, errors: renderer.errors },

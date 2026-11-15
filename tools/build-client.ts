@@ -12,6 +12,7 @@ import { buildTextures, type TextureSource } from "./pack/encode.ts";
 import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
+import { buildSounds } from "./pack/sound.ts";
 import { splitPack } from "./pack/split.ts";
 import { storeParts } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
@@ -40,10 +41,11 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   rmSync(join(dist, "assets"), { recursive: true, force: true });
   mkdirSync(join(dist, "assets"), { recursive: true });
   // Workers and worklets run in their own threads, so each is bundled as a separate file.
-  const entrypoints = ["client/shell/main.ts", "client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts"].map((f) => join(root, f));
+  const entrypoints = ["client/shell/main.ts", "client/voice/voice-worker.ts", "client/voice/voice-capture.ts", "client/voice/voice-playback.ts", "client/assets/assets-worker.ts", "client/sound/board.ts", "client/sound/decode-worker.ts"].map((f) => join(root, f));
   const result = await Bun.build({ entrypoints, outdir: dist, naming: "[name].[ext]", target: "browser", minify: true, sourcemap: "linked" });
   if (!result.success) throw new Error(result.logs.map(String).join("\n"));
   copyFileSync(join(root, "client/index.html"), join(dist, "index.html"));
+  copyFileSync(join(root, "client/sound/sounds.html"), join(dist, "sounds.html"));
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));
   const split = splitPack(core, "core");
   const manifest = split.manifest;
@@ -61,6 +63,16 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   // The inventory pictures, drawn from the meshes and the textures as stored, in sheets after the other files.
   files.push(...(await gameIcons(core, manifest, files)));
   if (opts.stress) spoilStress(files, manifest);
+  // Sounds are a file of their own, fetched a sound at a time and stored as they are coded.
+  t0 = performance.now();
+  const sounds = buildSounds(files.length);
+  if (sounds) {
+    files.push({ name: "core.snsd", role: "sound", bytes: sounds.bytes });
+    manifest.files.push({ name: "core.snsd", role: "sound", bytes: sounds.bytes.length });
+    manifest.sounds = sounds.sounds;
+    const r = sounds.report;
+    console.log(`sounds       ${r.sounds} with ${r.takes} takes, ${r.seconds.toFixed(1)} s in ${r.bytes} bytes (${Math.round((100 * r.bytes) / Math.max(1, r.raw))}% of 16-bit), ${r.made} coded anew${r.limited.length > 0 ? `, ${r.limited.length} brought under -1 dB` : ""}, ${(performance.now() - t0).toFixed(0)} ms`);
+  }
   files.forEach((f, i) => {
     manifest.files[i]!.name = f.name.replace(/\.(\w+)$/, `.${partHash(f.bytes)}.$1`);
     writeFileSync(join(dist, "assets", manifest.files[i]!.name), f.bytes);

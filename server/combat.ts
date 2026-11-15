@@ -16,6 +16,7 @@ import { F_ALIVE, F_HELD, F_PROP } from "../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, QUALITY_MUL } from "../shared/sim/items.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { W_BOW, W_GUN, W_MELEE, W_THROWN } from "../shared/sim/weapon.ts";
+import { capsuleHull, hullPush } from "../shared/world/convex.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../shared/world/ray.ts";
 import { Found } from "../shared/world/structures.ts";
 import type { Buffs } from "./buffs.ts";
@@ -111,6 +112,8 @@ export interface Source {
   silenced?: boolean;
   /** The share of its damage a round keeps at the distance it hit from (`falloff`, shared/sim/damage.ts). 1 where not given. */
   far?: number;
+  /** The share of armor the round goes through, 0 to 1 (weapons-plan.md, M12). Omitted, none. */
+  pierce?: number;
 }
 
 /** One resolved blow, for tests, the console and measurement. */
@@ -280,6 +283,7 @@ export class Combat {
     src.torporInstant = butt ? reg.blowTorpor[item]! : reg.meleeTorpor[item !== 0 ? item : kind]!;
     src.torporOver = src.torporSeconds = 0;
     src.buff = 0;
+    src.pierce = 0;
     const wears = item !== 0 && reg.uses[item]! > 0;
     if (body >= 0) {
       // Harvest damage is the blow's damage as the attacker's melee and the weapon's quality make it, times the server's rule.
@@ -669,6 +673,7 @@ export class Combat {
     hit.resist = buffs.takenOf(victim);
     hit.torporInstant = src.torporInstant;
     hit.torporOver = src.torporOver;
+    hit.pierce = src.pierce ?? 0;
     hit.takes = reg.takes[vkind]?.[hit.type] ?? 1;
     const rules = this.ctx.rules;
     hit.zone = rules.on("HeadMultipliers") ? (reg.zoneMul[vkind]?.[zone] ?? 1) : 1;
@@ -790,6 +795,8 @@ export class Combat {
     hit.far = src.far ?? 1;
     hit.attack = src.attack * (src.by ? buffs.dealtOf(src.by) : 1);
     hit.takes = takes[src.type]!;
+    // The weapon's own factor against what is built (D435): the grenade's 175 to a body is the Table of explosives' 788 to wood.
+    hit.structures = world.reg.structureMul[src.item] ?? 1;
     // A structure is spared as its owning tribe would be.
     hit.rule = this.spared(src.by, t.owner[slot]!, src.type, false) ? 0 : this.dealt(src.by) * this.ctx.rules.num("StructureResistanceMultiplier");
     const bus = this.ctx.bus;
@@ -826,9 +833,10 @@ export class Combat {
 
   /**
    * Every body within `radius` of (x, y, z) that has a clear line to it, and every structure within `radius`, takes
-   * `src`, in full within a metre and fading to nothing at the edge.
+   * `src`, in full within a metre and fading to nothing at the edge. `direct` is a body a round that went off struck straight
+   * on, which takes the blast in full wherever on it the round met it (weapons-plan.md, M8), or -1.
    */
-  blast(src: Source, x: number, y: number, z: number, radius: number): void {
+  blast(src: Source, x: number, y: number, z: number, radius: number, direct = -1): void {
     const world = this.ctx.world;
     const ents = world.ents;
     const reg = world.reg;
@@ -853,10 +861,10 @@ export class Combat {
           const mz = ents.z[i]! - z;
           // The distance to the body's nearest point, approximated as the distance to its middle less its radius.
           const mid = Math.sqrt(mx * mx + my * my + mz * mz);
-          const far = Math.max(0, mid - reg.bodyRadius[kind]!);
+          const far = i === direct ? 0 : Math.max(0, mid - reg.bodyRadius[kind]!);
           if (far >= radius) continue;
           // World geometry between the two shields the body.
-          if (mid > 0.5 && castWorld(world, x, y + 0.1, z, mx / mid, (my - 0.1) / mid, mz / mid, mid - 0.3) !== HIT_NONE) continue;
+          if (i !== direct && mid > 0.5 && castWorld(world, x, y + 0.1, z, mx / mid, (my - 0.1) / mid, mz / mid, mid - 0.3) !== HIT_NONE) continue;
           found.push(i);
           share.push(fade(far));
         }
@@ -890,13 +898,17 @@ export class Combat {
       const lx = cs * px - sn * pz;
       const ly = y - t.y[slot]!;
       const lz = sn * px + cs * pz;
-      const hx = structs.halfXOf(kind);
-      const hy = structs.halfYOf(kind);
-      const hz = structs.halfZOf(kind);
-      const ex = lx - Math.max(-hx, Math.min(hx, lx));
-      const ey = ly - Math.max(-hy, Math.min(hy, ly));
-      const ez = lz - Math.max(-hz, Math.min(hz, lz));
-      const far = Math.sqrt(ex * ex + ey * ey + ez * ez);
+      const parts = structs.parts;
+      const hulls = parts.hulls;
+      let far: number;
+      if (hulls && hulls.start[kind + 1]! > hulls.start[kind]!) {
+        // A sloped piece's box holds much air, so it takes the blast by the nearest of its parts.
+        far = radius;
+        const box = parts.box;
+        for (let p = parts.start[kind]! * 6, end = parts.start[kind + 1]! * 6; p < end; p += 6) far = Math.min(far, fromBox(lx - box[p]!, ly - box[p + 1]!, lz - box[p + 2]!, box[p + 3]!, box[p + 4]!, box[p + 5]!));
+        // With no radius, a part's push is the way from the blast to its nearest point, and deeper than 0 inside it.
+        for (let p = hulls.start[kind]!, end = hulls.start[kind + 1]!; p < end; p++) if (capsuleHull(hulls, p, t.yaw[slot]!, px, pz, ly, ly, 0, far)) far = Math.max(0, -hullPush.depth);
+      } else far = fromBox(lx, ly, lz, structs.halfXOf(kind), structs.halfYOf(kind), structs.halfZOf(kind));
       if (far >= radius) continue;
       found.push(ref);
       share.push(fade(far));
@@ -971,4 +983,12 @@ export class Combat {
 /** A species id without its namespace, for a body with no name. */
 function speciesLabel(id: string): string {
   return id.slice(id.indexOf(":") + 1);
+}
+
+/** Metres from (x, y, z) to a box of half extents (hx, hy, hz) about the origin, in its own frame. */
+function fromBox(x: number, y: number, z: number, hx: number, hy: number, hz: number): number {
+  const ex = x - Math.max(-hx, Math.min(hx, x));
+  const ey = y - Math.max(-hy, Math.min(hy, y));
+  const ez = z - Math.max(-hz, Math.min(hz, z));
+  return Math.sqrt(ex * ex + ey * ey + ez * ez);
 }

@@ -7,6 +7,7 @@ import { FarStore } from "../../client/core/farcells.ts";
 import { Camera } from "../../client/core/render/camera.ts";
 import type { FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
+import { slopeKind } from "../../content/slopes.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
@@ -23,6 +24,14 @@ export const PIER = "core:zruin_pier4_concrete";
 export const BEAM = "core:zruin_beam8_concrete";
 export const WALL = "core:zruin_wall8_limestone";
 export const STEP = "core:zruin_step_concrete";
+export const FLOOR16 = "core:zruin_floor16_concrete";
+export const SLOPE_RAMP = slopeKind("ramp");
+export const SLOPE_RUBBLE = slopeKind("rubble");
+export const SLOPE_STAIRS = slopeKind("stairs");
+export const SLOPE_STAIRS_SOLID = slopeKind("stairs_solid");
+export const SLOPE_SLAB30 = slopeKind("slab30");
+export const SLOPE_SLAB60 = slopeKind("slab60");
+export const SLOPE_ROOF = slopeKind("roof");
 
 /**
  * A frame building of `storeys` 4 m storeys at (x, z), turned by `yaw` (in 1/65,536 turns): a floor of `side` by `side`
@@ -48,6 +57,53 @@ export function building(x: number, z: number, y0: number, storeys: number, side
     put(STEP, 0, base + 0.6, 0);
   }
   return out;
+}
+
+/**
+ * The sloped proof kinds (content/slopes.ts) as a ruin might lay them, about (x, z) on flat ground at `y0`, turned by `yaw`,
+ * in groups: a ramp up to a deck with a step under its high end; a floor slab fallen onto the plate below, its low end in
+ * it; rubble heaped against a wall over a step; flights of stairs up to two decks; a wall panel gone over against a wall;
+ * a pitched roof on four walls.
+ */
+export function slopes(x: number, z: number, y0: number, yaw = 0): Record<"ramp" | "slab" | "rubble" | "stairs" | "panel" | "roof" | "all", MapStatic[]> {
+  const a = (yaw / YAW_UNITS) * 2 * Math.PI;
+  const [c, s] = [Math.cos(a), Math.sin(a)];
+  const at = (u0: number, v0: number) => {
+    const out: MapStatic[] = [];
+    const put = (kind: string, u: number, y: number, v: number, quarter = 0): number => out.push({ kind, x: x + c * (u0 + u) + s * (v0 + v), y: y0 + y, z: z + c * (v0 + v) - s * (u0 + u), yaw: (yaw + quarter * 16384) % YAW_UNITS });
+    return { out, put };
+  };
+  const ramp = at(-16, -8);
+  // The deck's top 2 m up; the ramp rises 2 m to it over 6 m, its high end against the deck's side.
+  ramp.put(FLOOR, 0, 1.8, 0);
+  ramp.put(SLOPE_RAMP, 0, 0.8, -7);
+  ramp.put(STEP, 0, 0.2, -5);
+  const slab = at(0, -8);
+  // Fallen 30 degrees, its low end 2 cm into the plate under it.
+  slab.put(FLOOR16, 0, 0.2, 0);
+  slab.put(SLOPE_SLAB30, 0, 2.193, 0);
+  const rubble = at(16, -8);
+  rubble.put(WALL, 0, 1.4, 2.25);
+  rubble.put(SLOPE_RUBBLE, 0, 0.75, 0);
+  rubble.put(STEP, 0, 0.2, 1);
+  const stairs = at(-16, 12);
+  // A flight 4 m up to a deck, and a solid one 3 m up to another, beside it.
+  stairs.put(FLOOR, 0, 3.8, 6.75);
+  stairs.put(SLOPE_STAIRS, 0, 2, 0);
+  stairs.put(FLOOR, 8, 2.8, 5.8);
+  stairs.put(SLOPE_STAIRS_SOLID, 8, 1.5, 0);
+  const panel = at(4, 12);
+  // A wall panel gone over against a wall, its foot on the ground.
+  panel.put(WALL, 0, 1.4, 1.5);
+  panel.put(SLOPE_SLAB60, 0, 1.43, 0.25);
+  const roof = at(18, 12);
+  roof.put(WALL, 0, 1.4, -3.75);
+  roof.put(WALL, 0, 1.4, 3.75);
+  roof.put(WALL, -3.75, 1.4, 0, 1);
+  roof.put(WALL, 3.75, 1.4, 0, 1);
+  roof.put(SLOPE_ROOF, 0, 2.8 + 1.375, 0);
+  const groups = { ramp: ramp.out, slab: slab.out, rubble: rubble.out, stairs: stairs.out, panel: panel.out, roof: roof.out };
+  return { ...groups, all: Object.values(groups).flat() };
 }
 
 export interface CityWorldOptions {

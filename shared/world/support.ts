@@ -2,7 +2,7 @@
 // the same judgement before asking. Nodes are cached until forget(), so the questions of one collapse share them.
 
 import { STRUCT_UNITS } from "../coords.ts";
-import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, ROLE_WALL, frameAxes, makeSockets, overPiece, socketsFor, units, type PieceTables } from "./snap.ts";
+import { ROLE_CEILING, ROLE_DOOR, ROLE_FOUNDATION, ROLE_PILLAR, ROLE_THING, ROLE_WALL, floorTop, frameAxes, makeSockets, overPiece, socketsFor, units, type PieceTables } from "./snap.ts";
 import { Found, type StructureStore } from "./structures.ts";
 
 /** Horizontal metres a ceiling may be from a piece that stands straight up. LOAD_REACH is the same for any other piece held sideways. */
@@ -116,6 +116,7 @@ export class Support {
     const role = tables.role[kind]!;
     const half = units(tables.halfY[kind]!);
     const door = tables.doorway[kind] === 1;
+    const hulls = tables.parts.hulls;
     const links: number[] = [];
     const under: number[] = [];
     const over: number[] = [];
@@ -139,10 +140,12 @@ export class Support {
       const oy = units(t.y[slot]!);
       const oz = units(t.z[slot]!);
       const ohalf = units(tables.halfY[ok]!);
-      // A thing joins nothing. It stands on the floor under its foot, if its middle is over that floor.
+      // A thing joins nothing. It stands on the floor under its foot, if its middle is over that floor: over its box's top, or
+      // where its convex parts have their top (floorTop, which a thing that fell rests by).
       if (orole === ROLE_THING) continue;
       if (role === ROLE_THING) {
-        if ((orole === ROLE_FOUNDATION || orole === ROLE_CEILING) && oy + ohalf === y - half && overPiece(ox, oz, t.yaw[slot]!, x, z)) {
+        const sloped = hulls !== undefined && hulls.start[ok + 1]! > hulls.start[ok]!;
+        if ((orole === ROLE_FOUNDATION || orole === ROLE_CEILING) && (sloped ? floorTop(structs, tables, ref, x, z) === y - half : oy + ohalf === y - half && overPiece(ox, oz, t.yaw[slot]!, x, z))) {
           links.push(ref);
           under.push(ref);
         }

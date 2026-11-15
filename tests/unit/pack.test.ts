@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { AssetTable } from "../../client/core/assets/table.ts";
+import { CORE_CONTENT } from "../../content/core.ts";
 import { describePack, parseManifest, type Manifest } from "../../shared/pack/manifest.ts";
 import { VERTEX_BYTES, lodIndices, lodVertices, parsePack, readIndices } from "../../shared/pack/pack.ts";
 import { HUMAN, SLOT_NAMES } from "../../shared/anim/human.ts";
@@ -184,10 +185,14 @@ test("a version 2 pack is still read, and the clips hash the same with or withou
   expect(old.clips.hash).toBe(now.clips.hash);
   // The handshake hashes the clips alone, so a pack split into files answers as the whole one does.
   expect(parsePack(buildPack([], defaultPalette(), coreClips())).clips.hash).toBe(now.clips.hash);
-  // Every body's levels lie further from the finest as they get coarser, and none by more than a hand's width.
+  // Every body's levels lie further from the finest as they get coarser, and none by more than a hand's width. A shape
+  // drawn otherwise than it is walked repeats its look at the second level, for low poly, and is drawn as walked at the third,
+  // within a tread of its look.
+  const looks = new Set(CORE_CONTENT.flatMap((d) => (d.type === "structure" && CORE_CONTENT.some((s) => s.type === "shape" && s.id === d.shape && s.look) ? [d.id] : [])));
+  expect(looks.size).toBeGreaterThan(0);
   for (const m of now.header.meshes.filter((m) => m.lods.length === 3)) {
     const [fine, mid, far] = m.lods.map((l) => l.error) as [number, number, number];
-    expect([m.id, fine === 0 && mid > 0 && far > mid && far < 0.1]).toEqual([m.id, true]);
+    expect([m.id, looks.has(m.id) ? fine === 0 && mid === 0 && far > 0 && far < 1 : fine === 0 && mid > 0 && far > mid && far < 0.1]).toEqual([m.id, true]);
   }
 });
 

@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/dilophosaur",
+  "review": "../ref/sound",
+  "about": "A slender frilled dinosaur that rattles its frill, hisses and spits venom.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 50,
+      "level": -22,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p3380",
+          "models": [
+            "moss"
+          ],
+          "seed": 3380,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A frilled dinosaur gives warbling cooing trills and clicks, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 50,
+      "level": -22,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p3390",
+          "models": [
+            "moss"
+          ],
+          "seed": 3390,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A frilled dinosaur hisses and rattles its frill like a rattlesnake, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 50,
+      "level": -22,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p3400",
+          "models": [
+            "moss"
+          ],
+          "seed": 3400,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A frilled dinosaur shrieks in pain, four separate cries with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 50,
+      "level": -22,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p3410",
+          "models": [
+            "moss"
+          ],
+          "seed": 3410,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A frilled dinosaur gives a weak warbling dying cry, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 50,
+      "level": -20,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p3420",
+          "models": [
+            "moss"
+          ],
+          "seed": 3420,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A frilled dinosaur hisses and spits a wet glob, five separate spits with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 30,
+      "level": -26,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p3430",
+          "models": [
+            "moss"
+          ],
+          "seed": 3430,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Light clawed footsteps of a small dinosaur on earth: quick taps, well spaced. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

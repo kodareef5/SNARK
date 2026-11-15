@@ -1,0 +1,54 @@
+{
+  "sounds": {
+    "call": {
+      "range": 120, "level": -20, "vary": 0.5,
+      "takes": [
+        {"file": "takes/call/moss-pt-3071-00135.wav", "from": "moss", "start": 0.05, "end": 1.685},
+        {"file": "takes/call/moss-pt-3070-03025.wav", "from": "moss", "start": 0.05, "end": 1.155},
+        {"file": "takes/call/moss-pt-3071-03630.wav", "from": "moss", "start": 0.05, "end": 1.89},
+        {"file": "takes/call/moss-pt-3070-00515.wav", "from": "moss", "start": 0.05, "end": 1.59}
+      ]
+    },
+    "startled": {
+      "range": 120, "level": -20, "vary": 0.5,
+      "takes": [
+        {"file": "takes/startled/moss-pt-3080-04120.wav", "from": "moss", "start": 0.05, "end": 1.18},
+        {"file": "takes/startled/moss-pt-3080-06125.wav", "from": "moss", "start": 0.05, "end": 1.165}
+      ]
+    },
+    "hurt": {
+      "range": 120, "level": -20, "vary": 0.5,
+      "takes": [
+        {"file": "takes/hurt/moss-pt-3090-02155.wav", "from": "moss", "start": 0.05, "end": 1.14},
+        {"file": "takes/hurt/moss-pt-3090-00045.wav", "from": "moss", "start": 0.045, "end": 0.93}
+      ]
+    },
+    "death": {
+      "range": 120, "level": -20, "vary": 0.5,
+      "takes": [
+        {"file": "takes/death/moss-pt-3100-04995.wav", "from": "moss", "start": 0.05, "end": 2.075},
+        {"file": "takes/death/moss-pt-3100-00150.wav", "from": "moss", "start": 0.05, "end": 2.18}
+      ]
+    },
+    "attack": {
+      "range": 120, "level": -18, "vary": 0.5,
+      "takes": [
+        {"file": "takes/attack/moss-pt-3110-03020.wav", "from": "moss", "start": 0.05, "end": 0.37},
+        {"file": "takes/attack/moss-pt-3110-01175.wav", "from": "moss", "start": 0.05, "end": 0.305}
+      ]
+    },
+    "step": {
+      "range": 72, "level": -24, "vary": 0.5,
+      "takes": [
+        {"file": "takes/step/moss-pt-3120-00277.wav", "from": "moss", "start": 0.05, "end": 0.623}
+      ]
+    },
+    "flap": {
+      "range": 120, "level": -20, "vary": 0.5,
+      "takes": [
+        {"file": "takes/flap/moss-pt-3130-04955.wav", "from": "moss", "start": 0.05, "end": 0.745},
+        {"file": "takes/flap/moss-pt-3130-00200.wav", "from": "moss", "start": 0.05, "end": 0.72}
+      ]
+    }
+  }
+}

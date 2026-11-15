@@ -235,7 +235,8 @@ test("a save from before flags, its slots in COMP_SLOTS2 under record format 4, 
   for (const row of db.query("SELECT pid, data FROM entities").all() as { pid: number; data: Uint8Array }[]) {
     const r = new BitReader(row.data);
     const w = new BitWriter(row.data.length + 16);
-    expect(r.u8()).toBe(5);
+    // This build writes revision 6, whose one more bit, a creature's flying, is 0 here and reads as the padding of 4 does.
+    expect(r.u8()).toBe(6);
     w.u8(4);
     w.string(r.string(256));
     const n = r.varint();

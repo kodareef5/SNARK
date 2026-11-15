@@ -2,10 +2,12 @@ import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
 import { DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { BLAST_MS } from "../../client/core/shots.ts";
+import { slopeKind } from "../../content/slopes.ts";
 import { dress } from "../../server/commands/combat.ts";
 import { ZONE_NONE } from "../../shared/anim/human.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT, EVENT_BLAST, EVENT_HIT } from "../../shared/net/protocol.ts";
 import { BTN_PRIMARY } from "../../shared/sim/character.ts";
+import { DMG_EXPLOSIVE } from "../../shared/sim/damage.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { HIT_STRUCTURE, HIT_TERRAIN, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { flatGround } from "../fixtures/arena.ts";
@@ -248,7 +250,7 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   expect(shots.bursts).toBe(1);
   expect([shots.thrownCount, live()]).toEqual([0, 0]);
   // Where it lay, to the float an event carries a place in.
-  expect(s.events.filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, Math.abs(ev.z - lie.z) < 0.001])).toEqual([[5, true]]);
+  expect(s.events.filter((ev) => ev.kind === EVENT_BLAST).map((ev) => [ev.far, Math.abs(ev.z - lie.z) < 0.001])).toEqual([[6, true]]);
   expect(h.host.combat.hits + h.host.combat.structureHits).toBe(0);
 
   const stone = structs.add(id("wall"), lie.x, at.y + 1.5, lie.z + 2.5, 0, 0, 1500);
@@ -274,20 +276,21 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   expect([hp(stone), hp(metal), health(near)]).toEqual([1500, 3000, full]);
   h.run(1400);
   expect(shots.bursts).toBe(2);
-  // Each wall is 2.4 m off at its nearest, which leaves 65% of the blast. A blast does more than twice as much to stone as to wood
+  // Each wall is 2.4 m off at its nearest, which leaves 72% of a blast reaching 6 m (Grenade). A blast does more than twice as much to stone as to wood
   // and under a third as much to metal.
-  const fade = (d: number): number => (d <= 1 ? 1 : 1 - (d - 1) / 4);
+  const fade = (d: number): number => (d <= 1 ? 1 : 1 - (d - 1) / 5);
   expect(1500 - hp(stone)).toBeCloseTo(788 * 2.3325 * fade(2.4), 0);
   expect(3000 - hp(metal)).toBeCloseTo(788 * 0.3008 * fade(2.4), 0);
   // Against a blast each of the five flak pieces of 100 counts once, so a sixth gets through and every piece is worn.
   const lostNear = full - health(near);
   const lostFar = full - health(far);
   const lostClad = full - health(clad);
-  // Distance runs from the blast to the body's middle, less its girth. At 1.4 m most of the blast lands, at 4.4 m a quarter.
+  // Distance runs from the blast to the body's middle, less its girth. At 1.4 m most of the blast lands, at 4.4 m two fifths.
+  // A body takes ARK's 175 (Grenade), and what is built 4.5 times that (D435).
   const reach = (level: number): number => fade(Math.hypot(level, 0.9 - (lie.y + 0.05 - at.y)) - 0.4);
-  expect(lostNear).toBeCloseTo(788 * reach(1.4), -0.5);
-  expect(lostFar).toBeCloseTo(788 * reach(4.4), -0.5);
-  expect(lostFar).toBeLessThan(lostNear * 0.3);
+  expect(lostNear).toBeCloseTo(175 * reach(1.4), -0.5);
+  expect(lostFar).toBeCloseTo(175 * reach(4.4), -0.5);
+  expect(lostFar).toBeLessThan(lostNear * 0.45);
   expect(lostClad).toBeCloseTo(lostNear / 6, -1);
   const cinv = h.host.items.inv(h.host.records.byPid.get(clad.pid)!);
   for (let k = 0; k < 5; k++) expect(cinv.dur[cinv.armor + k]).toBeLessThan(120);
@@ -309,6 +312,31 @@ test("a grenade is thrown in an arc, bounces, lies, and goes off after five seco
   expect(rec.dead).toBe(true);
   expect(rec.xp).toBe(xp);
   expect(h.host.items.audit()).toEqual([]);
+});
+
+test("a sloped piece takes a blast by its nearest part, not by the air its box holds over the ramp's low end", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const g = flatGround(h, 12, 12);
+  const structs = h.world.structs;
+  // A ramp rising 2 m over 6 m toward +Z, its top 0.2 m over its middle line, its box 1.2 m each way of its middle.
+  const kind = reg.index.get(slopeKind("ramp"))!;
+  const [x, y, z] = [g.x + 6, g.y + 1.2, g.z + 6];
+  const ramp = structs.add(kind, x, y, z, 0, 0, 16000);
+  const hp = (): number => structs.chunks[Math.floor(ramp / 65536)]!.hp[ramp & 0xffff]!;
+  const src = { by: null, x, z, item: 0, base: 100, type: DMG_EXPLOSIVE, quality: 1, draw: 1, attack: 1, torporInstant: 0, torporOver: 0, torporSeconds: 0, buff: 0 };
+  const lost = (dy: number, dz: number): number => {
+    const before = hp();
+    h.host.combat.blast(src, x, y + dy, z + dz, 5);
+    return before - hp();
+  };
+  // Just over the slope, and 1 m up in its box over the low end, 1.63 m over the slope there and 1.55 m off it.
+  const on = lost(0.25, 0);
+  const air = lost(1, -2.5);
+  const off = (1 + 2.5 / 3 - 0.2) * Math.cos(Math.atan(1 / 3));
+  expect(on).toBeGreaterThan(0);
+  expect(air / on).toBeCloseTo(1 - (off - 1) / 4, 2);
+  // Out of reach of its parts, though within reach of its box's top.
+  expect(lost(5.6, -2.5)).toBe(0);
 });
 
 test("damage to something built is saved with it, and a client is shown a blast", () => {

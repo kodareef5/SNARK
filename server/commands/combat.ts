@@ -19,6 +19,7 @@ const KITS: Readonly<Record<string, readonly (readonly [string, number])[]>> = {
   grenades: [["grenade", 10]],
   bola: [["bola", 10]],
   clouds: [["grenade_smoke", 10], ["grenade_poison", 10]],
+  flare: [["flare_gun", 3]],
 };
 const TIERS: readonly string[] = ["cloth", "hide", "chitin", "flak"];
 const PIECES: readonly string[] = ["hat", "shirt", "gloves", "pants", "boots"];
@@ -156,6 +157,8 @@ export function addCombatCommands(con: Console): void {
         const x = c.body.x + Math.sin(a) * 3;
         const z = c.body.z + Math.cos(a) * 3;
         const ref = world.structs.add(kind, x, world.hf.heightAt(x, z) + def.half[1], z, c.heldYaw, ctx.host.records.byPid.get(c.pid)?.team ?? 0, def.hp);
+        // A bed is one only with its record, as one built is (Build.place).
+        if (ref >= 0 && reg.isBed[kind] === 1) ctx.host.fixtures.ensure(ref);
         return ref < 0 ? "no room for it there" : `placed ${def.id} (${def.hp} health)`;
       },
     },

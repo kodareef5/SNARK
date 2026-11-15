@@ -1,5 +1,6 @@
 // A shot is judged as its shooter saw it. A rifle round is one piece, tested against the bodies of Combat.viewTick.
-// An arrow flies one piece a tick. On the tick it is fired it first flies from the view tick up to now.
+// An arrow flies one piece a tick. On the tick it is fired it first flies from the view tick up to now. A round with a blast
+// goes off where it ends, and one that carries a light (the flare) flies as a prop every client draws (weapons-plan.md, W6).
 
 import { TAU } from "../shared/math/scalar.ts";
 import { EVENT_BLAST, EVENT_SHOT, S_EVENT } from "../shared/net/protocol.ts";
@@ -40,6 +41,17 @@ const LOFT = 2.5;
 const BOUNCE = 0.4;
 const SLIDE = 0.7;
 const REST_SPEED = 1.2;
+/**
+ * A flare (a round that carries a light) rises as it was fired and, once it falls, sinks no faster than FLARE_FALL metres a
+ * second and keeps FLARE_DRIFT of its speed across the ground each second, as a flare under its little canopy; it is out
+ * where it lands, or after FLARE_TICKS. Ours: ARK says only that it lights "until it hits the ground" (Flare Gun, DEV157).
+ */
+export const FLARE_FALL = 2.5;
+export const FLARE_DRIFT = 0.25;
+export const FLARE_TICKS = 90 * TICK_RATE;
+const FLARE_KEEP = Math.pow(FLARE_DRIFT, 1 / TICK_RATE);
+/** A round that goes off on something stops this many metres short of it, so the blast is on the near side. */
+const BLAST_OUT = 0.05;
 
 export interface ProjectilesContext {
   readonly world: ServerWorld;
@@ -86,6 +98,14 @@ interface Thrown extends Flight {
   resting: boolean;
 }
 
+interface Flare extends Flight {
+  gravity: number;
+  until: number;
+  /** The prop entity that shows it. */
+  ent: number;
+  gen: number;
+}
+
 interface Stuck {
   ent: number;
   gen: number;
@@ -105,13 +125,17 @@ export class Projectiles {
   private readonly flying: Flying[] = [];
   private readonly stuck: Stuck[] = [];
   private readonly thrown: Thrown[] = [];
+  private readonly flares: Flare[] = [];
+  /** Grenades that went off, and rounds that went off where they ended. */
   bursts = 0;
+  blasts = 0;
   /** W5: a grenade with a cloud went off (server/clouds.ts): `item`, where, and its thrower's pid. */
   onCloud: ((item: number, x: number, y: number, z: number, by: number) => void) | null = null;
   /** While `fling` sends a throw: `tell` tells the thrower too. */
   private toShooter = false;
   private readonly stuckKind: number;
   private readonly liveKind: number;
+  private readonly flareKind: number;
   private readonly rng: Rng;
   private readonly dir = [0, 0, 0];
   private readonly body = new Body();
@@ -127,6 +151,7 @@ export class Projectiles {
     this.ctx = ctx;
     this.stuckKind = ctx.world.reg.index.get("core:arrow_stuck") ?? 0;
     this.liveKind = ctx.world.reg.index.get("core:grenade_live") ?? 0;
+    this.flareKind = ctx.world.reg.index.get("core:flare_live") ?? 0;
     this.rng = new Rng(seed);
   }
 
@@ -140,6 +165,15 @@ export class Projectiles {
 
   get thrownCount(): number {
     return this.thrown.length;
+  }
+
+  get flareCount(): number {
+    return this.flares.length;
+  }
+
+  /** For tests. */
+  flareAt(i: number): { x: number; y: number; z: number; vy: number; ent: number } {
+    return this.flares[i]!;
   }
 
   /** For tests. */
@@ -164,8 +198,12 @@ export class Projectiles {
     const ox = ents.x[e]!;
     const oy = ents.y[e]! + stanceEye(reg.move[ents.kind[e]!]!, ents.stance[e]!);
     const oz = ents.z[e]!;
-    const view = combat.viewTick(c);
     this.fired++;
+    if (reg.ammoLight[ammo]! > 0) {
+      this.flare(ammo, draw, ox, oy, oz, d);
+      return;
+    }
+    const view = combat.viewTick(c);
     this.lastShot.rays = rays;
     this.lastShot.hits = 0;
     this.silencedShot = this.silenced(rec);
@@ -276,6 +314,15 @@ export class Projectiles {
   /** Lands the round the last `cast` ended: on the body it hit, or on the structure it met, at the share its distance leaves it. */
   private strike(rec: EntityRecord, weapon: number, quality: number, ammo: number, ox: number, oy: number, oz: number): void {
     const a = this.at;
+    // A round with a blast goes off where it ended, on a body or a little short of the world or the water. A miss into the
+    // sky meets nothing and is lost.
+    if (this.ctx.world.reg.ammoBlast[ammo]! > 0 && (a.target >= 0 || a.t < HITSCAN_RANGE)) {
+      const out = a.target >= 0 ? 0 : Math.min(BLAST_OUT, a.t);
+      const k = a.t > 0 ? out / a.t : 0;
+      this.ended(a.x, a.y, a.z, a.target >= 0 ? a.target : a.on);
+      this.explode(rec, weapon, quality, ammo, 1, ox, oz, a.x - (a.x - ox) * k, a.y - (a.y - oy) * k, a.z - (a.z - oz) * k, a.target);
+      return;
+    }
     if (a.target >= 0) {
       this.lastShot.hits++;
       this.hit(rec, weapon, quality, ammo, 1, ox, oy, oz, a.target, a.zone, a.x, a.y, a.z, this.silencedShot);
@@ -336,6 +383,18 @@ export class Projectiles {
     }
     thrown.length = kept;
 
+    const flares = this.flares;
+    kept = 0;
+    for (let i = 0; i < flares.length; i++) {
+      const f = flares[i]!;
+      if (!this.drift(f)) {
+        this.out(f);
+        continue;
+      }
+      flares[kept++] = f;
+    }
+    flares.length = kept;
+
     const stuck = this.stuck;
     const ents = this.ctx.world.ents;
     while (stuck.length > 0 && (tick >= stuck[0]!.until || !this.stands(stuck[0]!))) {
@@ -376,9 +435,13 @@ export class Projectiles {
     const shooter = (world.ents.flags[f.self]! & F_ALIVE) !== 0 && world.ents.pid[f.self] === f.by ? f.self : -1;
     // A piece cut short by the world took that much less of the tick.
     const target = combat.castBodies(shooter, x, y, z, dx, dy, dz, length, 0, t, (share * length) / piece.length);
+    const blast = world.reg.ammoBlast[f.ammo]! > 0;
     if (target >= 0) {
       const at = combat.t;
-      this.hit(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oy, f.oz, target, combat.zone, x + dx * at, y + dy * at, z + dz * at, f.silenced);
+      if (blast) {
+        this.ended(x + dx * at, y + dy * at, z + dz * at, target);
+        this.explode(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, x + dx * at, y + dy * at, z + dz * at, target);
+      } else this.hit(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oy, f.oz, target, combat.zone, x + dx * at, y + dy * at, z + dz * at, f.silenced);
       return false;
     }
     if (ends) {
@@ -386,6 +449,12 @@ export class Projectiles {
       const hy = y + dy * length;
       const hz = z + dz * length;
       this.ended(hx, hy, hz, on);
+      // A round with a blast goes off a little short of what it met, and the blast is the whole of its harm.
+      if (blast) {
+        const out = Math.min(BLAST_OUT, length);
+        this.explode(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz, hx - dx * out, hy - dy * out, hz - dz * out, -1);
+        return false;
+      }
       // A structure it hit takes the damage. If that destroyed it, the arrow has nothing to stand in.
       const gone = built >= 0 && combat.hitStructure(this.bring(records.byPid.get(f.by) ?? null, f.weapon, f.quality, f.ammo, f.draw, f.ox, f.oz), built, hx, hy, hz) > 0 && combat.lastStructure.left === 0;
       // An arrow that hit the world and did not break stands where it landed.
@@ -431,7 +500,90 @@ export class Projectiles {
     src.torporSeconds = reg.ammoTorporSeconds[ammo]!;
     src.buff = reg.ammoBuff[ammo]!;
     src.silenced = false;
+    src.pierce = reg.ammoPierce[ammo]!;
     return src;
+  }
+
+  /**
+   * A round of `ammo` with a blast goes off at (x, y, z), as a grenade does (M8 of planning/reference/weapons-plan.md): every
+   * body and structure within its reach takes it by distance, the body it hit straight on among them, so nothing is harmed
+   * twice: `direct`, the body it struck, if any, takes it in full. Structures take it times the weapon's own factor
+   * (`weapon.structures`, D435). A blast does not fall off with the distance the round flew.
+   */
+  private explode(by: EntityRecord | null, weapon: number, quality: number, ammo: number, draw: number, ox: number, oz: number, x: number, y: number, z: number, direct: number): void {
+    const radius = this.ctx.world.reg.ammoBlast[ammo]!;
+    const src = this.bring(by, weapon, quality, ammo, draw, ox, oz);
+    this.blasts++;
+    this.boom(x, y, z, radius);
+    this.ctx.combat.blast(src, x, y, z, radius, direct);
+  }
+
+  /** Tells every client within hearing of a blast at (x, y, z). */
+  private boom(x: number, y: number, z: number, radius: number): void {
+    const { world, game } = this.ctx;
+    const ents = world.ents;
+    for (const other of game.clients) {
+      if (!other?.active || other.closed) continue;
+      const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
+      const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
+      if ((bx - x) * (bx - x) + (bz - z) * (bz - z) > HEARD * HEARD) continue;
+      const w = game.begin(S_EVENT);
+      w.u8(EVENT_BLAST);
+      w.f32(x);
+      w.f32(y);
+      w.f32(z);
+      w.f32(radius);
+      game.endOwn(other);
+    }
+  }
+
+  /**
+   * Sends a round of `ammo` that carries a light (the flare gun's flare) from the eye along `d`: a prop, so every client
+   * draws it and rendering can light it from it (M9, D436), that rises, sinks slowly once it falls, harms nothing, and is out
+   * where it lands. `draw` buys speed, as for any round.
+   */
+  private flare(ammo: number, draw: number, ox: number, oy: number, oz: number, d: readonly number[]): void {
+    const world = this.ctx.world;
+    const ents = world.ents;
+    const reg = world.reg;
+    if (this.flareKind === 0) return;
+    const x = ox + d[0]! * 0.5;
+    const y = oy + d[1]! * 0.5;
+    const z = oz + d[2]! * 0.5;
+    const ent = ents.create(this.flareKind, x, y, z, F_PROP);
+    if (ent < 0) return;
+    if (this.flares.length >= MAX_THROWN) this.out(this.flares.shift()!);
+    const speed = launchSpeed(reg.ammoSpeed[ammo]!, draw);
+    this.flares.push({ x, y, z, vx: d[0]! * speed, vy: d[1]! * speed, vz: d[2]! * speed, gravity: reg.ammoGravity[ammo]!, until: world.tick + FLARE_TICKS, ent, gen: ents.gen[ent]! });
+  }
+
+  /** One tick of a flare. False once it is out: it met the world or the sea, or burned its time. */
+  private drift(f: Flare): boolean {
+    const world = this.ctx.world;
+    if (world.tick >= f.until) return false;
+    // Falling, it slows across the ground and sinks at its canopy's pace.
+    if (f.vy <= 0) {
+      f.vx *= FLARE_KEEP;
+      f.vz *= FLARE_KEEP;
+    }
+    const gravity = f.vy <= -FLARE_FALL ? 0 : f.gravity;
+    flyStep(f, gravity);
+    const length = piece.length;
+    if (!(length > 0)) return false;
+    if (castWorld(world, piece.x, piece.y, piece.z, piece.dx, piece.dy, piece.dz, length) !== HIT_NONE) return false;
+    flyEnd(f, gravity);
+    if (f.vy < -FLARE_FALL) f.vy = -FLARE_FALL;
+    const hf = world.hf;
+    if (f.y <= hf.seaLevel || f.x < 0 || f.z < 0 || f.x > hf.sizeX || f.z > hf.sizeZ) return false;
+    if ((world.ents.flags[f.ent]! & F_ALIVE) === 0 || world.ents.gen[f.ent] !== f.gen) return false;
+    world.ents.setPosition(f.ent, f.x, f.y, f.z);
+    return true;
+  }
+
+  /** A flare goes out: its prop leaves the world. */
+  private out(f: Flare): void {
+    const ents = this.ctx.world.ents;
+    if ((ents.flags[f.ent]! & F_ALIVE) !== 0 && ents.gen[f.ent] === f.gen) ents.destroy(f.ent);
   }
 
   /**
@@ -508,7 +660,7 @@ export class Projectiles {
   }
 
   private burst(g: Thrown): void {
-    const { world, records, combat, game } = this.ctx;
+    const { world, records, combat } = this.ctx;
     const ents = world.ents;
     const reg = world.reg;
     if ((ents.flags[g.ent]! & F_ALIVE) !== 0 && ents.gen[g.ent] === g.gen) ents.destroy(g.ent);
@@ -533,22 +685,11 @@ export class Projectiles {
     src.torporInstant = src.torporOver = src.torporSeconds = 0;
     src.buff = 0;
     src.silenced = false;
+    src.pierce = 0;
     const radius = reg.blast[g.item]!;
     this.bursts++;
     this.ended(g.x, g.y, g.z, -1);
-    for (const other of game.clients) {
-      if (!other?.active || other.closed) continue;
-      const bx = other.ent >= 0 ? ents.x[other.ent]! : other.body.x;
-      const bz = other.ent >= 0 ? ents.z[other.ent]! : other.body.z;
-      if ((bx - g.x) * (bx - g.x) + (bz - g.z) * (bz - g.z) > HEARD * HEARD) continue;
-      const w = game.begin(S_EVENT);
-      w.u8(EVENT_BLAST);
-      w.f32(g.x);
-      w.f32(g.y);
-      w.f32(g.z);
-      w.f32(radius);
-      game.endOwn(other);
-    }
+    this.boom(g.x, g.y, g.z, radius);
     combat.blast(src, g.x, g.y + 0.05, g.z, radius);
   }
 

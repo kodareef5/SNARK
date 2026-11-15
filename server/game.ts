@@ -11,6 +11,7 @@ import {
   C_INPUT,
   HELLO_LOOK,
   HELLO_SPECTATE,
+  HELLO_TICKET,
   INPUT_HOLD_TICKS,
   INPUT_KEPT,
   INPUT_WINDOW,
@@ -30,6 +31,7 @@ import {
   REJECT_MALFORMED,
   REJECT_NAME,
   REJECT_PASSWORD,
+  REJECT_TRAVEL,
   REJECT_VERSION,
   RESULT_BUSY,
   RESULT_DENIED,
@@ -38,6 +40,7 @@ import {
   SESSION_ALIVE,
   SESSION_CREATING,
   SESSION_DEAD,
+  CHOOSE_DIED,
   SESSION_SPECTATING,
   S_CHUNK,
   S_CHUNK_DROP,
@@ -47,8 +50,10 @@ import {
   S_RESULT,
   S_SNAPSHOT,
   S_TEXT,
+  S_TRAVEL,
   REMOVAL_NEWS_TICKS,
   S_WELCOME,
+  TICKET_BYTES,
   nextCommandSeq,
   readInputs,
   writeBody,
@@ -68,6 +73,7 @@ import { Guesses } from "./guesses.ts";
 import { freeAt, freePlace, placeFree } from "./place.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
+import type { Place } from "./beds.ts";
 
 export interface GameOptions {
   /** In ticks. */
@@ -258,12 +264,17 @@ export class Client {
   sentVitals = -1;
   sentInv = -1;
   sentMarkers = -1;
-  sentRespawn = false;
   /** What was last sent of the creature it has open, packed into one number, and when. */
   sentSubject = -1;
   sentSubjectAt = 0;
-  /** Respawn choices in the order sent. bed is a structure ref, or -1. */
-  readonly respawnAt: { x: number; y: number; z: number; yaw: number; bed: number }[] = [];
+  /**
+   * Without a body, why it chooses where to rise (CHOOSE_). The places it was last sent (server/beds.ts), in their order, the
+   * list's number, and the version of the beds they were made from (-1 for none sent).
+   */
+  why = CHOOSE_DIED;
+  readonly respawnAt: Place[] = [];
+  placesList = 0;
+  sentPlaces = -1;
   sentLook: Uint8Array | null = null;
   sentHeld = -2;
   sentBuffs = -1;
@@ -317,7 +328,7 @@ export class Client {
     this.left = "left";
     this.ownDirty = false;
     this.sentVitals = this.sentInv = this.sentMarkers = this.sentOpenVersion = -1;
-    this.sentRespawn = false;
+    this.sentPlaces = -1;
     this.sentLook = null;
     this.sentHeld = -2;
     this.sentBuffs = -1;
@@ -349,6 +360,13 @@ export class GameServer {
   readonly stats = { malformed: 0, throttled: 0, lateInputs: 0, heldInputs: 0, commands: 0, chunkBytes: 0, overflows: 0 };
   /** May this device key use this name? Called before anything is created. */
   authorize: ((name: string, key: Uint8Array) => boolean) | null = null;
+  /**
+   * A survivor arriving from another server of the cluster with a travel ticket, for this name and device key. Returns "" once
+   * it is here, bound to that key, or why it is not. Called after a hello's own checks, with room for the session.
+   */
+  arrive: ((name: string, key: Uint8Array, ticket: Uint8Array) => string) | null = null;
+  /** Why this name cannot join here now because its survivor is on another server, or "". Called before `authorize`. */
+  away: ((name: string, key: Uint8Array) => string) | null = null;
   /** A session became active (it has a body or a spectator's focus). */
   onEnter: ((c: Client) => void) | null = null;
   /** Called before the session's body, if any, is removed. */
@@ -541,12 +559,38 @@ export class GameServer {
     this.close(c.conn, reason);
   }
 
-  /** Tells a connection why, and closes it. */
-  private close(conn: Connection, reason: number): void {
+  /** Tells a connection why, and closes it. REJECT_TRAVEL says why in words. */
+  private close(conn: Connection, reason: number, why = ""): void {
     const w = this.w;
     w.reset();
     w.u8(S_REJECT);
     w.u8(reason);
+    if (reason === REJECT_TRAVEL) w.string(why.slice(0, 330));
+    conn.send(CH_RELIABLE, w.bytes());
+    conn.close();
+  }
+
+  /**
+   * Ends a session whose survivor is leaving for another server: its body goes now, with no lingering, and its connection is
+   * handed back open and unheard, for the caller to send the ticket on (`travel`) once the leaving is saved.
+   */
+  part(c: Client): Connection {
+    const conn = c.conn;
+    conn.onMessage = null;
+    conn.onClose = null;
+    c.left = "travelled";
+    c.queue.length = 0;
+    this.finalize(c);
+    return conn;
+  }
+
+  /** Sends a parted connection its travel ticket and closes it. */
+  travel(conn: Connection, ticket: Uint8Array, world: number): void {
+    const w = this.w;
+    w.reset();
+    w.u8(S_TRAVEL);
+    for (let i = 0; i < TICKET_BYTES; i++) w.u8(ticket[i] ?? 0);
+    w.u16(world);
     conn.send(CH_RELIABLE, w.bytes());
     conn.close();
   }
@@ -933,6 +977,11 @@ export class GameServer {
       look = new Uint8Array(LOOK_BYTES);
       for (let i = 0; i < LOOK_BYTES; i++) look[i] = r.u8();
     }
+    let ticket: Uint8Array | null = null;
+    if ((flags & HELLO_TICKET) !== 0) {
+      ticket = new Uint8Array(TICKET_BYTES);
+      for (let i = 0; i < TICKET_BYTES; i++) ticket[i] = r.u8();
+    }
     const password = r.string(MAX_PASSWORD_BYTES);
     if (r.overflow) return false;
     if (look && !validLook(look)) return this.refuse(conn, REJECT_MALFORMED);
@@ -954,6 +1003,15 @@ export class GameServer {
     const isNew = this.savedPosition?.(name) == null;
     if (isNew && this.bus.before(NAME_SET, { what: "survivor", text: name }) !== "") return this.refuse(conn, REJECT_NAME);
     if (this.bus.before(SESSION_LOGIN, { name, address: conn.address ?? "", isNew }) !== "") return this.refuse(conn, REJECT_DENIED);
+    // A survivor arriving takes nothing until there is room for its session, so a full server leaves its ticket unused.
+    if (ticket) {
+      if (!this.clients.includes(null)) return this.refuse(conn, REJECT_FULL);
+      const why = this.arrive ? this.arrive(name, key, ticket) : "this server is not in a cluster";
+      if (why !== "") return this.refuse(conn, REJECT_TRAVEL, why);
+    } else {
+      const why = this.away?.(name, key) ?? "";
+      if (why !== "") return this.refuse(conn, REJECT_TRAVEL, why);
+    }
     if (this.authorize && !this.authorize(name, key)) return this.refuse(conn, REJECT_DENIED);
     // One body per survivor. A second login with the session's own key is its device back, and takes over the body. Nothing
     // may have closed the connection that device lost, so one still open is dropped here as if it had closed.
@@ -1079,8 +1137,8 @@ export class GameServer {
     c.ownDirty = false;
   }
 
-  private refuse(conn: Connection, reason: number): boolean {
-    this.close(conn, reason);
+  private refuse(conn: Connection, reason: number, why = ""): boolean {
+    this.close(conn, reason, why);
     return true;
   }
 

@@ -216,7 +216,7 @@ test("a played script raises every wired event of the server, its sessions, chat
   h.say(bob, "suicide");
   h.run(500);
   expect(bob.sessionState).toBe(SESSION_DEAD);
-  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  bob.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(bob.placesList)));
   h.run(800);
   expect(bob.sessionState).toBe(SESSION_ALIVE);
   expect(last("session.respawn")).toEqual({ pid: bobPid, bed: -1, wait: 0 });
@@ -331,11 +331,11 @@ test("what a module refuses does not happen, and what it changes is what happens
   h.run(500);
   const codes: number[] = [];
   bob.onResult = (_seq, code) => void codes.push(code);
-  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  bob.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(bob.placesList)));
   h.run(500);
   expect([codes, bob.sessionState]).toEqual([[RESULT_DENIED], SESSION_DEAD]);
   rule = () => {};
-  bob.command(CMD_RESPAWN, (w) => w.u8(0));
+  bob.command(CMD_RESPAWN, (w) => (w.u8(0), w.u8(bob.placesList)));
   h.run(800);
   expect(bob.sessionState).toBe(SESSION_ALIVE);
 });

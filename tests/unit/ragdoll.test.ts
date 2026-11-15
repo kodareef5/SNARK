@@ -11,10 +11,11 @@ import { Ragdoll } from "../../shared/anim/ragdoll.ts";
 import { buildRig, buildRigs, type Rig } from "../../shared/anim/rigs.ts";
 import { Solved, solve } from "../../shared/anim/skeleton.ts";
 import { AnimState, CUE_DEAD, CUE_OUT } from "../../shared/anim/pose.ts";
-import { Fall, layCorpse, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
+import { FALLING, Fall, layCorpse, wireX, wireY, wireYaw } from "../../shared/anim/corpse.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { slopeKind } from "../../content/slopes.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -149,6 +150,32 @@ test("a ragdoll on a floor rests on it, falls again when the floor is taken away
     expect(d.step(w, STEP)).toBe(true);
     expect([id, rest(d, w, 4) > 0, d.deepest(w) < 0.01, d.x[1]! < 1]).toEqual([id, true, true, true]);
     refs.splice(0, 4, ...[-1.5, 1.5].flatMap((dx) => [-1.5, 1.5].map((dz) => w.structs.add(ceiling, 60 + dx, floor, 64 + dz, 0, 0, 1))));
+  }
+});
+
+test("a ragdoll lies on a ramp, on the slope of a pitched roof and across its ridge, not through them to the ground", () => {
+  const w = world(0);
+  // A ramp rising a third toward +Z (18 degrees), its top 0.2 m over its middle line; a roof of 32 degrees, 2.75 m high at its
+  // ridge along X.
+  w.structs.add(reg.index.get(slopeKind("ramp"))!, 60, 1.5, 64, 0, 0, 1);
+  w.structs.add(reg.index.get(slopeKind("roof"))!, 90, 1.375, 64, 0, 0, 1);
+  const ramp = (x: number, z: number): number => (Math.abs(x - 60) < 2 && Math.abs(z - 64) < 3 ? 1.7 + (z - 64) / 3 : -Infinity);
+  const roof = (x: number, z: number): number => (Math.abs(x - 90) < 4 && Math.abs(z - 64) < 4 ? 2.75 - (Math.abs(z - 64) * 2.5) / 4 : -Infinity);
+  const above = (d: Ragdoll, on: (x: number, z: number) => number): boolean => Array.from({ length: d.n }, (_, i) => d.x[i * 3 + 1]! > on(d.x[i * 3]!, d.x[i * 3 + 2]!)).every((b) => b);
+  for (const [id, rig] of dolls()) {
+    const size = id === "strider" ? 1 : 0.8;
+    for (const yaw of [0.4, 1.4, 2.4]) {
+      // On the ramp it rests within the 3 s a slope of terrain gives it.
+      const d = drop(rig, 60, ramp(60, 64.5), 64.5, yaw, size);
+      expect([id, yaw, rest(d, w, 3) > 0, d.deepest(w) < 0.01, above(d, ramp)]).toEqual([id, yaw, true, true, true]);
+      // Dropped onto the roof from over its ridge, so that no limb starts under it. A round body may still be creeping, as on
+      // terrain as steep, but it is on the roof.
+      for (const z of [65.5, 64]) {
+        const r = drop(rig, 90, roof(90, 64) + 0.2, z, yaw, size);
+        rest(r, w, 3);
+        expect([id, yaw, z, r.deepest(w) < 0.01, above(r, roof)]).toEqual([id, yaw, z, true, true]);
+      }
+    }
   }
 });
 
@@ -300,4 +327,62 @@ test("a body lies the same, to the bit, for a client that saw it fall, one that 
     fall.ragdoll.pose(pose);
     expect([id, Array.from(pose.pos), Array.from(pose.rot)]).toEqual([id, Array.from(b.solved.pos), Array.from(b.solved.rot)]);
   }
+});
+
+test("a body sent falling is drawn where each sample has it, is not landed by a sample blended between two snapshots, and lies where it is sent lying still, as one come upon later lies", () => {
+  const view = provingView(64, 36);
+  const { hf, structs, nodes } = view;
+  const world = { hf, structs, nodes: nodes.store };
+  const anims = creatureAnims(reg, (d) => rigs.get(d.mesh));
+  const kind = reg.index.get("core:raptor")!;
+  // As the wire carries them, as the server sends a body that lies.
+  const [x, z, yaw] = [wireX(251.7), wireX(248.3), 1.3];
+  const ground = wireY(hf.heightAt(x, z));
+  /** One entity: the creature alive at `y`, or its body at `y` with the pose word `anim`. */
+  const sample = (alive: boolean, tick: number, y: number, anim: number): RemoteSample => {
+    const r = new RemoteSample();
+    r.count = 1;
+    [r.id[0], r.kind[0], r.x[0], r.y[0], r.z[0], r.yaw[0], r.flags[0]] = [alive ? 20 : 21, kind, x, y, z, yaw, 1];
+    r.cue[0] = alive ? 0 : CUE_DEAD;
+    r.anim[0] = anim;
+    r.tick = tick;
+    if (!alive) r.died = new Map([[20, 300]]);
+    return r;
+  };
+  const saw = new Corpses(anims);
+  let tick = 300;
+  const st = new AnimState();
+  st.grounded = false;
+  saw.update(sample(true, tick, ground + 40, st.pack()), world, x, z, new Map());
+  // Sixty frames of falling, 20 m in all, then two frames blended between the last snapshot falling and the first lying,
+  // drawn at one moment: still, but at no place the wire carries.
+  let y = ground + 40;
+  for (let f = 0; f < 60; f++) {
+    y -= 1 / 3;
+    saw.update(sample(false, (tick += 0.5), y, FALLING), world, x, z, new Map());
+  }
+  const c = saw.list[0]!;
+  expect([c.watched, c.falling, c.limp, c.y]).toEqual([true, true, false, Math.fround(y)]);
+  for (let f = 0; f < 2; f++) saw.update(sample(false, tick, ground + 1 / 3, 0), world, x, z, new Map());
+  expect([c.falling, c.limp]).toEqual([true, false]);
+  // Lying still at a place the wire carries: the first sample there could still be a blend, the second is not.
+  saw.update(sample(false, (tick += 0.5), ground, 0), world, x, z, new Map());
+  expect(c.falling).toBe(true);
+  saw.update(sample(false, (tick += 0.5), ground, 0), world, x, z, new Map());
+  expect([c.falling, c.landed, c.x, c.y, c.z]).toEqual([false, Math.floor(tick), wireX(x), ground, wireX(z)]);
+  for (let f = 0; f < 12 * 60; f++) saw.update(sample(false, (tick += 0.5), ground, 0), world, x, z, new Map());
+  // One that came upon it falling holds it limp where it is sent, and lays it to rest at once where it lands.
+  const came = new Corpses(anims);
+  came.update(sample(false, tick, ground + 7, FALLING), world, x, z, new Map());
+  const d = came.list[0]!;
+  expect([d.watched, d.falling, d.limp, d.y]).toEqual([false, true, false, Math.fround(ground + 7)]);
+  came.update(sample(false, (tick += 0.5), ground, 0), world, x, z, new Map());
+  came.update(sample(false, (tick += 0.5), ground, 0), world, x, z, new Map());
+  expect([c.fall!.still, d.falling, d.fall!.still]).toEqual([true, false, true]);
+  expect([Array.from(c.solved.pos), Array.from(c.solved.rot)]).toEqual([Array.from(d.solved.pos), Array.from(d.solved.rot)]);
+  const pose = new Solved(rigs.get("core:raptor")!.bones);
+  const fall = new Fall(layCorpse(anims[kind]!, false, wireX(x), ground, wireX(z), wireYaw(yaw), 1, pose)!);
+  while (!fall.still) fall.tick(world);
+  fall.ragdoll.pose(pose);
+  expect([Array.from(pose.pos), Array.from(pose.rot)]).toEqual([Array.from(d.solved.pos), Array.from(d.solved.rot)]);
 });

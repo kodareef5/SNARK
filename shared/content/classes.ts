@@ -87,9 +87,8 @@ const ITEM = {
   weapon: f("facet", "WeaponTemplate", {
     refs: { "ammo[]": "item", "fits[]": "item/attachment", "cloud.prop": "prop/cloud", "cloud.buff": "buff" },
     open: true,
-    stubs: { structures: "polish" },
   }),
-  ammo: f("facet", "", { refs: { buff: "buff" }, stubs: { blast: "polish", pierce: "polish", light: "polish" } }),
+  ammo: f("facet", "", { refs: { buff: "buff" } }),
   wear: f("facet", "equipment type and ItemStatInfos"),
   attachment: f("text", "item type WeaponAttachment"),
   places: f("list", "StructureToBuild", { refs: { "[]": "structure" }, open: true }),
@@ -99,6 +98,7 @@ const ITEM = {
   spoilsInto: f("text", "SpoilingItem", { refs: { "": "item" } }),
   blueprint: f("switch", "whether it may be a blueprint (a crafted item may, unless false)"),
   use: f("facet", "UseItemAddCharacterStatusValues and the buffs a consumable gives", { refs: { "buffs[]": "buff" } }),
+  travels: f("switch", "bPreventUpload, inverted"),
 } satisfies Fields<ItemDef>;
 
 const SPECIES = {
@@ -134,7 +134,7 @@ const SPECIES = {
   temper: f("text"),
   sight: f("number"),
   leash: f("number"),
-  bite: f("facet", "AttackInfos"),
+  bite: f("facet", "AttackInfos", { stubs: { stamina: "flyers" } }),
   taming: f("facet", "RequiredTameAffinity"),
   eats: f("list", "DinoSettings food effectiveness", { refs: { "[].item": "item" }, open: true }),
   torporDrain: f("number"),
@@ -149,6 +149,15 @@ const SPECIES = {
   carriable: f("switch", "picked up and thrown by a player"),
   feces: f("text", "the creature's feces item", { refs: { "": "item/feces" } }),
   eggChance: f("number", "the chance of an egg in place of feces"),
+  // The flyers' contracts (planning/reference/flyers-plan.md, FL0), each read once its package builds it.
+  fly: stub("flyers", "facet", "the flying speed, sprint and stamina, and the barrel roll"),
+  grab: stub("flyers", "facet", "the most drag weight a flyer carries"),
+  defendsEgg: stub("flyers", "switch", "a skittish flyer that turns on an egg thief"),
+  riderWeight: stub("flyers", "number", "PassengerWeightMultiplier"),
+  missiles: stub("flyers", "number", "the flyers' damage from projectiles that are not bullets"),
+  structures: stub("flyers", "number", "the flyers' damage to structures"),
+  tameBonus: stub("tameBonus", "facet", "TamingMaxStatAdditions and TamingMaxStatMultipliers"),
+  tamedHealth: stub("tameBonus", "number", "TamedBaseHealthMultiplier"),
   variant: stub("bosses", "text", "a child blueprint's kind"),
   attacks: stub("polish", "list", "AttackInfos"),
   loot: stub("loot", "text", "DeathInventoryTemplates", { refs: { "": "loot" } }),
@@ -172,6 +181,10 @@ const STRUCTURE = {
   lights: f("text", "", { refs: { "": "structure" } }),
   lit: f("switch"),
   bed: f("switch"),
+  wait: f("number"),
+  once: f("switch"),
+  floor: f("switch"),
+  rise: f("vec3"),
 } satisfies Fields<StructureDef>;
 
 const NODE = {
@@ -251,6 +264,7 @@ const SHAPE = {
   role: f("text", "the snap type"),
   boxes: f("list"),
   hulls: f("list"),
+  look: f("facet"),
   doorway: f("switch"),
 } satisfies Fields<ShapeDef>;
 
@@ -351,7 +365,7 @@ function row<T extends Record<string, Field>>(id: string, type: ClassRow["type"]
   });
 }
 
-const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", "blueprint", "decomposeHours"] as const;
+const ANY_ITEM = ["weight", "label", "color", "craft", "description", "folder", "blueprint", "decomposeHours", "travels"] as const;
 
 row("item", "item", ITEM, { abstract: true, ark: "PrimalItem", shelf: "items", doc: "Anything that is carried." });
 row("item/resource", "item", ITEM, { parent: "item", ark: "PrimalItemResource_", shelf: "items/resources", must: ["stack"], may: [...ANY_ITEM, "fuel", "spoilHours", "spoilsInto", "youngFor", "ammo"], slots: { shot: { ...mesh("may", "{ammo.mesh}", "core:tracer"), when: "ammo" }, ...ITEM_SLOTS }, doc: "A material: gathered, stacked, and spent in crafting. One a weapon fires, as a slingshot fires stone, has an ammo facet." });
@@ -361,7 +375,7 @@ row("item/ammo", "item", ITEM, { parent: "item", ark: "PrimalItemAmmo_", shelf: 
 row("item/attachment", "item", ITEM, { parent: "item", ark: "item type WeaponAttachment", shelf: "items/attachments", must: ["stack", "attachment"], may: ANY_ITEM, slots: ITEM_SLOTS, doc: "Fitted to a weapon that takes it." });
 row("item/equipment", "item", ITEM, { parent: "item", abstract: true, ark: "item type Equipment", shelf: "items/equipment", doc: "Worn by a body, in a slot." });
 row("item/armor", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, hat to boots", shelf: "items/armor", must: ["stack", "wear"], may: ANY_ITEM, slots: { worn: mesh("must", "{body}/armor/{wear.set}/{wear.slot}", "{body}/{wear.slot}"), ...ITEM_SLOTS }, doc: "A piece worn on the head, torso, hands, legs or feet." });
-row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden." });
+row("item/saddle", "item", ITEM, { parent: "item/equipment", ark: "PrimalItemArmor_, DinoSaddle", shelf: "items/saddles", must: ["stack", "saddle"], may: ANY_ITEM, slots: { worn: mesh("may", "{id}/worn", "none"), ...ITEM_SLOTS }, doc: "Worn by a tamed creature so that it can be ridden. Drawn as its worn mesh on the creature's bones, unless the creature has a saddled model, which is drawn in place of both." });
 row("item/structure", "item", ITEM, { parent: "item", ark: "PrimalItemStructure_", shelf: "items/structures", must: ["stack", "places"], may: ANY_ITEM, slots: { preview: mesh("may", "{id}/preview", "#mesh"), ...ITEM_SLOTS }, doc: "Set down as a structure." });
 row("item/egg", "item", ITEM, { parent: "item/consumable", ark: "PrimalItemConsumable_Egg_", shelf: "items/eggs", must: ["stack"], may: [...ANY_ITEM, "eat", "spoilHours", "spoilsInto"], slots: ITEM_SLOTS, doc: "An egg in the hand, eaten or set down. A fertilised one stacks to 1, keeps its young and does not hatch while held." });
 row("item/feces", "item", ITEM, { parent: "item/resource", ark: "the feces items, small to massive", shelf: "items/feces", must: ["stack"], may: [...ANY_ITEM, "spoilHours", "spoilsInto", "fuel"], slots: ITEM_SLOTS, doc: "What a creature leaves when it defecates, a size for each kind of creature." });
@@ -388,7 +402,7 @@ row("species/creature", "species", SPECIES, {
   ark: "a creature's character, its status component and its entry",
   shelf: "creatures",
   must: [...BODY, "stats"],
-  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "keeps", "fists", "bite", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
+  may: ["skeleton", "turn", "strafe", "swimSpeed", "stamina", "food", "slots", "keeps", "fists", "bite", "drops", "corpse", "takes", "zones", "killXp", "temper", "sight", "leash", "taming", "eats", "torporDrain", "breeds", "still", "tag", "regions", "mutations", "alarm", "tamedSprintMul", "drag", "mass", "carriable", "feces", "eggChance", "fistsTorpor", "fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth", "variant", "attacks", "loot", "saddle", "buffs", "boss"],
   slots: {
     body: mesh("must", "{mesh}", "box"),
     rig: { asset: "rig", need: "must", when: "skeleton", from: "{mesh}", fallback: ["rigid"] },
@@ -396,6 +410,13 @@ row("species/creature", "species", SPECIES, {
     // Without one, what it does besides goes on.
     move: { asset: "clip", need: "may", keys: ["swim", "swim_idle", "fall", "land", "turn", "startled", "flinch", "call", "torpor_eat", "held", "carried", "jump"], when: "skeleton", from: "{mesh}/{key}", fallback: ["none"] },
     torpor: { asset: "clip", need: "may", keys: ["torpor_in", "torpor_idle", "torpor_out"], when: "skeleton", from: "{mesh}/{key}", fallback: ["{mesh}/death", "rest"] },
+    // A flyer's own clips (planning/reference/flyers-plan.md, FL4 and FL6). Without one, what it does besides goes on.
+    flight: { asset: "clip", need: "may", keys: ["take_off", "hover", "fly", "fly_fast", "glide", "dive", "attack_air", "barrel_roll", "grab", "carry", "release", "torpor_fall", "death_air"], when: "fly", from: "{mesh}/{key}", fallback: ["none"] },
+    // Two ways to draw a saddle, the asset's to choose (FL5). This is its whole model as it is saddled: the same skeleton,
+    // clips, sockets and hit zones, its own meshes and maps, drawn in place of the bare body while it wears any saddle, and
+    // then no saddle's worn mesh is drawn over it. Without it the bare body is drawn, with the worn saddle's "{id}/worn"
+    // mesh (item/saddle) on its bones where the saddle has one.
+    saddled: { asset: "mesh", need: "may", when: "skeleton", from: "{mesh}/saddled", fallback: ["#body"] },
     icon,
     sound: { asset: "sound", need: "may", keys: "any", from: "{id}/sound/{key}", fallback: ["none"] },
   },
@@ -409,10 +430,10 @@ row("structure", "structure", STRUCTURE, { abstract: true, ark: "APrimalStructur
 row("structure/piece", "structure", STRUCTURE, { parent: "structure", ark: "a structure with snap points", shelf: "structures/pieces", must: [...BUILT, "shape", "material"], may: ["opens", "locked", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "A foundation, wall, ceiling, pillar, door or stair: it joins others and holds them up." });
 row("structure/container", "structure", STRUCTURE, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." });
 row("structure/station", "structure", STRUCTURE, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it: fuel burns and food cooks, and an item whose craft names it in `at` is made from what lies in it. How fast it makes things waits." });
-row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it." });
-row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material"], slots: { mesh: mesh("must", "{mesh}", "box") }, doc: "Part of a map: set there with the world and joined to nothing." });
+row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." });
+row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape"], slots: { mesh: mesh("must", "{mesh}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. With a shape it may be sloped." });
 row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
-row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
+row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls", "look"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
 row("material", "material", MATERIAL, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited." });
 
 row("node", "node", NODE, { ark: "a foliage type and its harvest component", shelf: "nodes", must: ["mesh", "color", "half", "hits", "respawnHours", "yields", "xp"], may: ["top", "soft", "material", "variants", "size", "depleted", "footing"], slots: { mesh: mesh("must", "{mesh}", "box"), depleted: { ...mesh("may", "{depleted.mesh}", "hidden"), when: "depleted" } }, doc: "A tree, a rock, a bush: harvested, used up, and grown back. Each node is one of its variants, turned and sized by its place." });

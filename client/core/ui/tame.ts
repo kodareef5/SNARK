@@ -157,7 +157,7 @@ export function buildOverhead(f: UiFrame, m: OverheadModel): void {
 const CLAIMED = 255;
 
 /** The start of `text` that is no more than `most` bytes of UTF-8, with no character cut in two. */
-function fitBytes(text: string, most: number): string {
+export function fitBytes(text: string, most: number): string {
   let bytes = 0;
   let end = 0;
   for (const ch of text) {

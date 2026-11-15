@@ -5,13 +5,13 @@ import { ownIndex, type ClientSession, type RemoteSample } from "../client/core/
 import { CUE_OUT } from "../shared/anim/pose.ts";
 import type { NodeDef } from "../shared/content/defs.ts";
 import { PI, TAU } from "../shared/math/scalar.ts";
-import { BOX_SELF, CMD_CLOSE, CMD_MOVE, CMD_RESPAWN, CMD_SELECT, CMD_STRUCT, RESULT_OK, SESSION_ALIVE, SESSION_DEAD } from "../shared/net/protocol.ts";
+import { BOX_SELF, CHOOSE_ARRIVED, CHOOSE_DIED, CMD_CLOSE, CMD_MOVE, CMD_SELECT, CMD_STRUCT, RESULT_OK, SESSION_ALIVE, SESSION_DEAD } from "../shared/net/protocol.ts";
 import { BTN_JUMP, BTN_PRIMARY, BTN_USE, MF_OUT, MF_ROOTED, MODE_SWIM, stanceEye, type MoveParams } from "../shared/sim/character.ts";
 import { V_HEALTH, V_OXYGEN } from "../shared/sim/vitals.ts";
 import { W_MELEE } from "../shared/sim/weapon.ts";
 import { GROUND_FREE, GROUND_SOLID, PATH_LEG, PATH_NONE, PATH_SHORT, PathFinder, groundAt } from "../shared/world/path.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../shared/world/ray.ts";
-import { NO_PIN, STRUCT_USE } from "../shared/world/upkeep.ts";
+import { NO_PIN, STRUCT_NAME, STRUCT_USE } from "../shared/world/upkeep.ts";
 import { resultWords, type Commands } from "./commands.ts";
 import type { Answer } from "./mcp.ts";
 import { VIEW_PLAYER, VIEW_PROP, compass, shortName } from "./observe.ts";
@@ -42,7 +42,7 @@ export interface Target {
 }
 
 interface Task {
-  kind: "walk_to" | "harvest" | "open" | "attack";
+  kind: "walk_to" | "harvest" | "open" | "attack" | "act";
   target: Target;
   phase: Phase;
   /** Where it walks to, and how near that it stops. The target's middle, unless a place to stand by it was chosen. */
@@ -56,8 +56,10 @@ interface Task {
   tool: number;
   /** Attack: it ends once the body is knocked out, not only once it is gone. */
   out: boolean;
-  /** Open: the PIN to give. */
+  /** Open: the PIN to give. Act: the STRUCT_ action, and the name it sends. */
   pin: number;
+  action: number;
+  words: string;
   /** A step within the phase, for the phases that are a few things in a row. */
   step: number;
   tries: number;
@@ -153,7 +155,6 @@ export class Controller {
   private hurtAt = 0;
   private gasping = false;
   private dead = false;
-  private wakeAt = 0;
 
   constructor(session: ClientSession, remote: RemoteSample, commands: Commands) {
     this.session = session;
@@ -233,13 +234,23 @@ export class Controller {
 
   /** Starts opening a box, a door or a bag. `pin` is NO_PIN for none. */
   open(now: number, target: Target, pin: number): void {
+    this.toBuilt(now, { kind: "open", target, pin });
+  }
+
+  /** Starts walking to a thing built and doing a STRUCT_ action on it, such as naming a bed or travelling from it. */
+  act(now: number, target: Target, action: number, words = ""): void {
+    this.toBuilt(now, { kind: "act", target, action, words });
+  }
+
+  private toBuilt(now: number, task: Partial<Task> & Pick<Task, "kind" | "target">): void {
     const reg = this.session.registry;
+    const target = task.target;
     // The server measures from the eye to the middle of a thing built, and along the look to a body.
     const reach = target.ref >= 0 ? Math.hypot(reg.halfX[target.kind]!, reg.halfZ[target.kind]!) + 2 : target.half + 1.8;
     // Nothing opens through a wall, so the walk is to somewhere the thing can be seen from, if there is such a place.
     const stand = this.standBy(target, reach);
-    if (stand) this.begin(now, { kind: "open", target, pin, gx: stand[0], gz: stand[1], stop: 0.4, stood: true });
-    else this.begin(now, { kind: "open", target, pin, stop: reach });
+    if (stand) this.begin(now, { ...task, gx: stand[0], gz: stand[1], stop: 0.4, stood: true });
+    else this.begin(now, { ...task, stop: reach });
   }
 
   /** The place nearest the body, within `reach` of a thing, where a body can stand with nothing between its eye and the thing's middle. */
@@ -316,6 +327,8 @@ export class Controller {
       if (stop.length > 0 && this.task) this.end({ state: "danger", reason: stop.join("; ") });
     }
     const t = this.task;
+    // Travelling from a bed leaves the body, and its answer comes with the leaving.
+    if (t?.kind === "act" && t.step === 1 && s.sessionState !== SESSION_ALIVE) return this.actOn(now, t);
     if (!t || s.sessionState !== SESSION_ALIVE) return;
     const b = s.own;
     if ((b.mflags & MF_OUT) !== 0) return this.end({ state: "danger", reason: "you are knocked out" });
@@ -334,7 +347,7 @@ export class Controller {
   }
 
   private begin(now: number, task: Partial<Task> & Pick<Task, "kind" | "target">): void {
-    this.task = { phase: "walking", gx: task.target.x, gz: task.target.z, stop: 0, stood: false, item: 0, count: 0, tool: 0, out: false, pin: NO_PIN, step: 0, tries: 0, seq: 0, hold: 0, since: now, began: now, ...task };
+    this.task = { phase: "walking", gx: task.target.x, gz: task.target.z, stop: 0, stood: false, item: 0, count: 0, tool: 0, out: false, pin: NO_PIN, action: 0, words: "", step: 0, tries: 0, seq: 0, hold: 0, since: now, began: now, ...task };
     this.ended = null;
     this.planned = false;
     this.plans = this.replans = this.stuck = 0;
@@ -389,23 +402,19 @@ export class Controller {
     return false;
   }
 
-  /** Finds what has become dangerous since it last looked, and wakes a survivor that has died. */
+  /** Finds what has become dangerous since it last looked. A death is told once its places to rise at have come. */
   private watch(now: number): string[] {
     const s = this.session;
     const reg = s.registry;
     const b = s.own;
     const fresh: string[] = [];
     if (s.sessionState === SESSION_DEAD) {
-      if (!this.dead) {
+      if (!this.dead && s.respawnPoints.length > 0) {
         this.dead = true;
-        this.deaths++;
-        this.wakeAt = now + CHECK_MS;
-        fresh.push("you died");
-      } else if (now >= this.wakeAt && s.respawnPoints.length > 0) {
-        // It wakes at the first place that is ready, as a player who presses the first button would.
-        const ready = s.respawnPoints.findIndex((p) => p.wait === 0);
-        this.commands.send(CMD_RESPAWN, (w) => w.u8(ready < 0 ? 0 : ready));
-        this.wakeAt = now + CHECK_MS;
+        if (s.choosing === CHOOSE_DIED) {
+          this.deaths++;
+          fresh.push("you died");
+        } else if (s.choosing === CHOOSE_ARRIVED) fresh.push("you arrived: choose where to rise");
       }
       this.hunters.clear();
       return fresh;
@@ -641,7 +650,7 @@ export class Controller {
     const want = within(Math.atan2(ay - eye, Math.max(flat, 0.05)), 1.5);
     this.pitch += within(want - this.pitch, TURN * dt);
     if (Math.abs(left) > 0.005 || Math.abs(want - this.pitch) > 0.005) return;
-    if (t.kind === "open") return this.phase(now, t, "using");
+    if (t.kind === "open" || t.kind === "act") return this.phase(now, t, "using");
     if (t.kind === "attack") return this.phase(now, t, "swinging");
     // The same ray the server will cast, from the same eye.
     const byHand = (s.registry.defs[g.kind] as NodeDef).material === undefined;
@@ -709,8 +718,26 @@ export class Controller {
     else if ((now - t.since) % 500 < 100) this.buttons |= BTN_USE;
   }
 
+  /** Acting on a thing built: the action is sent, and the server's answer is waited for. */
+  private actOn(now: number, t: Task): void {
+    if (now - t.since > 4000) return this.end({ state: "blocked", reason: "the server did not answer" });
+    if (t.step === 0) {
+      t.seq = this.commands.send(CMD_STRUCT, (w) => {
+        w.u32(t.target.ref);
+        w.u8(t.action);
+        if (t.action === STRUCT_NAME) w.string(t.words);
+      });
+      if (t.seq !== 0) t.step = 1;
+      return;
+    }
+    const code = this.commands.take(t.seq);
+    if (code < 0) return;
+    this.end(code === RESULT_OK ? { state: "done" } : { state: "blocked", reason: resultWords(code) });
+  }
+
   /** Opening: what is open is shut, then the thing is used, then the server's answer is waited for. */
   private use(now: number, t: Task): void {
+    if (t.kind === "act") return this.actOn(now, t);
     const s = this.session;
     const reg = s.registry;
     const g = t.target;

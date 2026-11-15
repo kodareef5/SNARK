@@ -16,6 +16,10 @@ export const STRUCT_PIN = 5;
 export const STRUCT_USE = 6;
 /** Light a fire, or put it out. */
 export const STRUCT_LIGHT = 7;
+/** Name a bed: a name string follows (MAX_NAME_BYTES). */
+export const STRUCT_NAME = 8;
+/** Travel from a bed to another of the tribe's: the survivor leaves its body and chooses where to rise (CHOOSE_TRAVEL). */
+export const STRUCT_TRAVEL = 9;
 /** The PIN value that means none. */
 export const NO_PIN = 0xffff;
 /** Wrong PINs in a row before a survivor must wait, and the first wait in ticks. Each further wrong one doubles the wait, up to an hour. */

@@ -13,7 +13,7 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_PASSWORD, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
@@ -48,6 +48,13 @@ import { waitWords } from "./ui/inventory.ts";
 import { voicePan } from "./voice/place.ts";
 import { HEAR_FIELDS, type VoicePort } from "./voice/port.ts";
 import { MODE_TALK, MODE_WHISPER, MODE_YELL } from "../../shared/voice/packet.ts";
+import type { SoundSink } from "./sound/packet.ts";
+import { Sounds } from "./sound/sounds.ts";
+import type { SoundDecoder } from "./sound/library.ts";
+import { hearSession, soundView } from "./sound/view.ts";
+import { cueKey } from "../../shared/sound/cues.ts";
+import { soundCommand } from "./sound/command.ts";
+import { SplitPort } from "./sound/split.ts";
 
 /** Indexed by MODE_*. */
 const TALK_LABEL: readonly string[] = ["WHISPERING", "TALKING", "YELLING"];
@@ -55,6 +62,9 @@ import { IMAGE_MAP, IMAGE_MINIMAP } from "./ui/hud.ts";
 import { CANVAS_HEIGHT } from "./ui/nodes.ts";
 import { mapPointer } from "./ui/screens.ts";
 import { Ui } from "./ui/ui.ts";
+import { TRAVEL_TERMINAL } from "../../shared/world/obelisks.ts";
+import { TRAVEL_REFRESH_MS } from "./ui/travel.ts";
+import { arrivalAddress, joinAddress, serverAddress, type Page } from "./travel.ts";
 
 /** Metres. Matches the server's REACH. */
 const REACH = 3.5;
@@ -158,6 +168,7 @@ export class App {
     this.pack = pack;
     this.ui.registry = reg;
     this.ui.palette = pack.palette;
+    this.ui.local = (line) => (this.sounds ? soundCommand(line, this.sounds, this.session.own, this.controls.yaw, this.nowMs) : null);
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     this.shots = new Shots(reg, pack);
@@ -169,6 +180,13 @@ export class App {
   }
 
   readonly builder = new Builder();
+  /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
+  page: Page | null = null;
+  /** The page is on its way to another server, or has said it arrived. */
+  private leaving = false;
+  private arrived = false;
+  /** The travel list was opened for a survivor turned away. */
+  private turnedAway = false;
   /** Time of the last frame. */
   private nowMs = 0;
   /** Entity index of the tribe's creature under the crosshair, or -1. */
@@ -186,9 +204,19 @@ export class App {
   private usePulse = 0;
   /** Entity index of the egg under the crosshair, or -1. eggKept: the use key went down on one, and took it with CMD_TAKE. */
   private eggAimed = -1;
+  /** The obelisk terminal under the crosshair within reach, or -1. */
+  private terminalAimed = -1;
   private eggKept = false;
 
   voice: VoicePort | null = null;
+  /** Plays the world's sounds. Null in tests and wherever there is no audio: then no sound work is done at all. */
+  sound: SoundSink | null = null;
+  /** Made with the scene, where there is a sink and the assets stream. */
+  sounds: Sounds | null = null;
+  /** Decodes sounds off the main thread: the browser's worker, set before the first frame. Null decodes inline. */
+  soundDecoder: SoundDecoder | null = null;
+  /** Tames already heard of the session's queue, which the naming prompt empties. */
+  private tamedHeard = 0;
   talking = false;
   private talkMode = MODE_TALK;
   private volumeSet = -1;
@@ -264,6 +292,11 @@ export class App {
     if (code === "KeyE" && (this.eggKept || (down && !repeat && this.eggAimed >= 0))) {
       if (!this.eggKept) this.session.command(CMD_TAKE, (w) => w.u32(this.eggAimed >>> 0));
       this.eggKept = down;
+      return true;
+    }
+    // The use key at an obelisk's terminal opens the list of servers to travel to.
+    if (code === "KeyE" && down && !repeat && this.terminalAimed >= 0) {
+      this.ui.travel.openAt(this.terminalAimed);
       return true;
     }
     // Holding the use key on a structure opens its menu, so there the body gets the press only on release, as a short pulse.
@@ -485,11 +518,16 @@ export class App {
     const s = this.session;
     const d = this.aim;
     this.aimed = -1;
+    this.terminalAimed = -1;
     lookDirection(Math.round((this.controls.yaw / TAU) * 65536) & 0xffff, Math.round((this.controls.pitch / (PI / 2)) * 16384), d);
     if (castWorld(world, s.own.x, s.own.y + eye, s.own.z, d[0]!, d[1]!, d[2]!, ACT_REACH) !== HIT_STRUCTURE) return "";
     const ref = rayHit.ref;
     const t = world.structs.chunks[Math.floor(ref / 65536)]!;
     const kind = t.kind[ref & 0xffff]!;
+    if (kind === this.reg.index.get(TRAVEL_TERMINAL)) {
+      this.terminalAimed = ref;
+      return "E travel to another server";
+    }
     // Skip structures nobody built.
     if (this.reg.pieceItem[kind] === 0 || t.owner[ref & 0xffff] === 0) return "";
     this.aimed = ref;
@@ -610,6 +648,44 @@ export class App {
     this.ui.chat.print(TEXT_NOTICE, `The graphics card keeps running out of memory, so the graphics setting is now ${this.ui.settings.tier}.`, this.session.serverTick);
   }
 
+  /**
+   * Asks for the cluster's servers while the travel list is open, and goes where a ticket or a choice says: with a ticket to
+   * the server the survivor left for, without one to a server chosen once this one closed. A survivor turned away, or a
+   * server full, shows the list, and the server it left is on it.
+   */
+  private travel(nowMs: number): void {
+    const { page, session } = this;
+    const t = this.ui.travel;
+    if (!page || this.leaving) return;
+    if (session.state === "active" && !this.arrived) {
+      this.arrived = true;
+      page.arrived();
+    }
+    if (session.state === "closed" && (session.closeReason === REJECT_TRAVEL || session.closeReason === REJECT_FULL) && !this.turnedAway) {
+      this.turnedAway = t.open = true;
+      t.askedAt = -Infinity;
+    }
+    const trip = session.travelled;
+    if ((t.open || trip) && nowMs - t.askedAt >= TRAVEL_REFRESH_MS) {
+      t.askedAt = nowMs;
+      page.cluster().then(
+        (list) => {
+          t.list = list;
+          t.note = "";
+        },
+        () => {
+          t.note = "this server did not say which servers are in its cluster";
+        },
+      );
+    }
+    const list = t.list;
+    if (!list) return;
+    const to = trip ? list.servers.find((s) => s.world === trip.world) : t.goTo;
+    if (!to) return;
+    this.leaving = true;
+    page.go(trip ? arrivalAddress(serverAddress(list, to, page), session.name, trip.ticket) : joinAddress(serverAddress(list, to, page), session.name));
+  }
+
   /** Returns what to draw in the world, or null until the world has arrived. `ui.frame` is always ready. */
   frame(nowMs: number, width: number, height: number): FramePacket | null {
     const dt = this.last < 0 ? 16 : nowMs - this.last;
@@ -622,10 +698,12 @@ export class App {
     const c = this.controls;
     this.nowMs = nowMs;
 
+    this.travel(nowMs);
     if (session.state === "closed") {
       // Only the reasons a player can act on are spelled out.
-      hud.status = session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
+      hud.status = session.travelled ? "travelling to another server" : session.closeReason === REJECT_TRAVEL ? `turned away: ${session.closeText}` : session.closeReason === REJECT_FULL ? "turned away: this server is full" : session.closeReason === REJECT_PASSWORD ? "disconnected: this server asks a password, and that was not it" : session.closeReason === CLOSED_BAD_CONTENT ? "disconnected: this client's content is not this server's" : session.closeReason === REJECT_VERSION || session.closeReason === CLOSED_BAD_VERSION ? "disconnected: this page is not the server's version; reload it" : `disconnected (reason ${session.closeReason})`;
       this.ui.build(aspect, hud, session);
+      if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
@@ -636,6 +714,7 @@ export class App {
     if (session.state !== "active" || !world) {
       hud.status = "connecting";
       this.ui.build(aspect, hud, session);
+      if (this.sound) this.sounds?.hush(this.sound);
       return null;
     }
     if (this.shown !== session.registry) {
@@ -644,7 +723,14 @@ export class App {
       this.shots.reg = this.shown;
     }
     if (!this.scene) {
-      this.scene = new Scene(world, this.reg, this.pack, this.stream);
+      // Sounds share the asset port, each side taking only what it asked for.
+      const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
+      this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
+      if (split) {
+        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.ui.settings.touchFirst, this.soundDecoder ?? undefined);
+        hearSession(session, this.sounds);
+        this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
+      }
       this.scene.shots = this.shots;
       this.scene.plainSky = this.plainSky;
       if (this.stress) {
@@ -657,7 +743,7 @@ export class App {
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
     }
-    hud.status = this.debug ? this.scene.assets.line() : "";
+    hud.status = this.debug ? `${this.scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
 
     // The eye interpolates between the last two predicted ticks, so motion is smooth at any frame rate.
     const cam = this.cam;
@@ -770,6 +856,9 @@ export class App {
     this.scene.own = (alive && session.ownHandle !== 0 && session.driving < 0) || riding ? body : null;
     if (session.sessionState === SESSION_CREATING) this.preview(nowMs, aspect);
     session.sampleRemote(this.remote);
+    // Sound takes its copy of the shots, hits and tames before the tracers and hit marks use them up.
+    this.sounds?.absorb(session.events, session.fired, Math.max(0, session.tamed.length - this.tamedHeard));
+    this.tamedHeard = session.tamed.length;
     this.shots.absorb(session, world, nowMs);
     this.shots.step(world, this.remote, session.tickClock, nowMs);
     this.scene.shotTick = session.tickClock;
@@ -782,7 +871,10 @@ export class App {
     this.scene.viewHeight = height;
     this.scene.now = nowMs;
     const kept = this.scene.assets.residency.cache;
-    if (this.ui.settings.download) this.scene.assets.residency.download();
+    if (this.ui.settings.download) {
+      this.scene.assets.residency.download();
+      this.sounds?.library.download();
+    }
     this.ui.settings.download = false;
     this.ui.settings.kept = keptLine(kept);
     this.scene.assets.tier = tierWithout(this.governor.tier(forTouch(tierOf(this.ui.settings.tier), this.ui.settings.touchFirst), this.ui.settings.steady, this.dpr, nowMs), this.off);
@@ -801,6 +893,8 @@ export class App {
     fillAction(hud, alive ? session : null, this.reg);
     fillBuffs(hud, alive ? session : null, this.reg, this.pack.palette);
     this.listen(hud);
+    const vol = this.ui.settings;
+    if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;
     const b = this.builder;
@@ -818,7 +912,7 @@ export class App {
     }
     const menu = this.ui.structure;
     menu.tick(nowMs);
-    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = -1), "");
+    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;

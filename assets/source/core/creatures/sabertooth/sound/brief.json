@@ -1,0 +1,128 @@
+{
+  "asset": "core/creatures/sabertooth",
+  "review": "../ref/sound",
+  "about": "A great cat with long fangs; it growls low and roars before it pounces.",
+  "notes": "v1 brief for the torch backend (MOSS-SoundEffect v2.0 on CUDA). Each prompt asks for several events with pauses in one 8 s file, and the picker cuts the best of them. Slots with loop: true are beds: the picker cuts a seamless stretch.",
+  "slots": {
+    "call": {
+      "kind": "voice",
+      "range": 70,
+      "level": -20,
+      "vary": 0.5,
+      "want": "calm call",
+      "prompts": [
+        {
+          "id": "p3200",
+          "models": [
+            "moss"
+          ],
+          "seed": 3200,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A big cat growls low and rumbles a deep purring growl, three separate calls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "startled": {
+      "kind": "voice",
+      "range": 70,
+      "level": -20,
+      "vary": 0.5,
+      "want": "alarm, fright",
+      "prompts": [
+        {
+          "id": "p3210",
+          "models": [
+            "moss"
+          ],
+          "seed": 3210,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A big cat snarls and roars sharply, three separate snarls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hurt": {
+      "kind": "voice",
+      "range": 70,
+      "level": -20,
+      "vary": 0.5,
+      "want": "pain",
+      "prompts": [
+        {
+          "id": "p3220",
+          "models": [
+            "moss"
+          ],
+          "seed": 3220,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A big cat yowls in pain, four separate yowls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "death": {
+      "kind": "voice",
+      "range": 70,
+      "level": -20,
+      "vary": 0.5,
+      "want": "dying",
+      "prompts": [
+        {
+          "id": "p3230",
+          "models": [
+            "moss"
+          ],
+          "seed": 3230,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A big cat gives a long weak dying moan, two separate times with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "attack": {
+      "kind": "voice",
+      "range": 70,
+      "level": -18,
+      "vary": 0.5,
+      "want": "attack: bite or strike",
+      "prompts": [
+        {
+          "id": "p3240",
+          "models": [
+            "moss"
+          ],
+          "seed": 3240,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A big cat lunges with a vicious snarling bite, five separate attacks with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "step": {
+      "kind": "step",
+      "range": 42,
+      "level": -24,
+      "vary": 0.5,
+      "want": "footfalls",
+      "prompts": [
+        {
+          "id": "p3250",
+          "models": [
+            "moss"
+          ],
+          "seed": 3250,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "Soft heavy paws of a big cat walking on earth: muffled padded steps, well spaced. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

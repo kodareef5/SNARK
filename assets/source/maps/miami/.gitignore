@@ -52,3 +52,7 @@ reports/ruins4/street-clusters.json
 reports/ruins4/roof-gardens.json
 !reports/ruins4/references/
 !reports/ruins4/references/**
+
+# The far city's review pictures of each Miami round, before and after, are evidence and kept.
+!reports/farcity/round*/
+!reports/farcity/round*/**

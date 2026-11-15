@@ -117,7 +117,7 @@ test("a survivor gathers, crafts, eats, levels up, learns, swims, drowns, dies, 
   expect(Math.hypot(m.x - cache.x, m.z - cache.z)).toBe(0);
 
   // Respawn point 2 is by the pool.
-  say((c) => c.command(CMD_RESPAWN, (w) => w.u8(2)), 500);
+  say((c) => c.command(CMD_RESPAWN, (w) => (w.u8(2), w.u8(c.placesList))), 500);
   expect(s.sessionState).toBe(SESSION_ALIVE);
   expect(h.host.survival.value(rec(), V_HEALTH)).toBe(100);
   h.say(s, `tp ${m.x.toFixed(3)} ${(m.y + 0.6).toFixed(3)} ${(m.z - 1.4).toFixed(3)}`);

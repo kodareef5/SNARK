@@ -1,6 +1,8 @@
 // Rows for the collision queries every tick leans on: a body's step, on open ground and among pieces, and rays of the
 // lengths the game casts. `bun tools/bench/collide.ts` runs these alone.
 
+import { ruinKind } from "../../content/miami-ruins.ts";
+import { slopeKind } from "../../content/slopes.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Body, stepBody, type MoveParams } from "../../shared/sim/character.ts";
@@ -132,6 +134,45 @@ export function benchCollide(section: Section, record: Row): void {
   });
   record("a 6 m look in the base", best(5, inside.length, (i) => shoot(base, inside[i]!, 6)), "us");
   record("a 120 m shot in the base", best(5, inside.length, (i) => shoot(base, inside[i]!, 120)), "us");
+
+  // A city's flight of stairs, 4 m up over 5.5 m to its landing: eleven step boxes as tools/mapworld/ruin-geometry.ts lays
+  // them, or one sloped piece (content/slopes.ts). 400 flights, a body walking up and down each.
+  const flat = new Heightfield(DIMS, TERRAIN_CELL, -32, 1 / 64);
+  flat.heights.fill(32 * 64);
+  const flights = (sloped: boolean): CollisionWorld => {
+    const w: CollisionWorld = { hf: flat, structs: new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts) };
+    const id = (name: string): number => reg.index.get(name)!;
+    for (let i = 0; i < 400; i++) {
+      const u = 100 + (i % 20) * 40;
+      const v = 100 + Math.floor(i / 20) * 40;
+      if (sloped) w.structs.add(id(slopeKind("stairs")), u, 2, v, 0, 1, 1000);
+      else for (let n = 0; n < 11; n++) w.structs.add(id(ruinKind("step")), u, (n + 1) * (4 / 11) - 0.2, v - 2.5 + n * 0.5, 0, 1, 1000);
+      w.structs.add(id(ruinKind("landing")), u + 1.5, 3.8, v + 3.25, 0, 1, 1000);
+    }
+    return w;
+  };
+  const climbing = (w: CollisionWorld): number => {
+    const bodies = Array.from({ length: 400 }, (_, i) => {
+      const b = new Body();
+      b.x = 100 + (i % 20) * 40;
+      b.z = 100 + Math.floor(i / 20) * 40 - 4;
+      b.grounded = true;
+      return b;
+    });
+    // Survivors and raptors, up onto the landing and back down to the ground before the flight's foot, again and again.
+    const up = bodies.map(() => true);
+    const tick = (): void => {
+      for (let i = 0; i < bodies.length; i++) {
+        const b = bodies[i]!;
+        const v = 100 + Math.floor(i / 20) * 40;
+        if (up[i] ? b.z > v + 3 : b.z < v - 4) up[i] = !up[i];
+        stepBody(w, b, 0, 127, up[i] ? 0 : 32768, 0, 0, moves[i % 2]!, TICK_DT);
+      }
+    };
+    return best(5, 240, tick) / bodies.length;
+  };
+  record("a body's step up and down a city flight of eleven step boxes", climbing(flights(false)), "us");
+  record("a body's step up and down the same flight as one sloped piece", climbing(flights(true)), "us");
 }
 
 if (import.meta.main) {

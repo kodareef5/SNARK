@@ -27,30 +27,35 @@ HIGHWAY = ('S1100', 'S1200')
 
 def tiger(m, name):
     t = m.city['tiger']
-    path = m.raw / f"tl_{t['year']}_{t['county']}_{name}.zip"
-    out = m.raw / 'tiger'
-    with zipfile.ZipFile(path) as z:
-        z.extractall(out)
-    reader = shapefile.Reader(str(out / path.stem))
-    fields = [f[0] for f in reader.fields[1:]]
     to_map = Transformer.from_crs(4269, m.crs, always_xy=True).transform
     bbox = Transformer.from_crs(m.crs, 4269, always_xy=True).transform_bounds(*m.b)
     clip = box(*m.b)
     widths = m.city['roads']['widths_m']
-    features = []
-    for sr in reader.iterShapeRecords(bbox=bbox):
-        g = project(to_map, make_valid(shape(sr.shape.__geo_interface__))).intersection(clip)
-        if g.is_empty:
-            continue
-        p = dict(zip(fields, sr.record))
-        if name == 'roads':
-            # Cartographic corridor widths for the game, not measured road edges.
-            code = p['MTFCC']
-            p = {'id': str(p['LINEARID']), 'mtfcc': code, 'name': p.get('FULLNAME'),
-                 'width_m': widths.get(code, m.city['roads']['other_width_m'])}
-        else:
-            p = {'id': str(p['HYDROID']), 'mtfcc': p['MTFCC'], 'name': p.get('FULLNAME')}
-        features.append((g, p))
+    features, seen = [], set()
+    # A frame may span counties; a line on a county boundary is in both files under one id.
+    for county in t.get('counties') or [t['county']]:
+        path = m.raw / f"tl_{t['year']}_{county}_{name}.zip"
+        out = m.raw / 'tiger'
+        with zipfile.ZipFile(path) as z:
+            z.extractall(out)
+        reader = shapefile.Reader(str(out / path.stem))
+        fields = [f[0] for f in reader.fields[1:]]
+        for sr in reader.iterShapeRecords(bbox=bbox):
+            g = project(to_map, make_valid(shape(sr.shape.__geo_interface__))).intersection(clip)
+            if g.is_empty:
+                continue
+            p = dict(zip(fields, sr.record))
+            if name == 'roads':
+                # Cartographic corridor widths for the game, not measured road edges.
+                code = p['MTFCC']
+                p = {'id': str(p['LINEARID']), 'mtfcc': code, 'name': p.get('FULLNAME'),
+                     'width_m': widths.get(code, m.city['roads']['other_width_m'])}
+            else:
+                p = {'id': str(p['HYDROID']), 'mtfcc': p['MTFCC'], 'name': p.get('FULLNAME')}
+            if p['id'] in seen:
+                continue
+            seen.add(p['id'])
+            features.append((g, p))
     m.write_features(name, features)
     print(name, len(features), flush=True)
     return features
@@ -87,9 +92,9 @@ def buildings(m):
 def elevation(m):
     n = m.n
     out = np.full((n, n), -9999, dtype=np.float32)
-    scale = m.city['dem']['z_to_m']
     tiles = json.loads((m.root / 'dem_selection.json').read_text())
     for i, t in enumerate(tiles):
+        scale = t.get('z_to_m', m.city['dem']['z_to_m'])
         with rasterio.open(m.raw / 'dem' / t['name']) as src:
             b = transform_bounds(src.crs, m.crs, *src.bounds, densify_pts=21)
             c0 = max(0, math.floor((b[0] - m.grid.c) / 2) - 2)
@@ -103,6 +108,8 @@ def elevation(m):
                       dst_transform=win_transform(Window(c0, r0, c1 - c0, r1 - r0), m.grid), dst_crs=m.crs,
                       dst_nodata=-9999, resampling=Resampling.bilinear)
             good = dst != -9999
+            if t.get('fill'):
+                good &= out[r0:r1, c0:c1] == -9999
             out[r0:r1, c0:c1][good] = dst[good] * scale
         if i % 20 == 0:
             print('height', i, '/', len(tiles), flush=True)
@@ -116,14 +123,31 @@ def main():
     water = tiger(m, 'areawater')
     roads = tiger(m, 'roads')
     bld = buildings(m)
+    elev = elevation(m)
+    valid = elev != -9999
+    elev[~valid] = -1  # an engine convention for missing ground, not measured bathymetry
+    # The engine's water is one sea. A lake whose hydro-flattened lidar surface stands more than perched_above_sea_m over
+    # the city's sea is left out of it, as a flat marsh at its surface, until water can stand above the sea.
+    sea = m.city.get('world', {}).get('seaNavd88', .3)
+    above = m.city['succession'].get('perched_above_sea_m', 2)
+    perched, sea_water = [], []
+    for g, p in water:
+        mask = m.burn([(g, 1)], n, m.grid) > 0
+        surveyed = mask & valid
+        if surveyed.sum() >= .5 * max(1, mask.sum()) and float(np.median(elev[surveyed])) > sea + above:
+            perched.append((g, p, float(np.median(elev[surveyed]))))
+        else:
+            sea_water.append((g, p))
+    m.write_features('perched_water', [(g, {**p, 'surface_navd88_m': round(h, 2), 'above_sea_m': round(h - sea, 2)}) for g, p, h in perched])
+    lake = m.burn([(g, 1) for g, p, h in perched], n, m.grid)
+    save(lake, m.base / 'perched_water.png')
+    water = sea_water
+    m.write_features('areawater', water)
     w = m.burn([(g, 1) for g, p in water], n, m.grid)
     b = m.burn([(g, 1) for g, p in bld], n, m.grid)
     rd = m.burn([(g.buffer(p['width_m'] / 2, cap_style=2, join_style=2), 2 if p['mtfcc'] in HIGHWAY else 1)
                  for g, p in sorted(roads, key=lambda gp: gp[1]['width_m'])], n, m.grid)
     rd[(rd > 0) & (w > 0)] = 3  # a bridge over the water, which stays beneath it
-    elev = elevation(m)
-    valid = elev != -9999
-    elev[~valid] = -1  # an engine convention for missing ground, not measured bathymetry
     save(np.rint(np.clip((elev + 100) * 100, 0, 65535)).astype('uint16'), m.base / 'height.png')
     save(valid.astype('uint8') * 255, m.base / 'height_valid.png')
     save(w, m.base / 'water.png')
@@ -142,11 +166,14 @@ def main():
     field = np.sin(xx / 47 + .7 * np.sin(yy / 83)) + np.cos(yy / 61 - xx / 103)
     near_ruin = nd.distance_transform_edt(b == 0) * 2 < 18
     away_road = nd.distance_transform_edt(rd == 0) * 2 > 6
-    grown |= near_ruin & away_road & (b == 0) & (w == 0) & (elev < 6) & (field > -.25)
+    # Miami's heights, 6 m and 0.75 m NAVD88 over its sea of 0.3 m, are taken over each city's own sea.
+    rise = elev - sea
+    grown |= near_ruin & away_road & (b == 0) & (w == 0) & (rise < 5.7) & (field > -.25)
     biome = np.full((n, n), 2, np.uint8)
     biome[grown] = 3
     biome[grown & (coast < 70)] = 4
-    biome[grown & (elev < .75) & (coast < 140)] = 5
+    biome[grown & (rise < .45) & (coast < 140)] = 5
+    biome[lake > 0] = 5
     beach = lc == 31
     ribbon = m.city['succession'].get('sand_ribbon')
     if ribbon:
@@ -167,7 +194,7 @@ def main():
              'dem_valid_fraction': float(valid.mean()), 'dem_missing_on_source_land_samples': int(((w == 0) & ~valid).sum()),
              'height_m_valid_min_max': [float(elev[valid].min()), float(elev[valid].max())],
              'water_fraction': float(w.mean()), 'nlcd_values': list(map(int, np.unique(lc))),
-             'flooded_street_samples': int(flooded.sum())}
+             'flooded_street_samples': int(flooded.sum()), 'perched_lakes': len(perched), 'perched_lake_samples': int(lake.sum())}
     (m.base / 'stats.json').write_text(json.dumps(stats, indent=2) + '\n')
     print(stats, flush=True)
 

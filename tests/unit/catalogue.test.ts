@@ -4,6 +4,8 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
+import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
+import { TERMINALS } from "../../content/terminals.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { CLASSES, FIELDS, classFaults, classOf, defFaults, type Field } from "../../shared/content/classes.ts";
@@ -42,27 +44,27 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "item/consumable": 4,
     "item/weapon": 3,
     "item/armor": 20,
-    "item/structure": 27,
-    engram: 54,
+    "item/structure": 29,
+    engram: 55,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
     "structure/piece": 33,
     "structure/container": 3,
     "structure/station": 2,
-    "structure/bed": 1,
-    "structure/static": 8 + RUIN_BLOCKS.length,
-    shape: 14,
+    "structure/bed": 3,
+    "structure/static": 8 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_SHAPES.length,
+    shape: 16 + SLOPE_SHAPES.length,
     material: 4,
     node: 14,
     "prop/container": 2,
     "prop/projectile": 2,
     buff: 7,
     spawns: 4,
-    map: 2,
-    rename: 58,
+    map: 3,
+    rename: 59,
   });
-  expect(rest.length).toBe(276 + RUIN_BLOCKS.length);
+  expect(rest.length).toBe(285 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

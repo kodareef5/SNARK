@@ -240,6 +240,41 @@ export interface CreatureAsset {
   readonly flat?: number;
   /** What goes limp when it dies. Without it the death clip plays and its last frame stays. */
   readonly ragdoll?: RagdollSpec;
+  /**
+   * How a saddle is drawn on it, by one of two ways or both: declared by the flyers' contracts and built by FL5
+   * (planning/reference/flyers-plan.md). Either way the creature's gear names the saddle it wears, and riding asks only
+   * that it wears one, never how it looks. The meshes either names are not the bare body's; every other mesh is.
+   * - `worn`: a mesh made in the same session on the same armature, weighted to the body's bones, written as its item's
+   *   "<item>/worn" mesh and drawn on the body while that item is worn.
+   * - `saddled`: the whole creature as it is saddled, written as "<asset id>/saddled" and drawn in place of the bare body
+   *   while any saddle is worn, on the same skeleton, clips, sockets and hit zones.
+   * Where it has both, the saddled model wins and no worn mesh is drawn over it.
+   */
+  readonly worn?: readonly WornSpec[];
+  readonly saddled?: SaddledSpec;
+}
+
+/** One saddle drawn on a creature (CreatureAsset.worn). */
+export interface WornSpec {
+  /** The saddle item it is drawn for. */
+  readonly item: string;
+  /** The Blender mesh object, "<object>_LOD<n>" for its levels as a body's are. */
+  readonly object: string;
+  /** Its own materials, as the body's are named, three at most; drawn flat in palette colours without them. */
+  readonly materials?: Readonly<Record<string, MaterialSpec>>;
+  readonly budgets: { readonly triangles: readonly number[]; readonly texture?: TextureBudget };
+  /** The first level drawn flat, as the body's `flat`. */
+  readonly flat?: number;
+}
+
+/** The creature as it is saddled (CreatureAsset.saddled): the same rig, other meshes and maps. */
+export interface SaddledSpec {
+  /** The Blender mesh objects that make it, with their levels named as a body's are. */
+  readonly objects: readonly string[];
+  /** Its materials, as the body's are named; the body's where not given. */
+  readonly materials?: Readonly<Record<string, MaterialSpec>>;
+  readonly budgets: { readonly triangles: readonly number[]; readonly texture?: TextureBudget };
+  readonly flat?: number;
 }
 
 /**

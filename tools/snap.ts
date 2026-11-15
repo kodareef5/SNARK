@@ -1,5 +1,5 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
-// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
+// Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 
@@ -57,6 +57,7 @@ import { encodePng } from "./snap/png.ts";
 import { PICK_SKY, Rasterizer } from "./snap/raster.ts";
 import { drawUi } from "./snap/ui.ts";
 import { DETAIL_SEQUENCES, MOMENTS, playDetails } from "./snap/details.ts";
+import { slopesScene } from "./snap/slopes.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
 export function houseScene(view: ProvingView, tier: string): void {
@@ -895,8 +896,9 @@ if (import.meta.main) {
   if (args.includes("--fight")) {
     // A survivor faces a dummy in flak six metres off. --fight takes "punch" or "club" (up close, as the blow lands), "bow" or
     // "slingshot" (at full draw), "loosed" or "slung" (the arrow or the stone in the air), "rifle" (the round's tracer) or
-    // "shotgun" (a shell's ten tracers).
+    // "shotgun" (a shell's ten tracers) or "flare" (the flare gun's flare two seconds up, the view raised to it).
     const what = arg("fight") ?? "bow";
+    const flare = what === "flare";
     const close = what === "punch" || what === "club";
     const sling = what === "slingshot" || what === "slung";
     const pixels = clientPicture(w!, h!, defaultLook(), (app, run, hh) => {
@@ -912,10 +914,10 @@ if (import.meta.main) {
       hh.host.refreshBody(drec);
       const k = (name: string): number => hh.reg.index.get(`core:${name}`)!;
       const gun = what === "rifle" || what === "shotgun";
-      const weapon = gun ? what : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : "bow";
+      const weapon = gun ? what : what === "punch" ? "" : what === "club" ? "club" : sling ? "slingshot" : flare ? "flare_gun" : "bow";
       if (weapon !== "") {
         hh.host.items.mint(rec, k(weapon), 1);
-        if (weapon !== "club") hh.host.items.mint(rec, k(gun ? `round_${weapon}` : sling ? "stone" : "arrow_stone"), 20);
+        if (weapon !== "club" && !flare) hh.host.items.mint(rec, k(gun ? `round_${weapon}` : sling ? "stone" : "arrow_stone"), 20);
         run(200);
         const inv = s.inventory!;
         const from = inv.item.indexOf(k(weapon));
@@ -926,11 +928,15 @@ if (import.meta.main) {
       }
       app.view.thirdPerson = args.includes("--third");
       app.controls.yaw = args.includes("--third") ? 0.5 : 0;
-      app.controls.pitch = close ? 0.02 : -0.02;
+      app.controls.pitch = close ? 0.02 : flare ? 0.9 : -0.02;
       run(200);
       app.controls.mouseButton(0, true);
       if (close) run(260);
-      else if (gun) run(1000 / 60);
+      else if (flare) {
+        run(1000 / 10);
+        app.controls.mouseButton(0, false);
+        run(2000);
+      } else if (gun) run(1000 / 60);
       else {
         run(1400);
         if (what === "loosed" || what === "slung") {
@@ -1079,6 +1085,7 @@ if (import.meta.main) {
       houseScene(view, arg("house") ?? "wood");
       houseView(view, arg("house") ?? "wood", look);
     }
+    if (args.includes("--slopes")) sceneLabels.splice(0, sceneLabels.length, ...slopesScene(view, arg("slopes") ?? "scene", arg("from") === "far" ? "far" : "near"));
     if (args.includes("--falling")) fallingScene(view, Number(arg("falling") ?? 450));
     if (args.includes("--ragdoll")) ragdollScene(view, Number(arg("ragdoll") ?? 4));
     if (args.includes("--gear")) gearScene(view, (Number(arg("face") ?? 150) * Math.PI) / 180);
