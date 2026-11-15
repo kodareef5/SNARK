@@ -166,3 +166,38 @@ test("as in ARK, a bed is not set down under water, and a fire under water is no
   expect(s.log.some((l) => l.text.includes("A bed cannot be placed under water."))).toBe(true);
   expect(set(shore.x, shore.z + 5)).toBe(RESULT_OK);
 });
+
+test("a forge or a fabricator whose foot is under water is not lit, in a lake as in the sea, though its middle is above it; on the bank beside a lake it is", () => {
+  const { h, rec } = admin();
+  try {
+    const id = (name: string): number => h.reg.index.get(`core:${name}`)!;
+    const hf = h.world.hf;
+    const { high } = LAKES;
+    /** A station of `kind` with its foot at `foot` over (x, z), holding its fuel; returns what lighting it answers. */
+    const light = (kind: string, fuel: string, x: number, foot: number, z: number): number => {
+      const k = id(kind);
+      const ref = h.world.structs.add(k, x, foot + h.reg.halfY[k]!, z, 0, rec.team, 2500);
+      h.host.items.mint(h.host.fixtures.ensure(ref), id(fuel), 2);
+      return h.host.stations.toggle(ref);
+    };
+    // Its foot a tenth of a metre under the surface and its middle well above it: in the sea, and in the high pond 20 m up.
+    expect(hf.heightAt(128, 30)).toBeLessThan(LAKES.sea);
+    expect(hf.waterAt(high.x, high.z)).toBe(high.surface);
+    expect([light("forge", "wood", 128, LAKES.sea - 0.1, 30), light("forge", "wood", high.x, high.surface - 0.1, high.z)]).toEqual([RESULT_DENIED, RESULT_DENIED]);
+    expect([light("fabricator", "gasoline", 132, LAKES.sea - 0.1, 30), light("fabricator", "gasoline", high.x + 4, high.surface - 0.1, high.z)]).toEqual([RESULT_DENIED, RESULT_DENIED]);
+    // A campfire there is lit: only its middle must be out of the water.
+    expect(light("campfire", "wood", high.x - 4, high.surface - 0.1, high.z)).toBe(RESULT_OK);
+    // At the pond's edge, where the square under the forge's middle is the sea's but one under a corner is the pond's, a foot
+    // sunk below the pond's surface is under its water.
+    const z = high.z + high.r + LAKES.cell / 2 + 1.5;
+    expect([hf.waterAt(high.x, z), hf.waterAt(high.x, z - 0.6)]).toEqual([LAKES.sea, high.surface]);
+    expect(light("forge", "wood", high.x, high.surface - 0.1, z)).toBe(RESULT_DENIED);
+    // On the dry bank, over the pond's squares but on ground above its surface, the forge and the fabricator are lit.
+    const bank = high.z + high.r + 1.5;
+    const ground = Math.max(hf.heightAt(high.x, bank - 1), hf.heightAt(high.x, bank + 1), hf.heightAt(high.x + 6, bank - 1), hf.heightAt(high.x + 6, bank + 1));
+    expect([hf.waterAt(high.x, bank), ground > high.surface]).toEqual([high.surface, true]);
+    expect([light("forge", "wood", high.x, ground, bank), light("fabricator", "gasoline", high.x + 5, ground, bank)]).toEqual([RESULT_OK, RESULT_OK]);
+  } finally {
+    h.host.shutdown();
+  }
+});
