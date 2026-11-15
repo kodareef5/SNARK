@@ -81,3 +81,15 @@ test("a tranquilizer dart takes a rifle round; both darts take 1 s, give 0.2 exp
   // DEV129: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart, at the fabricator.
   expect([made("dart_shock"), engram("dart_shock")]).toEqual([{ needs: "6 narcotic, 4 ingot, 4 gunpowder", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [96, 30]]);
 });
+
+test("attachments weigh 0.1, at ARK's levels and experience; the flashlight's 52 and the laser's 59 are Evolved's (Scope, Silencer, Flashlight and Laser Attachment)", () => {
+  expect(["scope", "silencer", "flashlight", "laser"].map(carried)).toEqual([[0.1, 1], [0.1, 1], [0.1, 1], [0.1, 1]]);
+  expect(["scope", "silencer", "flashlight", "laser"].map(engram)).toEqual([[35, 13], [41, 13], [52, 18], [59, 24]]);
+  // The scope's page gives 10 s; the others' give none (DEV125). What is missing stands in or waits (DEV130).
+  expect(["scope", "silencer", "flashlight", "laser"].map(made)).toEqual([
+    { needs: "40 ingot, 20 stone", seconds: 10, xp: 196, count: 1, at: "hand" },
+    { needs: "50 ingot, 20 chitin, 10 hide", seconds: 6, xp: 196, count: 1, at: "hand" },
+    { needs: "20 ingot, 10 stone", seconds: 6, xp: 304, count: 1, at: "hand" },
+    { needs: "50 ingot, 40 stone", seconds: 6, xp: 544, count: 1, at: "hand" },
+  ]);
+});
