@@ -37,14 +37,20 @@ for (const form of ["hotel", "office", "warehouse", "house"]) {
   views.push({ name: `inside-${form}`, x: p.x, y: p.y + 1.65, z: p.z, look: [q.x, q.z, q.y - r.y + 1.2], fov: 85, size: [960, 600] });
   samples.push({ view: `inside-${form}`, footprint: r.footprint, kind: room.kind });
 }
-const refuge = buildings.filter((r) => r.rooms.some((room) => room.kind === "refuge")).sort((a, b) => a.part - b.part)[0] ?? buildings.filter((r) => r.rooms.some((room) => room.kind === "rooms" && room.points[0]!.y >= r.y + 8)).sort((a, b) => a.part - b.part)[0]!;
-const room = refuge.rooms.find((room) => room.kind === "refuge") ?? refuge.rooms.find((room) => room.kind === "rooms" && room.points[0]!.y >= refuge.y + 8)!;
-const refugeAngle = refuge.yaw * Math.PI / 180; const rc = Math.cos(refugeAngle); const rs = Math.sin(refugeAngle); const gallery = room.points[2]!;
-views.push({ name: "refuge", x: gallery.x - 2.5 * rc + 2 * rs, y: gallery.y + 1.65, z: gallery.z + 2.5 * rs + 2 * rc, look: [gallery.x + 2.8 * rc, gallery.z - 2.8 * rs, gallery.y - refuge.y + .8], fov: 100, size: [960, 600] });
+// The first refuge by part at twelve floors, and at sixteen.
+const refugeAt = (r: RuinRecord, floors: number) => r.rooms.find((room) => room.kind === "refuge" && Math.round((room.points[0]!.y - r.y) / 4) === floors);
+for (const floors of [12, 16]) {
+  const refuge = buildings.filter((r) => refugeAt(r, floors)).sort((a, b) => a.part - b.part)[0];
+  if (!refuge) continue;
+  const gallery = refugeAt(refuge, floors)!.points[2]!; const name = floors === 12 ? "refuge" : `refuge-${floors}`;
+  const refugeAngle = refuge.yaw * Math.PI / 180; const rc = Math.cos(refugeAngle); const rs = Math.sin(refugeAngle);
+  views.push({ name, x: gallery.x - 2.5 * rc + 2 * rs, y: gallery.y + 1.65, z: gallery.z + 2.5 * rs + 2 * rc, look: [gallery.x + 2.8 * rc, gallery.z - 2.8 * rs, gallery.y - refuge.y + .8], fov: 100, size: [960, 600] });
+  samples.push({ view: name, footprint: refuge.footprint, name: refuge.name, floors });
+}
 const tower = buildings.filter((r) => r.routes.length && r.height > 80).sort((a, b) => b.routes[0]!.floors - a.routes[0]!.floors || a.part - b.part)[0]!;
 const stair = tower.routes[0]!; const a = stair.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a); const dir = stair.floors % 2 === 0 ? -1 : 1;
 views.push({ name: "tower-high-view", x: stair.x + s * dir * 5.5, z: stair.z + c * dir * 5.5, y: stair.y + stair.floors * 4 + 1.65, look: [stair.x + s * dir * 180, stair.z + c * dir * 180, 7], fov: 85, size: [1280, 720] });
-samples.push({ view: "refuge", footprint: refuge.footprint }, { view: "tower-high-view", footprint: tower.footprint, floors: stair.floors });
+samples.push({ view: "tower-high-view", footprint: tower.footprint, floors: stair.floors });
 const drawn: RuinRecord[] = [];
 for (const r of buildings.filter((r) => r.approaches.length && r.width > 12).sort((a, b) => hash3(a.part, config.seed, 3) - hash3(b.part, config.seed, 3) || a.part - b.part)) {
   if (drawn.some((p) => Math.hypot(p.x - r.x, p.z - r.z) < 128)) continue;
