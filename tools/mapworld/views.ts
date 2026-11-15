@@ -147,22 +147,29 @@ for (const v of views) {
   console.log(`${out}  ${frames} frames, ${(performance.now() - t0).toFixed(0)} ms, eye ${cam.x.toFixed(0)}, ${cam.y.toFixed(1)}, ${cam.z.toFixed(0)}, ${draws} of ${budget.draws} draws, ${(triangles / 1000).toFixed(0)} k of ${(budget.triangles / 1000).toFixed(0)} k triangles, built in ${buildMs} ms, dropped ${packet.dropped}`);
 }
 // Every view at half size, three across, in the order listed.
-if (small.length > 1 && !only) {
-  const cw = Math.max(...small.map((s) => s.w));
+function sheet(rowsOfViews: typeof small, name: string): void {
+  const cw = Math.max(...rowsOfViews.map((s) => s.w));
   const across = 3;
-  const rows = Math.ceil(small.length / across);
+  const rows = Math.ceil(rowsOfViews.length / across);
   // Each row as tall as its tallest view.
   const top = [0];
-  for (let r = 0; r < rows; r++) top.push(top[r]! + Math.max(...small.slice(r * across, (r + 1) * across).map((s) => s.h)));
+  for (let r = 0; r < rows; r++) top.push(top[r]! + Math.max(...rowsOfViews.slice(r * across, (r + 1) * across).map((s) => s.h)));
   const W = cw * across;
   const H = top[rows]!;
   const sheet = new Uint8Array(W * H * 4);
-  small.forEach((s, k) => {
+  rowsOfViews.forEach((s, k) => {
     const [ox, oy] = [(k % across) * cw, top[Math.floor(k / across)]!];
     for (let y = 0; y < s.h; y++) sheet.set(s.rgba.subarray(y * s.w * 4, (y + 1) * s.w * 4), ((oy + y) * W + ox) * 4);
   });
-  writeFileSync(join(folder, "sheet.png"), encodePng(W, H, sheet));
-  console.log(join(folder, "sheet.png"));
+  writeFileSync(join(folder, name), encodePng(W, H, sheet));
+}
+if (small.length > 1 && !only) {
+  sheet(small, "sheet.png");
+  for (const family of ["kind-", "fall-"]) {
+    const rows = small.filter((_, i) => views[i]!.name.startsWith(family));
+    if (rows.length) sheet(rows, `lineup-${family.slice(0, -1)}.png`);
+  }
+  for (let i = 0; i < small.length; i += 9) sheet(small.slice(i, i + 9), `review-${i / 9 + 1}.png`);
 }
 
 writeFileSync(join(folder, only ? `rendering-${only}.json` : "rendering.json"), `${JSON.stringify({ map: map.id, mapHash: map.hash, tier: tierName, seconds: Number(((performance.now() - started) / 1000).toFixed(2)), peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)), views: rendered }, null, 2)}\n`);

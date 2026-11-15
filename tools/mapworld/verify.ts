@@ -4,7 +4,7 @@ import { reportPaths } from "./report-path.ts";
 
 const paths = reportPaths();
 const results = [];
-for (const [tool, args] of [["ruin-walk", ["--all"]], ["room-walk", []], ["access-walk", []], ["bridge-walk", []], ["walk", []], ["server-bench", []]] as const) {
+for (const [tool, args] of [["chunk-report", []], ["ruin-walk", ["--all"]], ["room-walk", []], ["access-walk", []], ["bridge-walk", []], ["walk", []], ["obelisk-walk", []], ["server-bench", []]] as const) {
   const start = performance.now();
   const child = Bun.spawnSync(["bun", join(import.meta.dir, `${tool}.ts`), paths.mapFile, ...args], { stdout: "pipe", stderr: "pipe" });
   writeFileSync(join(paths.folder, `${tool}.log`), new TextDecoder().decode(child.stdout) + new TextDecoder().decode(child.stderr));

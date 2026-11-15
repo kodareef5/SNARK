@@ -12,7 +12,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
   if (!tiles.length || height < 4) return;
   const keys = new Set(tiles.map((t) => tileKey(t.i, t.j)));
   if (rule.collapse === "lost-top") height = Math.max(16, Math.floor(height * (rule.damage?.retain ?? .72) / 4) * 4);
-  const floors = Math.round(height / 4); const playable = Math.min(floors, opts.playable);
+  const floors = Math.round(height / 4); let playable = Math.min(floors, opts.playable);
   const candidates = bay === 8 ? tiles.filter((t) => has(keys, t, 0, 1) && has(keys, t, 0, -1)).sort((a, b) => (a.u - (opts.coreU ?? 0)) ** 2 + a.v ** 2 - (b.u - (opts.coreU ?? 0)) ** 2 - b.v ** 2) : [];
   const cores: Tile[] = candidates.length ? [candidates[0]!] : [];
   const wanted = Math.min(8, Math.max(1, Math.ceil(tiles.length * bay * bay / 3500)));
@@ -21,6 +21,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     if (!next) break; cores.push(next);
   }
   const escape = cores.map((c) => tiles.find((t) => Math.abs(t.u - c.u) === bay && t.v === c.v && has(keys, t, 0, 1) && has(keys, t, 0, -1) && !cores.includes(t))).filter((t): t is Tile => !!t);
+  if (escape.length < cores.length) playable = Math.min(playable, 8);
   const entryCores = cores.length ? cores : [[...tiles].sort((a, b) => Math.abs(a.u) - Math.abs(b.u) || Math.abs(a.v) - Math.abs(b.v))[0]!];
   const entryLane = (t: Tile): boolean => entryCores.some((c) => t.i === c.i);
   const safe = (t: Tile): boolean => cores.some((c) => Math.abs(t.u - c.u) <= bay && Math.abs(t.v - c.v) <= bay) || entryLane(t);
@@ -38,6 +39,7 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     const broken = !safe(t) && distance < radius;
     let top = floors;
     if (form.terrace && floors > 2 && !safe(t) && (t.u === minU || t.u === maxU)) top = Math.max(1, floors - form.terrace);
+    if (form.setbacks && floors > 3 && !safe(t)) top = Math.max(2, floors - Math.ceil(Math.abs(t.u) / Math.max(8, maxU) * form.setbacks));
     if (broken) {
       damaged.add(t);
       if (mode === "shear") top = Math.max(0, Math.floor(floors * distance / radius));
@@ -112,7 +114,22 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     }
   }
   for (const p of posts.values()) m.post(p.u, base, p.v, p.top * 4);
-  if (base === 0) for (const core of cores) { m.stairs(core, playable); const drop = escape.find((t) => Math.abs(t.u - core.u) === bay && t.v === core.v); if (drop) m.escape(drop, playable, core); }
+  if (base === 0) for (const core of cores) {
+    m.stairs(core, playable);
+    const drop = escape.find((t) => Math.abs(t.u - core.u) === bay && t.v === core.v);
+    if (drop && playable >= 12) {
+      m.stairExit(drop, playable, core);
+      const dir = playable % 2 === 0 ? -1 : 1; const y = playable * 4;
+      const gallery = tiles.find((t) => t.i === core.i && t.j === core.j + dir)!;
+      m.put("zbed", gallery.u + 2.8, y + .25, gallery.v + dir * 1.5, rule.finish);
+      m.put("zcover", gallery.u + 2.8, y + .55, gallery.v - dir * 1.5, rule.finish, 90);
+      m.put("zpartition", gallery.u + 4, y + 1.4, gallery.v, rule.finish, 90);
+      m.put("zroof8", gallery.u, y + 3.5, gallery.v, rule.finish);
+      const points = [[core.u - 1.5, core.v + dir * 3.25], [core.u - 1.5, core.v + dir * 5.5], [gallery.u, gallery.v], [drop.u - 1.5, drop.v + dir * 5.5], [drop.u - 1.5, drop.v + dir * 3.25]];
+      const route = points.concat([...points].reverse()).map(([u, v]) => { const [x, z] = m.point(u!, v!); return { x, y: m.base + y, z }; });
+      m.rooms.push({ kind: "refuge", points: route });
+    } else if (drop) m.stairExit(drop, playable, core);
+  }
   if (base === 0) for (const core of entryCores) {
     let lo = core.j; let hi = core.j;
     while (keys.has(tileKey(core.i, lo - 1))) lo--; while (keys.has(tileKey(core.i, hi + 1))) hi++;
@@ -143,13 +160,13 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
       assembly(m, rule, form.marker, front.u, base + height, front.v);
     }
     if (form.roof === "service") m.put("zcore", t.u, base + height + 2, t.v, "steel");
-    if (form.roof === "hip") for (const r of cap.filter((r) => r.i % 2 === 0)) { m.put("zroof8", r.u, base + height + .5, r.v, "clay"); m.put("zroof8", r.u, base + height + 1.5, r.v, "clay", 90); }
-    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zroof8", r.u, base + height + 4.5, r.v, "rust"); }
+    if (form.roof === "hip" || form.roof === "pitched") pitched(m, cap, bay, base + height);
+    if (form.roof === "monitor" || form.roof === "nave") for (const r of cap.filter((r) => r.i % 2 === 0 && r.j === t.j)) { m.put("zpanel8", r.u, base + height + 2, r.v, "steel"); m.put("zpitch8", r.u, base + height + 5.4, r.v, form.roof === "nave" ? "clay" : "rust"); }
     if (form.front === "belfry") { m.put("zcore", t.u, base + height + 2, t.v, rule.finish); m.put("fin8", t.u, base + height + 8, t.v, rule.finish); m.put("trim4", t.u, base + height + 10, t.v, rule.finish); }
-    if (height <= 20 && hash3(opts.seed, 32, 1) / 4294967296 < (rule.roofGrowth ?? 0)) {
+    if (height <= 20 && !["hip", "pitched", "nave"].includes(form.roof) && hash3(opts.seed, 32, 1) / 4294967296 < (rule.roofGrowth ?? 0)) {
       m.put("zcover", t.u, base + height + .55, t.v, "clay");
       m.put("zshrub", t.u, base + height + 1.1, t.v, "concrete", 13);
-      if (hash3(opts.seed, 32, 2) % 3 === 0) m.put("zrooftree", t.u + 2, base + height, t.v + 2);
+      if (hash3(opts.seed, 32, 2) % 3 === 0) m.put("zshrub", t.u + 2, base + height + .62, t.v + 2);
       m.put("rubble", t.u + 2, base + height + .35, t.v + 2);
     }
   }
@@ -162,6 +179,18 @@ export function stack(m: Mason, tiles: Tile[], bay: number, height: number, rule
     m.put("fin4", t.u, base + height + 2, t.v, "steel"); m.put("rubble4", t.u + 1.5, base + height + .55, t.v, "concrete", 19);
   }
   for (const t of [...damaged].filter((t) => !entryLane(t))) collapse(m, t, mode, height, rule, opts, base, bay, !has(keys, t, 0, -1) ? -1 : !has(keys, t, 0, 1) ? 1 : 0);
+}
+
+function pitched(m: Mason, tiles: Tile[], bay: number, y: number): void {
+  const left = new Set(tiles.map((t) => tileKey(t.i, t.j)));
+  for (const t of tiles) {
+    if (!left.has(tileKey(t.i, t.j))) continue;
+    let cells = 1;
+    for (const n of bay === 4 ? [4, 2] : [2]) if (Array.from({ length: n * n }, (_, k) => left.has(tileKey(t.i + k % n, t.j + Math.floor(k / n)))).every(Boolean)) { cells = n; break; }
+    const shape = bay * cells >= 16 ? "zpitch16" : bay * cells === 8 ? "zpitch8" : "zpitch4";
+    m.put(shape, t.u + (cells - 1) * bay / 2, y + RUIN_SHAPES[shape][1] / 2, t.v + (cells - 1) * bay / 2, "clay");
+    for (let j = 0; j < cells; j++) for (let i = 0; i < cells; i++) left.delete(tileKey(t.i + i, t.j + j));
+  }
 }
 
 function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number): void {
@@ -216,12 +245,16 @@ function collapse(m: Mason, t: Tile, mode: string, height: number, rule: Rule, o
     for (let n = 0; n < (rule.damage?.layers ?? 3); n++) {
       const h = hash3(t.i, t.j, opts.seed + n * 71);
       const u = ((h & 255) / 255 - .5) * 4; const v = (((h >>> 8) & 255) / 255 - .5) * 4;
-      m.put(n % 3 === 1 ? "floor4" : "floor8", t.u + u, .7 + n * .67 + ((h >>> 16) & 255) / 500, t.v + v, "concrete", h % 95 - 47);
+      const palette = rule.damage?.plates ?? ["plate15", "plate4", "plate30"] as const;
+      const shape = palette[n % palette.length]!;
+      m.put(shape, t.u + u, RUIN_SHAPES[shape][1] / 2 + n * .38 + ((h >>> 16) & 255) / 700, t.v + v, "concrete", h % 160 - 80 + n % 2 * 180);
     }
   }
-  else if (mode === "hanging") { m.put("floor8", t.u + 1, height - .2, t.v, "concrete", 12); m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); }
+  else if (mode === "hanging") { const shape = rule.damage?.plates?.[0] ?? "plate30"; m.put(shape, t.u + 1, height - RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 12); m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); }
   else if (mode !== "burnt") {
     m.put("rubble4", t.u, .55, t.v + 1, "concrete", 21); m.put("rubble", t.u - 2, .35, t.v - 1, "concrete", 63);
+    if (mode === "lost-top") { m.put("mound", t.u, 1, t.v - 1); m.put("plate30", t.u + .5, RUIN_SHAPES.plate30[1] / 2, t.v, "concrete", 160); }
+    if (mode === "facade" && !facadeSide) { const shape = rule.damage?.front ?? "front60"; m.put(shape, t.u, RUIN_SHAPES[shape][1] / 2, t.v, "concrete", 15); }
     if (mode === "shear" && bay === 8 && !m.rooms.some((r) => r.kind === "rubble") && hash3(t.i, t.j, opts.seed) % 3 === 0) {
       m.floor([t.u, t.v], 0, 8);
       const points = [[-3, 0, -3], [-2, .7, -1], [0, 1.1, 1], [2.5, 0, -2.5]].map(([u, y, v]) => { const [x, z] = m.point(t.u + u!, t.v + v!); return { x, y: m.base + y!, z }; });
