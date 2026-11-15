@@ -7,11 +7,13 @@ import { crafting } from "../craft.ts";
 // crystal, obsidian and silica pearls are gathered from the nodes of content/items/nodes.ts. The colours are chosen.
 
 export const RESOURCES: readonly Def[] = [
-  // Cementing paste, moved here unchanged from content/building.ts (S0): made in the hand from 4 chitin and 8 stone, as
-  // DEV51 says, until it moves to the mortar and pestle with ARK's numbers (S6).
+  // Cementing paste, moved here from content/building.ts (S0) and to the mortar and pestle by S6 (ark.wiki.gg, Cementing
+  // Paste, infobox, 2026-11-15): 4 chitin (or keratin or shell fragments, which we do not have; chitin alone is a whole
+  // recipe) and 8 stone at the mortar and pestle, one a grind in 1 s, craftingxp 1.2 (our 4.8, D465's four times); level
+  // 13, 3 engram points. The chemistry bench's recipe waits for the bench.
   { type: "item", class: "resource", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
-  crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 }),
-  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, item: "core:paste" },
+  crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 1, xp: 4.8, at: "core:mortar" }),
+  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 13, cost: 3, item: "core:paste" },
 
   // Charcoal: "one Charcoal every time the burning of the current fuel piece has ended" for wood in any fire; no engram.
   // Wood leaves it (`burnsInto`, content/core.ts), so every fire that burns wood makes it (S1).

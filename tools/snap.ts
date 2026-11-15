@@ -4,6 +4,7 @@
 // --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
 // --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
+// --flight draws the block-out pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
@@ -65,6 +66,8 @@ import { slopesScene } from "./snap/slopes.ts";
 import { atLevel, saddlesScene } from "./snap/saddles.ts";
 import { RIDE_MOMENTS, rideScene, threeSeatRegistry, type RideMoment } from "./snap/ride.ts";
 import { saddleMeshes, type Ways } from "../tests/fixtures/saddles.ts";
+import { flyerPackBytes, flyerRegistry } from "../tests/fixtures/flyer/flyer.ts";
+import { frame as frameFlight, moments, recordFlight, stage } from "./snap/flight.ts";
 import { frozenPack } from "../tests/fixtures/pack.ts";
 
 /** A house two pieces square near the spawn point, seen from its corner, with an open door, windows, stairs to half an upper floor, and a pillar. */
@@ -272,10 +275,11 @@ export interface ProvingView {
 /**
  * The proving ground with a camera at the spawn point and two bodies standing in view. With `net`, the scene has only
  * the boot pack at start and fetches other levels over that network, and the rasterizer draws only what was uploaded.
- * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them.
+ * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them. `game` is content and a pack
+ * of its own in place of the core's.
  */
-export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile): ProvingView {
-  const reg = compileContent(CORE_CONTENT).registry!;
+export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile, game?: { reg: Registry; pack: Uint8Array }): ProvingView {
+  const reg = game?.reg ?? compileContent(CORE_CONTENT).registry!;
   const dims = map?.dims ?? PROVING_DIMS;
   const hf = map ? mapHeightfield(map) : buildProvingHeightfield();
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -283,7 +287,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   else populateProving(structs, hf, reg);
   const split = !net ? null : files ? { files: files.files.map((bytes) => ({ bytes })), manifest: files.manifest } : splitPack(corePackBytes(), "core");
   const port = split ? new FakeNet(split.files.map((f) => f.bytes), net) : null;
-  const pack = parsePack(split ? split.files[0]!.bytes : corePackBytes());
+  const pack = parsePack(split ? split.files[0]!.bytes : (game?.pack ?? corePackBytes()));
   // Fills every chunk's nodes, as a client near each would have them. A map's are filled round the camera, and drawn far past that as a client draws them.
   const nodes = new NodeField(dims, reg, map ? (mapNodes(map, hf, reg) ?? { perChunk: 0, at: (_c, _i, out) => void (out.kind = 0) }) : provingNodes(hf, reg));
   if (!map) nodes.retain(0, 64, 1, () => false);
@@ -917,6 +921,51 @@ if (import.meta.main) {
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, encodePng(w!, h!, pixels));
     console.log(out);
+    process.exit(0);
+  }
+  if (args.includes("--flight")) {
+    // The block-out pteranodon ridden through a flight (tools/snap/flight.ts), a picture at each moment, four across.
+    const t0 = performance.now();
+    const f = recordFlight();
+    const shots = moments(f);
+    const [fw, fh] = (arg("size") ?? "400x260").split("x").map(Number) as [number, number];
+    const across = 4;
+    const [W, H] = [across * fw, Math.ceil(shots.length / across) * fh];
+    const pixels = new Uint8ClampedArray(W * H * 4);
+    const view = provingView(fw, fh, undefined, undefined, undefined, { reg: flyerRegistry(), pack: flyerPackBytes() });
+    let next = 0;
+    for (let i = 0; i < f.ticks.length && next < shots.length; i++) {
+      stage(f, i, view.remote);
+      // Every tick is drawn, as a client draws it, so each body's gait goes on from the last; only the moments are kept.
+      for (const half of [0.5, 0]) {
+        view.remote.tick = f.ticks[i]!.tick - half;
+        if (half > 0 || shots[next]!.at !== i) {
+          view.scene.build(view.cam, view.remote);
+          continue;
+        }
+        frameFlight(f, shots[next]!, view.cam, (x, z) => view.hf.heightAt(x, z));
+        // The rasterizer saw none of the uploads the frames before carried.
+        view.scene.resetUploads();
+        view.render();
+        const [ox, oy] = [(next % across) * fw, Math.floor(next / across) * fh];
+        for (let y = 0; y < fh; y++) pixels.set(view.raster.color.subarray(y * fw * 4, (y + 1) * fw * 4), ((oy + y) * W + ox) * 4);
+        label(pixels, W, shots[next]!.label, ox + 6, oy + 6);
+        // --each DIR: each moment as a picture of its own as well.
+        const each = arg("each");
+        if (each) {
+          const one = view.raster.color.slice();
+          label(one, fw, shots[next]!.label, 6, 6);
+          mkdirSync(resolve(each), { recursive: true });
+          writeFileSync(resolve(each, `${String(next + 1).padStart(2, "0")}-${shots[next]!.label.replace(/[^a-z0-9]+/g, "-").replace(/-$/, "")}.png`), encodePng(fw, fh, one));
+        }
+        next++;
+      }
+    }
+    label(pixels, W, "the block-out pteranodon ridden, as a client draws it from what the server sends", 6, H - 22);
+    const out = resolve(arg("out") ?? "artifacts/flight.png");
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, encodePng(W, H, pixels));
+    console.log(`${out}\n${W}x${H}  ${shots.length} moments of ${f.ticks.length} ticks  ${(performance.now() - t0).toFixed(0)} ms`);
     process.exit(0);
   }
   if (args.includes("--fight")) {

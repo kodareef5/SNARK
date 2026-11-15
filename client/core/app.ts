@@ -985,7 +985,8 @@ export class App {
       body.look = null;
       body.gear.fill(0);
       body.state.stance = 0;
-      body.state.setMotion(session.own.vx, session.own.vz, body.yaw, 0);
+      // Posed from what the server poses it from: the look as the input carries it, and a flyer's climb.
+      body.state.setMotion(session.own.vx, session.own.vz, body.yaw, (Math.round((c.pitch / (PI / 2)) * 16384) * (PI / 2)) / 16384, session.own.vy);
       body.state.setAction(session.own.act, 0, session.simTick - session.own.actTicks);
       body.state.seed = bodySeed(body.id);
       // The mount's colours, its saddle and its cues come from its remote copy.
