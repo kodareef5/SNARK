@@ -151,7 +151,11 @@ export function buildDetails(source: string = SOURCE, packs: ReadonlyMap<string,
     const cues: DetailSheet["cues"] = {};
     for (const [occasion, cue] of Object.entries(s.sheet.cues)) {
       if (!OCCASIONS.includes(occasion as Occasion)) throw new Error(`${where}: there is no occasion "${occasion}"; there are ${OCCASIONS.join(", ")}`);
-      for (const sound of cue.sounds ?? []) if (named && !named.includes(sound)) throw new Error(`${where}: ${occasion} names the sound "${sound}", which sound/sounds.json does not have`);
+      for (const s of cue.sounds ?? []) {
+        const sound = typeof s === "string" ? s : s.sound;
+        if (typeof sound !== "string") throw new Error(`${where}: ${occasion}'s sounds are names, or { "sound": name, "at": ... }`);
+        if (named && !named.includes(sound)) throw new Error(`${where}: ${occasion} names the sound "${sound}", which sound/sounds.json does not have`);
+      }
       const entries = (cue.effects ?? []).map((e): DetailEntry => {
         const effect = effectIndex.get(`${s.owner}/${e.effect}`) ?? effectIndex.get(e.effect) ?? effectIndex.get(`${library}/${e.effect}`) ?? -1;
         if (effect < 0) throw new Error(`${where}: ${occasion} names the effect "${e.effect}", which neither it nor the library has`);

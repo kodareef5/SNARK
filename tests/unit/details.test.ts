@@ -224,12 +224,15 @@ test("the rasterizer draws a landing on low poly and on medium from the same num
     view.raster.render(p);
     let changed = 0;
     for (let i = 0; i < frame.length; i += 4) if (frame[i] !== view.raster.color[i] || frame[i + 1] !== view.raster.color[i + 1]) changed++;
-    // The particles are pinned; the picture is held to what they changed, which other work on the ground may move.
-    seen.push(`${tier}: ${draws.length} draws, ${p.detailCount} particles ${hashBytes(new Uint8Array(p.details.buffer, 0, p.detailCount * DETAIL_FLOATS * 4))}`);
+    // Where the particles are and how they lie is pinned, and not their pictures' cells and greys, which new art moves.
+    // The picture is held to what they changed, which other work on the ground may move.
+    const places = new Float32Array(p.detailCount * DETAIL.colourA);
+    for (let k = 0; k < p.detailCount; k++) places.set(p.details.subarray(k * DETAIL_FLOATS, k * DETAIL_FLOATS + DETAIL.colourA), k * DETAIL.colourA);
+    seen.push(`${tier}: ${draws.length} draws, ${p.detailCount} particles ${hashBytes(new Uint8Array(places.buffer))}`);
     expect(changed).toBeGreaterThan(400);
     expect(changed).toBeLessThan(4000);
   }
-  expect(seen).toEqual(["lowpoly: 2 draws, 4 particles 715469007", "medium: 2 draws, 8 particles 2083408453"]);
+  expect(seen).toEqual(["lowpoly: 2 draws, 4 particles 3221643472", "medium: 2 draws, 8 particles 2502043500"]);
 });
 
 test("the ground's kind and the dust it gives: sand at the shore, soil from grass, pale stone, none on water", () => {

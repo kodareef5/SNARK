@@ -92,9 +92,11 @@ export interface DetailEntry {
   on?: number[];
 }
 
+/** A sound a cue plays, for the sound work to read: a name in the asset's sound/sounds.json, at once, or with its moment as an entry's `at`. */
+export type DetailSound = string | { sound: string; at: "now" | "down" | number };
+
 export interface DetailCue {
-  /** Names of sounds in the asset's sound/sounds.json, for the sound work to read. */
-  sounds?: string[];
+  sounds?: DetailSound[];
   effects: DetailEntry[];
 }
 
@@ -132,7 +134,7 @@ export function mipOffset(side: number, level: number): number {
 export interface SheetSource {
   pictures?: Record<string, { file: string; regions?: string; flat: string }>;
   effects?: Record<string, Record<string, unknown>>;
-  cues?: Record<string, { sounds?: string[]; effects?: { effect: string; from?: string; at?: string | number; count?: [number, number]; on?: string[] }[] }>;
+  cues?: Record<string, { sounds?: DetailSound[]; effects?: { effect: string; from?: string; at?: string | number; count?: [number, number]; on?: string[] }[] }>;
 }
 
 const DEFAULTS: Omit<DetailEffect, "id" | "pictures"> = {
