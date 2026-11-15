@@ -187,11 +187,11 @@ const STRUCTURE = {
   once: f("switch"),
   floor: f("switch"),
   rise: f("vec3"),
-  // The stations wave's (planning/reference/stations-plan.md, S0). `burns` is read (Registry.stationFuel); the rest are
-  // stubs, each read once its project builds it.
+  // The stations wave's (planning/reference/stations-plan.md, S0). `burns` is read (Registry.stationFuel), `cooks` and
+  // `keeps` since S3 (the preserving bin); the rest are stubs, each read once its project builds it.
   burns: f("list", "the fuel a station takes and how long each piece burns in it", { refs: { "[].item": "item" } }),
-  cooks: stub("stations", "switch", "whether a lit station cooks raw meat, as a campfire does and a forge does not"),
-  keeps: stub("stations", "number", "GetSpoilingTimeMultiplier of its inventory"),
+  cooks: f("switch", "whether a lit station cooks raw meat, as a campfire does and a forge does not"),
+  keeps: f("number", "GetSpoilingTimeMultiplier of its inventory"),
   powered: stub("stations", "switch", "bRequiresPower: its crafting runs only while it is on"),
   dry: stub("stations", "switch", "not lit, or not working, under water"),
 } satisfies Fields<StructureDef>;
