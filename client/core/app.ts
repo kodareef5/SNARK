@@ -11,7 +11,7 @@ import { stressThings, type Mark } from "./stress.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
-import { stanceEye } from "../../shared/sim/character.ts";
+import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
 import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
@@ -145,6 +145,10 @@ export class App {
   dpr = 1;
   off: ReadonlySet<Effect> = new Set();
   private interval = 0;
+  /** Whether the keys are a flyer's, and the last tick stepped before its wing was last wanted. */
+  private flying = false;
+  private wingFrom = 0;
+  private wingWas = false;
 
   /** The registry last handed to the UI and shots. frame() swaps it when the session's changes. */
   private shown: Registry;
@@ -417,6 +421,21 @@ export class App {
     if (this.session.ownHandle === 0) return -1;
     for (let i = 0; i < r.count; i++) if (r.seat[i] === seat && (r.cue[i]! & CUE_HELD) !== 0) return r.id[i]!;
     return -1;
+  }
+
+  /**
+   * Gives the keys a flyer's meaning while the predicted body is a mount that flies, and notes the tick its wing was asked
+   * for. Returns whether they have it.
+   */
+  private flyerKeys(): boolean {
+    const s = this.session;
+    const c = this.controls;
+    const flyer = s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.flies[s.own.kind] === 1;
+    if (flyer !== this.flying) c.fly(flyer, flyer && s.own.mode === MODE_FLYER);
+    this.flying = flyer;
+    if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
+    this.wingWas = c.wing;
+    return flyer;
   }
 
   /** Names the entity under the crosshair within NAME_RANGE, and sets lookedAt. */
@@ -708,8 +727,11 @@ export class App {
     }
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
     this.holding = this.heldInArms();
+    const flyer = this.flyerKeys();
     if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons);
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
+    // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
+    if (flyer && c.wing && session.simTick > this.wingFrom && session.own.mode !== MODE_FLYER) c.land();
     const world = session.world;
     if (session.state !== "active" || !world) {
       hud.status = "connecting";

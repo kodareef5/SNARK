@@ -158,6 +158,8 @@ export const DID_STRIKE = 1;
 export const DID_BITE = 8;
 export const DID_FIRE = 2;
 export const DID_RELOAD = 4;
+/** The flyer it drives began a barrel roll. */
+export const DID_ROLL = 16;
 
 /** Read every argument and check r.overflow before acting. Returns a RESULT code. */
 export type CommandHandler = (c: Client, r: BitReader) => number;
@@ -390,6 +392,8 @@ export class GameServer {
   /** speed is in metres per second. onMountLand is told of a driven creature `e` landing. */
   onLand: ((c: Client, speed: number) => void) | null = null;
   onMountLand: ((e: number, speed: number) => void) | null = null;
+  /** A driven flyer `e` took off, set down from flight or began a barrel roll this tick, as stepOut still says. */
+  onMountFlight: ((e: number) => void) | null = null;
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
@@ -507,10 +511,12 @@ export class GameServer {
             stepAction(b, c.heldButtons, c.pressed, jaws);
             if (actionOut.strike) c.did = DID_BITE;
           }
+          if (stepOut.rolled) c.did |= DID_ROLL;
         }
         ents.storeBody(e, b);
         ents.pitch[e] = c.heldPitch;
         ents.pose(e, T);
+        if (driving && (stepOut.tookOff || stepOut.setDown || stepOut.rolled)) this.onMountFlight?.(e);
         if (stepOut.landSpeed > 0) {
           if (driving) this.onMountLand?.(e, stepOut.landSpeed);
           else this.onLand?.(c, stepOut.landSpeed);

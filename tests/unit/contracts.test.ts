@@ -279,15 +279,18 @@ test("a flyer's numbers compile into its moves in whole units a tick and its tam
   for (let i = 1; i < reg.defs.length; i++) {
     if (i === ptera) continue;
     if (reg.move[i]) expect([reg.ids[i], reg.move[i]!]).toMatchObject([reg.ids[i], none]);
-    expect([reg.ids[i], reg.flies[i], reg.grabDrag[i], reg.grabReach[i], reg.defendsEgg[i], reg.riderWeight[i], reg.biteStamina[i], reg.missileMul[i], reg.biteStructureMul[i]]).toEqual([reg.ids[i], 0, 0, 0, 0, 1, 0, 1, 1]);
+    expect([reg.ids[i], reg.flies[i], reg.grabDrag[i], reg.grabReach[i], reg.defendsEgg[i], reg.riderWeight[i], reg.biteStamina[i], reg.rollDamage[i], reg.missileMul[i], reg.biteStructureMul[i]]).toEqual([reg.ids[i], 0, 0, 0, 0, 1, 0, 0, 1, 1]);
   }
+  // ARK's roll does 50 to what it passes, and a rider weighs 0.85 on it (FL2).
+  expect([reg.rollDamage[ptera], reg.riderWeight[ptera]]).toEqual([50, Math.fround(0.85)]);
   const def = CORE_CONTENT.find((d) => d.id === "core:pteranodon")! as SpeciesDef;
   const faults = (more: Partial<SpeciesDef>): string[] => compileContent(CORE_CONTENT.map((d): Def => (d === def ? ({ ...def, ...more } as Def) : d))).errors;
-  expect(faults({ fly: { ...def.fly!, speed: 0, wait: 40, roll: { burst: -1, every: 0 } } })).toEqual([
+  expect(faults({ fly: { ...def.fly!, speed: 0, wait: 40, roll: { burst: -1, every: 0, damage: -1 } } })).toEqual([
     "core:pteranodon: fly.speed must be above 0 and at most 40, got 0",
     "core:pteranodon: fly.wait must be at least 0 and at most 34.1, got 40",
     "core:pteranodon: fly.roll.burst must be at least 0 and at most 40, got -1",
     "core:pteranodon: fly.roll.every must be above 0 and at most 34.1, got 0",
+    "core:pteranodon: fly.roll.damage must be at least 0 and at most 1000000, got -1",
   ]);
   expect(faults({ grab: { drag: 0, reach: 5 }, riderWeight: 2, missiles: -1, tameBonus: { luck: [1, 0] } as SpeciesDef["tameBonus"], tamedHealth: 0 })).toEqual([
     "core:pteranodon: grab needs a drag above 0 and a reach above 0 and at most 100 m",
@@ -301,7 +304,7 @@ test("a flyer's numbers compile into its moves in whole units a tick and its tam
 test("the class table holds the flyers' fields as stubs, each waiting for its feature but `fly`, which the step reads, and only a creature may declare them", () => {
   const s = FIELDS.species;
   expect(["fly", "grab", "defendsEgg", "riderWeight", "missiles", "structures", "tameBonus", "tamedHealth"].map((k) => [k, s[k]!.waits])).toEqual([
-    ["fly", undefined], ["grab", "flyers"], ["defendsEgg", "flyers"], ["riderWeight", "flyers"], ["missiles", "flyers"], ["structures", "flyers"], ["tameBonus", "tameBonus"], ["tamedHealth", "tameBonus"],
+    ["fly", undefined], ["grab", "flyers"], ["defendsEgg", "flyers"], ["riderWeight", undefined], ["missiles", "flyers"], ["structures", "flyers"], ["tameBonus", "tameBonus"], ["tamedHealth", "tameBonus"],
   ]);
   expect(s.bite!.stubs).toEqual({ stamina: "flyers" });
   const survivor = CORE_CONTENT.find((d) => d.id === "core:survivor")!;
