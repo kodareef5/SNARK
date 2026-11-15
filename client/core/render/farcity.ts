@@ -100,7 +100,7 @@ export class FarCity {
   /** Bytes of tiles on the card. */
   bytes = 0;
   /** Last frame: milliseconds spent making tiles and tiles made, tiles in reach with nothing on the card, and levels wanted and not yet made. */
-  readonly stats = { makeMs: 0, made: 0, missing: 0, behind: 0 };
+  readonly stats = { makeMs: 0, made: 0, missing: 0, behind: 0, unseen: 0, unseenAt: Infinity, coarse: 0 };
   /** Triangles drawn this frame at each level. */
   readonly drawn = new Float64Array(LEVELS);
   /** Milliseconds of a frame tiles may be made in, after the first; Infinity makes every tile wanted in the frame it is. */
@@ -130,6 +130,9 @@ export class FarCity {
   private sent = false;
   private on = false;
   private readonly work: number[] = [];
+  /** Per chunk, the box its pieces' faces may reach, as a tile's; and per chunk of the tile being drawn, its depth ranges or 0. */
+  private readonly chunkBox: Float64Array;
+  private readonly ways = new Uint8Array(CITY_TILE * CITY_TILE);
 
   /** `bounds` is FAR_MESH's centre and half extent, as the pack has them. */
   constructor(source: CitySource, dims: MapDims, hf: Heightfield, mesh: number, bounds: { center: readonly number[]; half: readonly number[] }) {
@@ -152,23 +155,30 @@ export class FarCity {
       const t = this.tileOf(c);
       byTile.set(t, [...(byTile.get(t) ?? []), c]);
     }
+    const cb = (this.chunkBox = new Float64Array(chunks * 6));
     for (const [t, list] of byTile) {
       const box = Float64Array.from([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
       for (const c of list) {
+        cb.fill(Infinity, c * 6, c * 6 + 3).fill(-Infinity, c * 6 + 3, c * 6 + 6);
         for (let i = first[c]!; i < first[c + 1]!; i++) {
           const k = kind[i]!;
           // A turned piece reaches no farther than its half diagonal.
           const r = Math.hypot(halfX[k]!, halfZ[k]!);
-          box[0] = Math.min(box[0]!, x[i]! - r);
-          box[1] = Math.min(box[1]!, y[i]! - halfY[k]!);
-          box[2] = Math.min(box[2]!, z[i]! - r);
-          box[3] = Math.max(box[3]!, x[i]! + r);
-          box[4] = Math.max(box[4]!, y[i]! + halfY[k]!);
-          box[5] = Math.max(box[5]!, z[i]! + r);
+          cb[c * 6] = Math.min(cb[c * 6]!, x[i]! - r);
+          cb[c * 6 + 1] = Math.min(cb[c * 6 + 1]!, y[i]! - halfY[k]!);
+          cb[c * 6 + 2] = Math.min(cb[c * 6 + 2]!, z[i]! - r);
+          cb[c * 6 + 3] = Math.max(cb[c * 6 + 3]!, x[i]! + r);
+          cb[c * 6 + 4] = Math.max(cb[c * 6 + 4]!, y[i]! + halfY[k]!);
+          cb[c * 6 + 5] = Math.max(cb[c * 6 + 5]!, z[i]! + r);
+        }
+        // A cell's face may lie a cell past the boxes it was made of.
+        for (let a = 0; a < 3; a++) {
+          cb[c * 6 + a] -= BELOW;
+          cb[c * 6 + a + 3] += BELOW;
+          box[a] = Math.min(box[a]!, cb[c * 6 + a]!);
+          box[a + 3] = Math.max(box[a + 3]!, cb[c * 6 + a + 3]!);
         }
       }
-      // A cell's face may lie a cell past the boxes it was made of.
-      for (let a = 0; a < 3; a++) [box[a], box[a + 3]] = [box[a]! - BELOW, box[a + 3]! + BELOW];
       const base = Math.floor(box[1]!);
       if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
       for (const c of list) this.tileOfChunk[c] = this.tiles.length;
@@ -242,6 +252,7 @@ export class FarCity {
           if (!h || (needed & (1 << l)) !== 0) continue;
           if (h.slot >= 0) p.assetDrops.push(h.slot);
           tile.held[l] = null;
+          for (const c of tile.chunks) this.pieces.delete(c * LEVELS + l);
         }
       }
     }
@@ -252,9 +263,20 @@ export class FarCity {
         return (tile.held.some((h) => h !== null) ? 1e6 : 0) + this.off(tile, cam);
       };
       work.sort((a, b) => key(a) - key(b));
+      // A chunk at a time, so no frame takes more than the budget and one chunk's making.
       const start = clock();
+      let made = 0;
       let k = 0;
-      for (; k < work.length && (k === 0 || clock() - start < this.makeMs); k++) this.make(p, this.tiles[Math.floor(work[k]! / LEVELS)]!, work[k]! % LEVELS);
+      next: for (; k < work.length; k++) {
+        const [tile, level] = [this.tiles[Math.floor(work[k]! / LEVELS)]!, work[k]! % LEVELS];
+        for (const c of tile.chunks) {
+          if (this.pieces.has(c * LEVELS + level)) continue;
+          if (made > 0 && clock() - start >= this.makeMs) break next;
+          this.piece(c, level, tile);
+          made++;
+        }
+        this.make(p, tile, level);
+      }
       stats.makeMs = clock() - start;
       stats.made = k;
       stats.behind = work.length - k;
@@ -287,40 +309,55 @@ export class FarCity {
    */
   draw(cam: Camera, reach: number, put: (slot: number, firstIndex: number, indexCount: number, ox: number, oy: number, oz: number, passes: number, fade: number) => void): void {
     const levels = this.levels;
+    const stats = this.stats;
     this.drawn.fill(0);
+    [stats.unseen, stats.unseenAt, stats.coarse] = [0, Infinity, 0];
     for (const tile of this.tiles) {
       const b = tile.box;
       const [ax, ay, az, bx, by, bz] = [b[0]! - cam.x, b[1]! - cam.y, b[2]! - cam.z, b[3]! - cam.x, b[4]! - cam.y, b[5]! - cam.z];
       const near = Math.hypot(Math.max(ax, -bx, 0), Math.max(ay, -by, 0), Math.max(az, -bz, 0));
-      if (near >= reach || !tile.held.some((h) => h && h.slot >= 0) || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
+      if (near >= reach || !cam.boxVisible(ax, ay, az, bx, by, bz)) continue;
+      // A tile in view whose levels are none of them made yet, empty ones aside, is not drawn at all.
+      if (!tile.held.some((h) => h !== null)) {
+        stats.unseen++;
+        stats.unseenAt = Math.min(stats.unseenAt, near);
+        continue;
+      }
       // The levels wanted that are on the card; or, if none is yet, the one on the card nearest the first wanted.
       const needed = this.needed(tile, cam, near, this.share);
       let drawn = 0;
-      for (let l = 0; l < tile.held.length; l++) if (tile.held[l] && tile.held[l]!.slot >= 0 && (needed & (1 << l)) !== 0) drawn |= 1 << l;
+      for (let l = 0; l < tile.held.length; l++) if (tile.held[l] && (needed & (1 << l)) !== 0) drawn |= 1 << l;
       if (drawn === 0) {
         let best = -1;
-        for (let l = 0; l < tile.held.length; l++) if (tile.held[l] && tile.held[l]!.slot >= 0 && (best < 0 || Math.abs(l - tile.primary) < Math.abs(best - tile.primary))) best = l;
+        for (let l = 0; l < tile.held.length; l++) if (tile.held[l] && (best < 0 || Math.abs(l - tile.primary) < Math.abs(best - tile.primary))) best = l;
         drawn = 1 << best;
+        if (best > tile.primary) stats.coarse++;
       }
-      const passes = cam.passes(ax, ay, az, bx, by, bz);
+      // Each chunk drawn far, in view, and the depth ranges its own box is in: a run is chunks alike in those.
+      const ways = this.ways;
+      tile.chunks.forEach((c, n) => {
+        const k = c * 6;
+        const cb = this.chunkBox;
+        const [cx0, cy0, cz0, cx1, cy1, cz1] = [cb[k]! - cam.x, cb[k + 1]! - cam.y, cb[k + 2]! - cam.z, cb[k + 3]! - cam.x, cb[k + 4]! - cam.y, cb[k + 5]! - cam.z];
+        ways[n] = this.source.complete(c) || !cam.boxVisible(cx0, cy0, cz0, cx1, cy1, cz1) ? 0 : cam.passes(cx0, cy0, cz0, cx1, cy1, cz1);
+      });
       const [tx, tz] = this.corner(tile.t);
       const [ox, oy, oz] = [tx - LOCAL - cam.x, tile.base - cam.y, tz - LOCAL - cam.z];
       for (let l = 0; l < tile.held.length; l++) {
-        if ((drawn & (1 << l)) === 0) continue;
-        const h = tile.held[l]!;
+        const h = tile.held[l];
+        if ((drawn & (1 << l)) === 0 || !h || h.slot < 0) continue;
         // The lattice fades out as the mass fades in, where both are drawn; else each is gone at the reach.
         const fade = this.blends(l + 1) && (drawn & (1 << (l + 1))) !== 0 ? levels[l]!.to : this.blends(l) && (drawn & (1 << (l - 1))) !== 0 ? -levels[l - 1]!.to : reach;
-        let run = -1;
-        for (let n = 0; n <= tile.chunks.length; n++) {
-          const far = n < tile.chunks.length && !this.source.complete(tile.chunks[n]!);
-          if (far && run < 0) run = n;
-          if (!far && run >= 0) {
-            const first = h.first[run]!;
-            const count = h.first[n - 1]! + h.count[n - 1]! - first;
-            if (count > 0) put(h.slot, first, count, ox, oy, oz, passes, fade);
+        let run = 0;
+        for (let n = 1; n <= tile.chunks.length; n++) {
+          if (n < tile.chunks.length && ways[n] === ways[run]) continue;
+          const first = h.first[run]!;
+          const count = h.first[n - 1]! + h.count[n - 1]! - first;
+          if (ways[run] !== 0 && count > 0) {
+            put(h.slot, first, count, ox, oy, oz, ways[run]!, fade);
             this.drawn[l]! += count / 3;
-            run = -1;
           }
+          run = n;
         }
       }
     }
@@ -481,6 +518,8 @@ export class FarCity {
       first[n] = k;
       count[n] = piece.faces * 6;
       data.set(piece.verts, at + v * VERTEX_BYTES);
+      // Kept as its part of the tile's level, so a chunk's faces are held once.
+      this.pieces.set(tile.chunks[n]! * LEVELS + level, { verts: data.subarray(at + v * VERTEX_BYTES, at + (v + piece.faces * 4) * VERTEX_BYTES), faces: piece.faces });
       for (let f = 0; f < piece.faces; f++, v += 4) {
         index[k++] = v;
         index[k++] = v + 1;
