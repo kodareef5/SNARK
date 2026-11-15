@@ -17,3 +17,14 @@ reports/ruins3/circulation.json
 reports/ruins3/places.json
 reports/ruins3/bridges.json
 reports/ruins3/bridge-walk.json
+
+# Regenerated round four inventories.
+reports/ruins4/buildings.json
+reports/ruins4/labels.json
+reports/ruins4/circulation.json
+reports/ruins4/places.json
+reports/ruins4/bridges.json
+reports/ruins4/bridge-walk.json
+
+reports/ruins4/street-clusters.json
+reports/ruins4/roof-gardens.json

@@ -2,6 +2,7 @@
 // floor, each a picture of 4 m squares whose value names its zone. A square takes its zone from the ground at its middle and round it.
 
 import { S, type Ground, type World } from "./ground.ts";
+import type { Vocabulary } from "./ruin-vocabulary.ts";
 
 export const ZONE_CELL = 4;
 
@@ -66,7 +67,7 @@ const zoneIndex = (list: readonly Zone[], name: string): number => list.findInde
 const URBAN = new Set(["concrete", "deco", "terracotta", "mural"]);
 
 /** Each zone's picture, north up, a byte a square, and the layers that name them. `clear` is true where nothing may stand. */
-export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean, low: (col: number, row: number) => boolean = () => false): { plants: Uint8Array; stones: Uint8Array; sea: Uint8Array; side: number; layers: unknown[] } {
+export function makeNodes(ground: Ground, world: World, clear: (col: number, row: number) => boolean, low: (col: number, row: number) => boolean = () => false, growth?: Vocabulary["growth"]): { plants: Uint8Array; stones: Uint8Array; sea: Uint8Array; side: number; layers: unknown[] } {
   const { n, surface, height, shore } = ground;
   const side = (n - 1) / (ZONE_CELL / 2);
   const plants = new Uint8Array(side * side);
@@ -135,6 +136,7 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
           break;
         case S.STREET:
         case S.HIGHWAY:
+          if (growth && (Math.floor(col / 3) + Math.floor(row / 3)) % 4 === 0) plant = P("street garden");
           stone = T("street blocks");
           break;
         case S.DECK:
@@ -146,7 +148,7 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
       }
       // Industrial shore growth stays low enough to see the yards from the bay.
       if (industrial && plant) plant = P("yard");
-      else if (low(col, row) && plant) plant = P("street garden");
+      else if (low(col, row) && plant) plant = P(growth ? "yard" : "street garden");
       plants[py * side + px] = plant;
       stones[py * side + px] = stone;
       sea[py * side + px] = s === S.CHANNEL ? W("channel") : s === S.DEEP ? W("deep") : 0;
@@ -155,7 +157,7 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
   const layer = (seed: number, perChunk: number, zones: readonly Zone[], picture: string): unknown => ({
     seed,
     perChunk,
-    zones: zones.map((z) => ({ kinds: z.kinds, bare: z.bare })),
+    zones: zones.map((z) => ({ kinds: growth?.zones[z.name]?.kinds ?? z.kinds, bare: growth?.zones[z.name]?.bare ?? z.bare })),
     zone: picture,
   });
   return { plants, stones, sea, side, layers: [layer(0x4d1a, PLANT_SLOTS, PLANTS, "plants.png"), layer(0x4d1b, STONE_SLOTS, STONES, "stones.png"), layer(0x4d1c, SEA_SLOTS, SEA_FLOOR, "sea.png")] };

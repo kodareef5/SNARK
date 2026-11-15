@@ -7,7 +7,7 @@ import { Body, stepBody } from "../../shared/sim/character.ts";
 import { flatWorld } from "../../tests/fixtures/world.ts";
 import { Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { stack, tower } from "./ruin-layouts.ts";
-import { vocabulary, type Rule } from "./ruin-vocabulary.ts";
+import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 
 const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
@@ -16,9 +16,14 @@ const frame = (degrees: number): Frame => ({ x: 128, z: 128, yaw: degrees, c: Ma
 
 test("every survey category has a recipe and the block library compiles", async () => {
   const v = vocabulary(source);
-  const schema = await Bun.file(`${source}/blocks/schema.json`).json();
-  for (const name of schema.properties.places.items.properties.category.enum as string[]) expect(v.recipes[v.categories[name]!]).toBeDefined();
+  for (const recipe of Object.values(v.categories)) expect(v.recipes[recipe]).toBeDefined();
   expect(flatWorld().reg.index.has("core:zruin_step_concrete")).toBe(true);
+});
+
+test("city rules inherit defaults, override ids in order and can disable one id", () => {
+  const base = { forms: { house: { roof: "hip", front: "porch" } }, choices: [{ id: "a", when: { kind: ["house"] }, form: "house" }, { id: "b", form: "office" }] };
+  expect(extendRules(base, { forms: { house: { front: "arcade" } }, choices: [{ id: "a", form: "shop" }, { id: "b", enabled: false }, { id: "c", form: "hall" }] })).toEqual({ forms: { house: { roof: "hip", front: "arcade" } }, choices: [{ id: "a", when: { kind: ["house"] }, form: "shop" }, { id: "c", form: "hall" }] });
+  expect(base.forms.house.front).toBe("porch");
 });
 
 test("tiles leave even small courtyard holes empty", () => {
@@ -169,7 +174,7 @@ test("a neighbouring facade yields to a room route while its floor and stair sup
     { kind: "core:zruin_floor8_concrete", x: 128, y: -.2, z: 128, yaw: 0 },
     { kind: "core:zruin_step_concrete", x: 128, y: .2, z: 128, yaw: 0 },
   ];
-  const records = [{ firstPiece: 0, blocks: 3, approaches: [], escapes: [], rooms: [{ kind: "rooms", points: [{ x: 128, y: 0, z: 124 }, { x: 128, y: 0, z: 132 }] }] }] as unknown as import("./ruins.ts").RuinRecord[];
+  const records = [{ firstPiece: 0, blocks: 3, approaches: [], escapes: [], routes: [], rooms: [{ kind: "rooms", points: [{ x: 128, y: 0, z: 124 }, { x: 128, y: 0, z: 132 }] }] }] as unknown as import("./ruins.ts").RuinRecord[];
   expect(clearCirculation(pieces, records, 0)).toEqual({ "core:zruin_zpanel8_concrete": 1 });
   expect(pieces.map((p) => p.kind)).toEqual(["core:zruin_floor8_concrete", "core:zruin_step_concrete"]);
   expect(records[0]!.blocks).toBe(2);

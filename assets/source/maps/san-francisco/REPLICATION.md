@@ -91,10 +91,12 @@ Four Fifty Sutter Building, Pier 2's Herbst Pavilion among them): `reports/ruins
     and `world.py --accept` writes `world.json`. It also writes the settings round three reads: `bridgeGapLayer`,
     `ruins.report`, `ruins.yardDistricts`, and `containerDistrict` only when a city names one (San Francisco has no
     container port in its frame). `frame.py` writes `map.json`'s `bathymetry`.
-12. **The vocabulary is composed, not copied.** `vocabulary.py` takes the reference map's rule sections (Miami's version
-    4: forms, choices, assemblies, street, damage, interiors and the rest) and keeps the city's own districts, recipes,
-    compositions (`ruins/compositions.json`) and budgets: a city cap of 130 blocks a footprint (5.75 M; 2.89 M used) and
-    a height cap above the tallest label (336 m). San Francisco's six named places are compositions: the Transamerica
+12. **The vocabulary is composed, not copied.** It extends the shared rule library (`tools/mapworld/rules/default.json`:
+    forms, choices, assemblies, street, damage, interiors, the surge, growth and frontage), which reaches every city at
+    its build; `vocabulary.py` writes only the city's own districts, recipes, label tables, compositions
+    (`ruins/compositions.json`) and budgets: a city cap of 130 blocks a footprint (5.75 M; 2.89 M used), a height cap
+    above the tallest label (336 m) and the reference's chunk cap. San Francisco names no surge direction or sight
+    corridors of its own, so its surge is the library's. San Francisco's six named places are compositions: the Transamerica
     Pyramid narrowing in three steps to a spire, Coit Tower's column and gallery, the Ferry Building's hall and clock
     tower, the Palace of Fine Arts' rotunda of eight piers and a stepped dome, Alcatraz's cellhouse and lighthouse. A
     composition needs a footprint of a whole tile: a smaller one takes no layout at all (178 such parts).

@@ -28,6 +28,9 @@ def main():
            'center_lon_lat': [lon, lat]}
     if m.city.get('bathymetry'):
         cfg['bathymetry'] = f"bathymetry/{m.city['bathymetry']['file']}"
+    # height.png holds centimetres over this height, -100 m unless a city's ground stands higher than 555 m.
+    if 'height_zero_m' in m.city:
+        cfg['height_zero_m'] = m.city['height_zero_m']
     path = m.root / 'map.json'
     if path.exists() and json.loads(path.read_text())['center_lon_lat'] != cfg['center_lon_lat'] and '--force' not in sys.argv:
         raise SystemExit('map.json already holds another frame; the downloads and layers follow it (--force to move it)')
