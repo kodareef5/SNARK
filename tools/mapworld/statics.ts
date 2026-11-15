@@ -30,6 +30,7 @@ export interface Footprint {
 }
 
 export interface Site {
+  readonly growthRoutes: { points: { x: number; y: number; z: number }[]; width: number }[];
   readonly source: string;
   readonly world: World;
   readonly ground: Ground;
@@ -57,6 +58,7 @@ export function siteOf(world: World, ground: Ground, size: number, source: strin
     source,
     world,
     ground,
+    growthRoutes: [],
     clearPlants: new Uint8Array(((n - 1) / 2) ** 2),
     lowPlants: new Uint8Array(((n - 1) / 2) ** 2),
     footprints: ground.heaps.ruins.map((ruin) => ({ building: ruin.building, ruin, district: world.districts[ruin.district - 1] ?? null })),

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
+import { LETTER_BLOCKS } from "../../content/lettering.ts";
 import { TERMINALS } from "../../content/terminals.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
@@ -53,18 +54,18 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 3,
-    "structure/static": 8 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_SHAPES.length,
-    shape: 16 + SLOPE_SHAPES.length,
+    "structure/static": 8 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2,
+    shape: 16 + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2,
     material: 4,
     node: 14,
     "prop/container": 2,
     "prop/projectile": 2,
     buff: 7,
     spawns: 4,
-    map: 3,
+    map: 4,
     rename: 59,
   });
-  expect(rest.length).toBe(285 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length);
+  expect(rest.length).toBe(286 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

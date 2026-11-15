@@ -55,6 +55,7 @@ export const SIDES = [[0, -1], [1, 0], [0, 1], [-1, 0]] as const;
 interface Entry { x: number; y: number; z: number; yaw: number; coreX: number; coreZ: number; crossing?: boolean; }
 
 export class Mason {
+  readonly assemblies: StaticPiece[][] = [];
   readonly pieces: StaticPiece[] = [];
   readonly clear: { x: number; z: number; radius: number }[] = [];
   readonly routes: { x: number; y: number; z: number; yaw: number; floors: number }[] = [];
@@ -151,7 +152,7 @@ export function reserveRoutes(m: Mason): number {
     const dir = r.floors % 2 === 0 ? -1 : 1;
     paths.push([point(dir * 1.5, r.floors * 4, dir * 3.25), point(dir * 1.5, r.floors * 4, dir * 5.5)]);
   }
-  const removable = new Set(["fin4", "fin8", "fin16", "crown", "zcore", "zroof8", "zroof16", "zbalcony", "sill8", "sill4"]);
+  const removable = new Set(["fin4", "fin8", "fin16", "crown", "zcore", "zroof8", "zroof16", "zbalcony", "sill8", "sill4", "zshrub", "zrooftree"]);
   const before = m.pieces.length;
   const kept = m.pieces.filter((p) => {
     const name = p.kind.split("_")[1] as RuinShape;
@@ -171,5 +172,7 @@ export function reserveRoutes(m: Mason): number {
     }
     return true;
   });
-  m.pieces.length = 0; for (const p of kept) m.pieces.push(p); return before - kept.length;
+  const present = new Set(kept);
+  for (const group of m.assemblies) if (group.some((p) => !present.has(p))) for (const p of group) present.delete(p);
+  m.pieces.length = 0; for (const p of kept) if (present.has(p)) m.pieces.push(p); return before - m.pieces.length;
 }

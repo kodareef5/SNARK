@@ -9,16 +9,22 @@ export interface Recipe {
   bay: number; height: number; retain: number; holes: number; wall: number; accent: RuinFinish; feature: string; play: string;
 }
 interface Modifier { match: string; accent?: RuinFinish; finish?: RuinFinish; feature?: string; retain?: number; holes?: number; meaning: string; }
-export interface Form { plan?: string; marker?: string; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
-export interface Assembly { role: string; clearance?: string; parts: [RuinShape, number, number, number, RuinFinish | "finish", number?][]; }
+export interface Form { plan?: string; marker?: string; terrace?: number; shell: string; inside: string; roof: string; front: string; windowEvery: number; }
+export interface Assembly { role: string; clearance?: string; passage?: [number, number][]; parts: [RuinShape, number, number, number, RuinFinish | "finish", number?][]; }
 interface Choice { id: string; when: { kind?: string[]; recipe?: string[]; district?: string[]; name?: string; areaAbove?: number; areaBelow?: number; heightAbove?: number; heightBelow?: number; waterBelow?: number; waterAbove?: number; builtBefore?: number; neighboursAbove?: number; trades?: string[] }; form?: string; finish?: RuinFinish; collapse?: string[]; }
-export interface Composition { operations: { op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number }[]; }
+export interface Composition { operations: ({ op: "stack" | "parts" | "front" | "ribs" | "tower" | "arena" | "portal" | "ring" | "dome"; rect?: number[]; exclude?: number[]; height?: number | null; offset?: number; feature?: string; form?: Form; playable?: number; coreU?: number; hall?: boolean; fromTop?: boolean; parts?: Assembly["parts"]; finish?: RuinFinish; rear?: boolean; width?: number } & Round)[]; }
+/** A ring of pieces round a centre, or a dome of such rings: in the footprint's metres, from the ground's height. */
+export interface Round { at?: [number, number]; radius?: number; heights?: number[]; y?: number; drum?: number; shape?: RuinShape; arc?: [number, number]; }
 export interface Vocabulary {
+  sightlines?: { place: string; from: [number, number]; length: number; width: number }[];
+  event: { travel: [number, number]; reach: number; shelter: number; cell: number; bands: { below: number; modes: string[] }[] };
+  growth: { zones: Record<string, { bare?: number; kinds?: Record<string, number> }>; roofChance: number; lowAroundPlace: Record<string, number>; canopy: Record<string, [number, number]> };
+  frontage: { gap: number; angle: number };
   interiors: Record<string, { divider: RuinShape | null; back: RuinShape | null; parts: Assembly["parts"] }>;
   damage: Record<string, { radius: number; retain: number; layers: number }>;
   compositions: Record<string, Composition>;
   forms: Record<string, Form>; choices: Choice[]; assemblies: Record<string, Assembly>;
-  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[] };
+  street: { spacing: number; chance: number; assemblies: string[]; yardAssemblies: string[]; clusterSpacing: number; clusterChance: number; junctionAssemblies: string[]; edgeAssemblies: string[]; yardClusters: string[] };
   version: number; seed: number; budgets: { maxChunk: number; maxCity: number; maxPlayableFloors: number; maxHeight: number };
   categories: Record<string, string>; recipes: Record<string, Recipe>;
   styles: Modifier[]; periods: Modifier[]; materials: Modifier[]; character: Modifier[];
@@ -26,6 +32,9 @@ export interface Vocabulary {
   districts: Record<string, { finish: RuinFinish[]; fallback: string; lowRiseFeature?: string; lowRiseBelow?: number; wall?: number; holes?: number; infill?: RuinFinish; }>;
 }
 export interface Rule {
+  event?: { travel: [number, number]; exposure: number; shelter: number };
+  party?: number[];
+  roofGrowth?: number;
   recipe: string; height: number; finish: RuinFinish; feature: string; holes: number; wall: number; bay: number;
   compositions?: Record<string, Composition>;
   interiors?: Vocabulary["interiors"];
@@ -34,7 +43,28 @@ export interface Rule {
   infill?: RuinFinish;
   matched: string[]; provisional: boolean;
 }
-export const vocabulary = (source: string): Vocabulary => JSON.parse(readFileSync(join(source, "ruins/vocabulary.json"), "utf8")) as Vocabulary;
+/** Objects extend by key; ordered rule lists extend by id. A disabled id removes an inherited rule. */
+export function extendRules(base: unknown, patch: unknown): unknown {
+  if (Array.isArray(base) && Array.isArray(patch) && [...base, ...patch].every((r) => r && typeof r === "object" && "id" in r)) {
+    const rules = new Map(base.map((r) => [r.id, r]));
+    for (const r of patch) {
+      if (r.enabled === false) rules.delete(r.id);
+      else rules.set(r.id, extendRules(rules.get(r.id), r));
+    }
+    return [...rules.values()];
+  }
+  if (base && patch && typeof base === "object" && typeof patch === "object" && !Array.isArray(base) && !Array.isArray(patch)) {
+    const result = { ...base } as Record<string, unknown>;
+    for (const [key, value] of Object.entries(patch)) result[key] = extendRules(result[key], value);
+    return result;
+  }
+  return patch;
+}
+
+export const vocabulary = (source: string): Vocabulary => extendRules(
+  JSON.parse(readFileSync(join(import.meta.dir, "rules/default.json"), "utf8")),
+  JSON.parse(readFileSync(join(source, "ruins/vocabulary.json"), "utf8")),
+) as Vocabulary;
 
 export function ruleFor(f: Footprint, v: Vocabulary, facts: Facts, context = { water: Infinity, neighbours: 0 }): Rule {
   const d = v.districts[f.district?.name ?? ""] ?? v.districts.default!;

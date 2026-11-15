@@ -1,7 +1,7 @@
 // The action state machine, stepped once a tick from the same button bits on the server and on the client that predicts its body.
 // It decides only when a swing lands, a shot leaves or a reload ends. What they hit is decided in server/combat.ts.
 
-import { BTN_MELEE, BTN_PRIMARY, BTN_RELOAD, MF_OUT, MODE_SWIM, MODE_WALK, type Body } from "./character.ts";
+import { BTN_MELEE, BTN_PRIMARY, BTN_RELOAD, MF_OUT, MODE_FLYER, MODE_SWIM, MODE_WALK, type Body } from "./character.ts";
 
 export const ACT_NONE = 0;
 export const ACT_EQUIP = 1;
@@ -88,6 +88,14 @@ export const actionOut = {
 };
 
 /**
+ * Just after a ridden mount's action step: a bite that began this tick costs `units` of its stamina (Registry.biteStamina,
+ * ARK's 5 for a pteranodon), never below none. Server and client call it alike. A creature no one rides bites for nothing.
+ */
+export function biteCost(b: Body, units: number): void {
+  if (units > 0 && b.act === ACT_SWING && b.actTicks === 0) b.stamina = b.stamina > units ? b.stamina - units : 0;
+}
+
+/**
  * `buttons` are held and `pressed` went down this tick. The caller passes `pressed` because each side already knows it.
  * A reload starts only if it would leave more rounds in the weapon than it has (`b.reloadTo`, which the server keeps).
  *
@@ -103,8 +111,8 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
   out.draw = 0;
   out.reloaded = false;
   const reloadTo = b.reloadTo;
-  // A body that is not in the world or is unconscious does nothing, and its act ends.
-  if ((b.mode !== MODE_WALK && b.mode !== MODE_SWIM) || (b.mflags & MF_OUT) !== 0) {
+  // A body that is not in the world or is unconscious does nothing, and its act ends. A flyer bites in its own flight too.
+  if ((b.mode !== MODE_WALK && b.mode !== MODE_SWIM && b.mode !== MODE_FLYER) || (b.mflags & MF_OUT) !== 0) {
     b.act = ACT_NONE;
     b.actTicks = 0;
     return;

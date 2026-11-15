@@ -151,7 +151,7 @@ export function placeObelisks(ground: Ground, world: World, toSample: (lon: numb
   });
 }
 
-export function placeRegions(ground: Ground, size: number): Region[] {
+export function placeRegions(ground: Ground, size: number, spawns: readonly Spawn[] = [], easyWithin = 0): Region[] {
   const { n, surface, height } = ground;
   const out: Region[] = [];
   const cells = (span: number, take: (s: number) => boolean, minArea: number, emit: (x: number, z: number, area: number) => void): void => {
@@ -177,5 +177,8 @@ export function placeRegions(ground: Ground, size: number): Region[] {
   cells(64, (s) => SAND.has(s) || s === S.WET_SAND, 2000, (x, z, area) => out.push({ spawns: "core:spawns_beach", count: Math.max(2, Math.min(8, Math.round(area / 3000))), x, z, radius: Math.round(Math.max(30, Math.min(90, Math.sqrt(area / Math.PI) * 1.3))) }));
   cells(192, (s) => s === S.CANOPY || s === S.GREEN || s === S.MANGROVE, 25000, (x, z, area) => out.push({ spawns: "core:spawns_jungle", count: Math.max(2, Math.min(9, Math.round(area / 10000))), x, z, radius: 160 }));
   cells(192, (s) => s === S.HEAP || s === S.FLOOR || s === S.SPILL || s === S.COURT, 40000, (x, z) => out.push({ spawns: "core:spawns_jungle", count: 2, x, z, radius: 150 }));
-  return out.map((r) => ({ ...r, x: Math.round(r.x * 2) / 2, z: Math.round(r.z * 2) / 2 }));
+  // ARK's spawn points stand in easy zones. Where a map has no beach by one, the regions round it take the beach's table.
+  const easy = out.filter((r) => r.spawns === "core:spawns_beach");
+  const placed = out.map((r) => (r.spawns === "core:spawns_jungle" && spawns.some((s) => Math.hypot(s.x - r.x, s.z - r.z) < easyWithin && !easy.some((b) => Math.hypot(s.x - b.x, s.z - b.z) < easyWithin)) ? { ...r, spawns: "core:spawns_beach" } : r));
+  return placed.map((r) => ({ ...r, x: Math.round(r.x * 2) / 2, z: Math.round(r.z * 2) / 2 }));
 }
