@@ -231,7 +231,11 @@ const NODES: NodeDef[] = [
 const MAKING: Def[] = [
   ...making("spear", "Spear", 2, 3, 1, 3, [["flint", 2], ["wood", 8], ["fiber", 12]]),
   ...making("narcotic", "Narcotic", 6, 6, 1, 4, [["narcoberry", 5], ["meat", 1]]),
-  ...making("ingot", "Smelting", 20, 6, 1, 6, [["ore", 2], ["wood", 1]]),
+  // The metal ingot has no engram and is not made in the hand, as in ARK, where the refining forge makes it (by the user,
+  // 2026-11-15, on planning/reference/stations-plan.md's question 2: no rename, no refund). The forge's recipe is S1's; until
+  // then ingots come from what is given. A save that knew the engram "Smelting" loads without it, and a job of ingots it was
+  // making is dropped (server/progression.ts). Its recipe's old id still reads as the ingot.
+  { type: "rename", id: id("make-ingot"), to: [id("ingot")] },
   ...making("gunpowder", "Gunpowder", 21, 2, 1, 2, [["flint", 1], ["stone", 1], ["wood", 1]]),
   // Each piece of an armor tier has its own engram, at the tier's level and cost. They were one engram for all five once,
   // and a save that knew the set knows every piece.

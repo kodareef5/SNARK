@@ -24,10 +24,11 @@ const ROW = 22;
 const PAD = 12;
 const BUTTON = 58;
 
-/** The items made at a station of structure kind `kind`, in content order. */
+/** The items made at a station of structure kind `kind`, in content order. A lit station makes what it makes out. */
 export function stationRecipes(reg: Registry, kind: number): number[] {
+  const base = reg.stationBase[kind] ?? 0;
   const out: number[] = [];
-  for (let k = 1; k < reg.defs.length; k++) if (reg.craftAt[k] === kind) out.push(k);
+  for (let k = 1; base !== 0 && k < reg.defs.length; k++) if (reg.craftAt[k] === base) out.push(k);
   return out.slice(0, MAX_RECIPES);
 }
 

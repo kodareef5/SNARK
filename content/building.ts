@@ -219,7 +219,5 @@ export const BUILDING_CONTENT: readonly Def[] = [
   ]),
   ...STORES.flatMap(store),
   ...BEDS.flatMap(bed),
-  { type: "item", class: "resource", id: "core:paste", stack: 100, weight: 0.01, label: "cementing paste", color: 15 },
-  crafting("core:paste", { needs: [{ item: "core:chitin", count: 4 }, { item: "core:stone", count: 8 }], seconds: 2, xp: 2 }),
-  { type: "engram", id: "core:engram-paste", label: "Cementing paste", level: 15, cost: 3, item: "core:paste" },
+  // Cementing paste, which the metal tier and the vault are made of, is the item program's: content/items/resources.ts.
 ];

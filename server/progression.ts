@@ -193,12 +193,14 @@ export class Progression {
 
   /**
    * Made at `station` (a structure's record) for the survivor `by`: queued on the station's record, from what lies in it,
-   * and landing in it. Only an item whose craft names the station's kind is made there.
+   * and landing in it. Only an item whose craft names the station's kind is made there; a lit station and the same station
+   * out are one kind to it (Registry.stationBase).
    */
   craftAt(by: EntityRecord, station: EntityRecord, item: number, count: number): number {
     const craft = this.craftOf(item);
     if (!craft || !(count >= 1 && count <= 100)) return RESULT_INVALID;
-    if (station.at < 0 || station === by || this.world.reg.craftAt[item] !== station.kind) return RESULT_INVALID;
+    const at = this.world.reg.craftAt[item]!;
+    if (station.at < 0 || station === by || at === 0 || at !== this.world.reg.stationBase[station.kind]) return RESULT_INVALID;
     return this.queue(station, by, craft, item, count);
   }
 
@@ -217,7 +219,7 @@ export class Progression {
     if (!craft) return RESULT_INVALID;
     // Made where its craft says: in the hands from the survivor's own, or at a station of the right kind from the station's.
     const at = this.world.reg.craftAt[item]!;
-    if (at === 0 ? on !== by : on === by || on.at < 0 || on.kind !== at) return RESULT_INVALID;
+    if (at === 0 ? on !== by : on === by || on.at < 0 || this.world.reg.stationBase[on.kind] !== at) return RESULT_INVALID;
     return this.queue(on, by, craft, item, count, inv.quality[slot]!);
   }
 
@@ -291,6 +293,14 @@ export class Progression {
 
   /** Restores the craft deadline of a loaded record. */
   resume(rec: EntityRecord): void {
+    // A job of something no longer made at all is dropped, as a job whose content is gone is when read: the metal ingot
+    // in the hand, since the stations wave (planning/reference/stations-plan.md, Decided 2).
+    const made = rec.jobs.filter((j) => this.craftOf(j.item) !== null);
+    if (made.length !== rec.jobs.length) {
+      rec.jobs.splice(0, rec.jobs.length, ...made);
+      rec.progVersion++;
+      this.records.dirty.add(rec.pid);
+    }
     const job = rec.jobs[0];
     if (!job) return;
     if (job.doneAt === 0) this.start(rec);
