@@ -8,12 +8,11 @@ import math
 
 import broadleaf as bl
 import far
-import heads as hd
 import oaks
 from kit import UP, Mesh, add, dot, hash01, horizontal, interp, mix, mul, rng_for, sub, unit
 from layout import CUTS
 
-ATLAS, BARK, STEM, MASS = oaks.ATLAS, oaks.BARK, oaks.STEM, oaks.MASS
+ATLAS, BARK, STEM, CROWN = oaks.ATLAS, oaks.BARK, oaks.STEM, oaks.CROWN
 LIGHT, MID, DARK = oaks.LIGHT, oaks.MID, oaks.DARK
 
 # stem: radius at 1.3 m. fork: where the limbs leave. lean: degrees the trunk leans, toward `heading` (degrees). lobe:
@@ -129,7 +128,7 @@ def young(name, lod):
                                 3: ((4, 0, 0), (2, 1, 1), 0.08), 4: ((3, 0, 0), (1, 1, 1), 0.1)}[lod]
     bl.wood(m, limbs, order_sides, keep, BARK, STEM, least)
     if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, MASS[0], shade, SPRAYS[lod])
+        bl.head_crown(m, heads, lod, rng, ATLAS, CROWN, shade, SPRAYS[lod])
         if lod <= 1:
             oaks.epiphytes(m, spec, limbs, shade, lobes, lod, beards=(3, 2), ferns=False)
     else:

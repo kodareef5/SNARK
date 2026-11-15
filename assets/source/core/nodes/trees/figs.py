@@ -8,11 +8,10 @@ import math
 import broadleaf as bl
 import far
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, sheet, sub, tube, unit
-from layout import CUTS, FIG_ROOTS, ROOTS_SIZE, RUIN_SIZE, RUINS, crown_mass
+from layout import CUTS, FIG_ROOTS, ROOTS_SIZE, RUIN_SIZE, RUINS
 
 ATLAS = "fig_leaves"
 CROWN = "fig_crown"
-MASS = crown_mass(CROWN)
 BARK = "fig_bark"
 STEM = "f908a80"
 LIGHT, MID, DARK = "f446730", "f3a5625", "f2c3b2b"

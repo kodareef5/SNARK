@@ -52,21 +52,8 @@ LEAVES = {
 CLUSTERS = (0, 1, 2, 3)
 MASS = (0.0, 0.5, 1.0, 1.0)
 
-# The opaque crown materials (crowns.py): where each picture holds its kind's crown skin as sun leaves and as shade
-# leaves, and the metres one skin spans across. The oak's fill its picture; the fig's and the mangrove's its upper half,
-# over what the figs swallowed (RUINS) and over the prop roots (ROOTS_AT).
-CROWN_SKIN = {
-    "oak_crown": (((0.0, 0.0, 1.0, 0.5), (0.0, 0.5, 1.0, 1.0)), 4.8),
-    "fig_crown": (((0.0, 0.0, 1.0, 0.25), (0.0, 0.25, 1.0, 0.5)), 6.4),
-    "mangrove_crown": (((0.0, 0.0, 1.0, 0.25), (0.0, 0.25, 1.0, 0.5)), 4.0),
-}
+# Where the mangrove's crown picture holds the prop roots' picture, under its heads of leaves (crowns.py).
 ROOTS_AT = (0.0, 0.5, 1.0, 1.0)
-
-
-def crown_mass(name):
-    """A crown skin as broadleaf.skin takes it: its material, its rectangles of sun and shade leaves, the metres across."""
-    rects, width = CROWN_SKIN[name]
-    return (name, rects, width)
 
 
 # A crown of heads of leaves (heads.py) wears cells of its crown picture, a quarter of it across and down, each a disc

@@ -10,12 +10,11 @@ import math
 import broadleaf as bl
 import far
 from kit import UP, Mesh, add, dot, hash01, horizontal, interp, length, lerp, mix, mul, rng_for, sub, tube, unit
-from layout import CUTS, ROOTS_AT, SPANS, crown_mass
+from layout import CUTS, ROOTS_AT, SPANS
 
 ATLAS = "mangrove_leaves"
 BARK = "mangrove_bark"
 ROOTS = "mangrove_crown"
-MASS = crown_mass(ROOTS)
 STEM = "f7f7970"
 WET = "f4f4a44"
 LIGHT, MID, DARK = "f446730", "f3a5625", "f2c3b2b"

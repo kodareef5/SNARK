@@ -7,12 +7,11 @@ import math
 
 import broadleaf as bl
 import far
-import heads as hd
 from kit import UP, Mesh, add, cross, dot, hash01, horizontal, length, lerp, mix, mul, rng_for, rotate, sheet, sub, tube, unit
-from layout import CUTS, FERN_SIZE, MOSS_SIZE, OAK_FERN, OAK_MOSS, SPANS, crown_mass
+from layout import CUTS, FERN_SIZE, MOSS_SIZE, OAK_FERN, OAK_MOSS, SPANS
 
 ATLAS = "oak_leaves"
-MASS = crown_mass("oak_crown")
+CROWN = "oak_crown"
 BARK = "oak_bark"
 STEM = "f493f34"
 LIGHT, MID, DARK = "f6b7c44", "f5d6a39", "f434924"
@@ -137,7 +136,7 @@ def oak(name, lod):
     if spec.get("collar") is not None:
         collar(m, spec, lod)
     if lod <= 3:
-        bl.head_crown(m, heads, lod, rng, ATLAS, MASS[0], shade)
+        bl.head_crown(m, heads, lod, rng, ATLAS, CROWN, shade)
         if lod <= 1:
             epiphytes(m, spec, limbs, shade, lobes, lod)
     else:
