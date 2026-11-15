@@ -1392,7 +1392,7 @@ export class DeviceRun {
     const hf = this.side.hf;
     const side = this.report.terrain!.side;
     const [x, z] = [Math.min(Math.max(at.x, 0), side), Math.min(Math.max(at.z, 0), side)];
-    this.fly = { x, y: Math.max(hf.heightAt(x, z), hf.seaLevel) + FLIGHT_UP, z, yaw: f.heading, pitch: -0.3 };
+    this.fly = { x, y: Math.max(hf.heightAt(x, z), hf.waterAt(x, z)) + FLIGHT_UP, z, yaw: f.heading, pitch: -0.3 };
   }
 
   private terrain(now: number, gap: number, p: FramePacket, drawMs: number): boolean {
@@ -1510,7 +1510,7 @@ export class DeviceRun {
   private middle(up: number, pitch: number): void {
     const hf = this.side.hf;
     const mid = ((hf.nx - 1) * hf.cell) / 2;
-    this.fly = { x: mid, y: Math.max(hf.heightAt(mid, mid), hf.seaLevel) + up, z: mid, yaw: 0, pitch };
+    this.fly = { x: mid, y: Math.max(hf.heightAt(mid, mid), hf.waterAt(mid, mid)) + up, z: mid, yaw: 0, pitch };
   }
 
   /**

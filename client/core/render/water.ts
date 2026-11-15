@@ -3,7 +3,8 @@
 // reflected to, by Fresnel's term, and glints where it mirrors the sun and the moon. Under that is the water itself:
 // clear in the shallows and the deep blue of open sea, by how deep the water is there, read from the terrain's own
 // heights, and see-through over its last 30 cm at the shore. The sun's shadow falls on its glint and on the light in
-// it. Then haze, exposure and the tone curve, as everything lit is shown.
+// it. Then haze, exposure and the tone curve, as everything lit is shown. A lake's surface (lakes.ts) is drawn by the
+// same program: the depth is the height of the pixel's own surface over the ground, whatever level that stands at.
 //
 // The maths is here twice, as GLSL and as functions on numbers, written from the same constants. The rasterizer does
 // not draw it (D264): the twins are what the lit probe holds a GPU's pictures to. Under water, and in a plain sky, the
@@ -109,12 +110,13 @@ export function waveStrength(height: number): number {
 }
 
 /**
- * Fills the sea's part of a frame block, whose sky must be filled first: where the camera is over the two wave layers,
- * and where it is in the samples of each of the ground's two pairs of pictures (terrain.ts), the window drawn
- * (`window` as the packet's groundWindow has it) and the whole map's; sea level among the heights; how strong the
- * waves are at the hour. Core works these out in double precision.
+ * Fills the sea's part of a frame block, whose sky and eye height must be filled first: where the camera is over the two
+ * wave layers, and where it is in the samples of each of the ground's two pairs of pictures (terrain.ts), the window
+ * drawn (`window` as the packet's groundWindow has it) and the whole map's; among the heights, the level the eye height
+ * is measured from, the sea's or 0 with none, or the camera's own height `y` where that is lower and the eye height
+ * holds at 0; how strong the waves are at the hour. Core works these out in double precision.
  */
-export function seaFrame(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, x: number, z: number, seconds: number): void {
+export function seaFrame(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, x: number, z: number, seconds: number, y = Infinity): void {
   over(LONG, x, z, seconds, frame, FRAME.waves);
   over(SHORT, x, z, seconds, frame, FRAME.waves + 2);
   over(SWELL, x, z, seconds, frame, FRAME.swell);
@@ -123,7 +125,7 @@ export function seaFrame(frame: Float32Array, hf: Heightfield, size: GroundSize,
   frame[FRAME.ground + 1] = window[0]! >= 0 ? z / cell[SOURCE_WINDOW]! - window[2]! : -1e6;
   frame[FRAME.ground + 2] = x / cell[SOURCE_MAP]!;
   frame[FRAME.ground + 3] = z / cell[SOURCE_MAP]!;
-  frame[FRAME.sea] = (hf.seaLevel - hf.minY) / hf.stepY;
+  frame[FRAME.sea] = (Math.min(hf.seaLevel > -Infinity ? hf.seaLevel : 0, y) - hf.minY) / hf.stepY;
   frame[FRAME.sea + 1] = hf.stepY;
   frame[FRAME.sea + 2] = 1 / cell[SOURCE_WINDOW]!;
   frame[FRAME.sea + 3] = waveStrength((Math.asin(Math.max(-1, Math.min(1, -frame[FRAME.moon + 1]!))) * 180) / Math.PI);
@@ -146,11 +148,13 @@ function floorAt(sample: (i: number, j: number) => number, last: [number, number
 }
 
 /**
- * Metres of sea over the ground at a point `rx`, `rz` metres from the camera, read as the WATER program reads it from
- * a frame block `seaFrame` filled: from the window round the camera, eased into the whole map's pair over the window's
- * last EASE samples, and OPEN_SEA past the map's edges. Under 0 where the ground is above the sea.
+ * Metres of water over the ground at a point of its surface `rx`, `ry`, `rz` metres from the camera, read as the WATER
+ * program reads it from a frame block `seaFrame` filled: the point's height over the frame's level (the eye height and
+ * `ry`, which is on the sea's surface unless said) less the ground's, from the window round the camera, eased into the
+ * whole map's pair over the window's last EASE samples, and OPEN_SEA past the map's edges. Under 0 where the ground is
+ * above the water.
  */
-export function seaDepth(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, rx: number, rz: number): number {
+export function seaDepth(frame: Float32Array, hf: Heightfield, size: GroundSize, window: Int32Array, rx: number, rz: number, ry = -frame[FRAME.eyeHeight]!): number {
   const lastMap: [number, number] = [size.width[SOURCE_MAP]! - 1, size.height[SOURCE_MAP]! - 1];
   const mu = frame[FRAME.ground + 2]! + (rx * frame[FRAME.sea + 2]!) / COARSE;
   const mv = frame[FRAME.ground + 3]! + (rz * frame[FRAME.sea + 2]!) / COARSE;
@@ -163,7 +167,7 @@ export function seaDepth(frame: Float32Array, hf: Heightfield, size: GroundSize,
   const fine = (i: number, j: number): number => hf.heights[(window[2]! + j) * hf.nx + window[1]! + i]!;
   let h = ease < 1 ? floorAt(coarse, lastMap, mu, mv) : 0;
   if (ease > 0) h += (floorAt(fine, lastWin, wu, wv) - h) * ease;
-  return (frame[FRAME.sea]! - h) * frame[FRAME.sea + 1]!;
+  return (frame[FRAME.sea]! - h) * frame[FRAME.sea + 1]! + (frame[FRAME.eyeHeight]! + ry);
 }
 
 /** What the WATER program makes of a pixel before it is shown: the light it adds over what is under it, and how much of that it covers. */
@@ -324,21 +328,21 @@ vec3 glint(vec3 l, vec3 colour, float a2, vec3 n, vec3 v, float nv) {
   float gloss = exp((c2 - 1.0) / (c2 * a2)) / (a2 * c2 * c2) * 0.5 / (nl * sqrt(nv * nv * (1.0 - a2) + a2) + nv * sqrt(nl * nl * (1.0 - a2) + a2));
   return colour * nl * gloss * (${g(SEA_F0)} + ${g(1 - SEA_F0)} * pow(1.0 - vh, 5.0));
 }
-// The twin of seaDepth: metres of sea over the ground 'rel' from the camera.
-float seaDepth(vec2 rel) {
+// The twin of seaDepth: metres of water over the ground under the surface 'rel' from the camera.
+float seaDepth(vec3 rel) {
   vec2 lastMap = vec2(textureSize(uMapHeight, 0) - 1);
-  vec2 m = fGround.zw + rel * (fSea.z / ${g(COARSE)});
+  vec2 m = fGround.zw + rel.xz * (fSea.z / ${g(COARSE)});
   if (any(lessThan(m, vec2(0.0))) || any(greaterThan(m, lastMap))) return ${g(OPEN_SEA)};
   vec2 lastWin = vec2(textureSize(uWindowHeight, 0) - 1);
-  vec2 w = fGround.xy + rel * fSea.z;
+  vec2 w = fGround.xy + rel.xz * fSea.z;
   float ease = clamp(min(min(w.x, w.y), min(lastWin.x - w.x, lastWin.y - w.y)) / ${g(EASE)}, 0.0, 1.0);
   float h = ease < 1.0 ? floorAt(uMapHeight, m, lastMap) : 0.0;
   if (ease > 0.0) h = mix(h, floorAt(uWindowHeight, w, lastWin), ease);
-  return (fSea.x - h) * fSea.y;
+  return (fSea.x - h) * fSea.y + (fHaze.z + rel.y);
 }
 void main() {
   dropNearer();
-  float depth = seaDepth(vRel.xz);
+  float depth = seaDepth(vRel);
   if (depth <= 0.0) discard;
   float dist = length(vRel);
   vec3 v = -vRel / dist;

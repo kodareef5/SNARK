@@ -11,7 +11,7 @@ import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_CRAFT_AT, CMD_LEARN, CMD_MOVE, CMD_PLACE, CMD_SELECT, CMD_STRUCT, RESULT_DENIED, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { ON_TOP } from "../../shared/world/snap.ts";
 import { NO_PIN, STRUCT_DEMOLISH, STRUCT_LIGHT, STRUCT_PICKUP, STRUCT_USE } from "../../shared/world/upkeep.ts";
-import { KEY_STATION_JOB, KEY_STATION_RECIPE, RECIPE_MAKE, RECIPE_STATUS, StationPanel, stationRecipes } from "../../client/core/ui/station.ts";
+import { KEY_STATION_JOB, KEY_STATION_RECIPE, RECIPE_KEYS, RECIPE_MAKE, RECIPE_STATUS, StationPanel, stationRecipes } from "../../client/core/ui/station.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { flatGround } from "../fixtures/arena.ts";
 import { builder } from "../fixtures/build.ts";
@@ -98,6 +98,10 @@ test("a campfire burns the fuel on it and cooks what lies over it, at the refere
   h.run(Math.max(0, ((lit + 1800 - h.world.tick) / TICK_RATE) * 1000) + 500);
   expect([kindAt(h, fire), again.world!.structs.chunks[Math.floor(fire / 65536)]!.kind[fire & 0xffff], state.fire, h.host.stations.wentOut]).toEqual([id("campfire"), id("campfire"), null, 1]);
   expect([state.inv!.total(id("meat_cooked")), state.inv!.total(id("meat")), state.inv!.total(id("wood"))]).toEqual([3, 0, 0]);
+  // Each piece of wood that burnt out left a charcoal (ark.wiki.gg Charcoal; planning/reference/stations-plan.md, S1): the
+  // first in the slot the last wood emptied when the second piece was taken, the second as the fire went out, after the
+  // restart, from the piece the save said was burning.
+  expect([state.inv!.total(id("charcoal")), state.inv!.item.filter((i) => i !== 0).length]).toEqual([2, 2]);
   // Cooked meat spoils from the tick it was cooked, not from when someone looked. The first was cooked at lit + 600.
   const slot = state.inv!.item.indexOf(id("meat_cooked"));
   expect(state.inv!.spoilAt[slot]! - reg.spoilTicks[id("meat_cooked")]!).toBe(lit + 600);
@@ -185,8 +189,9 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   };
   const me = h.host.records.byPid.get(h.client(ada)!.pid)!;
 
-  // The client lists what the mortar makes, from content: the item names it in craft.at.
-  expect(stationRecipes(reg, id("mortar"))).toEqual([spark]);
+  // The client lists what the mortar makes, from content: the item names it in craft.at. Since S6, the narcotic, gunpowder and
+  // cementing paste too (tests/unit/ark-stations.test.ts).
+  expect(stationRecipes(reg, id("mortar")).sort((a, b) => a - b)).toEqual([spark, id("narcotic"), id("paste"), id("gunpowder")].sort((a, b) => a - b));
   expect([reg.craftAt[spark], reg.craftAt[id("pick")]]).toEqual([id("mortar"), 0]);
   // With nothing open, or a box that is no station open, nothing is made at one.
   expect(at_(ada, spark, 1)).toBe(RESULT_DENIED);
@@ -234,10 +239,12 @@ test("sparkpowder is made only at a mortar and pestle, from what lies in it and 
   f.begin(16 / 9);
   const panel = new StationPanel();
   panel.build(f, ada, reg, 883, 100);
-  expect([f.find(KEY_STATION_RECIPE)?.text, f.find(KEY_STATION_RECIPE + RECIPE_STATUS)?.text, f.find(KEY_STATION_RECIPE + RECIPE_MAKE)?.interactive, f.find(KEY_STATION_JOB)?.text]).toEqual(["sparkpowder x2: 2 flint, 1 stone", "lacks 1 flint, 1 stone", false, "nothing being made"]);
+  // Its row is where sparkpowder comes among what the mortar makes (the narcotic and cementing paste too, since S6).
+  const row = KEY_STATION_RECIPE + RECIPE_KEYS * stationRecipes(reg, id("mortar")).indexOf(spark);
+  expect([f.find(row)?.text, f.find(row + RECIPE_STATUS)?.text, f.find(row + RECIPE_MAKE)?.interactive, f.find(KEY_STATION_JOB)?.text]).toEqual(["sparkpowder x2: 2 flint, 1 stone", "lacks 1 flint, 1 stone", false, "nothing being made"]);
   let clicked = -1;
   ada.onResult = (seq, c) => void (seq !== 0 && (clicked = c));
-  expect(panel.click(KEY_STATION_RECIPE + RECIPE_MAKE, ada, reg)).toBe(true);
+  expect(panel.click(row + RECIPE_MAKE, ada, reg)).toBe(true);
   h.run(150);
   expect(clicked).toBe(-1);
   // Asked anyway, the mortar refuses it.

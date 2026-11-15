@@ -94,7 +94,8 @@ test("the content hangs together: every engram can be reached, every thing that 
   expect(levels.type === "levels" && levels.xp.length).toBe(105);
   const pack = corePack();
   const items = reg.defs.filter((d): d is ItemDef => d?.type === "item");
-  const made = items.filter((d) => d.craft !== undefined);
+  // What a fire makes by itself (the forge's ingots and gasoline) has no engram, as in ARK.
+  const made = items.filter((d) => d.craft !== undefined && !d.craft.fired);
   const engrams = reg.defs.filter((d): d is EngramDef => d?.type === "engram");
   for (const r of made) expect(engrams.filter((e) => e.item === r.id).length, r.id).toBe(1);
   for (const e of engrams) expect(e.level, e.id).toBeLessThanOrEqual(100);
