@@ -1,5 +1,0 @@
-Delivered all four textures, imagegen originals and prompts, rebuild scripts, and checks. **116 checks pass; rebuilding reproduces every texture byte for byte.** Height range: **0–240 mm**.
-
-[Distance preview](checks/purpose_distance.png) · [Report and measurements](REPORT.md)
-
-The report documents the existing rim-card scale mismatch: 8–12 cm leaves versus this brief’s 3–5 cm.

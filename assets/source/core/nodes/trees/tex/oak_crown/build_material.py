@@ -18,7 +18,8 @@ N = 512
 RADIUS = .94 * 256
 HEIGHT_MM = 240.0
 PITCH_MM = 1750.0 / RADIUS
-TARGETS = [(118,126,66),(96,108,62),(76,90,58),(82,92,70),(48,60,42)]
+ROUND2_TARGETS = [(118,126,66),(96,108,62),(76,90,58),(82,92,70),(48,60,42)]
+TARGETS = [(140,146,72),(108,120,64),*ROUND2_TARGETS[2:]]
 LUMA = np.array([.2126,.7152,.0722])
 
 
@@ -139,6 +140,43 @@ def head_colour(q, macro, radius, mask, target):
     return np.stack([red,green,blue],-1)
 
 
+def brighten_head(rgb, mask, group):
+    """Round 3: monotonic colour-only LUTs on the accepted uint8 artwork.
+
+    No spatial operations. Each channel's knee encloses every round-2 pixel
+    at luminance <=45, so deep folds remain byte-identical. Above the knee,
+    t/(p+(1-p)*t) smoothly raises faces without clipping them to a flat cap.
+    Fit the *quantized* disc mean; do not bake in the game's linear tint.
+    """
+    knees=np.array([(32,53,26),(32,52,34)][group],float)
+    old_high=np.array([165,160,85],float)
+    new_high=np.array([(180,178,90),(165,160,85)][group],float)
+    codes=np.arange(256,dtype=float)
+    out=np.empty_like(rgb);parameters=[]
+    for c in range(3):
+        counts=np.bincount(rgb[...,c][mask],minlength=256)
+        t=np.clip((codes-knees[c])/(old_high[c]-knees[c]),0,1)
+        def lut(p):
+            raised=knees[c]+(new_high[c]-knees[c])*t/(p+(1-p)*t)
+            return np.rint(np.where(codes<=knees[c],codes,raised)).astype(np.uint8)
+        def error(p):
+            return float(np.sum(lut(p)*counts)/counts.sum()-TARGETS[group][c])
+        lower,upper=.01,1.
+        if error(lower)<0 or error(upper)>0:
+            raise ValueError('Colour target is outside the protected-fold grade')
+        for _ in range(50):
+            p=(lower+upper)/2
+            if error(p)>0:lower=p
+            else:upper=p
+        p=min([lower,upper],key=lambda p:abs(error(p)))
+        out[...,c]=lut(p)[rgb[...,c]]
+        parameters.append(p)
+    return out,dict(method='per-channel monotonic rational LUT on round-2 uint8 RGB',
+                    knees_rgb=knees.tolist(),ceiling_rgb=new_high.tolist(),
+                    parameters_rgb=parameters,protected_luminance_max=45,
+                    engine_tint_baked_in=False)
+
+
 def material(raw, group, periodic=False):
     h,w=raw.shape[:2]
     y,x=np.mgrid[:h,:w]
@@ -163,7 +201,9 @@ def material(raw, group, periodic=False):
     hue=raw/np.maximum(np.sum(raw*LUMA,axis=-1),8)[...,None]
     hue-=np.mean(hue[mask],axis=0)
     hue=np.clip(hue,-.22,.22)*13
-    target=np.array(TARGETS[group],float)
+    # Reconstruct the accepted colour first. Round 3 is applied only after
+    # uint8 quantization, independently of every physical layer.
+    target=np.array(ROUND2_TARGETS[group],float)
     rgb=target+detail[...,None]*[1,.94,.55]+hue
     if not periodic:
         rgb=head_colour(q,macro,radius,mask,target)
@@ -187,15 +227,11 @@ def normals(height,pitch,periodic=False):
     return n/np.linalg.norm(n,axis=-1,keepdims=True)
 
 
-def main():
+def source_regions():
+    """The unchanged sampling/layout, also used to verify round-2 artwork."""
     top=np.asarray(Image.open(SOURCE/'top_heads_generated.png').convert('RGB'),float)
     under=np.asarray(Image.open(SOURCE/'undersides_generated.png').convert('RGB'),float)
     interior=np.asarray(Image.open(SOURCE/'interior_generated.png').convert('RGB'),float)
-    base=np.zeros((2048,2048,3),np.uint8)
-    height=np.zeros((2048,2048),np.uint16)
-    normal=np.zeros((2048,2048,3),np.uint8)
-    orm=np.zeros((2048,2048,3),np.uint8)
-    records=[]
     regions=[]
     for row in range(3):
         for col in range(4):
@@ -213,6 +249,16 @@ def main():
         regions.append((col*N,3*N,N,N,resize(raw,(N,N)),3,False))
     tile,quilt=periodic_quilt(interior)
     regions.append((1024,1536,1024,512,tile,4,True))
+    return regions,quilt
+
+
+def main():
+    base=np.zeros((2048,2048,3),np.uint8)
+    height=np.zeros((2048,2048),np.uint16)
+    normal=np.zeros((2048,2048,3),np.uint8)
+    orm=np.zeros((2048,2048,3),np.uint8)
+    records=[]
+    regions,quilt=source_regions()
     for i,(x,y,w,h,raw,group,periodic) in enumerate(regions):
         m=material(raw,group,periodic)
         sl=np.s_[y:y+h,x:x+w]
@@ -223,6 +269,9 @@ def main():
         nn=normals(hz.astype(float)*HEIGHT_MM/65535,pitch,periodic)
         normal[sl]=np.rint((nn*.5+.5)*255).astype(np.uint8)
         base[sl]=np.rint(m['rgb']).astype(np.uint8)
+        grade=None
+        if group<2:
+            base[sl],grade=brighten_head(base[sl],m['mask'],group)
         orm[sl][...,0]=np.rint(m['ao']*255).astype(np.uint8)
         orm[sl][...,1]=np.rint(m['rough']*255).astype(np.uint8)
         records.append(dict(index=i,group=group,xywh=[x,y,w,h],periodic=periodic,
@@ -230,6 +279,7 @@ def main():
                             mean_rgb=base[sl][m['mask']].mean(0).tolist(),
                             roughness_mean=float(m['rough'][m['mask']].mean()),
                             height_mm=[float(m['z'].min()),float(m['z'].max())]))
+        if grade is not None:records[-1]['colour_grade']=grade
     save_png(base,ROOT/'oak_crown_base.png',True,'Live oak heads; 12 upper discs, 2 underside discs, one periodic interior; opaque sRGB.')
     save_png(height,ROOT/'oak_crown_height.png',False,'Linear uint16; black=0 mm, white=240 mm. Relative foliage relief; mesh supplies head curvature.')
     save_png(normal,ROOT/'oak_crown_normal.png',False,'Linear tangent normal (-dH/dx, +dH/drow, 1), normalized; derived from delivered uint16 height.')

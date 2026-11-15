@@ -833,8 +833,8 @@ LEAVES_UP = 0.5
 # A head is lit as leaves are, from above more than from the side: its own normals are pressed toward its axis by this.
 LEAFY = 0.55
 HEAD_LEVELS = {
-    0: {"own": 0.62, "rings": 0, "inner": 1, "core": 0.6, "dim": 0.55, "jag": 1.0, "puff": 1.0, "sprays": 18, "loose": 0.7, "low": -0.9, "spray": 1.18, "cut": 0.58, "coarse": False},
-    1: {"own": 0.62, "rings": 1, "inner": 2, "core": 0.6, "dim": 0.5, "jag": 1.0, "puff": 1.0, "sprays": 12, "loose": 0.5, "low": -0.9, "spray": 1.2, "cut": 0.58, "coarse": True},
+    0: {"own": 0.62, "rings": 0, "inner": 1, "core": 0.55, "dim": 0.55, "jag": 1.8, "puff": 1.0, "sprays": 18, "loose": 0.7, "low": -0.9, "spray": 1.18, "cut": 0.58, "coarse": False},
+    1: {"own": 0.62, "rings": 1, "inner": 2, "core": 0.55, "dim": 0.5, "jag": 1.8, "puff": 1.0, "sprays": 12, "loose": 0.5, "low": -0.9, "spray": 1.2, "cut": 0.58, "coarse": True},
     2: {"own": 0.62, "rings": 2, "inner": 4, "core": 0.7, "dim": 0.15, "jag": 1.0, "puff": 1.15, "sprays": 6, "loose": 0.0, "low": -0.5, "spray": 1.1, "cut": 0.5, "coarse": True},
     3: {"own": 0.62, "rings": 4, "inner": 4, "core": 0.8, "dim": 0.0, "jag": 1.0, "puff": 1.25, "sprays": 4, "loose": 0.0, "low": -0.3, "spray": 1.05, "cut": 0.45, "coarse": True},
 }
@@ -885,7 +885,7 @@ def sprays(m, c, at, atlas, lit, rng, share=1.0):
         root = sub(at_surface, mul(along, s * 0.04))
         flat = sub(c.axis, mul(along, dot(c.axis, along)))
         flat = unit(flat) if length(flat) > 1e-3 else unit(cross(along, c.e1))
-        normal = rotate(flat, along, rng.uniform(-math.pi / 3, math.pi / 3))
+        normal = rotate(flat, along, rng.uniform(-1.3, 1.3))
         sun = c.tier == 0 or (c.tier == 1 and theta < 1.4)
         cell = rng.choice(TOP if sun and theta < 1.9 else RIM)
         card(m, atlas, cell, root, along, normal, s, lambda x, own=own: lit(x, own), coarse=at["coarse"], cut=min(cut, 0.8))

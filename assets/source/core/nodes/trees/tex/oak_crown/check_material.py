@@ -157,11 +157,11 @@ def edge_sheet(base):
 
 
 class Renderer:
-    def __init__(self,base,normal,orm,phone=False):
+    def __init__(self,base,normal,orm,phone=False,tint=(1.,1.,1.)):
         self.charts={}
         for idx in range(14):
             row,col=divmod(idx,4);y=row*512;x=col*512
-            b=linear(base[y:y+512,x:x+512].astype(float))
+            b=linear(base[y:y+512,x:x+512].astype(float))*np.array(tint)
             n=normal[y:y+512,x:x+512].astype(float)/127.5-1
             o=orm[y//2:y//2+256,x//2:x//2+256].astype(float)/255
             o=resize(o,(512,512))
@@ -286,6 +286,106 @@ def purpose_sheet(renderer,phone=False):
     sheet.save(CHECKS/('purpose_phone.png' if phone else 'purpose_distance.png'))
 
 
+def round3_checks(paths,base,layout,require):
+    """Reconstruct accepted art, verify its frozen hash, then audit the grade."""
+    from build_material import source_regions, material
+    baseline=json.loads((ROOT/'source/round3_baseline.json').read_text())
+    sha=lambda value:hashlib.sha256(value).hexdigest()
+    for key in ['height','normal','orm']:
+        require('round 3 '+key+' file byte-identical to round 2',
+                sha(paths[key].read_bytes())==baseline['maps'][key]['file_sha256'])
+    require('round 3 shade, undersides and interior pixels unchanged',
+            sha(base[1024:].tobytes())==baseline['maps']['base']['protected_rows_pixel_sha256'])
+    for name in ['top_heads_generated.png','undersides_generated.png','interior_generated.png',
+                 'spray_reference.png','interior_quilt.json','originals.json']:
+        key='source/'+name
+        require('round 3 unchanged '+key,sha((ROOT/key).read_bytes())==baseline['files'][key])
+    require('round 3 chart geometry and relief metadata unchanged',
+            len(layout['regions'])==len(baseline['layout']['regions']) and
+            all(all(reg[k]==old[k] for k in old if k!='mean_rgb')
+                for reg,old in zip(layout['regions'],baseline['layout']['regions'])) and
+            all(layout[k]==baseline['layout'][k] for k in
+                ['radius_pixels','disc_surface_radius_mm','height_range_mm']))
+    accepted=np.zeros_like(base)
+    raw_regions,_=source_regions()
+    for x,y,w,h,raw,group,periodic in raw_regions:
+        accepted[y:y+h,x:x+w]=np.rint(material(raw,group,periodic)['rgb']).astype(np.uint8)
+    require('round 3 reconstructed round-2 artwork matches frozen pixel hash',
+            sha(accepted.tobytes())==baseline['maps']['base']['pixel_sha256'])
+    yy,xx=np.mgrid[:512,:512];radial=np.hypot(xx-255.5,yy-255.5)/RADIUS
+    mask=radial<=1;core=radial<.65
+    bands=np.minimum((radial*16).astype(int),24)
+    def measure(a):
+        lum=np.sum(a*LUMA,axis=-1)
+        bright=mask & (lum>=np.percentile(lum[mask],90))
+        profile=np.array([lum[bands==i].mean() if np.any(bands==i) else 0 for i in range(25)])
+        residual=lum-profile[bands];contrast={}
+        for size in [50,25,12]:
+            mm=resize((radial<.85).astype(float),(size,size))>.99
+            contrast[str(size)]=float(np.std(resize(residual,(size,size))[mm]))
+        return dict(mean_rgb=a[mask].mean(0).tolist(),brightest_tenth_mean_rgb=a[bright].mean(0).tolist(),
+                    dark_gap_p05_srgb=float(np.percentile(lum[mask],5)),
+                    face_gap_p90_p10_srgb=float(np.diff(np.percentile(lum[core],[10,90]))[0]),
+                    fold_residual_std_srgb=contrast)
+    comparisons=[]
+    for idx in range(8):
+        row,col=divmod(idx,4);sl=np.s_[row*512:(row+1)*512,col*512:(col+1)*512]
+        old=accepted[sl];new=base[sl];deep=np.sum(old*LUMA,axis=-1)<=45
+        frozen=baseline['regions'][idx]
+        require(f'round 3 cell {idx} deep folds byte-identical',
+                sha(deep.tobytes())==frozen['deep_fold_mask_sha256'] and
+                sha(new[deep].tobytes())==frozen['deep_fold_rgb_sha256'])
+        require(f'round 3 cell {idx} only brightens pigment',np.all(new>=old))
+        # Equal source channel values must stay equal, with monotonic ordering:
+        # a spatial edit, blur, new leaf, or changed silhouette fails this test.
+        monotonic=True
+        for c in range(3):
+            pairs=np.unique(np.stack([old[...,c].ravel(),new[...,c].ravel()],axis=1),axis=0)
+            monotonic &= len(pairs)==len(np.unique(old[...,c])) and np.all(np.diff(pairs[:,1].astype(int))>=0)
+        require(f'round 3 cell {idx} leaf drawing preserved by monotonic colour-only mapping',monotonic)
+        before=measure(old);after=measure(new)
+        ratios={size:after['fold_residual_std_srgb'][size]/before['fold_residual_std_srgb'][size]
+                for size in ['50','25','12']}
+        require(f'round 3 cell {idx} retains at least 90 percent of distant fold contrast',min(ratios.values())>=.90)
+        require(f'round 3 cell {idx} face/gap separation retained',
+                after['face_gap_p90_p10_srgb']>=before['face_gap_p90_p10_srgb']*.95)
+        if row==0:
+            require(f'round 3 cell {idx} bright leaf faces near 180 178 90',
+                    np.max(np.abs(np.array(after['brightest_tenth_mean_rgb'])-[180,178,90]))<2)
+        comparisons.append(dict(cell=idx,before=before,after=after,fold_contrast_ratio=ratios,
+                                protected_deep_fold_pixels=int(deep.sum())))
+    return accepted,dict(baseline='source/round3_baseline.json',cells=comparisons,
+                         engine_tint_linear=[.96,1.,.72],engine_tint_baked_in=False)
+
+
+def round3_sheet(before,after,normal,orm):
+    """Identical patches and fixed-exposure renders, with engine tint once."""
+    tint=(.96,1.,.72)
+    renderers=[Renderer(b,normal,orm,tint=tint) for b in [before,after]]
+    sheet=Image.new('RGB',(1440,1280),(25,31,32));d=ImageDraw.Draw(sheet)
+    fg=(229,233,213);muted=(179,190,184)
+    d.text((24,16),'ROUND 3  |  brighter sun faces, the same leaves and dark folds',font=font(26),fill=fg)
+    d.text((24,56),'Top: unlit texture patches, 128px enlarged 2×. Bottom: material renders with the game tint applied once.',font=font(18),fill=muted)
+    for group,(idx,label) in enumerate([(0,'Sun / cell 0'),(5,'Middle / cell 5')]):
+        x0=24+group*710;row,col=divmod(idx,4)
+        for version,a in enumerate([before,after]):
+            x=x0+version*340
+            d.text((x,100),f'{label} / round {2+version}',font=font(19),fill=fg)
+            patch=a[row*512+150:row*512+278,col*512+150:col*512+278]
+            sheet.paste(Image.fromarray(patch).resize((256,256),Image.Resampling.NEAREST),(x,138))
+        d.text((x0,416),'50px (2×)                 25px (3×)             12px (4×)',font=font(18),fill=fg)
+        for light_idx,(name,light) in enumerate([('Above',(.1,-.15,1)),('Side',(-1,-.15,.2))]):
+            for version,renderer in enumerate(renderers):
+                y=465+(light_idx*2+version)*175
+                d.text((x0,y),f'{name} / round {2+version}',font=font(18),fill=muted)
+                for xoff,size,zoom in [(0,50,2),(235,25,3),(440,12,4)]:
+                    im=renderer.render(idx,size,light)
+                    sheet.paste(im.resize((im.width*zoom,im.height*zoom),Image.Resampling.NEAREST),(x0+xoff,y+30))
+    d.text((24,1188),'Tint = linear RGB (0.96, 1.00, 0.72), before lighting; it is not baked into the delivered sRGB atlas.',font=font(19),fill=fg)
+    d.text((24,1225),'Same geometry, normals, AO, roughness, light and exposure. CPU diagnostics, not new game captures.',font=font(18),fill=muted)
+    sheet.save(CHECKS/'round3_colour_comparison.png')
+
+
 def main():
     CHECKS.mkdir(exist_ok=True)
     paths={k:ROOT/f'oak_crown_{k}.png' for k in ['base','height','normal','orm']}
@@ -303,7 +403,8 @@ def main():
     require('base sRGB tag', 'sRGB' in png_chunks(paths['base']))
     for k in ['height','normal','orm']:require(k+' linear interpretation','sRGB' not in png_chunks(paths[k]))
     require('metalness zero',np.count_nonzero(a['orm'][...,2])==0)
-    require('bright pigment ceiling',np.all(a['base']<=np.array([165,160,85])))
+    require('sun bright pigment ceiling',np.all(a['base'][:512]<=np.array([180,178,90])))
+    require('other rows retain accepted pigment ceiling',np.all(a['base'][512:]<=np.array([165,160,85])))
     h=a['height'].astype(float)*HEIGHT_MM/65535
     n=normalize(a['normal'].astype(float)/127.5-1)
     layout=json.loads((ROOT/'source/layout.json').read_text())
@@ -315,8 +416,11 @@ def main():
     require('accepted layout and physical pitches unchanged',
         all(all(reg[k]==old[k] for k in ['index','group','xywh','periodic','pitch_mm'])
             for reg,old in zip(layout['regions'],baseline['layout']['regions'])))
-    require('accepted population targets unchanged',layout['targets']==baseline['layout']['targets'])
+    require('round 3 sun and middle population targets',layout['targets'][:2]==[[140,146,72],[108,120,64]])
+    require('protected population targets unchanged',layout['targets'][2:]==baseline['layout']['targets'][2:])
     require('no blue shadow population',np.all(a['base'][...,2]<=a['base'][...,1]))
+    accepted,round3=round3_checks(paths,a['base'],layout,require)
+    round3_sheet(accepted,a['base'],a['normal'],a['orm'])
     regions=[]
     yy,xx=np.mgrid[:512,:512]
     radial=np.hypot(xx-255.5,yy-255.5)/RADIUS
@@ -485,7 +589,7 @@ def main():
             d.text((xx+110,yy-10),f'{mm}mm',font=font(15),fill=(179,190,184))
     detail.save(CHECKS/'leaf_detail.png')
     stats=dict(tests=tests,passed=sum(t['pass_'] for t in tests),total=len(tests),regions=regions,seams=seams,
-        neighbour_max_correlations=correlations,phone_comparison=phone_errors,feedback_registration=feedback,
+        neighbour_max_correlations=correlations,phone_comparison=phone_errors,feedback_registration=feedback,round3=round3,
         leaf_scale=dict(target_mm=[80,120],target_native_pixels=[80/(1750/RADIUS),120/(1750/RADIUS)],
             method='Visual same-physical-scale card comparison and native rulers; bright-core proxy is not full-blade segmentation.'),
         height_range_mm=[0,240],observed_height_mm=[float(h.min()),float(h.max())],

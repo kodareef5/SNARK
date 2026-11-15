@@ -1,5 +1,0 @@
-Repainted the tops and undersides with larger, crisp spray leaves and rebuilt all four maps.
-
-**191 checks pass**, with a byte-identical rebuild. Row means remain within 0.02 RGB values; the interior is unchanged. Superseded files were removed.
-
-Review the [spray-scale comparison](checks/leaf_scale_and_card.png), [game comparison](checks/feedback_comparison.png), and updated [REPORT.md](REPORT.md), which includes the saved maps and built-in imagegen prompts.

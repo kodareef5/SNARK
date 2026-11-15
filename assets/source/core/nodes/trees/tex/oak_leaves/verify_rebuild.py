@@ -24,8 +24,9 @@ def main():
     inputs += [ROOT / 'guide/LAYOUT.json', ROOT / 'source/round3_generation_prompt.txt',
                ROOT / 'source/round3_preservation_reference.json',
                ROOT / 'source/round4_preservation_reference.json',
+               ROOT / 'source/round5_preservation_reference.json',
                ROOT / 'source/round2_accessory_reference.json', ROOT / 'source/reused_generation_prompts.json',
-               ROOT / 'feedback/concept_crown_detail.png']
+               ROOT / 'feedback/concept_crown_detail.jpg']
     metrics = json.loads((ROOT / 'checks/metrics.json').read_text())
     result = dict(before=before, after=after, byte_identical=before == after,
                   checks_passed=metrics['passed'],

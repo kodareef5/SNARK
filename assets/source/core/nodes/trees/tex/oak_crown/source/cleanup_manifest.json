@@ -58,5 +58,35 @@
     ],
     "baseline": "round2_baseline.json",
     "preserved": "all four interior rectangles, interior source, supplied feedback and briefs"
+  },
+  "round3": {
+    "removed": [
+      {
+        "path": ".round3_work/round2_base.png",
+        "sha256": "985078d67a3da85cbbc49be6445e5dfbcc3f500d6049e14e7c8e567aaa0e890a"
+      },
+      {
+        "path": "artist-last.txt",
+        "sha256": "67cf2856f0f76416bc6329521940adfb7a1ae40ad49f1caa339ac4a58b66d842"
+      },
+      {
+        "path": "artist-last-round2.txt",
+        "sha256": "6e7a2637bd401a9160fcbdb2a7aae13808be75debd1b6167203d8125565103fa"
+      }
+    ],
+    "replaced_in_place": [
+      "oak_crown_base.png",
+      "REPORT.md",
+      "source/layout.json",
+      "build_material.py",
+      "check_material.py",
+      "checks/* current diagnostic outputs"
+    ],
+    "added": [
+      "source/round3_baseline.json",
+      "checks/round3_colour_comparison.png"
+    ],
+    "baseline": "round3_baseline.json",
+    "preserved": "Height, normal and ORM files byte-identical; base rows 3 and 4 pixel-identical; deep folds with round-2 luminance <=45 pixel-identical; layout geometry, relief and generated originals unchanged."
   }
 }
