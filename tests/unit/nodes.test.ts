@@ -446,9 +446,10 @@ test("a survivor walks over a low slab and is stopped by a tall boulder as their
       }
     }
   }
-  // The low slabs are walked onto from every side, and the tall boulders at their largest from none. A body climbs a
-  // stone wherever its boxes rise by little more than a step at a time, so it walks up most of the rest from some side.
-  for (const low of ["core:rock_4", "core:rock_5", "core:rubble_3"]) expect([climbs.get(`${low} least`), climbs.get(`${low} most`)]).toEqual([[8], [8]]);
+  // The low slabs are walked onto from every side, but for one of rock_5's at its largest, where a box 0.56 m high meets its
+  // 0.38 m one, and the tall boulders at their largest from none. A body climbs a stone wherever its boxes rise by no more
+  // than a step at a time, so it walks up most of the rest from some side.
+  for (const low of ["core:rock_4", "core:rock_5", "core:rubble_3"]) expect([climbs.get(`${low} least`), climbs.get(`${low} most`)]).toEqual([[8], [low === "core:rock_5" ? 7 : 8]]);
   for (const tall of ["core:rock_2", "core:rock_6"]) expect(climbs.get(`${tall} most`)).toEqual([0]);
 });
 
