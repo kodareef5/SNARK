@@ -1,9 +1,9 @@
 chunk-report
-{"mapHash":2872150786,"total":2906801,"maximum":942,"cap":999,"passed":true}
+{"mapHash":2219525009,"total":2909021,"maximum":1813,"cap":2000,"passed":true}
 
 ruin-walk
 {
-  "mapHash": 2872150786,
+  "mapHash": 2219525009,
   "includes": "terrain and resource-node collision; ascent, landing turns, roof exit, descent and independent stair exits in both directions",
   "sampledBuildings": 1992,
   "stairRoutes": 3632,
@@ -18,28 +18,28 @@ ruin-walk
 
 room-walk
 {
-  "mapHash": 2872150786,
-  "routes": 13842,
+  "mapHash": 2219525009,
+  "routes": 13886,
   "kinds": {
     "suites": 3253,
     "refuge": 8,
     "rooms": 4073,
     "classrooms": 566,
     "lobby": 368,
-    "shops": 2229,
+    "shops": 2273,
     "storage": 1113,
     "domestic": 818,
     "wards": 115,
     "street-gap": 1299
   },
-  "passed": 13842,
+  "passed": 13886,
   "failed": 0,
   "failures": []
 }
 
 access-walk
 {
-  "mapHash": 2872150786,
+  "mapHash": 2219525009,
   "routes": 34729,
   "buildingsWithApproach": 22915,
   "coresWithoutStreetApproach": [
@@ -483,7 +483,7 @@ access-walk
 
 bridge-walk
 {
-  "mapHash": 2872150786,
+  "mapHash": 2219525009,
   "ways": 217,
   "built": 217,
   "deckRuns": 217,
@@ -496,12 +496,12 @@ bridge-walk
   },
   "passed": 217,
   "failed": 0,
-  "steps": 89812,
+  "steps": 89777,
   "failures": []
 }
 
 walk
-host on core:los-angeles in 1821 ms, 382 spawn regions; 1511 MB resident, 1074 MB of heap
+host on core:los-angeles in 1570 ms, 382 spawn regions; 1650 MB resident, 1069 MB of heap
 ok   Hollywood/Highland arrived 1.5 m from its point at y 115.6; walked 27 m to y 115.8, 27 m to y 115.4, 27 m to y 115.2, 27 m to y 115.5
 ok   Lake Hollywood Park arrived 0.0 m from its point at y 275.7; walked 25 m to y 276.3, 27 m to y 275.6, 26 m to y 274.7, 27 m to y 275.7
 ok   Astronomers' Monument arrived 0.0 m from its point at y 345.1; walked 27 m to y 344.8, 27 m to y 339.6, 13 m to y 339.6, 1 m to y 339.6
@@ -512,22 +512,23 @@ ok   Pan Pacific Park arrived 0.0 m from its point at y 62.5; walked 27 m to y 6
 ok   Paramount Pictures Studio Tour arrived 0.0 m from its point at y 86.9; walked 27 m to y 87.4, 27 m to y 88.0, 27 m to y 88.0, 25 m to y 87.1
 ok   Universal CityWalk Hollywood arrived 0.0 m from its point at y 239.3; walked 27 m to y 239.4, 27 m to y 237.8, 25 m to y 237.8, 27 m to y 239.4
 ok   Dante's View   arrived 0.0 m from its point at y 475.5; walked 26 m to y 473.0, 27 m to y 454.1, 26 m to y 462.0, 27 m to y 475.5
-1954 wild creatures after 391 s of virtual time; 1533 MB resident, 1074 MB of heap, server and client in one process
+1975 wild creatures after 391 s of virtual time; 1688 MB resident, 1069 MB of heap, server and client in one process
 
 obelisk-walk
-core:los-angeles: 2906801 static pieces and 265469 standing nodes in the way, 32.3% of samples closed, in 1.1 s
+core:los-angeles: 2909021 static pieces and 265339 standing nodes in the way, 32.8% of samples closed, in 0.9 s
 ok   Griffith Observatory   terminal at 1796.0, 5695.2 facing 180 degrees: from Astronomers' Monument, 144 m of way, walked in 32 s to 0.09 m of its front at y 344.0
 ok   Hollywood and Highland terminal at 5282.8, 3630.4 facing 85 degrees: from Hollywood/Highland, 113 m of way, walked in 25 s to 0.12 m of its front at y 115.0
 ok   Lake Hollywood Park    terminal at 4171.9, 6378.3 facing 334 degrees: from Lake Hollywood Park, 69 m of way, walked in 16 s to 0.11 m of its front at y 275.8
-3 of 3 reached in 1.1 s
+3 of 3 reached in 1.0 s
 
 server-bench
 {
-  "milliseconds": 1452.5,
-  "residentMiB": 1228.3,
-  "heapMiB": 487.9,
-  "peakResidentMiB": 1228.3,
-  "mapBytes": 101525129,
+  "milliseconds": 1324.5,
+  "residentMiB": 1257.4,
+  "heapMiB": 597.9,
+  "peakResidentMiB": 1259.8,
+  "mapBytes": 101898408,
   "spawnRegions": 382,
   "scope": "createHost, real pack clips, wild spawner; no HTTP listener, persistence or clients"
 }
+
