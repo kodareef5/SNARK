@@ -45,7 +45,7 @@ from mathutils import Matrix, Quaternion, Vector
 # =====================================================================================================================
 
 SPAN = 7.0  # wingtip to wingtip at rest
-STANDING_HEIGHT = 2.25  # ground to the top of the crest, in STANCE
+STANDING_HEIGHT = 2.39  # ground to the top of the crest, in STANCE
 FPS = 30  # the engine's tick rate; a clip has one frame per tick
 
 # Metres per second, from the function list (ARK 1x).
@@ -99,13 +99,14 @@ BONES = [
     ("spine",       "pelvis",     (0.000, 0.760, -0.360),   (0.000, 0.800, -0.120)),
     ("chest",       "spine",      (0.000, 0.800, -0.120),   (0.000, 0.860, 0.100)),
     ("tail",        "pelvis",     (0.000, 0.700, -0.660),   (0.000, 0.670, -0.800)),
-    ("neck_1",      "chest",      (0.000, 0.860, 0.100),    (0.000, 1.021, 0.201)),
-    ("neck_2",      "neck_1",     (0.000, 1.021, 0.201),    (0.000, 1.167, 0.323)),
-    ("neck_3",      "neck_2",     (0.000, 1.167, 0.323),    (0.000, 1.273, 0.469)),
-    ("neck_4",      "neck_3",     (0.000, 1.273, 0.469),    (0.000, 1.330, 0.640)),
-    ("skull",       "neck_4",     (0.000, 1.330, 0.640),    (0.000, 1.345, 0.900)),
+    # The neck in an S: forward and low from the shoulders, then up to the head held level.
+    ("neck_1",      "chest",      (0.000, 0.860, 0.100),    (0.000, 0.915, 0.235)),
+    ("neck_2",      "neck_1",     (0.000, 0.915, 0.235),    (0.000, 0.990, 0.370)),
+    ("neck_3",      "neck_2",     (0.000, 0.990, 0.370),    (0.000, 1.110, 0.500)),
+    ("neck_4",      "neck_3",     (0.000, 1.110, 0.500),    (0.000, 1.290, 0.630)),
+    ("skull",       "neck_4",     (0.000, 1.290, 0.630),    (0.000, 1.320, 0.900)),
     # The lower beak hinges under the back of the eye.
-    ("jaw",         "skull",      (0.000, 1.292, 0.700),    (0.000, 1.292, 1.480)),
+    ("jaw",         "skull",      (0.000, 1.292, 0.700),    (0.000, 1.297, 1.545)),
     # The arm: upper arm, forearm, the long wing metacarpal (hand) to the knuckle where the wing finger starts.
     ("upper_arm_l", "chest",      (0.150, 0.770, 0.000),    (0.454, 0.847, 0.065)),
     ("forearm_l",   "upper_arm_l", (0.454, 0.847, 0.065),   (0.966, 0.928, 0.029)),
@@ -121,29 +122,29 @@ BONES = [
     ("wing_4_l",    "wing_3_l",   (3.203, 0.711, -0.513),   (3.481, 0.642, -0.731)),
     # Three battens across the membrane, from the leading edge to the trailing edge: they hold it taut spread and draw
     # it in folded. Each follows the bone it hangs on.
-    ("web_1_l",     "forearm_l",  (0.454, 0.847, 0.065),    (0.450, 0.590, -0.950)),
-    ("web_2_l",     "hand_l",     (0.966, 0.928, 0.029),    (0.970, 0.770, -0.730)),
-    ("web_3_l",     "wing_2_l",   (2.204, 0.892, -0.096),   (2.200, 0.790, -0.560)),
+    ("web_1_l",     "forearm_l",  (0.454, 0.847, 0.065),    (0.450, 0.590, -0.870)),
+    ("web_2_l",     "hand_l",     (0.966, 0.928, 0.029),    (0.970, 0.770, -0.655)),
+    ("web_3_l",     "wing_2_l",   (2.204, 0.892, -0.096),   (2.200, 0.790, -0.525)),
     # The leg trails in the glide. Plantigrade: on the ground the foot lies flat and the toes grip.
     ("thigh_l",     "pelvis",     (0.080, 0.720, -0.600),   (0.140, 0.620, -0.830)),
     ("shin_l",      "thigh_l",    (0.140, 0.620, -0.830),   (0.200, 0.470, -1.080)),
     ("foot_l",      "shin_l",     (0.200, 0.470, -1.080),   (0.210, 0.430, -1.180)),
-    ("toes_l",      "foot_l",     (0.210, 0.430, -1.180),   (0.220, 0.405, -1.262)),
+    ("toes_l",      "foot_l",     (0.210, 0.430, -1.180),   (0.222, 0.395, -1.290)),
 ]
 
 # The trailing edge of the membrane at rest, from the ankle to the wingtip: one long concave curve.
-TRAILING_EDGE = [(0.200, 0.470, -1.080), (0.450, 0.590, -0.950), (0.970, 0.770, -0.730), (1.550, 0.830, -0.620),
-                 (2.200, 0.790, -0.560), (2.800, 0.730, -0.600), (3.481, 0.642, -0.731)]
+TRAILING_EDGE = [(0.200, 0.470, -1.080), (0.450, 0.590, -0.870), (0.970, 0.770, -0.655), (1.550, 0.830, -0.548),
+                 (2.200, 0.790, -0.525), (2.800, 0.730, -0.592), (3.481, 0.642, -0.731)]
 # Where the membrane meets the body at rest: from the shoulder joint along the flank to the hip, down the outside of
 # the thigh and shin to the ankle.
 WING_ROOT = [(0.150, 0.770, 0.000), (0.165, 0.775, -0.300), (0.150, 0.725, -0.560), (0.170, 0.620, -0.830),
              (0.200, 0.470, -1.080)]
 # The front membrane's leading edge at rest, from the shoulder to the wrist, bowing forward of the arm.
-FRONT_EDGE = [(0.150, 0.770, 0.010), (0.400, 0.850, 0.085), (0.700, 0.895, 0.125), (0.966, 0.928, 0.045)]
+FRONT_EDGE = [(0.150, 0.770, 0.010), (0.400, 0.850, 0.070), (0.700, 0.895, 0.075), (0.966, 0.928, 0.040)]
 
 # Named points on bones. Positions at rest; asset.ts gives each as its offset from its bone's joint.
 SOCKETS = {
-    "beak_tip":    ("skull",  (0.000, 1.306, 1.552)),   # tip of the upper beak: bite origin
+    "beak_tip":    ("skull",  (0.000, 1.300, 1.627)),   # tip of the upper beak: bite origin
     "head":        ("skull",  (0.000, 1.360, 0.780)),   # middle of the skull: look target, head hit zone
     "overhead":    ("skull",  (0.000, 2.150, 0.600)),   # above the crest: marks over it
     # The top of the saddle pad on the midline, under the rider's hips: the rider's hip joints sit RIDER["hips"] above it.
@@ -248,7 +249,7 @@ STANCE = {
     "body": {"pos": (0.000, 0.500, -0.420), "pitch": 52.0},
     "spine": {"pitch": -8.0},
     "chest": {"pitch": -14.0},
-    "head": {"pos": (0.000, 1.830, 0.150), "pitch": 0.0},
+    "head": {"pos": (0.000, 1.773, 0.172), "pitch": 0.0},
     "foot": {"pos": (0.150, 0.030, -0.430), "pitch": 158.0, "yaw": 0.0, "roll": 0.0},
     "knee": (0.200, 0.700, 0.200),
     "tail": {"lift": 0.0},
@@ -269,7 +270,7 @@ FOLD = {
     "wing_2":   (0.420, 0.940, -0.450),
     "wing_3":   (0.420, 1.160, -0.900),
     "wing_4":   (0.400, 1.270, -1.240),
-    "web_1":    (0.220, 0.450, -0.700),
+    "web_1":    (0.270, 0.450, -0.700),
     "web_2":    (0.340, 0.100, 0.250),
     "web_3":    (0.400, 0.750, -0.800),
 }
@@ -300,37 +301,37 @@ BODY = {  # along the spine from the rump to the front of the chest: centre line
              (0.0, 0.755, -0.150), (0.0, 0.755, -0.020), (0.0, 0.765, 0.110), (0.0, 0.785, 0.200), (0.0, 0.800, 0.230)],
     "half_width": [0.020, 0.095, 0.120, 0.140, 0.155, 0.165, 0.150, 0.100, 0.020],
     "half_top": [0.020, 0.085, 0.110, 0.130, 0.150, 0.165, 0.150, 0.100, 0.020],
-    "half_bottom": [0.020, 0.090, 0.120, 0.140, 0.160, 0.170, 0.160, 0.110, 0.020],
+    "half_bottom": [0.020, 0.085, 0.105, 0.115, 0.130, 0.140, 0.135, 0.100, 0.020],
 }
 NECK = {  # centre line from inside the chest to inside the skull
-    "path": [(0.0, 0.800, 0.050), (0.0, 0.880, 0.110), (0.0, 1.021, 0.201), (0.0, 1.167, 0.323), (0.0, 1.273, 0.469),
-             (0.0, 1.330, 0.630), (0.0, 1.345, 0.700)],
-    "half_width": [0.110, 0.095, 0.075, 0.064, 0.058, 0.056, 0.055],
-    "half_depth": [0.130, 0.110, 0.082, 0.068, 0.062, 0.060, 0.058],
+    "path": [(0.0, 0.800, 0.050), (0.0, 0.870, 0.110), (0.0, 0.915, 0.235), (0.0, 0.990, 0.370), (0.0, 1.110, 0.500),
+             (0.0, 1.290, 0.630), (0.0, 1.330, 0.700)],
+    "half_width": [0.110, 0.092, 0.072, 0.062, 0.057, 0.055, 0.055],
+    "half_depth": [0.125, 0.105, 0.078, 0.066, 0.062, 0.060, 0.058],
 }
 # The skull with the upper beak, back to front: centre line, half-width, half-height above and below the centre.
 HEAD = {
-    "path": [(0.0, 1.360, 0.560), (0.0, 1.362, 0.640), (0.0, 1.360, 0.760), (0.0, 1.350, 0.880), (0.0, 1.335, 1.040),
-             (0.0, 1.322, 1.220), (0.0, 1.313, 1.400), (0.0, 1.311, 1.500), (0.0, 1.315, 1.552)],
+    "path": [(0.0, 1.360, 0.560), (0.0, 1.362, 0.640), (0.0, 1.360, 0.760), (0.0, 1.350, 0.880), (0.0, 1.335, 1.060),
+             (0.0, 1.320, 1.260), (0.0, 1.308, 1.450), (0.0, 1.302, 1.570), (0.0, 1.300, 1.627)],
     "half_width": [0.040, 0.075, 0.085, 0.065, 0.048, 0.034, 0.020, 0.010, 0.002],
     "half_top": [0.050, 0.095, 0.100, 0.075, 0.055, 0.040, 0.025, 0.012, 0.002],
     "half_bottom": [0.040, 0.060, 0.060, 0.050, 0.035, 0.024, 0.014, 0.006, 0.002],
 }
 JAW = {
-    "path": [(0.0, 1.292, 0.700), (0.0, 1.285, 0.880), (0.0, 1.287, 1.100), (0.0, 1.294, 1.300), (0.0, 1.300, 1.470)],
+    "path": [(0.0, 1.292, 0.700), (0.0, 1.285, 0.880), (0.0, 1.286, 1.120), (0.0, 1.292, 1.350), (0.0, 1.297, 1.545)],
     "half_width": [0.060, 0.050, 0.034, 0.020, 0.004],
     "half_top": [0.012, 0.012, 0.010, 0.007, 0.002],
     "half_bottom": [0.030, 0.030, 0.022, 0.012, 0.002],
 }
 # The crest: one flat blade from the back of the skull, sweeping up and back. Centre line, half-thickness, half-depth.
 CREST = {
-    "path": [(0.0, 1.380, 0.700), (0.0, 1.470, 0.600), (0.0, 1.600, 0.480), (0.0, 1.740, 0.360), (0.0, 1.860, 0.270),
-             (0.0, 1.910, 0.235)],
+    "path": [(0.0, 1.380, 0.700), (0.0, 1.475, 0.610), (0.0, 1.605, 0.500), (0.0, 1.745, 0.395), (0.0, 1.860, 0.310),
+             (0.0, 1.906, 0.282)],
     "half_thickness": [0.030, 0.026, 0.020, 0.014, 0.009, 0.004],
     "half_depth": [0.100, 0.095, 0.075, 0.055, 0.035, 0.010],
     "band": (0.15, 0.27),  # the band, as fractions of the way from the tip
 }
-EYE = {"centre": (0.072, 1.375, 0.835), "radius": 0.024}
+EYE = {"centre": (0.069, 1.371, 0.815), "radius": 0.024}
 TAIL = {"half": 0.035}
 LIMBS = {  # radii along each bone, start and end
     "upper_arm": (0.070, 0.052), "forearm": (0.046, 0.038), "hand": (0.036, 0.032), "fingers": (0.020, 0.008),

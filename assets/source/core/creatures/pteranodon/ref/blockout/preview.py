@@ -49,14 +49,14 @@ POSES = {
     "downstroke": {"wings": dict(flap=-42, sweep=10, curl=14)},
     "half_folded": {"wings": dict(fold=0.5)},
     "tucked": {"wings": dict(fold=0.8, flap=10)},
-    "dive": {"body": dict(pitch=-35), "wings": dict(fold=0.42, sweep=-18, flap=12), "head": dict(pos=(0, 1.20, 0.68), pitch=-30)},
+    "dive": {"body": dict(pitch=-35), "wings": dict(fold=0.42, sweep=-18, flap=12), "head": dict(pos=(0, 1.16, 0.67), pitch=-30)},
     "bank": {"body": dict(roll=40), "wings": dict(curl=6)},
     "hover": {"body": dict(pos=(0, 0.80, -0.55), pitch=48), "wings": dict(flap=20, sweep=18, curl=10),
-              "feet": dict(pos=(0.16, 0.18, -0.40), pitch=60), "head": dict(pos=(0, 1.62, 0.20), pitch=0)},
+              "feet": dict(pos=(0.16, 0.18, -0.40), pitch=60), "head": dict(pos=(0, 1.58, 0.21), pitch=0)},
     "carry": {"feet": dict(pos=(0.08, 0.30, -0.30), pitch=95), "talons": 1.0},
     "stance": {"stance": True},
     "stance_open": {"stance": True, "wings": dict(fold=0.55, flap=25), "unplant": True},
-    "call": {"stance": True, "head": dict(pos=(0, 1.95, 0.25), pitch=28), "beak": 1.0},
+    "call": {"stance": True, "head": dict(pos=(0, 1.90, 0.27), pitch=28), "beak": 1.0},
 }
 
 # What --checks measures: the folded wing in STANCE and in the air, and the seated rider's room through the flap,
@@ -73,13 +73,13 @@ CHECKS = {
     "downstroke": POSES["downstroke"],
     "sweep_forward": {"wings": dict(flap=20, sweep=22)},
     "sweep_12": {"wings": dict(flap=20, sweep=12)},
-    "head_left": {"head": dict(pos=(0.05, 1.36, 0.62), yaw=80)},
-    "head_right": {"head": dict(pos=(-0.05, 1.36, 0.62), yaw=-80)},
-    "head_up": {"head": dict(pos=(0, 1.42, 0.62), pitch=20)},
-    "head_up_10": {"head": dict(pos=(0, 1.36, 0.64), pitch=10)},
-    "call_stance": {"stance": True, "head": dict(pos=(0, 1.95, 0.25), pitch=28), "beak": 1.0},
-    "head_down": {"head": dict(pos=(0, 1.22, 0.70), pitch=-35)},
-    "bite": {"head": dict(pos=(0, 1.10, 0.80), pitch=-45), "beak": 1.0},
+    "head_left": {"head": dict(pos=(0.05, 1.32, 0.61), yaw=80)},
+    "head_right": {"head": dict(pos=(-0.05, 1.32, 0.61), yaw=-80)},
+    "head_up": {"head": dict(pos=(0, 1.38, 0.61), pitch=20)},
+    "head_up_10": {"head": dict(pos=(0, 1.32, 0.63), pitch=10)},
+    "call_stance": {"stance": True, "head": dict(pos=(0, 1.90, 0.27), pitch=28), "beak": 1.0},
+    "head_down": {"head": dict(pos=(0, 1.18, 0.69), pitch=-35)},
+    "bite": {"head": dict(pos=(0, 1.06, 0.79), pitch=-45), "beak": 1.0},
 }
 
 
