@@ -599,8 +599,8 @@ export class Rasterizer {
 
   /**
    * A DRAW_DETAILS draw: each particle's card as the details program draws it (client/core/render/detailtext.ts). Its
-   * picture is read from the atlas at one level for the whole card, the level its size on screen asks for. A cut-out
-   * pixel is kept by its middle, as any cut-out's is; `cover` is a half where the picture's edge crosses it.
+   * picture is read from the atlas at the level each pixel's footprint asks for. A cut-out pixel is kept by its middle,
+   * as any cut-out's is; `cover` is a half where the picture's edge crosses it.
    */
   private details(p: FramePacket, d: number): void {
     const blend = (p.drawFlags[d]! & DRAW_BLEND) !== 0;
@@ -613,6 +613,7 @@ export class Rasterizer {
     const poly = this.wide;
     const texel = [0, 0, 0, 0];
     const shape = [0, 0, 0];
+    const [right, below] = [[0, 0], [0, 0]];
     const exposure = p.frame[FRAME.exposure]!;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const o = (p.drawFirst[d]! + k) * DETAIL_FLOATS;
@@ -627,7 +628,6 @@ export class Rasterizer {
       });
       const count = this.clip(src, 4, 5, 5, poly, 9);
       if (count < 3) continue;
-      let [x0, x1, y0, y1] = [Infinity, -Infinity, Infinity, -Infinity];
       for (let i = 0; i < count; i++) {
         const [x, y, z] = [poly[i * 9]!, poly[i * 9 + 1]!, poly[i * 9 + 2]!];
         const w = m[3]! * x + m[7]! * y + m[11]! * z;
@@ -635,10 +635,7 @@ export class Rasterizer {
         poly[i * 9 + 6] = (0.5 - ((m[1]! * x + m[5]! * y + m[9]! * z) / w) * 0.5) * H;
         poly[i * 9 + 7] = 1 / w;
         poly[i * 9 + 8] = (m[2]! * x + m[6]! * y + m[10]! * z + m[14]!) / w;
-        [x0, x1, y0, y1] = [Math.min(x0, poly[i * 9 + 5]!), Math.max(x1, poly[i * 9 + 5]!), Math.min(y0, poly[i * 9 + 6]!), Math.max(y1, poly[i * 9 + 6]!)];
       }
-      // The level the card's size on screen asks for, as a card's derivatives would.
-      const level = Math.min(MOST_LOD, Math.max(0, Math.log2(CELL / Math.max(1, Math.max(x1 - x0, y1 - y0)))));
       // Its normal, turned to the eye.
       const [ax, ay, az, bx, by, bz] = [f[o + DETAIL.along]!, f[o + DETAIL.along + 1]!, f[o + DETAIL.along + 2]!, f[o + DETAIL.across]!, f[o + DETAIL.across + 1]!, f[o + DETAIL.across + 2]!];
       let [nx, ny, nz] = [by * az - bz * ay, bz * ax - bx * az, bx * ay - by * ax];
@@ -664,6 +661,19 @@ export class Rasterizer {
             const qs = 1 / (q0 + q1 + q2);
             const carry = (j: number): number => (q0 * poly[v0 + j]! + q1 * poly[v1 + j]! + q2 * poly[v2 + j]!) * qs;
             const [rx, ry, rz, cx, cy] = [carry(0), carry(1), carry(2), carry(3), carry(4)];
+            // The level the pixel's footprint in the picture asks for, from the corner a pixel right and a pixel down, as derivatives give it.
+            const corner = (gx: number, gy: number, out: number[]): void => {
+              const g0 = ((px1 - gx) * (py2 - gy) - (px2 - gx) * (py1 - gy)) / area;
+              const g1 = ((px2 - gx) * (py0 - gy) - (px0 - gx) * (py2 - gy)) / area;
+              const [w0, w1, w2] = [g0 * poly[v0 + 7]!, g1 * poly[v1 + 7]!, (1 - g0 - g1) * poly[v2 + 7]!];
+              const ws = 1 / (w0 + w1 + w2);
+              out[0] = (w0 * poly[v0 + 3]! + w1 * poly[v1 + 3]! + w2 * poly[v2 + 3]!) * ws;
+              out[1] = (w0 * poly[v0 + 4]! + w1 * poly[v1 + 4]! + w2 * poly[v2 + 4]!) * ws;
+            };
+            corner(fx + 1, fy, right);
+            corner(fx, fy + 1, below);
+            const footprint = (Math.max(Math.hypot(right[0]! - cx, right[1]! - cy), Math.hypot(below[0]! - cx, below[1]! - cy)) * CELL) / 2;
+            const level = Math.min(MOST_LOD, Math.max(0, Math.log2(Math.max(footprint, 1e-6))));
             if (p.lit) this.detailTexel(atlas, side, cells, cell, cx, cy, level, texel);
             else {
               shapeOf(flags & 7, cx, cy, shape);
