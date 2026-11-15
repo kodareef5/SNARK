@@ -56,10 +56,20 @@
   },
   "canopy": {
     "rule": "succession",
-    "share_of_vegetation": 0.62
+    "share_of_vegetation": 0.59,
+    "share_of_open": 0.15,
+    "seed": 7
   },
   "future": {
-    "spans": [],
-    "wrecks": []
+    "spans": [
+      {"road": "Davis Islands Brg", "length_m": 30, "width_m": 30, "why": "The islands' one road link: Davis Islands becomes a swim, as Miami's causeways made Miami Beach"},
+      {"road": "Selmon Expy", "length_m": 40, "width_m": 50, "why": "The expressway viaduct over the river mouth, fallen; both carriageways"},
+      {"road": "S Harbour Island Blvd", "length_m": 26, "width_m": 24, "why": "One of Harbour Island's two bridges; Beneficial Dr still stands"}
+    ],
+    "wrecks": [
+      {"e": 2572, "n": 496, "length_m": 50, "width_m": 11, "angle_degrees": 92, "why": "A tender sunk at the cruise berths of the Ybor Channel"},
+      {"e": 1638, "n": -1500, "length_m": 62, "width_m": 12, "angle_degrees": -70, "why": "A freighter down in the channel between Davis and Hookers Point"},
+      {"e": -492, "n": -2236, "length_m": 28, "width_m": 7, "angle_degrees": 30, "why": "A yacht off Bayshore Boulevard"}
+    ]
   }
 }

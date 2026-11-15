@@ -2,3 +2,11 @@
 # Left out: the downloads (SOURCES.md and downloads.json say how to fetch them again).
 raw/
 checks/
+
+# Inventories every build writes again.
+reports/ruins2/buildings.json
+reports/ruins2/labels.json
+reports/ruins2/circulation.json
+reports/ruins2/places.json
+reports/ruins2/bridges.json
+reports/ruins2/bridge-walk.json
