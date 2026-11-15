@@ -1,9 +1,15 @@
 # Prints the content lines the rock kinds should name (content/core.ts): each variant's mesh, weight and boxes, its
-# broken base and its boxes, and the size range, from the boxes make.py fitted (mesh/<name>.json). Boxes are turned
-# from Blender's axes (+Z up) to the game's (+Y up, Blender's -Y forward): at (x, z, -y), half (x, z, y).
+# broken base and its boxes, the size range, and the kind's footing, from what make.py and boxes.py wrote in
+# mesh/<name>.json. Boxes are turned from Blender's axes (+Z up) to the game's (+Y up, Blender's -Y forward): at
+# (x, z, -y), half (x, z, y).
+#
+# A kind's footing (D340) is judged FOOTING m out, where the ground may fall by that times the least, over its variants,
+# of how deep a base is buried for how far it reaches. Each variant's own reach and burial follow, at its modelled size,
+# for an engine that judged the footing by what grows there.
 #   python3 content.py
 
 import json
+import math
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -13,6 +19,7 @@ KINDS = {
     "core:metal_rock": {"names": [f"metal_rock_{k}" for k in range(1, 4)], "weights": [2, 2, 2], "size": [0.75, 1.2]},
     "core:rubble": {"names": [f"rubble_{k}" for k in range(1, 4)], "weights": [2, 2, 2], "size": [0.85, 1.15]},
 }
+FOOTING = 4.0
 
 
 def boxes(fitted):
@@ -24,16 +31,30 @@ def boxes(fitted):
     return f"[{', '.join(out)}]"
 
 
-for kind, k in KINDS.items():
-    lines = []
-    for name, weight in zip(k["names"], k["weights"]):
-        path = os.path.join(HERE, "mesh", f"{name}.json")
-        if not os.path.exists(path):
+def main():
+    for kind, k in KINDS.items():
+        lines, feet = [], []
+        for name, weight in zip(k["names"], k["weights"]):
+            path = os.path.join(HERE, "mesh", f"{name}.json")
+            if not os.path.exists(path):
+                continue
+            with open(path) as f:
+                made = json.load(f)
+            whole, broken = made[name], made[f"{name}_depleted"]
+            lines.append(f"    {{ mesh: \"core:{name}\", weight: {weight}, boxes: {boxes(whole['boxes'])},\n"
+                         f"      depleted: {{ mesh: \"core:{name}_depleted\", boxes: {boxes(broken['boxes'])} }} }},")
+            if "footing" in whole:
+                feet.append((name, whole["footing"]["reach"], whole["footing"]["burial"]))
+        if not lines:
             continue
-        with open(path) as f:
-            made = json.load(f)
-        whole, broken = made[name], made[f"{name}_depleted"]
-        lines.append(f"    {{ mesh: \"core:{name}\", weight: {weight}, boxes: {boxes(whole['boxes'])},\n"
-                     f"      depleted: {{ mesh: \"core:{name}_depleted\", boxes: {boxes(broken['boxes'])} }} }},")
-    if lines:
-        print(f"// {kind}: size {k['size']}\nvariants: [\n" + "\n".join(lines) + "\n],\n")
+        print(f"// {kind}: size {k['size']}\nvariants: [\n" + "\n".join(lines) + "\n],")
+        if feet:
+            least = min(b / r for _, r, b in feet)
+            # Down in whole centimetres, so the rule never allows more than the art holds.
+            print(f"footing: {{ reach: {FOOTING:g}, fall: {math.floor(FOOTING * least * 100) / 100} }},")
+            print("// each variant at its modelled size: " + ", ".join(f"{n} reach {r:.2f} m, buried {b:.2f} m" for n, r, b in feet))
+        print()
+
+
+if __name__ == "__main__":
+    main()

@@ -253,7 +253,9 @@ export interface PiecesAsset {
   readonly materials?: Readonly<Record<string, MaterialSpec>>;
   /**
    * Where given, every piece's coarser levels are made from its finest to the triangle budgets, as a creature's are,
-   * and this is the first flat one. Where not, a piece keeps the levels its script made.
+   * and this is the first flat one. Levels a piece's script brought ("<object>_LOD1" and on, flat) then follow those as
+   * its last ones, taking the last budgets: a far level made by hand (farnodes.ts). Where not, a piece keeps the levels
+   * its script made.
    */
   readonly flat?: number;
   readonly budgets: {

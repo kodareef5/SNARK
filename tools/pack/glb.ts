@@ -35,6 +35,8 @@ export interface ImportReport {
   /** Largest distance (0..441) between an authored colour and the palette entry used for it. */
   worstColorError: number;
   warnings: string[];
+  /** How many of its levels the file brought: the rest were made here from its finest. */
+  levels: number;
 }
 
 /** One level as it is gathered. `surface` holds while every primitive has had texture coordinates and normals. */
@@ -285,7 +287,7 @@ export function importGlb(file: Uint8Array, id: string, palette: Uint8Array, opt
     mesh.materials = materials;
   }
   // An export with no levels of its own gets ours.
-  return { mesh: withLevels(mesh), worstColorError, warnings };
+  return { mesh: withLevels(mesh), worstColorError, warnings, levels: out.length };
 }
 
 function determinant3(m: Float64Array): number {

@@ -17,9 +17,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.dont_write_bytecode = True
 
-import collide  # noqa: E402
 import png  # noqa: E402
 import shade  # noqa: E402
+from boxes import fitted  # noqa: E402
 from meshio import write_obj  # noqa: E402
 from sculpt import cached, sculpt  # noqa: E402
 from sdf import mesh_field  # noqa: E402
@@ -262,16 +262,30 @@ def islands(bm, uv):
     return out
 
 
-def charts(bm, buried, cone=math.radians(50), least=0.05):
+# How deep a face lies, by its highest corner: above the ground, in the skirt a slope shows on its downhill side, or
+# deeper. What lies in the skirt has half the pixels a metre of what stands above the ground, and what lies deeper
+# less; undersides, which nothing sees, least.
+GROUND = -0.02
+SKIRT = -0.5
+SHRINK = {0: 1.0, 1: 0.5, 2: 0.15}
+UNDERSIDE = 0.08
+
+
+def depth_of(f):
+    top = max(v.co.z for v in f.verts)
+    return 0 if top > GROUND else 1 if top > SKIRT else 2
+
+
+def charts(bm, cone=math.radians(50), least=0.05):
     """
     The faces in charts, each facing about one way: grown out from the largest face not yet taken, across edges, to
     faces whose normal lies within `cone` of the chart's mean. A chart under `least` square metres joins the neighbour
-    it shares the longest edge with. Faces above and below the ground line are never in one chart. A label a face.
+    it shares the longest edge with. Faces of different depths (`depth_of`) are never in one chart. A label a face.
     """
     from collections import deque
 
     bm.faces.ensure_lookup_table()
-    side = [f.calc_center_median().z > buried for f in bm.faces]
+    side = [depth_of(f) for f in bm.faces]
     area = [f.calc_area() for f in bm.faces]
     label = [-1] * len(bm.faces)
     k = 0
@@ -350,18 +364,19 @@ def alone(ob):
     bm.free()
 
 
-def unwrap(ob, buried=-0.1):
+def unwrap(ob):
     """
     The mesh cut into charts that each face about one way (`charts`), each laid flat with as little stretch as it
-    allows; every chart at the same pixels a metre, then those under the ground and the undersides nobody sees shrunk
-    to a twelfth across, and all packed into one picture.
+    allows; every chart at the same pixels a metre, then those under the ground shrunk by how deep they lie (SHRINK)
+    and the undersides nobody sees to a twelfth across, and all packed into one picture. A face across the ground line
+    is above it: its part above the ground is seen at full pixels.
     """
     select_only(ob)
     if not ob.data.uv_layers:
         ob.data.uv_layers.new(name="UVMap")
     bm = bmesh.new()
     bm.from_mesh(ob.data)
-    label = charts(bm, buried)
+    label = charts(bm)
     for e in bm.edges:
         fs = e.link_faces
         e.seam = len(fs) != 2 or label[fs[0].index] != label[fs[1].index]
@@ -381,13 +396,13 @@ def unwrap(ob, buried=-0.1):
     bm.from_mesh(ob.data)
     uv = bm.loops.layers.uv.active
     for island in islands(bm, uv):
-        under = all(g.calc_center_median().z <= buried for g in island)
         below = sum(g.calc_area() for g in island if g.normal.z < -0.6) > 0.8 * sum(g.calc_area() for g in island)
-        if under or below:
+        k = UNDERSIDE if below else SHRINK[min(depth_of(g) for g in island)]
+        if k < 1:
             loops = [l for g in island for l in g.loops]
             c = sum((l[uv].uv for l in loops), loops[0][uv].uv * 0) / len(loops)
             for l in loops:
-                l[uv].uv = c + (l[uv].uv - c) * 0.08
+                l[uv].uv = c + (l[uv].uv - c) * k
     bm.to_mesh(ob.data)
     bm.free()
     bpy.ops.object.mode_set(mode="EDIT")
@@ -516,7 +531,8 @@ def make(name):
         highs = [high]
         rods = rebar_of(form)
         if rods:
-            # Rebar is a rod of its own, too thin to carve: a finer one to bake from, a six-sided one in the game mesh.
+            # Rebar is a rod of its own, too thin to carve: a finer one to bake from, a six-sided one in the game mesh, or
+            # eight-sided in a broken base, whose short stubs the converter's first reduction folded flat at six.
             fine = tubes(n + "_rebar_high", rods, 10, 0.03)
             fine.data.materials.append(mat)
             zero = np.zeros(len(fine.data.vertices), np.float32)
@@ -524,7 +540,7 @@ def make(name):
                 attr = fine.data.color_attributes.new(attr_name, "FLOAT_COLOR", "POINT")
                 attr.data.foreach_set("color", np.stack(values, axis=1).ravel())
             highs.append(fine)
-            join(low, tubes(n + "_rebar", rods, 6, 0.1))
+            join(low, tubes(n + "_rebar", rods, 8 if n.endswith(DEPLETED) else 6, 0.1))
         for attr in ("visible_diffuse", "visible_glossy", "visible_shadow", "visible_transmission", "visible_volume_scatter"):
             setattr(low, attr, False)
         low.data.materials.append(target)
@@ -558,11 +574,9 @@ def make(name):
     for n, form, highs, low in pairs:
         low.location.x = 0
         count = write_mesh(low, os.path.join(HERE, "mesh", f"{n}.obj"))
-        lo, hi = form.bounds()
-        xs, ys, top = collide.heights(form.base, lo, hi)
-        fitted, err = collide.fit(xs, ys, top)
-        boxes[n] = {"boxes": [[round(float(v), 3) for v in b] for b in fitted], "fit": {k: round(v, 3) for k, v in err.items()}, "triangles": count}
-        print(f"make: {n} {count} triangles, {len(fitted)} boxes, {err}")
+        made, _ = fitted(n, form)
+        boxes[n] = {**made, "triangles": count}
+        print(f"make: {n} {count} triangles, {len(made['boxes'])} boxes, {made['fit']}")
     with open(os.path.join(HERE, "mesh", f"{name}.json"), "w") as f:
         json.dump(boxes, f, indent=1)
     print(f"make: {name} done in {time.time() - t0:.0f} s")

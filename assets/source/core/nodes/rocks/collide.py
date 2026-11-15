@@ -4,11 +4,59 @@
 # Fitted greedily: each box added is the rectangle and height that most reduce
 # how far the boxes' top lies from the rock's, cell by cell, over the rock and
 # round it, and boxes stop being added when one would gain little.
+#
+# A survivor walks up whatever rises no more than about 0.55 m at a time (the
+# step, shared/sim/character.ts), where the reference game makes a player jump
+# onto a boulder. So a stone that stands taller than a survivor's waist at some
+# size has no box lower than a step at the least of those sizes: its sides rise
+# more than a step at once and are climbed by a jump, not a walk. What of its
+# foot stands lower than that is left out of the boxes, and a body's feet sink
+# a little into it, rather than meet a ledge over it. A low stone keeps its
+# steps, and is walked onto.
 
 import numpy as np
 
 CELL = 0.05
 FLOOR = -0.3
+STEP = 0.55
+WAIST = 1.0
+MARGIN = 0.05
+
+
+def least_top(tallest, lo, hi):
+    """The lowest a box of a stone `tallest` high at its modelled size, drawn at `lo` to `hi` times it, may stand."""
+    if tallest * hi <= WAIST:
+        return 0.0
+    return (STEP + MARGIN) / max(lo, WAIST / tallest)
+
+
+def climbed(boxes, size):
+    """How high, in metres, a walk from the ground climbs the boxes of a stone drawn at `size`: up any rise of a step or less."""
+    if not boxes:
+        return 0.0
+    b = np.array(boxes, float)
+    x0, x1 = (b[:, 0] - b[:, 3]).min() - 2 * CELL, (b[:, 0] + b[:, 3]).max() + 2 * CELL
+    y0, y1 = (b[:, 1] - b[:, 4]).min() - 2 * CELL, (b[:, 1] + b[:, 4]).max() + 2 * CELL
+    xs = np.arange(x0, x1, CELL) + CELL / 2
+    ys = np.arange(y0, y1, CELL) + CELL / 2
+    X, Y = np.meshgrid(xs, ys, indexing="ij")
+    H = np.zeros(X.shape)
+    for cx, cy, cz, hx, hy, hz in boxes:
+        inside = (np.abs(X - cx) <= hx) & (np.abs(Y - cy) <= hy)
+        H = np.where(inside, np.maximum(H, cz + hz), H)
+    H = H * size
+    # From the ground round it, cell to neighbour, up a step or less, down any drop.
+    reached = H == 0
+    while True:
+        grow = reached.copy()
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            src = np.roll(reached, (dx, dy), axis=(0, 1))
+            low = np.roll(np.where(reached, H, np.inf), (dx, dy), axis=(0, 1))
+            grow |= src & (H - low <= STEP)
+        if (grow == reached).all():
+            break
+        reached = grow
+    return float(H[reached].max())
 
 
 def heights(solid, lo, hi):
@@ -48,8 +96,11 @@ def best_rect(gain):
 BEYOND = 2.0
 
 
-def fit(xs, ys, top, most=5, least_gain=0.03):
-    """Boxes as (centre, half extents) in metres, +Z up, and the error that remains, in cubic metres."""
+def fit(xs, ys, top, most=5, least_gain=0.03, least=0.0):
+    """
+    Boxes as (centre, half extents) in metres, +Z up, and the error that remains, in cubic metres. No box stands lower
+    than `least` (`least_top`).
+    """
     # Coarser cells for the search: 10 cm.
     k = 2
     n, m = top.shape[0] // k, top.shape[1] // k
@@ -67,7 +118,8 @@ def fit(xs, ys, top, most=5, least_gain=0.03):
     for _ in range(most):
         now = error(cover)
         best = None
-        for h in np.unique(np.round(np.quantile(H[H > 0], np.linspace(0.05, 1.0, 20)), 2)):
+        heights = np.unique(np.round(np.quantile(H[H > 0], np.linspace(0.05, 1.0, 20)), 2))
+        for h in heights[heights >= least] if (heights >= least).any() else heights[-1:]:
             covered = np.maximum(cover, h)
             gain = wrong(cover) - wrong(covered)
             # No sliver: a box is at least 30 cm each way.
