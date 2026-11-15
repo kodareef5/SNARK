@@ -240,29 +240,64 @@ class Study:
         coords=[np.asarray(v)%span/span*src.shape[0],np.asarray(u)%span/span*src.shape[1]]
         return np.stack([map_coordinates(src[...,c],coords,order=1,mode='grid-wrap') for c in range(6)],-1)
 
-    def wood_cylinder(self,s,theta,radius,footprint):
+    def wood_cylinder(self,s,theta,radius,footprint,local_wrap=False):
         """Close a physical-width strip of wood, preserving fine grain scale.
 
         A 400 mm swatch must not be squeezed into a 100/126 mm circumference.
-        Crop that actual width, remove only its wrap mismatch, then filter it.
-        The same correction is applied to all aligned material channels.
+        Crop that actual width and filter all aligned material channels.
+        local_wrap confines seam blending to a rear overlap on the cantle;
+        the accepted grip feet and peg retain their original projection.
         """
         if self.active!='wood':self.load('wood')
         span=self.meta['wood']['span_m']*1000
         girth=2*np.pi*radius*1000
         rows=round(girth/span*self.raw.shape[0])
         sigma=round(footprint*2048/span*.38*2)/2
-        key=('wood_cylinder',radius,sigma)
+        key=('wood_cylinder',radius,sigma,local_wrap)
         if key not in self.cache:
             self.cache.clear()
             yy=(80+np.arange(rows,dtype=F)/rows*girth)/span*self.raw.shape[0]
             iy=np.floor(yy).astype(int);frac=(yy-iy)[:,None,None]
             a=(self.raw[iy]*(1-frac)+self.raw[(iy+1)%self.raw.shape[0]]*frac).astype(F)
-            a-=np.linspace(-.5,.5,rows,dtype=F)[:,None,None]*(a[-1]-a[0])[None]
+            if local_wrap:
+                # A full-width endpoint correction extrudes each column's
+                # mismatch across the rod: false transverse stripes. Keep the
+                # source fibres, blending just 6 mm at the hidden rear cut.
+                across=np.arange(rows,dtype=F)/rows*girth
+                yy2=(80+across-girth)/span*self.raw.shape[0]
+                iy2=np.floor(yy2).astype(int)%self.raw.shape[0]
+                frac2=(yy2-np.floor(yy2))[:,None,None]
+                other=self.raw[iy2]*(1-frac2)+self.raw[(iy2+1)%self.raw.shape[0]]*frac2
+                w=smooth(girth-6,girth,across)[:,None,None]
+                a=a*(1-w)+other*w
+            else:
+                a-=np.linspace(-.5,.5,rows,dtype=F)[:,None,None]*(a[-1]-a[0])[None]
             self.cache[key]=gaussian_filter(a,(sigma,sigma,0),mode='wrap')
         a=self.cache[key]
-        coords=[(theta%1)*rows,(s%span)/span*a.shape[1]]
+        coords=[((theta+(.5 if local_wrap else 0))%1)*rows,(s%span)/span*a.shape[1]]
         return np.stack([map_coordinates(a[...,c],coords,order=1,mode='grid-wrap') for c in range(6)],-1)
+
+    def chitin(self,s,edge,footprint,crown=0):
+        """Accepted lamellae on a physical edge-distance field, in millimetres.
+
+        Keep its generated pigment and shallow relief. Faint irregular growth
+        boundaries supply a readable two-texel footprint at saddle density.
+        Warm worn edges suggest thin chitin; there is no transmission channel.
+        """
+        edge=np.maximum(edge,0)
+        data=self.sample('chitin',s+34,55+edge,footprint)
+        phase=edge/7.8+.10*np.sin(edge/8.5)+.035*np.cos(s/31)*smooth(0,7,edge)
+        ring=(phase+.5)%1-.5
+        layer=np.exp(-.5*(ring/.115)**2)*smooth(1,3,edge)*(1-.4*crown)
+        worn=np.exp(-edge/3.2)
+        data[:,:3]-=np.array([9,12,16])
+        data[:,:3]-=layer[:,None]*np.array([7,8,10])
+        data[:,:3]-=worn[:,None]*np.array([16,22,32])
+        data[:,:3]+=np.asarray(crown)[...,None]*np.array([7,6,3])
+        data[:,3]=data[:,3]*(1-.25*crown)-.018*layer-.012*worn
+        data[:,4]=np.maximum(data[:,4]+.115+.018*layer+.035*worn-.015*crown,.365)
+        data[:,5]*=1-.022*layer
+        return data
 
 
 def blend(a,b,w):
@@ -323,7 +358,7 @@ def main():
             data[:,3]*=scale
         else:
             # Longitudinal fibres at their original size around the full rod.
-            wood=study.wood_cylinder(s,t,radius,footprint)
+            wood=study.wood_cylinder(s,t,radius,footprint,local_wrap=name=='cantle')
             polish=(.5+.5*np.cos(2*np.pi*t))*(1-cap)
             wood[:,4]-=.055*polish
             data=wood
@@ -457,19 +492,26 @@ def main():
                 attributes[fi]=np.stack([arc[rr],cc/2*depth[rr],depth[rr]],-1)
             s,dep,width=coords('cantle_plate',attributes,mask).T
             # Growth layers track the bent upper and lower edges of the plate.
-            edge=np.minimum(dep,width-dep)
-            data=study.sample('chitin',s,8+edge,step)
-            data[:,:3]-=np.exp(-edge[:,None]/2.8)*np.array([10,11,13])
-            data[:,4]-=.025*np.exp(-edge/3)
+            edge=np.minimum(np.minimum(dep,width-dep),np.minimum(s,arc[-1]-s))
+            data=study.chitin(s,edge,step)
             if name.endswith('_in'):data[:,5]*=.95
             output[mask]=data
         elif name=='boss':
             part=parts['boss'];pts=np.array(part.points);centre=pts[:16].mean(0)
             n=pts[16:32].mean(0)-centre;n/=np.linalg.norm(n)
-            q=p-centre;q-=np.sum(q*n,axis=1)[:,None]*n
+            q=p-centre;lift=np.sum(q*n,axis=1)*1000
+            q-=np.sum(q*n,axis=1)[:,None]*n
             radius=np.linalg.norm(q,axis=1)*1000
-            data=study.sample('chitin',p[:,0]*1000+95,8+np.maximum(0,30-radius),step)
-            data[:,:3]-=np.exp(-(30-radius)[:,None]/3)*np.array([8,9,10])
+            crown=(1-smooth(10,20,radius))*smooth(8,11,lift)
+            data=study.chitin(p[:,0]*1000+95,30-radius,step,crown)
+            data[:,4]+=.035
+            # A narrow amber basal margin belongs to the grown material;
+            # its contact shadow is supplied separately in AO below.
+            base_margin=np.exp(-np.maximum(lift,0)/1.5)
+            data[:,:3]-=base_margin[:,None]*np.array([19,16,10])
+            # The seating line is contact AO on the boss's skirt. Keep its
+            # crown and the already accepted hide free of painted lighting.
+            data[:,5]*=1-.48*np.exp(-np.maximum(lift,0)/1.7)
             output[mask]=data
         elif name not in ('cantle','grip','peg','rein','rope','halter'):
             raise ValueError(f'Unhandled piece {name}')

@@ -1,13 +1,65 @@
-# Saddle paint
+# Saddle paint — accepted, round 2
+
+Accepted in round 2. The repository tidy leaves `paint.py` and `check.py` unchanged.
 
 Delivered all **22 pieces / 464,889 covered texels** of `pteranodon_saddle` at
 **1,024 × 1,024**. The saddle is undyed: its entire region map is RGB black and
 its base carries the study's natural colours. No animal maps, study inputs,
 layout, or model files were edited.
 
-[Game review](checks/game_review.png) · [Seat close](checks/look/saddled_seat_design.png) ·
-[Side](checks/look/saddled_side_design.png) · [Front](checks/look/saddled_front_design.png) ·
-[Rider](checks/look/saddled_rider_design.png)
+[Game review](superseded/checks/game_review.png) · [Seat close](superseded/checks/look/saddled_seat_design.png) ·
+[Side](superseded/checks/look/saddled_side_design.png) · [Front](superseded/checks/look/saddled_front_design.png) ·
+[Rider](superseded/checks/look/saddled_rider_design.png)
+
+## Accepted paint revision
+
+Changed only `cantle`, `cantle_plate_out`, `cantle_plate_in` and `boss`.
+All **395,206 texels** belonging to the other 18 pieces, including their colour,
+height, roughness and occlusion, remain **byte-identical** to the incoming
+paint. Alpha and the all-black region map are unchanged everywhere.
+The incoming maps and views are retained locally in `superseded/checks/round1_before/`.
+
+- **Bow grain:** the original arc coordinate was correct, but closing the wood
+  strip with a full-width endpoint correction stretched the endpoint difference
+  into transverse stripes. Removed that correction on `cantle` only. The
+  accepted study's fibres now run continuously along the bow; a **6 mm** overlap
+  closes the circumference at the rear. Its 400 mm source scale is retained.
+  The bow's reconstructed centreline is **493.29 mm** end to end; the mirrored
+  half is 246.64 mm. Position bakes independently verify the reconstruction.
+- **Both plate faces:** warm bone/ivory pigment, deeper amber worn margins,
+  faint growth layers following the physical upper/lower edges and tapered
+  ends. The same edge-distance construction is used on both faces. The study's
+  generated pigment and microrelief remain; additional shallow growth boundaries
+  have roughly **7–9 mm** spacing and **2.1 mm** soft width, with at most
+  **0.018 mm** added recession. The deeper edge colour falls away over **3.2 mm**.
+  Roughness is about **0.410**, above the study's 0.285, to soften the formerly
+  glossy response in this model and lighting.
+- **Boss:** the same warm chitin, with layers ringing its actual 30 mm radius.
+  The central worn crown is slightly paler, with quieter layers and relief.
+  Roughness averages **0.446**. A narrow amber basal margin and contact AO on
+  its skirt mark where it seats; the contact treatment falls away over
+  **1.5–1.7 mm**. The accepted breast-strap paint is untouched.
+
+### For the modeller: white patches at the breast straps
+
+These are **body/strap intersections in the prepared game mesh**, not missing
+paint or white marks in the saddle maps. All strap texels are opaque hide. A
+forward-axis ray comparison against the actual finest body triangles from
+`pteranodon.snpk` puts **807 of 12,885 outer-strap texels** behind the body,
+with a worst forward clearance of **−10.149 mm** at approximately
+**(0.08818, 0.83847, 0.20408) m** in animal coordinates, and the mirrored problem
+on the other side. These are sampled surface texels, not a triangle count.
+See [mesh measurements](superseded/checks/strap_geometry.json).
+
+The mathematical shell used by `saddle.py` does not show that penetration:
+its upper-strap samples clear the shell by at least 3.36 mm. The prepared
+body's triangulated surface is the relevant obstruction. The modeller should
+fit the upper breast straps to that surface and check the crossing/attachments.
+Geometry, layout and strap paint were left as supplied, as requested.
+
+The sections below describe the current full delivery; this round supersedes
+the previous claims that the cantle already read correctly as longitudinal wood
+and that the initial chitin treatment was sufficient.
 
 ## Construction
 
@@ -34,18 +86,18 @@ contact placement. There were **zero coordinate fallbacks** on this delivery.
 | `girth_edge*`, `collar_edge*` | The study's edge roll and sewing treatment. These cut faces are only 5 mm thick, so the sewing channel is moved to their middle while preserving the stitch's longitudinal size. |
 | Girth and collar inner faces | Same hide, with contact shade confined to occlusion. Median sampling is approximately 3 mm/texel; individual stitches are consequently filtered away. |
 | `strap_out`, `strap_in` | Hide along both breast straps, sewn outer borders, restrained contact occlusion inside. Each upper/lower chart is mapped independently to its own physical outline. |
-| `cantle` | Accepted honey wood; grain follows distance along the bent bow. A strip matching the actual circumference is cropped from the study and corrected only for its wrap mismatch, keeping the fine grain at its physical scale. |
+| `cantle` | Accepted honey wood; grain follows distance along the bent bow. A strip matching the actual circumference is cropped from the study, with only a 6 mm overlap at the rear cut; no full-width endpoint correction remains. |
 | `grip` | Honey wood at the short exposed feet, with the accepted close rope wrap over the loop and reduced roughness where palms rub. The wrap finishes over roughly 5 mm rather than ending with an abrupt colour cut. |
 | `peg` | Honey wood along the foot-rest axis; a restrained 2.8 mm end-grain modulation on the actual caps and mild polishing through the middle. |
 | `cantle_plate_out`, `cantle_plate_in` | Accepted waxy chitin; growth contours follow the bent bow and the plate's lower edge. The thin boundary is warmer/deeper in pigment. |
-| `boss` | Same pale chitin, with growth contours following its circular edge. |
+| `boss` | Warm layered chitin, with concentric growth, a worn paler crown and an amber/contact-AO seating margin. |
 | `rope`, `rein` | The study's round four-strand plait, mapped by axial arc length and circumference, including the model's two separate foot-rest ropes. |
 | `halter` | The study's three-strand twisted cord, enlarged to the model's 11 mm diameter. Closed head loops use an integral number of lay pitches. |
 
 No new generated images were needed. The final base, height, roughness,
 occlusion and region pictures are computed from the accepted delivered study
-layers; additional wear, contact, projection and minor peg end-grain fields are
-computed by this painter. No illumination direction is painted into base colour.
+layers; additional wear, contact, projection, shallow growth contours and minor
+peg end-grain fields are computed by this painter. No illumination direction is painted into base colour.
 Contact darkening is in occlusion; form occlusion remains the composer's job.
 
 ## Physical sizes
@@ -77,15 +129,32 @@ Representative delivered means (sRGB; roughness and AO linear):
 | Seat underside | 139.5, 77.8, 41.2 | 0.508 | 0.802 |
 | Seat rim | 137.5, 77.8, 42.1 | 0.446 | 0.924 |
 | Girth outer / inner | 135.5, 76.5, 41.4 / 140.2, 79.9, 43.6 | 0.430 / 0.508 | 0.962 / 0.765 |
-| Cantle wood | 189.8, 150.8, 102.8 | 0.403 | 0.969 |
+| Cantle wood | 189.8, 150.8, 102.8 | 0.404 | 0.969 |
 | Foot-rest plait | 198.5, 174.6, 131.8 | 0.820 | 0.893 |
 | Halter cord | 198.5, 174.6, 131.8 | 0.810 | 0.903 |
-| Cantle plate | 218.6, 207.5, 185.5 | 0.281 | 0.994 |
+| Cantle plate outer | 208.4, 193.4, 165.8 | 0.410 | 0.989 |
+| Cantle plate inner | 208.4, 193.4, 165.7 | 0.410 | 0.939 |
+| Boss (including back and skirt) | 199.4, 185.5, 160.0 | 0.446 | 0.775 |
 
 There are no dyed regions and therefore no neutral-grey/0.50 target.
 Per-piece measurements and input hashes are in [metrics.json](checks/metrics.json).
 
 ## Review and verification
+
+**Final round-one review:** regenerated with `look.sh --maps` and inspected
+`saddled_front`, `saddled_seat` and `saddled_rider` at native size, plus enlarged
+front crops. The bow now carries long fibres around the bend without the
+crosswise woven appearance. Both plate faces are warmer and less glossy;
+faint contour bands survive at the front, while the rear-facing sliver is much
+smaller in the seat/rider cameras. The boss has visible concentric pigment,
+a quieter pale crown and a deeper seating margin. Its mesh stays rounded.
+[Incoming/final front comparison](superseded/checks/round1_front_comparison.png).
+
+The renderer still gives the shaded bevels a cool sky-light contribution;
+there is no blue pigment in the chitin. Fine growth detail remains restrained
+at native screen size and is easier to inspect in the enlarged comparison.
+The white jagged strap intersections remain unchanged for the modeller.
+
 
 Ran the shared `look.sh` with **`--maps`**, using the existing prepared model
 and the game's actual rgba material/shader path. Inspected all four saddled
@@ -116,8 +185,11 @@ finite texel sampling and tube caps do not have identical pixels across their
 cut, so exact source closure is not misreported as exact raster equality.
 See [validation.json](checks/validation.json).
 
-The final memory-bounded paint rebuild took **28.3 seconds**. Renderer review
-used the prepared pack and required no Blender build.
+The round-one renderer review uses the prepared pack and requires no Blender
+build. `check.py` also verifies the new wood wrap closes exactly, that forward
+wood fibres vary more across the bow than along it, and (when the archived
+incoming maps are restored to `checks/round1_before/`) that changes are confined
+to the four requested pieces.
 
 ## Limits and model observations
 
@@ -147,6 +219,26 @@ zsh tex/paint/look.sh tex/paint/saddle/checks/look --maps
 python3 tex/paint/saddle/check.py
 ```
 
-Keep `paint.py`, `check.py` and this report. `layers/` and `checks/` are already
-ignored by `tex/paint/.gitignore`. The last check refreshes the review contact
-sheet after the game renderer finishes.
+The last check refreshes the review contact sheet after the game renderer finishes.
+
+## Files
+
+Retained: `paint.py`, `check.py`, the review source `review_round1.ts.txt`,
+this report, `BRIEF.md`, both feedback files and both `artist_*.last.txt` files.
+Including `.gitignore`, these 10 retained files total about **76 kB**.
+The painter needs Python, NumPy, Pillow and SciPy; it reads the shared geometry,
+layout and bakes and the saddle study's own delivered layers in
+`tex/studies/saddle/`, invoking that study's unchanged `build.py` if needed.
+There are no local `source/` inputs or regenerated source files; originals and
+their prompts remain with the study.
+
+The local `.gitignore` excludes `layers/`, `checks/`, `superseded/` and Python
+caches. Earlier deliveries, checks and diagnostics are archived in
+`superseded/`; both TypeScript helpers were renamed to `.ts.txt`, leaving no
+`.ts` files anywhere in this folder.
+
+Two runs with `layers/` absent before each run rebuilt all five PNGs and
+`layers.json` **byte for byte**, matching each other and the accepted delivery.
+The second run started from `/private/tmp`. The painter, checker, study and
+shared input hashes stayed unchanged. [SHA-256 audit](superseded/clean_rebuild.json).
+`check.py` passed on the rebuilt delivery; [validation](checks/validation.json).

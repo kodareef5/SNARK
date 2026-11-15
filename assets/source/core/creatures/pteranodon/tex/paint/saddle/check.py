@@ -99,6 +99,36 @@ def main():
         closure_wood[str(radius)]=float(abs(a-b).max())
         assert closure_wood[str(radius)]<.001
     report['wood_girth_closure_max']=closure_wood
+    a=study.wood_cylinder(u,np.zeros_like(u),.020,1,local_wrap=True)
+    b=study.wood_cylinder(u,np.ones_like(u),.020,1,local_wrap=True)
+    report['cantle_local_wrap_closure_max']=float(abs(a-b).max())
+    assert report['cantle_local_wrap_closure_max']<.001
+
+    # Audit the actual sampled field on the forward face, in physical axial /
+    # circumferential coordinates, not atlas row/column directions. Endpoint
+    # correction used to drag transverse stripes over this whole face.
+    along,across=np.meshgrid(np.arange(5,245,dtype=np.float32),np.arange(-12,13,dtype=np.float32))
+    wood=study.wood_cylinder(along.ravel(),across.ravel()/(40*np.pi),.020,1,local_wrap=True)
+    wood=wood[:,:3].mean(-1).reshape(along.shape)
+    axial=float(np.mean(abs(np.diff(wood,axis=1))))
+    girth=float(np.mean(abs(np.diff(wood,axis=0))))
+    report['cantle_forward_grain']={'axial_colour_change_per_mm':axial,'across_colour_change_per_mm':girth}
+    assert girth>2*axial,'cantle fibres no longer follow the bow'
+
+    # The director accepted every other piece. When the incoming delivery is
+    # available locally, require exact preservation in every channel.
+    before=CHECKS/'round1_before'
+    if before.exists():
+        allowed=np.isin(pieces,[p['number'] for p in meta['pieces'] if p['name'] in
+            ('cantle','cantle_plate_out','cantle_plate_in','boss')])
+        preserved={}
+        for name,a in maps.items():
+            b=np.asarray(Image.open(before/f'{MAT}_{name}.png'))
+            diff=a!=b
+            if diff.ndim==3:diff=diff.any(-1)
+            assert not np.any(diff&~allowed),(name,'changed an accepted piece')
+            preserved[name]=int(diff.sum())
+        report['round1_changed_texels_only_in_four_pieces']=preserved
 
     spec=importlib.util.spec_from_file_location('compose',paint.PAINT/'compose.py')
     compose=importlib.util.module_from_spec(spec);spec.loader.exec_module(compose)
