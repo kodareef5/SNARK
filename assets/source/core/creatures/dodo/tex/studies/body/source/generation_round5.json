@@ -1,0 +1,16 @@
+{
+  "tool": "image_gen.imagegen",
+  "mode": "built-in generation from concept reference",
+  "prompt": "prompt_round5_beards.txt",
+  "image": "generated_barred_atlas_round5_beards.png",
+  "references": [
+    "concept_bars_review.png"
+  ],
+  "sha256": "2cd62663fbb3587caba975acec13facb67243da0cddc1a71b9b33ae018872403",
+  "native_size": [
+    1312,
+    1199
+  ],
+  "alpha": "Generated alpha retained on the main feather and nearby fringe; detached gutter specks excluded",
+  "specimens": 16
+}

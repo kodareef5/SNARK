@@ -60,15 +60,22 @@ export default {
     { name: "Head", material: "head", sample: DODO_DYES[4]! },
     { name: "Wings and Patterning", material: "wings_patterning", sample: DODO_DYES[5]! },
   ],
-  // The model's two materials (rig.py: MATERIALS says which parts are on which). Until the painted pictures are in tex/
-  // each has only its region map, baked from the model's own regions (ref/bakes/), and is drawn white under its dyes.
-  // When they land they are base, normal, packed, regions and height in tex/, named as ref/DESIGN.md says.
+  // The model's two materials (rig.py: MATERIALS says which parts are on which). Their pictures are painted onto the
+  // layout in tex/paint/ and put together by tex/paint/compose.py.
   materials: {
     dodo: {
-      regions: "ref/bakes/dodo_regions.png",
+      base: "tex/dodo_base.png",
+      normal: "tex/dodo_normal.png",
+      packed: "tex/dodo_packed.png",
+      regions: "tex/dodo_regions.png",
+      height: "tex/dodo_height.png",
     },
     dodo_cards: {
-      regions: "ref/bakes/dodo_cards_regions.png",
+      base: "tex/dodo_cards_base.png",
+      normal: "tex/dodo_cards_normal.png",
+      packed: "tex/dodo_cards_packed.png",
+      regions: "tex/dodo_cards_regions.png",
+      height: "tex/dodo_cards_height.png",
       twoSided: true,
       cutout: true,
     },

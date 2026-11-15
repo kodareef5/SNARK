@@ -1,0 +1,18 @@
+{
+  "description": "PCG64 state immediately before the accepted round-4 mane placements. Separates the accepted mane from subsequent hood-edge random draws; physical layout still follows current measured card dimensions.",
+  "state": {
+    "bit_generator": "PCG64",
+    "state": {
+      "state": 31909432571988600155824219875760684921,
+      "inc": 291576032329591541916347616166058668569
+    },
+    "has_uint32": 1,
+    "uinteger": 585568820
+  },
+  "accepted_card_balance_means": [
+    0.5000001192092896,
+    0.5,
+    0.5
+  ],
+  "balance_description": "Accepted three-step float32 normalization, kept to preserve every encoded mane and forehead pixel. Rectangles are each balanced to 0.5 before this final correction."
+}

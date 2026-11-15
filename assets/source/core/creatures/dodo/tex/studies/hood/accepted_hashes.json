@@ -1,0 +1,36 @@
+{
+  "delivered_sha256": {
+    "cap_base.png": "e8e9539ad503fccc576ec2c5b3a9c6f62fc1d35822db68d164798aa88e281ce5",
+    "cap_height.png": "84f23434d47ac15b55622cbaf3e211722b2d131e92bebf224ec68ee2472f3f45",
+    "cap_normal.png": "531676b23de60b3a6cd6eccdf32905bb5926082da4d87fc83b92748a7002b6fd",
+    "cap_packed.png": "11d82da62fcb64b12b0b7c7d68b884423f2fcd81dff296e824a72882c378bdac",
+    "cap_regions.png": "86283f7bfc96830b282bd5868179b12d264f5584234a8cc11f1d067dd02b6331",
+    "mane_base.png": "ed8f595e9f68cb22c7711a12a30aeb574fb756770e2ed784b8ae00b6d3b3009a",
+    "mane_height.png": "02a2f579a3f1e241aad7f22418a120c7757f7344162e1975a776c58b46aedef6",
+    "mane_normal.png": "0696d4ddda2f5c976d2983e96fdc2ffcc228217c7db30bb8b23750e4697ffd1e",
+    "mane_packed.png": "f47a826a853038b8dfcbd546e9d17f1932d87ff6031510faa4f9f34c8f38ee47",
+    "mane_regions.png": "86283f7bfc96830b282bd5868179b12d264f5584234a8cc11f1d067dd02b6331",
+    "cap_to_mane_base.png": "aa7adead4b3b845dc7d6f12e4f0331650eb9a46c2f2bcebe767b39d4a85fa569",
+    "cap_to_mane_height.png": "3be99af6642e66575f3b8ddde327520afe80b53d5e824f213f93587a4f0819ef",
+    "cap_to_mane_normal.png": "57bcc2efb6812a4d388e33dc97c6d4dbea76ab194696b0b59adce093970ba381",
+    "cap_to_mane_packed.png": "56769a702c32b956773c58ff084163a1c75b547946df9dd53ec5d43c7e0bf2e7",
+    "cap_to_mane_regions.png": "86283f7bfc96830b282bd5868179b12d264f5584234a8cc11f1d067dd02b6331",
+    "hood_cards_base.png": "b3cba311000de145a0bd7257ff0b0134bee5656fd2f664c8408b154da82fa3a2",
+    "hood_cards_height.png": "b69cfd8b0bb1a5461c7a046e8c7c136cc331999273ea2e3cef82ba455d379dfb",
+    "hood_cards_normal.png": "3139eb3c4266e6410e0ac1a931964ad822a97c114edcd82f6be4d16c0e2cc5d9",
+    "hood_cards_packed.png": "df39755a7c18b99a047d331fa1dec3b857789b32e7a77204da39a3c8a9ece651",
+    "hood_cards_regions.png": "86283f7bfc96830b282bd5868179b12d264f5584234a8cc11f1d067dd02b6331"
+  },
+  "layout_sha256": {
+    "cap_to_mane_layout.json": "6b3bdddb2802751490b61c50ac3926224e993225bed5f6646fac206774d97fea",
+    "mane_layout.json": "95606bbfc1c3bd7c6ae9f95845cc55432121e79bb027a3843d098a0ae82f8f0e",
+    "cap_layout.json": "5038c0f7ee923cd08b2fe574c5e68e367ac91cca830d074ac55f904139d6389e",
+    "hood_cards_layout.json": "f5fc8b8e741129f3939d3a6ade5dd783609f1a9721f37327a5d72ce6f513fecb"
+  },
+  "source_sha256": {
+    "cap_plush_r3_original.png": "b5475959fa310ec1c10929a7715ec2cca397bcb25eda11a831b56418127622b0",
+    "cap_r2_original.png": "b8406f9d92cce8dbe31347ffcc93c134e480d521f2f2b0c5c7f43bbbd0ae4c6d",
+    "mane_full_r2_original.png": "7daa07a541a0a1f43f63dd1a5896fd9189a4ac23fbb83d54548fa978bf49bed3",
+    "mane_r2_original.png": "0f29e96435db8ffb2266b7587459f840c0a054b4ff402544a2fe4c75efee0341"
+  }
+}

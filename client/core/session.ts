@@ -88,6 +88,7 @@ import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
 import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
+import type { FarSource } from "./render/far.ts";
 import { MapStore } from "./tactical.ts";
 
 export interface SessionOptions {
@@ -267,7 +268,7 @@ export class ClientSession {
   /** Reject reason from the server, or a negative local reason. */
   closeReason = 0;
 
-  world: (CollisionWorld & { dims: MapDims }) | null = null;
+  world: (CollisionWorld & { dims: MapDims; far: FarSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
@@ -336,6 +337,8 @@ export class ClientSession {
   readonly tactical = new MapStore();
   /** Every tribe's structures beyond the view, within the reach `askFar` names, for drawing and never for the map. */
   readonly far = new FarStore();
+  /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
+  private whole = new Uint8Array(0);
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
@@ -697,7 +700,11 @@ export class ClientSession {
     if (type === S_SNAPSHOT) {
       if (this.state === "active") this.snapshot(r);
     } else if (type === S_CHUNK) this.chunk(r);
-    else if (type === S_CHUNK_DROP) this.world?.structs.dropChunk(r.u16());
+    else if (type === S_CHUNK_DROP) {
+      const chunk = r.u16();
+      this.whole[chunk] = 0;
+      this.world?.structs.dropChunk(chunk);
+    }
     else if (type === S_NODES) this.nodes(r);
     else if (type === S_EVENT) this.event(r);
     else if (type === S_TACTICAL && this.world) this.tactical.readCells(r, this.world.hf);
@@ -1016,7 +1023,9 @@ export class ClientSession {
     this.motdSeconds = motdSeconds;
     const source = this.opts.nodes?.(hf, reg) ?? null;
     this.nodeField = source ? new NodeField(dims, reg, source) : null;
-    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), ...(this.nodeField ? { nodes: this.nodeField.store } : {}) };
+    this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
+    const far: FarSource = { cells: this.far, complete: (chunk) => this.whole[chunk] === 1 };
+    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...(this.nodeField ? { nodes: this.nodeField.store } : {}) };
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
@@ -1231,7 +1240,9 @@ export class ClientSession {
         }
       }
     }
-    if (final) world.structs.setVersion(chunk, version);
+    if (!final) return;
+    world.structs.setVersion(chunk, version);
+    this.whole[chunk] = 1;
   }
 }
 

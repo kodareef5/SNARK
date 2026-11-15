@@ -2,7 +2,8 @@
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
+import { FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, SIZE_REGION, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../../client/core/render/packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE, WATER_ALPHA } from "../../client/core/render/shading.ts";
 import { domeLight, theSky, trueSun } from "../../client/core/render/sky.ts";
 import { NEUTRAL, bumped, dyed, lit, regionDyes, shown, skinMode, skyFrom, srgbToLinear } from "../../client/core/render/surface.ts";
@@ -19,6 +20,8 @@ export const PICK_SKY = 0;
 export const PICK_TERRAIN = 1;
 export const PICK_STRUCTURE = 2;
 export const PICK_ENTITY = 3;
+/** A draw that fades out with distance (far.ts). Its pick id is its slot. */
+export const PICK_FAR = 4;
 
 interface DecodedLod {
   positions: Float32Array;
@@ -212,6 +215,9 @@ export class Rasterizer {
   private plain = false;
   /** What `pickBone` gets for the triangle being drawn. */
   private bone = 0;
+  /** For a draw that fades out (`drawFade`): where it is gone, and the share of that it fades over. 0 for any other. */
+  private fade = 0;
+  private fadeShare = 0;
   private scratch = new Float32Array(3 * 1024);
   // Clip scratch: a triangle, then up to 5 vertices of (camera-relative x, y, z, screen x, y, 1/w, NDC depth), and room between clips.
   private readonly tri = new Float64Array(3 * 7);
@@ -259,15 +265,16 @@ export class Rasterizer {
     trueSun(packet.frame, this.sun);
     for (const u of packet.uploads) this.buffers.set(u.buffer, { data: u.data.slice(), slots: u.slots.slice() });
     for (const id of packet.drops) this.buffers.delete(id);
-    if (this.manifest) {
-      for (const u of packet.assetUploads) {
-        if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
-        else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest.meshes[u.mesh]!.uv) });
-      }
-      for (const slot of packet.assetDrops) {
-        this.lods.delete(slot);
-        for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
-      }
+    // Far blocks come as levels of their own (far.ts), with a manifest or without.
+    for (const u of packet.assetUploads) {
+      if (!this.manifest && u.slot < FAR_SLOTS) continue;
+      if (u.of === undefined) this.lods.set(u.slot, this.decodeUpload(u));
+      else this.surfaces.set(u.of, { slot: u.slot, surface: surfaceOf(u.data.subarray(0, u.skinAt), u.data.subarray(u.skinAt ?? u.data.length), this.manifest!.meshes[u.mesh]!.uv) });
+    }
+    for (const slot of packet.assetDrops) {
+      if (!this.manifest && slot < FAR_SLOTS) continue;
+      this.lods.delete(slot);
+      for (const [level, s] of this.surfaces) if (s.slot === slot) this.surfaces.delete(level);
     }
     // A texture that is let go goes first, with any copy of it being made. Then rows begin a copy, add to it or complete it.
     for (const slot of packet.texDrops) {
@@ -432,6 +439,7 @@ export class Rasterizer {
   /** The terrain tiles in depth range `range`. */
   private terrain(p: FramePacket, range: number): void {
     const hf = this.hf;
+    this.fade = 0;
     const row = TILE_QUADS + 1;
     const pos = new Float32Array(row * row * 3);
     const tint = new Uint8Array(row * row);
@@ -484,6 +492,8 @@ export class Rasterizer {
     const one = (p.drawFlags[d]! & DRAW_ONE_BONE) !== 0;
     const sized = (p.drawFlags[d]! & DRAW_SIZED) !== 0;
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0;
+    this.fade = p.drawFade[d]!;
+    this.fadeShare = p.frame[FRAME.fade]!;
     const bones = p.bones;
     for (let k = 0; k < p.drawInstances[d]!; k++) {
       const inst = p.drawFirst[d]! + k;
@@ -515,8 +525,8 @@ export class Rasterizer {
           out[v * 3 + 2] = -s * lx + c * lz + iz;
         }
       }
-      const kind = transient ? PICK_ENTITY : PICK_STRUCTURE;
-      const id = transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
+      const kind = this.fade > 0 ? PICK_FAR : transient ? PICK_ENTITY : PICK_STRUCTURE;
+      const id = this.fade > 0 ? p.drawSlot[d]! : transient ? p.transientIds[inst]! : p.drawBuffer[d]! * 65536 + buffer!.slots[inst]!;
       for (let t = 0; t < lod.indices.length; t += 3) {
         const last = lod.indices[t + 2]!;
         let color = lod.colors[last]!;
@@ -528,9 +538,9 @@ export class Rasterizer {
   }
 
   private decode(mesh: number, level: number, slot: number): DecodedLod {
-    if (this.manifest) {
+    if (this.manifest || slot >= FAR_SLOTS) {
       const lod = this.lods.get(slot);
-      if (!lod) throw new Error(`a draw of ${this.manifest.meshes[mesh]!.id} at level ${level}, which is not on the graphics card`);
+      if (!lod) throw new Error(`a draw of ${(this.manifest ?? this.pack.header).meshes[mesh]!.id} at level ${level}, which is not on the graphics card`);
       return lod;
     }
     const key = mesh * 8 + level;
@@ -551,7 +561,7 @@ export class Rasterizer {
     const indices = new Uint32Array(u.indexCount);
     for (let i = 0; i < indices.length; i++) indices[i] = u.indexBytes === 4 ? view.getUint32(i * 4, true) : view.getUint16(i * 2, true);
     const verts = u.data.subarray((u.indexCount * u.indexBytes + 3) & ~3);
-    return { ...vertices(verts, verts.length / VERTEX_BYTES, this.manifest!.meshes[u.mesh]!), indices };
+    return { ...vertices(verts, verts.length / VERTEX_BYTES, (this.manifest ?? this.pack.header).meshes[u.mesh]!), indices };
   }
 
   /**
@@ -745,17 +755,19 @@ export class Rasterizer {
           const qs = 1 / (q0 + q1 + q2);
           // In the far range a see-through pixel the near range drew is dropped, as SEE_THROUGH_SPLIT drops it.
           if (blend && qs < this.from) continue;
+          const rx = (q0 * poly[v0]! + q1 * poly[v1]! + q2 * poly[v2]!) * qs;
+          const ry = (q0 * poly[v0 + 1]! + q1 * poly[v1 + 1]! + q2 * poly[v2 + 1]!) * qs;
+          const rz = (q0 * poly[v0 + 2]! + q1 * poly[v1 + 2]! + q2 * poly[v2 + 2]!) * qs;
+          const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
+          // A far draw drops its fragment as FAR_FADE does, before anything is kept of it. The pattern counts rows from the bottom.
+          if (this.fade > 0 && !fadeKeeps(dist, this.fade, this.fadeShare, px, H - 1 - py)) continue;
           if (!blend) {
             this.depth[at] = z;
             this.pickKind[at] = pickKind;
             this.pickId[at] = pickId;
             this.pickBone[at] = this.bone;
           }
-          const rx = (q0 * poly[v0]! + q1 * poly[v1]! + q2 * poly[v2]!) * qs;
-          const ry = (q0 * poly[v0 + 1]! + q1 * poly[v1 + 1]! + q2 * poly[v2 + 1]!) * qs;
-          const rz = (q0 * poly[v0 + 2]! + q1 * poly[v1 + 2]! + q2 * poly[v2 + 2]!) * qs;
           const wx = rx + sx, wy = solid ? ry + sy : 0, wz = rz + sz;
-          const dist = Math.sqrt(rx * rx + ry * ry + rz * rz);
           let shade = 1;
           const cs = CHECK_COARSE_SIZE;
           if (this.plain) shade = 1;
@@ -909,6 +921,98 @@ export class Rasterizer {
           this.color[at * 4 + 1] = rgb[1]! * 255;
           this.color[at * 4 + 2] = rgb[2]! * 255;
         }
+      }
+    }
+  }
+
+  /**
+   * The depth map of shadow cascade `k` of the frame last rendered, `size` texels a side, drawn from its caster list and
+   * the tiles that cast into it: 0 nearest the sun to 1, and 1 where nothing casts. Row 0 is the square's -y edge in the
+   * light space. Faces turned to the sun are left out, since back faces cast, but on two-sided casters, and what lies
+   * between the sun and the square is flattened onto its near face. Bodies follow one bone a vertex, and cut-out
+   * casters are drawn whole.
+   */
+  cascade(p: FramePacket, k: number, size: number): Float32Array {
+    const out = new Float32Array(size * size).fill(1);
+    const m = p.cascades.subarray(k * 16, k * 16 + 16);
+    const hf = this.hf;
+    const row = TILE_QUADS + 1;
+    const pos = new Float32Array(row * row * 3);
+    for (let t = 0; t < p.tileCount; t++) {
+      if ((p.tilePass[t]! & (TILE_CASTS << k)) === 0) continue;
+      const stride = p.tiles[t * 4 + 3]!;
+      for (let gz = 0; gz < row; gz++) {
+        for (let gx = 0; gx < row; gx++) {
+          const i = Math.min(p.tileOrigin[t * 2]! + gx * stride, hf.nx - 1);
+          const j = Math.min(p.tileOrigin[t * 2 + 1]! + gz * stride, hf.nz - 1);
+          pos.set([i * hf.cell - p.camX, hf.sample(i, j) - p.camY, j * hf.cell - p.camZ], (gz * row + gx) * 3);
+        }
+      }
+      for (let a = 0; a < row * TILE_QUADS; a++) {
+        if (a % row === TILE_QUADS) continue;
+        this.castTriangle(out, size, m, pos, a + row + 1, a + 1, a, false);
+        this.castTriangle(out, size, m, pos, a + row, a + row + 1, a, false);
+      }
+    }
+    for (let e = 0; e < p.casterCount; e++) {
+      if ((p.casterCascades[e]! & (1 << k)) === 0) continue;
+      const flags = p.casterFlags[e]!;
+      const lod = this.decode(p.casterMesh[e]!, p.casterLod[e]!, p.casterSlot[e]!);
+      const transient = p.casterBuffer[e] === TRANSIENT_BUFFER;
+      const buffer = transient ? null : this.buffers.get(p.casterBuffer[e]!);
+      if (!transient && !buffer) throw new Error(`caster ${e} uses buffer ${p.casterBuffer[e]} which was never uploaded`);
+      const data = transient ? p.transient : buffer!.data;
+      const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+      const run = (flags & DRAW_TEXTURED) !== 0;
+      const [from, to] = run ? [p.casterFirstIndex[e]!, p.casterFirstIndex[e]! + p.casterIndexCount[e]!] : [0, lod.indices.length];
+      const n = lod.positions.length / 3;
+      const place = new Float32Array(n * 3);
+      for (let c = 0; c < p.casterInstances[e]!; c++) {
+        const at = (p.casterFirst[e]! + c) * INSTANCE_BYTES;
+        const px = view.getFloat32(at, true), py = view.getFloat32(at + 4, true), pz = view.getFloat32(at + 8, true);
+        if ((flags & DRAW_SKINNED) !== 0) {
+          const first = view.getUint16(at + 12, true);
+          for (let v = 0; v < n; v++) {
+            const b = (first + ((flags & DRAW_ONE_BONE) !== 0 ? 0 : lod.bones[v]!)) * BONE_FLOATS;
+            const [lx, ly, lz] = [lod.positions[v * 3]! + px, lod.positions[v * 3 + 1]! + py, lod.positions[v * 3 + 2]! + pz];
+            for (let r = 0; r < 3; r++) place[v * 3 + r] = p.bones[b + r * 4]! * lx + p.bones[b + r * 4 + 1]! * ly + p.bones[b + r * 4 + 2]! * lz + p.bones[b + r * 4 + 3]!;
+          }
+        } else {
+          const yaw = (view.getUint16(at + 12, true) / 65536) * Math.PI * 2;
+          const [s, co] = [Math.sin(yaw), Math.cos(yaw)];
+          const grow = (flags & DRAW_SIZED) !== 0 ? data[at + 14 + SIZE_REGION]! / SIZE_UNITS : 1;
+          const [ix, iy, iz] = [px + p.casterOffset[e * 3]!, py + p.casterOffset[e * 3 + 1]!, pz + p.casterOffset[e * 3 + 2]!];
+          for (let v = 0; v < n; v++) {
+            const [lx, ly, lz] = [lod.positions[v * 3]! * grow, lod.positions[v * 3 + 1]! * grow, lod.positions[v * 3 + 2]! * grow];
+            place.set([co * lx + s * lz + ix, ly + iy, -s * lx + co * lz + iz], v * 3);
+          }
+        }
+        for (let t = from; t < to; t += 3) this.castTriangle(out, size, m, place, lod.indices[t]!, lod.indices[t + 1]!, lod.indices[t + 2]!, (flags & DRAW_TWO_SIDED) !== 0);
+      }
+    }
+    return out;
+  }
+
+  /** One triangle of camera-relative corners into a cascade's depth map through its matrix `m`. */
+  private castTriangle(out: Float32Array, size: number, m: Float32Array, pos: Float32Array, ia: number, ib: number, ic: number, twoSided: boolean): void {
+    const corner = (i: number, row: number): number => m[row]! * pos[i * 3]! + m[4 + row]! * pos[i * 3 + 1]! + m[8 + row]! * pos[i * 3 + 2]! + m[12 + row]!;
+    const [ax, ay, bx, by, cx, cy] = [corner(ia, 0), corner(ia, 1), corner(ib, 0), corner(ib, 1), corner(ic, 0), corner(ic, 1)];
+    // Seen from the sun, counter-clockwise faces it.
+    const area = (bx - ax) * (cy - ay) - (cx - ax) * (by - ay);
+    if (area === 0 || (area > 0 && !twoSided)) return;
+    const [az, bz, cz] = [ia, ib, ic].map((i) => Math.max(-1, corner(i, 2))) as [number, number, number];
+    const t = (v: number): number => ((v + 1) / 2) * size;
+    const [u0, v0, u1, v1, u2, v2] = [t(ax), t(ay), t(bx), t(by), t(cx), t(cy)];
+    const inv = 1 / ((u1 - u0) * (v2 - v0) - (u2 - u0) * (v1 - v0));
+    for (let j = Math.max(0, Math.floor(Math.min(v0, v1, v2))); j <= Math.min(size - 1, Math.ceil(Math.max(v0, v1, v2))); j++) {
+      for (let i = Math.max(0, Math.floor(Math.min(u0, u1, u2))); i <= Math.min(size - 1, Math.ceil(Math.max(u0, u1, u2))); i++) {
+        const [x, y] = [i + 0.5, j + 0.5];
+        const e0 = ((u1 - x) * (v2 - y) - (u2 - x) * (v1 - y)) * inv;
+        const e1 = ((u2 - x) * (v0 - y) - (u0 - x) * (v2 - y)) * inv;
+        const e2 = 1 - e0 - e1;
+        if (e0 < 0 || e1 < 0 || e2 < 0) continue;
+        const d = ((e0 * az + e1 * bz + e2 * cz) + 1) / 2;
+        if (d <= 1 && d < out[j * size + i]!) out[j * size + i] = d;
       }
     }
   }

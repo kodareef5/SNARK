@@ -269,8 +269,11 @@ export class FramePacket {
 
   /**
    * Sun shadow casters, apart from the draws. Each is a mesh at a level in a buffer, as a draw is, with DRAW_ flags and
-   * the cascades it is drawn into, a bit each. A cut-out section is a caster by itself, DRAW_TEXTURED with its material
-   * and run of indices as a draw has them; any other caster is its whole level.
+   * the cascades it is drawn into, a bit each. Of the flags, DRAW_SKINNED, DRAW_ONE_BONE and DRAW_SIZED place its
+   * vertices as they place a draw's. A level with a cut-out or two-sided section is a caster for each section,
+   * DRAW_TEXTURED with its material and run of indices as a draw has them, DRAW_TWO_SIDED as its material is, and
+   * DRAW_CUTOUT once the card holds the level's surface and the material's base colour, whose alpha cuts it; any other
+   * caster is its whole level. The card holds every level a caster names.
    */
   casterCount = 0;
   /** Casters left out because the list was full. */

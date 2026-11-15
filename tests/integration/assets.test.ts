@@ -84,5 +84,8 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // kinds' grey boxes numbered the meshes after them on, and dfac0bb4 until the dodo was drawn as its model: its grey box
   // left the pack, and its model is not among the frozen art. It was 17efe7fc before medium split the view into two depth
   // ranges (D252), which orders the draws by step and lists one across the split twice; with the split at 0 it is that again.
-  expect(hash.toString(16)).toBe("f589aaf4");
+  // It was f589aaf4 until medium listed sun shadow casters (D267), and is that again with medium's shadows off. With them on
+  // every frame's draws, triangles and tiles in view are what they were; the tiles only shadows need are counted, and a
+  // body's instances are ordered by the cascades they cast into.
+  expect(hash.toString(16)).toBe("38466578");
 });

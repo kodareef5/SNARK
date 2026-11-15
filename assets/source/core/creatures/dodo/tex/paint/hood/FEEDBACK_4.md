@@ -1,0 +1,10 @@
+# Hood painting, round 4: the wedge and the new edge cards
+
+The modeller has made two changes you asked for (merged here; read `ref/bakes/dodo_regions.png` and `dodo_cards_layout.png` again):
+
+- **The nape is a wedge.** In the region map the hood down the back of the neck now narrows to a point at y 0.478 on the bird, as `ref/concept/back.png` has it. 21,576 texels of your `shell_hood` piece, below and beside the wedge, changed from hood (magenta) to body (red). They are still your piece, so paint them: as the body's own plumage, the neck feathers of `tex/studies/body/` (accepted), at the neck's size (2.5 to 3 cm) and lying the way the direction field says, so that they continue the body painter's neck feathers without a line where the piece ends, and so that the hood's feathers end along the wedge's edge as the cap's ragged end over them. Your regions file should follow the new map.
+- **The edge cards are re-rooted.** The hood-edge cards now root 3 mm under the cap, on the shell's own hood/face boundary, from the face's lower corner up to the brow, and hang 1 cm over the skin; they no longer run down the neck. So the hood strip is now the cap's ragged end, seen from the side: paint its top as the cap continuing, and its lower part as the cap's small feathers ending unevenly in tufts and wisps over the skin, with skin showing between the tufts.
+
+A stranger who looked at the whole bird said the mane reads "like wet human hair": long, narrow, dark strands hanging down the nape. In the concept (`ref/concept/back.png`, `head_side.png`) the mane is short, broad, overlapping feathers lying close on the back of the neck, lengthening only a little toward the bottom, a soft scaled texture rather than strands. Paint the mane cards that way now: broad feathers (15 to 25 mm wide, 30 to 50 mm long), overlapping in rows, lying flat, their tips separating only a little.
+
+Same layers and names; rerun, look at it with `zsh tex/paint/look.sh <dir>` (`nape_*`, `hood_edge_*`, `head_side_*`, `bird_back_right_*`), and update your report.

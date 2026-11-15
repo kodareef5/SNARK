@@ -1,0 +1,418 @@
+[
+  {
+    "id": "cap_vane_r7_01",
+    "kind": "cap",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      70,
+      22,
+      258,
+      298
+    ],
+    "size_px": [
+      188,
+      276
+    ],
+    "root_px": [
+      92.43500075053299,
+      4.0
+    ],
+    "tip_px": [
+      95.92442453168752,
+      271.0
+    ],
+    "layers": "source/cap_vane_r7_01_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "cap_vane_r7_02",
+    "kind": "cap",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      396,
+      21,
+      563,
+      298
+    ],
+    "size_px": [
+      167,
+      277
+    ],
+    "root_px": [
+      72.9828627165044,
+      4.0
+    ],
+    "tip_px": [
+      62.51915762976202,
+      272.0
+    ],
+    "layers": "source/cap_vane_r7_02_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "cap_vane_r7_03",
+    "kind": "cap",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      685,
+      21,
+      889,
+      298
+    ],
+    "size_px": [
+      204,
+      277
+    ],
+    "root_px": [
+      99.96116842877184,
+      4.0
+    ],
+    "tip_px": [
+      104.17334956307258,
+      272.0
+    ],
+    "layers": "source/cap_vane_r7_03_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "cap_vane_r7_04",
+    "kind": "cap",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      1021,
+      21,
+      1190,
+      298
+    ],
+    "size_px": [
+      169,
+      277
+    ],
+    "root_px": [
+      71.08511234869385,
+      4.0
+    ],
+    "tip_px": [
+      68.80471796672866,
+      272.0
+    ],
+    "layers": "source/cap_vane_r7_04_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "cap_vane_r7_05",
+    "kind": "cap",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      63,
+      332,
+      243,
+      601
+    ],
+    "size_px": [
+      180,
+      269
+    ],
+    "root_px": [
+      95.9300852061438,
+      4.0
+    ],
+    "tip_px": [
+      104.76851770508748,
+      264.0
+    ],
+    "layers": "source/cap_vane_r7_05_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "cap_vane_r7_06",
+    "kind": "cap",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      369,
+      332,
+      574,
+      600
+    ],
+    "size_px": [
+      205,
+      268
+    ],
+    "root_px": [
+      105.17427840209416,
+      4.0
+    ],
+    "tip_px": [
+      100.12738658624974,
+      263.0
+    ],
+    "layers": "source/cap_vane_r7_06_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "cap_vane_r7_07",
+    "kind": "cap",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      687,
+      332,
+      870,
+      600
+    ],
+    "size_px": [
+      183,
+      268
+    ],
+    "root_px": [
+      106.7476566395877,
+      4.0
+    ],
+    "tip_px": [
+      119.47976744810111,
+      263.0
+    ],
+    "layers": "source/cap_vane_r7_07_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "cap_vane_r7_08",
+    "kind": "cap",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      999,
+      332,
+      1201,
+      601
+    ],
+    "size_px": [
+      202,
+      269
+    ],
+    "root_px": [
+      97.09779629687661,
+      4.0
+    ],
+    "tip_px": [
+      102.96483744698288,
+      264.0
+    ],
+    "layers": "source/cap_vane_r7_08_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "mane_vane_r7_01",
+    "kind": "mane",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      72,
+      637,
+      242,
+      930
+    ],
+    "size_px": [
+      170,
+      293
+    ],
+    "root_px": [
+      87.51050405986737,
+      4.0
+    ],
+    "tip_px": [
+      80.74695606040635,
+      288.0
+    ],
+    "layers": "source/mane_vane_r7_01_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "mane_vane_r7_02",
+    "kind": "mane",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      394,
+      636,
+      566,
+      930
+    ],
+    "size_px": [
+      172,
+      294
+    ],
+    "root_px": [
+      73.70518821787822,
+      4.0
+    ],
+    "tip_px": [
+      56.13809031711877,
+      289.0
+    ],
+    "layers": "source/mane_vane_r7_02_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "mane_vane_r7_03",
+    "kind": "mane",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      697,
+      636,
+      870,
+      931
+    ],
+    "size_px": [
+      173,
+      295
+    ],
+    "root_px": [
+      86.44458481276045,
+      4.0
+    ],
+    "tip_px": [
+      87.02252958084375,
+      290.0
+    ],
+    "layers": "source/mane_vane_r7_03_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "mane_vane_r7_04",
+    "kind": "mane",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      1020,
+      636,
+      1185,
+      929
+    ],
+    "size_px": [
+      165,
+      293
+    ],
+    "root_px": [
+      78.08703442763296,
+      4.0
+    ],
+    "tip_px": [
+      45.78452263107425,
+      288.0
+    ],
+    "layers": "source/mane_vane_r7_04_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "mane_vane_r7_05",
+    "kind": "mane",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      81,
+      951,
+      237,
+      1244
+    ],
+    "size_px": [
+      156,
+      293
+    ],
+    "root_px": [
+      76.0022519204881,
+      4.0
+    ],
+    "tip_px": [
+      71.18661510468223,
+      288.0
+    ],
+    "layers": "source/mane_vane_r7_05_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "mane_vane_r7_06",
+    "kind": "mane",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      380,
+      950,
+      559,
+      1244
+    ],
+    "size_px": [
+      179,
+      294
+    ],
+    "root_px": [
+      91.39971382182274,
+      4.0
+    ],
+    "tip_px": [
+      84.12632516823955,
+      289.0
+    ],
+    "layers": "source/mane_vane_r7_06_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "mane_vane_r7_07",
+    "kind": "mane",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      700,
+      951,
+      865,
+      1244
+    ],
+    "size_px": [
+      165,
+      293
+    ],
+    "root_px": [
+      81.36692302946685,
+      4.0
+    ],
+    "tip_px": [
+      92.62330528330605,
+      288.0
+    ],
+    "layers": "source/mane_vane_r7_07_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  },
+  {
+    "id": "mane_vane_r7_08",
+    "kind": "mane",
+    "original": "plumage_r7_original.png",
+    "source_box_px": [
+      1008,
+      951,
+      1182,
+      1244
+    ],
+    "size_px": [
+      174,
+      293
+    ],
+    "root_px": [
+      89.96546512927233,
+      4.0
+    ],
+    "tip_px": [
+      81.11024206372842,
+      288.0
+    ],
+    "layers": "source/mane_vane_r7_08_layers.npz",
+    "source_scope": "paint/hood",
+    "treatment": "joined vane; broad intrinsic tip value; short soft contour; low relief"
+  }
+]

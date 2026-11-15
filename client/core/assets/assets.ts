@@ -148,6 +148,34 @@ export class Assets {
   }
 
   /**
+   * Bit l for each level of `mesh` that can be drawn without fetching, for what must never fetch, such as shadows: those
+   * on the card and those in the boot pack. Asking wants nothing.
+   */
+  held(mesh: number): number {
+    return this.residency.held(mesh);
+  }
+
+  /** The held level nearest `wanted`, searched as `level` searches: that one, else the next coarser held, else the nearest finer. -1 for none. */
+  heldLevel(mesh: number, wanted: number): number {
+    const held = this.residency.held(mesh);
+    const count = this.table.error[mesh]!.length;
+    const want = wanted < count ? wanted : count - 1;
+    for (let l = want; l < count; l++) if ((held >>> l) & 1) return l;
+    for (let l = want - 1; l >= 0; l--) if ((held >>> l) & 1) return l;
+    return -1;
+  }
+
+  /** Whether a held level's cut-out sections can be cut out in a depth map without fetching. */
+  heldCutouts(mesh: number, level: number): boolean {
+    return this.residency.heldCutouts(mesh, level);
+  }
+
+  /** Keeps a held level on the card through this frame, and with `cutouts` what cutting its sections out reads. */
+  keep(mesh: number, level: number, cutouts: boolean): void {
+    this.residency.keep(mesh, level, cutouts);
+  }
+
+  /**
    * Whether a level that `level` has just given is drawn with its materials this frame, a draw for each of
    * `table.sections[mesh][level]`. If not, it is drawn flat and whole: never some sections one way and some the other.
    */

@@ -1,0 +1,11 @@
+# Kept: briefs, feedback, reports, scripts, study.json, the generated originals and prompts each study is built from,
+# a review sheet of each accepted study, the painters' scripts, the bird's maps and the renders worth opening.
+# Left out: what the scripts make again (each study's .gitignore lists its own), superseded rounds, check pictures,
+# the painters' layers and artist's run logs.
+studies/*/superseded/
+studies/*/checks/
+paint/*/layers/
+paint/*/checks/
+paint/*/superseded/
+paint/look/
+artist_*.last.txt

@@ -546,6 +546,47 @@ export class Residency {
     return ready;
   }
 
+  /** Bit l for each level of `mesh` the card holds or can take from the boot pack: what can be drawn without fetching. */
+  held(mesh: number): number {
+    let bits = 0;
+    const base = this.first[mesh]!;
+    for (let s = base; s < this.first[mesh + 1]!; s++) if (this.state[s] === RESIDENT || this.inBoot[s] === 1) bits |= 1 << (s - base);
+    return bits;
+  }
+
+  /** Whether a held level's cut-out sections can be drawn into a depth map without fetching: its surface is held and its materials' base colours are on the card. */
+  heldCutouts(mesh: number, level: number): boolean {
+    const slot = this.first[mesh]! + level;
+    const s = this.levels + slot;
+    if (this.cap < 0 || this.can[slot] === 0 || (this.state[s] !== RESIDENT && this.inBoot[s] === 0)) return false;
+    const runs = this.runs[slot]!;
+    for (let k = 0; k < runs.length; k += 3) {
+      const t = this.matTex[runs[k]! * MAPS]!;
+      if (t >= 0 && this.has[t]! < 0) return false;
+    }
+    return true;
+  }
+
+  /** Keeps a held level on the card through this frame, as a draw of it does, and with `cutouts` its surface and its materials' base colours. */
+  keep(mesh: number, level: number, cutouts: boolean): void {
+    const slot = this.first[mesh]! + level;
+    this.usable(slot);
+    if (!cutouts) return;
+    this.usable(this.levels + slot);
+    const runs = this.runs[slot]!;
+    for (let k = 0; k < runs.length; k += 3) {
+      const t = this.matTex[runs[k]! * MAPS]!;
+      const at = this.texBase + t;
+      if (t < 0 || this.seen[at] === this.frame) continue;
+      this.seen[at] = this.frame;
+      this.urgency[at] = 0;
+      this.px[t] = 0;
+      this.unlink(at);
+      this.toTail(at, this.texRoot);
+      this.texMarked += this.through[t * STEPS + this.has[t]!]!;
+    }
+  }
+
   /** The level of a level's slot or of its surface's. */
   private levelAt(slot: number): ManifestLevel {
     const of = slot < this.levels ? slot : slot - this.levels;

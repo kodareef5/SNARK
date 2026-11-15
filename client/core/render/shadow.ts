@@ -242,6 +242,20 @@ export class Cascades {
     for (let i = n; i < MAX_CASCADES; i++) this.half[i] = 0;
   }
 
+  /** No cascades this frame, as when the sun casts nothing: every mask is 0, and the next fit draws every cascade. */
+  clear(): void {
+    this.count = 0;
+    this.drawn = 0;
+    this.half.fill(0);
+  }
+
+  /** The cascades drawn this frame whose texels are fine enough for a caster of this radius. */
+  fits(radius: number): number {
+    let bits = 0;
+    for (let i = 0; i < this.count; i++) if (radius >= SMALLEST_CASTER * this.texel[i]!) bits |= 1 << i;
+    return bits & this.drawn;
+  }
+
   /**
    * The cascades drawn this frame that a caster takes, bit i for cascade i. The caster lies in a camera-relative box,
    * and `radius` is its own size, a mesh's radius, which leaves it out of cascades whose texels are too coarse for it.
@@ -273,14 +287,15 @@ export class Cascades {
 
   /**
    * The caster entries a mesh needs in the cascades of `mask`: one per level, at the level `casterLevel` gives for each
-   * cascade's texel, with the cascades that take it. Writes level and mask pairs to `out` and returns how many.
+   * cascade's texel, with the cascades that take it. Writes level and mask pairs to `out` and returns how many. `scale`
+   * is the most times its modelled size the mesh is drawn at, which scales its errors.
    */
-  entries(mask: number, errors: readonly number[], held: number, out: Uint8Array): number {
+  entries(mask: number, errors: readonly number[], held: number, out: Uint8Array, scale = 1): number {
     let n = 0;
     for (let i = 0; i < this.count; i++) {
       const bit = 1 << i;
       if ((mask & bit) === 0) continue;
-      const level = casterLevel(errors, this.texel[i]!, held);
+      const level = casterLevel(errors, this.texel[i]! / scale, held);
       if (level < 0) continue;
       let k = 0;
       while (k < n && out[k * 2] !== level) k++;

@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
+import { FAR_HEIGHT, FAR_MESH, FAR_TILE_METRES } from "../../client/core/render/far.ts";
 import { WATER_TILE } from "../../client/core/render/shading.ts";
 import { authoredClips } from "../../shared/anim/authored.ts";
 import type { Clip } from "../../shared/anim/clip.ts";
@@ -26,6 +27,18 @@ function waterMesh(): SourceMesh {
     id: WATER_MESH,
     lods: [{ positions: Float32Array.from([-h, 0, -h, h, 0, -h, h, 0, h, -h, 0, h]), colors: new Uint8Array(4).fill(WATER_COLOR), indices: Uint32Array.from([0, 2, 1, 0, 3, 2]) }],
   };
+}
+
+/**
+ * Never drawn as itself: its bounds, a far tile's square and FAR_HEIGHT up from its corner, are what far blocks are
+ * stored within (client/core/render/far.ts). It is in the core pack and not among the grey boxes, so a pack built for a
+ * test numbers its meshes as before.
+ */
+export function farMesh(): SourceMesh {
+  const [h, up] = [FAR_TILE_METRES / 2, FAR_HEIGHT / 2];
+  const lod = boxMesh([h, up, h], 0);
+  for (let i = 0; i < lod.positions.length; i++) lod.positions[i]! += i % 3 === 1 ? up : h;
+  return { id: FAR_MESH, lods: [lod] };
 }
 
 export const EGG_MESH = "core:egg";
@@ -126,7 +139,7 @@ export function withArt(made: readonly SourceMesh[], art: readonly SourceMesh[])
 }
 
 export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
-  const made = [...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes()];
+  const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
   return buildPack([...withArt(made, coreArt().meshes), ...extra], defaultPalette(), coreClips(), coreArt().rigs);
 }
 

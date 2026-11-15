@@ -1,0 +1,197 @@
+{
+  "name": "Straw eye and upper lid",
+  "revision": 3,
+  "size_px": 1024,
+  "normal_convention": "OpenGL +Y; image y runs down",
+  "packed_channels": {
+    "R": "height-derived ambient occlusion",
+    "G": "perceptual roughness",
+    "B": "metalness, zero"
+  },
+  "colour_space": {
+    "base": "sRGB",
+    "height": "linear 16-bit",
+    "normal": "linear 8-bit",
+    "packed": "linear 8-bit",
+    "regions": "linear categorical RGB8"
+  },
+  "sets": {
+    "eye": {
+      "span_m": 0.026,
+      "tiles": {
+        "x": false,
+        "y": false
+      },
+      "cutout": false,
+      "height_mm": 0.01,
+      "height_used_mm": 0.0,
+      "regions": [],
+      "region_map_rgb": [
+        0,
+        0,
+        0
+      ],
+      "mean_linear_rgb": [
+        0.33778349087278364,
+        0.27949289888281265,
+        0.09918954960539596
+      ],
+      "mean_srgb_rgb": [
+        152.929518699646,
+        141.34102153778076,
+        87.28364562988281
+      ],
+      "files": {
+        "base": "eye_base.png",
+        "height": "eye_height.png",
+        "normal": "eye_normal.png",
+        "packed": "eye_packed.png",
+        "regions": "eye_regions.png"
+      },
+      "iris_diameter_m": 0.022,
+      "pupil_diameter_m": 0.0029999999999999996,
+      "center_px": [
+        512.0,
+        512.0
+      ],
+      "projection": "front planar onto modeller eyeball sphere",
+      "note": "Flat height and normal describe smooth cornea; iris fibres belong only to pigment. Sphere curvature and highlights come from geometry and lighting. Clamp both axes."
+    },
+    "lid": {
+      "span_m": 0.03,
+      "tiles": {
+        "x": false,
+        "y": false
+      },
+      "cutout": false,
+      "height_mm": 1.6,
+      "height_used_mm": 1.0091218432898452,
+      "regions": [
+        1
+      ],
+      "region_map_rgb": [
+        0,
+        255,
+        0
+      ],
+      "mean_linear_rgb": [
+        0.49982689463173724,
+        0.49982689463173724,
+        0.49982689463173724
+      ],
+      "mean_srgb_rgb": [
+        187.32537937164307,
+        187.32537937164307,
+        187.32537937164307
+      ],
+      "files": {
+        "base": "lid_base.png",
+        "height": "lid_height.png",
+        "normal": "lid_normal.png",
+        "packed": "lid_packed.png",
+        "regions": "lid_regions.png"
+      },
+      "direction": {
+        "u": "front corner to back corner",
+        "v": "brow to rim"
+      },
+      "rim_width_m": 0.001,
+      "principal_fold_count": 3,
+      "source_fold_paths_uv": [
+        [
+          [
+            0.08,
+            0.55
+          ],
+          [
+            0.22,
+            0.59
+          ],
+          [
+            0.43,
+            0.51
+          ],
+          [
+            0.66,
+            0.45
+          ],
+          [
+            0.94,
+            0.42
+          ]
+        ],
+        [
+          [
+            0.13,
+            0.64
+          ],
+          [
+            0.28,
+            0.68
+          ],
+          [
+            0.44,
+            0.64
+          ],
+          [
+            0.64,
+            0.58
+          ],
+          [
+            0.8,
+            0.55
+          ]
+        ],
+        [
+          [
+            0.34,
+            0.8
+          ],
+          [
+            0.52,
+            0.79
+          ],
+          [
+            0.72,
+            0.78
+          ],
+          [
+            0.87,
+            0.79
+          ]
+        ]
+      ],
+      "cell_diameter_target_mm": [
+        0.5,
+        1.0
+      ],
+      "cell_relief_mm": 0.105,
+      "flat_border_px": 12,
+      "anatomical_pigment": true,
+      "note": "Single anatomical panel; clamp U and V, do not repeat. Unequal generated folds taper and merge at distinct locations. Pebbled throughout, smoothing into the retained 1 mm rim. Opposite boundaries have matching flat guard bands for wrapped normal measurement. Dyed region 1 throughout."
+    }
+  },
+  "sources": {
+    "lid_round3_original.png": {
+      "sha256": "486b069b156a7f2e65db7c589ecea22b428e85ad70c50d9ec44968266964fd8f",
+      "size_px": [
+        1254,
+        1254
+      ]
+    },
+    "iris_round2_refined_original.png": {
+      "sha256": "aacce8a561bf701dc86b90b82131d8dd07d3f69ce514dfdf97f0f304a3af8978",
+      "size_px": [
+        1254,
+        1254
+      ]
+    },
+    "iris_round2_original.png": {
+      "sha256": "7de3d1714d41aa4b5314b8c05ebc7cc26a3382038332951feeb8d3d3b83582e9",
+      "size_px": [
+        1254,
+        1254
+      ]
+    }
+  }
+}

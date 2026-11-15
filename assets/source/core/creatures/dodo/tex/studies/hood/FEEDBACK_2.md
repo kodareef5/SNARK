@@ -1,0 +1,7 @@
+# Hood study, round 2: the mane and cards are accepted; one pass on the cap
+
+**`mane` and `hood_cards` are accepted.** The mane is long, lank feathers with shafts and separating tips, as in the concept, and the cards read as wispy tufts and fringed feathers over skin at a quarter size. Keep them exactly as they are.
+
+**The cap is close, but its feathers are the wrong shape.** It is a dense plush now, it reads as a dark cap at a distance, and dyed near-white it is a white bird's cap. But up close every little feather is a pointed, fern-like frond with a central vein and spiky edges, so the cap reads as moss or a shag of fern tips (look at the near-white and lime crops on the attached sheet). In the concept (`concept_hood.png`, left, and `ref/concept/head_side.png` at full size) the cap's feathers are small, soft and **rounded**: each ends in a blunt, fluffy, rounded tip, a little paler than its base, and they overlap with a soft, irregular rhythm, so the cap has a velvety, slightly pebbly texture rather than a spiky one. Keep the density, the value drawing, the softness of the relief and the scale; change the feather shape to small rounded soft tips. `cap_to_mane` should follow, growing from those rounded cap feathers into the accepted mane.
+
+Same names and scale; update the report for this round and finish with the cap beside the concept's crown at the concept's scale, in umber and in near-white.

@@ -18,8 +18,14 @@ import { CH_RELIABLE, CH_UNRELIABLE } from "../../shared/net/transport.ts";
 import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
-import { FAR_RADIUS } from "../../shared/world/tactical.ts";
+import { Summary, FAR_RADIUS, bakeChunk, pieceShapes } from "../../shared/world/tactical.ts";
+import { tierOf } from "../../client/core/assets/tiers.ts";
+import { FAR_SLOTS, farPart } from "../../client/core/render/far.ts";
+import type { FramePacket } from "../../client/core/render/packet.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
+import { castle, farWorld } from "../../tests/fixtures/farworld.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
+import { buildCorePack } from "../pack/build.ts";
 
 type Record = (name: string, value: number, unit: string, budget?: number | null) => void;
 type Run = (ticks: number, times: number[] | null) => void;
@@ -109,6 +115,136 @@ export function benchFar(host: Host, run: Run, section: (title: string) => void,
   feed.sendFar = send;
   game.spendChunkWindow = spend;
   benchFarJoins(section, record);
+  benchFarBlocks(section, record);
+}
+
+/**
+ * Far blocks on the client (D257, D258): the 8 km map of hills, with castles, piles and huts in 130 and then 480 chunks
+ * within 2 km of the camera at its middle, 4 and 15% of the chunks there. The camera turns once round in 120 frames.
+ */
+export function benchFarBlocks(section: (title: string) => void, record: Record): void {
+  section("Far blocks: base chunks within 2 km of the camera on the 8 km map, the camera turning");
+  const ground = (x: number, z: number): number => 40 + 30 * Math.sin(x / 400) * Math.cos(z / 350) + 8 * Math.sin(x / 53) * Math.sin(z / 61);
+  // The rasterizer is not drawn with, so it is small; the scene chooses levels for 1,080 rows.
+  const w = farWorld({ chunks: 128, ground, width: 192, height: 108, pack: parsePack(buildCorePack()) });
+  w.scene.viewHeight = 1080;
+  const mid = 4096;
+  const rng = new Rng(8);
+  // Three kinds of base, each baked once in a chunk of its own: a castle, the benchmark's pile of 2,000 pieces, and ten huts with a tower.
+  const at = (cx: number, cz: number): [number, number] => [cx * CHUNK_SIZE + 32, cz * CHUNK_SIZE + 32];
+  const [castleAt, pileAt, hutsAt] = [at(2, 2), at(4, 2), at(6, 2)];
+  castle(w, ...castleAt, w.hf.heightAt(...castleAt));
+  const kinds = ["core:foundation", "core:wall", "core:wall", "core:ceiling", "core:ceiling", "core:pillar", "core:crate", "core:block"].map(w.id);
+  for (let n = 0; n < 2000; n++) {
+    const kind = kinds[rng.int(kinds.length)]!;
+    const [x, z] = [pileAt[0] + (rng.int(15) - 7) * 3, pileAt[1] + (rng.int(15) - 7) * 3];
+    w.server.add(kind, x, w.hf.heightAt(...pileAt) + rng.int(4) * 3.3 + w.server.halfYOf(kind), z, rng.int(4) * 16384, 1, 1000);
+  }
+  for (let hut = 0; hut < 10; hut++) {
+    const [x, z] = [hutsAt[0] - 30 + rng.int(9) * 6, hutsAt[1] - 30 + rng.int(9) * 6];
+    for (const [dx, dz] of [[1.5, 1.5], [4.5, 1.5], [1.5, 4.5], [4.5, 4.5]] as const) w.server.add(w.id("core:foundation_wood"), x + dx, w.hf.heightAt(x, z) + 0.19, z + dz, 0, 1, 100);
+    w.server.add(w.id("core:wall_stone"), x + 1.5, w.hf.heightAt(x, z) + 1.88, z + 3, rng.int(4) * 16384, 1, 100);
+  }
+  for (let i = 0; i < 4; i++) w.server.add(w.id("core:pillar"), hutsAt[0], w.hf.heightAt(...hutsAt) + 3.3 + i * 6, hutsAt[1], 0, 9, 100);
+  const bases = [castleAt, pileAt, hutsAt].map(([x, z]) => {
+    const s = new Summary();
+    const chunk = chunkAt(w.dims, x, z);
+    bakeChunk(w.server.chunks[chunk]!, chunkCx(w.dims, chunk) * CHUNK_SIZE, chunkCz(w.dims, chunk) * CHUNK_SIZE, pieceShapes(w.reg), w.hf, s);
+    return s.far;
+  });
+  // Chunks within 2 km of the middle, in a random order: the first 130, then 350 more.
+  const spots: number[] = [];
+  for (let cz = 0; cz < 128; cz++) for (let cx = 0; cx < 128; cx++) if (Math.hypot(...at(cx, cz).map((v) => v - mid)) <= 2000) spots.push(cz * 128 + cx);
+  for (let i = spots.length - 1; i > 0; i--) {
+    const j = rng.int(i + 1);
+    [spots[i], spots[j]] = [spots[j]!, spots[i]!];
+  }
+  const reach = w.scene.assets.tier.reach;
+  const tile = (p: FramePacket): number => p.assetUploads.filter((u) => u.slot >= FAR_SLOTS).length;
+  // The scene's far blocks are timed where they run: what they add to a frame is too small to see as a difference.
+  const hook = w.scene as unknown as { farBlocks: (cam: unknown) => void };
+  const inner = hook.farBlocks;
+  let spent = 0;
+  hook.farBlocks = function (this: unknown, cam: unknown): void {
+    const t = performance.now();
+    inner.call(this, cam);
+    spent += performance.now() - t;
+  };
+  /** Frames turning the camera once round, each given its packet, its build's milliseconds and the far blocks' share of them. */
+  const turn = (frames: number, each: (p: FramePacket, ms: number, far: number) => void): void => {
+    for (let f = 0; f < frames; f++) {
+      [w.cam.x, w.cam.z, w.cam.yaw, w.cam.pitch] = [mid, mid, (f / frames) * Math.PI * 2, -0.02];
+      w.cam.y = w.hf.heightAt(mid, mid) + 30;
+      w.scene.now += 1000 / 60;
+      spent = 0;
+      const t = performance.now();
+      const p = w.scene.build(w.cam, null);
+      each(p, performance.now() - t, spent);
+    }
+  };
+  const setReach = (bases: number): void => void (w.scene.assets.tier = { ...w.scene.assets.tier, reach: { ...reach, bases } });
+  let sent = 0;
+  for (const n of [130, 480]) {
+    for (; sent < n; sent++) w.sendCells(spots[sent]!, bases[sent % 3]!);
+    setReach(0);
+    turn(60, () => {});
+    const off: number[] = [];
+    const offTris: number[] = [];
+    turn(120, (p, ms) => (off.push(ms), offTris.push(p.triangles)));
+    setReach(reach.bases);
+    // The tiles within 512 m are made in the first frame, and the rest a few a frame, nearest first.
+    const making: number[] = [];
+    while (making.length < 1000) {
+      let made = 0;
+      turn(1, (p, _, far) => ((made = tile(p)), made > 0 && making.push(far)));
+      if (made === 0) break;
+    }
+    turn(60, () => {});
+    const on: number[] = [];
+    const far: number[] = [];
+    const draws: number[] = [];
+    const tris: number[] = [];
+    turn(120, (p, ms, share) => {
+      on.push(ms);
+      far.push(share);
+      draws.push(p.drawFade.subarray(0, p.drawCount).filter((f) => f > 0).length);
+      tris.push(p.triangles - offTris[tris.length]!);
+    });
+    record(`${n} base chunks: frames until every tile is made`, making.length, `frames, the first ${making[0]!.toFixed(2)} ms of blocks, the worst ${Math.max(...making).toFixed(2)}`);
+    record(`${n} base chunks: frame build, blocks off, median`, median(off), "ms");
+    record(`${n} base chunks: frame build, blocks on, median`, median(on), "ms");
+    record(`${n} base chunks: the blocks' share of it, median and worst`, median(far), `ms, ${Math.max(...far).toFixed(3)} ms`);
+    record(`${n} base chunks: far draws a frame, mean and most`, mean(draws), `(${Math.max(...draws)})`);
+    record(`${n} base chunks: far triangles a frame, mean`, mean(tris), "");
+  }
+  // A tile remade: one chunk's cells change, so its part is made again and its tile put together and sent.
+  const remade: number[] = [];
+  const steady: number[] = [];
+  for (let k = 0; k < 40; k++) {
+    w.sendCells(spots[k]!, bases[(k + 1) % 3]!);
+    turn(1, (p, ms) => tile(p) === 1 && remade.push(ms));
+    turn(1, (_, ms) => steady.push(ms));
+  }
+  record("a frame that remakes a tile, less a frame that does not, median", median(remade) - median(steady), "ms");
+  for (const [name, cells] of [["castle", bases[0]!], ["pile", bases[1]!], ["huts", bases[2]!]] as const) {
+    for (let i = 0; i < 50; i++) farPart(cells, 0, 0, 0, 0, w.hf);
+    const t = performance.now();
+    let faces = 0;
+    for (let i = 0; i < 500; i++) faces = farPart(cells, 0, 0, 0, 0, w.hf).faces;
+    record(`blocks of one chunk, the ${name}: triangles, and ms to make`, faces * 2, `triangles, ${((performance.now() - t) / 500).toFixed(3)} ms`);
+  }
+  // Each tier, at 480 base chunks.
+  for (const name of ["lowpoly", "medium", "high", "ultra"]) {
+    w.scene.assets.tier = tierOf(name);
+    const draws: number[] = [];
+    const before = w.scene.assets.residency.reserved;
+    let made = 0;
+    turn(60, (p) => {
+      draws.push(p.drawFade.subarray(0, p.drawCount).filter((f) => f > 0).length);
+      made += tile(p);
+    });
+    record(`${name}: far draws a frame, mean and most`, mean(draws), `(${Math.max(...draws)}), ${made} tiles made, reserve ${((w.scene.assets.residency.reserved - before) / 1024).toFixed(0)} KB more`);
+  }
 }
 
 export interface FarJoin {
@@ -252,7 +388,12 @@ class Bot {
   }
 }
 
-if (import.meta.main) {
+/** A row as tools/bench.ts prints it, for running this file alone. */
+const printed: Record = (name, value, unit, budget = null) => console.log(`  ${name.padEnd(58)} ${value.toFixed(value < 10 ? 3 : 1).padStart(12)} ${unit}${budget === null ? "" : value <= budget ? `  ok (budget ${budget})` : `  MISS (budget ${budget})`}`);
+
+// With --blocks, the far blocks' rows alone, which need no server.
+if (import.meta.main && process.argv.includes("--blocks")) benchFarBlocks((title) => console.log(`\n${title}`), printed);
+else if (import.meta.main) {
   // The benchmark's map: 8 km of hills with 250 bases of 2,000 pieces, 40 survivors at one and 60 in pairs at 30 others.
   const reg = contentFor(compileContent(CORE_CONTENT).registry!, new Rules());
   const dims = { chunksX: 128, chunksZ: 128 };
