@@ -352,6 +352,7 @@ export const SCREEN_PASSES: readonly ScreenPass[] = [
   { name: "lit haze 3.5 km", program: "flat", tier: "medium", wall: 3500, layers: 0, plain: false },
   { name: "far", program: "far", tier: "medium", wall: 12, layers: 0, plain: true },
   { name: "surface", program: "surface", tier: "medium", layers: 0, plain: true },
+  { name: "surface layered", program: "surfaceLayer", tier: "medium", layers: 0, plain: true },
   { name: "sky table", program: "sky", tier: "medium", layers: 0, plain: true },
   { name: "sky", program: "sky", tier: "medium", layers: 0, plain: false },
   { name: "sky 1 layer", program: "sky", tier: "medium", layers: 1, plain: false },
@@ -483,7 +484,7 @@ const SEA_MAP = { chunks: 32, cell: 2, at: 1024, floor: 3968 };
 const SEA_HEIGHTS = 1024;
 const WAVE_MAP = 256;
 /** The samplers the probe binds a texture of its own for. One the renderer's units hold is moved to a unit of the probe's. */
-const PROVIDED = ["uSkyTable", "uShadow", "uBase", "uNormal", "uMro", "uMask", "uMask2", "uMoon", "uLow", "uHigh", "uMapHeight", "uWindowHeight", "uWaveLong", "uWaveShort"];
+const PROVIDED = ["uSkyTable", "uShadow", "uBase", "uNormal", "uMro", "uMask", "uMask2", "uLayer", "uMoon", "uLow", "uHigh", "uMapHeight", "uWindowHeight", "uWaveLong", "uWaveShort"];
 const SPARE_UNIT = 13;
 const COLOUR_FRAGMENT = `#version 300 es
 precision highp float;
@@ -1246,7 +1247,7 @@ void main() {}`);
   private screenPass(spec: ScreenPass): { bind(): void; draw(): void; scale: number } {
     const gl = this.gl;
     const tier = tierOf(spec.tier);
-    const vertex = spec.program === "sky" ? undefined : spec.sea ? SEA_VERTEX : spec.program === "surface" ? SURFACE_VERTEX : wallVertex(spec.wall ?? 12);
+    const vertex = spec.program === "sky" ? undefined : spec.sea ? SEA_VERTEX : spec.program.startsWith("surface") ? SURFACE_VERTEX : wallVertex(spec.wall ?? 12);
     const { prog, units } = this.linked(spec.program, tier, vertex);
     const frame = this.frameBlock(spec.layers, spec.plain, spec.shadowed === true, spec.sea !== undefined);
     const inputs = this.inputs(units, spec.sea === "waves");
@@ -1270,6 +1271,7 @@ void main() {}`);
       gl.uniform2f(at("uSize"), w!, h!);
       gl.uniform3f(at("uTint"), 1, 1, 1);
       gl.uniform1f(at("uCutoff"), 0);
+      gl.uniform1f(at("uLevel"), 0.75);
       gl.uniform1i(at("uCascades"), spec.shadowed ? tier.shadows.cascades : 0);
       gl.uniformMatrix4fv(at("uViewProj"), false, look);
     });
@@ -1327,7 +1329,7 @@ void main() {}`);
   private inputs(units: Record<string, number>, waves: boolean): () => void {
     const gl = this.gl;
     const bound: [number, number, Obj][] = [];
-    const surface = ["uBase", "uNormal", "uMro", "uMask", "uMask2"];
+    const surface = ["uBase", "uNormal", "uMro", "uMask", "uMask2", "uLayer"];
     const sky = ["uMoon", "uLow", "uHigh"];
     for (const [name, unit] of Object.entries(units)) {
       if (!PROBE_UNITS.includes(unit)) continue;
@@ -1406,12 +1408,12 @@ void main() { gl_Position = vec4(corner(), 0.0, 1.0); }`, CLOUD_FRAGMENT);
 
   private surfaceMaps: Obj[] | null = null;
 
-  /** SURFACE's five maps, 512 square and mipmapped, of noise. */
+  /** SURFACE's five maps and a body's layer, 512 square and mipmapped, of noise: the layer shows on about half the screen. */
   private surfaceTextures(): Obj[] {
     if (this.surfaceMaps) return this.surfaceMaps;
     const gl = this.gl;
-    return (this.surfaceMaps = [0, 1, 2, 3, 4].map((r) => {
-      const t = this.texture(r === 0 ? GL.SRGB8_ALPHA8 : GL.RGBA8, 512, 512, GL.LINEAR_MIPMAP_LINEAR, 10);
+    return (this.surfaceMaps = [0, 1, 2, 3, 4, 5].map((r) => {
+      const t = this.texture(r === 0 || r === 5 ? GL.SRGB8_ALPHA8 : GL.RGBA8, 512, 512, GL.LINEAR_MIPMAP_LINEAR, 10);
       const data = new Uint8Array(512 * 512 * 4);
       for (let i = 0; i < data.length; i++) data[i] = (Math.imul(i + r * 7919, 2654435761) >>> 24) & 0xff;
       gl.texSubImage2D(GL.TEXTURE_2D, 0, 0, 0, 512, 512, GL.RGBA, GL.UNSIGNED_BYTE, data);

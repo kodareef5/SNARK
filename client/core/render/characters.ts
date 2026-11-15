@@ -24,6 +24,7 @@ import type { Camera } from "./camera.ts";
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { GEAR_HELD, GEAR_WORN } from "../../../shared/sim/entities.ts";
 import { BONE_FLOATS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SKINNED, MAX_BONES, MAX_SKINNED, type FramePacket, type InstanceWriter } from "./packet.ts";
+import { Layers, corpseWanted, layerWanted } from "./layers.ts";
 
 /** A body is culled when its origin is farther than this outside the view. No pose reaches farther from its origin. */
 export const BODY_RADIUS = BODY_REACH;
@@ -72,7 +73,8 @@ interface BodyKind {
   color: number;
 }
 
-export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number) => void;
+/** `layer` is the level of the bodies' hurt and decay layer (layers.ts), 0 for none. */
+export type DrawFn = (mesh: number, lod: number, first: number, count: number, flags: number, layer: number) => void;
 /** Puts instances into the shadow caster list for `cascades`, a bit each. `lod` is the level the view would draw them at. */
 export type CastFn = (mesh: number, lod: number, first: number, count: number, flags: number, cascades: number) => void;
 
@@ -98,6 +100,8 @@ class Stride extends Gait {
 const FORGET_GAIT = 600;
 /** Numbers kept for each held creature posed in a frame (Characters.inArms). */
 const HELD_FIELDS = 10;
+/** Draws a frame may have of bodies whose layer shows, each a mesh, level and layer level of its own. */
+const LAYERED_KEYS = 256;
 
 export class Characters {
   readonly anim: HumanAnim;
@@ -119,8 +123,15 @@ export class Characters {
 
   // Instances queued this frame, one per mesh of each body.
   private count = 0;
-  /** Twice (pack mesh * levels + level of detail), and one more for a body on one bone. */
+  /**
+   * Twice (pack mesh * levels + level of detail), and one more for a body on one bone. A body whose layer shows takes a
+   * key from `plain` on, for that key and its layer level, which `layered` holds.
+   */
   private readonly key = new Uint32Array(MAX_SKINNED);
+  private readonly plain: number;
+  private readonly layered = new Uint32Array(LAYERED_KEYS * 2);
+  private layeredKeys = 0;
+  private readonly layers = new Layers();
   /** The most levels of detail any mesh of the pack has, so that a body can be drawn at every level its mesh has. */
   private readonly levels: number;
   private readonly firstBone = new Uint16Array(MAX_SKINNED);
@@ -174,8 +185,9 @@ export class Characters {
     this.assets = assets;
     this.anim = new HumanAnim(pack.clips);
     this.levels = table.error.reduce((most, e) => Math.max(most, e.length), 1);
-    this.counts = new Uint32Array(table.count * this.levels * 2);
-    this.cursor = new Uint32Array(table.count * this.levels * 2);
+    this.plain = table.count * this.levels * 2;
+    this.counts = new Uint32Array(this.plain + LAYERED_KEYS);
+    this.cursor = new Uint32Array(this.plain + LAYERED_KEYS);
     this.maskCounts = new Uint32Array(this.counts.length * MASKS);
     this.maskCursor = new Uint32Array(this.counts.length * MASKS);
     /** Only a mesh on the human skeleton is drawn as part of a body. */
@@ -366,7 +378,8 @@ export class Characters {
     }
     const carrier = st.held ? this.carriedBy.get(id) : undefined;
     if (carrier !== undefined) this.inArms.push(first, rigid ? 1 : rig.bones, x, y, z, yaw, size, carrier, kind, id);
-    this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid, unseen);
+    const layer = unseen || !this.assets.tier.lit ? 0 : this.layers.level(id, layerWanted(st), tick, this.last.has(id));
+    this.queueCreature(c, first, x, y, z, colors, colorAt, id, size, rigid, unseen, layer);
     return true;
   }
 
@@ -413,14 +426,18 @@ export class Characters {
     return true;
   }
 
-  /** Queues a creature's mesh on the bones from `first`, at the level its distance and size call for. One `unseen` only casts, and asks for nothing. */
-  private queueCreature(c: Creature, first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean): void {
+  /**
+   * Queues a creature's mesh on the bones from `first`, at the level its distance and size call for, and with its layer
+   * at `layer` where that level is drawn with materials. One `unseen` only casts, and asks for nothing.
+   */
+  private queueCreature(c: Creature, first: number, x: number, y: number, z: number, colors: Uint8Array, colorAt: number, id: number, size: number, rigid: boolean, unseen: boolean, layer = 0): void {
     const n = this.count++;
     // A young one is the same mesh drawn smaller, and so are its errors.
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, c.error, far);
     if (!unseen) this.assets.wantTextured(c.mesh, lod, far);
     this.key[n] = (c.mesh * this.levels + lod) * 2 + (rigid ? 1 : 0);
+    if (layer > 0 && this.assets.wantLayers(c.mesh, lod, far)) this.key[n] = this.layeredKey(this.key[n]!, layer);
     this.firstBone[n] = first;
     this.region0[n] = c.color;
     for (let q = 0; q < 6; q++) this.colors[n * 6 + q] = colors[colorAt + q]!;
@@ -437,6 +454,7 @@ export class Characters {
    */
   corpses(p: FramePacket, cam: Camera, remote: RemoteSample, world: CollisionWorld): void {
     this.dead.update(remote, world, cam.x, cam.z, this.gaits);
+    const lit = this.assets.tier.lit;
     for (const d of this.dead.list) {
       const c = this.creatures[d.kind]!;
       const x = d.x - cam.x;
@@ -448,8 +466,17 @@ export class Characters {
       const first = this.room(p, c.anim.rig.bones, 1);
       if (first < 0) return;
       writeBones(p.bones, first * BONE_FLOATS, d.solved, c.anim.rig.rest, null, x, y, z, d.yaw, d.size);
-      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false, false);
+      this.queueCreature(c, first, x, y, z, d.colors, 0, d.id, d.size, false, false, lit ? this.layers.level(d.id, corpseWanted(d.decay), remote.tick, this.last.has(d.id)) : 0);
     }
+  }
+
+  /** The key of `key`'s bodies whose layer is at `layer`. With no key left they are drawn as `key`'s, without it. */
+  private layeredKey(key: number, layer: number): number {
+    const l = this.layered;
+    for (let k = 0; k < this.layeredKeys; k++) if (l[k * 2] === key && l[k * 2 + 1] === layer) return this.plain + k;
+    if (this.layeredKeys === LAYERED_KEYS) return key;
+    [l[this.layeredKeys * 2], l[this.layeredKeys * 2 + 1]] = [key, layer];
+    return this.plain + this.layeredKeys++;
   }
 
   /** Takes `bones` bones for a body of `parts` meshes and returns the first, or returns -1, counting the body as dropped if `counted`. */
@@ -472,6 +499,8 @@ export class Characters {
     this.inArms.length = 0;
     this.placed = false;
     this.heads.clear();
+    this.layeredKeys = 0;
+    this.layers.begin();
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const [id, g] of this.gaits) if (this.frame - g.seen > FORGET_GAIT) this.gaits.delete(id);
@@ -664,10 +693,11 @@ export class Characters {
     for (let k = 0; k < counts.length; k++) {
       this.cursor[k] = total;
       if (counts[k] === 0) continue;
-      const [mesh, lod] = [Math.floor(k / (this.levels * 2)), (k >> 1) % this.levels];
+      const key = k < this.plain ? k : this.layered[(k - this.plain) * 2]!;
+      const [mesh, lod] = [Math.floor(key / (this.levels * 2)), (key >> 1) % this.levels];
       // An odd key is the bodies on one bone, which are a draw of their own.
-      const f = (k & 1) !== 0 ? flags | DRAW_ONE_BONE : flags;
-      draw?.(mesh, lod, total, counts[k]!, f);
+      const f = (key & 1) !== 0 ? flags | DRAW_ONE_BONE : flags;
+      draw?.(mesh, lod, total, counts[k]!, f, k < this.plain ? 0 : this.layered[(k - this.plain) * 2 + 1]!);
       if (byMask) {
         for (let m = 0, at = total; m < MASKS; m++) {
           const n = byMask[k * MASKS + m]!;

@@ -10,7 +10,7 @@ import { Solved, boneToModel, rayZones, solve, zoneHit } from "../../shared/anim
 import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
-import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
+import { MAP_ROLES } from "../../shared/pack/texture.ts";
 import { SLOW_MOST, slowSurfaceError, surfaceError } from "../pack/error.ts";
 import { spanOf } from "../pack/surface.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
@@ -314,7 +314,7 @@ function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], f
     out.materials = (mesh.materials ?? []).flatMap((m, k) => {
       if (!(fine.sections ? fine.sections.includes(k) : k === 0)) return [];
       const span = spanOf(fine, k);
-      const widest = Math.max(0, ...TEXTURE_ROLES.map((role) => mesh.textures?.[m[role]]?.top ?? 0));
+      const widest = Math.max(0, ...MAP_ROLES.map((role) => mesh.textures?.[m[role]]?.top ?? 0));
       return [{ id: m.id, span, texels: widest / span }];
     });
   }

@@ -11,6 +11,7 @@ import { join, resolve } from "node:path";
 import type { Heightfield } from "../shared/world/heightfield.ts";
 import { depthCheck } from "./probe-lit/depth.ts";
 import { farCheck } from "./probe-lit/far.ts";
+import { layersCheck } from "./probe-lit/layers.ts";
 import { litCheck } from "./probe-lit/lit.ts";
 import { nodesCheck } from "./probe-lit/nodes.ts";
 import { seamsCheck } from "./probe-lit/seams.ts";
@@ -23,7 +24,7 @@ import { waterCheck } from "./probe-lit/water.ts";
 const ROOT = resolve(import.meta.dir, "..");
 
 /** Every check, in the order the page draws them. */
-const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck, skyCheck, shadowCheck, nodesCheck, waterCheck];
+const CHECKS: readonly LitCheck[] = [depthCheck, litCheck, terrainCheck, seamsCheck, farCheck, skyCheck, shadowCheck, nodesCheck, waterCheck, layersCheck];
 
 const PAGE = `<!doctype html><meta charset="utf-8"><title>lit probe</title><body><script type="module">
 const load = (name) => import("/m/" + name + ".js");

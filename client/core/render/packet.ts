@@ -292,6 +292,11 @@ export class FramePacket {
   readonly drawFade = new Float32Array(MAX_DRAWS);
   /** How a draw of nodes takes part in their hand-over from the near store to the far one: hand.ts HAND_NEAR, HAND_FAR, or 0. */
   readonly drawHand = new Int8Array(MAX_DRAWS);
+  /**
+   * For a DRAW_TEXTURED draw of bodies that are hurt or dead, whose material has a layer on the card: the level its layer
+   * is drawn at, in LAYER_LEVELS of the whole (surface.ts `wounded`). 0 for any other, which reads no layer.
+   */
+  readonly drawLayer = new Uint8Array(MAX_DRAWS);
 
   tileCount = 0;
   /** Per tile: camera-relative x and z of its corner, metres per quad, sample stride. */
@@ -368,6 +373,7 @@ export class FramePacket {
     this.dropped = 0;
     this.drawFade.fill(0, 0, this.drawCount);
     this.drawHand.fill(0, 0, this.drawCount);
+    this.drawLayer.fill(0, 0, this.drawCount);
     this.drawCount = 0;
     this.atlasRows = 0;
     this.tileCount = 0;

@@ -27,8 +27,8 @@ const W = 240;
 const H = 135;
 const EXAMPLE = join(import.meta.dir, "../../tools/blender/example");
 
-/** One pixel of each role: a tan base colour, a normal straight out, rough and not metal, and no region. */
-const PIXEL: Record<TextureRole, readonly number[]> = { base: [190, 150, 100, 255], normal: [128, 128], mro: [255, 200, 0, 255], mask: [0, 0, 0, 0], mask2: [0, 0, 0, 0] };
+/** One pixel of each role: a tan base colour, a normal straight out, rough and not metal, no region, and a layer that shows red from the first. */
+const PIXEL: Record<TextureRole, readonly number[]> = { base: [190, 150, 100, 255], normal: [128, 128], mro: [255, 200, 0, 255], mask: [0, 0, 0, 0], mask2: [0, 0, 0, 0], layer: [150, 20, 20, 255] };
 
 /** The core pack split as a build splits it, each of its textures 64 pixels of one colour, so no large picture is read. */
 function smallFiles(): GameFiles {

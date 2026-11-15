@@ -94,8 +94,12 @@ export interface MaterialSpec {
   /** Kept for the record. `--check` holds the normal map against it. */
   readonly height?: string;
   /**
-   * Layers over the base colour on the same layout: wounds that show as a creature is hurt, and the wear of its corpse
-   * as it decays. Not read yet.
+   * What the surface turns to, on the same layout, sRGB with alpha: `hurt` as the living creature loses health, `decay`
+   * as its corpse rots. The colour takes the place of the dyed colour where it shows and is never dyed. Alpha is how
+   * soon a texel shows over that picture's three steps: 255 from the first, falling through each third to the next
+   * step, 0 never. A corpse shows the whole hurt picture from the start; where the hurt picture has alpha, the decay
+   * picture is passed over. Both make one texture (tools/pack/image.ts `layerPicture`), stored no wider than
+   * `TextureBudget.layer`.
    */
   readonly hurt?: string;
   readonly decay?: string;
@@ -132,10 +136,14 @@ export function shared(dir: string, id: string, spec: MaterialSpec): MaterialSpe
   return { ...spec, id, dir };
 }
 
-/** The side in pixels of the largest base colour and normal map, and the most megabytes all of an asset's maps may take in one variant. */
+/**
+ * The side in pixels of the largest base colour and normal map, and the most megabytes all of an asset's maps may take
+ * in one variant. `layer` is the widest a material's hurt and decay layer is stored, the base colour's side where not given.
+ */
 export interface TextureBudget {
   readonly top: number;
   readonly megabytes: number;
+  readonly layer?: number;
 }
 
 export interface CreatureClip {
@@ -238,6 +246,16 @@ export interface CreatureAsset {
  * Rigid meshes made by one set of scripts: the pieces of a structure tier, say. A piece whose id is a structure's takes
  * the place of that structure's grey box. Collision stays the content's.
  */
+/** One piece of a pieces asset: see `PiecesAsset.pieces`. */
+export interface PieceSpec {
+  readonly id: string;
+  readonly object: string;
+  readonly errors?: readonly number[];
+  readonly hold?: "prop_r" | "prop_l";
+  readonly dropped?: "auto" | string;
+  readonly icon?: { readonly around: number; readonly above: number; readonly roll?: number; readonly zoom?: number };
+}
+
 export interface PiecesAsset {
   readonly kind: "pieces";
   readonly source: { readonly scripts: readonly string[] };
@@ -250,8 +268,16 @@ export interface PiecesAsset {
    * lies from the finest's, in place of measuring how far its points moved. It is for levels a measure of points
    * cannot judge, such as a crown that is other leaves in the same outline. A level it leaves out is measured.
    * `--check` and the sheet print both, and where each level is then first drawn on each tier.
+   *
+   * An item's piece (planning/reference/items-plan.md) may also say, though nothing reads these until tasks A and B:
+   * - `hold`: the piece is held, in the right or left hand, on that hand's prop bone of the human skeleton. Modelled
+   *   with the grip at the origin, its length along +Z and its top along +Y, as tools/pack/weapons.ts draws the boxes.
+   * - `dropped`: the piece as it lies on the ground, `<id>/dropped`. "auto" lays the held piece on its broadest side;
+   *   the name of another Blender object gives a lying piece of its own.
+   * - `icon`: the view its inventory picture is drawn from, where the usual three-quarter view does not suit it.
+   *   Angles in radians round and above, `roll` about the view, `zoom` past the framing that fits it.
    */
-  readonly pieces: readonly { readonly id: string; readonly object: string; readonly errors?: readonly number[] }[];
+  readonly pieces: readonly PieceSpec[];
   /**
    * The pictures of each Blender material, by its name. A piece is drawn with them on its levels that have texture
    * coordinates, and flat in the palette colour nearest each material's mean colour.

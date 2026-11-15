@@ -17,8 +17,11 @@
 //   held_back     from behind her, to see her hands under it
 //   held_crouch   the crouched one from her left: the bird held out in front of her knees
 //   held_eye      what she sees of it from her own eyes, looking ahead
+//   hurt_2m, hurt_10m     four birds side on, unhurt and at hurt stages 1, 2 and 3, from 2 and 10 m
+//   decay_2m, decay_10m   four corpses lying, fresh and at decay stages 1, 2 and 3, from 2 and 10 m; each also
+//                         enlarged about the birds
 //
-//   bun assets/source/core/creatures/dodo/ref/world/snap.ts [shot ...] [--tier medium|ultra]
+//   bun assets/source/core/creatures/dodo/ref/world/snap.ts [shot ...] [--tier medium|ultra] [--out DIR]
 
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,13 +40,15 @@ import { encodePng } from "../../../../../../../tools/snap/png.ts";
 const [W, H] = [1280, 720];
 /** A grassy patch beyond the plaza with no tree or rock between it and a camera 26 m to its south. */
 const [CX, CZ] = [160, 360];
-const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead", "held", "held_side", "held_left", "held_top", "held_back", "held_crouch", "held_eye"] as const;
+const SHOTS = ["2m", "6m", "20m", "profile", "dyes", "young", "knocked_out", "lying", "dead", "held", "held_side", "held_left", "held_top", "held_back", "held_crouch", "held_eye", "hurt_2m", "hurt_10m", "decay_2m", "decay_10m"] as const;
 type Shot = (typeof SHOTS)[number];
 
 const args = process.argv.slice(2);
 const tierArg = args.indexOf("--tier");
+const outArg = args.indexOf("--out");
 const tiers = tierArg >= 0 ? [args[tierArg + 1]!] : ["medium", "ultra"];
-const asked = args.filter((a, i) => !a.startsWith("--") && (tierArg < 0 || i !== tierArg + 1));
+const dir = outArg >= 0 ? args[outArg + 1]! : import.meta.dir;
+const asked = args.filter((a, i) => !a.startsWith("--") && (tierArg < 0 || i !== tierArg + 1) && (outArg < 0 || i !== outArg + 1));
 const shots = asked.length > 0 ? (asked as Shot[]) : [...SHOTS];
 const files = await gameFiles(SOURCE);
 
@@ -222,6 +227,14 @@ function scene(view: ProvingView, shot: Shot): void {
     aim(view, 0, 1.3, -2.6, 0, 0.15, 0, 0.9);
     return;
   }
+  if (shot.startsWith("hurt") || shot.startsWith("decay")) {
+    // Side on in a row, the worst on the right. A corpse is drawn lying as one knocked out lies, its belly to the camera.
+    const dead = shot.startsWith("decay");
+    const d = shot.endsWith("10m") ? 10 : 2;
+    place(view, [0, 1, 2, 3].map((k) => ({ x: (1.5 - k) * 0.85, z: 0, yaw: dead ? -Math.PI / 2 - 0.3 : -Math.PI / 2 - 0.25, seed: k * 5, set: (s: AnimState) => (dead ? Object.assign(s, { out: true, dead: true, decay: k }) : Object.assign(s, { hurt: k })) })), tick);
+    aim(view, 0, 1.62, -d, 0, dead ? 0.1 : 0.32, 0);
+    return;
+  }
   if (shot === "lying") {
     place(view, [
       { x: 0.35, z: 0, yaw: -Math.PI / 2 - 0.3, set: (s) => void (s.out = true) },
@@ -279,7 +292,7 @@ function enlarged(color: Uint8ClampedArray, px: number, py: number, k: number): 
 }
 
 /** For the distance shots, the point to enlarge about and how many times. */
-const CROPS: Partial<Record<Shot, [number, number, number, number]>> = { "2m": [0, 0.33, 0, 2], "6m": [0.4, 0.3, 1.6, 3], "20m": [0.4, 0.3, 1.6, 6] };
+const CROPS: Partial<Record<Shot, [number, number, number, number]>> = { "2m": [0, 0.33, 0, 2], "6m": [0.4, 0.3, 1.6, 3], "20m": [0.4, 0.3, 1.6, 6], hurt_10m: [0, 0.32, 0, 3], decay_10m: [0, 0.1, 0, 3] };
 
 for (const tier of tiers) {
   for (const shot of shots) {
@@ -289,12 +302,12 @@ for (const tier of tiers) {
     view.scene.viewHeight = H;
     scene(view, shot);
     settle(view);
-    const out = join(import.meta.dir, `${shot}_${tier}.png`);
+    const out = join(dir, `${shot}_${tier}.png`);
     writeFileSync(out, encodePng(W, H, view.raster.color));
     const crop = CROPS[shot];
     if (crop) {
       const [px, py] = project(view, crop[0], crop[1], crop[2]);
-      writeFileSync(join(import.meta.dir, `${shot}_${tier}_x${crop[3]}.png`), encodePng(W, H, enlarged(view.raster.color, px, py, crop[3])));
+      writeFileSync(join(dir, `${shot}_${tier}_x${crop[3]}.png`), encodePng(W, H, enlarged(view.raster.color, px, py, crop[3])));
     }
     console.log(`${out}  ${(performance.now() - t0).toFixed(0)} ms`);
   }

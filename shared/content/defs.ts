@@ -249,6 +249,21 @@ export interface ItemDef extends Named {
   readonly spoilsInto?: string;
   /** It may be found as a blueprint: a copy that crafts it a limited number of times. */
   readonly blueprint?: boolean;
+  /** What using one does beyond what eating gives (planning/reference/items-plan.md, task C). */
+  readonly use?: UseFacet;
+}
+
+/**
+ * What using an item does to the body that uses it, as ARK's UseItemAddCharacterStatusValues and the buffs a consumable gives.
+ * A stub until task C of planning/reference/items-plan.md builds it.
+ */
+export interface UseFacet {
+  /** A stat changed by `amount`: at once, or spread over `seconds`. */
+  readonly adds?: readonly { readonly stat: StatName; readonly amount: number; readonly seconds?: number }[];
+  /** Buffs given on use. */
+  readonly buffs?: readonly string[];
+  /** A vessel that holds water: `water` points when full, `each` drunk a use, filled again standing in water. */
+  readonly holds?: { readonly water: number; readonly each: number };
 }
 
 /** How an item is made. ARK keeps this on the item too. */

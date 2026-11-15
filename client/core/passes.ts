@@ -166,8 +166,11 @@ export class BenchRun {
   }
 }
 
-/** Effects `?off=` names, comma separated, for a before and after. "band" draws the near nodes in the hand-over without its discard. */
-export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "band"] as const;
+/**
+ * Effects `?off=` names, comma separated, for a before and after. "band" draws the near nodes in the hand-over without
+ * its discard, and "layers" draws hurt and dead bodies with the plain surface program, in the draws they have.
+ */
+export const EFFECTS = ["shadows", "haze", "clouds", "water", "farblocks", "farnodes", "band", "layers"] as const;
 export type Effect = (typeof EFFECTS)[number];
 
 export function effectsOff(text: string | null): ReadonlySet<Effect> {
@@ -193,11 +196,12 @@ export function tierWithout(tier: Tier, off: ReadonlySet<Effect>): Tier {
   return copy;
 }
 
-/** The effects that live in a built frame: the haze in its block, the sea's detail and the hand-over's discard in its draws. */
+/** The effects that live in a built frame: the haze in its block, the sea's detail, the hand-over's discard and bodies' layers in its draws. */
 export function packetWithout(p: FramePacket, off: ReadonlySet<Effect>): void {
   if (off.has("haze")) p.frame[FRAME.haze] = 0;
   for (let d = 0; d < p.drawCount; d++) {
     if (off.has("water")) p.drawFlags[d] = p.drawFlags[d]! & ~DRAW_WATER;
     if (off.has("band") && p.drawHand[d] === HAND_NEAR) p.drawHand[d] = 0;
+    if (off.has("layers")) p.drawLayer[d] = 0;
   }
 }

@@ -94,7 +94,7 @@ function measure(asset: Asset, m: Material, pack: Pack, deep: boolean, faults: s
   }
   if (!held) faults.push(`${m.id}: the pack has no such material. Build the asset again`);
   const side = (what: string): number => sideOf(out.layers.find((l) => l.what === what) ?? { width: 0 });
-  for (const [role, what] of [["base", "base"], ["normal", "normal"], ["mro", files.packed ? "packed" : "occlusion"], ["mask", files.regions ? "regions" : "mask"]] as const) {
+  for (const [role, what] of [["base", "base"], ["normal", "normal"], ["mro", files.packed ? "packed" : "occlusion"], ["mask", files.regions ? "regions" : "mask"], ["layer", files.hurt ? "hurt" : "decay"]] as const) {
     const have = files[what] !== undefined;
     if (have !== (tops[role] !== undefined)) faults.push(`${m.id}: its asset ${have ? "names" : "does not name"} a ${what} picture, and the pack has ${have ? "no such texture" : "one"}. Build the asset again`);
     else if (have && side(what) > 0 && tops[role]! > side(what)) faults.push(`${m.id}: the pack stores its ${role} at ${tops[role]} pixels, and its picture is ${side(what)}. Build the asset again`);
