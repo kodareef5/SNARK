@@ -3,7 +3,7 @@
 
 import type { TextureFormat } from "../../../shared/pack/texture.ts";
 import type { Tier } from "../assets/tiers.ts";
-import { FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT } from "./glsl.ts";
+import { FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT } from "./glsl.ts";
 import { SKY_GLSL } from "./sky.ts";
 import { DOME_VERTEX, SURFACE_VERTEX, domeFragment, surfaceFragment } from "./surface.ts";
 
@@ -42,6 +42,8 @@ export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureForma
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
   seeThrough: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_SPLIT_FRAGMENT : FLAT_SPLIT_FRAGMENT, defines: "", samplers: MESH }),
+  // Far blocks (far.ts), which fade out over the last of their reach. A program of their own keeps the discard out of the rest.
+  far: (tier) => ({ vertex: FLAT_MESH_VERTEX, fragment: tier.lit ? LIT_FAR_FRAGMENT : FLAT_FAR_FRAGMENT, defines: "", samplers: MESH }),
   surface: (_, format) => ({ vertex: SURFACE_VERTEX, fragment: surfaceFragment(format, SKY_GLSL), defines: "", samplers: { ...MESH, uBase: UNIT.maps, uNormal: UNIT.maps + 1, uMro: UNIT.maps + 2, uMask: UNIT.maps + 3, uMask2: UNIT.maps + 4, uSkyTable: UNIT.sky } }),
   sky: () => ({ vertex: DOME_VERTEX, fragment: domeFragment(SKY_GLSL), defines: "", samplers: { uSkyTable: UNIT.sky } }),
 };

@@ -4,7 +4,8 @@
 
 import { REGION_BASE } from "../../../shared/pack/palette.ts";
 import { SIZE_UNITS } from "../../../shared/world/nodes.ts";
-import { BONES_PER_ROW } from "./packet.ts";
+import { FADE_ORDER } from "./far.ts";
+import { BONES_PER_ROW, FRAME_BLOCK } from "./packet.ts";
 import { AMBIENT, CHECK_COARSE, CHECK_COARSE_FADE, CHECK_COARSE_SIZE, CHECK_FINE, CHECK_FINE_FADE, CHECK_INSET, DIFFUSE } from "./shading.ts";
 import { LIGHT } from "./surface.ts";
 
@@ -138,3 +139,22 @@ export const FLAT_SPLIT_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main
 
 /** LIT's fragment text with SEE_THROUGH_SPLIT, which the lit tiers draw see-through flat draws with. */
 export const LIT_SPLIT_FRAGMENT = LIT_FRAGMENT.replace("void main() {\n", `${SEE_THROUGH_SPLIT}void main() {\n  dropNearer();\n`);
+
+/**
+ * The far fade, whose twin is far.ts `fadeKeeps`: a far draw is gone at `uFade` metres, and over the last share of that,
+ * fView.w, a fragment is dropped where its pixel's place in a 4 by 4 ordered pattern says, so its coverage falls evenly
+ * to none. A program calls fadeOut() first, before anything is lit.
+ */
+export const FAR_FADE = `uniform float uFade;
+const float FADE_ORDER[16] = float[16](${FADE_ORDER.map((v) => v.toFixed(1)).join(", ")});
+void fadeOut() {
+  ivec2 q = ivec2(gl_FragCoord.xy) & 3;
+  if ((uFade - length(vRel)) * 16.0 <= (FADE_ORDER[q.y * 4 + q.x] + 0.5) * uFade * fView.w) discard;
+}
+`;
+
+/** FLAT's fragment text with the far fade, which low poly draws far blocks with. */
+export const FLAT_FAR_FRAGMENT = FLAT_FRAGMENT.replace("out vec4 o;\nvoid main() {\n", `out vec4 o;\n${FRAME_BLOCK}${FAR_FADE}void main() {\n  fadeOut();\n`);
+
+/** LIT's fragment text with the far fade, which the lit tiers draw far blocks with. */
+export const LIT_FAR_FRAGMENT = LIT_FRAGMENT.replace("void main() {\n", `${FAR_FADE}void main() {\n  fadeOut();\n`);
