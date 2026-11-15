@@ -138,8 +138,8 @@ districts and spawn points by settings, the composed vocabulary, the map file an
 
 ## Engine asks, with what was measured
 
-- **Water above the sea, first.** The map has no water a survivor can fill a vessel in or swim: the Hollywood
-  Reservoir (217 m), the river's channel (158 m), Universal's lake (168 m) and seven ponds, 37.5 ha, are marsh.
+- **Water above the sea, first.** Done in round nine: the reservoir, the river, Universal's lake and six of the seven
+  ponds are water a survivor swims in, drinks from and fills a vessel in (below).
 - **A creature table for dry hills.** Every region is the jungle's or, round spawn points, the beach's; Los Angeles
   needs a chaparral and grassland table.
 - **A temperate and Mediterranean flora, kind by kind, for the art team:** coast live oak (wide, evergreen, no moss);
@@ -169,3 +169,38 @@ the steep-ground measure, a vocabulary extending round four's library with the c
    op if the lower half must show; the tall tower's pod is two `ring`s and a `dome`.
 4. Set `easy_around_spawns_m`: the desert has no beach either, and the jungle's raptors are its only regions.
 5. Keep `canopy` shares low or zero: almost nothing grows there, and NLCD's barren land is now bare ground.
+6. The fountains, pools and the Bellagio's lake in the perched-water layer become water by the build with no setting,
+   each where its lidar is flat at one level and its ground holds it; read the build's `lakes` line and `stats.json`'s
+   `lakes` for any left marsh and why. A fountain's basin narrower than a 2 m sample is not seen.
+
+## Water above the sea (round nine)
+
+The engine now holds water on its own surfaces (`planning/reference/maps.md`), and the builder makes each perched lake
+one (`tools/mapworld/lakes.ts`, `tools/mapworld/README.md`). Nothing in `base/` changed and `prepare.py` was not run
+again: `bun tools/mapworld/build.ts los-angeles` reads `base/perched_water.geojson` as it stands. A survivor now drinks
+by pressing E standing or swimming in any of it, and fills a vessel standing in it.
+
+| Water (TIGER id) | Surface over the sea | Water | |
+|---|---|---|---|
+| Hollywood Reservoir (1101584238717) | 216.4 m | 29.17 ha | Carved to its 8 m deepest; its mapped pier over the water |
+| A pond in the hills (1101584241129) | 230.1 m | 3.03 ha | Its footbridge stands over the water |
+| Universal Lake (1101584238791) | 167.0 m | 0.55 ha | |
+| Los Angeles River (1104493447488) | 157.5, 157.25, 157.0 m | 0.30 ha | Three reaches a step of 0.25 m apart down its channel at the frame's north edge |
+| Five ponds (…239939, …239560, …239944, …240110, …240317) | 91.6 to 233.5 m | 0.04 to 0.65 ha | |
+| An outline in the hills (1101584239900) | | none | Left marsh: 9% of its lidar is within 0.25 m of one level, from 192 to 222 m: a slope, not a pond |
+
+Eleven bodies, 34.5 ha in 94,006 squares of 2 m over 167 chunks. The map file is 99,396,205 bytes (37.1 MB compressed),
+343 KB of them the water (6.5 KB compressed); built in 149 to 154 s at 7.6 GB peak. Every walk is as it was
+(approaches 41,205/4, bridges 216/1, routes 2,368/2, rooms 13,939/0, obelisks 3/3): the pond's footbridge first went
+down into the water with its approach ramp, and approaches and ramps no longer go down into a lake
+(`tools/mapworld/bridges.ts`). Walkable land is 98.02% at 44.8°. Over the reservoir medium's frame keeps under its 2 M
+triangles and 1,024 draws, and the pond's view among trees and ruins passes 1,024 draws with the water or without it; the
+water adds 2 to 19 draws and 2 k triangles to the same views without it
+(`reports/water1/rendering.json`).
+
+Pictures from the software rasterizer on medium (`reports/water1/views.json`): `the-reservoir-below-the-sign.png` from
+behind the letters on Mount Lee, `the-reservoir-on-the-water.png`, `the-reservoir-as-water.png` (the camera of
+`reports/world1/worst-the-reservoir-as-marsh.png`), `universal-lake.png`, `the-river-in-its-channel.png` (the river the
+thin strip along the edge, Universal Lake beyond), `a-pond-south-of-the-hills.png`; `a-survivor-drinking-at-a-pond.png`
+(`tools/mapworld/survivor-view.ts ... 3291 2247 ... --face 95 --drink`: she stands in 0.45 m of the pond, presses E
+and her water rises by 10); and the map screen, `mapscreen-z3-3_2.png` round the reservoir.
