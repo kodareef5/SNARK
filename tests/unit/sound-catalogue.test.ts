@@ -11,7 +11,9 @@ import { MODE_SWIM } from "../../shared/sim/character.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import { buildProvingHeightfield } from "../../shared/world/proving.ts";
 import { GONE_DESTROYED } from "../../shared/world/structures.ts";
-import { RemoteSample } from "../../client/core/session.ts";
+import { EVENT_HIT, EVENT_KILL } from "../../shared/net/protocol.ts";
+import { RemoteSample, type CombatEvent } from "../../client/core/session.ts";
+import { ActionSounds, type OwnState } from "../../client/core/sound/actions.ts";
 import { BodySounds, type Hear } from "../../client/core/sound/bodies.ts";
 import { BuildSounds } from "../../client/core/sound/build.ts";
 import { coverage } from "../../client/core/sound/coverage.ts";
@@ -264,4 +266,31 @@ test("a survivor riding is carried, not walking: no steps, jumps or landings of 
     frame();
   }
   expect(heard.filter((h) => h.startsWith("step/")).length).toBeGreaterThan(0);
+});
+
+/** A combat event as the session reads one off the wire. */
+function combatEvent(kind: number, more: Partial<CombatEvent> = {}): CombatEvent {
+  return { kind, x: 0, y: 0, z: 0, zone: 0, damage: 0, kill: false, blocked: false, bearing: 0, side: false, silenced: false, name: "", item: 0, far: 0, level: 0, xp: 0, flies: false, vx: 0, vy: 0, vz: 0, back: 0, rays: 1, seed: 0, ...more };
+}
+
+/** The player's state as view.ts makes it, standing at (380, 380) with full vitals. */
+function ownState(): OwnState {
+  const vitals = new Vitals();
+  vitals.max.fill(100e6, 0, V_COUNT);
+  vitals.value.fill(100e6, 0, V_COUNT);
+  return { alive: true, x: 380, y: hf.heightAt(380, 380), z: 380, act: 0, held: 0, female: false, vitals, tick: 0, level: 1, engrams: 0 };
+}
+
+test("a kill is heard once: the blow that killed and the kill the server credits are one occasion", () => {
+  const a = new ActionSounds(reg);
+  const heard: string[] = [];
+  const hear: Hear = (_o, key) => heard.push(KEYS[key]!.key);
+  const own = ownState();
+  const update = (): void => a.update(new RemoteSample(), own.x, own.y + 1.6, own.z, own, -1, 0, 1, () => false, hear, () => {});
+  update();
+  // The server tells the killer of the blow, with its killed bit, and then of the kill (server/combat.ts).
+  a.absorb([combatEvent(EVENT_HIT, { x: 382, y: own.y + 1, z: 380, damage: 40, kill: true }), combatEvent(EVENT_KILL, { name: "Dodo", level: 3, xp: 4 })], [], 0);
+  update();
+  expect(heard.filter((k) => k === "kill")).toEqual(["kill"]);
+  expect(heard).toContain("hit/marker");
 });

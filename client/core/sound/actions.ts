@@ -141,8 +141,8 @@ export class ActionSounds {
     // ---- Combat events.
     for (const e of this.events) {
       if (e.kind === EVENT_HIT) {
+        // A blow that kills is followed by EVENT_KILL, which is where the kill is heard.
         hear(ui, e.zone === ZONE_HEAD ? K.head : K.marker, -1, 0, 0, 0, 0, 1, true);
-        if (e.kill) hear(ui, K.kill, -1, 0, 0, 0, 0, 1, true);
         hear(survivor, e.zone === ZONE_NONE ? K.stone : K.flesh, -1, e.x, e.y, e.z, 0, Math.min(1, 0.4 + e.damage / 60), false);
       } else if (e.kind === EVENT_HURT && own.vitals) {
         const max = own.vitals.max[V_HEALTH]! || 1;
@@ -150,7 +150,7 @@ export class ActionSounds {
       } else if (e.kind === EVENT_DEATH) {
         hear(survivor, DEATH[sex]!, -1, 0, 0, 0, 0, 1, true);
       } else if (e.kind === EVENT_KILL) {
-        hear(ui, K.kill, -1, 0, 0, 0, 0, 0.8, true);
+        hear(ui, K.kill, -1, 0, 0, 0, 0, 1, true);
       } else if (e.kind === EVENT_SHOT) {
         const d = Math.hypot(e.x - ex, e.y - ey, e.z - ez);
         const h = this.ammoHold[e.item]! >= 0 ? this.ammoHold[e.item]! : HOLD_RIFLE;
