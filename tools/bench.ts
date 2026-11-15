@@ -24,7 +24,7 @@ import { STRUCT_UNITS, TICK_RATE, chunkAt } from "../shared/coords.ts";
 import { hashBytes } from "../shared/hash.ts";
 import { BitReader, BitWriter } from "../shared/net/codec.ts";
 import { LoopbackNet, type LoopbackEnd } from "../shared/net/loopback.ts";
-import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
+import { BOX_SELF, CMD_MOVE, InputBuffer, KEY_BYTES, PROTOCOL_VERSION, S_SNAPSHOT, nextCommandSeq, writeCommand, writeHello, writeInputs } from "../shared/net/protocol.ts";
 import { defaultLook } from "../shared/anim/look.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../shared/world/nodes.ts";
 import { CH_RELIABLE, CH_UNRELIABLE } from "../shared/net/transport.ts";
@@ -154,7 +154,7 @@ class Bot {
   move(from: number, to: number, item: number): void {
     const w = this.w;
     w.reset();
-    writeCommand(w, (this.seq = (this.seq + 1) & 0xffff), CMD_MOVE);
+    writeCommand(w, (this.seq = nextCommandSeq(this.seq)), CMD_MOVE);
     w.bits(BOX_SELF, 1);
     w.varint(from);
     w.bits(BOX_SELF, 1);

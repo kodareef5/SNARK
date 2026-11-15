@@ -8,7 +8,7 @@
 //     INPUT     unreliable   ack tick u32, ticks behind it that others are drawn u8 (sixteenths), newest tick u32,
 //                            count-1 (3 bits), then inputs newest first. Each after the first is preceded by
 //                            one bit: 1 = same as the one before.
-//     COMMAND   reliable     sequence u16, op u8, arguments by op
+//     COMMAND   reliable     sequence u16 (1 to 65,535, then 1 again), op u8, arguments by op
 //   server -> client
 //     WELCOME   reliable     version u16, tick u32, own handle u32, species u16, session state 2 bits, admin 1 bit,
 //                            day offset u32, map id string, map hash u32, chunksX-1 u8, chunksZ-1 u8, own body,
@@ -23,7 +23,7 @@
 //                            Rows are read first. A removal leaves alone any row newer than itself.
 //     CHUNK_DROP reliable    chunk u16
 //     REJECT    reliable     reason u8
-//     RESULT    reliable     command sequence u16, code u8
+//     RESULT    reliable     command sequence u16 (0 when no command asked), code u8
 //     TEXT      reliable     channel u8, text string
 //     OWN       reliable     component u8, then that component's fields
 //     NODES     reliable     chunk u16, version u32, count u8, used-up slots (u8 each)
@@ -439,6 +439,11 @@ export function writeHello(w: BitWriter, version: number, contentHash: number, c
   for (let i = 0; i < KEY_BYTES; i++) w.u8(key[i] ?? 0);
   if (look) for (let i = 0; i < LOOK_BYTES; i++) w.u8(look[i] ?? 0);
   w.string(password);
+}
+
+/** A connection's commands are numbered from 1 without gaps. After 65,535 comes 1, since 0 names no command. */
+export function nextCommandSeq(seq: number): number {
+  return seq >= 0xffff ? 1 : seq + 1;
 }
 
 /** The caller appends the op's arguments. */

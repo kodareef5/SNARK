@@ -49,6 +49,7 @@ import {
   S_TEXT,
   REMOVAL_NEWS_TICKS,
   S_WELCOME,
+  nextCommandSeq,
   readInputs,
   writeBody,
 } from "../shared/net/protocol.ts";
@@ -845,7 +846,7 @@ export class GameServer {
   private command(c: Client, r: BitReader, data: Uint8Array, over: boolean): boolean {
     const seq = r.u16();
     r.u8();
-    if (r.overflow || seq !== ((c.cmdSeq + 1) & 0xffff)) return false;
+    if (r.overflow || seq !== nextCommandSeq(c.cmdSeq)) return false;
     c.cmdSeq = seq;
     c.activeAt = this.world.tick;
     if (over || c.queue.length >= COMMAND_QUEUE) this.result(c, seq, RESULT_BUSY);

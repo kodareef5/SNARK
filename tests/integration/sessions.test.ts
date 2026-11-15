@@ -9,6 +9,7 @@ import { handleIndex } from "../../shared/ids.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
 import {
   CMD_TEXT,
+  CMD_VIEW,
   C_COMMAND,
   PROTOCOL_VERSION,
   REJECT_DENIED,
@@ -197,6 +198,21 @@ test("a flood of commands is answered busy, never dropped silently, and runs in 
   expect(results.every((c) => c === RESULT_OK || c === RESULT_BUSY)).toBe(true);
   expect(ada.state).toBe("active");
   expect(h.say(ada, "pos").length).toBe(1);
+});
+
+test("a connection's commands go on past 65,535: the sequence wraps to 1 on both ends, never to 0, which names no command", () => {
+  const h = new Harness({}, 1, 60, { dev: true });
+  const ada = h.join("ada");
+  h.run(500);
+  const answered: number[] = [];
+  ada.onResult = (seq) => answered.push(seq);
+  const sent: number[] = [];
+  for (let i = 0; i < 65_537; i++) sent.push(ada.command(CMD_VIEW, (w) => (w.u16(64), w.u16(4096))));
+  h.run(500);
+  expect([sent.indexOf(0), sent.slice(65_533)]).toEqual([-1, [65_534, 65_535, 1, 2]]);
+  // Each is answered by its own number: 1 and 2 once a lap.
+  expect([answered.length, answered.includes(0), answered.filter((s) => s === 1 || s === 2).length]).toEqual([65_537, false, 4]);
+  expect([ada.state, h.say(ada, "pos").length]).toEqual(["active", 1]);
 });
 
 test("a hostile command stream changes nothing and cannot crash the server", () => {
