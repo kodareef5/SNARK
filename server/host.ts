@@ -32,6 +32,7 @@ import { buildRigs } from "../shared/anim/rigs.ts";
 import type { PackRig } from "../shared/pack/pack.ts";
 import { DEADLINE_FIRE, Stations } from "./stations.ts";
 import { wirePower } from "./power.ts";
+import { wirePreserve } from "./preserve.ts";
 import { TICK_RATE } from "../shared/coords.ts";
 import { Chat } from "./chat.ts";
 import { Tribes } from "./tribes.ts";
@@ -553,6 +554,8 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   // A powered station (the fabricator) makes things only while it burns; why it refuses is told as a notice.
   wirePower(world, stations, progression);
   progression.onNotice = (pid, text) => notice(pid, text);
+  // A preserving bin keeps food longer only while lit: its clocks are rescaled at the tick it swaps.
+  wirePreserve(stations, items);
   const beds = new Beds({
     world, game, records, tribes, fixtures, rules, bus,
     // A death refills the survivor. One that arrives or travels comes as it left.

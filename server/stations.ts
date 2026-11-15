@@ -72,6 +72,8 @@ export class Stations {
         return ticks;
       },
       waiting: () => {
+        // A station that does not cook (`cooks: false`, the preserving bin) has nothing waiting over it (M1).
+        if (reg.stationCooks[this.rec!.kind] === 0) return 0;
         const s = first(reg.cooksInto);
         return s < 0 ? 0 : reg.cookTicks[this.rec!.inv!.item[s]!]!;
       },
