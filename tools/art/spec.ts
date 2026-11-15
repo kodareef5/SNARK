@@ -209,6 +209,12 @@ export interface CreatureAsset {
     readonly reparent?: Readonly<Record<string, string>>;
     /** The most bones the rig may have. The engine takes 127. */
     readonly bones?: number;
+    /**
+     * Every bone, in the order the rig lists them, where something depends on that order (a vehicle's measured
+     * contract). The exporter lists a joint's children by name; without this the rig takes that order. The root is
+     * first and every bone comes after its parent.
+     */
+    readonly order?: readonly string[];
   };
   readonly zones: readonly ZoneSpec[];
   readonly sockets: readonly SocketSpec[];

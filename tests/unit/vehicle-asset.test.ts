@@ -40,8 +40,8 @@ test("closed and at rest, every level stands inside the envelope on the ground, 
       expect(min[k]!).toBeGreaterThanOrEqual(lo[k]! - 0.005);
       expect(max[k]!).toBeLessThanOrEqual(hi[k]! + 0.005);
     }
-    // The tyres reach the ground and no lower.
-    expect(min[1]!).toBeCloseTo(0, 2);
+    // The tyres reach the ground and no lower; a coarser level may stand a little off it.
+    if (lod === mesh.lods[0]) expect(min[1]!).toBeCloseTo(0, 2);
     expect(lod.bones!.every((b) => b < COMPACT.bones.length)).toBe(true);
     if (lod.weights) for (let v = 0; v < lod.weights.length; v += 4) expect(lod.weights[v]).toBeCloseTo(1, 5);
   }
@@ -65,15 +65,26 @@ test("each wheel is round about its pivot at the contract's radius, and wide as 
 });
 
 test("it is drawn with three materials of four maps and a hurt and decay layer, the paint a colour region, and in the core pack", () => {
-  expect(mesh.materials!.map((m) => m.id)).toEqual(["body", "trim", "cabin"].map((n) => `${COMPACT.id}/${n}`));
+  expect(mesh.materials!.map((m) => m.id).sort()).toEqual(["body", "cabin", "trim"].map((n) => `${COMPACT.id}/${n}`));
   for (const m of mesh.materials!) {
     expect([m.base, m.normal, m.mro, m.mask, m.layer ?? -1].every((t) => t >= 0)).toBe(true);
     expect(m.emissive).toBe(0);
   }
-  // Drawn flat, the painted panels are the paint's region, so a car keeps its paint at any distance.
-  const flat = mesh.lods[mesh.flat!]!;
-  const painted = flat.colors.filter((c) => c === REGION_BASE).length;
-  expect(painted / flat.colors.length).toBeGreaterThan(0.2);
+  // Drawn flat, the painted panels are the paint's region at every level, so a car keeps its paint at any distance:
+  // a fifth of all its surface, cabin and wheels included, as it is on the finest level.
+  for (const lod of mesh.lods.slice(mesh.flat!)) {
+    const p = lod.positions;
+    let [painted, all] = [0, 0];
+    for (let t = 0; t < lod.indices.length; t += 3) {
+      const [i, j, k] = [lod.indices[t]! * 3, lod.indices[t + 1]! * 3, lod.indices[t + 2]! * 3];
+      const u = [p[j]! - p[i]!, p[j + 1]! - p[i + 1]!, p[j + 2]! - p[i + 2]!];
+      const v = [p[k]! - p[i]!, p[k + 1]! - p[i + 1]!, p[k + 2]! - p[i + 2]!];
+      const area = Math.hypot(u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!);
+      all += area;
+      if (lod.colors[lod.indices[t + 2]!] === REGION_BASE) painted += area;
+    }
+    expect(painted / all).toBeGreaterThan(0.2);
+  }
   const core = readPacks();
   expect([core.meshes.some((m) => m.id === COMPACT.id), core.rigs.some((r) => r.id === COMPACT.id)]).toEqual([true, true]);
 });

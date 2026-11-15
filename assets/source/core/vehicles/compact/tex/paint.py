@@ -410,20 +410,27 @@ def paint_body():
               ((0.80, 0.55, -1.72), 0.2), ((-0.72, 0.50, -1.92), 0.24), ((0.86, 0.62, 1.30), 0.16), ((-0.86, 0.62, -1.20), 0.18),
               ((0.0, 0.83, 1.55), 0.22), ((0.30, 1.47, -0.10), 0.16), ((-0.55, 0.98, -1.60), 0.16), ((0.85, 0.72, 0.30), 0.14)]
     start = [0.0, 0.3, 0.1, 0.9, 0.5, 1.2, 1.4, 1.6, 0.7, 1.9, 2.1, 1.0]
-    d, which = sites(knocks, s, 0.35, 11)
+    # Knocks are long along the car and short up it, as a scrape is; their edges ragged.
+    wob = fbm(P, 0.08, 3, 11) - 0.5
+    d = np.full(s.n, np.inf, np.float32)
+    which = np.zeros(s.n, np.int32)
+    for i, (c, r) in enumerate(knocks):
+        di = np.linalg.norm((P - np.array(c, np.float32)) * np.array([1.0, 1.5, 0.5], np.float32), axis=1) / r * (1 + 0.9 * wob)
+        closer = di < d
+        d[closer], which[closer] = di[closer], i
     t0 = np.array(start, np.float32)[which]
-    growth = d * 1.6
-    t = t0 + growth
+    t = t0 + d * 1.6
     hurt = (paint | jamb) & (d < 1.0)
-    steel = mix(rgb(0.56, 0.56, 0.57), rgb(0.40, 0.40, 0.41), streaks(P, 2, 0.01, 12))
-    primer = mix(rgb(0.62, 0.60, 0.55), rgb(0.50, 0.49, 0.45), fbm(P, 0.02, 2, 13))
-    chip = rgb(0.24, 0.24, 0.25)
-    core = smoothstep(0.55, 0.25, d + (streaks(P, 2, 0.02, 14) - 0.5) * 0.4)
-    ring = smoothstep(0.95, 0.75, d)
-    colour = mix(mix(chip, primer, ring), steel, core)
-    crease = smoothstep(0.03, 0.0, np.abs(np.sin(d * 9.0 + fbm(P, 0.05, 2, 15) * 6))) * (d < 0.8) * 0.5
-    colour = colour * (1 - crease[:, None] * 0.55)
-    keep = hurt & ((fbm(P, 0.015, 3, 16) > 0.42 - 0.3 * (1 - d)) | (d < 0.45))
+    steel = mix(rgb(0.58, 0.58, 0.59), rgb(0.36, 0.36, 0.37), streaks(P, 2, 0.006, 12))
+    primer = mix(rgb(0.56, 0.55, 0.51), rgb(0.44, 0.43, 0.40), fbm(P, 0.01, 2, 13))
+    chip = rgb(0.20, 0.20, 0.21)
+    scratch = streaks(P, 2, 0.004, 14)
+    core = smoothstep(0.6, 0.3, d + (scratch - 0.5) * 0.5)
+    ring = smoothstep(0.98, 0.85, d)
+    colour = mix(mix(chip, primer, ring * 0.6), steel, core)
+    crease = smoothstep(0.025, 0.0, np.abs(np.sin(d * 7.0 + wob * 5))) * (d < 0.75) * 0.5
+    colour = colour * (1 - crease[:, None] * 0.5)
+    keep = hurt & ((scratch > 0.35 + 0.25 * d) | (d < 0.3)) & (fbm(P, 0.02, 3, 16) > 0.3 * d)
     s.hurt[keep, :3] = colour[keep]
     s.hurt[keep, 3] = reveal(t[keep])
 
@@ -441,7 +448,7 @@ def paint_body():
     rust_c = mix(mix(rgb(0.42, 0.20, 0.09), rgb(0.26, 0.13, 0.07), fbm(P, 0.03, 3, 23)), rgb(0.55, 0.30, 0.12), smoothstep(0.6, 0.8, fbm(P, 0.01, 2, 24)))
     soot = mix(rgb(0.07, 0.065, 0.06), rgb(0.16, 0.15, 0.14), fbm(P, 0.04, 3, 25))
     blister = smoothstep(0.62, 0.72, fbm(P, 0.012, 3, 26))
-    ash = mix(soot, rgb(0.45, 0.44, 0.42), blister * 0.6)
+    ash = mix(soot, rgb(0.30, 0.29, 0.27), blister * 0.5)
     is_burn = burn_t < rust_t
     colour = np.where(is_burn[:, None], mix(ash, rust_c, smoothstep(1.0, 2.6, burn_t) * 0.6), rust_c)
     decay = (paint | jamb) & (t < 3) & (s.hurt[:, 3] == 0)

@@ -188,7 +188,7 @@ GH_BASE = 0.80
 # Its half-width where it stands on the body: in from the hood's and the deck's rounded edges, out to the belt's.
 GH_HALF_BASE = [(0.82, 0.62), (0.72, 0.70), (0.58, 0.79), (-0.85, 0.79), (-1.15, 0.765), (-1.48, 0.68)]
 GH_HALF_TOP = 0.685
-GH_CROWN = 0.03
+GH_CROWN = 0.02
 GH_ROUND = 0.075
 # How thick its shell is.
 SHELL = 0.04

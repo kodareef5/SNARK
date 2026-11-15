@@ -23,7 +23,7 @@ export default {
   // rigid on its one bone, and checks the layout is the one tex/ was painted for.
   source: { scripts: ["rig.py", "model.py"] },
   scale: 1,
-  skeleton: { id: COMPACT.id, root: "chassis", bones: COMPACT.bones.length },
+  skeleton: { id: COMPACT.id, root: "chassis", bones: COMPACT.bones.length, order: COMPACT.bones },
   // No hit capsules: the server hits a vehicle by the hull its content gives it, up to the belt.
   zones: [],
   // All on the chassis, whose joint is the origin, so each offset is the point itself.
@@ -47,7 +47,7 @@ export default {
   feet: [],
   gaits: {},
   budgets: {
-    triangles: [30000, 14000, 6000, 2400, 960, 400],
+    triangles: [30000, 14000, 6000, 2400, 960, 480],
     texture: { top: 2048, megabytes: 80, layer: 512 },
   },
   flat: 2,
