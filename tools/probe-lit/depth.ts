@@ -2,7 +2,8 @@
 // slab floats in the near range: the far range must keep the sea over the ground, and the slab must hide the ground,
 // which it does only if the device honours depthRange. Over a slope, 60 frames turning: no pixel along the seam may
 // show the clear colour, which is all a gap between the ranges would show. The sea across the seam: no band blended
-// twice. Pictures are held to the software rasterizer drawing the same frames.
+// twice, but for the one row whose pixels the far range keeps (D252 as L6 amended it). Pictures are held to the
+// software rasterizer drawing the same frames.
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
@@ -127,16 +128,18 @@ function gaps(gpu: Uint8Array, width: number, height: number, sky: readonly numb
 /**
  * The sea near the seam, against the rasterizer: pixels within 6 rows of where a column passes from the near range's
  * depth to the far's, away from the shore, where the GPU's samples share a pixel between sea and land. A pixel is
- * counted doubled when it is off by more than 0.6 of what a second blend of the sea would put it off by.
+ * counted doubled when it is off by more than 0.6 of what a second blend of the sea would put it off by. `rows` is the
+ * most doubled in any one column.
  */
-function seaBand(gpu: Uint8Array, pic: Picture, dry: Picture): { band: number; strays: number; doubled: number; worst: number; least: number } {
+function seaBand(gpu: Uint8Array, pic: Picture, dry: Picture): { band: number; strays: number; doubled: number; rows: number; worst: number; least: number } {
   const twice = (i: number): number => Math.max(...[0, 1, 2].map((c) => (1 - WATER_ALPHA) * Math.abs(pic.color[i * 4 + c]! - dry.color[i * 4 + c]!)));
   const wet = (i: number): boolean => [-SEAM_W, 0, SEAM_W].every((dy) => [-1, 0, 1].every((dx) => twice(i + dy + dx) > 2 * SAME));
-  const out = { band: 0, strays: 0, doubled: 0, worst: 0, least: Infinity };
+  const out = { band: 0, strays: 0, doubled: 0, rows: 0, worst: 0, least: Infinity };
   for (let x = 1; x < SEAM_W - 1; x++) {
     let seam = -1;
     for (let y = SEAM_H - 1; y > 0 && seam < 0; y--) if (pic.depth[y * SEAM_W + x]! < 0 && pic.depth[(y - 1) * SEAM_W + x]! >= 0) seam = y;
     if (seam < 0) continue;
+    let doubled = 0;
     for (let y = Math.max(1, seam - 6); y < Math.min(SEAM_H - 1, seam + 6); y++) {
       const i = y * SEAM_W + x;
       if (!inner(pic, SEAM_W, i) || !wet(i)) continue;
@@ -145,8 +148,10 @@ function seaBand(gpu: Uint8Array, pic: Picture, dry: Picture): { band: number; s
       out.least = Math.min(out.least, twice(i));
       out.worst = Math.max(out.worst, o);
       if (o > SAME) out.strays++;
-      if (o > twice(i) * 0.6) out.doubled++;
+      if (o > twice(i) * 0.6) doubled++;
     }
+    out.doubled += doubled;
+    out.rows = Math.max(out.rows, doubled);
   }
   return out;
 }
@@ -317,9 +322,12 @@ export const depthCheck: LitCheck = {
         return;
       }
       const b = seaBand(gpu, pic, dry);
-      const pass = b.band > 200 && b.doubled === 0 && b.strays <= SEAM_W;
+      // The near range is cut at the split sample by sample and a fragment is dropped whole, so the far range keeps a
+      // pixel whose samples reach past the split, and its samples between where the far range begins and the split are
+      // blended twice (D252 as L6 amended it, where they had been left undrawn): one row, no more.
+      const pass = b.band > 200 && b.rows <= 1 && b.strays <= SEAM_W;
       ok &&= pass;
-      lines.push(`the sea across the seam, ${["left of", "straight", "right of"][k]} downhill: ${b.band} pixels within 6 rows of it, where a band blended twice would be ${b.least.toFixed(0)} or more off; ${b.doubled} that far off, ${b.strays} more than ${SAME} off, the worst ${b.worst}; with nothing dropped, for comparison, ${seaBand(whole, pic, dry).doubled}  ${pass ? "ok" : "FAIL"}`);
+      lines.push(`the sea across the seam, ${["left of", "straight", "right of"][k]} downhill: ${b.band} pixels within 6 rows of it, where a band blended twice would be ${b.least.toFixed(0)} or more off; ${b.doubled} that far off, at most ${b.rows} in a column, ${b.strays} more than ${SAME} off, the worst ${b.worst}; with nothing dropped, for comparison, ${seaBand(whole, pic, dry).doubled}  ${pass ? "ok" : "FAIL"}`);
     });
     return { ok, lines };
   },

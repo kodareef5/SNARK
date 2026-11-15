@@ -25,13 +25,14 @@ import type { Camera } from "./camera.ts";
 import { Characters, showMaterials, type BodyShadows, type CastFn } from "./characters.ts";
 import { FAR_BUFFER, FAR_MESH, FarBlocks, farColours, type FarSource } from "./far.ts";
 import { FarNodes, type FarNodeSource } from "./farnodes.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
 import { shadowBytes } from "./shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
+import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 
 export interface RenderWorld {
   readonly dims: MapDims;
@@ -211,8 +212,9 @@ export class Scene {
   private readonly transientF32: Float32Array;
   private readonly transientU16: Uint16Array;
   private readonly waterMesh: number;
-  /** The material whose pictures the dome draws, or -1 where the pack has none. */
+  /** The materials whose pictures the dome and the sea draw, or -1 where the pack has none. */
   private readonly skyMaterial: number;
+  private readonly waterMaterial: number;
   private readonly beamMesh: number;
   /** Places to mark with a beam, x, y, z each. The app sets them before build(). */
   readonly beams: number[] = [];
@@ -356,6 +358,7 @@ export class Scene {
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
     this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
+    this.waterMaterial = table.materials.findIndex((m) => m.id === WATER_MATERIAL);
     for (let k = 0; k < 3; k++) {
       this.skyColor[k] = pack.palette[SKY_COLOR * 4 + k]! / 255;
       this.deepColor[k] = (pack.palette[WATER_COLOR * 4 + k]! / 255) * UNDERWATER_DIM;
@@ -860,20 +863,28 @@ export class Scene {
     p.transientCount = first + n;
   }
 
-  /** Tiles of one flat mesh over the map, drawn last because they are see-through. */
+  /**
+   * Tiles of one flat mesh over the map, drawn last because they are see-through. On a lit tier the sea seen from above
+   * runs on past the map to the end of the view, and is drawn with its waves and its depth (water.ts); seen from under
+   * it, or in a plain sky, it is as it always was.
+   */
   private water(cam: Camera, sea: number): void {
     const p = this.packet;
     const hf = this.world.hf;
     const first = p.transientCount;
     let n = 0;
     const half = WATER_TILE / 2;
+    const lit = p.lit && !this.plainSky && cam.y >= sea;
+    const r = Math.ceil(this.viewDistance / WATER_TILE);
+    const [cx, cz] = [Math.floor(cam.x / WATER_TILE), Math.floor(cam.z / WATER_TILE)];
+    const [ix0, iz0, ix1, iz1] = lit ? [cx - r, cz - r, cx + r, cz + r] : [0, 0, Math.ceil(hf.sizeX / WATER_TILE) - 1, Math.ceil(hf.sizeZ / WATER_TILE) - 1];
     // The box round every tile drawn, for its depth ranges.
     let x0 = Infinity;
     let z0 = Infinity;
     let x1 = -Infinity;
     let z1 = -Infinity;
-    for (let tz = 0; tz * WATER_TILE < hf.sizeZ; tz++) {
-      for (let tx = 0; tx * WATER_TILE < hf.sizeX; tx++) {
+    for (let tz = iz0; tz <= iz1; tz++) {
+      for (let tx = ix0; tx <= ix1; tx++) {
         const x = tx * WATER_TILE + half - cam.x;
         const z = tz * WATER_TILE + half - cam.z;
         const y = sea - cam.y;
@@ -889,8 +900,13 @@ export class Scene {
       }
     }
     if (n === 0) return;
-    this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
+    const d = p.drawCount;
+    this.draw(this.waterMesh, 0, TRANSIENT_BUFFER, first, n, 0, 0, 0, lit ? DRAW_BLEND | DRAW_WATER : DRAW_BLEND, cam.passes(x0, sea - cam.y - 0.1, z0, x1, sea - cam.y + 0.1, z1));
     p.transientCount = first + n;
+    if (!lit || p.drawCount === d) return;
+    p.drawMaterial[d] = this.waterMaterial;
+    seaFrame(p.frame, hf, this.terrain.size, p.groundWindow, cam.x, cam.z, this.now / 1000);
+    if (this.waterMaterial >= 0) this.assets.residency.material(this.waterMaterial, WATER_ASKED.pixels, WATER_ASKED.distance);
   }
 
   /**
