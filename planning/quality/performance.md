@@ -290,6 +290,11 @@ triangles. Counts do not vary run to run.
 The rest of the elder's frame as drawn: ground and far 0.42 M, stones 0.27, trunks 0.25, bushes 0.06. The bench
 counts the young wood at the 2.10 M and the elders at the 5.83 M the iPhone drew (D423).
 
+Pictures by the rasterizer at the iPhone's medium view, `planning/reference/round9-pictures/frame-budget`
+(`bun assets/source/core/nodes/trees/squeeze.ts`, and `--alone --squeeze 2.84`): the elder stand settles at a squeeze
+of 2.84, 5.90 M triangles whole and 1.94 M as drawn toward an oak 20 m off, 5.38 and 1.96 M toward one 60 m off; one
+elder oak alone at 20 and 60 m, whole and held at 2.84, and at 20 m with its leaves cut to 100, 60 and 30%.
+
 ## The GPU on this Mac
 
 | Row | Result | Source |
