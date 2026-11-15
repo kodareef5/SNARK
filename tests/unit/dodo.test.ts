@@ -3,6 +3,10 @@
 
 import { expect, test } from "bun:test";
 import { DODO_DYES } from "../../content/creatures/dodo.ts";
+import { Pose, sampleClip } from "../../shared/anim/clip.ts";
+import { ZONE_HEAD } from "../../shared/anim/human.ts";
+import { buildRigs } from "../../shared/anim/rigs.ts";
+import { boneToModel, solve } from "../../shared/anim/skeleton.ts";
 import { torporDrain, torporMax } from "../../server/survival.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
@@ -12,6 +16,7 @@ import { Genome, statValue } from "../../shared/sim/genome.ts";
 import { narcoticsNeeded, piecesNeeded, proneHunger, tameSeconds } from "../../shared/sim/taming.ts";
 import { findAssets } from "../../tools/art/assets.ts";
 import type { CreatureAsset } from "../../tools/art/spec.ts";
+import { corePack } from "../fixtures/pack.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = coreRegistry();
@@ -107,4 +112,32 @@ test("its six colour regions go under ARK's names, each with colours of its own,
   }
   const asset = (await findAssets()).find((a) => a.id === "core:dodo")!.spec as CreatureAsset;
   expect(asset.regions.map((r) => [r.name, r.sample])).toEqual(dodo.regions!.map((r, i) => [r!.name, DODO_DYES[i]!]));
+});
+
+test("the bird as modelled: its peck reaches as far as its beak does on the tick it lands, its head and the top of its neck are hit at three times, and it stands as tall as its body", () => {
+  const pack = corePack();
+  const rig = buildRigs(pack.header.rigs, pack.clips).get("core:dodo")!;
+  const bite = dodo.bite!;
+  // The attack is the peck, one peck long, and on the tick the bite lands the beak is at its furthest.
+  expect([rig.attack?.frames, bite.ticks]).toEqual([15, 15]);
+  const pose = new Pose(rig.bones);
+  const tip = rig.sockets.get("beak_tip")!;
+  const at = [0, 0, 0];
+  const forward: number[] = [];
+  for (let f = 0; f < rig.attack!.frames; f++) {
+    sampleClip(rig.attack!, f, pose);
+    solve(rig, pose, rig.solved);
+    boneToModel(rig.solved, tip.bone, tip.x, tip.y, tip.z, at);
+    forward.push(at[2]!);
+    if (f === bite.lands) expect(Math.hypot(at[0]!, at[1]! - dodo.eyeHeight, at[2]!)).toBeCloseTo(bite.reach, 2);
+  }
+  expect(forward[bite.lands!]!).toBeGreaterThan(0.39);
+  expect(forward[bite.lands!]!).toBeGreaterThanOrEqual(Math.max(...forward.slice(0, bite.lands! + 2)) - 1e-3);
+  // The head's two capsules are the skull's and the top neck bone's, and content makes that zone three times.
+  const head = [...rig.zone].flatMap((z, b) => (z === ZONE_HEAD ? [rig.names[b]] : []));
+  expect([head, reg.zoneMul[kind]![ZONE_HEAD]]).toEqual([["neck_4", "skull"], 3]);
+  // It is as tall as the model, and its body is no wider than its capsule.
+  const mesh = pack.header.meshes[pack.meshIndex.get("core:dodo")!]!;
+  expect(mesh.center[1] + mesh.half[1]).toBeCloseTo(dodo.height, 1);
+  expect([dodo.mesh, dodo.skeleton, dodo.radius >= mesh.half[0]]).toEqual(["core:dodo", "dodo", true]);
 });
