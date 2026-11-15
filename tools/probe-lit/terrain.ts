@@ -3,10 +3,12 @@
 // reads the heightfield itself. Then the camera moves 300 m, so a second window is filled in bands and swapped in: the
 // frame before the swap and the frame of it, from one place, must be the same picture. After a teleport the ground is
 // drawn from the whole map's pair until the new window is in, and after a lost context the pictures are made again.
+// A view 70 degrees high is held to the rasterizer to 400 m, past which its triangles are under a pixel and the GPU
+// and the rasterizer light them differently; ground farther off is held through a view 10 degrees high.
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera, FAR_FROM } from "../../client/core/render/camera.ts";
-import { SOURCE_WINDOW, type FramePacket } from "../../client/core/render/packet.ts";
+import { FRAME, SOURCE_WINDOW, type FramePacket } from "../../client/core/render/packet.ts";
 import { Scene } from "../../client/core/render/scene.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -25,6 +27,8 @@ const SAME = 6;
 const MOST_OFF = 0.002;
 /** The frames either side of a swap are compared within this many metres of the camera. */
 const NEAR_SWAP = 600;
+/** How far a wide view's ground is held to the rasterizer. */
+const WIDE = 400;
 const TINTS = [12, 16, 17, 18, 7];
 
 /** Hills, and patches of tint some 80 m across, so a sample read from the wrong place shows. */
@@ -100,8 +104,9 @@ interface Held {
   frame: number;
   name: string;
   pic: Picture;
-  /** Tiles of it that read the window. */
+  /** Tiles of it that read the window, and how far off its ground is held to the rasterizer. */
   fine: number;
+  within: number;
 }
 
 const made = {
@@ -133,11 +138,13 @@ export const terrainCheck: LitCheck = {
     const build = (shot: Shot, name = ""): FramePacket => {
       scene.now += 1000 / 60;
       const p = scene.build(cam, null);
+      // The rasterizer draws no haze (D264), so these frames carry none.
+      p.frame[FRAME.haze] = 0;
       shot.add(p, name !== "");
       if (name === "") return p;
       let fine = 0;
       for (let t = 0; t < p.tileCount; t++) if (p.tileSource[t * 4 + 3] === SOURCE_WINDOW) fine++;
-      made.held.push({ key: shot.key, frame: shot.frames.length - 1, name, pic: picture(raster, p, cam), fine });
+      made.held.push({ key: shot.key, frame: shot.frames.length - 1, name, pic: picture(raster, p, cam), fine, within: cam.fovY < 0.5 ? Infinity : WIDE });
       return p;
     };
     const shots: Shot[] = [];
@@ -208,12 +215,14 @@ export const terrainCheck: LitCheck = {
         ok = false;
         continue;
       }
-      const a = against(gpu, h.pic, [0, 400, 1200]);
-      const [n, bad] = [a.n.reduce((s, v) => s + v, 0), a.off.reduce((s, v) => s + v, 0)];
+      const bands = [0, WIDE, 1200];
+      const a = against(gpu, h.pic, bands);
+      const held = (v: number[]): number => v.reduce((s, x, k) => s + (bands[k]! < h.within ? x : 0), 0);
+      const [n, bad] = [held(a.n), held(a.off)];
       const pass = n > 20000 && bad <= n * MOST_OFF;
       ok &&= pass;
       const band = (k: number): string => `${a.n[k]! - a.off[k]!} of ${a.n[k]}`;
-      lines.push(`${h.name}, ${h.fine} tiles from the window: ${n - bad} of ${n} ground pixels within ${SAME} of the rasterizer (to 400 m ${band(0)}, to 1.2 km ${band(1)}, past it ${band(2)}), the worst ${a.worst} off  ${pass ? "ok" : "FAIL"}`);
+      lines.push(`${h.name}, ${h.fine} tiles from the window: ${n - bad} of ${n} ground pixels ${h.within < Infinity ? `to ${h.within} m ` : ""}within ${SAME} of the rasterizer (to ${WIDE} m ${band(0)}, to 1.2 km ${band(1)}, past it ${band(2)}), the worst ${a.worst} off  ${pass ? "ok" : "FAIL"}`);
     }
     lines.push(`after the teleport the new window came ${made.coming + 1} frames on`);
 
