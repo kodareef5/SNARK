@@ -32,7 +32,7 @@
 
 import type { MapZone } from "../content/defs.ts";
 import type { Registry } from "../content/registry.ts";
-import { CHUNK_SIZE, MAX_CHUNKS_PER_AXIS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
+import { CHUNK_SIZE, MAX_CHUNKS_PER_AXIS, STRUCT_UNITS, WORLD_MAX_Y, WORLD_MIN_Y, chunkAt, chunkCount, chunkCx, chunkCz, type MapDims } from "../coords.ts";
 import { hashBytes } from "../hash.ts";
 import { BitReader, BitWriter } from "../net/codec.ts";
 import { Heightfield, TERRAIN_CELL } from "./heightfield.ts";
@@ -59,6 +59,106 @@ export interface MapStatic {
   readonly y: number;
   readonly z: number;
   readonly yaw: number;
+}
+
+/**
+ * A map's static pieces as columns, grouped by the chunk their centre is in as a structure store holds them, so that the far
+ * city reads the same arrays (shared/world/city.ts). A city of a million pieces is held once, with no object a piece.
+ */
+export class MapStatics {
+  /** The content ids `kind` indexes. */
+  readonly kinds: readonly string[];
+  /** Chunk `c` holds rows `first[c]` up to `first[c + 1]`, in the order the map lists them. */
+  readonly first: Uint32Array;
+  readonly kind: Uint16Array;
+  readonly yaw: Uint16Array;
+  /** Centres in metres on the file's 1/512 m lattice, which a float32 holds exactly anywhere on a map. */
+  readonly x: Float32Array;
+  readonly y: Float32Array;
+  readonly z: Float32Array;
+  /** The row of the map's `i`th piece. */
+  readonly row: Uint32Array;
+
+  /** `n` pieces in the map's order, `read` putting the `i`th in `p` as [its index in `kinds`, yaw, x, y, z on the lattice]. */
+  constructor(dims: MapDims, kinds: readonly string[], n: number, read: (i: number, p: Float64Array) => void) {
+    this.kinds = kinds;
+    const chunks = chunkCount(dims);
+    const first = (this.first = new Uint32Array(chunks + 1));
+    const row = (this.row = new Uint32Array(n));
+    const p = new Float64Array(5);
+    for (let i = 0; i < n; i++) {
+      read(i, p);
+      row[i] = chunkAt(dims, p[2]!, p[4]!);
+      first[row[i]! + 1]!++;
+    }
+    for (let c = 0; c < chunks; c++) first[c + 1]! += first[c]!;
+    const at = first.slice(0, chunks);
+    this.kind = new Uint16Array(n);
+    this.yaw = new Uint16Array(n);
+    this.x = new Float32Array(n);
+    this.y = new Float32Array(n);
+    this.z = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      read(i, p);
+      const r = at[row[i]!]!++;
+      row[i] = r;
+      this.kind[r] = p[0]!;
+      this.yaw[r] = p[1]!;
+      this.x[r] = p[2]!;
+      this.y[r] = p[3]!;
+      this.z[r] = p[4]!;
+    }
+  }
+
+  /** `statics` as a table: itself if it is one, or a list's pieces with their centres set on the lattice as a file would. */
+  static of(dims: MapDims, statics: MapStatics | readonly MapStatic[]): MapStatics {
+    if (statics instanceof MapStatics) return statics;
+    const ids = new Map<string, number>();
+    for (const s of statics) if (!ids.has(s.kind)) ids.set(s.kind, ids.size);
+    const snap = (v: number): number => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
+    return new MapStatics(dims, [...ids.keys()], statics.length, (i, p) => {
+      const s = statics[i]!;
+      p[0] = ids.get(s.kind)!;
+      p[1] = s.yaw;
+      p[2] = snap(s.x);
+      p[3] = snap(s.y);
+      p[4] = snap(s.z);
+    });
+  }
+
+  get length(): number {
+    return this.row.length;
+  }
+
+  /** The map's `i`th piece as an object, for tools. */
+  piece(i: number): MapStatic {
+    const r = this.row[i]!;
+    return { kind: this.kinds[this.kind[r]!]!, x: this.x[r]!, y: this.y[r]!, z: this.z[r]!, yaw: this.yaw[r]! };
+  }
+
+  *[Symbol.iterator](): IterableIterator<MapStatic> {
+    for (let i = 0; i < this.row.length; i++) yield this.piece(i);
+  }
+
+  /** The pieces `keep` takes, as objects in the map's order, for tools written against a list. */
+  filter(keep: (s: MapStatic) => unknown): MapStatic[] {
+    const out: MapStatic[] = [];
+    for (const s of this) if (keep(s)) out.push(s);
+    return out;
+  }
+}
+
+/** Calls `each` with every piece of `statics` in the order the map lists them. */
+function eachStatic(statics: MapStatics | readonly MapStatic[], each: (kind: string, x: number, y: number, z: number, yaw: number) => void): void {
+  if (!(statics instanceof MapStatics)) {
+    for (const s of statics) each(s.kind, s.x, s.y, s.z, s.yaw);
+    return;
+  }
+  const { kinds, kind, x, y, z, yaw, row } = statics;
+  for (let i = 0; i < row.length; i++) {
+    const r = row[i]!;
+    each(kinds[kind[r]!]!, x[r]!, y[r]!, z[r]!, yaw[r]!);
+  }
 }
 
 export interface MapSpawn {
@@ -122,7 +222,8 @@ export interface MapData {
   /** Row by row from z = 0, as a Heightfield holds them. */
   readonly heights: Uint16Array;
   readonly tint: Uint8Array;
-  readonly statics: readonly MapStatic[];
+  /** As a file gives them back, or a list in the map's order, which every reader takes alike. */
+  readonly statics: MapStatics | readonly MapStatic[];
   readonly nodes: readonly NodeLayer[];
   /** At least one. The first is where a new survivor arrives. */
   readonly spawns: readonly MapSpawn[];
@@ -133,6 +234,7 @@ export interface MapData {
 /** A map read from a file, with the hash that names those bytes. */
 export interface MapFile extends MapData {
   readonly hash: number;
+  readonly statics: MapStatics;
 }
 
 function slotsOf(layer: NodeLayer, chunks: number): number {
@@ -159,7 +261,9 @@ function check(m: MapData): void {
   const inside = (x: number, z: number): boolean => x >= 0 && x <= sizeX && z >= 0 && z <= sizeZ;
   if (!whole(m.spawns.length, 1, MAX_SPAWNS)) fail(`it has ${m.spawns.length} spawn points, and a map has 1 to ${MAX_SPAWNS}`);
   for (const s of m.spawns) if (!inside(s.x, s.z)) fail(`spawn point "${s.name}" is off the map`);
-  for (const s of m.statics) if (!inside(s.x, s.z) || !(s.y >= WORLD_MIN_Y && s.y <= WORLD_MAX_Y)) fail(`a ${s.kind} at ${s.x}, ${s.y}, ${s.z} is off the map`);
+  eachStatic(m.statics, (kind, x, y, z) => {
+    if (!inside(x, z) || !(y >= WORLD_MIN_Y && y <= WORLD_MAX_Y)) fail(`a ${kind} at ${x}, ${y}, ${z} is off the map`);
+  });
   let slots = 0;
   for (const layer of m.nodes) {
     slots += slotsOf(layer, chunksX * chunksZ);
@@ -283,17 +387,19 @@ export function writeMap(m: MapData): Uint8Array<ArrayBuffer> {
   if (m.statics.length > 0) {
     section("STAT", () => {
       const ids = new Map<string, number>();
-      for (const s of m.statics) if (!ids.has(s.kind)) ids.set(s.kind, ids.size);
+      eachStatic(m.statics, (kind) => {
+        if (!ids.has(kind)) ids.set(kind, ids.size);
+      });
       o.u16(ids.size);
       for (const id of ids.keys()) o.text(id);
       o.u32(m.statics.length);
-      for (const s of m.statics) {
-        o.u16(ids.get(s.kind)!);
-        o.u16(s.yaw);
-        o.i32(Math.round(s.x * STRUCT_UNITS));
-        o.i32(Math.round(s.y * STRUCT_UNITS));
-        o.i32(Math.round(s.z * STRUCT_UNITS));
-      }
+      eachStatic(m.statics, (kind, x, y, z, yaw) => {
+        o.u16(ids.get(kind)!);
+        o.u16(yaw);
+        o.i32(Math.round(x * STRUCT_UNITS));
+        o.i32(Math.round(y * STRUCT_UNITS));
+        o.i32(Math.round(z * STRUCT_UNITS));
+      });
     });
   }
   for (const layer of m.nodes) {
@@ -469,7 +575,7 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
   return list;
 }
 
-function read(r: In): MapData {
+function read(r: In): Omit<MapFile, "hash"> {
   const dims = { chunksX: r.u16(), chunksZ: r.u16() };
   const cell = r.view.getFloat32(r.at, true);
   r.at += 4;
@@ -480,7 +586,7 @@ function read(r: In): MapData {
   const id = r.text();
   let heights: Uint16Array | null = null;
   let tint: Uint8Array | null = null;
-  const statics: MapStatic[] = [];
+  let statics: MapStatics | null = null;
   const nodes: NodeLayer[] = [];
   const spawns: MapSpawn[] = [];
   const regions: MapZone[] = [];
@@ -498,12 +604,21 @@ function read(r: In): MapData {
       }
     } else if (tag === "TINT") tint = s.bytes;
     else if (tag === "STAT") {
+      if (statics) throw new Error("map: it has two STAT sections");
       const ids = Array.from({ length: s.u16() }, () => s.text());
-      for (let n = s.u32(); n > 0; n--) {
-        const kind = ids[s.u16()];
-        if (kind === undefined) throw new Error("map: a static piece is of a kind its table does not name");
-        statics.push({ kind, yaw: s.u16(), x: s.i32() / STRUCT_UNITS, y: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS });
-      }
+      const n = s.u32();
+      const at = s.at;
+      if (n * 16 > s.bytes.length - at) throw new RangeError();
+      const v = s.view;
+      statics = new MapStatics(dims, ids, n, (i, p) => {
+        const o = at + i * 16;
+        p[0] = v.getUint16(o, true);
+        if (p[0] >= ids.length) throw new Error("map: a static piece is of a kind its table does not name");
+        p[1] = v.getUint16(o + 2, true);
+        p[2] = v.getInt32(o + 4, true) / STRUCT_UNITS;
+        p[3] = v.getInt32(o + 8, true) / STRUCT_UNITS;
+        p[4] = v.getInt32(o + 12, true) / STRUCT_UNITS;
+      });
     } else if (tag === "NODE") nodes.push(readNodes(s, dims));
     else if (tag === "SPWN") {
       for (let n = s.u8(); n > 0; n--) spawns.push({ name: s.text(), x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw: s.u16() });
@@ -520,6 +635,7 @@ function read(r: In): MapData {
     }
   }
   if (!heights) throw new Error("map: it has no heights");
+  statics ??= new MapStatics(dims, [], 0, () => {});
   return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}) };
 }
 
@@ -532,7 +648,7 @@ export function parseMap(file: Uint8Array): MapFile {
   r.at += 2;
   const hash = r.u32();
   if (hash !== hashBytes(file.subarray(12))) throw new Error("map: the file is damaged: its hash is not that of its bytes");
-  let map: MapData;
+  let map: Omit<MapFile, "hash">;
   try {
     map = read(r);
   } catch (err) {
@@ -619,10 +735,10 @@ export function mapNodes(map: MapData, hf: Heightfield, reg: Registry): NodeSour
 
 /** Server side: sets the map's static pieces down in `structs`. Clients receive them by replication. */
 export function placeStatics(map: MapData, structs: StructureStore, reg: Registry): void {
-  for (const s of map.statics) {
-    const kind = reg.index.get(s.kind);
-    if (kind === undefined) throw new Error(`map "${map.id}" needs content "${s.kind}"`);
+  eachStatic(map.statics, (id, x, y, z, yaw) => {
+    const kind = reg.index.get(id);
+    if (kind === undefined) throw new Error(`map "${map.id}" needs content "${id}"`);
     const def = reg.defs[kind]!;
-    structs.add(kind, s.x, s.y, s.z, s.yaw, 0, def.type === "structure" ? def.hp : 0);
-  }
+    structs.add(kind, x, y, z, yaw, 0, def.type === "structure" ? def.hp : 0);
+  });
 }
