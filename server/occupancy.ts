@@ -243,6 +243,17 @@ export class Occupancy {
     const place = this.places.get(actor);
     const state = this.authority.actor(actor);
     if (!place || state?.alive) return effects;
+    return [...effects, this.unseat(actor, place, now)];
+  }
+
+  /** The actor leaves its seat now, alive or not, because its body is leaving the world: the caller stands it somewhere. */
+  remove(actor: number, now = this.tick): OccupancyEffect[] {
+    const effects = this.cancel(actor, now, 'actor-removed');
+    const place = this.places.get(actor);
+    return place ? [...effects, this.unseat(actor, place, now)] : effects;
+  }
+
+  private unseat(actor: number, place: Place, now: number): OccupancyEffect {
     const host = this.hosts.get(place.host)!;
     const seat = host.seats.get(place.seat)!;
     const actorHandle = seat.actorHandle;
@@ -251,9 +262,8 @@ export class Occupancy {
     seat.revision++;
     this.places.delete(actor);
     if (seat.driver) host.controlRevision++;
-    effects.push({ type: 'detach', actor, actorHandle, host: place.host,
-      hostHandle: host.handle, seat: place.seat, tick: now, control: this.control(place.host)! });
-    return effects;
+    return { type: 'detach', actor, actorHandle, host: place.host,
+      hostHandle: host.handle, seat: place.seat, tick: now, control: this.control(place.host)! };
   }
 
   /** Occupied hosts must survive as disabled wrecks until validated exits/deaths resolve. */

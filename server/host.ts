@@ -847,12 +847,16 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     }
     refreshBody(rec);
     survival.suspend(rec, false);
+    // A save from a server that stopped without standing its drivers down has them inside their cars.
+    urban.settle(c.ent);
     bus.after(SESSION_SPAWN, { pid: rec.pid, first, why: first ? "made" : c.entered ? "respawned" : "returned" });
     // A session that was in the creator has its survivor only now.
     if (c.entered) joined(c);
   };
   game.onBodyGone = (c) => {
     carry.release(c.pid);
+    // Seats are not saved: a survivor in a car is saved standing beside it.
+    urban.standDown(c.pid);
     // Out of the world, a survivor neither eats nor drowns.
     const gone = records.byPid.get(c.pid);
     if (gone) survival.suspend(gone, true);
@@ -1222,8 +1226,10 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       bus.after(SERVER_STOP, { why: "stopped" });
       bus.flush();
       if (!persistence) return;
-      // A creature in someone's arms is saved standing where it is set down, not where the arms had it.
+      // A creature in someone's arms is saved standing where it is set down, not where the arms had it, and so is whoever
+      // sits in a car.
       carry.releaseAll();
+      urban.standDownAll();
       // Every body that can have moved is saved where it stands.
       for (let r = 0; r < world.history.rows; r++) {
         const pid = world.ents.pid[world.history.tracked(r)]!;

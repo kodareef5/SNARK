@@ -252,6 +252,77 @@ export class Urban {
     ents.stance[e] = STANCE_CROUCH;
   }
 
+  /** Stands a body that was in a vehicle, or is inside its hull, where it can stand beside it: by the doors first, then
+   * anywhere round the hull, each reached from the hull's middle through nothing but the vehicle itself. False when
+   * there is nowhere; the body then stays crouched where it is. */
+  private standBeside(e: number, host: HostSeat): boolean {
+    const { world } = this.ctx, ents = world.ents, actor = ents.pid[e]!, p = world.reg.move[ents.kind[e]!]!;
+    const state = this.state(host.entity), spec = host.definition.spec, out = [0, 0, 0];
+    const ground = (x: number, z: number): number => Math.max(state.y - state.rideOffset, groundUnder(world.hf, x, z, p.radius));
+    vehiclePoint(state, [0, 0, 0], out);
+    const from = { x: out[0]!, y: ground(out[0]!, out[2]!), z: out[2]! };
+    const spots: [number, number][] = [];
+    for (const seat of host.definition.seats) {
+      const side = seat.entry[0] >= 0 ? 1 : -1, x = side * Math.max(Math.abs(seat.entry[0]), spec.halfWidth + p.radius + 0.08);
+      spots.push([x, seat.entry[2]], [x + side * 1.1, seat.entry[2]]);
+    }
+    // Then round the hull: its sides, its ends and its corners, just clear of it.
+    const w = spec.halfWidth + p.radius + 0.1, l = spec.halfLength + p.radius + 0.1;
+    for (const [x, z] of [[w, 0], [-w, 0], [0, l], [0, -l], [w, l], [-w, l], [w, -l], [-w, -l], [w, l / 2], [-w, l / 2], [w, -l / 2], [-w, -l / 2]] as const) spots.push([x, z]);
+    for (const [x, z] of spots) {
+      vehiclePoint(state, [x, 0, z], out);
+      const point = { x: out[0]!, y: ground(out[0]!, out[2]!), z: out[2]! };
+      for (const stance of [STANCE_STAND, STANCE_CROUCH, STANCE_PRONE]) {
+        const height = stanceHeight(p, stance);
+        if (!this.free(point, actor, [actor], 0, height) || !this.corridor(from, point, actor, [actor], ents.pid[host.entity]!, height)) continue;
+        ents.setPosition(e, point.x, point.y, point.z);
+        ents.stance[e] = stance;
+        return true;
+      }
+    }
+    ents.stance[e] = STANCE_CROUCH;
+    return false;
+  }
+
+  /** Seats are not saved. Before a seated body leaves the world, and for everyone as the server stops, its seat is freed
+   * and it is stood beside its vehicle, so a save never keeps a body where a seat had it. */
+  standDown(pid: number): void {
+    const { world, records } = this.ctx, ents = world.ents, place = this.occupancy.seatOf(pid);
+    const host = place ? this.hosts.get(place.host) : undefined, e = this.entity(pid);
+    for (const effect of this.occupancy.remove(pid, world.tick)) this.apply(effect);
+    if (!host || e < 0 || makeHandle(host.entity, ents.gen[host.entity]!) !== host.handle) return;
+    this.standBeside(e, host);
+    ents.vx[e] = ents.vy[e] = ents.vz[e] = 0;
+    ents.pose(e, world.tick);
+    records.dirty.add(pid);
+  }
+
+  standDownAll(): void {
+    for (const pid of [...this.scopes.keys()]) if (this.occupancy.seatOf(pid)) this.standDown(pid);
+  }
+
+  /** A body coming into the world inside a vehicle's hull, saved so by a server that stopped without standing it down, is
+   * stood beside the vehicle. */
+  settle(e: number): void {
+    const { world, records } = this.ctx, ents = world.ents, p = world.reg.move[ents.kind[e]!];
+    if (!p || this.occupancy.seatOf(ents.pid[e]!)) return;
+    const pad = p.radius + this.reach;
+    const x0 = Math.max(0, Math.floor((ents.x[e]! - pad) / CHUNK_SIZE)), x1 = Math.min(world.dims.chunksX - 1, Math.floor((ents.x[e]! + pad) / CHUNK_SIZE));
+    const z0 = Math.max(0, Math.floor((ents.z[e]! - pad) / CHUNK_SIZE)), z1 = Math.min(world.dims.chunksZ - 1, Math.floor((ents.z[e]! + pad) / CHUNK_SIZE));
+    for (let cz = z0; cz <= z1; cz++) for (let cx = x0; cx <= x1; cx++) for (let car = ents.chunkHead[cz * world.dims.chunksX + cx]!; car >= 0; car = ents.next[car]!) {
+      const host = this.hosts.get(ents.pid[car]!);
+      if (!host || host.entity !== car || car === e) continue;
+      const spec = host.definition.spec, a = ents.vehicleYaw[car]!, dx = ents.x[e]! - ents.x[car]!, dz = ents.z[e]! - ents.z[car]!;
+      const x = Math.abs(Math.cos(a) * dx - Math.sin(a) * dz) - spec.halfWidth, z = Math.abs(Math.sin(a) * dx + Math.cos(a) * dz) - spec.halfLength;
+      const outside = Math.max(0, x) ** 2 + Math.max(0, z) ** 2 >= p.radius * p.radius;
+      if (outside || ents.y[e]! >= ents.y[car]! + spec.height || ents.y[e]! + p.height <= ents.y[car]! - spec.height) continue;
+      this.standBeside(e, host);
+      ents.pose(e, world.tick);
+      records.dirty.add(ents.pid[e]!);
+      return;
+    }
+  }
+
   /** Curb mass is content; cargo and the mass/possessions of every committed occupant are authority data. */
   payloadMass(e: number): number {
     const { world, records, items } = this.ctx, ents = world.ents;
