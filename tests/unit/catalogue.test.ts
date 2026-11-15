@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
+import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { CLASSES, FIELDS, classFaults, classOf, defFaults, type Field } from "../../shared/content/classes.ts";
@@ -52,7 +53,7 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 1,
-    "structure/static": 8,
+    "structure/static": 8 + RUIN_BLOCKS.length,
     shape: 14,
     material: 4,
     node: 14,
@@ -63,7 +64,7 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     map: 1,
     rename: 74,
   });
-  expect(rest.length).toBe(323);
+  expect(rest.length).toBe(323 + RUIN_BLOCKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

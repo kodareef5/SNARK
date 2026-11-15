@@ -231,6 +231,86 @@ export function baseMips(p: Picture): Uint8Array[] {
 }
 
 /**
+ * A creature's hurt and decay pictures as the one layer the game reads (client/core/render/surface.ts `wounded`): the
+ * colour of each, and in alpha how soon over all six steps. A hurt texel's alpha a becomes 128 + a / 2 and a decay
+ * texel's a / 2, so every hurt texel comes before every decay texel and a corpse shows the whole hurt picture first.
+ * Where the hurt picture has alpha the decay picture is passed over: `hidden` counts those of its texels that had some.
+ */
+export function layerPicture(hurt: Picture | undefined, decay: Picture | undefined): { picture: Picture; hidden: number } {
+  const first = (hurt ?? decay)!;
+  if (hurt && decay && (hurt.width !== decay.width || hurt.height !== decay.height)) throw new Error(`the hurt picture is ${hurt.width} across and the decay picture ${decay.width}: they are one size`);
+  const n = first.width * first.height;
+  const [h, d] = [hurt && unpack(hurt), decay && unpack(decay)];
+  const data = new Uint8Array(n * 4);
+  let hidden = 0;
+  for (let i = 0; i < n * 4; i += 4) {
+    const ha = h ? Math.round(h[i + 3]! * 255) : 0;
+    const da = d ? Math.round(d[i + 3]! * 255) : 0;
+    const from = ha > 0 ? h! : da > 0 ? d! : null;
+    if (ha > 0 && da > 0) hidden++;
+    if (!from) continue;
+    for (let c = 0; c < 3; c++) data[i + c] = Math.round(from[i + c]! * 255);
+    data[i + 3] = ha > 0 ? 128 + (ha >> 1) : Math.max(1, da >> 1);
+  }
+  return { picture: { width: first.width, height: first.height, channels: 4, depth: 8, data }, hidden };
+}
+
+/**
+ * The mips of a layer (`layerPicture`). A pixel's colour is the mean of the four under it weighted by how soon each
+ * shows, so what never shows lends it nothing, and where nothing under it shows it takes the colour of the pixel over
+ * it in the next smaller picture. Its alpha is the mean of the two soonest of the four, so a mark keeps its step from
+ * afar and grows a little rather than fading.
+ */
+export function layerMips(p: Picture): Uint8Array[] {
+  const { data, size } = square(unpack(p, toLinear), p, 4);
+  // Colour times weight, and the weight, then alpha.
+  const levels: Float32Array[] = [];
+  const top = new Float32Array(size * size * 5);
+  for (let i = 0; i < size * size; i++) {
+    const w = data[i * 4 + 3]!;
+    for (let c = 0; c < 3; c++) top[i * 5 + c] = data[i * 4 + c]! * w;
+    top[i * 5 + 3] = w;
+    top[i * 5 + 4] = w;
+  }
+  levels.unshift(top);
+  for (let n = size >> 1; n >= 1; n >>= 1) {
+    const from = levels[0]!;
+    const to = new Float32Array(n * n * 5);
+    const four = [0, 0, 0, 0];
+    for (let y = 0; y < n; y++) {
+      for (let x = 0; x < n; x++) {
+        const corners = [(y * 2 * n * 2 + x * 2) * 5, (y * 2 * n * 2 + x * 2 + 1) * 5, ((y * 2 + 1) * n * 2 + x * 2) * 5, ((y * 2 + 1) * n * 2 + x * 2 + 1) * 5];
+        const b = (y * n + x) * 5;
+        for (let c = 0; c < 4; c++) for (const a of corners) to[b + c]! += from[a + c]!;
+        corners.forEach((a, k) => (four[k] = from[a + 4]!));
+        four.sort((u, v) => v - u);
+        to[b + 4] = (four[0]! + four[1]!) / 2;
+      }
+    }
+    levels.unshift(to);
+  }
+  const out: Uint8Array[] = [];
+  let over: Float32Array | null = null;
+  levels.forEach((level, k) => {
+    const n = 1 << k;
+    const colour = new Float32Array(n * n * 3);
+    const mip = new Uint8Array(n * n * 4);
+    for (let i = 0; i < n * n; i++) {
+      const w = level[i * 5 + 3]!;
+      const above = over ? (Math.floor(i / n) >> 1) * (n >> 1) + ((i % n) >> 1) : -1;
+      for (let c = 0; c < 3; c++) {
+        colour[i * 3 + c] = w > 0 ? level[i * 5 + c]! / w : above >= 0 ? over![above * 3 + c]! : 0;
+        mip[i * 4 + c] = toSrgb(Math.min(1, colour[i * 3 + c]!)) * 255 + 0.5;
+      }
+      mip[i * 4 + 3] = level[i * 5 + 4]! * 255 + 0.5;
+    }
+    over = colour;
+    out.push(mip);
+  });
+  return out;
+}
+
+/**
  * The mips of a normal map (x in red, y in green, z in blue), and how long the mean normal under each pixel of each
  * is. Normals are averaged as vectors and stored at full length again. Where they disagree the mean is short, and
  * packedMips turns what was lost into roughness.

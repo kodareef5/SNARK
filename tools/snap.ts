@@ -729,6 +729,8 @@ export interface ModelShot {
   floor?: number;
   /** Lit as the lit tiers light, which is the default, or as low poly. */
   lit?: boolean;
+  /** The level of the hurt and decay layer of each material that has one, in LAYER_LEVELS (client/core/render/surface.ts); 0 for none. Its texture must be on the card. */
+  layer?: number;
 }
 
 /**
@@ -820,6 +822,7 @@ export class ModelView {
       p.drawMaterial[d] = runs[d * 3]!;
       p.drawFirstIndex[d] = runs[d * 3 + 1]!;
       p.drawIndexCount[d] = runs[d * 3 + 2]!;
+      if (material.layer !== undefined) p.drawLayer[d] = shot.layer ?? 0;
     }
     p.texUploads.push(...this.sending);
     this.sending.length = 0;

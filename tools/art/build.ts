@@ -3,12 +3,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Clip } from "../../shared/anim/clip.ts";
-import { MOST_SECTIONS, parsePack, type PackMaterial, type PackRig, type PackTexture } from "../../shared/pack/pack.ts";
+import { B_PROP_L, B_PROP_R, HUMAN } from "../../shared/anim/human.ts";
+import { MOST_SECTIONS, parsePack, setTexture, textureOf, type PackMaterial, type PackRig, type PackTexture } from "../../shared/pack/pack.ts";
 import { RAMP_BASE, SKIN_BASE, defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { LAST_STEP, TEXTURE_ROLES, stepSize } from "../../shared/pack/texture.ts";
 import { convertCreature, withMotion } from "../pack/creature.ts";
 import { importGlb } from "../pack/glb.ts";
 import { readGltf } from "../pack/gltf.ts";
+import { lying } from "../pack/lying.ts";
 import { withLevels, withSurfaceLevels } from "../pack/simplify.ts";
 import { spanOf, tangentsOf } from "../pack/surface.ts";
 import type { MaterialMaps } from "../pack/texture.ts";
@@ -17,7 +19,7 @@ import type { Asset } from "./assets.ts";
 import { RAW, blender, withScratch } from "./blender.ts";
 import { convertBodies, convertClipLibraries } from "./human.ts";
 import { describe, materialsOf, type Described } from "./materials.ts";
-import type { CreatureAsset, PiecesAsset, SkyAsset, WaterAsset } from "./spec.ts";
+import type { CreatureAsset, PieceSpec, PiecesAsset, SkyAsset, WaterAsset } from "./spec.ts";
 
 export interface Built {
   meshes: SourceMesh[];
@@ -34,7 +36,8 @@ const triangles = (m: SourceMesh): string => m.lods.map((l, i) => `${String(l.in
 
 /** An asset's materials as its pack will have them, by the name its model gives each. Their pictures are read here, once. */
 function described(asset: Asset & { spec: CreatureAsset | PiecesAsset }, palette: Uint8Array, out: Built): Map<string, Described> {
-  const made = new Map(materialsOf(asset).map((m) => [m.name, describe(m, asset.spec.budgets.texture?.top ?? stepSize(LAST_STEP), palette)]));
+  const texture = asset.spec.budgets.texture;
+  const made = new Map(materialsOf(asset).map((m) => [m.name, describe(m, texture?.top ?? stepSize(LAST_STEP), palette, texture?.layer)]));
   for (const d of made.values()) out.faults.push(...d.faults);
   return made;
 }
@@ -49,7 +52,7 @@ function withMaterials(mesh: SourceMesh, names: readonly string[], made: Readonl
     const d = made.get(name);
     if (!d) return mesh.materials![k]!;
     const material = { ...d.material };
-    for (const role of TEXTURE_ROLES) if (material[role] >= 0) material[role] += textures.length;
+    for (const role of TEXTURE_ROLES) if (textureOf(material, role) >= 0) setTexture(material, role, textureOf(material, role) + textures.length);
     textures.push(...d.textures);
     return material;
   });
@@ -121,14 +124,37 @@ function withStated(mesh: SourceMesh, errors: readonly number[] | undefined, fau
   return { ...mesh, lods: mesh.lods.map((lod, level) => (level > 0 && errors[level - 1] !== undefined ? { ...lod, error: errors[level - 1] } : lod)) };
 }
 
-/** Rigid pieces from the file Blender wrote of each, by the name of its object. */
+/** The prop bone of the hand a piece is held in. */
+export const HOLD_BONES = { prop_r: B_PROP_R, prop_l: B_PROP_L } as const;
+
+/**
+ * A rigid piece as an item held in the hand: on the human skeleton, every vertex on the prop bone of that hand, as
+ * tools/pack/weapons.ts makes the boxes. The character renderer draws it at that bone, offset to where the bone rests on
+ * the body that holds it, so the grip modelled at the origin is in the palm.
+ */
+export function heldOn(mesh: SourceMesh, hold: NonNullable<PieceSpec["hold"]>): SourceMesh {
+  const bone = HOLD_BONES[hold];
+  const lods = mesh.lods.map(({ joints: _j, weights: _w, ...lod }) => ({ ...lod, bones: new Uint8Array(lod.positions.length / 3).fill(bone) }));
+  return { ...mesh, lods, skeleton: HUMAN.id };
+}
+
+/** The pieces a pieces asset converts: its own, and the lying piece of each whose `dropped` names an object of its own. */
+export function piecesOf(spec: PiecesAsset): PieceSpec[] {
+  return spec.pieces.flatMap((p) => (p.dropped !== undefined && p.dropped !== "auto" ? [p, { id: `${p.id}/dropped`, object: p.dropped }] : [p]));
+}
+
+/**
+ * Rigid pieces from the file Blender wrote of each, by the name of its object. An item's piece that is held is put on
+ * the hand's prop bone, and one dropped "auto" gets a lying mesh `<id>/dropped` made from it (tools/pack/lying.ts).
+ */
 export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Readonly<Record<string, string>>, out: Built): void {
   const spec = asset.spec;
   const palette = defaultPalette();
   const pictured = described(asset, palette, out);
   const maps = new Map<string, MaterialMaps[]>();
   const brought = new Map<string, number>();
-  for (const p of spec.pieces) {
+  const pieces = piecesOf(spec);
+  for (const p of pieces) {
     const report = importGlb(readFileSync(files[p.object]!), p.id, palette, { flat: (name) => pictured.get(name)?.flat });
     out.warnings.push(...report.warnings.map((w) => `${p.id}: ${w}`));
     brought.set(p.id, report.levels - 1);
@@ -145,14 +171,24 @@ export function convertPieces(asset: Asset & { spec: PiecesAsset }, files: Reado
     out.faults.push(...surfaceFaults(mesh));
     // Asked for, a piece's levels are made from its finest as a creature's are, and any its script brought follow them
     // as its last, each taking the last of the budgets. Otherwise it keeps its own.
-    const errors = spec.pieces.find((p) => p.id === mesh.id)?.errors;
+    const errors = pieces.find((p) => p.id === mesh.id)?.errors;
     if (spec.flat === undefined || !maps.has(mesh.id)) return withStated(mesh, errors, out.faults);
     const own = mesh.lods.slice(1, 1 + brought.get(mesh.id)!);
     const budgets = spec.budgets.triangles.slice(1, spec.budgets.triangles.length - own.length);
     const made = withSurfaceLevels({ ...mesh, lods: [mesh.lods[0]!] }, { budgets, flat: spec.flat, maps: maps.get(mesh.id)!, palette });
     return withStated({ ...made, lods: [...made.lods, ...own] }, errors, out.faults);
   });
-  for (const mesh of out.meshes) out.lines.push(`${mesh.id.padEnd(28)} triangles ${triangles(mesh)}`);
+  // The lying piece is made from the held one as it is drawn, every level, before it goes on the hand.
+  for (const p of spec.pieces) {
+    if (p.dropped !== "auto") continue;
+    const held = out.meshes.find((m) => m.id === p.id);
+    if (held) out.meshes.push(lying(held, `${p.id}/dropped`));
+  }
+  out.meshes = out.meshes.map((mesh) => {
+    const hold = spec.pieces.find((p) => p.id === mesh.id)?.hold;
+    return hold ? heldOn(mesh, hold) : mesh;
+  });
+  for (const mesh of out.meshes) out.lines.push(`${mesh.id.padEnd(28)} triangles ${triangles(mesh)}${mesh.skeleton ? `  held on ${spec.pieces.find((p) => p.id === mesh.id)!.hold}` : ""}`);
 }
 
 /**
@@ -188,7 +224,7 @@ export function buildAsset(asset: Asset): Built {
       else scripted(spec.source.scripts, { out: glb });
       convertModel({ ...asset, spec }, glb, out);
     } else if (spec.kind === "pieces") {
-      const files = Object.fromEntries(spec.pieces.map((p) => [p.object, join(dir, `${p.object}.glb`)]));
+      const files = Object.fromEntries(piecesOf(spec).map((p) => [p.object, join(dir, `${p.object}.glb`)]));
       scripted(spec.source.scripts, { pieces: files });
       convertPieces({ ...asset, spec }, files, out);
     } else if (spec.kind === "sky" || spec.kind === "water") {
@@ -248,11 +284,32 @@ function recolour(was: Uint8Array, now: Uint8Array, asset?: Asset): (mesh: Sourc
   };
 }
 
+/** Gives each material of the meshes that the asset describes the layer its pictures make now, or none. Nothing else of it changes. */
+function withLayers(meshes: SourceMesh[], asset: Asset & { spec: CreatureAsset }, palette: Uint8Array, faults: string[]): void {
+  const named = materialsOf(asset).some((m) => m.spec.hurt !== undefined || m.spec.decay !== undefined);
+  if (!named && !meshes.some((mesh) => mesh.materials?.some((m) => m.layer !== undefined))) return;
+  const texture = asset.spec.budgets.texture;
+  const layers = new Map(materialsOf(asset).map((m) => {
+    const d = describe(m, texture?.top ?? stepSize(LAST_STEP), palette, texture?.layer);
+    faults.push(...d.faults);
+    return [m.id, d.material.layer === undefined ? null : d.textures[d.material.layer]!] as const;
+  }));
+  for (const mesh of meshes) {
+    for (const m of mesh.materials ?? []) {
+      const layer = layers.get(m.id);
+      if (layer === undefined) continue;
+      delete m.layer;
+      if (layer) m.layer = mesh.textures!.push(layer) - 1;
+    }
+  }
+}
+
 /**
  * A pack again in today's format and palette, made from itself: no Blender. How far each level lies from the finest
  * is measured afresh, or stated again where a piece's asset states it. With `levels`, every mesh that follows a rig of its own gets its coarser levels made afresh from
  * its finest, which undoes any the model brought. One drawn with materials has them made as its asset says, which
- * reads the asset's pictures. A creature's rig takes its feet, strides and ragdoll from its asset as it is now.
+ * reads the asset's pictures. A creature's rig takes its feet, strides and ragdoll from its asset as it is now, and
+ * its materials the hurt and decay layers its asset names now.
  */
 export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8Array {
   const pack = parsePack(file);
@@ -275,6 +332,7 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
   // A creature's rig takes what its asset now says of how it moves and dies.
   const spec = asset?.spec;
   const rigs = pack.header.rigs.map((r) => (spec?.kind === "creature" && r.id === asset!.id ? withMotion(r, spec, pack.clips.clips, faults) : r));
+  if (spec?.kind === "creature" && spec.materials) withLayers(meshes, asset as Asset & { spec: CreatureAsset }, palette, faults);
   if (faults.length > 0) throw new Error(`${asset!.id}: ${faults.join("; ")}`);
   return buildPack(meshes, palette, pack.clips.clips, rigs);
 }

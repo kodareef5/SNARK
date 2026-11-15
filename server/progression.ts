@@ -1,5 +1,8 @@
 // Levels and unspent points are functions of experience and of what was spent, so neither is stored and neither can drift.
-// A craft job burns its ingredients when a unit starts and mints the product when its deadline comes due.
+// A craft job burns its ingredients when a unit starts and mints the product when its deadline comes due. A job lives on
+// the record whose inventory gives its ingredients and takes its product: a survivor's own, for what is made in the hands,
+// or a station's, for what is made at one (craftAt). Its crafter, who must know the engram and gets the experience, is the
+// survivor who queued it.
 
 import type { CraftFacet, EngramDef, ItemDef, LevelsDef } from "../shared/content/defs.ts";
 import { TICK_RATE } from "../shared/coords.ts";
@@ -7,7 +10,7 @@ import { RESULT_DENIED, RESULT_FULL, RESULT_INVALID, RESULT_OK, RESULT_SHORT } f
 import { STAT_COUNT, STAT_NAMES, spendPoint } from "../shared/sim/genome.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import type { Items } from "./items.ts";
-import type { EntityRecord, Records } from "./records.ts";
+import type { EntityRecord, Job, Records } from "./records.ts";
 import type { Rules } from "./settings/rules.ts";
 import type { ServerWorld } from "./world.ts";
 import { NO_BUS, event, type Bus } from "./events/bus.ts";
@@ -172,23 +175,49 @@ export class Progression {
     return RESULT_OK;
   }
 
-  /** The first unit starts at once if nothing else is being made. */
+  /** Made in the hands, from the survivor's own inventory. An item made at a station is refused. The first unit starts at once if nothing else is being made. */
   craft(rec: EntityRecord, item: number, count: number): number {
     const craft = this.craftOf(item);
     if (!craft || !(count >= 1 && count <= 100)) return RESULT_INVALID;
-    if (!this.knows(rec, this.engramOf[item]!)) return RESULT_DENIED;
-    if (rec.jobs.length >= MAX_JOBS) return RESULT_FULL;
-    if (rec.jobs.length === 0 && !this.canStart(rec, craft)) return RESULT_SHORT;
+    if (this.world.reg.craftAt[item] !== 0) return RESULT_DENIED;
+    return this.queue(rec, rec, craft, item, count);
+  }
+
+  /**
+   * Made at `station` (a structure's record) for the survivor `by`: queued on the station's record, from what lies in it,
+   * and landing in it. Only an item whose craft names the station's kind is made there.
+   */
+  craftAt(by: EntityRecord, station: EntityRecord, item: number, count: number): number {
+    const craft = this.craftOf(item);
+    if (!craft || !(count >= 1 && count <= 100)) return RESULT_INVALID;
+    if (station.at < 0 || station === by || this.world.reg.craftAt[item] !== station.kind) return RESULT_INVALID;
+    return this.queue(station, by, craft, item, count);
+  }
+
+  /** Queues a job on `on` for the crafter `by`, who may be `on` itself. */
+  private queue(on: EntityRecord, by: EntityRecord, craft: CraftFacet, item: number, count: number): number {
+    if (!this.knows(by, this.engramOf[item]!)) return RESULT_DENIED;
+    if (craft.level !== undefined && this.level(by) < craft.level) return RESULT_SHORT;
+    if (on.jobs.length >= MAX_JOBS) return RESULT_FULL;
+    if (on.jobs.length === 0 && !this.canStart(on, craft)) return RESULT_SHORT;
     // A module may refuse the job, or change how many are made.
-    const asked = { pid: rec.pid, item: this.world.reg.ids[item]!, count };
+    const asked = { pid: by.pid, item: this.world.reg.ids[item]!, count };
     if (this.bus.before(CRAFT_START, asked) !== "") return RESULT_DENIED;
     count = Math.floor(Number(asked.count));
     if (!(count >= 1 && count <= 100)) return RESULT_DENIED;
-    rec.jobs.push({ item, left: count, doneAt: 0 });
-    rec.progVersion++;
-    this.records.dirty.add(rec.pid);
-    if (rec.jobs.length === 1) this.start(rec);
+    on.jobs.push(on === by ? { item, left: count, doneAt: 0 } : { item, left: count, doneAt: 0, by: by.pid });
+    on.progVersion++;
+    this.records.dirty.add(on.pid);
+    if (on.jobs.length === 1) this.start(on);
     return RESULT_OK;
+  }
+
+  /**
+   * Who makes the job on `rec`: the survivor who queued it at a station, or `rec` itself for one made in the hands. It gets
+   * the experience. Null if that survivor's record is gone, and then nobody does.
+   */
+  crafter(rec: EntityRecord, job: Job): EntityRecord | null {
+    return job.by === undefined ? rec : (this.records.byPid.get(job.by) ?? null);
   }
 
   /** A DEADLINE_CRAFT entry came due. */
@@ -208,13 +237,14 @@ export class Progression {
       return;
     }
     const got = this.items.mint(rec, product, made, 0, tool ? tool.uses : 0, -1, "craft");
-    this.bus.after(CRAFT_DONE, { pid: rec.pid, item: def.id, n: got });
+    const crafter = this.crafter(rec, job);
+    this.bus.after(CRAFT_DONE, { pid: job.by ?? rec.pid, item: def.id, n: got });
     job.left--;
     job.doneAt = 0;
     rec.progVersion++;
     this.records.dirty.add(rec.pid);
     if (job.left <= 0) rec.jobs.shift();
-    this.addXp(rec, craft.xp, XP_CRAFT);
+    if (crafter) this.addXp(crafter, craft.xp, XP_CRAFT);
     this.start(rec);
   }
 

@@ -3,7 +3,7 @@
 // rgba variant needs no encoder and is made here.
 
 import { RGBA_TOP, TEXTURE_FORMATS, TEXTURE_HEADER_BYTES, TEXTURE_MAGIC, TEXTURE_VERSION, pictureBytes, stepBytes, stepOf, stepOffset, textureBytes, topIn, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
-import { baseMips, normalMips, packedMips, type Picture } from "./image.ts";
+import { baseMips, layerMips, layerPicture, normalMips, packedMips, type Picture } from "./image.ts";
 import { partHash } from "./manifest.ts";
 import { checkMasks, maskMips, readMasks, readRegions } from "./mask.ts";
 
@@ -83,13 +83,16 @@ export interface MaterialMaps {
   regions?: Picture;
   mask?: Picture;
   mask2?: Picture;
+  /** Made into one texture, the layer. */
+  hurt?: Picture;
+  decay?: Picture;
 }
 
 /**
  * The mips of a material's maps from its source pictures: RGBA8, smallest first, to cut at the top each texture is
  * given and hand to an encoder. The packed map is roughened by what the normal map loses. Both masks come from the
  * one region map, and there is no `mask2` where regions 3 to 5 are empty. Masks made by hand are refused if they are
- * not one size or their weights sum past 1.
+ * not one size or their weights sum past 1. The hurt and decay pictures make the layer.
  */
 export function materialMips(maps: Readonly<MaterialMaps>): Partial<Record<TextureRole, Uint8Array[]>> {
   const out: Partial<Record<TextureRole, Uint8Array[]>> = {};
@@ -103,5 +106,6 @@ export function materialMips(maps: Readonly<MaterialMaps>): Partial<Record<Textu
     if (report.over > 0) throw new Error(`masks: the weights of ${(report.over * 100).toFixed(2)}% of the pixels sum past 1, to as much as ${report.most.toFixed(2)}`);
     Object.assign(out, maskMips(readMasks(maps.mask, maps.mask2)));
   }
+  if (maps.hurt || maps.decay) out.layer = layerMips(layerPicture(maps.hurt, maps.decay).picture);
   return out;
 }

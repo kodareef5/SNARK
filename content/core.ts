@@ -10,6 +10,7 @@ import { FOODS } from "./foods.ts";
 import { ITEMS } from "./items/index.ts";
 import { KNOCKOUT } from "./knockout.ts";
 import { MAPS } from "./maps.ts";
+import { RUIN_BLOCKS } from "./miami-ruins.ts";
 import { SPAWNS } from "./spawns.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
@@ -439,7 +440,7 @@ const ALL: readonly Def[] = [
   LEVELS,
 ];
 
-export const CORE_CONTENT: readonly Def[] = crafted(ALL);
+export const CORE_CONTENT: readonly Def[] = crafted([...ALL, ...RUIN_BLOCKS]);
 
 /** CORE_CONTENT as a pack, for stacking other packs on top. */
 export const CORE_PACK: ContentPack = { name: "core", defs: CORE_CONTENT as readonly Def[] as unknown as ContentPack["defs"] };

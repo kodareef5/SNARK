@@ -281,8 +281,10 @@ export interface CraftFacet {
   readonly xp: number;
   /** How many one crafting makes. One, where not given. */
   readonly count?: number;
-  // Stubs, read by nothing yet.
-  /** The station it is made at. Omitted, it is made in the hands. */
+  /**
+   * The station it is made at: only there, from what lies in the station, and the product lands there. Omitted, it is made
+   * in the hands from the survivor's own inventory.
+   */
   readonly at?: string;
   /** The level below which it cannot be made, engram or no. */
   readonly level?: number;

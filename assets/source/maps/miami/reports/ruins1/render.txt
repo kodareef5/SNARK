@@ -1,0 +1,14 @@
+assets/source/maps/miami/reports/ruins1/skyline-bay.png  39 frames, 5595 ms, eye 5700, 10.0, 3750, dropped 0
+assets/source/maps/miami/reports/ruins1/downtown-street.png  40 frames, 3206 ms, eye 6533, 4.5, 3425, dropped 0
+assets/source/maps/miami/reports/ruins1/deco-row.png  33 frames, 3091 ms, eye 574, 3.0, 3820, dropped 0
+assets/source/maps/miami/reports/ruins1/bungalow-street.png  36 frames, 1249 ms, eye 7799, 3.8, 2635, dropped 0
+assets/source/maps/miami/reports/ruins1/port.png  27 frames, 894 ms, eye 3150, 18.0, 2450, dropped 0
+assets/source/maps/miami/reports/ruins1/freedom.png  43 frames, 1320 ms, eye 6368, 25.0, 4088, dropped 0
+assets/source/maps/miami/reports/ruins1/arena.png  43 frames, 1098 ms, eye 6135, 82.0, 4151, dropped 0
+assets/source/maps/miami/reports/ruins1/convention.png  47 frames, 1317 ms, eye 962, 5.0, 5670, dropped 0
+assets/source/maps/miami/reports/ruins1/dupont.png  39 frames, 961 ms, eye 6560, 16.0, 3390, dropped 0
+assets/source/maps/miami/reports/ruins1/ritz.png  39 frames, 1088 ms, eye 344, 30.0, 5410, dropped 0
+assets/source/maps/miami/reports/ruins1/interior.png  30 frames, 866 ms, eye 842, 3.4, 5749, dropped 0
+assets/source/maps/miami/reports/ruins1/rooftop.png  40 frames, 927 ms, eye 6588, 36.6, 3479, dropped 0
+assets/source/maps/miami/reports/ruins1/worst-first-pass.png  29 frames, 899 ms, eye 1400, 130.0, 7700, dropped 0
+assets/source/maps/miami/reports/ruins1/sheet.png

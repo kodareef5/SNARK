@@ -23,9 +23,9 @@ test("low poly's programs are the pinned flat texts, and every sampler a program
       }
     }
   }
-  // The material's five maps and the rest each have a unit, and 13 to 15 are left free.
-  const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint];
-  expect([new Set(units).size, Math.max(...units)]).toEqual([13, 12]);
+  // The material's five maps and the rest each have a unit, the layer the last but one, and 15 is left free.
+  const units = [UNIT.palette, UNIT.heights, UNIT.tint, UNIT.bones, ...[0, 1, 2, 3, 4].map((r) => UNIT.maps + r), UNIT.shadow, UNIT.sky, UNIT.windowHeights, UNIT.windowTint, UNIT.atlas, UNIT.layer];
+  expect([new Set(units).size, Math.max(...units)]).toEqual([15, 14]);
 });
 
 test("the frame block: each value inside its slot, a GLSL slot for every four floats, and the packet's views of it", () => {
