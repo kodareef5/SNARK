@@ -40,9 +40,10 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
 
 /**
  * 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. 16: the flyers'.
- * 17: the stations wave's (planning/reference/stations-plan.md, S0), OWN_STATION's layout.
+ * 17: the stations wave's (planning/reference/stations-plan.md, S0), OWN_STATION's layout. 18: vehicles: a body's
+ * mechanical state and seat after the flight counters, and a view entry's vehicle parts (view.ts).
  */
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 18;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -62,6 +63,56 @@ function writeFlight(w: BitWriter, b: Body): void {
 function readFlight(r: BitReader, b: Body): void {
   b.regenWait = r.bits(10);
   b.rollWait = r.bits(10);
+}
+/** Protocol 18: a vehicle's mechanical state and a body's seat, after the flight counters (shared/sim/vehicle-body.ts). */
+function writeVehicle(w: BitWriter, b: Body): void {
+  w.bool(b.vehicle);
+  if (b.vehicle) {
+    w.f32(b.vehicleYaw);
+    w.f32(b.vehiclePitch);
+    w.f32(b.vehicleRoll);
+    w.f32(b.steering);
+    w.f32(b.wheelAngle);
+    w.f32(b.fuel);
+    w.f32(b.vehicleYawRate);
+    w.f32(b.vehiclePitchRate);
+    w.f32(b.vehicleRollRate);
+    w.f32(b.vehicleGroundPitch);
+    w.f32(b.vehicleGroundRoll);
+    w.f32(b.vehicleRideOffset);
+    w.f32(b.vehicleRideVelocity);
+    w.u8(b.vehicleGear + 1);
+    w.f32(b.vehicleRpm);
+    w.f32(b.vehicleShiftTime);
+    w.f32(b.vehiclePayloadMass);
+    // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
+  }
+  // A seat costs a body one bit when it has none: the entity it sits on, the seat's place in it from 1, and the entity's generation.
+  w.bool(b.seat !== 0);
+  if (b.seat !== 0) { w.varint(b.seat - 1); w.u8(b.seatSlot); w.bits(b.seatGen, 12); }
+}
+function readVehicle(r: BitReader, b: Body): void {
+  b.vehicle = r.bool();
+  b.vehicleYaw = b.vehicle ? r.f32() : 0;
+  b.vehiclePitch = b.vehicle ? r.f32() : 0;
+  b.vehicleRoll = b.vehicle ? r.f32() : 0;
+  b.steering = b.vehicle ? r.f32() : 0;
+  b.wheelAngle = b.vehicle ? r.f32() : 0;
+  b.fuel = b.vehicle ? r.f32() : 0;
+  b.vehicleYawRate = b.vehicle ? r.f32() : 0;
+  b.vehiclePitchRate = b.vehicle ? r.f32() : 0;
+  b.vehicleRollRate = b.vehicle ? r.f32() : 0;
+  b.vehicleGroundPitch = b.vehicle ? r.f32() : 0;
+  b.vehicleGroundRoll = b.vehicle ? r.f32() : 0;
+  b.vehicleRideOffset = b.vehicle ? r.f32() : 0;
+  b.vehicleRideVelocity = b.vehicle ? r.f32() : 0;
+  b.vehicleGear = b.vehicle ? r.u8() - 1 : 0;
+  b.vehicleRpm = b.vehicle ? r.f32() : 0;
+  b.vehicleShiftTime = b.vehicle ? r.f32() : 0;
+  b.vehiclePayloadMass = b.vehicle ? r.f32() : 0;
+  b.seat = r.bool() ? r.varint() + 1 : 0;
+  b.seatSlot = b.seat !== 0 ? r.u8() : 0;
+  b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
 }
 
 export const C_HELLO = 1;
@@ -524,6 +575,7 @@ export function writeBody(w: BitWriter, b: Body): void {
   w.u8(b.bloom);
   w.u8(b.kick);
   writeFlight(w, b);
+  writeVehicle(w, b);
 }
 
 export function readBody(r: BitReader, b: Body): void {
@@ -551,6 +603,7 @@ export function readBody(r: BitReader, b: Body): void {
   b.bloom = r.u8();
   b.kick = r.u8();
   readFlight(r, b);
+  readVehicle(r, b);
 }
 
 /** `key` must be KEY_BYTES long, and a `ticket` TICKET_BYTES. */

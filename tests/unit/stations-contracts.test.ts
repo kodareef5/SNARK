@@ -31,8 +31,8 @@ const root = join(import.meta.dir, "../..");
 const id = (r: Registry, name: string): number => r.index.get(name.includes(":") ? name : `core:${name}`)!;
 
 test("protocol 17 and record format 7 are the stations wave's, and it took no command, own component, event, saved component or deadline", () => {
-  // 16 is the flyers'; the vehicles' branches, unmerged, take the next free at their merge.
-  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([17, 16]);
+  // 16 is the flyers', and 18, after this wave's 17, the vehicles' (tests/integration/vehicle-contracts.test.ts).
+  expect([P.PROTOCOL_VERSION, P.OWN_STATION]).toEqual([18, 16]);
   // EVENT_NAME_BYTES is a size, not a kind of event.
   const most = (prefix: string): number => Math.max(...Object.entries(P).filter(([k]) => k.startsWith(prefix) && k !== "EVENT_NAME_BYTES").map(([, v]) => v as number));
   expect([most("CMD_"), most("OWN_"), most("EVENT_"), P.BUTTON_BITS]).toEqual([31, 16, 7, 10]);
