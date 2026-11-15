@@ -7,7 +7,10 @@ real animal is a check on how a wing folds and how a body leaves the ground, at 
 **Evidence.** Official pictures on the ARK wiki: the dossier painting, the six region renders of each game's model, the
 gallery's in-game screenshots (from below in flight, gliding, banking, on the ground beside a survivor, saddled and
 ridden, first person from the saddle), the saddle's item icon; the official Steam screenshots of both games (75 looked
-at, four in full); FAN_ART_SURVEY. Every source is in [SOURCES.md](SOURCES.md). Pictures were looked at in a temporary
+at, four in full; none of the 13 trailer pictures shows one); the official animated series' pictures (in flight, a
+hatchling, a nesting colony) and its costume icon. Fan art: 28 pieces by 25 artists on DeviantArt, from cartoons and
+chibis to pencil, watercolour, finger paint and a handmade doll; ARK's official fan-art features held none. Every source
+is in [SOURCES.md](SOURCES.md). Pictures were looked at in a temporary
 folder outside the repo and deleted; nothing here is traced or measured from a game.
 
 **Ratios are by eye,** from screenshots taken with a wide third-person camera, which stretches whatever is nearest the
@@ -40,6 +43,26 @@ the ground was found.
 
 The first three say "pteranodon" to anyone. The twin sails with their notch, the stripes and the halter say "ARK's
 pteranodon"; the twin sails are ARK's own invention, which makes them the detail most likely to read as copied.
+
+## What the fan art keeps
+
+Out of 28 pieces. Every one keeps the arrowhead head (a long straight beak balanced by a crest pointing back), a long
+slim neck, and, wherever wings are drawn, membrane wings that dwarf a small body: those three are the core.
+
+| Trait | Pieces | Note |
+|---|---|---|
+| Twin crest sails with a notch | 17 | A single blade in 7, other or hidden in 4 |
+| Cells or a grid drawn in the sails | 10 | |
+| Stripes on body or neck | 14 | Red or pink on a pale body, the dossier's scheme, in 6, as in the animated series |
+| Body and membrane in different colours | 16 of 22 coloured pieces with wings | |
+| Broad bat wing | 20 of 22 that show the shape | The two narrow ones are deliberate "accurate" redesigns |
+| Sitting up on the ground, wings spread as side panels | 6 of 7 drawn on the ground | The seventh stands on two legs; the animated series' nests sit up too |
+| Feet dangling in flight | 8 of 11 where the feet show | The other 3 trail back, as in the animated series |
+| Teeth | 5 (4 unclear, 19 none) | The official animated series has none |
+| A rider or saddle | 5 | One more carries a person in its feet |
+
+Riders sit upright astride the shoulders just behind the neck, with reins to the head and the legs hanging either side
+in front of the wing roots, or a little further back between the wings on a saddle with a raised back.
 
 ## Silhouette and stance
 
@@ -132,15 +155,16 @@ The game has six regions, the same names in both games. The wiki shows each in r
 Options for the designer, not decisions. None costs recognition while the ranked traits stay.
 
 - **The crest.** A single solid blade sweeping back, with or without a low ridge along the snout, in place of ARK's twin
-  sails and notch. Still an arrowhead. This is the clearest single way to look like our own.
-- **The beak.** Toothless, as the real animal's name says, with the upper jaw a little longer and turned up at the tip.
-  The needle silhouette stays.
-- **The pattern.** Our own in place of zebra stripes: a seabird's countershading, a dark wingtip, a band of our own on
-  the crest. Keep pale against coloured between body and membrane.
+  sails and notch. Still an arrowhead: 7 of 28 fan pieces draw a single blade and still read as ARK's. This is the
+  clearest single way to look like our own.
+- **The beak.** Toothless, as the real animal's name says and the official animated series draws it, with the upper jaw
+  a little longer and turned up at the tip. The needle silhouette stays.
+- **The pattern.** Our own in place of zebra stripes and the dossier's red on white: a seabird's countershading, a dark
+  wingtip, a band of our own on the crest. Keep pale against coloured between body and membrane.
 - **The skin.** A short coat of fine fuzz on head, neck and torso, as all pterosaurs had, with the membrane bare. The
   outline does not change; the reptile look does.
 - **The wing.** By degree narrower than ARK's bat wing, toward the real animal's long narrow wing, still reaching the
-  ankle. The wing carries recognition, so change it a little.
+  ankle. The broad wing is in 20 of 22 fan pieces, so change it a little, not to an albatross.
 - **The ground stance.** Weight on the three small fingers with the wing finger folded tighter up the flank, but still
   sitting up with the tips pointing up and back.
 - **The saddle.** Our own: a low pad with a chest harness and our own halter; the rider still upright on the shoulders
@@ -169,6 +193,20 @@ For how the wing folds, how it stands and how it leaves the ground. Not the subj
 - **Where ARK departs and still reads:** teeth (low weight), the twin sails (high: they are ARK's), the broad bat wing
   (medium), bare scaly skin (medium), the membrane spread like a cape on the ground (medium), raptor-like grasping feet
   (they are the grab), a body large enough to ride (the ride).
+
+## A first list of what will be ours
+
+The designer's starting point for PA1, chosen from the options above so that each is visible side by side and none
+touches the ranked traits:
+
+1. A single swept blade of a crest, with a low ridge along the snout, carrying a colour band of its own.
+2. A toothless beak, the upper jaw a little longer and upturned at the tip.
+3. A seabird's colouring: pale below, darker above, dark wingtips, a pattern of our own on the back, in place of the
+   zebra stripes and the red-on-white.
+4. A short fuzz on head, neck and torso; the membrane bare and veined. The first to drop if it reads as a new trait
+   rather than a different surface.
+5. A wing a little narrower than ARK's, the trailing edge one long curve to the ankle rather than two scallops.
+6. Our own saddle: a low pad with a raised back, a chest harness clear of the wing roots, our own halter and reins.
 
 ## What I could not find out
 
