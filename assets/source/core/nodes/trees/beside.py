@@ -39,7 +39,7 @@ def main():
         view, rest = row.split(":", 1)
         shots = [Image.open(os.path.join(folder, f"{view}-{h}.png")).convert("RGB") for h in (10, 17)]
         if "/" in rest:
-            bx, by, bx1, by1, other = rest.split("/")
+            bx, by, bx1, by1, other = rest.split("/", 4)
             ref = Image.open(other).convert("RGB").crop((int(bx), int(by), int(bx1), int(by1)))
             left = fit(ref, ROW)
             name = f"concept, {os.path.basename(other)}"

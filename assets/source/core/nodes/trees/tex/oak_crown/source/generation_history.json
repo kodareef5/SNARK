@@ -19,7 +19,7 @@
         1448,
         1086
       ],
-      "decision": "retained; finer blades"
+      "decision": "superseded by round 2; 3\u20135cm blades replaced with spray-scale foliage"
     },
     {
       "deliverable_source": "undersides_generated.png",
@@ -39,7 +39,7 @@
         1774,
         887
       ],
-      "decision": "retained; finer blades and branchlets"
+      "decision": "superseded by round 2; 3\u20135cm blades replaced with spray-scale foliage"
     },
     {
       "deliverable_source": "interior_generated.png",
@@ -60,7 +60,90 @@
         887
       ],
       "decision": "retained; smaller blades and dim foliage filling the gaps"
+    },
+    {
+      "round": 2,
+      "deliverable_source": "top_heads_generated.png",
+      "generation_id": "exec-2d4145ce-2897-40f5-b342-8ac46eb7ba13.png",
+      "tool_managed_path": "/home/user/.codex/generated_images/01a1df58-8936-7d90-818c-d2d75547b954/exec-2d4145ce-2897-40f5-b342-8ac46eb7ba13.png",
+      "sha256": "6e06596020f772dc25be1134ce4f7293cb05171d529f96255da868e13415e85d",
+      "size": [
+        1448,
+        1086
+      ],
+      "prompt_file": "round2_tops_prompt.txt",
+      "decision": "superseded; crisp leaves too large"
+    },
+    {
+      "round": 2,
+      "deliverable_source": "undersides_generated.png",
+      "generation_id": "exec-729057b0-c3cd-4b98-9efc-e626a2cdfb93.png",
+      "tool_managed_path": "/home/user/.codex/generated_images/01a1df58-8936-7d90-818c-d2d75547b954/exec-729057b0-c3cd-4b98-9efc-e626a2cdfb93.png",
+      "sha256": "b0f3ccead98bf8c8509069d5f90ae9d8de842574531200f7f9027507e7af7d4f",
+      "size": [
+        1774,
+        887
+      ],
+      "prompt_file": "round2_undersides_prompt.txt",
+      "decision": "superseded; blades too large"
+    },
+    {
+      "round": 2,
+      "deliverable_source": "top_heads_generated.png",
+      "generation_id": "exec-7fcaa0d3-529a-41ff-b168-2f4a33fcb086.png",
+      "tool_managed_path": "/home/user/.codex/generated_images/01a1df58-8936-7d90-818c-d2d75547b954/exec-7fcaa0d3-529a-41ff-b168-2f4a33fcb086.png",
+      "sha256": "a489aab3de3679564a9f45c3667c4261d59f2f38d4db4162bc74b8419adf6884",
+      "size": [
+        1448,
+        1086
+      ],
+      "prompt_file": "round2_tops_scale_prompt.txt",
+      "decision": "superseded; full blade review still exceeded physical scale"
+    },
+    {
+      "round": 2,
+      "deliverable_source": "undersides_generated.png",
+      "generation_id": "exec-c496038f-70a7-4c93-a128-92c930662e18.png",
+      "tool_managed_path": "/home/user/.codex/generated_images/01a1df58-8936-7d90-818c-d2d75547b954/exec-c496038f-70a7-4c93-a128-92c930662e18.png",
+      "sha256": "becd19f36b043e02f6191138d90cf96311b573551a7af7c88334203872daadcf",
+      "size": [
+        1774,
+        887
+      ],
+      "prompt_file": "round2_undersides_scale_prompt.txt",
+      "decision": "superseded; scale reduction insufficient"
+    },
+    {
+      "round": 2,
+      "deliverable_source": "top_heads_generated.png",
+      "generation_id": "exec-b2984779-e21d-42e3-baed-db606711896b.png",
+      "tool_managed_path": "/home/user/.codex/generated_images/01a1df58-8936-7d90-818c-d2d75547b954/exec-b2984779-e21d-42e3-baed-db606711896b.png",
+      "sha256": "d41efa3a9a4b702e52812174c767f110e08b44c656bc181014378113213da20b",
+      "size": [
+        1448,
+        1086
+      ],
+      "prompt_file": "round2_tops_final_scale_prompt.txt",
+      "decision": "retained; larger crisp oval blades in overlapping twig sprays"
+    },
+    {
+      "round": 2,
+      "deliverable_source": "undersides_generated.png",
+      "generation_id": "exec-66f32e4b-c30c-4085-bce0-20714b61de8b.png",
+      "tool_managed_path": "/home/user/.codex/generated_images/01a1df58-8936-7d90-818c-d2d75547b954/exec-66f32e4b-c30c-4085-bce0-20714b61de8b.png",
+      "sha256": "66ad503f694f36f5ce45fe1a080451d95ff34c810151194cebe24b1e23dabd44",
+      "size": [
+        1774,
+        887
+      ],
+      "prompt_file": "round2_undersides_final_scale_prompt.txt",
+      "decision": "retained; pale leaf undersides and carrying twigs"
     }
   ],
-  "retention": "Only selected unmodified originals are retained in source/. Superseded workspace originals were replaced. The image tool retains its automatically managed outputs separately."
+  "retention": "Only selected unmodified original images remain in source/. The interior source is unchanged. Superseded originals replaced in place; prompt history retained for round 2 and the selected interior. Tool-managed originals outside this folder were not edited.",
+  "round2_references": [
+    "source/spray_reference.png",
+    "../../ref/concept/broadleaf/oak_lineup.png",
+    "round1 sources (hashes in round2_baseline.json)"
+  ]
 }

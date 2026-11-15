@@ -22,5 +22,41 @@
       "path": "checks/working_compare.png",
       "sha256": "69681a68d1e1769e8b96c8cfbb945bd43a23e21956318920ab5735121506a923"
     }
-  ]
+  ],
+  "round2": {
+    "removed": [
+      {
+        "path": "source/top_heads_prompt.txt",
+        "sha256": "dbbbec595946c879990eb219f161f6196abd8d7e571f6a9d8f4af76a977a6b5a"
+      },
+      {
+        "path": "source/top_heads_revision_prompt.txt",
+        "sha256": "bf175cc374f99b99b3b20232c6d8c502e02679369328348d5bb2b8c881abf7d9"
+      },
+      {
+        "path": "source/undersides_prompt.txt",
+        "sha256": "8923c0bb54be9547dec052fdd5cc637d2e8e1c8378304738e9beb7fe9dce7eba"
+      },
+      {
+        "path": "source/undersides_revision_prompt.txt",
+        "sha256": "6a1539502983016a556808a0b10dafa6f947dafb820f39130b0085af04eaa8fb"
+      },
+      {
+        "path": "checks/scale_working.png",
+        "sha256": "d09f650a4ecd73bdfc232ee4ecb96df6ba7b673dd4f60dfecc0da5987218c66b"
+      }
+    ],
+    "replaced_in_place": [
+      "oak_crown_base.png",
+      "oak_crown_normal.png",
+      "oak_crown_height.png",
+      "oak_crown_orm.png",
+      "source/top_heads_generated.png",
+      "source/undersides_generated.png",
+      "REPORT.md",
+      "checks/* existing diagnostic outputs"
+    ],
+    "baseline": "round2_baseline.json",
+    "preserved": "all four interior rectangles, interior source, supplied feedback and briefs"
+  }
 }

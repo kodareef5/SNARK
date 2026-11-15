@@ -106,6 +106,39 @@ def calibrate(rgb, mask, target, low, high, weight=None):
     return np.clip(out,low,high)
 
 
+def head_colour(q, macro, radius, mask, target):
+    """Monotonic pigment mapping: no clipped flat faces or lifted gap floor.
+
+    Monotonic sigmoids meet the three means. Blue is constrained below green
+    even when the underside blue mean is near its ceiling. Radial shading
+    changes pigment, never resolution or blur.
+    """
+    low=np.array([13.,22.,15.]);high=np.array([165.,160.,85.])
+    edge=np.clip((radius-.88)/.12,0,1)
+    edge=edge*edge*(3-2*edge)
+    shade=(1-.24*edge)*(1-.30*np.clip((radius-1)/.4,0,1))
+    tone=q+.20*np.tanh(macro*1.25)
+    def channel(c,ceiling,slope):
+        lower,upper=-12.,12.
+        for _ in range(45):
+            offset=(lower+upper)/2
+            v=low[c]+(ceiling-low[c])/(1+np.exp(-slope*(tone+offset)))
+            if v[mask].mean()<target[c]:lower=offset
+            else:upper=offset
+        return v
+    slope=2.5
+    green=channel(1,low[1]+(high[1]-low[1])*shade,slope)
+    # Keep enough blue headroom to retain pale underside tissue, without a
+    # blue shadow population or hard colour clipping.
+    while np.minimum(high[2],green-4)[mask].mean()<target[2]+3:
+        slope*=.85
+        if slope<.3:raise ValueError('Infeasible pigment targets')
+        green=channel(1,low[1]+(high[1]-low[1])*shade,slope)
+    red=channel(0,np.minimum(low[0]+(high[0]-low[0])*shade,green+4),slope)
+    blue=channel(2,np.minimum(low[2]+(high[2]-low[2])*shade,green-4),slope)
+    return np.stack([red,green,blue],-1)
+
+
 def material(raw, group, periodic=False):
     h,w=raw.shape[:2]
     y,x=np.mgrid[:h,:w]
@@ -113,8 +146,10 @@ def material(raw, group, periodic=False):
     mask=np.ones((h,w),bool) if periodic else radius<=1
     q,plane=field(raw,mask,periodic)
     macro=smooth(q,18,periodic)
-    spray=smooth(q,3.0,periodic)-macro
-    blade=smooth(q,.45,periodic)-smooth(q,3.0,periodic)
+    # Round 2 blades are 11–17px long. Preserve the accepted interior path.
+    blade_sigma=3.0 if periodic else 5.5
+    spray=smooth(q,blade_sigma,periodic)-macro
+    blade=smooth(q,.45 if periodic else .30,periodic)-smooth(q,blade_sigma,periodic)
     # No metre-scale dome in height: the closed mesh supplies that normal.
     relief=112+66*np.tanh(macro*1.35)+20*np.tanh(spray*1.35)+5.5*np.tanh(blade*1.5)
     if periodic:relief=88+(relief-112)*.65
@@ -131,21 +166,11 @@ def material(raw, group, periodic=False):
     target=np.array(TARGETS[group],float)
     rgb=target+detail[...,None]*[1,.94,.55]+hue
     if not periodic:
-        # Same shaded ring for every top and underside. Continue complete
-        # foliage outwards; no bright atlas gutters at the chart boundary.
-        edge=np.clip((radius-.88)/.12,0,1)
-        edge=edge*edge*(3-2*edge)
-        ring=np.array([65,76,50]) if group<3 else np.array([64,76,53])
-        rgb=rgb*(1-edge[...,None])+(ring+detail[...,None]*[.62,.60,.40])*edge[...,None]
-        beyond=np.clip((radius-1)/.4,0,1)
-        rgb=rgb*(1-.30*beyond[...,None])
+        rgb=head_colour(q,macro,radius,mask,target)
         ao*=1-.13*np.clip(radius,0,1)**4
-        weight=(1-edge)
     else:
-        weight=np.ones(mask.shape)
-    # Bright new growth never exceeds the brief's ceiling. No added brown
-    # pigment; the two underside images keep restrained desaturated twigs.
-    rgb=calibrate(rgb,mask,target,[22,31,20],[165,160,85],weight)
+        # Preserve every accepted interior pixel, including calibration.
+        rgb=calibrate(rgb,mask,target,[22,31,20],[165,160,85])
     roughbase=[.42,.49,.59,.78,.68][group]
     rough=roughbase+.065*np.tanh(-blade)+.055*np.maximum(0,-macro)
     rough=np.clip(rough,.31,.90)
@@ -176,12 +201,12 @@ def main():
         for col in range(4):
             # Smaller blades on sun heads; larger blades in the shade. Sample
             # the same generated head around its centre with a modest crop.
-            scale=[.92,1.0,1.08][row]
+            scale=[1.0,1.0,1.04][row]
             extent=top.shape[1]/4/scale
             coord=(np.arange(N)+.5-N/2)*extent/N
             sy,sx=np.meshgrid(coord+(row+.5)*top.shape[0]/3-.5,
                               coord+(col+.5)*top.shape[1]/4-.5,indexing='ij')
-            raw=np.stack([ndi.map_coordinates(top[...,k],[sy,sx],order=1,mode='reflect') for k in range(3)],-1)
+            raw=np.stack([ndi.map_coordinates(top[...,k],[sy,sx],order=3,mode='reflect') for k in range(3)],-1)
             regions.append((col*N,row*N,N,N,raw,row,False))
     for col in range(2):
         raw=under[:,col*under.shape[1]//2:(col+1)*under.shape[1]//2]

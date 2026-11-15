@@ -33,7 +33,7 @@ OAKS = [
     # O02, the park elder: five main limbs from a fork near 2.5 m in broad tiers, two long ones sweeping out low to
     # either side, the others lifting the crown's middle; fern along the big limbs and moss beneath them.
     {"name": "oak_o2", "stem": 1.0, "fork": 2.5, "lobe": (3.2, 2.3, 3.1), "buttresses": 7,
-     "dome": ((0.0, 9.0, 0.0), (12.0, 7.0, 12.0), 4.4, []),
+     "dome": ((0.0, 9.0, 0.0), (12.0, 8.6, 12.0), 4.4, []),
      "limbs": [(12, [(0, 56), (0.12, 18), (0.4, 2), (0.7, 4), (1, 30)], 13.0, 0.66, 2),
                (168, [(0, 52), (0.12, 14), (0.45, -4), (0.72, 2), (1, 32)], 13.5, 0.64, 2),
                (88, [(0, 68), (0.25, 40), (0.6, 26), (1, 34)], 10.0, 0.56, 1),

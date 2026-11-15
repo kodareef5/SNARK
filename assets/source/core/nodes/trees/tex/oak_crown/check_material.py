@@ -60,22 +60,100 @@ def blade_core_scale(green, radius=200):
     """Scale audit of isolated bright cores; merged sprays remain outliers.
 
     This is explicitly NOT a semantic segmentation of every complete blade.
-    No length threshold selects for the requested 4–7px result.
+    No length threshold selects for the requested 11–17px result. Complete
+    overlapping leaves may merge; bright face cores may be shorter than blades.
     """
     yy,xx=np.mgrid[:green.shape[0],:green.shape[1]]
-    mask=(green-ndi.gaussian_filter(green,2.3)>10)
+    mask=(green-ndi.gaussian_filter(green,4)>12)
     if radius:
         mask &= np.hypot(xx-(green.shape[1]-1)/2,yy-(green.shape[0]-1)/2)<radius
     labels,_=ndi.label(mask);observations=[]
     for label,box in enumerate(ndi.find_objects(labels),1):
         if box is None:continue
         y,x=np.nonzero(labels[box]==label)
-        if 4<=len(x)<=60:
+        if 12<=len(x)<=400:
             ev=np.linalg.eigvalsh(np.cov(np.stack([x,y])))
             if ev[0]<=0:continue
             length,width=4*np.sqrt(ev[::-1])
             if 1.35<length/width<4.5:observations.append([length,width])
     return dict(count=len(observations),length_width_p10_p50_p90_pixels=np.percentile(observations,[10,50,90],axis=0).tolist())
+
+
+def feedback_sheet(renderer):
+    """Declared manual registration of an opaque core, not a camera match."""
+    path=ROOT/'feedback/round1_game_20m_detail.jpg'
+    source=Image.open(path).convert('RGB')
+    # The upper-left opaque head, from its leftmost to rightmost core edges.
+    box=(72,80,356,290);core_span=(104,340);scale=50/(core_span[1]-core_span[0])
+    crop=source.crop(box)
+    game=crop.resize((round(crop.width*scale),round(crop.height*scale)),Image.Resampling.LANCZOS)
+    sheet=Image.new('RGB',(1320,890),(25,31,32));d=ImageDraw.Draw(sheet)
+    d.text((24,18),'GROUND VIEW  |  game feedback beside revised head material',font=font(25),fill=(229,233,213))
+    d.text((24,56),'Opaque cores registered to 50 pixels wide; originals and identical 6× nearest-neighbour enlargements.',font=font(18),fill=(179,190,184))
+    items=[('Round 1 / supplied game capture',game),
+           ('Round 2 / underside 12',renderer.render(12,50,(.1,-.15,1),-70)),
+           ('Round 2 / underside 13',renderer.render(13,50,(.1,-.15,1),-70))]
+    for i,(label,im) in enumerate(items):
+        x=24+i*432
+        d.text((x,108),label,font=font(18),fill=(229,233,213))
+        sheet.paste(im,(x,145))
+        sheet.paste(im.resize((im.width*6,im.height*6),Image.Resampling.NEAREST),(x,225))
+    marked=crop.copy();md=ImageDraw.Draw(marked)
+    md.line((core_span[0]-box[0],185-box[1],core_span[1]-box[0],185-box[1]),fill=(255,220,100),width=2)
+    sheet.paste(marked,(24,645))
+    d.text((332,650),'Source crop: (72,80)–(356,290). Core span: x=104–340 (236px).',font=font(17),fill=(229,233,213))
+    d.text((332,685),'The supplied capture is only cropped and resized; its lighting is unchanged.',font=font(17),fill=(179,190,184))
+    d.text((332,720),'Revised heads use the existing -70° material test, ambient and overhead sun.',font=font(17),fill=(179,190,184))
+    d.text((332,755),'No camera or light match is claimed. These are not new engine captures.',font=font(17),fill=(179,190,184))
+    d.text((332,790),'Test shells omit cutout sprays to expose the painted underside.',font=font(17),fill=(179,190,184))
+    sheet.save(CHECKS/'feedback_comparison.png')
+    return dict(source=str(path.relative_to(ROOT)),sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+                crop_xyxy=box,opaque_core_span_x=core_span,scale=scale,core_width_pixels=50,
+                note='Manual core-width registration only; not a camera/lighting match.')
+
+
+def scale_sheet(base):
+    """All populations and all four cards at one physical scale."""
+    sheet=Image.new('RGB',(1480,1000),(25,31,32));d=ImageDraw.Draw(sheet)
+    d.text((20,15),'SAME LEAVES, SAME SCALE  |  137.51 pixels/metre, enlarged 2.81×',font=font(25),fill=(229,233,213))
+    d.text((20,53),'124px of head texture and one 0.9m spray card cover the same surface length. No sharpening.',font=font(18),fill=(179,190,184))
+    for j,(idx,label) in enumerate([(0,'Sun head'),(5,'Middle head'),(10,'Shade head'),(12,'Underside')]):
+        row,col=divmod(idx,4)
+        crop=Image.fromarray(base[row*512+150:row*512+274,col*512+150:col*512+274])
+        x=20+j*365
+        sheet.paste(crop.resize((348,348),Image.Resampling.NEAREST),(x,100))
+        d.text((x,465),f'{label} / cell {idx}',font=font(20),fill=(229,233,213))
+    atlas=Image.open(ROOT/'../oak_leaves/oak_leaves_base.png').convert('RGBA')
+    for i in range(4):
+        # Sibling cells 0–3 occupy the top-left 2×2 quarter of its atlas.
+        col=i%2;row=i//2
+        card=atlas.crop((col*512,row*512,(col+1)*512,(row+1)*512))
+        card=card.resize((124,124),Image.Resampling.LANCZOS)
+        bg=Image.new('RGBA',card.size,(25,31,25,255));bg.alpha_composite(card)
+        x=20+i*365
+        sheet.paste(bg.convert('RGB').resize((348,348),Image.Resampling.NEAREST),(x,525))
+        d.text((x,886),f'Existing spray {i} / 0.9m',font=font(20),fill=(229,233,213))
+    # Both rows use exactly the same zoom (348 / 124).
+    for j,mm in enumerate([80,100,120]):
+        x=20+j*240;length=mm/(1750/RADIUS)*(348/124)
+        d.line((x,945,x+length,945),fill=(225,220,140),width=3)
+        d.text((x+60,934),f'{mm}mm',font=font(18),fill=(179,190,184))
+    d.text((770,938),'Target: 80–120mm / 11.0–16.5 native texels.',font=font(19),fill=(229,233,213))
+    sheet.save(CHECKS/'leaf_scale_and_card.png')
+
+
+def edge_sheet(base):
+    sheet=Image.new('RGB',(1260,1390),(25,31,32));d=ImageDraw.Draw(sheet)
+    d.text((20,15),'CRISP THROUGH THE TURN  |  64px patches at 5×; no sharpening',font=font(25),fill=(229,233,213))
+    for col,label in enumerate(['Interior (224,224)','Rim crossing (448,224)','Dark corner (8,8)']):
+        d.text((100+col*390,57),label,font=font(20),fill=(229,233,213))
+    for row,idx in enumerate([0,10,12,13]):
+        y0=95+row*320
+        d.text((15,y0+20),f'Cell {idx}',font=font(18),fill=(229,233,213))
+        for col,(x,y) in enumerate([(224,224),(448,224),(8,8)]):
+            patch=base[idx//4*512+y:idx//4*512+y+64,idx%4*512+x:idx%4*512+x+64]
+            sheet.paste(Image.fromarray(patch).resize((320,320),Image.Resampling.NEAREST),(100+col*390,y0))
+    sheet.save(CHECKS/'edge_detail.png')
 
 
 class Renderer:
@@ -229,6 +307,16 @@ def main():
     h=a['height'].astype(float)*HEIGHT_MM/65535
     n=normalize(a['normal'].astype(float)/127.5-1)
     layout=json.loads((ROOT/'source/layout.json').read_text())
+    baseline=json.loads((ROOT/'source/round2_baseline.json').read_text())
+    for key in a:
+        tile=a[key][768:1024,512:1024] if key=='orm' else a[key][1536:2048,1024:2048]
+        require(key+' accepted interior pixels unchanged',hashlib.sha256(tile.tobytes()).hexdigest()==
+                baseline['maps'][key]['interior_pixel_sha256'])
+    require('accepted layout and physical pitches unchanged',
+        all(all(reg[k]==old[k] for k in ['index','group','xywh','periodic','pitch_mm'])
+            for reg,old in zip(layout['regions'],baseline['layout']['regions'])))
+    require('accepted population targets unchanged',layout['targets']==baseline['layout']['targets'])
+    require('no blue shadow population',np.all(a['base'][...,2]<=a['base'][...,1]))
     regions=[]
     yy,xx=np.mgrid[:512,:512]
     radial=np.hypot(xx-255.5,yy-255.5)/RADIUS
@@ -272,6 +360,21 @@ def main():
             record['fold_residual_std_srgb']=contrast
             require(f'cell {reg["index"]} nonradial folds survive 12px',contrast['12']>1.5)
             record['blade_core_scale_proxy']=blade_core_scale(col[...,1])
+            proxy=record['blade_core_scale_proxy']
+            require(f'cell {reg["index"]} larger blade cores',
+                    proxy['count']>=40 and 8<proxy['length_width_p10_p50_p90_pixels'][1][0]<22)
+            facegap=float(np.percentile(lum[core],90)-np.percentile(lum[core],10))
+            record['face_gap_p90_p10_srgb']=facegap
+            require(f'cell {reg["index"]} face/gap separation',facegap>35)
+            record['dark_gap_p05_srgb']=float(np.percentile(lum[mask],5))
+            require(f'cell {reg["index"]} dark green gaps',record['dark_gap_p05_srgb']<55)
+            highpass=lum-ndi.gaussian_filter(lum,2)
+            sharp={name:float(np.std(highpass[m])) for name,m in
+                   [('core',core),('ring',ring),('outside',outside)]}
+            record['leaf_detail_std_srgb']=sharp
+            require(f'cell {reg["index"]} crisp rim and corner detail',
+                    min(sharp['ring'],sharp['outside'])>2 and
+                    min(sharp['ring'],sharp['outside'])/max(sharp['core'],.01)>.20)
         regions.append(record)
     # Four independently composed neighbours per row, after removing the ring.
     correlations=[]
@@ -301,6 +404,9 @@ def main():
         seams[key]=dict(horizontal_ratio=pairs[0],vertical_ratio=pairs[1])
         require(key+' periodic seam energy',max(pairs)<2.0)
     renderer=Renderer(a['base'],a['normal'],a['orm'])
+    feedback=feedback_sheet(renderer)
+    scale_sheet(a['base'])
+    edge_sheet(a['base'])
     purpose_sheet(renderer)
     phone=Renderer(a['base'],a['normal'],a['orm'],True)
     purpose_sheet(phone,True)
@@ -314,6 +420,15 @@ def main():
                 delta=np.abs(full-mobile)
                 phone_errors.append(dict(cell=idx,diameter=size,light=lightname,mean_abs_code_error=float(delta.mean()),max_code_error=float(delta.max())))
                 require(f'phone cell {idx} {size}px {lightname} retention',delta.mean()<1.0)
+    for idx in [12,13]:
+        for size in [50,25,12]:
+            for lightname,light in [('above',(.1,-.15,1)),('side',(-1,-.15,.2))]:
+                full=np.asarray(renderer.render(idx,size,light,-70),float)
+                mobile=np.asarray(phone.render(idx,size,light,-70),float)
+                delta=np.abs(full-mobile)
+                phone_errors.append(dict(cell=idx,diameter=size,light=lightname,elevation=-70,
+                    mean_abs_code_error=float(delta.mean()),max_code_error=float(delta.max())))
+                require(f'phone underside {idx} {size}px {lightname} retention',delta.mean()<1.0)
     under=Image.new('RGB',(1300,750),(25,31,32));d=ImageDraw.Draw(under)
     d.text((20,16),'UNDERSIDES  |  70° upward view, same ambient and overhead sun',font=font(24),fill=(229,233,213))
     for i in range(2):
@@ -353,27 +468,6 @@ def main():
         im=im.resize((580,580),Image.Resampling.LANCZOS)
         layers.paste(im,(10+col*600,40+row*630));d.text((10+col*600,10+row*630),key,font=font(20),fill=(229,233,213))
     layers.save(CHECKS/'layers.jpg',quality=94)
-    # Calibrated comparison with the existing card's actual authored dimensions.
-    comparison=Image.new('RGB',(1300,700),(25,31,32));d=ImageDraw.Draw(comparison)
-    d.text((20,15),'BOTANICAL SCALE  |  138 pixels / metre',font=font(24),fill=(229,233,213))
-    card=Image.open(ROOT/'../oak_leaves/oak_leaves_base.png').convert('RGBA').crop((0,0,512,512))
-    card=card.resize((124,124),Image.Resampling.LANCZOS)
-    for i,idx in enumerate([0,5]):
-        row,col=divmod(idx,4);crop=a['base'][row*512+156:row*512+356,col*512+156:col*512+356]
-        comparison.paste(Image.fromarray(crop).resize((400,400),Image.Resampling.NEAREST),(20+i*440,60))
-    bg=Image.new('RGBA',card.size,(90,100,83,255));bg.alpha_composite(card)
-    comparison.paste(bg.convert('RGB').resize((248,248),Image.Resampling.NEAREST),(960,80))
-    d.text((20,480),'Sun head / 200px crop at 2×',font=font(18),fill=(229,233,213))
-    d.text((460,480),'Middle head / same scale',font=font(18),fill=(229,233,213))
-    d.text((920,355),'Existing 0.9m card / 2×',font=font(17),fill=(229,233,213))
-    d.text((20,540),'The existing card builder records 80–120mm blades. This crown brief requests 30–50mm blades.',font=font(18),fill=(229,233,213))
-    d.text((20,580),'Both are shown at the SAME physical scale; the crown follows the brief. The sibling card is unchanged.',font=font(17),fill=(179,190,184))
-    # Reference ruler: upper/middle discs are 240.64px / 1.75m.
-    for j,mm in enumerate([30,40,50,100]):
-        x=20+j*210;length=mm/(1750/RADIUS)*2
-        d.line((x,635,x+length,635),fill=(225,220,140),width=3)
-        d.text((x,650),f'{mm}mm',font=font(16),fill=(179,190,184))
-    comparison.save(CHECKS/'leaf_scale_and_card.png')
     # Enlarged, unsharpened native-pixel patches with rulers for visual audit.
     detail=Image.new('RGB',(1420,1030),(25,31,32));d=ImageDraw.Draw(detail)
     d.text((20,12),'NATIVE LEAF DETAIL  |  64px patches enlarged 6×, no sharpening',font=font(24),fill=(229,233,213))
@@ -385,13 +479,15 @@ def main():
         x0=20+(i%3)*470;y0=60+(i//3)*470
         detail.paste(Image.fromarray(crop).resize((384,384),Image.Resampling.NEAREST),(x0,y0))
         d.text((x0,y0+395),f'Cell {idx} / {pitch:.3f} mm per texel',font=font(17),fill=(229,233,213))
-        for j,mm in enumerate([30,50]):
+        for j,mm in enumerate([80,120] if idx<14 else [30,50]):
             xx=x0+j*190;yy=y0+435
             d.line((xx,yy,xx+mm/pitch*6,yy),fill=(225,220,140),width=3)
-            d.text((xx+50,yy-10),f'{mm}mm',font=font(15),fill=(179,190,184))
+            d.text((xx+110,yy-10),f'{mm}mm',font=font(15),fill=(179,190,184))
     detail.save(CHECKS/'leaf_detail.png')
     stats=dict(tests=tests,passed=sum(t['pass_'] for t in tests),total=len(tests),regions=regions,seams=seams,
-        neighbour_max_correlations=correlations,phone_comparison=phone_errors,
+        neighbour_max_correlations=correlations,phone_comparison=phone_errors,feedback_registration=feedback,
+        leaf_scale=dict(target_mm=[80,120],target_native_pixels=[80/(1750/RADIUS),120/(1750/RADIUS)],
+            method='Visual same-physical-scale card comparison and native rulers; bright-core proxy is not full-blade segmentation.'),
         height_range_mm=[0,240],observed_height_mm=[float(h.min()),float(h.max())],
         brown_pixel_fraction=float(np.mean((a['base'][...,0]>a['base'][...,1]*1.10)&(a['base'][...,0]>75))),
         render=dict(kind='CPU material diagnostic; not game capture',geometry='closed 2.2m x 2.2m x 1.52m ellipsoid',
