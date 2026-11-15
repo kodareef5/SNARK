@@ -15,6 +15,8 @@ import { compilePacks } from "../../shared/content/packs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
 import { BitWriter } from "../../shared/net/codec.ts";
+import { MODE_WALK } from "../../shared/sim/character.ts";
+import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
@@ -48,8 +50,13 @@ test("a new proving ground fills at once: the herd north of the plaza, raptors b
   expect([herd!.desired, beach!.desired, hunters!.desired]).toEqual([24, 12, 4]);
   expect(herd!.count).toBeGreaterThanOrEqual(24);
   expect(hunters!.count).toBeGreaterThanOrEqual(4);
-  // The beach holds dodos up to 60% of its twelve and parasaurs up to 20%: eight and three, as ARK's limits allow.
-  expect([of(host, "core:dodo").length, beach!.count]).toEqual([8, 11]);
+  // The beach holds dodos up to 60% of its twelve, parasaurs up to 20% and pteranodons up to a quarter: eight, and the rest
+  // pteranodons and parasaurs, as ARK's limits allow. A pteranodon is put down on the ground, walking, and takes off from there.
+  expect([of(host, "core:dodo").length, of(host, "core:pteranodon").length, beach!.count]).toEqual([8, 3, 12]);
+  for (const r of of(host, "core:pteranodon")) {
+    const e = host.records.entOf.get(r.pid)!;
+    expect([host.world.ents.mode[e], (host.world.ents.flags[e]! & F_GROUNDED) !== 0, r.y >= PROVING_SEA_LEVEL]).toEqual([MODE_WALK, true, true]);
+  }
   for (const d of of(host, "core:dodo")) {
     expect(near(d, PROVING_POOL.x, PROVING_POOL.z)).toBeLessThanOrEqual(50 + 6.8);
     expect(d.y).toBeGreaterThanOrEqual(PROVING_SEA_LEVEL);
@@ -96,7 +103,7 @@ test("what dies or is tamed is replaced at a later check, never within 60 m of a
   her = h.ent(ada);
   expect(host.taming.give(dodos[0]!, me, 1)).toBe(true);
   for (const d of dodos.slice(1)) kill(host, d.pid);
-  expect([beach.count, of(host, "core:dodo").length]).toEqual([3, 0]);
+  expect([beach.count, of(host, "core:dodo").length]).toEqual([4, 0]);
   // A check adds one group at most, at its leader's place 60 m from her or more.
   const old = new Set(wild(host).map((r) => r.pid));
   let most = 0;
@@ -110,10 +117,11 @@ test("what dies or is tamed is replaced at a later check, never within 60 m of a
   expect(most).toBeLessThanOrEqual(5);
   expect(away.length).toBe(fresh.length);
   expect(Math.min(...away)).toBeGreaterThanOrEqual(PLAYER_RANGE - 6.8);
-  // She goes east, and in a few more checks the beach is as it was.
+  // She goes east, and in a few more checks the beach is full again, its dodos within their limit.
   h.say(ada, "tp 460 256");
   h.run(8 * CHECK_SECONDS * 1000);
-  expect([of(host, "core:dodo").length, beach.count]).toEqual([8, 11]);
+  const dodosNow = of(host, "core:dodo").length;
+  expect([dodosNow > 0 && dodosNow <= 8, beach.count >= beach.desired]).toEqual([true, true]);
 });
 
 test("nothing is put down within 40 m of a tribe's creature, nor within 60 m of 15 of a tribe's foundations and ceilings", () => {
@@ -127,9 +135,9 @@ test("nothing is put down within 40 m of a tribe's creature, nor within 60 m of 
   };
   // Fifteen foundations at the pool keep the whole beach clear; fourteen, fifteen pillars, or fifteen of nobody's do not.
   expect(base(15, "core:foundation_wood", 99).spawner!.regions[1]!.count).toBe(0);
-  expect(base(14, "core:foundation_wood", 99).spawner!.regions[1]!.count).toBe(11);
-  expect(base(15, "core:pillar_wood", 99).spawner!.regions[1]!.count).toBe(11);
-  expect(base(15, "core:foundation_wood", 0).spawner!.regions[1]!.count).toBe(11);
+  expect(base(14, "core:foundation_wood", 99).spawner!.regions[1]!.count).toBe(12);
+  expect(base(15, "core:pillar_wood", 99).spawner!.regions[1]!.count).toBe(12);
+  expect(base(15, "core:foundation_wood", 0).spawner!.regions[1]!.count).toBe(12);
   // A tribe's raptor at the pool: what comes stands 40 m from it, less a group's spread.
   const host = createHost(reg, { wild: true });
   const e = host.spawnCreature("core:raptor", PROVING_POOL.x, PROVING_POOL.z + 30, 1, "admin");
@@ -258,7 +266,7 @@ test("the settings: DinoCountMultiplier scales what each region holds, a species
   expect(double.spawner!.regions.map((r) => r.desired)).toEqual([48, 24, 8]);
   expect(of(double, "core:dodo").length).toBe(15);
   const none = counted([], ['NPCReplacements=(FromClassName="core:dodo",ToClassName="")']);
-  expect([of(none, "core:dodo").length, none.spawner!.regions[1]!.count]).toEqual([0, 3]);
+  expect([of(none, "core:dodo").length, none.spawner!.regions[1]!.count]).toEqual([0, 6]);
   for (const flag of ["-NoDinos", "-NoDinosExceptForcedSpawn", "-NoDinosExceptStreamingSpawn", "-NoDinosExceptManualSpawn", "-NoDinosExceptWaterSpawn"]) {
     const quiet = counted([], [], [flag]);
     expect([quiet.spawner, quiet.world.ents.count]).toEqual([null, 0]);
