@@ -3,23 +3,26 @@
 // simulation's hashes. Then the quick look asks the GPU questions round 8 leans on (devicegpu.ts) and measures each
 // graphics tier in three light scenes; the load ladder adds bodies, building pieces, triangles and draws a rung at a time
 // until frames break, then texture memory, sampled as it is drawn, until the device refuses it; the soak turns through a
-// heavy scene for ten minutes. What it adds is in devicescene.ts, and the table and pages it shows in devicetext.ts. What
-// only a browser can say comes from the shell (client/shell/device.ts).
+// heavy scene for ten minutes; the terrain flight, on a server of its own, flies over its 8 km map and then stands far
+// bases round the middle a rung at a time. What it adds is in devicescene.ts, and the table and pages it shows in
+// devicetext.ts. What only a browser can say comes from the shell (client/shell/device.ts).
 
 import { HumanAnim } from "../../shared/anim/pose.ts";
 import { creatureAnims } from "../../shared/anim/creature.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
+import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { SKY_COLOR } from "../../shared/pack/palette.ts";
 import { creatureHash, hullHash, nodeHash, poseHash, simHash, snapHash, tunedHash } from "../../shared/sim/scenarios.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
+import { FarCells, writeFar } from "../../shared/world/tactical.ts";
 import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
 import { FrameTimer, GpuQuestions, type Gl2, type GpuReport } from "./devicegpu.ts";
-import { BodyCopies, LOOK, TextureMemory, rocks } from "./devicescene.ts";
+import { BodyCopies, LOOK, TextureMemory, farBases, farSpots, rocks } from "./devicescene.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
 import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
 import { groundSize } from "./render/terrain.ts";
@@ -72,6 +75,15 @@ const FLIGHT_SPEED = 100;
 const FLIGHT_UP = 60;
 const FLIGHT_TURN = (2 * Math.PI) / 30;
 const JUMP = 2000;
+/**
+ * After the flights, base chunks drawn as far blocks at medium, from none to as many as the far blocks' benchmark
+ * draws, within FAR_REACH of the map's middle (D257); the camera FAR_UP over the ground there, turning once round every
+ * FAR_TURN_MS. The proving ground is too small for them, so they are on the terrain map.
+ */
+export const FAR_CHUNKS: readonly number[] = [0, 130, 480];
+const FAR_REACH = 2000;
+const FAR_UP = 30;
+const FAR_TURN_MS = 2000;
 /** Frames in a row with nothing on its way and nothing waiting to go on the graphics card: settled then. */
 const STILL = 30;
 /** A quick phase this slow, in ms a frame, and the tiers above it are not tried. */
@@ -212,6 +224,25 @@ export interface FlightReport {
   coarser: number;
 }
 
+/** A rung of far bases on the terrain map (D257): base chunks drawn as blocks at medium, held or not as a ladder's rung is. */
+export interface FarRung {
+  /** Base chunks asked for, and those placed: none where the near store held a chunk whole or the far feed had sent cells. */
+  asked: number;
+  chunks: number;
+  held: boolean;
+  limit: string;
+  invalid: string;
+  settled: boolean;
+  frameMs: Spread;
+  /** Medians: our code's ms, draw calls and triangles, far draws a frame, and the GPU's ms for a frame by timer query (null without). */
+  buildMs: number;
+  drawMs: number;
+  calls: number;
+  tris: number;
+  farDraws: number;
+  gpuMs: number | null;
+}
+
 export interface TerrainReport {
   /** The map's side in metres, the terrain pictures' bytes (groundSize) and all the card has reserved for what is not an asset. */
   side: number;
@@ -219,6 +250,7 @@ export interface TerrainReport {
   reservedBytes: number;
   minutesWanted: number;
   flights: FlightReport[];
+  far: FarRung[];
 }
 
 export interface DeviceInfo {
@@ -605,6 +637,8 @@ export class DeviceRun {
   private fly: { x: number; y: number; z: number; yaw: number; pitch: number } | null = null;
   /** The terrain flight under way: its tier, clock, heading, jumps, and the jump whose window is awaited. */
   private flight: { tier: number; ms: number; heading: number; jumps: number; wait: { frames: number; coarser: number } | null; fills: number[]; coarser: number[]; rows: boolean[]; gpu: { ms: number; tag: boolean }[] } | null = null;
+  /** The far bases' rung under way: its index in FAR_CHUNKS, the chunks bases may stand in and the cells of each kind, how many stand, and its frames' far draws and GPU times. */
+  private far: { k: number; spots: number[]; bases: FarCells[]; placed: number; draws: number[]; gpu: number[] } | null = null;
   private wrapped: object | null = null;
   /** The quick look's GPU questions, while they are asked. */
   private questions: GpuQuestions | null = null;
@@ -655,7 +689,7 @@ export class DeviceRun {
     else if (this.stage === "steps") news = this.measure(now, gap, p, buildMs, drawMs, drawCalls);
     else if (this.stage === "memory") news = this.memory(now, gap);
     else if (this.stage === "soak") news = this.soak(now, gap, p, buildMs, drawMs);
-    else if (this.stage === "terrain") news = this.terrain(now, gap, p, drawMs);
+    else if (this.stage === "terrain") news = this.far ? this.farFrame(now, gap, p, buildMs, drawMs, drawCalls) : this.terrain(now, gap, p, drawMs);
     if (news) this.sync();
     return news;
   }
@@ -798,7 +832,7 @@ export class DeviceRun {
     if (this.mode === "terrain") {
       const hf = this.side.hf;
       const r = this.side.app.scene!.assets.residency;
-      this.report.terrain = { side: (hf.nx - 1) * hf.cell, groundBytes: groundSize(hf).bytes, reservedBytes: r.reserved, minutesWanted: (this.timing.flightMs * FLIGHT_TIERS.length) / 60000, flights: [] };
+      this.report.terrain = { side: (hf.nx - 1) * hf.cell, groundBytes: groundSize(hf).bytes, reservedBytes: r.reserved, minutesWanted: (this.timing.flightMs * FLIGHT_TIERS.length) / 60000, flights: [], far: [] };
       this.stage = "terrain";
       return this.takeOff(0);
     }
@@ -941,11 +975,7 @@ export class DeviceRun {
    */
   private takeOff(k: number): void {
     const name = FLIGHT_TIERS[k];
-    if (name === undefined) {
-      this.fly = null;
-      this.side.frames?.stop();
-      return this.end();
-    }
+    if (name === undefined) return this.farRung(0);
     this.apply(bare(tierOf(name), 0));
     this.flight = { tier: k, ms: 0, heading: 0, jumps: 0, wait: null, fills: [], coarser: [], rows: [], gpu: [] };
     this.place(this.spot(0));
@@ -1031,6 +1061,87 @@ export class DeviceRun {
       fills: f.fills, coarser: tenth(f.coarser.reduce((a, b) => a + b, 0) / Math.max(1, f.coarser.length)),
     });
     this.takeOff(f.tier + 1);
+    return true;
+  }
+
+  /**
+   * The far bases' `k`th rung: FAR_CHUNKS[k] chunks of the castle, the pile and the huts by turns, handed to the
+   * session's far store as the far feed hands them, round the map's middle at medium. After the last, they are taken
+   * away and the test ends.
+   */
+  private farRung(k: number): void {
+    const s = this.side.app.session;
+    const n = FAR_CHUNKS[k];
+    if (n === undefined) {
+      this.placeFar(0);
+      [this.far, this.fly] = [null, null];
+      this.side.frames?.stop();
+      return this.end();
+    }
+    const side = this.report.terrain!.side;
+    const hf = this.side.hf;
+    const world = s.world!;
+    // Not where the near store holds a chunk whole, which is drawn as its pieces, nor where the far feed has sent cells.
+    this.far ??= { k, spots: farSpots(world.dims, side / 2, side / 2, FAR_REACH, (chunk) => world.far.complete(chunk) || s.far.chunks.has(chunk)), bases: farBases(this.side.reg), placed: 0, draws: [], gpu: [] };
+    this.far.k = k;
+    const load = bare(tierOf("medium"), 0);
+    this.step = { kind: "rung", load };
+    this.apply(load);
+    this.fly = { x: side / 2, y: Math.max(hf.heightAt(side / 2, side / 2), hf.seaLevel) + FAR_UP, z: side / 2, yaw: 0, pitch: -0.02 };
+    this.placeFar(n);
+    [this.measuring, this.at] = [false, -1];
+    this.report.stage = `terrain far ${n}`;
+  }
+
+  /** Bases in the first `n` of the far rungs' chunks, and none in the rest of those that had some. */
+  private placeFar(n: number): void {
+    const f = this.far;
+    const s = this.side.app.session;
+    if (!f || !s.world) return;
+    const want = Math.min(n, f.spots.length);
+    const none = new FarCells();
+    const w = new BitWriter(1024);
+    const r = new BitReader();
+    for (let i = Math.min(want, f.placed); i < Math.max(want, f.placed); i++) {
+      w.reset();
+      writeFar(w, f.spots[i]!, i < want ? f.bases[i % f.bases.length]! : none);
+      r.reset(w.bytes());
+      s.far.read(r, s.world.dims);
+    }
+    f.placed = want;
+  }
+
+  /** A frame of a far rung: the camera turning; settled, then measured for rungMs and judged as a ladder's rung. */
+  private farFrame(now: number, gap: number, p: FramePacket, buildMs: number, drawMs: number, drawCalls: number): boolean {
+    const f = this.far!;
+    const frames = this.side.frames;
+    frames?.tick(true);
+    if (this.at < 0) this.at = now;
+    this.fly!.yaw = (this.fly!.yaw + (2 * Math.PI * gap) / FAR_TURN_MS) % (2 * Math.PI);
+    if (!this.measuring) {
+      if (this.still < STILL && now - this.at < this.timing.settleMs) return false;
+      this.measuring = true;
+      this.settleMs = tenth(now - this.at);
+      this.settled = this.still >= STILL;
+      this.at = now;
+      for (const list of [...Object.values(this.samples), f.draws, f.gpu]) list.length = 0;
+      this.dropped = this.skipped = 0;
+      frames?.take();
+      return false;
+    }
+    this.sample(gap, buildMs, drawMs, drawCalls, p);
+    let draws = 0;
+    for (let d = 0; d < p.drawCount; d++) if (p.drawFade[d]! > 0) draws++;
+    f.draws.push(draws);
+    f.gpu.push(...(frames?.take() ?? []).map((t) => t.ms));
+    if (now - this.at < this.timing.rungMs) return false;
+    const phase = this.result();
+    const { held, limit, invalid } = judgeRung(phase, this.side.display);
+    this.report.terrain!.far.push({
+      asked: FAR_CHUNKS[f.k]!, chunks: f.placed, held, limit, invalid, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median,
+      calls: phase.drawCalls, tris: phase.triangles, farDraws: spread(f.draws).median, gpuMs: frames?.on ? spread(f.gpu).median : null,
+    });
+    this.farRung(f.k + 1);
     return true;
   }
 

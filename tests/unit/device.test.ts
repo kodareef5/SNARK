@@ -4,10 +4,15 @@
 import { expect, test } from "bun:test";
 import { TIERS } from "../../client/core/assets/tiers.ts";
 import { AXES, LadderPlan, RUNGS, featuresOf, formatsOf, gpuOf, judgeRung, newReport, soakLoad, spread, type PhaseReport, type RungReport, type Within } from "../../client/core/device.ts";
-import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene } from "../../client/core/devicescene.ts";
+import { BASE_MOST, TextureMemory, basePieces, bodySpots, crowdScene, farBases, farSpots } from "../../client/core/devicescene.ts";
 import { fakeGl } from "../fixtures/gl.ts";
+import { farRegistry } from "../fixtures/farworld.ts";
 import { deviceTable, escape, identify, limitsLine } from "../../client/core/devicetext.ts";
+import { farPart } from "../../client/core/render/far.ts";
+import { CHUNK_SIZE } from "../../shared/coords.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { PROVING_DIMS, PROVING_SPAWN } from "../../shared/world/proving.ts";
+import { farTopMetres } from "../../shared/world/tactical.ts";
 
 const within: Within = (f, _ms, or) => Promise.resolve().then(f).catch(() => or);
 
@@ -153,6 +158,18 @@ test("the crowd scene stands behind the spawn point: the thatch near, and every 
   }
   for (const p of pieces) expect(Math.hypot(p.x - PROVING_SPAWN.x, p.z - PROVING_SPAWN.z)).toBeLessThan(15);
   expect(PROVING_SPAWN.z - floor.z).toBeLessThan(15);
+});
+
+test("the far bases are the far blocks' benchmark's three, and stand in chunks within reach in an order of their own", () => {
+  const [castle, pile, huts] = farBases(farRegistry());
+  const flat = new Heightfield({ chunksX: 1, chunksZ: 1 }, TERRAIN_CELL, 0, 1 / 64);
+  // The castle is the 30 triangles D257 measured, its tower 48 m up; the pile hundreds of triangles; the huts' tower 24 m.
+  expect([castle, pile, huts].map((b) => [b!.filled, Math.max(...b!.top.map(farTopMetres)), farPart(b!, 0, 0, 0, 0, flat).faces * 2])).toEqual([[100, 48, 30], [144, 16, 642], [37, 24, 178]]);
+  const dims = { chunksX: 128, chunksZ: 128 };
+  const spots = farSpots(dims, 4096, 4096, 2000, (chunk) => chunk % 2 === 0);
+  expect([spots.length, new Set(spots).size, spots.every((c) => c % 2 === 1)]).toEqual([1536, 1536, true]);
+  for (const c of spots) expect(Math.hypot(((c % 128) + 0.5) * CHUNK_SIZE - 4096, (Math.floor(c / 128) + 0.5) * CHUNK_SIZE - 4096)).toBeLessThanOrEqual(2000);
+  expect(farSpots(dims, 4096, 4096, 2000, (chunk) => chunk % 2 === 0)).toEqual(spots);
 });
 
 /** A context that holds `room` megabytes of textures and then runs out, or loses itself. */

@@ -2,11 +2,11 @@
 // to open. With --tunnel it also runs a temporary Cloudflare tunnel (cloudflared, no account) and prints the whole link.
 // The page shows which device it takes itself to be on and three tests to tap (client/core/device.ts): a quick look, a
 // load ladder, and a soak. With --terrain the server is on the bench's 8 km map instead, and the page offers only the
-// terrain flight (D253). It posts its report after every step; each run is kept in .cache/device/ and printed as a
-// table when it is done. With --self the local headless Chrome opens the link and runs a test without a tap, which must
-// finish: `--self` for the quick look, `--self ladder`, `--self soak` (with --soak-minutes n) or `--self terrain`, the test that the probe
-// works, not part of the check. --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED name
-// the programs.
+// terrain flight (D253), which ends with far bases (D257). It posts its report after every step; each run is kept in
+// .cache/device/ and printed as a table when it is done. With --self the local headless Chrome opens the link and runs a
+// test without a tap, which must finish: `--self` for the quick look, `--self ladder`, `--self soak` (with
+// --soak-minutes n) or `--self terrain`, the test that the probe works, not part of the check. --port n, and --minutes n
+// before it stops by itself (30). CHROME and CLOUDFLARED name the programs.
 //
 // While the tunnel is up anyone may reach the server. The short path has four letters nobody is told and closes after
 // 64 wrong guesses, the probe's routes need a 128-bit token, joining needs a random password, and cheats are off. What a
@@ -17,7 +17,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TIERS } from "../client/core/assets/tiers.ts";
-import { AXES, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, deviceScenarios, scenesOf, type DeviceReport, type Mode } from "../client/core/device.ts";
+import { AXES, FAR_CHUNKS, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, deviceScenarios, scenesOf, type DeviceReport, type Mode } from "../client/core/device.ts";
 import { BASE_MOST, basePieces, crowdScene } from "../client/core/devicescene.ts";
 import { deviceTable } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
@@ -202,6 +202,13 @@ export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
     for (const f of flights) {
       if (f.windowFrames === 0) out.push(`no frame on ${f.tier} carried rows of the terrain window`);
       if (f.fills.length === 0 || f.fills.some((x) => x < 0)) out.push(`a jump on ${f.tier} did not have its window before the next: ${f.fills.join(" ")}`);
+    }
+    const far = r.terrain?.far ?? [];
+    if (far.length < FAR_CHUNKS.length) out.push(`the far bases ran ${far.length} of ${FAR_CHUNKS.length} rungs`);
+    for (const g of far) {
+      if (g.chunks < g.asked) out.push(`far ${g.asked}: bases stood in ${g.chunks} chunks`);
+      if (g.invalid) out.push(`far ${g.asked}: invalid, ${g.invalid}`);
+      if (g.chunks > 0 && g.farDraws === 0) out.push(`far ${g.asked}: no far blocks were drawn`);
     }
   }
   if (mode === "soak" && r.soak && TIERS.find((t) => t.name === r.soak!.tier)!.texture > 0 && !r.soak.minutes.some((m) => m.mat > 0)) out.push(`the soak drew nothing with materials on ${r.soak.tier}, which has them`);

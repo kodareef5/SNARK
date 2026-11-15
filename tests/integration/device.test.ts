@@ -278,7 +278,13 @@ test("the terrain flight is offered only by its own server's link, flies the cam
   probe.attach({ app, pack, reg: h.reg, hf: h.world.hf }, card.r);
   // How far the camera strays from the body it would follow.
   let strayed = 0;
-  await run(probe, h, app, card.r, 60000, { each: () => void (strayed = Math.max(strayed, Math.hypot(app.cam.x - app.session.own.x, app.cam.z - app.session.own.z))) });
+  // And what the far feed had sent before the far bases.
+  let sent = -1;
+  const each = (): void => {
+    strayed = Math.max(strayed, Math.hypot(app.cam.x - app.session.own.x, app.cam.z - app.session.own.z));
+    if (probe.report.stage === "terrain far 0") sent = app.session.far.chunks.size;
+  };
+  await run(probe, h, app, card.r, 60000, { each });
   const r = probe.report;
   expect([r.done, r.errors, r.probes]).toEqual([true, [], null]);
   const t = r.terrain!;
@@ -289,8 +295,14 @@ test("the terrain flight is offered only by its own server's link, flies the cam
     expect(f.fills).toEqual([1, 1, 1]);
   }
   expect(strayed).toBeGreaterThan(100);
-  expect(lacking(r, "terrain")).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window"]);
-  expect(deviceTable(r).some((line) => line.startsWith("terrain   a map 0.5 km across"))).toBe(true);
+  // Then far bases at medium: on the proving ground, in the chunks the near store does not hold whole and the feed sent
+  // nothing for; taken away after, and what the feed sent kept.
+  expect(t.far.map((g) => [g.asked, g.chunks, g.farDraws > 0])).toEqual([[0, 0, false], [130, 58, true], [480, 58, true]]);
+  expect([sent > 0, app.session.far.chunks.size === sent, app.ui.settings.tier]).toEqual([true, true, "medium"]);
+  expect(lacking(r, "terrain")).toEqual(["no frame on medium carried rows of the terrain window", "no frame on lowpoly carried rows of the terrain window", "far 130: bases stood in 58 chunks", "far 480: bases stood in 58 chunks"]);
+  const table = deviceTable(r);
+  expect(table.some((line) => line.startsWith("terrain   a map 0.5 km across"))).toBe(true);
+  expect(table.some((line) => /^58\/130 +(yes|GPU|ours|invalid) /.test(line))).toBe(true);
 });
 
 test("a page the browser reloads in the middle of a run shows and sends what it had, and runs again only when a test is tapped", async () => {

@@ -151,6 +151,16 @@ function terrainLines(r: DeviceReport): string[] {
   out.push("over the other, which D253 holds under 2. draw and gpu: medians with rows/without, our code's ms handing the frame to");
   out.push("WebGL and the GPU's by timer query. jumps: frames until each jump's window was in (! for not before the next); coarser:");
   out.push("tiles drawn a level coarser a frame while it came");
+  if (t.far.length === 0) return out;
+  out.push(`far       bases as blocks at medium in chunks within 2 km of the map's middle, the camera 30 m up turning once round in 2 s; a rung holds as the ladder's do`);
+  const fw = [8, 8, 7, 6, 6, 6, 6, 6, 6, 5, 6];
+  out.push(row(["chunks", "held", "median", "p95", "worst", "build", "draw", "calls", "tris", "far", "gpu"], fw));
+  for (const g of t.far) {
+    const held = g.invalid ? "invalid" : g.held ? "yes" : g.limit === "the GPU" ? "GPU" : g.limit === "our code" ? "ours" : g.limit;
+    out.push(row([g.chunks === g.asked ? String(g.asked) : `${g.chunks}/${g.asked}`, held, String(g.frameMs.median), String(g.frameMs.p95), String(g.frameMs.worst), String(g.buildMs), String(g.drawMs), count(g.calls), count(g.tris), String(g.farDraws), g.gpuMs === null ? "-" : String(g.gpuMs)], fw));
+  }
+  out.push("far: far draws a frame; gpu: the GPU's ms for a frame by timer query; held: GPU or ours for what took a frame that broke");
+  for (const g of t.far.filter((x) => x.invalid)) out.push(`invalid   far ${g.asked}: ${g.invalid}`);
   return out;
 }
 

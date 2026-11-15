@@ -1,12 +1,17 @@
 // What the device probe stands in front of the camera, and how it adds load a step at a time: bodies, building pieces,
-// rocks near and far, and texture memory. The probe's server stands the crowd and builds the base (tools/device.ts);
-// the rest is added on the page, so that the link does not limit what is measured.
+// rocks near and far, far bases, and texture memory. The probe's server stands the crowd and builds the base
+// (tools/device.ts); the rest is added on the page, so that the link does not limit what is measured.
 
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
+import type { Registry } from "../../shared/content/registry.ts";
+import { CHUNK_SIZE, type MapDims } from "../../shared/coords.ts";
 import { MAX_VIEW } from "../../shared/net/view.ts";
+import { Rng } from "../../shared/rng.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
-import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
+import { StructureStore } from "../../shared/world/structures.ts";
+import { Summary, bakeChunk, pieceShapes, type FarCells } from "../../shared/world/tactical.ts";
 import type { AssetTable } from "./assets/table.ts";
 import { FULL_SCREEN, GL, PROBE_UNITS, compile, framebuffer, saveState, solidBlock, texture2d, type Gl2 } from "./devicegpu.ts";
 import type { Thing } from "./render/scene.ts";
@@ -162,6 +167,89 @@ export class BodyCopies {
       out.team[to] = out.seat[to] = out.span[to] = out.grown[to] = 0;
     }
   }
+}
+
+/**
+ * The far feed's cells of three bases, as the far blocks' benchmark has them (tools/bench/far.ts, D257): a castle 39 m
+ * square with a tower to 48 m, a pile of 2,000 pieces, and ten huts with a tower. Each is built on flat ground in a
+ * store of its own and baked as the server bakes a chunk.
+ */
+export function farBases(reg: Registry): FarCells[] {
+  const dims = { chunksX: 3, chunksZ: 1 };
+  const hf = new Heightfield(dims, TERRAIN_CELL, 0, 1 / 64);
+  const store = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
+  const id = (name: string): number => reg.index.get(`core:${name}`) ?? 0;
+  const rng = new Rng(8);
+  // The castle on a 3 m lattice: foundations, four floors of walls with a doorway and windows and a cross of inner walls,
+  // a ceiling over each, pillars, stairs, and twelve floors more of a tower in one corner (tests/fixtures/farworld.ts).
+  const [foundation, wall, ceiling, doorway, window, pillar, stairs, door] = ["foundation_wood", "wall_wood", "ceiling_wood", "doorframe_wood", "windowframe_wood", "pillar_wood", "stairs_wood", "door_wood"].map(id) as number[];
+  const put = (kind: number, lx: number, y: number, lz: number, quarter: number): void => void store.add(kind, 32 + lx, y, 32 + lz, (quarter * 16384) & 0xffff, 1, 1000);
+  const [N, S, RISE] = [13, 3, 3];
+  const half = ((N - 1) / 2) * S;
+  const [F, C] = [2 * reg.halfY[foundation!]!, 2 * reg.halfY[ceiling!]!];
+  const floorAt = (k: number): number => F + k * RISE;
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) put(foundation!, i * S - half, F / 2, j * S - half, 0);
+  const ring = (k: number, i0: number, i1: number, j0: number, j1: number, outer: boolean): void => {
+    const y = floorAt(k) + RISE / 2;
+    for (let i = i0; i <= i1; i++) {
+      for (const [j, side] of [[j0 - 0.5, 0], [j1 + 0.5, 2]] as const) {
+        const open = outer && k === 0 && i === 6 && side === 2;
+        put(open ? doorway! : k > 0 && i % 3 === 1 ? window! : wall!, i * S - half, y, j * S - half, side);
+        if (open) put(door!, i * S - half, floorAt(0) + reg.halfY[door!]!, j * S - half, side);
+      }
+    }
+    for (let j = j0; j <= j1; j++) for (const [i, side] of [[i0 - 0.5, 1], [i1 + 0.5, 3]] as const) put(k > 0 && j % 3 === 1 ? window! : wall!, i * S - half, y, j * S - half, side);
+  };
+  for (let k = 0; k < 4; k++) {
+    ring(k, 0, N - 1, 0, N - 1, true);
+    for (let t = 1; t < N - 1; t++) {
+      put(wall!, 6.5 * S - half, floorAt(k) + RISE / 2, t * S - half, 1);
+      put(wall!, t * S - half, floorAt(k) + RISE / 2, 6.5 * S - half, 0);
+    }
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) put(ceiling!, i * S - half, floorAt(k + 1) - C / 2, j * S - half, 0);
+    for (const [i, j] of [[-0.5, -0.5], [N - 0.5, -0.5], [-0.5, N - 0.5], [N - 0.5, N - 0.5]] as const) put(pillar!, i * S - half, floorAt(k) + RISE / 2, j * S - half, 0);
+    put(stairs!, 2 * S - half, floorAt(k) + RISE / 2, 2 * S - half, 0);
+  }
+  for (let k = 4; k < 16; k++) {
+    ring(k, 10, 12, 10, 12, false);
+    for (let i = 10; i < N; i++) for (let j = 10; j < N; j++) put(ceiling!, i * S - half, floorAt(k + 1) - C / 2, j * S - half, 0);
+  }
+  // The pile, in the next chunk: 2,000 pieces of eight kinds on a 3 m lattice, up to four storeys.
+  const kinds = ["foundation", "wall", "wall", "ceiling", "ceiling", "pillar", "crate", "block"].map(id);
+  for (let n = 0; n < 2000; n++) {
+    const kind = kinds[rng.int(kinds.length)]!;
+    store.add(kind, 96 + (rng.int(15) - 7) * 3, rng.int(4) * 3.3 + store.halfYOf(kind), 32 + (rng.int(15) - 7) * 3, rng.int(4) * 16384, 1, 1000);
+  }
+  // The huts, in the last: four wooden foundations and a stone wall each, and four pillars stacked in the middle.
+  for (let hut = 0; hut < 10; hut++) {
+    const [x, z] = [160 - 30 + rng.int(9) * 6, 32 - 30 + rng.int(9) * 6];
+    for (const [dx, dz] of [[1.5, 1.5], [4.5, 1.5], [1.5, 4.5], [4.5, 4.5]] as const) store.add(id("foundation_wood"), x + dx, 0.19, z + dz, 0, 1, 100);
+    store.add(id("wall_stone"), x + 1.5, 1.88, z + 3, rng.int(4) * 16384, 1, 100);
+  }
+  for (let i = 0; i < 4; i++) store.add(id("pillar"), 160, 3.3 + i * 6, 32, 0, 9, 100);
+  const shapes = pieceShapes(reg);
+  return [0, 1, 2].map((chunk) => {
+    const s = new Summary();
+    bakeChunk(store.chunks[chunk] ?? null, chunk * CHUNK_SIZE, 0, shapes, hf, s);
+    return s.far;
+  });
+}
+
+/** Chunks of `dims` whose middles are within `reach` of (x, z), less those `skip` says, in a shuffled order of their own. */
+export function farSpots(dims: MapDims, x: number, z: number, reach: number, skip: (chunk: number) => boolean): number[] {
+  const out: number[] = [];
+  for (let cz = 0; cz < dims.chunksZ; cz++) {
+    for (let cx = 0; cx < dims.chunksX; cx++) {
+      const chunk = cz * dims.chunksX + cx;
+      if (Math.hypot((cx + 0.5) * CHUNK_SIZE - x, (cz + 0.5) * CHUNK_SIZE - z) <= reach && !skip(chunk)) out.push(chunk);
+    }
+  }
+  const rng = new Rng(8);
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = rng.int(i + 1);
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
 }
 
 /** A tile is a megabyte in every variant: 1,024 pixels square in a compressed one, 512 in RGBA. */
