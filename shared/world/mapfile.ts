@@ -712,7 +712,7 @@ function read(r: In): Omit<MapFile, "hash"> {
       const cell = s.u8();
       if (!(cell >= 1 && cell <= CHUNK_SIZE && CHUNK_SIZE % cell === 0)) throw new Error(`map: its water is in squares of ${cell} m, and a square is 1, 2, 4, 8, 16, 32 or 64 m`);
       const bodies = Array.from({ length: s.u16() }, () => ({ name: s.text(), level: s.u16() }));
-      const per = (CHUNK_SIZE / cell) ** 2;
+      const per = (CHUNK_SIZE / cell) * (CHUNK_SIZE / cell);
       const n = s.u32();
       if (n > chunkCount(dims) || n * (4 + per * 2) > s.bytes.length - s.at) throw new RangeError();
       const chunks = new Uint32Array(n);
