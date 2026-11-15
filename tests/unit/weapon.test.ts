@@ -38,8 +38,9 @@ test("content compiles into weapon timings: a swing, a draw, a reload and a clip
   expect(params("hatchet")).toEqual({ kind: W_MELEE, hold: HOLD_TOOL, swingTicks: SWING_TICKS, strikeTick: 5, drawTicks: 0, minDrawTicks: 0, reloadTicks: 0, clip: 0, wet: true });
   expect(params("spear").hold).toBe(HOLD_SPEAR);
   // A bow draws for 1.2 s, can be loosed from a quarter of that (Base Damage: 0.3 s), and nocks in two thirds of a second.
-  // Its blow, as every ranged weapon's, is a swing of half a second that lands a third of the way through.
-  expect(params("bow")).toEqual({ kind: W_BOW, hold: HOLD_BOW, swingTicks: 6, strikeTick: 2, drawTicks: 36, minDrawTicks: 9, reloadTicks: 20, clip: 1, wet: false, meleeTicks: 15, meleeStrikeTick: 5 });
+  // Its blow, as every ranged weapon's, is a swing of half a second that lands a third of the way through. Its cone is
+  // W1's (shared/sim/aim.ts, tests/unit/aim.test.ts).
+  expect(params("bow")).toEqual({ kind: W_BOW, hold: HOLD_BOW, swingTicks: 6, strikeTick: 2, drawTicks: 36, minDrawTicks: 9, reloadTicks: 20, clip: 1, wet: false, meleeTicks: 15, meleeStrikeTick: 5, coneHip: 1.2, coneAim: 0.2, coneMove: 2.5, coneBloom: 0, coneRecover: 0, coneSway: 0 });
   expect(params("rifle")).toMatchObject({ kind: W_GUN, hold: HOLD_RIFLE, reloadTicks: 135, clip: 1, wet: false });
   expect(params("crossbow")).toMatchObject({ kind: W_GUN, wet: true, reloadTicks: 78 });
   expect(params("pistol")).toMatchObject({ kind: W_GUN, hold: HOLD_PISTOL, clip: 6, swingTicks: 11 });

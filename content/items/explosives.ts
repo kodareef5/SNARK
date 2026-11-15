@@ -19,7 +19,7 @@ export const EXPLOSIVES: readonly Def[] = [
   // use; made in the hand at level 9 for 8 points of 10 thatch, 3 stone, 15 fiber and 3 hide. "The minimum holding duration
   // is roughly 0.4 seconds" and "charging up the Bola will increase its velocity, but not its immobilization time": a
   // quarter of the 1.6 s draw is 0.4 s (DEV127), and the draw buys speed only. Its speed, the craft's 3 s and a miss being
-  // lost are ours (DEV128). Its meshes are the grenade's until W9's thrown asset gives it `core:bola` and `core:bola_thrown`.
+  // lost are ours (DEV131). Its meshes are the grenade's until W9's thrown asset gives it `core:bola` and `core:bola_thrown`.
   {
     type: "item", class: "weapon", id: id("bola"), label: "snare stones", stack: 10, weight: 0.5, color: 15,
     weapon: { kind: "thrown", draw: 1.6, uses: 1, mesh: id("grenade"), hold: "tool" },

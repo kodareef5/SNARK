@@ -16,7 +16,7 @@ import type { ServerWorld } from "./world.ts";
 
 /**
  * Each press of jump takes this many seconds off the time left, and presses count at most once in this many ticks, so a
- * survivor pressing as fast as it counts is free of a bola's 25 s in about 9 (DEV129). ARK gives neither number.
+ * survivor pressing as fast as it counts is free of a bola's 25 s in about 9 (DEV132). ARK gives neither number.
  */
 export const STRUGGLE_SECONDS = 0.5;
 export const STRUGGLE_EVERY = 8;

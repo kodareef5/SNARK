@@ -353,15 +353,17 @@ export interface WeaponFacet {
    * (2.6 where not given), and the seconds a blow takes (a swing's where not given). ARK's is 10 and 14 torpor (Base Damage).
    */
   readonly melee?: { readonly damage: number; readonly torpor?: number; readonly reach?: number; readonly interval?: number };
+  // Where a shot goes (planning/reference/weapons-plan.md, M1 and M2, built by W1). Omitted, a shot goes along the look.
+  /**
+   * The cone a shot leaves within (shared/sim/aim.ts), as half angles in degrees: from the hip and aimed at rest, what a
+   * sprint adds, what each shot adds, and the degrees a second it narrows back; and the degrees the aim sways through a
+   * scope, standing. Our own numbers, as ARK publishes none (DEV128, DEV130).
+   */
+  readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number; readonly sway?: number };
+  /** The degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick (DEV129). */
+  readonly recoil?: { readonly kick: number; readonly recover: number };
   // Stubs of the same plan: declared, checked and compiled, and read by nothing until the project named builds them
   // (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
-  /**
-   * W1: the cone a shot leaves within, as half angles in degrees: from the hip and aimed at rest, what full speed adds, what
-   * each shot adds, and the degrees a second it narrows back. Our own numbers (ARK publishes none).
-   */
-  readonly spread?: { readonly hip: number; readonly aim: number; readonly move?: number; readonly bloom?: number; readonly recover?: number };
-  /** W1: the degrees of pitch each shot kicks the aim up, and the degrees a second that comes back. The server holds the kick. */
-  readonly recoil?: { readonly kick: number; readonly recover: number };
   /** W6: what its damage is multiplied by against a structure. 1 where not given. ARK's grenade is 4.5 (Table of explosives). */
   readonly structures?: number;
   /**
