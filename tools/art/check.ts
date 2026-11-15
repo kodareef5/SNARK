@@ -11,7 +11,7 @@ import { TICK_RATE } from "../../shared/coords.ts";
 import { quatRotate } from "../../shared/math/quat.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
-import { surfaceError } from "../pack/error.ts";
+import { SLOW_MOST, slowSurfaceError, surfaceError } from "../pack/error.ts";
 import { spanOf } from "../pack/surface.ts";
 import { unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import type { Asset } from "./assets.ts";
@@ -275,8 +275,14 @@ function measureMesh(mesh: SourceMesh, pack: Pack, budgets: readonly number[], f
       starts: at,
       ...measureSurface(lod),
     };
-    if (l > 0 && stated?.[l - 1] !== undefined) facts.measured = surfaceError(mesh.lods[0]!, lod);
     const where = `${mesh.id} level ${l}`;
+    if (l > 0 && stated?.[l - 1] !== undefined) {
+      facts.measured = surfaceError(mesh.lods[0]!, lod);
+      // What the grid finds is what trying every triangle finds. tests/unit/error.test.ts tries every pack's levels but
+      // these, which are many and slow.
+      const finer = mesh.lods[l - 1]!;
+      if (finer.indices.length / 3 <= SLOW_MOST && surfaceError(finer, lod) !== slowSurfaceError(finer, lod)) faults.push(`${where}: its distance from level ${l - 1} found through the grid is not what trying every triangle gives (tools/pack/error.ts)`);
+    }
     if (facts.budget !== null && facts.triangles > facts.budget) faults.push(`${where}: ${facts.triangles} triangles, and its budget is ${facts.budget}`);
     if (facts.budget === null && budgets.length > 0) faults.push(`${where}: the asset gives this level no triangle budget`);
     if (facts.holes > 0) faults.push(`${where}: ${facts.holes} ${facts.holes === 1 ? "hole" : "holes"} (${facts.openEdges} open edges)`);

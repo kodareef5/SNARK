@@ -181,3 +181,30 @@ export function surfaceError(fine: SourceLod, coarse: SourceLod): number {
   if (fine.indices.length === 0 || coarse.indices.length === 0) return 0;
   return Math.max(at(distances(coarse, fine)), at(distances(fine, coarse)));
 }
+
+/** The most triangles a finer level may have to be tried the slow way. */
+export const SLOW_MOST = 800;
+
+/**
+ * surfaceError as it was first written: every point against every triangle. What the grid must give exactly, tried by
+ * tests/unit/error.test.ts and, on node packs, by `bun run art -- <id> --check`.
+ */
+export function slowSurfaceError(fine: SourceLod, coarse: SourceLod): number {
+  const distances = (from: SourceLod, to: SourceLod): Float64Array => {
+    const p = from.positions;
+    const out: number[] = [];
+    const near = (x: number, y: number, z: number): void => {
+      let best = Infinity;
+      for (let i = 0; i < to.indices.length; i += 3) best = Math.min(best, toTriangle(x, y, z, to.positions, to.indices[i]! * 3, to.indices[i + 1]! * 3, to.indices[i + 2]! * 3));
+      out.push(best);
+    };
+    for (let v = 0; v < p.length; v += 3) near(p[v]!, p[v + 1]!, p[v + 2]!);
+    for (let i = 0; i < from.indices.length; i += 3) {
+      const [a, b, c] = [from.indices[i]! * 3, from.indices[i + 1]! * 3, from.indices[i + 2]! * 3];
+      near((p[a]! + p[b]! + p[c]!) / 3, (p[a + 1]! + p[b + 1]! + p[c + 1]!) / 3, (p[a + 2]! + p[b + 2]! + p[c + 2]!) / 3);
+    }
+    return Float64Array.from(out).sort();
+  };
+  const at = (d: Float64Array): number => d[Math.min(d.length - 1, Math.floor(d.length * ERROR_SHARE))]!;
+  return Math.max(at(distances(coarse, fine)), at(distances(fine, coarse)));
+}
