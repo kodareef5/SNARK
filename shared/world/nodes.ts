@@ -135,6 +135,8 @@ function buildForms(reg: Registry): NodeForms {
     }
   }
   const count = kind.length;
+  // A structure store keeps a form in 16 bits.
+  if (count > 65535) throw new Error(`nodes: the content's node kinds take ${count} forms, and a store holds 65,535`);
   const start = new Uint32Array(count + 1);
   for (let f = 0; f < count; f++) start[f + 1] = start[f]! + boxes[f]!.length;
   const box = new Float32Array(start[count]! * 6);
