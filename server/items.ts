@@ -32,6 +32,14 @@ export class Items {
   /** A one of a kind (Inventory.ref) was burned, eaten or spoiled, so the record it stood for goes too (server/eggs.ts). */
   onRefGone: ((ref: number) => void) | null = null;
 
+  /** An inventory changed. The host queues derived body updates, so transfers finish before any refresh. */
+  onChange: ((rec: EntityRecord) => void) | null = null;
+
+  private changed(rec: EntityRecord): void {
+    this.records.dirty.add(rec.pid);
+    this.onChange?.(rec);
+  }
+
   constructor(world: ServerWorld, records: Records) {
     this.world = world;
     this.reg = world.reg;
@@ -58,14 +66,14 @@ export class Items {
         grown.setRef(s, inv.refOf(s));
       }
       inv = rec.inv = grown;
-      this.records.dirty.add(rec.pid);
+      this.changed(rec);
     }
     inv.keep = this.reg.keeps[rec.kind]!;
     // A burning fire is worked out first, so cooking happens before the leftovers spoil.
     if (rec.fire && this.onFire) this.onFire(rec);
     const before = inv.version;
     inv.settle(this.world.tick, this.table, this.spoiled);
-    if (inv.version !== before) this.records.dirty.add(rec.pid);
+    if (inv.version !== before) this.changed(rec);
     return inv;
   }
 
@@ -100,7 +108,7 @@ export class Items {
         inv.spoilAt[s] = next > 0xffffffff ? 0xffffffff : next;
         inv.mod[s] = ++inv.version;
       }
-      if (inv.version !== before) this.records.dirty.add(rec.pid);
+      if (inv.version !== before) this.changed(rec);
     }
   }
 
@@ -111,7 +119,7 @@ export class Items {
     inv.keep = this.reg.keeps[rec.kind]!;
     const before = inv.version;
     inv.settle(at, this.table, this.spoiled);
-    if (inv.version !== before) this.records.dirty.add(rec.pid);
+    if (inv.version !== before) this.changed(rec);
   }
 
   /**
@@ -133,7 +141,7 @@ export class Items {
     if (made > 0) {
       this.minted[item] = this.minted[item]! + made;
       this.dirty = true;
-      this.records.dirty.add(rec.pid);
+      this.changed(rec);
     }
     return made;
   }
@@ -154,7 +162,7 @@ export class Items {
     if (spoil > 0) inv.spoilAt[slot] = Math.min(0xffffffff, this.world.tick + Math.round(spoil * inv.keep));
     this.minted[item] = this.minted[item]! + 1;
     this.dirty = true;
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     return slot;
   }
 
@@ -170,7 +178,7 @@ export class Items {
     inv.remove(slot, n);
     this.burned[item] = this.burned[item]! + n;
     this.dirty = true;
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     if (ref !== 0) this.onRefGone?.(ref);
     return true;
   }
@@ -189,7 +197,7 @@ export class Items {
     if (n > 0 && !inv.take(ammo, n)) return -1;
     // A move within the inventory, so the ledger does not change.
     inv.setGear(slot, ammo, have + (n > 0 ? n : 0), inv.attach[slot]!);
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     return inv.loaded[slot]!;
   }
 
@@ -202,7 +210,7 @@ export class Items {
     if (inv.room(ammo, 0, this.table) < n) return false;
     inv.setGear(slot, ammo, 0, inv.attach[slot]!);
     if (inv.add(ammo, n, 0, 0, this.world.tick, this.table) !== 0) throw new Error("room was checked");
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     return true;
   }
 
@@ -213,7 +221,7 @@ export class Items {
     inv.setGear(slot, inv.ammo[slot]!, inv.loaded[slot]! - 1, inv.attach[slot]!);
     this.burned[inv.ammo[slot]!] = this.burned[inv.ammo[slot]!]! + 1;
     this.dirty = true;
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     return true;
   }
 
@@ -225,7 +233,7 @@ export class Items {
     const old = inv.attach[slot]!;
     inv.set(from, old, old === 0 ? 0 : 1, 0, 0, 0);
     inv.setGear(slot, inv.ammo[slot]!, inv.loaded[slot]!, fitted);
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     return true;
   }
 
@@ -236,7 +244,7 @@ export class Items {
     if (old === 0 || inv.room(old, 0, this.table) < 1) return false;
     inv.setGear(slot, inv.ammo[slot]!, inv.loaded[slot]!, 0);
     if (inv.add(old, 1, 0, 0, this.world.tick, this.table) !== 0) throw new Error("room was checked");
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     return true;
   }
 
@@ -245,7 +253,7 @@ export class Items {
     const inv = this.inv(rec);
     const left = inv.dur[slot]! - n;
     inv.setDur(slot, left > 0 ? left : 0);
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     return inv.dur[slot]!;
   }
 
@@ -253,7 +261,7 @@ export class Items {
   mend(rec: EntityRecord, slot: number): void {
     const inv = this.inv(rec);
     inv.setDur(slot, this.maxDur(inv.item[slot]!, inv.quality[slot]!));
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
   }
 
   /** Burns `n` of an item from any slots. All or nothing. */
@@ -273,7 +281,7 @@ export class Items {
     inv.take(item, n);
     this.burned[item] = this.burned[item]! + n;
     this.dirty = true;
-    this.records.dirty.add(rec.pid);
+    this.changed(rec);
     return true;
   }
 
@@ -286,8 +294,8 @@ export class Items {
   move(a: EntityRecord, sa: number, b: EntityRecord, sb: number, n: number): number {
     const moved = moveSlot(this.inv(a), sa, this.inv(b), sb, n, this.table, this.world.tick);
     if (moved > 0) {
-      this.records.dirty.add(a.pid);
-      this.records.dirty.add(b.pid);
+      this.changed(a);
+      this.changed(b);
     }
     return moved;
   }
@@ -314,8 +322,8 @@ export class Items {
       src.remove(s, k);
       n -= k;
     }
-    this.records.dirty.add(from.pid);
-    this.records.dirty.add(to.pid);
+    this.changed(from);
+    this.changed(to);
     return true;
   }
 

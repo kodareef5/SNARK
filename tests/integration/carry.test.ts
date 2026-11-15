@@ -354,7 +354,7 @@ test("her hands are full: she strikes, swings, aims and loads nothing, takes not
   // Its pack weighs half on her: enough in it, with what she has, roots her; set down, it does not.
   const stone = h.reg.index.get("core:stone")!;
   h.host.items.mint(rec, stone, 1000);
-  h.host.refreshBody(rec);
+  h.run(100);
   const half = (h.host.items.inv(rec).weight(h.host.items.table) * 0.5);
   expect(h.host.carry.load(me)).toBeCloseTo(half, 5);
   expect(ents.mflags[body]! & MF_ROOTED).toBe(MF_ROOTED);
