@@ -46,8 +46,8 @@ if (integrated) {
   const h = server.host, s = h.world.spawn;
   // South is clear acceleration room; the north fixture intentionally holds collision blocks.
   const x = s.x + (drive ? 1.6 : -6), z = s.z + (drive ? -.12 : 9);
-  const car = h.spawnVehicle("urban:compact", x, z, 0, drive ? Math.PI : 0);
-  const driver = h.spawnCreature("urban:civilian", x + (drive ? -1.25 : 1.25), z + (drive ? -.12 : .12), 1);
+  const car = h.spawnVehicle("core:compact", x, z, 0, drive ? Math.PI : 0);
+  const driver = h.spawnCreature("core:civilian", x + (drive ? -1.25 : 1.25), z + (drive ? -.12 : .12), 1);
   if (car < 0 || driver < 0 || h.urban.seatNpc(driver, car) !== 0) throw new Error("integrated probe could not seat the native civilian");
 }
 const profile = mkdtempSync(join(tmpdir(), "snark-probe-"));

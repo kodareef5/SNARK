@@ -34,7 +34,7 @@ for (const fps of [60, 20]) test(`real vehicle prediction agrees through acceler
   try {
     const s = h.join("driver"), pilot = h.pilots[0]!;
     h.run(1500);
-    const spawn = h.world.spawn, car = h.host.spawnVehicle("urban:compact", spawn.x + 1.6, spawn.z - .12, 0, Math.PI);
+    const spawn = h.world.spawn, car = h.host.spawnVehicle("core:compact", spawn.x + 1.6, spawn.z - .12, 0, Math.PI);
     h.host.urban.mount(h.client(s)!, car); h.run(800);
     expect(s.driving).toBe(car);
     const corrections = s.stats.corrections, stateCorrections = s.stats.stateCorrections, start = s.simTick;
@@ -59,7 +59,7 @@ test("an authoritative snapshot ahead of a stalled client advances the body's ti
     let throttle = 0;
     const update = (now: number) => s.update(now, 0, throttle, 0, 0, 0);
     h.run(1500, update);
-    const spawn = h.world.spawn, car = h.host.spawnVehicle("urban:compact", spawn.x + 1.6, spawn.z - .12, 0, Math.PI);
+    const spawn = h.world.spawn, car = h.host.spawnVehicle("core:compact", spawn.x + 1.6, spawn.z - .12, 0, Math.PI);
     h.host.urban.mount(h.client(s)!, car); h.run(800, update);
     throttle = 1; h.run(1000, update);
     const corrections = s.stats.corrections, states = s.stats.stateCorrections;

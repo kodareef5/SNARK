@@ -15,7 +15,7 @@ test("vehicle observers blend engine speed but select actual gears and shift sta
   const views = (s as unknown as { drawn: ViewRing<EntityView> }).drawn;
   for (const [tick, gear, rpm, shifting] of [[100, 2, 5800, 0], [102, 3, 3900, 1]] as const) {
     const view = views.alloc(tick);
-    view.push(4, 1, registry.index.get("urban:compact")!, 0, 0, 0, 0, 0, 0);
+    view.push(4, 1, registry.index.get("core:compact")!, 0, 0, 0, 0, 0, 0);
     view.vehicleDrive[0] = packVehicleDrive(gear, rpm, shifting !== 0);
   }
   const remote = new RemoteSample();

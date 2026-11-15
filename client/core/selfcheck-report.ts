@@ -64,7 +64,7 @@ export function selfcheckReport(app: App, pack: Pack, manifest: Manifest, hf: He
   const misplaced = o.misplaced;
   const urban = o.has("urban") ? (() => {
     const drawn = Array.from(packet.drawMesh.subarray(0, packet.drawCount), index => manifest.meshes[index]?.id ?? "");
-    const vehicles = drawn.filter(id => id.startsWith("urban:compact"));
+    const vehicles = drawn.filter(id => id.startsWith("core:compact"));
     const humans = drawn.filter(id => id.startsWith("core:human"));
     const seats = Array.from(app.remote.seatSlot.subarray(0, app.remote.count)).filter(slot => slot > 0);
     const driving = drive ? { ...drive, ownKind: reg.ids[session.own.kind], audio: { ...o.audio }, ok: !drive.timedOut && drive.maxSpeed > 3 && drive.hud && session.driving >= 0 } : null;

@@ -7,7 +7,7 @@ import { Found } from "../../shared/world/structures.ts";
 export function seedUrbanRoads(host: Host, completeExisting = false): number {
   const { world } = host;
   if (world.mapId !== PROVING_ID) return 0;
-  const kinds = ["asphalt", "gravel", "mud"].map(name => world.reg.index.get(`urban:road_${name}`)!);
+  const kinds = ["asphalt", "gravel", "mud"].map(name => world.reg.index.get(`core:road_${name}`)!);
   if (!completeExisting && world.structs.chunks.some(row => row && row.kind.subarray(0, row.high).some(kind => kinds.includes(kind)))) return 0;
   const found = new Found(); let added = 0;
   for (let lane = 0; lane < kinds.length; lane++) for (let tile = 0; tile < 12; tile++) for (const side of [-1.5, 1.5]) {

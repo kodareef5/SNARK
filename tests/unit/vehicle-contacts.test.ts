@@ -13,7 +13,7 @@ function setup() {
   const ground = flatGround(h, 28, 32), x = ground.x + 14, z = ground.z + 8;
   const driver = h.client(session)!, ents = h.world.ents;
   const record = h.host.records.byPid.get(driver.pid)!;
-  const car = h.host.spawnVehicle('urban:compact', x, z, record.team, 0);
+  const car = h.host.spawnVehicle('core:compact', x, z, record.team, 0);
   expect(car).toBeGreaterThanOrEqual(0);
   ents.setPosition(driver.ent, x + 1.6, ground.y, z + 0.12);
   expect(h.host.urban.mount(driver, car)).toBe(RESULT_OK);
@@ -39,10 +39,10 @@ test('native driving sweep harms a human, preserves both occupants, and moves th
   const s = setup(), { h, car, x, z, ents, driver, health, tick } = s;
   try {
     // Seat an actual NPC passenger; contact filtering is independent of player sessions.
-    const passenger = h.host.spawnCreature('urban:civilian', x - 1.25, z + 0.12, 1);
+    const passenger = h.host.spawnCreature('core:civilian', x - 1.25, z + 0.12, 1);
     expect(h.host.urban.seatNpc(passenger, car, 'passenger')).toBe(RESULT_OK);
     for (let i = 0; i < 19; i++) tick();
-    const target = s.victim('urban:civilian', x, z + 2.5), pid = ents.pid[target]!;
+    const target = s.victim('core:civilian', x, z + 2.5), pid = ents.pid[target]!;
     const before = health(target), driverHealth = health(driver.ent), passengerHealth = health(passenger);
     s.placeCar(); tick();
     expect(h.host.combat.last.victim).toBe(pid); expect(h.host.combat.last.by).toBe(driver.pid);
@@ -157,7 +157,7 @@ test('relative sweeps stop a body crossing a parked car even when both endpoint 
 test('a driverless car blocks but cannot harm, so an unowned car never carries damage past PvE', () => {
   const s = setup(), { h, ents, x, z, tick, health } = s;
   try {
-    const empty = h.host.spawnVehicle('urban:compact', x - 8, z, 0, 0);
+    const empty = h.host.spawnVehicle('core:compact', x - 8, z, 0, 0);
     expect(empty).toBeGreaterThanOrEqual(0);
     const target = s.victim('core:dummy', x - 8, z + 2.6), before = health(target), hits = h.host.combat.hits;
     ents.setPosition(empty, x - 8, s.ground.y, z);

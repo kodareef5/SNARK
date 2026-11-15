@@ -21,7 +21,7 @@ function setup(dbPath?: string) {
   h.say(bob, `tp ${x - 1.6} ${z + 0.12}`);
   const me = h.client(ada)!, other = h.client(bob)!;
   const owner = h.host.records.byPid.get(me.pid)!.team;
-  const car = h.host.spawnVehicle('urban:compact', x, z, owner, 0);
+  const car = h.host.spawnVehicle('core:compact', x, z, owner, 0);
   expect(car).toBeGreaterThanOrEqual(0);
   return { h, ada, bob, me, other, car, x, z, owner };
 }
@@ -76,8 +76,8 @@ test('real NPC seats are session-independent; carjack transfers only control and
   try {
     h.say(h.sessions[0]!, `tp ${x + 3.2} ${z + 0.12}`);
     h.say(h.sessions[1]!, `tp ${x - 3.2} ${z + 0.12}`);
-    const driver = h.host.spawnCreature('urban:civilian', x + 1.25, z + 0.12, 1);
-    const passenger = h.host.spawnCreature('urban:civilian', x - 1.25, z + 0.12, 1);
+    const driver = h.host.spawnCreature('core:civilian', x + 1.25, z + 0.12, 1);
+    const passenger = h.host.spawnCreature('core:civilian', x - 1.25, z + 0.12, 1);
     expect(driver).toBeGreaterThanOrEqual(0); expect(passenger).toBeGreaterThanOrEqual(0);
     expect(h.host.urban.seatNpc(driver, car)).toBe(RESULT_OK);
     expect(h.host.urban.seatNpc(passenger, car, 'passenger')).toBe(RESULT_OK);
@@ -178,7 +178,7 @@ test('vehicle payload follows cargo and every occupant, and a dead passenger rel
   try {
     h.say(h.sessions[1]!, `tp ${x - 4} ${z}`);
     expect(h.host.urban.mount(me, car)).toBe(RESULT_OK); h.run(800);
-    const passenger = h.host.spawnCreature('urban:civilian', x - 1.25, z + .12, 1);
+    const passenger = h.host.spawnCreature('core:civilian', x - 1.25, z + .12, 1);
     expect(h.host.urban.seatNpc(passenger, car, 'passenger')).toBe(RESULT_OK); h.run(800);
     const ents = h.world.ents, cargo = h.host.records.byPid.get(ents.pid[car]!)!, rec = h.host.records.byPid.get(ents.pid[passenger]!)!;
     const before = ents.vehiclePayloadMass[car]!, stone = h.reg.index.get('core:stone')!;

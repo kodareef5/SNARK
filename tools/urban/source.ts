@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import type { PackRig } from "../../shared/pack/pack.ts";
 import type { SourceMesh } from "../pack/write.ts";
 
-export const COMPACT_SOURCE = resolve(import.meta.dir, "../../assets/source/urban/vehicles/compact");
+export const COMPACT_SOURCE = resolve(import.meta.dir, "../../assets/source/core/vehicles/compact");
 interface Contract { id: string; textures: { base: string; upholstery: string; runtimeTop: number } }
 interface Visual { id: string; paintTint: readonly [number, number, number]; flatPaint: readonly [number, number, number] }
 interface Source {

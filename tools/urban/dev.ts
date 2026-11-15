@@ -12,12 +12,12 @@ import { argumentValue, INTEGRATED_DIST, urbanBuildOptions } from "./build-confi
 
 /** Place a small development fixture in the real map, once per isolated save. Normal players/dinos/resources remain. */
 export function seedUrbanVehicles(host:Host):void {
-  const kind=host.world.reg.index.get("urban:compact");
-  if(kind===undefined)throw new Error("the real content registry does not contain urban:compact");
+  const kind=host.world.reg.index.get("core:compact");
+  if(kind===undefined)throw new Error("the real content registry does not contain core:compact");
   if([...host.records.byPid.values()].some((record)=>record.kind===kind))return;
   const spawn=host.world.spawn;
-  const car=host.spawnVehicle("urban:compact",spawn.x-3,spawn.z+6,0,0);
-  const free=host.spawnVehicle("urban:compact",spawn.x+4,spawn.z+6,0,0);
+  const car=host.spawnVehicle("core:compact",spawn.x-3,spawn.z+6,0,0);
+  const free=host.spawnVehicle("core:compact",spawn.x+4,spawn.z+6,0,0);
   if(car<0||free<0)throw new Error("could not place the development cars near the map spawn");
   const name=(entity:number,label:string):void=>{
     const record=host.records.byPid.get(host.world.ents.pid[entity]!);if(!record)return;
@@ -25,9 +25,9 @@ export function seedUrbanVehicles(host:Host):void {
     host.world.ents.setLook(entity,record.genome?.level??1,record.genome?.colors??null,label);
   };
   name(car,"Mara's compact");name(free,"Spare compact");
-  if(host.world.reg.index.has("urban:civilian")){
+  if(host.world.reg.index.has("core:civilian")){
     for(const [seat,side,label]of[["driver",1,"Mara"],["passenger",-1,"Eli"]]as const){
-      const actor=host.spawnCreature("urban:civilian",spawn.x-3+side*1.25,spawn.z+6+.12,1);
+      const actor=host.spawnCreature("core:civilian",spawn.x-3+side*1.25,spawn.z+6+.12,1);
       if(actor>=0){name(actor,label);console.log(`${label} ${seat} request: ${host.urban.seatNpc(actor,car,seat)}`);}
     }
   }

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { COMPACT_VEHICLE } from "../../content/urban/compact.ts";
+import { COMPACT_VEHICLE } from "../../content/vehicles/compact.ts";
 import { BitReader, BitWriter } from "../../shared/net/codec.ts";
 import { readBody, writeBody } from "../../shared/net/protocol.ts";
 import { EntityView, SentView, readViewDelta, writeViewDelta } from "../../shared/net/view.ts";
@@ -11,7 +11,7 @@ import { flatWorld } from "../fixtures/world.ts";
 test("a vehicle restores through the real Body wire and replays exactly from a mid-turn snapshot", () => {
   const world = flatWorld();
   const authority = new Body(), predicted = new Body();
-  const kind = world.kind("urban:compact");
+  const kind = world.kind("core:compact");
   authority.kind = kind; authority.x = 40; authority.z = 40;
   authority.vehicle = true; authority.fuel = COMPACT_VEHICLE.spec.fuelCapacity;
   authority.vehiclePayloadMass = 380;

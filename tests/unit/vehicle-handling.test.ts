@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test';
-import { COMPACT, ASPHALT } from '../../content/urban/compact.ts';
+import { COMPACT, ASPHALT } from '../../content/vehicles/compact.ts';
 import { createVehicle, stepVehicle } from '../../shared/sim/vehicle.ts';
 import type { VehicleInput, VehicleState, VehicleWorld } from '../../shared/sim/vehicle.ts';
 import { Heightfield } from '../../shared/world/heightfield.ts';

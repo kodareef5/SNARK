@@ -14,9 +14,9 @@ import { RUIN_BLOCKS } from "./miami-ruins.ts";
 import { SLOPE_BLOCKS } from "./slopes.ts";
 import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
-import { ROADS } from "./urban/roads.ts";
-import { COMPACT_SPECIES } from "./urban/compact.ts";
-import { CIVILIAN } from "./urban/civilian.ts";
+import { ROADS } from "./vehicles/roads.ts";
+import { COMPACT_SPECIES } from "./vehicles/compact.ts";
+import { CIVILIAN } from "./creatures/civilian.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
 const id = (name: string): string => `core:${name}`;

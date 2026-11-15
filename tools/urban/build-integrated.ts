@@ -2,7 +2,7 @@
 // Only the small boot header/blob and manifest are merged; the usual browser entrypoints are bundled separately.
 import { copyFileSync, linkSync, lstatSync, mkdirSync, readFileSync, readlinkSync, renameSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { ROADS } from "../../content/urban/roads.ts";
+import { ROADS } from "../../content/vehicles/roads.ts";
 import { grayboxMeshes } from "../pack/build.ts";
 import { COMPACT, COPPER_COMPACT, compactMesh, compactRig } from "./source.ts";
 import { parseManifest } from "../../shared/pack/manifest.ts";
@@ -52,7 +52,7 @@ function pinCoreAsset(source:string,cache:string,expectedBytes:number):string {
 }
 
 function compactTextureSources():TextureSource[] {
-  const dir=resolve(ROOT,"assets/source/urban/vehicles/compact/tex");
+  const dir=resolve(ROOT,"assets/source/core/vehicles/compact/tex");
   return ([
     ["details-base","details-base-512.png","base",512],["details-packed","details-packed-512.png","mro",512],
     ["paint-base","paint-base-512.png","base",512],["paint-packed","paint-packed-512.png","mro",512],
@@ -89,7 +89,7 @@ export async function buildIntegratedAssets(opts:UrbanBuildOptions={}):Promise<I
   try{sourceManifest=new Uint8Array(readFileSync(join(sourceAssets,"manifest.json")));}
   catch(error){if((error as NodeJS.ErrnoException).code!=="ENOENT")throw error;throw new Error(`No core asset manifest at ${join(sourceAssets,"manifest.json")}. Point --base-dist or SNARK_CORE_DIST at an existing unmodified core client/dist; no asset build was started.`);}
   const baseManifestHash=partHash(sourceManifest),manifest=parseManifest(new TextDecoder().decode(sourceManifest));
-  if(manifest.meshes.some((m)=>m.id.startsWith("urban:")))throw new Error("core source already contains urban assets; choose the unmodified core dist");
+  if(manifest.meshes.some((m)=>m.id.startsWith("core:")))throw new Error("core source already contains urban assets; choose the unmodified core dist");
   if(!manifest.meshes.some((m)=>m.id==="core:dodo")||!manifest.meshes.some((m)=>m.id.startsWith("core:human_m/")))throw new Error("core source must retain the actual dodo and current human art");
   const coreMeshes=manifest.meshes.length,coreTextures=manifest.textures?.length??0;
   const oldBootFile=manifest.files[manifest.boot]!,oldBoot=parsePack(new Uint8Array(readFileSync(join(sourceAssets,oldBootFile.name))));
@@ -100,7 +100,7 @@ export async function buildIntegratedAssets(opts:UrbanBuildOptions={}):Promise<I
   if(statSync(sourceAssets).dev!==statSync(cache).dev)throw new Error("Core cache is on another filesystem. Pass --cache /path/on/core/filesystem or set SNARK_CORE_CACHE; no asset encoding or bulk copy performed.");
   mkdirSync(target,{recursive:true});
 
-  const added=splitPack(buildPack([compactMesh(),compactMesh(COPPER_COMPACT),...grayboxMeshes(ROADS).filter(mesh=>mesh.id.startsWith("urban:"))],palette,[],[compactRig()]),"urban");
+  const added=splitPack(buildPack([compactMesh(),compactMesh(COPPER_COMPACT),...grayboxMeshes(ROADS).filter(mesh=>mesh.id.startsWith("core:"))],palette,[],[compactRig()]),"urban");
   // A GPU picks one variant globally. Encode all three for only these six small maps, on one worker.
   const textures=await buildTextures(added.manifest,compactTextureSources(),"urban",{workers:1});
   const addBoot=parsePack(added.files[0]!.bytes),rigOffset=oldBoot.header.rigs.length;

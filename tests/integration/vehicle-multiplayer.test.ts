@@ -28,7 +28,7 @@ function setup(armed = false) {
   }
   const x = h.world.spawn.x, z = h.world.spawn.z - 8;
   h.say(driver, `tp ${x + 1.6} ${z + .12}`); h.say(passenger, `tp ${x - 1.6} ${z + .12}`);
-  const car = h.host.spawnVehicle("urban:compact", x, z, 0, 0), a = h.client(driver)!, b = h.client(passenger)!;
+  const car = h.host.spawnVehicle("core:compact", x, z, 0, 0), a = h.client(driver)!, b = h.client(passenger)!;
   expect(h.host.urban.mount(a, car)).toBe(RESULT_OK);
   expect(h.host.urban.mount(b, car)).toBe(RESULT_OK);
   h.run(1200);
@@ -68,14 +68,14 @@ test("a moving passenger's shot, recoil and reload remain predicted across delay
 // Tiny native bindings with different proportions exercise the same camera/seat path without the full art pack.
 const rest = Float32Array.from(HUMAN.rest, (n, i) => i % 3 === 1 ? n * 1.13 : n);
 const human: PackRig = { id: "test:passenger", skeleton: HUMAN.id, rest: [...rest] };
-const carRig: PackRig = { id: "urban:compact", skeleton: "urban:compact", names: ["chassis"], parent: [-1], rest: [0, 0, 0], sockets: [
+const carRig: PackRig = { id: "core:compact", skeleton: "core:compact", names: ["chassis"], parent: [-1], rest: [0, 0, 0], sockets: [
   { name: "seat_driver", bone: 0, x: .42, y: .59, z: .12 }, { name: "seat_front_passenger", bone: 0, x: -.42, y: .59, z: .12 },
 ] };
 function mesh(id: string, skeleton = HUMAN.id, rig = human.id): SourceMesh {
   const lod = boxMesh([.04, .04, .04], 16); lod.bones = new Uint8Array(lod.positions.length / 3).fill(skeleton === HUMAN.id ? B_HIPS : 0);
   return { id, skeleton, rig, lods: [lod] };
 }
-const pack = parsePack(buildPack([...SLOT_NAMES.map(part => mesh(`core:human_m/${part}`)), mesh("urban:compact", carRig.skeleton, carRig.id)], defaultPalette(), [], [human, carRig]));
+const pack = parsePack(buildPack([...SLOT_NAMES.map(part => mesh(`core:human_m/${part}`)), mesh("core:compact", carRig.skeleton, carRig.id)], defaultPalette(), [], [human, carRig]));
 
 test("first-person passenger camera uses the rendered host tick, rig proportions and generation", () => {
   const { h, passenger: s, car } = setup();
@@ -113,7 +113,7 @@ test("delayed passengers detach on exit and cannot reattach to a recycled host s
     const pid = h.world.ents.pid[car]!;
     h.host.survival.hurt(h.host.records.byPid.get(pid)!, 1e6, 0); h.run(800);
     expect(s.own.seat).toBe(0); expect(driver.driving).toBe(-1);
-    const replacement = h.host.spawnVehicle("urban:compact", x, z + 6, 0, 0); h.run(800);
+    const replacement = h.host.spawnVehicle("core:compact", x, z + 6, 0, 0); h.run(800);
     expect(replacement).toBe(car); expect(h.world.ents.gen[replacement]).not.toBe(gen);
     const remote = new RemoteSample(); s.sampleRemote(remote);
     const seen = [...remote.id.subarray(0, remote.count)].indexOf(replacement);

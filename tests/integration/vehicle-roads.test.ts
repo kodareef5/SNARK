@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { COMPACT } from "../../content/urban/compact.ts";
+import { COMPACT } from "../../content/vehicles/compact.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { StaticVehicleWorld } from "../../shared/world/vehicle.ts";
@@ -21,7 +21,7 @@ test("the native development road strips are continuous and normal restarts do n
     const world = new StaticVehicleWorld(h.world);
     for (const [lane, surface] of ["asphalt", "gravel", "mud"].entries()) {
       for (let z = h.world.spawn.z - 5; z >= h.world.spawn.z - 40; z--) {
-        expect(world.support(h.world.spawn.x + 12 + lane * 9, 0, z, COMPACT)!.surface.id).toBe(`urban:${surface}`);
+        expect(world.support(h.world.spawn.x + 12 + lane * 9, 0, z, COMPACT)!.surface.id).toBe(`${surface}`);
       }
     }
     let removed = false;
@@ -45,7 +45,7 @@ test("native road kinds replicate, update existing wheel adapters and persist th
     const local = new StaticVehicleWorld(h.world), remote = new StaticVehicleWorld(reader.world!);
     const sample = (adapter: StaticVehicleWorld) => adapter.support(x, ground.y, z, COMPACT)!.surface;
     const seen = (ref: number) => reader.world!.structs.chunks[Math.floor(ref / 65536)]?.kind[ref & 65535] ?? 0;
-    const asphalt = h.reg.index.get("urban:road_asphalt")!, gravel = h.reg.index.get("urban:road_gravel")!;
+    const asphalt = h.reg.index.get("core:road_asphalt")!, gravel = h.reg.index.get("core:road_gravel")!;
     expect([sample(local), sample(remote)]).toEqual([OFFROAD, OFFROAD]);
     const before = h.server.stats.chunkBytes;
     const first = h.world.structs.add(asphalt, x, ground.y + 1 / 32, z, 0, 0, 1500);
@@ -81,7 +81,7 @@ test("a v3 moving vehicle component migrates to v4 without losing its existing p
   let active: Harness | null = null;
   try {
     const h = new Harness({}, 1, 60, { ...hostOptions, dbPath }); active = h;
-    const ground = flatGround(h, 12, 12), car = h.host.spawnVehicle("urban:compact", ground.x + 6, ground.z + 6);
+    const ground = flatGround(h, 12, 12), car = h.host.spawnVehicle("core:compact", ground.x + 6, ground.z + 6);
     expect(car).toBeGreaterThanOrEqual(0);
     const pid = h.world.ents.pid[car]!, record = h.host.records.byPid.get(pid)!;
     // Exact pre-drivetrain v3 layout: sixteen f32 values followed by the grounded byte.

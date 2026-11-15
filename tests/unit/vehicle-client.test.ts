@@ -22,7 +22,7 @@ import { coreRegistry, flatWorld } from "../fixtures/world.ts";
 const rest = Float32Array.from(HUMAN.rest, (n, i) => i % 3 === 1 ? n * 1.13 : n);
 const humanRig: PackRig = { id: "test:proportions", skeleton: HUMAN.id, rest: [...rest] };
 const carRig: PackRig = {
-  id: "urban:compact", skeleton: "urban:compact",
+  id: "core:compact", skeleton: "core:compact",
   names: ["chassis", "wheel_front_left", "wheel_front_right", "wheel_rear_left", "wheel_rear_right", "door_left", "door_right", "steering_wheel"],
   parent: [-1, 0, 0, 0, 0, 0, 0, 0],
   rest: [0, 0, 0, .78, .3, 1.25, -.78, .3, 1.25, .78, .3, -1.25, -.78, .3, -1.25, .84, .76, .65, -.84, .76, .65, .42, .89, .55],
@@ -38,11 +38,11 @@ function mesh(id: string, bone: number, skeleton = HUMAN.id, rig = humanRig.id):
 }
 const sources = SLOT_NAMES.map((part, i) => mesh(`core:human_m/${part}`, i === 0 ? B_HEAD : B_HIPS));
 sources.push(mesh("core:human_m/armor/cloth/torso", B_SPINE), mesh("core:rifle", B_PROP_R));
-sources.push(mesh("urban:compact", 0, carRig.skeleton, carRig.id));
+sources.push(mesh("core:compact", 0, carRig.skeleton, carRig.id));
 const pack = parsePack(buildPack(sources, defaultPalette(), [], [humanRig, carRig]));
 const reg = coreRegistry();
 const survivor = reg.index.get("core:survivor")!;
-const compact = reg.index.get("urban:compact")!;
+const compact = reg.index.get("core:compact")!;
 const colors = new Uint8Array(6);
 
 function fixture() {

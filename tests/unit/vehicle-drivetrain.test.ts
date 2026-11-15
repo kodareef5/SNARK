@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ASPHALT, COMPACT } from "../../content/urban/compact.ts";
+import { ASPHALT, COMPACT } from "../../content/vehicles/compact.ts";
 import { createVehicle, stepVehicle, validateVehicleSpec, type VehicleInput, type VehicleSpec, type VehicleState, type VehicleWorld } from "../../shared/sim/vehicle.ts";
 import { drivetrainShifting, engineTorqueAt, stepDrivetrain, validateDrivetrainSpec, vehicleMass, type DrivetrainInput, type VehicleDrivetrainSpec, type VehicleDrivetrainState } from "../../shared/sim/vehicle-drivetrain.ts";
 

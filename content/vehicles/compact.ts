@@ -21,12 +21,12 @@ export const COMPACT: VehicleSpec = {
   pitchResponse: 0.0095, rollResponse: 0.014, gravity: 18, airDrag: 0.035, dragScale: 0.25,
 };
 
-export const ASPHALT: VehicleSurface = { id: "urban:asphalt", grip: 7, rolling: 0.15, drag: 0.009 };
-export const GRAVEL: VehicleSurface = { id: "urban:gravel", grip: 3.5, rolling: 0.5, drag: 0.018 };
-export const MUD: VehicleSurface = { id: "urban:mud", grip: 1.8, rolling: 1.1, drag: 0.035 };
+export const ASPHALT: VehicleSurface = { id: "asphalt", grip: 7, rolling: 0.15, drag: 0.009 };
+export const GRAVEL: VehicleSurface = { id: "gravel", grip: 3.5, rolling: 0.5, drag: 0.018 };
+export const MUD: VehicleSurface = { id: "mud", grip: 1.8, rolling: 1.1, drag: 0.035 };
 
 export const COMPACT_VEHICLE: VehicleDefinition = {
-  id: "urban:compact", spec: COMPACT,
+  id: "core:compact", spec: COMPACT,
   seats: [
     { id: "driver", driver: true, anchor: [0.42, 0.59, 0.12], entry: [1.25, 0, 0.12] },
     { id: "passenger", anchor: [-0.42, 0.59, 0.12], entry: [-1.25, 0, 0.12] },
@@ -35,8 +35,8 @@ export const COMPACT_VEHICLE: VehicleDefinition = {
 
 /** Uses normal entity health, cargo and ownership; the vehicle controller supplies all movement. */
 export const COMPACT_SPECIES: SpeciesDef = {
-  type:"species", class:"vehicle", id:"urban:compact", aliases:["compact", "car"],
-  mesh:"urban:compact", skeleton:"urban:compact", color:9,
+  type:"species", class:"vehicle", id:"core:compact", aliases:["compact", "car"],
+  mesh:"core:compact", skeleton:"core:compact", color:9,
   radius:.9, height:1.5, eyeHeight:1.11,
   walkSpeed:.01, sprintMul:1, jumpSpeed:.01, still:true,
   mass:1100, slots:24, keeps:1, fists:0,

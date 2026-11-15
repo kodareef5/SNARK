@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { COMPACT_VEHICLE } from "../../content/urban/compact.ts";
+import { COMPACT_VEHICLE } from "../../content/vehicles/compact.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { Body } from "../../shared/sim/character.ts";
 import { stepVehicleBody } from "../../shared/sim/vehicle-body.ts";
@@ -17,23 +17,23 @@ function roadWorld() {
 
 test("only the wheel's actual supporting structure supplies its physical road surface", () => {
   const world = roadWorld(), adapter = new StaticVehicleWorld(world), spec = COMPACT_VEHICLE.spec;
-  const asphalt = reg!.index.get("urban:road_asphalt")!, gravel = reg!.index.get("urban:road_gravel")!;
+  const asphalt = reg!.index.get("core:road_asphalt")!, gravel = reg!.index.get("core:road_gravel")!;
   world.structs.add(asphalt, 36, 1 / 32, 32, 0, 0, 1500);
   world.structs.add(asphalt, 32, 2 + 1 / 32, 32, 0, 0, 1500);
   expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("ground");
   const ref = world.structs.add(asphalt, 32, 1 / 32, 32, 0, 0, 1500);
-  expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("urban:asphalt");
+  expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("asphalt");
   expect(adapter.support(32, 0, 32, spec)!.y).toBeCloseTo(1 / 16, 5);
   world.structs.remove(ref);
   expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("ground");
   world.structs.add(gravel, 32, 1 / 32, 32, 0, 0, 1500);
-  expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("urban:gravel");
+  expect(adapter.support(32, 0, 32, spec)!.surface.id).toBe("gravel");
 });
 
 test("native paving changes acceleration through the same fixed-tick Body adapter used by driving", () => {
   const speeds: number[] = [];
   for (const surface of ["asphalt", "gravel", "mud"]) {
-    const world = roadWorld(), kind = reg!.index.get(`urban:road_${surface}`)!;
+    const world = roadWorld(), kind = reg!.index.get(`core:road_${surface}`)!;
     for (let z = 10; z <= 76; z += 3) for (const x of [30.5, 33.5]) world.structs.add(kind, x, 1 / 32, z, 0, 0, 1500);
     const body = new Body(); body.vehicle = true; body.fuel = 40; body.x = 32; body.y = 1 / 16; body.z = 14;
     for (let tick = 0; tick < 90; tick++) stepVehicleBody(world, body, 0, 127, 0, COMPACT_VEHICLE);
@@ -47,7 +47,7 @@ test("native paving changes acceleration through the same fixed-tick Body adapte
 
 test("malformed road physics is rejected by content compilation before joining a world", () => {
   for (const value of [null, { id: "bad", grip: NaN, rolling: .1, drag: .01 }, { id: "bad", grip: 5, rolling: -1, drag: .01 }]) {
-    const defs = CORE_CONTENT.map(d => d.id === "urban:road_asphalt" ? { ...d, vehicleSurface: value } : d);
+    const defs = CORE_CONTENT.map(d => d.id === "core:road_asphalt" ? { ...d, vehicleSurface: value } : d);
     const result = compileContent(defs as typeof CORE_CONTENT);
     expect(result.registry).toBeNull(); expect(result.errors.some(e => e.includes("vehicleSurface"))).toBe(true);
   }

@@ -292,7 +292,7 @@ export function compactRig():PackRig {
   return{id:COMPACT.id,skeleton:COMPACT.id,names:[...COMPACT.bones],parent:COMPACT.bones.map((_,i)=>i===0?-1:0),rest:COMPACT.pivots.flatMap(v=>[...v]),sockets:Object.entries(COMPACT.anchors).map(([name,v])=>({name,bone:0,x:v[0],y:v[1],z:v[2]}))};
 }
 export interface CompactVisual{id:string;paintTint:[number,number,number];flatPaint:[number,number,number]}
-export const COPPER_COMPACT:CompactVisual={id:"urban:compact/copper",paintTint:[3.1,.62,.34],flatPaint:[132,108,75]};
+export const COPPER_COMPACT:CompactVisual={id:"core:compact/copper",paintTint:[3.1,.62,.34],flatPaint:[132,108,75]};
 export function compactMesh(visual?:CompactVisual):SourceMesh {
   const lods=[0,1,2,3].map(shape);
   if(visual){const color=nearestColour(PALETTE,...visual.flatPaint);for(const lod of lods)for(let t=0;t<lod.indices.length/3;t++)if(lod.sections![t]===0)for(let c=0;c<3;c++)lod.colors[lod.indices[t*3+c]!] = color;}

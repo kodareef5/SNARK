@@ -27,7 +27,7 @@ test("the engine's bola restriction gates vehicle entry both before and during i
   try {
     const s = h.join("rooted-driver"); h.run(500);
     const c = h.client(s)!, rec = h.host.records.byPid.get(c.pid)!;
-    const spawn = h.world.spawn, car = h.host.spawnVehicle("urban:compact", spawn.x - 1.6, spawn.z - .12, rec.team);
+    const spawn = h.world.spawn, car = h.host.spawnVehicle("core:compact", spawn.x - 1.6, spawn.z - .12, rec.team);
     const bola = h.reg.index.get("core:entangled")!;
     expect(h.host.entangle.give(rec, bola, 0)).toBe(true);
     expect(h.host.urban.mount(c, car)).toBe(RESULT_DENIED);

@@ -1,6 +1,6 @@
 /** Measured authoring contract. Metres, +Y up, +Z forward, +X driver-left; origin on the ground. */
 export const COMPACT = {
-  id: "urban:compact",
+  id: "core:compact",
   envelope: { min: [-0.9, 0, -2], max: [0.9, 1.5, 2] },
   wheelRadius: 0.3,
   wheelWidth: 0.24,

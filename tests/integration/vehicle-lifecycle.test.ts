@@ -24,7 +24,7 @@ function setup(dbPath?: string) {
   h.say(bob, `tp ${x - 1.6} ${z + 0.12}`);
   const me = h.client(ada)!, other = h.client(bob)!;
   const owner = h.host.records.byPid.get(me.pid)!.team;
-  const car = h.host.spawnVehicle('urban:compact', x, z, owner, 0);
+  const car = h.host.spawnVehicle('core:compact', x, z, owner, 0);
   expect(car).toBeGreaterThanOrEqual(0);
   return { h, me, other, car, x, z, owner, ground };
 }
@@ -47,7 +47,7 @@ test('a destroyed car releases its driver and passenger and frees its seats for 
       expect(h.host.urban.riding(c)).toBe(false);
     }
     // The survivor is free to use the next car normally.
-    const next = h.host.spawnVehicle('urban:compact', x, z + 8, owner, 0);
+    const next = h.host.spawnVehicle('core:compact', x, z + 8, owner, 0);
     h.say(h.sessions[0]!, `tp ${x + 1.6} ${z + 8.12}`); h.run(100);
     expect(h.host.urban.mount(me, next)).toBe(RESULT_OK);
     h.run(800);
@@ -86,7 +86,7 @@ test('a saved car from another build or a retuned definition loads clamped inste
   let active: Harness | null = null;
   try {
     const { h, car, x, z, owner } = setup(dbPath); active = h;
-    const second = h.host.spawnVehicle('urban:compact', x, z + 8, owner, 0);
+    const second = h.host.spawnVehicle('core:compact', x, z + 8, owner, 0);
     const ents = h.world.ents, pid = ents.pid[car]!, pid2 = ents.pid[second]!;
     h.run(100);
     // A v4 component whose fuel and gear exceed the current definition.
@@ -107,7 +107,7 @@ test('a saved car from another build or a retuned definition loads clamped inste
     h.host.records.dirty.add(pid); h.host.records.dirty.add(pid2);
     h.host.shutdown(); active = null;
     const restored = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [], dbPath }); active = restored;
-    const spec = restored.reg.vehicle[restored.reg.index.get('urban:compact')!]!.spec;
+    const spec = restored.reg.vehicle[restored.reg.index.get('core:compact')!]!.spec;
     const e = restored.host.records.entOf.get(pid)!, e2 = restored.host.records.entOf.get(pid2)!;
     expect(restored.world.ents.fuel[e]).toBe(Math.fround(spec.fuelCapacity));
     expect(restored.world.ents.vehicleGear[e]).toBe(spec.drivetrain!.forwardRatios.length);
@@ -130,9 +130,9 @@ test('content refuses vehicle seats the seat authority would refuse at spawn', (
   const broken = (seats: (s: VehicleSeat[]) => VehicleSeat[]): string[] => compileContent(CORE_CONTENT.map(d =>
     d.type === 'species' && d.vehicle ? { ...d, vehicle: { ...d.vehicle, seats: seats([...d.vehicle.seats]) } } : d)).errors;
   expect(broken(s => s)).toEqual([]);
-  expect(broken(s => s.map(seat => seat.driver ? { ...seat, id: 'Driver' } : seat))[0]).toContain('urban:compact');
+  expect(broken(s => s.map(seat => seat.driver ? { ...seat, id: 'Driver' } : seat))[0]).toContain('core:compact');
   const many = (s: VehicleSeat[]) => [s[0]!, ...Array.from({ length: 16 }, (_, i) => ({ ...s[1]!, id: `rear_${i}` }))];
-  expect(broken(many)[0]).toContain('urban:compact');
+  expect(broken(many)[0]).toContain('core:compact');
 });
 
 test('a passenger adopts its pinned seat from snapshots instead of replaying a correction for each one', () => {
