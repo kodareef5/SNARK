@@ -467,3 +467,13 @@ test("a dodo's body lying dead never calls or pecks, however long it lies in vie
   for (let k = 0; k < 90 * TICK_RATE; k++) frame();
   expect(heard).toEqual([]);
 });
+
+test("a dodo carried in a survivor's arms takes no steps of its own as its carrier walks", () => {
+  const { frame, heard, st, remote } = hearOne(DODO, (r) => (r.cue[0] = CUE_HELD));
+  for (let k = 0; k < 30; k++) frame();
+  heard.length = 0;
+  // The server gives a held body its carrier's speed, and says it stands on something.
+  st.setMotion(-1.2, 0, Math.PI / 2, 0);
+  for (let k = 0; k < 8 * TICK_RATE; k++) frame(() => (remote.x[0]! -= 1.2 / TICK_RATE));
+  expect(heard.filter((h) => h.startsWith("step"))).toEqual([]);
+});

@@ -162,7 +162,8 @@ export class CreatureSounds {
       for (const s of book.idle) if (s >= 0) want(s, d);
       st.unpack(remote.anim[i]!, remote.cue[i]!);
       st.seed = bodySeed(id);
-      const ground = st.grounded && st.mode !== MODE_SWIM && !st.out ? groundAt(hf, x, y, z) : -1;
+      // A body held in a survivor's arms moves at its carrier's speed, and its feet are off the ground.
+      const ground = st.grounded && st.mode !== MODE_SWIM && !st.out && !st.held ? groundAt(hf, x, y, z) : -1;
       if (ground >= 0 && d < STEP_REACH && book.step[ground]! >= 0) want(book.step[ground]!, d);
       let b = this.bodies.get(id);
       const first = !b;
