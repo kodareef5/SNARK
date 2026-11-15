@@ -31,15 +31,15 @@ test("the bow and crossbow weigh 8, and the crossbow reloads in 2.61 s; the bow'
   expect([reg.uses[at("bow")], reg.uses[at("crossbow")]]).toEqual([50, 100]);
   expect(item("crossbow").weapon!.reload).toBe(2.61);
   expect(reg.weapon[at("crossbow")]!.reloadTicks).toBe(Math.round(2.61 * TICK_RATE));
-  // DEV124: the infobox's reloadtime of 4.3 is not taken.
+  // DEV128: the infobox's reloadtime of 4.3 is not taken.
   expect(item("bow").weapon!.reload).toBe(0.66);
-  // A stone arrow from the crossbow does 95; a tranquilizer arrow 34.5 against ARK's 35 (DEV127).
+  // A stone arrow from the crossbow does 95; a tranquilizer arrow 34.5 against ARK's 35 (DEV131).
   expect([Math.round(reg.power[at("crossbow")]! * 55 * 100) / 100, Math.round(reg.power[at("crossbow")]! * 20 * 100) / 100]).toEqual([95, 34.55]);
 });
 
 test("the bow takes 10 s and gives 20 experience; the crossbow 36, both from the same wood and fiber at their levels (Bow, Crossbow)", () => {
   expect([made("bow"), engram("bow")]).toEqual([{ needs: "15 wood, 50 fiber", seconds: 10, xp: 20, count: 1, at: "hand" }, [10, 11]]);
-  // ARK makes it at the smithy, which is not built (DEV126); the page gives no crafting time (DEV125).
+  // ARK makes it at the smithy, which is not built (DEV130); the page gives no crafting time (DEV129).
   expect([made("crossbow"), engram("crossbow")]).toEqual([{ needs: "7 ingot, 10 wood, 35 fiber", seconds: 10, xp: 36, count: 1, at: "hand" }, [25, 12]]);
 });
 
@@ -63,14 +63,14 @@ test("a stone arrow is one a crafting in half a second for 2 points; a tranquili
 });
 
 test("a flame arrow is a stone arrow and one more thing, at level 26, in 1 s; gunpowder stands for propellant (Flame Arrow)", () => {
-  // DEV128: ARK's is 1 stone arrow and 1 propellant, Scorched Earth's.
+  // DEV132: ARK's is 1 stone arrow and 1 propellant, Scorched Earth's.
   expect([made("arrow_flame"), engram("arrow_flame")]).toEqual([{ needs: "1 arrow_stone, 1 gunpowder", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [26, 15]]);
 });
 
 test("rounds weigh 0.1 and come two a crafting: the pistol's in 1 s for 1.6 experience, the rifle's for 3.2 (Simple Bullet, Simple Rifle Ammo)", () => {
   expect([carried("round_pistol"), carried("round_rifle")]).toEqual([[0.1, 100], [0.1, 100]]);
   expect([made("round_pistol"), engram("round_pistol")]).toEqual([{ needs: "1 ingot, 6 gunpowder", seconds: 1, xp: 1.6, count: 2, at: "hand" }, [34, 6]]);
-  // The page gives no crafting time (DEV125).
+  // The page gives no crafting time (DEV129).
   expect([made("round_rifle"), engram("round_rifle")]).toEqual([{ needs: "2 ingot, 12 gunpowder", seconds: 2, xp: 3.2, count: 2, at: "hand" }, [35, 6]]);
 });
 
@@ -78,14 +78,14 @@ test("a tranquilizer dart takes a rifle round; both darts take 1 s, give 0.2 exp
   expect([carried("dart_tranq"), carried("dart_shock"), reg.damage[at("dart_tranq")], reg.damage[at("dart_shock")]]).toEqual([[0.2, 100], [0.2, 100], 26, 26]);
   expect([reg.ammoTorpor[at("dart_tranq")], reg.ammoTorporOver[at("dart_tranq")], reg.ammoTorpor[at("dart_shock")], reg.ammoTorporOver[at("dart_shock")]]).toEqual([6, 2.5, 12, 5]);
   expect([made("dart_tranq"), engram("dart_tranq")]).toEqual([{ needs: "3 narcotic, 2 ingot, 1 round_rifle", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [62, 30]]);
-  // DEV129: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart, at the fabricator.
+  // DEV133: ARK's is 3 bio toxin, 2 ingots and a tranquilizer dart, at the fabricator.
   expect([made("dart_shock"), engram("dart_shock")]).toEqual([{ needs: "6 narcotic, 4 ingot, 4 gunpowder", seconds: 1, xp: 0.2, count: 1, at: "hand" }, [96, 30]]);
 });
 
 test("attachments weigh 0.1, at ARK's levels and experience; the flashlight's 52 and the laser's 59 are Evolved's (Scope, Silencer, Flashlight and Laser Attachment)", () => {
   expect(["scope", "silencer", "flashlight", "laser"].map(carried)).toEqual([[0.1, 1], [0.1, 1], [0.1, 1], [0.1, 1]]);
   expect(["scope", "silencer", "flashlight", "laser"].map(engram)).toEqual([[35, 13], [41, 13], [52, 18], [59, 24]]);
-  // The scope's page gives 10 s; the others' give none (DEV125). What is missing stands in or waits (DEV130).
+  // The scope's page gives 10 s; the others' give none (DEV129). What is missing stands in or waits (DEV134).
   expect(["scope", "silencer", "flashlight", "laser"].map(made)).toEqual([
     { needs: "40 ingot, 20 stone", seconds: 10, xp: 196, count: 1, at: "hand" },
     { needs: "50 ingot, 20 chitin, 10 hide", seconds: 6, xp: 196, count: 1, at: "hand" },
@@ -96,7 +96,7 @@ test("attachments weigh 0.1, at ARK's levels and experience; the flashlight's 52
 
 test("a grenade weighs 0.5, stacks to 10, goes off 5 s after the pin and is learned at level 38 for 45.6 experience (Grenade)", () => {
   expect([carried("grenade"), reg.fuseTicks[at("grenade")]]).toEqual([[0.5, 10], 5 * TICK_RATE]);
-  // Its 4 oil wait for oil (DEV130); its page gives no crafting time (DEV125).
+  // Its 4 oil wait for oil (DEV134); its page gives no crafting time (DEV129).
   expect([made("grenade"), engram("grenade")]).toEqual([{ needs: "15 fiber, 20 stone, 30 gunpowder, 5 hide, 2 ingot", seconds: 8, xp: 45.6, count: 1, at: "hand" }, [38, 20]]);
   // Its damage is W6's: 788 within 5 m until it does ARK's 175 within 6 m with a structure factor of 4.5 (D435, DEV31).
   expect([reg.damage[at("grenade")], reg.blast[at("grenade")]]).toEqual([788, 5]);

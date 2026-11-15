@@ -339,7 +339,7 @@ built.
 
 - **Defences: turrets, spikes, and explosives that are set.** `structure/defence`.
 - **Loot: supply crates, fishing, quality, item stat clamps, custom recipes.** `prop/crate`, `loot` (partly built), `species.loot`.
-- **Small behaviours of things already built.** `prop/cloud`, `damage` (partly built), `game`, `item.weapon.auto`, `item.weapon.reloadEach`, `item.weapon.melee`, `item.weapon.spread`, `item.weapon.recoil`, `item.weapon.structures`, `item.weapon.cloud`, `item.ammo.pellets`, `item.ammo.falloff`, `item.ammo.blast`, `item.ammo.pierce`, `item.ammo.light`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `buff.only`, `buff.survivorSeconds`, `buff.after`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
+- **Small behaviours of things already built.** `prop/cloud`, `damage` (partly built), `game`, `item.weapon.spread`, `item.weapon.recoil`, `item.weapon.structures`, `item.weapon.cloud`, `item.ammo.pellets`, `item.ammo.falloff`, `item.ammo.blast`, `item.ammo.pierce`, `item.ammo.light`, `item.description`, `item.folder`, `species.attacks`, `species.saddle`, `species.buffs`, `engram.requires`, `buff.good`, `buff.only`, `buff.survivorSeconds`, `buff.after`, `damage.label`, `damage.torpor`, `damage.trueShare`, `damage.melee`.
 - **Maps as content: a map, its zones and what lives in them.** `map` (partly built), `engram.group`, `map.label`, `map.game`.
 - **Crafting stations: what is made where, and how fast.** `structure/station` (partly built).
 - **Skins, dyes, costumes and shields.** `item/shield`, `item/costume`, `item/skin`, `item/dye`.

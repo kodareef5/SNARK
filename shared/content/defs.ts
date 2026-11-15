@@ -319,7 +319,10 @@ export interface WeaponFacet {
   readonly power?: number;
   /** Rounds it holds. Defaults to 1. */
   readonly clip?: number;
-  /** Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. */
+  /**
+   * Seconds to reload (for a bow, to nock the next arrow), to draw a bow fully, and between two shots or swings. A thrown
+   * weapon with a draw is a charged throw: held as a bow is drawn, it leaves on release, its draw how long it was held.
+   */
   readonly reload?: number;
   readonly draw?: number;
   readonly interval?: number;
@@ -336,17 +339,22 @@ export interface WeaponFacet {
   /** Mesh held in the hand, and how the body holds it. */
   readonly mesh?: string;
   readonly hold: "tool" | "bow" | "rifle" | "pistol" | "spear";
-  // Stubs of planning/reference/weapons-plan.md: declared, checked and compiled, and read by nothing until the project
-  // named builds them (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
-  /** W2: holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
+  // Fire modes and the blow (planning/reference/weapons-plan.md, M4, built by W2). Omitted, a weapon fires once a press,
+  // reloads its whole clip in one go and strikes with bare hands.
+  /** Holding the primary button fires again every `interval`, as ARK's fabricated pistol and assault rifle do. */
   readonly auto?: boolean;
-  /** W2: a reload loads one round each `reload` seconds until full, and the primary button ends it after the round under way. */
+  /**
+   * A reload loads one round each `reload` seconds (at most 4) until full, and a press of the primary button ends it after
+   * the round under way, firing then if the button is still down.
+   */
   readonly reloadEach?: boolean;
   /**
-   * W2: a bow's or gun's blow with the melee button: damage at primitive quality, torpor as a multiple of it, reach in metres
+   * A bow's or gun's blow with the melee button: damage at primitive quality, torpor as a multiple of it, reach in metres
    * (2.6 where not given), and the seconds a blow takes (a swing's where not given). ARK's is 10 and 14 torpor (Base Damage).
    */
   readonly melee?: { readonly damage: number; readonly torpor?: number; readonly reach?: number; readonly interval?: number };
+  // Stubs of the same plan: declared, checked and compiled, and read by nothing until the project named builds them
+  // (classes.ts lists them under the weapon facet's `stubs`). Omitted, a weapon does what all do today.
   /**
    * W1: the cone a shot leaves within, as half angles in degrees: from the hip and aimed at rest, what full speed adds, what
    * each shot adds, and the degrees a second it narrows back. Our own numbers (ARK publishes none).

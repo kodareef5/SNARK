@@ -38,7 +38,7 @@ export interface WeaponParams {
   /** Melee and thrown: the whole swing, and the tick of it that lands. For a gun, swingTicks is the ticks between shots. */
   readonly swingTicks: number;
   readonly strikeTick: number;
-  /** Bow: ticks to full draw, and the fewest it can be loosed after. */
+  /** Bow, and a thrown weapon that is charged: ticks to full draw, and the fewest it can be loosed after. */
   readonly drawTicks: number;
   readonly minDrawTicks: number;
   /** Also the ticks to nock the next arrow. */
@@ -47,15 +47,15 @@ export interface WeaponParams {
   readonly clip: number;
   /** Works under water. */
   readonly wet: boolean;
-  // Stubs of planning/reference/weapons-plan.md, compiled from the weapon's facet and read by nothing yet. Each is absent
-  // where the facet does not say, which is what every weapon does today; the project named builds it.
-  /** W2: the held primary button fires every `swingTicks` (M4). */
+  // The fire modes of planning/reference/weapons-plan.md, M4 (W2). Each is absent where the facet does not say.
+  /** The held primary button fires every `swingTicks`. */
   readonly auto?: boolean;
-  /** W2: a reload adds one round each `reloadTicks` until full, and the primary button ends it after the round under way (M4). */
+  /** A reload adds one round each `reloadTicks` until full, and the primary button ends it after the round under way. */
   readonly reloadEach?: boolean;
-  /** W2: the gun's blow with the melee button: its whole swing and the tick of it that lands (M4). */
+  /** A bow's or gun's blow with the melee button: its whole swing and the tick of it that lands. */
   readonly meleeTicks?: number;
   readonly meleeStrikeTick?: number;
+  // Stubs of the same plan, compiled from the weapon's facet and read by nothing yet; the project named builds each.
   /**
    * W1: the cone a shot leaves within, half angles in degrees (M1): from the hip and aimed at rest, what full speed adds,
    * what each shot adds (bloom), and how much it narrows back a tick.
@@ -89,6 +89,11 @@ export const actionOut = {
 /**
  * `buttons` are held and `pressed` went down this tick. The caller passes `pressed` because each side already knows it.
  * A reload starts only if it would leave more rounds in the weapon than it has (`b.reloadTo`, which the server keeps).
+ *
+ * The fire modes and reloads of planning/reference/weapons-plan.md, M4: an `auto` gun fires every `swingTicks` while its
+ * button is held; a `reloadEach` reload loads a round each `reloadTicks`, and a press of the primary button makes the round
+ * under way its last; a bow or gun with `meleeTicks` strikes with the melee button; a thrown weapon with `drawTicks` is held
+ * like a bow and leaves on release, `out.draw` saying how long it was held.
  */
 export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponParams): void {
   const out = actionOut;
@@ -105,66 +110,105 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
   }
   // Under water only a `wet` weapon works.
   const usable = w.wet || b.mode !== MODE_SWIM;
+  // A bow's or gun's swing is its blow, which has its own timings.
+  const ranged = w.kind === W_BOW || w.kind === W_GUN;
 
   if (b.act === ACT_EQUIP) {
     if (++b.actTicks < EQUIP_TICKS) return;
     b.act = ACT_NONE;
   } else if (b.act === ACT_SWING) {
     b.actTicks++;
-    if (b.actTicks === w.strikeTick) {
+    if (b.actTicks === (ranged ? (w.meleeStrikeTick ?? w.strikeTick) : w.strikeTick)) {
       if (w.kind === W_THROWN) {
         out.fire = true;
         out.draw = 1;
       } else out.strike = true;
     }
     // A held button goes straight into the next swing, on the tick this one ends.
-    if (b.actTicks < w.swingTicks) return;
+    if (b.actTicks < (ranged ? (w.meleeTicks ?? w.swingTicks) : w.swingTicks)) return;
     b.act = ACT_NONE;
   }
   if (b.act === ACT_DRAW || b.act === ACT_HOLD) {
-    // The melee button lets the string down without loosing, and so does going under water.
+    // The melee button lets the string down without loosing, and so does going under water. A bow with a blow strikes
+    // with it instead ("It is possible to cancel a shot by performing a weapon melee attack", Bow).
     if ((pressed & BTN_MELEE) !== 0 || !usable) {
-      b.act = ACT_NONE;
+      b.act = usable && w.meleeTicks !== undefined ? ACT_SWING : ACT_NONE;
+      b.actTicks = 0;
       return;
     }
     if ((buttons & BTN_PRIMARY) !== 0) {
       if (b.act === ACT_DRAW && ++b.actTicks >= w.drawTicks) b.act = ACT_HOLD;
       return;
     }
-    // The button was let go. The arrow is loosed if it was drawn far enough, else let down.
+    // The button was let go. The arrow is loosed if it was drawn far enough, else let down. A thrown thing is its own round.
     const drawn = b.act === ACT_HOLD ? w.drawTicks : b.actTicks;
+    const thrown = w.kind === W_THROWN;
     b.act = ACT_NONE;
-    if (drawn >= w.minDrawTicks && b.rounds > 0) {
+    if (drawn >= w.minDrawTicks && (thrown || b.rounds > 0)) {
       out.fire = true;
       out.draw = w.drawTicks > 0 ? drawn / w.drawTicks : 1;
-      b.rounds--;
+      if (!thrown) b.rounds--;
       b.act = ACT_COOL;
       b.actTicks = 0;
     }
     return;
   }
   if (b.act === ACT_RELOAD) {
-    if (++b.actTicks >= w.reloadTicks) {
-      b.act = ACT_NONE;
-      b.rounds = reloadTo > b.rounds ? reloadTo : b.rounds;
+    if (w.reloadEach !== true) {
+      if (++b.actTicks >= w.reloadTicks) {
+        b.act = ACT_NONE;
+        b.rounds = reloadTo > b.rounds ? reloadTo : b.rounds;
+        out.reloaded = true;
+      }
+      return;
+    }
+    // A round at a time. `actTicks` counts toward the round under way; once the primary button is pressed it counts on from
+    // `reloadTicks` toward the same round, which is then the last. The registry keeps twice `reloadTicks` within a byte.
+    let last = b.actTicks >= w.reloadTicks;
+    if (!last && (pressed & BTN_PRIMARY) !== 0) {
+      b.actTicks += w.reloadTicks;
+      last = true;
+    }
+    if (++b.actTicks < (last ? 2 * w.reloadTicks : w.reloadTicks)) return;
+    b.actTicks = 0;
+    if (reloadTo > b.rounds) {
+      b.rounds++;
       out.reloaded = true;
     }
-    return;
+    if (!last && b.rounds < reloadTo && b.rounds < w.clip) return;
+    b.act = ACT_NONE;
+    if (!last) return;
+    // The press that cut it short fires now that the round is in, if the button is still down.
+    pressed |= buttons & BTN_PRIMARY;
   }
   if (b.act === ACT_COOL) {
     if (++b.actTicks < w.swingTicks) return;
     b.act = ACT_NONE;
-    // Falls through, so an empty weapon starts its reload on the tick the pause ends.
+    // Falls through, so an empty weapon starts its reload on the tick the pause ends, and an automatic one fires again.
   }
 
-  if (w.kind === W_MELEE || w.kind === W_THROWN) {
+  if (w.kind === W_MELEE || (w.kind === W_THROWN && w.drawTicks === 0)) {
     if ((buttons & (BTN_PRIMARY | BTN_MELEE)) !== 0 && usable) {
       b.act = ACT_SWING;
       b.actTicks = 0;
     }
     return;
   }
-  // A bow or a gun. An empty one reloads by itself if there is anything to reload with.
+  if (w.kind === W_THROWN) {
+    // A charged throw is held as a bow is drawn.
+    if ((buttons & BTN_PRIMARY) !== 0 && usable) {
+      b.act = ACT_DRAW;
+      b.actTicks = 0;
+    }
+    return;
+  }
+  // A bow or a gun. The melee button strikes with its blow, once a press.
+  if ((pressed & BTN_MELEE) !== 0 && w.meleeTicks !== undefined && usable) {
+    b.act = ACT_SWING;
+    b.actTicks = 0;
+    return;
+  }
+  // An empty one reloads by itself if there is anything to reload with.
   const wantsReload = b.rounds === 0 || ((pressed & BTN_RELOAD) !== 0 && b.rounds < w.clip);
   if (wantsReload && reloadTo > b.rounds) {
     b.act = ACT_RELOAD;
@@ -177,8 +221,8 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
       b.act = ACT_DRAW;
       b.actTicks = 0;
     }
-  } else if ((pressed & BTN_PRIMARY) !== 0) {
-    // A gun fires once for each press.
+  } else if ((pressed & BTN_PRIMARY) !== 0 || (w.auto === true && (buttons & BTN_PRIMARY) !== 0)) {
+    // A gun fires once for each press; an automatic one again each pause while the button is held.
     out.fire = true;
     out.draw = 1;
     b.rounds--;
@@ -186,4 +230,3 @@ export function stepAction(b: Body, buttons: number, pressed: number, w: WeaponP
     b.actTicks = 0;
   }
 }
-
