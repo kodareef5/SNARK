@@ -14,7 +14,8 @@ import { OCCASIONS, type DetailEffect, type DetailEntry, type DetailPicture, typ
 import { Rng } from "../../../shared/rng.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { sortU32 } from "../../../shared/sort.ts";
-import { vehiclePoint, vehicleRotation } from "../../../shared/sim/vehicle-frame.ts";
+import { rayVehicle, vehiclePoint, vehicleRotation } from "../../../shared/sim/vehicle-frame.ts";
+import type { VehicleDefinition } from "../../../shared/sim/vehicle.ts";
 import { quatRotate } from "../../../shared/math/quat.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../../shared/world/ray.ts";
@@ -57,6 +58,7 @@ interface Book {
   colour: number;
   height: number;
   radius: number;
+  vehicle: VehicleDefinition | null;
 }
 
 interface Waiting {
@@ -119,7 +121,7 @@ export class Details {
         answers[o] = cue.effects.map((entry) => ({ entry, effect: this.effects[entry.effect]!, delay: entry.at === "down" ? (moments[o] ?? 0) : entry.at === "now" ? 0 : entry.at }));
         listens[kind]! |= 1 << OCCASIONS.indexOf(o);
       }
-      return { anim, answers, colour: d!.type === "species" ? d!.color : 0, height: reg.bodyHeight[kind]!, radius: reg.bodyRadius[kind]! };
+      return { anim, answers, colour: d!.type === "species" ? d!.color : 0, height: reg.bodyHeight[kind]!, radius: reg.bodyRadius[kind]!, vehicle: reg.vehicle[kind] ?? null };
     });
     this.occasions = new Occasions(
       this.books.map((b) => b?.anim ?? null),
@@ -243,14 +245,27 @@ export class Details {
     if (w.origin) { at[0] = w.origin.x; at[1] = w.origin.y; at[2] = w.origin.z; }
     else {
     let solved: Solved | null = null;
+    let rotated = false;
     const rig = book.anim.rig;
-    if (h.corpse) solved = h.corpse.solved;
+    if (h.corpse) {
+      const c = h.corpse;
+      solved = c.solved;
+      [x, y, z] = [c.x, c.y, c.z];
+      if (c.rigid) {
+        vehicleRotation({ ...c, pitch: 0, roll: 0 }, this.rotation);
+        rotated = true;
+      }
+    }
     else {
       const i = remote ? this.index.get(h.id) : undefined;
       const st = this.st;
       if (i !== undefined) {
         const r = remote!;
         [x, y, z, yaw] = [r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!];
+        if (this.rotorKinds[h.kind]) {
+          vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! }, this.rotation);
+          rotated = true;
+        }
         st.unpack(r.anim[i]!, r.cue[i]!);
         if (r.grown[i] !== 0) size = youngScale(this.birth[h.kind]!, r.span[i]!, r.grown[i]!, r.tick);
       } else st.unpack(h.anim, h.cue);
@@ -265,6 +280,11 @@ export class Details {
     }
     const [s, c] = [Math.sin(yaw), Math.cos(yaw)];
     const world = (mx: number, my: number, mz: number): void => {
+      if (rotated) {
+        quatRotate(this.rotation, 0, mx * size, my * size, mz * size, at, 0);
+        at[0] += x; at[1] += y; at[2] += z;
+        return;
+      }
       at[0] = x + (c * mx + s * mz) * size;
       at[1] = y + my * size;
       at[2] = z + (c * mz - s * mx) * size;
@@ -273,7 +293,18 @@ export class Details {
     else if (from === "hit") {
       world(solved.pos[0]!, book.height * 0.55, solved.pos[2]!);
       const [cx, cz] = [at[0]!, at[2]!];
-      if (h.fromX === h.fromX) {
+      if (rotated && book.vehicle?.movement === "rotor") {
+        // The impact surface follows the cabin in three dimensions, including an inverted aircraft.
+        let [sx, sy, sz] = [h.fromX, h.fromY - .6, h.fromZ];
+        if (!Number.isFinite(sx)) {
+          const a = rng.float() * Math.PI * 2, dy = rng.float() * 2 - 1, r = Math.sqrt(1 - dy * dy);
+          [sx, sy, sz] = [cx + Math.cos(a) * r * 10, at[1]! + dy * 10, cz + Math.sin(a) * r * 10];
+        }
+        const dx = cx - sx, dy = at[1]! - sy, dz = cz - sz, len = Math.hypot(dx, dy, dz) || 1;
+        [ox, oy, oz] = [dx / len, dy / len, dz / len];
+        const t = rayVehicle(book.vehicle, x, y, z, yaw, sx, sy, sz, ox, oy, oz, book.height, { pitch: 0, roll: 0, qx: this.rotation[0]!, qy: this.rotation[1]!, qz: this.rotation[2]!, qw: this.rotation[3]! });
+        if (Number.isFinite(t)) [at[0], at[1], at[2]] = [sx + ox * t, sy + oy * t, sz + oz * t];
+      } else if (h.fromX === h.fromX) {
         // The side of the body that faces whoever struck it, and away from them.
         const [dx, dz] = [h.fromX - cx, h.fromZ - cz];
         const l = Math.hypot(dx, dz) || 1;
