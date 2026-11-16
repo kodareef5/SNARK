@@ -1,4 +1,6 @@
 // Authored visuals of a moored sail assembly. They neither collide nor provide propulsion.
+import { detCos, detSin } from "../math/scalar.ts";
+
 export type SailPoint = readonly [number, number, number];
 
 export interface SailBand {
@@ -64,13 +66,13 @@ export function validateSailVisualRig(value: unknown): readonly string[] {
       if ([x!, y!, z!].some(a => Math.abs(dot(a, a) - 1) > 1e-5) || Math.abs(dot(x!, y!)) > 1e-5 || Math.abs(dot(x!, z!)) > 1e-5 || Math.abs(dot(y!, z!)) > 1e-5 || Math.abs(dot(cross, z!) - 1) > 1e-5) bad("basis must be right-handed and orthonormal");
     }
     const bones = entry.bones;
-    if (!Array.isArray(bones) || bones.length < 2 || bones.length > 256 || !bones.every(name) || new Set(bones).size !== bones.length || bones[0] !== "root") { bad("bones must uniquely name root and at most 255 following bones"); return; }
+    if (!Array.isArray(bones) || bones.length < 2 || bones.length > 127 || !bones.every(name) || new Set(bones).size !== bones.length || bones[0] !== "root") { bad("bones must uniquely name root and at most 126 following bones"); return; }
     total += bones.length;
     if (entry.bandAxis !== "y" && entry.bandAxis !== "z") bad("bandAxis must be y or z");
     if (entry.foldSign !== -1 && entry.foldSign !== 1) bad("foldSign must be -1 or 1");
     if (!finite(entry.stackStep, .0001, .1)) bad("stackStep must be 0.0001 to 0.1 metres");
     const bands = entry.bands, used = new Set<number>([0]); let end = 0;
-    if (!Array.isArray(bands) || bands.length < 1 || bands.length > 254) bad("bands must contain one to 254 folds");
+    if (!Array.isArray(bands) || bands.length < 1 || bands.length > 126) bad("bands must contain one to 126 folds");
     else for (const band of bands) {
       if (!object(band) || !finite(band.index, 1, bones.length - 1) || !Number.isInteger(band.index) || used.has(band.index) || bones[band.index] !== band.bone || !finite(band.lower, 0, 256) || !finite(band.upper, 0, 256) || Math.abs(band.lower - end) > 1e-6 || band.upper <= band.lower || (typeof entry.stackStep === "number" && entry.stackStep >= band.upper - band.lower)) { bad("bands must be contiguous positive spans with distinct matching bone indices"); break; }
       used.add(band.index); end = band.upper;
@@ -81,7 +83,7 @@ export function validateSailVisualRig(value: unknown): readonly string[] {
       else {
         used.add(bones.indexOf(gaff.bone));
         const dy = gaff.peak[1]! - gaff.throat[1]!, dz = gaff.peak[2]! - gaff.throat[2]!;
-        if (dy <= 0 || dz <= 0 || Math.abs(gaff.peak[0]! - gaff.throat[0]!) > 1e-6 || Math.abs(Math.atan2(dy, dz) - gaff.lowerAngle) > 1e-6) bad("gaff must rise aft within its local YZ plane");
+        if (dy <= 0 || dz <= 0 || Math.abs(gaff.peak[0]! - gaff.throat[0]!) > 1e-6 || Math.abs(detSin(gaff.lowerAngle) * dz - detCos(gaff.lowerAngle) * dy) > 1e-5 * Math.hypot(dy, dz)) bad("gaff must rise aft within its local YZ plane");
       }
     }
     if (used.size !== bones.length) bad("every non-root bone must have a fold or gaff pose");
