@@ -441,23 +441,26 @@ export function skyFrame(hour: number, sky: Sky, frame: Float32Array): void {
   }
   frame[f.casting] = discUp(h);
   frame[f.skyScale] = blend[LIGHT_FLOATS - 1]!;
+  frame[f.look] = sunAt[0]! / Math.max(flat, 1e-6);
+  frame[f.look + 1] = sunAt[2]! / Math.max(flat, 1e-6);
+  frame[f.look + 2] = (sliceCoord(Math.asin(Math.max(-1, Math.min(1, sunAt[1]!))) / DEG, isEvening(sunAt)) * (SKY_SLICES - 1) + 0.5) / SKY_SLICES;
 }
 
 const g = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
-/** The table's lookup as GLSL, the twin of `domeLight`: `skyLook` gives the dome in the table's units for a view and a sun. */
+/**
+ * The table's lookup as GLSL, the twin of `domeLight` under fTrueSun, after the frame block, whose fLook holds what
+ * hangs on the sun alone: `skyAt` gives the dome in the table's units for a way on the ground and the table's
+ * coordinate up the dome (`upCoord`), and `skyLook` for a view.
+ */
 export const SKY_GLSL = `vec3 skyDecode(vec4 v) {
   return mix(v.rgb / 12.92, pow((v.rgb + 0.055) / 1.055, vec3(2.4)), step(0.04045, v.rgb)) * ${g(SKY_LOW)} * exp2(v.a * ${g(SKY_STOPS)});
 }
-vec3 skyLook(highp sampler3D table, vec3 view, vec3 sun) {
-  float lx = length(view.xz) * length(sun.xz);
-  float around = lx > 1e-9 ? sqrt(acos(clamp(dot(view.xz, sun.xz) / lx, -1.0, 1.0)) / 3.14159265) : 0.0;
-  float up = sqrt(clamp(asin(clamp(view.y, -1.0, 1.0)) / 1.57079633, 0.0, 1.0));
-  float height = degrees(asin(clamp(sun.y, -1.0, 1.0)));
-  float s = clamp(height / ${g(SUN_TOP)}, -1.0, 1.0);
-  float along = 0.5 + 0.5 * sign(s) * sqrt(abs(s))${GATHER.map(([from, to, share]) => ` + ${g(share)} * clamp((height - ${g(from)}) / ${g(to - from)}, 0.0, 1.0)`).join("")};
-  along *= ${g((SKY_SIZE - 1) / (1 + GATHERED))};
-  float slice = sun.x > 0.0 ? ${g(SKY_SLICES - 1)} - along : along;
-  vec3 t = (vec3(vec2(around, up) * ${g(SKY_SIZE - 1)}, slice) + 0.5) / vec3(${g(SKY_SIZE)}, ${g(SKY_SIZE)}, ${g(SKY_SLICES)});
-  return skyDecode(texture(table, t));
+vec3 skyAt(highp sampler3D table, vec2 way, float up) {
+  float l = length(way);
+  float around = l > 1e-9 ? sqrt(acos(clamp(dot(way, fLook.xy) / l, -1.0, 1.0)) / 3.14159265) : 0.0;
+  return skyDecode(texture(table, vec3((vec2(around, up) * ${g(SKY_SIZE - 1)} + 0.5) / ${g(SKY_SIZE)}, fLook.z)));
+}
+vec3 skyLook(highp sampler3D table, vec3 view) {
+  return skyAt(table, view.xz, sqrt(clamp(asin(clamp(view.y, -1.0, 1.0)) / 1.57079633, 0.0, 1.0)));
 }`;

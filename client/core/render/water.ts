@@ -320,6 +320,7 @@ ${LIGHT}${SHADOW_GLSL}${AIR}${SEE_THROUGH_SPLIT}float floorAt(highp usampler2D h
 }
 // The twin of glint: a light's glint off facets whose slopes spread by Gauss with variance a2.
 vec3 glint(vec3 l, vec3 colour, float a2, vec3 n, vec3 v, float nv) {
+  if (colour.r + colour.g + colour.b <= 0.0) return vec3(0.0);
   float nl = max(dot(n, l), 0.0);
   vec3 h = normalize(l + v);
   float c2 = max(dot(n, h), 0.0001);
