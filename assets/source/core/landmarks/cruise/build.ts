@@ -29,4 +29,4 @@ if (report.faults.length) throw new Error(report.faults.join("\n"));
 writeFileSync(asset.file, bytes);
 writeFileSync(resolve(import.meta.dir, "lod-errors.json"), JSON.stringify(errors, null, 2) + "\n");
 writeFileSync(resolve(import.meta.dir, "ref/native-check.json"), JSON.stringify(report, null, 2) + "\n");
-console.log(`Cruise prototype: ${built.meshes.length} meshes, ${bytes.length} bytes, zero native faults, ${((performance.now() - started) / 1000).toFixed(1)}s`);
+console.log(`Cruise production: ${built.meshes.length} meshes, ${bytes.length} bytes, zero native faults, ${((performance.now() - started) / 1000).toFixed(1)}s`);

@@ -72,7 +72,7 @@ class Mesh:
   if self.level==0:
    me.materials.append(ATLAS);me.materials.append(SIGNMAT);layer=me.uv_layers.new(name='Surface')
    for poly,tag,custom in zip(me.polygons,self.tags,self.uv):
-    sign=tag.startswith('sign:');poly.material_index=1 if sign else 0;cell=SIGNS[tag[5:]] if sign else LOOK[tag]['cell'];grid=8 if sign else 4;cx=cell%grid;cy=cell//grid
+    sign=tag.startswith('sign:');poly.material_index=1 if sign else 0;cell=SIGNS[tag[5:]] if sign else LOOK[tag]['cell'];grid=8;cx=cell%grid;cy=cell//grid
     points=[Vector(self.v[i]) for i in self.f[poly.index]]
     normal=(points[1]-points[0]).cross(points[2]-points[0])
     axis=max(range(3),key=lambda k:abs(normal[k]));axes={0:[2,1],1:[0,2],2:[0,1]}[axis]

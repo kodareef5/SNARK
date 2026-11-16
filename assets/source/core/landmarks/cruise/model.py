@@ -7,6 +7,9 @@ the native performance/traversal gate for this full envelope and furnished repea
 import json,math
 from pathlib import Path
 from parts import Mesh
+from model_interiors import furniture as public_furniture, wall as public_wall, sign
+from model_exterior import lifeboat
+from model_aquatheater import aquadome_pod
 
 HERE=Path(__file__).resolve().parent
 D=json.loads((HERE.parents[4]/'content/landmarks/cruise-layout.json').read_text())
@@ -75,16 +78,18 @@ def furnished(m,p):
     b(.19,.88,-.43,.4,.99,-.02,'linen',.045);b(.19,.88,.02,.4,.99,.43,'linen',.045)
     b(-.47,.88,-.49,-.15,.90,.49,'blue',.004)
   elif kind=='sofa':
+   if f.get('finish'):
+    public_furniture(m,{'art':{'items':[f]}});continue
    b(-.5,0,-.5,.5,.20,.5,'oak');b(-.42,.20,-.5,.42,.55,.25,'carpet',.055)
    b(-.5,.55,.25,.5,1,.5,'carpet',.04)
    b(-.5,.2,-.5,-.42,.78,.25,'carpet');b(.42,.2,-.5,.5,.78,.25,'carpet')
    if m.level<3:b(-.35,.55,-.30,-.05,.79,.12,'coral',.04)
   elif kind=='wardrobe':
-   b(-.5,0,-.5,.5,1,.5,'oak')
+   b(-.5,0,-.5,.44 if m.level<3 else .5,1,.5,'oak')
    if m.level<3:
-    # Hardware sits inside the honest collision envelope, recessed from the front edge.
-    b(.45,.44,-.08,.49,.58,-.045,'steel',.006)
-    b(.45,.44,.045,.49,.58,.08,'steel',.006)
+    b(.44,.01,-.49,.48,.99,-.01,'oak',.006);b(.44,.01,.01,.48,.99,.49,'oak',.006)
+    b(.48,.44,-.08,.50,.58,-.045,'steel',.004)
+    b(.48,.44,.045,.50,.58,.08,'steel',.004)
   elif kind=='desk':
    b(-.5,.88,-.5,.5,1,.5,'oak')
    if m.level<4:
@@ -101,6 +106,49 @@ def build(m,p):
  if kind=='floor':floor(m,p)
  elif kind=='stair':staircase(m,p)
  elif kind=='cabin':furnished(m,p)
+ elif kind=='furniture':public_furniture(m,p)
+ elif kind=='wall':public_wall(m,p)
+ elif kind=='sign':sign(m,p)
+ elif kind=='lifeboat':lifeboat(m,p)
+ elif kind=='aquadome_pod':aquadome_pod(m,p)
+ elif kind=='rails':
+  for b in p['boxes']:rail(m,*extents(b))
+ elif kind=='guard':
+  a,b=p['art']['ends'];dx=b[0]-a[0];dz=b[2]-a[2];ln=math.hypot(dx,dz);inset=min(.03,ln/4)
+  aa=[a[0]+dx/ln*inset,a[1]+1.12,a[2]+dz/ln*inset];bb=[b[0]-dx/ln*inset,b[1]+1.12,b[2]-dz/ln*inset]
+  m.tube([aa,bb],.025,'steel')
+  n=max(1,math.ceil(ln/[1.5,2,3,4,6,12][m.level]))
+  for i in range(n+1):
+   t=i/n;top=[aa[k]+(bb[k]-aa[k])*t for k in range(3)];bot=top[:];bot[1]=a[1]+(b[1]-a[1])*t+.025;m.tube([bot,top],.022,'steel')
+  if m.level<3:
+   aa[1]=a[1]+.54;bb[1]=b[1]+.54;m.tube([aa,bb],.012,'glass')
+ elif kind=='window_wall':
+  for i,b in enumerate(p['boxes']):
+   if i not in p['art'].get('glassBoxes',[]):drawbox(m,b,'enamel')
+ elif kind=='grand_stair':
+  a=p['art']['start'];b=p['art']['end'];n=p['art']['steps'] if m.level<3 else 1
+  if n==1:m.convex(p['hulls'][0]['points'],'marble')
+  else:
+   for i in range(n):
+    z0=a[2]+(b[2]-a[2])*i/n;z1=a[2]+(b[2]-a[2])*(i+1)/n;y=a[1]+(b[1]-a[1])*(i+1)/n
+    m.box([a[0],y-.28,z0],[b[0],y,z1],'marble')
+    if m.level==0:m.box([a[0]+.01,y-.012,z0],[b[0]-.01,y-.002,z0+.025],'brass')
+ elif kind=='pearl':
+  lo,hi=p['art']['angles'];na=[4,3,2,1,1,1][m.level];nz=[4,3,2,1,1,1][m.level]
+  for j,(za,zb) in enumerate(zip([-5.6,-3,0,3],[-3,0,3,5.6])):
+   for i in range(na):
+    a=lo+(hi-lo)*i/na;b=lo+(hi-lo)*(i+1)/na
+    for k in range(nz):
+     z0=za+(zb-za)*k/nz;z1=za+(zb-za)*(k+1)/nz
+     points=[[r*math.cos(t),r*math.sin(t),z] for z in(z0,z1) for t in(a,b) for r in(math.sqrt(7.5**2-z*z)-.20,math.sqrt(7.5**2-z*z))]
+     m.convex(points,'ivory' if (i+k+j)%5 else 'marble')
+ elif kind=='dome_dense':
+  for a,b in p['art']['beams']:m.tube([a,b],.105,'steel',n=[8,6,6,4,4,4][m.level])
+  for h in p['art']['roof']:m.convex(h,'dome_glaze')
+ elif kind=='slide':
+  for h in p['hulls']:
+   pts=h['points'];a=[sum(q[k] for q in pts[:4])/4 for k in range(3)];b=[sum(q[k] for q in pts[4:])/4 for k in range(3)]
+   m.tube([a,b],p['art'].get('radius',.76),finish,n=[16,12,10,8,6,4][m.level])
  elif kind in('gangway','landing'):
   drawbox(m,p['boxes'][0],finish)
   for b in p['boxes'][1:]:rail(m,*extents(b))
@@ -115,7 +163,8 @@ def build(m,p):
  elif kind=='pool':
   for b in p['boxes']:drawbox(m,b,'tile')
   # Decorative contained surface: closed thin geometry, with no water-column physics.
-  m.box([-4.98,p['art']['waterY']-.012,-7.98],[4.98,p['art']['waterY'],6.48],'glass')
+  w=p['art'].get('width',10);l=p['art'].get('length',16)
+  m.box([-w/2+.02,p['art']['waterY']-.012,-l/2+.02],[w/2-.02,p['art']['waterY'],l/2-1.52],'water')
  elif kind=='door':
   for b in p['boxes']:drawbox(m,b,'oak',.008)
  elif kind=='funnel':
@@ -139,7 +188,7 @@ def build(m,p):
   for b in p['boxes']:drawbox(m,b,finish)
   for h in p['hulls']:m.convex(h['points'],finish)
 
-report={'prototypes':[],'totals':[0]*6,'notes':['Six authored native levels of the prototype gate.','Original materials; reference pixels are not sampled.']}
+report={'prototypes':[],'totals':[0]*6,'notes':['Six authored native levels of the production reconstruction.','Original materials; reference pixels are not sampled.']}
 for i,p in enumerate(D['prototypes']):
  counts=[]
  for level in range(6):
