@@ -1,8 +1,9 @@
-// Orders the levels a pack draws with materials: inside each material's run, triangles for the vertex cache by
-// Forsyth's linear-speed method, then the level's vertices in the order the triangles first use them. Every score is
-// made of square roots and the four operations, which IEEE 754 rounds exactly, so the order is the same on any machine.
+// Orders the levels of a pack for the vertex cache: triangles by Forsyth's linear-speed method, then a level's vertices
+// in the order the triangles first use them. Every score is made of square roots and the four operations, which IEEE 754
+// rounds exactly, so the order is the same on any machine.
 
-import { SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, parsePack, readIndices, type Pack, type PackLod } from "../../shared/pack/pack.ts";
+import { CLIP_ROOT_BYTES, MATERIAL_CUTOUT, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodSkin, lodSurface, lodVertices, parsePack, readIndices, type Pack, type PackLod } from "../../shared/pack/pack.ts";
+import { PackBlob } from "./write.ts";
 
 /** The cache Forsyth's scores are made for, and the most triangles a vertex's valence is scored for. */
 const CACHE = 32;
@@ -125,33 +126,78 @@ export function missRatio(indices: ArrayLike<number>, vertexCount: number, size 
   return indices.length === 0 ? 0 : misses / (indices.length / 3);
 }
 
-/** Moves records of `bytes` each so that record i comes from record `from[i]`. */
-function permute(data: Uint8Array, from: Uint32Array, bytes: number): void {
-  const was = data.slice();
-  for (let i = 0; i < from.length; i++) data.set(was.subarray(from[i]! * bytes, from[i]! * bytes + bytes), i * bytes);
+/** Records of `bytes` each, record i from record `from[i]` of `data`. */
+function permuted(data: Uint8Array, from: ArrayLike<number>, bytes: number): Uint8Array {
+  const out = new Uint8Array(from.length * bytes);
+  for (let i = 0; i < from.length; i++) out.set(data.subarray(from[i]! * bytes, from[i]! * bytes + bytes), i * bytes);
+  return out;
 }
 
-/** A level's indices ordered run by run and its vertices, surface and skin in the order those first use them, in place in the pack's blob. */
-function orderLod(pack: Pack, lod: PackLod): void {
-  const indices = readIndices(pack, lod);
-  const runs = lod.sections!;
-  for (let k = 0; k < runs.length; k += 3) cacheOrder(indices, runs[k + 1]!, runs[k + 2]!, lod.vertexCount);
-  const from = fetchOrder(indices, lod.vertexCount);
-  const blob = pack.blob;
-  const view = new DataView(blob.buffer, blob.byteOffset + lod.indexOffset, lod.indexCount * lod.indexBytes);
-  indices.forEach((v, k) => (lod.indexBytes === 4 ? view.setUint32(k * 4, v, true) : view.setUint16(k * 2, v, true)));
-  permute(blob.subarray(lod.vertexOffset, lod.vertexOffset + lod.vertexCount * VERTEX_BYTES), from, VERTEX_BYTES);
-  permute(blob.subarray(lod.surfaceOffset!, lod.surfaceOffset! + lod.vertexCount * SURFACE_BYTES), from, SURFACE_BYTES);
-  if (lod.skinOffset !== undefined) permute(blob.subarray(lod.skinOffset, lod.skinOffset + lod.vertexCount * SKIN_BYTES), from, SKIN_BYTES);
+/** A level as the blob holds it. */
+interface Level {
+  indices: Uint32Array;
+  vertices: Uint8Array;
+  surface: Uint8Array | null;
+  skin: Uint8Array | null;
 }
 
 /**
- * The pack with every level drawn with materials ordered as above. Nothing moves between runs, and a flat level keeps
- * the order it came in, so what a flat client reads is what it was. The header is the same, since no size changes.
+ * A level drawn with materials: inside each run, triangles for the cache, but for a cut-out run's, which are best seen
+ * first (sprays.ts); then vertices, surfaces and skins in the order those first use them.
+ */
+function orderRuns(pack: Pack, lod: PackLod, cutout: (material: number) => boolean): Level {
+  const indices = readIndices(pack, lod);
+  const runs = lod.sections!;
+  for (let k = 0; k < runs.length; k += 3) if (!cutout(runs[k]!)) cacheOrder(indices, runs[k + 1]!, runs[k + 2]!, lod.vertexCount);
+  const from = fetchOrder(indices, lod.vertexCount);
+  const skin = lodSkin(pack, lod);
+  return { indices, vertices: permuted(lodVertices(pack, lod), from, VERTEX_BYTES), surface: permuted(lodSurface(pack, lod)!, from, SURFACE_BYTES), skin: skin && permuted(skin, from, SKIN_BYTES) };
+}
+
+/** A flat level: vertices of the same bytes made one, which with no normals are those split for their faces; then ordered as one run. */
+function weldFlat(pack: Pack, lod: PackLod): Level {
+  const vertices = lodVertices(pack, lod).slice();
+  const first = new Map<bigint, number>();
+  const kept: number[] = [];
+  const to = Uint32Array.from(new BigUint64Array(vertices.buffer), (bytes, v) => {
+    let k = first.get(bytes);
+    if (k === undefined) first.set(bytes, (k = kept.push(v) - 1));
+    return k;
+  });
+  const indices = readIndices(pack, lod).map((v) => to[v]!);
+  cacheOrder(indices, 0, indices.length, kept.length);
+  const from = fetchOrder(indices, kept.length);
+  return { indices, vertices: permuted(vertices, Array.from(from, (k) => kept[k]!), VERTEX_BYTES), surface: null, skin: null };
+}
+
+/**
+ * The pack with every level ordered as above and written again in the same layout. Nothing moves between runs, and every
+ * triangle keeps its corners in their order, with each corner's bytes as they were.
  */
 export function orderPack(file: Uint8Array): Uint8Array {
-  const out = file.slice();
-  const pack = parsePack(out);
-  for (const mesh of pack.header.meshes) for (const lod of mesh.lods) if (lod.sections) orderLod(pack, lod);
-  return out;
+  const pack = parsePack(file);
+  const { header, blob } = pack;
+  const cutout = (m: number): boolean => (header.materials![m]!.flags & MATERIAL_CUTOUT) !== 0;
+  const out = new PackBlob();
+  header.paletteOffset = out.append(pack.palette);
+  if (header.details) header.details.atlas.offset = out.append(detailsAtlas(pack));
+  for (const mesh of header.meshes) {
+    for (const lod of mesh.lods) {
+      const level = lod.sections ? orderRuns(pack, lod, cutout) : weldFlat(pack, lod);
+      lod.vertexCount = level.vertices.length / VERTEX_BYTES;
+      lod.indexBytes = lod.vertexCount > 65535 ? 4 : 2;
+      const idx = new Uint8Array(level.indices.length * lod.indexBytes);
+      const view = new DataView(idx.buffer);
+      level.indices.forEach((v, k) => (lod.indexBytes === 4 ? view.setUint32(k * 4, v, true) : view.setUint16(k * 2, v, true)));
+      lod.indexOffset = out.append(idx);
+      lod.vertexOffset = out.append(level.vertices);
+      if (level.surface) lod.surfaceOffset = out.append(level.surface);
+      if (level.skin) lod.skinOffset = out.append(level.skin);
+    }
+  }
+  for (const c of header.clips) {
+    c.rotOffset = out.append(blob.subarray(c.rotOffset, c.rotOffset + c.frames * clipRotBytes(c.bones)));
+    c.rootOffset = out.append(blob.subarray(c.rootOffset, c.rootOffset + c.frames * CLIP_ROOT_BYTES));
+  }
+  return out.file(header);
 }

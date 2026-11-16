@@ -1,7 +1,7 @@
 // Builds client/dist: the bundled shell, the workers and worklets, the page, and the core assets as a boot file, a mesh
 // file, a texture file for each variant and a manifest. An asset file is named after its own hash, so a browser keeps
 // it for good. What is fetched whole has a Brotli copy beside it. What is fetched by range is stored a part at a time,
-// deflated where that is smaller, and the levels drawn with materials are ordered for the vertex cache first.
+// deflated where that is smaller, and every level is ordered for the vertex cache first, a flat one welded.
 
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
