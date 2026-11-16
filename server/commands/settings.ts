@@ -37,6 +37,7 @@ export function addSettingsCommands(con: Console): void {
     {
       name: "setting",
       usage: "<name> [value]",
+      examples: ["setting TamingSpeedMultiplier", "setting TamingSpeedMultiplier 2"],
       help: "What a setting is and does; with a value, set it until the server is started again (only those that may change while it runs).",
       admin: true,
       // Keeps a password out of the admin journal.

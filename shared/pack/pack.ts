@@ -255,9 +255,11 @@ export function parsePack(file: Uint8Array): Pack {
 
 const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
 
-function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSet {
+/** The clips `list` names in `blob`. A clip's hash is taken over the bytes it is stored in. */
+export function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSet {
   const index = new Map<string, number>();
-  let hash = hashString("snark-clips-1");
+  const seed = hashString("snark-clips-2");
+  let hash = 0;
   const clips: Clip[] = list.map((c, i) => {
     const rotBytes = c.frames * clipRotBytes(c.bones);
     if (!(c.frames > 0 && c.bones > 0) || c.rotOffset + rotBytes > blob.length || c.rootOffset + c.frames * CLIP_ROOT_BYTES > blob.length) throw new Error(`pack: clip ${c.id} points outside the file`);
@@ -294,9 +296,8 @@ function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSet {
       }
     }
     index.set(c.id, i);
-    hash = hashString(`${c.id}:${c.bones}:${c.frames}:${c.loop}`, hash);
-    hash = hashBytes(blob.subarray(c.rotOffset, c.rotOffset + rotBytes), hash);
-    hash = hashBytes(blob.subarray(c.rootOffset, c.rootOffset + c.frames * CLIP_ROOT_BYTES), hash);
+    const own = hashBytes(blob.subarray(c.rootOffset, c.rootOffset + c.frames * CLIP_ROOT_BYTES), hashBytes(blob.subarray(c.rotOffset, c.rotOffset + rotBytes), hashString(`${c.id}:${c.bones}:${c.frames}:${c.loop}`, seed)));
+    hash = (hash + own) >>> 0;
     return { id: c.id, bones: c.bones, frames: c.frames, loop: c.loop, rot, root };
   });
   return { clips, index, hash };

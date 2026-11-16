@@ -103,7 +103,7 @@ export function wood(spot: readonly number[]): { scene: Scene; cam: Camera; grou
 }
 
 /** Forty bodies fighting in front of the camera at `yaw`: half survivors swinging, half their tames running at them, 4 to 34 m off. */
-function fight(remote: RemoteSample, scene: Scene, cam: Camera, ground: (x: number, z: number) => number, n: number): void {
+export function fight(remote: RemoteSample, scene: Scene, cam: Camera, ground: (x: number, z: number) => number, n: number): void {
   const reg = coreRegistry();
   const kinds = [reg.index.get("core:survivor")!, reg.index.get("core:raptor")!, reg.index.get("core:parasaur")!];
   const rng = new Rng(41);

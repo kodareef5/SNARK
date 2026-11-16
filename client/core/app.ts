@@ -5,7 +5,7 @@ import { Icons } from "./assets/icons.ts";
 import { GamepadInput, type PadSample, type PadTarget } from "./gamepad.ts";
 import type { AssetPort } from "./assets/port.ts";
 import { forTouch, tierOf } from "./assets/tiers.ts";
-import { DRAW_TRIANGLES, Governor } from "./governor.ts";
+import { Governor, PHONE_MS, workMs } from "./governor.ts";
 import { BENCH_TURN_MS, effectsOff, packetWithout, tierWithout, type Effect } from "./passes.ts";
 import { keptLine } from "./settings.ts";
 import { stressThings, type Mark } from "./stress.ts";
@@ -799,11 +799,12 @@ export class App {
     this.ui.settings.tier = tierOf(get("tier") ?? this.ui.settings.tier).name;
   }
 
-  /** After the frame is handed to WebGL: our code took `ours` ms of it, and `timed` are earlier frames' GPU ms by pass, as they came back. */
-  drawn(packet: FramePacket, ours: number, timed: readonly number[][]): void {
-    for (const ms of timed) this.governor.timed(ms.reduce((a, b) => a + b, 0));
+  /** After the frame is handed to WebGL: our code took `ours` ms of it. */
+  drawn(packet: FramePacket, ours: number): void {
     const budget = this.scene?.budget;
-    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, packet.triangles + DRAW_TRIANGLES * packet.drawCount, budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0);
+    const crowns = budget && budget.squeeze < SQUEEZE_MOST ? budget.last.crowns : 0;
+    const work = workMs(packet.triangles, packet.drawCount, packet.castTriangles, packet.castDraws, packet.tier.shadows.size);
+    this.governor.frame(this.nowMs, this.interval, ours, packet.assetUploads.length + packet.texUploads.length > 0, work, crowns * PHONE_MS.triangle);
   }
 
   /** The shell says the graphics card ran out of memory or lost everything. On every third time the graphics tier falls by one. */

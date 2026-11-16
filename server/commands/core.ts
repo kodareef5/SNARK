@@ -32,6 +32,7 @@ export function addCoreCommands(con: Console): void {
     {
       name: "help",
       usage: "[command]",
+      examples: ["help give", "help spawn"],
       help: "List commands, or describe one.",
       admin: false,
       run(ctx, args) {
@@ -83,6 +84,7 @@ export function addCoreCommands(con: Console): void {
     {
       name: "enablecheats",
       usage: "<password>",
+      examples: ['enablecheats "<password>"'],
       help: "Enable cheat commands for this session.",
       admin: false,
       secret: true,
@@ -112,6 +114,7 @@ export function addCoreCommands(con: Console): void {
     {
       name: "spectate",
       usage: "",
+      examples: ["spectate"],
       help: "Leave your body and fly as an unseen camera.",
       admin: false,
       run(ctx) {
@@ -139,6 +142,7 @@ export function addCoreCommands(con: Console): void {
     {
       name: "settime",
       usage: "<hour[:minute]>",
+      examples: ["settime 6:30"],
       help: "Set the time of day. The world clock itself does not move.",
       admin: true,
       run(ctx, args) {

@@ -2,26 +2,23 @@
 // its thatch and a base of 1,024 pieces, and the device probe's wood on the 8 km hills. Each is the game's own page at
 // `?bench=1` in headless Chrome, three device pixels to one as the iPhone of D349 has them, which times the GPU by
 // timer query (client/core/passes.ts) while the view turns in place: with everything on, each pass by itself
-// (`?passes=1`), with each effect off in turn (`?off=`), and at each of the governor's levels (`?level=`). On an Apple
-// GPU through ANGLE a query between passes ends Metal's render pass and stores and loads the tiles, which a frame does
-// not otherwise do, so a pass's row says where time goes and the whole frame's runs say what an effect costs. Then the
-// iPhone's soaks are replayed through the governor with the share of the GPU's time each level left here. Chrome is found as tools/probe.ts finds it, or
-// named by CHROME; without it the rows are skipped. `bun tools/bench/gpu.ts [runs]` runs these alone, each `runs` times
-// (3), and prints each row's range.
+// (`?passes=1`), and with each effect off in turn (`?off=`). On an Apple GPU through ANGLE a query between passes ends
+// Metal's render pass and stores and loads the tiles, which a frame does not otherwise do, so a pass's row says where
+// time goes and the whole frame's runs say what an effect costs. What the governor's levels leave is counted for the
+// phone in tools/bench/governor.ts: this machine's GPU is not bound where a phone's is. Chrome is found as tools/probe.ts
+// finds it, or named by CHROME; without it the rows are skipped. `bun tools/bench/gpu.ts [runs]` runs these alone, each
+// `runs` times (3), and prints each row's range.
 
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { loadavg, tmpdir } from "node:os";
 import { join } from "node:path";
-import { tierOf } from "../../client/core/assets/tiers.ts";
 import { WOOD, basePieces, crowdScene } from "../../client/core/devicescene.ts";
 import { CUE_DEAD, CUE_DECAY_SHIFT, CUE_OUT } from "../../shared/anim/pose.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
-import { ladder } from "../../client/core/governor.ts";
 import { PASSES, type Effect } from "../../client/core/passes.ts";
 import { startServer } from "../../server/main.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
-import { curve, run } from "../../tests/fixtures/frames.ts";
 import { buildClient } from "../build-client.ts";
 import { benchHills } from "./terrain.ts";
 
@@ -29,20 +26,14 @@ type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 type Scene = "base" | "wood" | "flock";
-/** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off, a level the governor holds. */
+/** What each run measures: a scene, a tier, each pass by itself or the frame, an effect off. */
 interface Run {
   scene: Scene;
   tier: string;
   passes?: boolean;
   off?: Effect;
-  level?: number;
 }
 const BASE_PIECES = 1024;
-/** The iPhone's soaks on high, medians a minute (D349; .cache/device on the phone's run, 2026-11-15): defaults, and half what its ladder held. The first minute held the display's rate. */
-export const PHONE_SOAKS: Readonly<Record<string, readonly number[]>> = {
-  "200 bodies, 1,024 pieces": [16.5, 20, 19, 19, 21, 22, 23, 24, 25, 27],
-  "800 bodies, 64 near rocks": [16.5, 17, 17, 17, 18, 19, 21, 22, 24, 24],
-};
 
 const CHROME = [process.env.CHROME, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium", "/usr/bin/google-chrome", "/usr/bin/chromium"].find((p) => p && existsSync(p));
 
@@ -53,7 +44,6 @@ export function plan(): Run[] {
     const [scene, tier] = key.split(" ") as [Scene, string];
     runs.push({ scene, tier, passes: true }, { scene, tier }, ...list.map((off) => ({ scene, tier, off })));
   }
-  for (let level = 1; level < ladder(tierOf("high"), 3).length; level++) runs.push({ scene: "base", tier: "high", level });
   for (const tier of ["medium", "ultra"]) runs.push({ scene: "flock", tier }, { scene: "flock", tier, off: "layers" });
   return runs;
 }
@@ -85,7 +75,7 @@ export function flock(server: ReturnType<typeof startServer>): number {
   return n;
 }
 
-const nameOf = (r: Run): string => `${r.scene} ${r.tier}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off} off` : ""}${r.level ? `, level ${r.level}` : ""}`;
+const nameOf = (r: Run): string => `${r.scene} ${r.tier}${r.passes ? ", by pass" : ""}${r.off ? `, ${r.off} off` : ""}`;
 
 /** Each run's report from the page, `times` times over, a scene's server at a time. */
 async function measure(runs: Run[], times: number, say: (line: string) => void): Promise<Map<string, Record<string, any>[]>> {
@@ -121,7 +111,7 @@ async function measure(runs: Run[], times: number, say: (line: string) => void):
     const profile = mkdtempSync(join(tmpdir(), "snark-gpu-"));
     for (let k = 0; k < times; k++) {
       for (const r of mine) {
-        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off}` : ""}${r.level ? `&level=${r.level}` : ""}`;
+        const link = `http://127.0.0.1:${server.port}/?bench=1&name=bench&tier=${r.tier}${r.passes ? "&passes=1" : ""}${r.off ? `&off=${r.off}` : ""}`;
         const report = new Promise<Record<string, any> | null>((done) => ((got = done), setTimeout(() => done(null), 120000)));
         const browser = Bun.spawn([CHROME!, "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-extensions", "--window-size=390,669", "--force-device-scale-factor=3", `--user-data-dir=${profile}`, link], { stdout: "ignore", stderr: "ignore" });
         const result = await report;
@@ -153,23 +143,6 @@ function gpu(reports: Record<string, any>[] | undefined, pass = "frame"): number
   return Math.round(median(Array.from({ length: n }, (_, i) => Math.min(...lists.map((l) => l[i]!)))) * 1000) / 1000;
 }
 
-/**
- * The share of the GPU's time each step of high's ladder left of the level before in the base scene, from the level
- * runs. A step adds no work, so a level measured slower than the one before it is taken as no faster: the difference is
- * another page's on the shared GPU.
- */
-export function shares(reports: Map<string, Record<string, any>[]>): Record<string, number> {
-  const steps = ladder(tierOf("high"), 3);
-  const out: Record<string, number> = {};
-  let before = gpu(reports.get("base high"));
-  for (let level = 1; level < steps.length; level++) {
-    const now = Math.min(before, gpu(reports.get(`base high, level ${level}`)));
-    out[steps[level]!.name] = Math.round((now / before) * 1000) / 1000;
-    before = now;
-  }
-  return out;
-}
-
 /** The rows, from reports of the plan's runs. */
 export function rows(section: Section, record: Row, reports: Map<string, Record<string, any>[]>): void {
   for (const key of ["base medium", "base high", "wood medium", "wood high", "flock medium", "flock ultra"]) {
@@ -182,21 +155,6 @@ export function rows(section: Section, record: Row, reports: Map<string, Record<
     record("the frame, timed whole, median", gpu(all), "ms");
     record("a frame's time, median, by the clock", median(all.map((r) => r.frameMs.median)), "ms");
     for (const [name, list] of reports) if (name.startsWith(`${key}, `) && name.endsWith(" off")) record(`${name.slice(key.length + 2)}: what it costs`, gpu(all) - gpu(list), "ms");
-  }
-  const left = shares(reports);
-  if (Object.values(left).some((x) => !Number.isFinite(x))) return;
-  section("The governor's steps on high, base: the share of the GPU's time each left of the level before");
-  for (const [name, share] of Object.entries(left)) record(name, share, "");
-  for (const [soak, points] of Object.entries(PHONE_SOAKS)) {
-    section(`The iPhone's soak on high (${soak}) replayed through the governor, each level leaving what it left here`);
-    const warm = curve(points);
-    const steps = ladder(tierOf("high"), 3).map((s) => left[s.name] ?? 1);
-    const leaves = steps.map((_, i) => steps.slice(1, i + 1).reduce((a, b) => a * b, 1));
-    const { minutes } = run(10, (t, level) => ({ gpu: warm(t) * leaves[level]! }));
-    record("minute 1, median frame", minutes[0]!.median, "ms");
-    record("minute 10, median frame, no slower than minute 1", minutes[9]!.median, "ms", minutes[0]!.median + 0.5);
-    record("minute 10 without the governor", points.at(-1)!, "ms");
-    record("the level at minute 10", minutes[9]!.level, "");
   }
 }
 

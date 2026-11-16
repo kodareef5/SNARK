@@ -76,7 +76,7 @@ async function boot(): Promise<void> {
     spectate: params.has("spectate"),
     password: params.get("password") ?? "",
     registry: reg,
-    clipHash: pack.clips.hash,
+    clipHash: manifest.clipHash,
     // The self-check, the bench, the device probe and ?quick skip the creator.
     ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
@@ -110,7 +110,7 @@ async function boot(): Promise<void> {
     arrived: () => arrival && history.replaceState(null, "", location.pathname + location.search),
     cluster: async () => (await fetchJson(fetch, "cluster.json")) as ClusterList,
   };
-  const clock = (renderer.passes = device ? null : new PassClock(renderer.gl, bench !== null && params.has("passes")));
+  const clock = (renderer.passes = bench ? new PassClock(renderer.gl, params.has("passes")) : null);
   const view = new UiView(root, { text: (key, value) => app.textInput(key, value), pointer: (kind, key, x, y, button) => app.pointer(kind, key, x, y, button) });
   // A device probe runs by itself, and a touch must not move or open anything.
   if (!device) bindInput(canvas, app);
@@ -185,7 +185,7 @@ async function boot(): Promise<void> {
       app.pressure();
     }
     const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
-    app.drawn(packet, ours, gpu);
+    app.drawn(packet, ours);
     device?.frame(now, packet, t0, built);
     if (progress.frames === 30) loser?.loseContext();
     // The self-check asks for a call and listens for it leaving the volume.

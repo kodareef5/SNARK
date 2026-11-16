@@ -734,6 +734,8 @@ export interface ModelShot {
   /** Index of the mesh in the pack, and the level of it to draw. */
   mesh: number;
   level: number;
+  /** More meshes drawn with it, at the same level, with its rig and colours: the parts of a body. */
+  also?: readonly number[];
   /** Degrees the camera stands around the model from its front, toward its left, and above its middle. */
   around: number;
   above: number;
@@ -830,23 +832,26 @@ export class ModelView {
     p.transientCount = 1;
     p.transientIds[0] = 1;
     const sections = shot.textured ? this.pack.header.meshes[shot.mesh]!.lods[shot.level]!.sections : undefined;
-    const runs = sections ?? [-1, 0, 0];
-    p.drawCount = runs.length / 3;
-    for (let d = 0; d < p.drawCount; d++) {
-      p.drawMesh[d] = shot.mesh;
-      p.drawLod[d] = shot.level;
-      p.drawBuffer[d] = TRANSIENT_BUFFER;
-      p.drawFirst[d] = 0;
-      p.drawInstances[d] = 1;
-      p.drawOffset.fill(0, d * 3, d * 3 + 3);
-      p.drawFlags[d] = DRAW_PLAIN | (shot.rig ? DRAW_SKINNED : 0);
-      const material = this.pack.header.materials?.[runs[d * 3]!];
-      if (!material) continue;
-      p.drawFlags[d]! |= DRAW_TEXTURED | ((material.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((material.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
-      p.drawMaterial[d] = runs[d * 3]!;
-      p.drawFirstIndex[d] = runs[d * 3 + 1]!;
-      p.drawIndexCount[d] = runs[d * 3 + 2]!;
-      if (material.layer !== undefined) p.drawLayer[d] = shot.layer ?? 0;
+    p.drawCount = 0;
+    for (const mesh of [shot.mesh, ...(shot.also ?? [])]) {
+      const runs = (shot.textured ? this.pack.header.meshes[mesh]!.lods[shot.level]!.sections : undefined) ?? [-1, 0, 0];
+      for (let r = 0; r < runs.length; r += 3) {
+        const d = p.drawCount++;
+        p.drawMesh[d] = mesh;
+        p.drawLod[d] = shot.level;
+        p.drawBuffer[d] = TRANSIENT_BUFFER;
+        p.drawFirst[d] = 0;
+        p.drawInstances[d] = 1;
+        p.drawOffset.fill(0, d * 3, d * 3 + 3);
+        p.drawFlags[d] = DRAW_PLAIN | (shot.rig ? DRAW_SKINNED : 0);
+        const material = this.pack.header.materials?.[runs[r]!];
+        if (!material) continue;
+        p.drawFlags[d]! |= DRAW_TEXTURED | ((material.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((material.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
+        p.drawMaterial[d] = runs[r]!;
+        p.drawFirstIndex[d] = runs[r + 1]!;
+        p.drawIndexCount[d] = runs[r + 2]!;
+        if (material.layer !== undefined) p.drawLayer[d] = shot.layer ?? 0;
+      }
     }
     p.texUploads.push(...this.sending);
     this.sending.length = 0;
