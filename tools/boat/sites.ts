@@ -4,7 +4,7 @@ import { chunkAt } from "../../shared/coords.ts";
 import { hashString } from "../../shared/hash.ts";
 import { boatRestY } from "../../shared/sim/boat.ts";
 import { isBoatVehicle } from "../../shared/sim/vehicle.ts";
-import { boatPlacement } from "../../shared/world/boat.ts";
+import { vehicleFitsWorld } from "../../server/vehicle-service.ts";
 import { capsuleFree, groundUnder, type CollisionWorld } from "../../shared/world/collide.ts";
 import { mapHeightfield, mapNodes, placeStatics, type MapData, type MapVehicle } from "../../shared/world/mapfile.ts";
 import { NodeField } from "../../shared/world/nodes.ts";
@@ -21,7 +21,11 @@ export function mappedBoatSites(places: readonly PublicPlace[], labels: Readonly
     const kind = p.kind === "marina" || p.kind === "pier" ? "civilian" : p.kind === "beach" ? "rescue" : null;
     if (!kind) continue;
     const [x, z] = toEngine(p.e, p.n);
-    result.push({ id: `place/${p.kind}/${p.name ?? "unnamed"}@${p.e},${p.n}`, kind, x, z, radius: p.kind === "marina" ? 120 : 48 });
+    // A map's vehicle id is plain printable ASCII of 80 characters at most (shared/world/mapfile.ts), with `boat/` before
+    // it; the name gives way to the place, which keeps it unique.
+    const head = `place/${p.kind}/`, at = `@${p.e},${p.n}`;
+    const name = (p.name ?? "unnamed").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x21-\x7e]+/g, "_").slice(0, Math.max(0, 80 - "boat/".length - head.length - at.length));
+    result.push({ id: `${head}${name}${at}`, kind, x, z, radius: p.kind === "marina" ? 120 : 48 });
   }
   for (const [id, p] of Object.entries(labels)) {
     const kind = p.kind === "police_station" ? "police" : p.kind === "fire_station" || /coast guard station/i.test(p.name ?? "") ? "rescue" : null;
@@ -79,7 +83,7 @@ export function boatSites(map: MapData, reg: Registry, sites: readonly BoatSite[
         const y = boatRestY(def.spec, water);
         if (!shoreAccess(world, x, z)) continue;
         for (const yaw of [heading, heading + Math.PI / 2, heading + Math.PI, heading - Math.PI / 2]) {
-          if (!boatPlacement(world, x, y, z, yaw, def)) continue;
+          if (!vehicleFitsWorld(world, x, y, z, yaw, def)) continue;
           found.push({ id: `boat/${site.id}`, kind, x, y, z, yaw: Math.round(yaw * 65536 / (Math.PI * 2)) & 65535, condition: [.58, .88], fuel: [.04, .42] });
           counts[site.kind]++; break;
         }

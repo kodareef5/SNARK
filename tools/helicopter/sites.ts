@@ -3,7 +3,7 @@ import type { Registry } from "../../shared/content/registry.ts";
 import { hashString } from "../../shared/hash.ts";
 import { chunkAt } from "../../shared/coords.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
-import { helicopterPlacement } from "../../shared/world/helicopter.ts";
+import { vehicleFitsWorld } from "../../server/vehicle-service.ts";
 import { mapHeightfield, mapNodes, placeStatics, type MapData, type MapVehicle } from "../../shared/world/mapfile.ts";
 import { NodeField } from "../../shared/world/nodes.ts";
 import { castWorld, HIT_NONE, rayHit } from "../../shared/world/ray.ts";
@@ -39,7 +39,7 @@ export function helicopterSites(map: MapData, reg: Registry, sites: readonly Hel
         const top = hf.heightAt(x, z) + 180;
         if (castWorld(world, x, top, z, 0, -1, 0, 200) === HIT_NONE) continue;
         const y = top - rayHit.t;
-        if (!helicopterPlacement(world, x, y, z, yaw, def)) continue;
+        if (!vehicleFitsWorld(world, x, y, z, yaw, def)) continue;
         found.push({ id: `helicopter/${site.id}`, kind, x, y, z, yaw: Math.round(yaw * 65536 / (Math.PI * 2)) & 65535, condition: [.28, .88], fuel: [.08, .55] });
         counts[site.kind]++; break;
       } finally { nodes?.retain(chunk, 1, -1, () => false); }

@@ -13,13 +13,12 @@ import { VEHICLE_FUEL_PER_GASOLINE as FUEL_PER_ITEM, VEHICLE_REPAIR_STEP as REPA
 import { isBoatVehicle, isRotorVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { boatRestY } from "../shared/sim/boat.ts";
 import { boatPlacement, boatMeetsCapsule, boatMeetsVehicle } from "../shared/world/boat.ts";
-import { capsuleFree, groundUnder } from "../shared/world/collide.ts";
+import { capsuleFree, groundUnder, type CollisionWorld } from "../shared/world/collide.ts";
 import { helicopterPlacement, helicopterMeetsCapsule, helicopterMeetsVehicle } from "../shared/world/helicopter.ts";
 import type { MapVehicle } from "../shared/world/mapfile.ts";
 import { castWorld, HIT_NONE, rayHit } from "../shared/world/ray.ts";
 import type { Client, GameServer } from "./game.ts";
 import type { Items } from "./items.ts";
-import { placeFree } from "./place.ts";
 import type { EntityRecord, Records } from "./records.ts";
 import type { Survival } from "./survival.ts";
 import type { Urban } from "./urban.ts";
@@ -232,17 +231,72 @@ export class VehicleService {
   }
 }
 
-/** Shared by authored parking and deployment. Terrain/structure checks also include the unloaded resource-node index. */
-export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: number, yaw: number, def: VehicleDefinition): boolean {
-  const spec = def.spec, sn = Math.sin(yaw), cs = Math.cos(yaw);
+interface HullPart { x: number; y: number; z: number; radius: number; height: number }
+
+/** The upright bodies a vehicle's hull is tested as: along its length, its tail, its rotor's disc, its propeller and outboard. */
+function hullParts(x: number, y: number, z: number, yaw: number, def: VehicleDefinition): HullPart[] {
+  const spec = def.spec, sn = Math.sin(yaw), cs = Math.cos(yaw), parts: HullPart[] = [];
+  const add = (lx: number, ly: number, lz: number, radius: number, height: number): void => { parts.push({ x: x + cs * lx + sn * lz, y: y + ly, z: z - sn * lx + cs * lz, radius, height }); };
+  const along = Math.max(0, spec.halfLength - spec.halfWidth);
+  for (let i = -2; i <= 2; i++) add(0, spec.clearance, i * along / 2, spec.halfWidth, spec.height - spec.clearance);
+  if (isRotorVehicle(def)) {
+    const tail = def.spec.tail;
+    for (let i = 0; i <= 8; i++) {
+      const at = tail.from.map((v, axis) => v + (tail.to[axis]! - v) * i / 8);
+      add(at[0]!, at[1]! - tail.radius, at[2]!, tail.radius, tail.radius * 2);
+    }
+    const main = def.rotors[0]!;
+    parts.push({ x: x + cs * main.at[0] + sn * main.at[2], y: y + main.at[1] - .08, z: z - sn * main.at[0] + cs * main.at[2], radius: main.radius, height: .16 });
+  }
+  if (isBoatVehicle(def)) {
+    const prop = def.spec.propeller;
+    add(prop.at[0], prop.at[1] - prop.radius, prop.at[2], prop.radius, prop.radius * 2);
+    for (const box of [...def.spec.hullBoxes, ...(def.spec.outboard?.boxes ?? [])]) {
+      if (Math.abs(box.at[2]) + box.half[2] <= spec.halfLength) continue;
+      const radius = Math.min(box.half[0], box.half[2]);
+      const steps = Math.max(1, Math.ceil(box.half[2] / radius));
+      for (let i = -steps; i <= steps; i++) add(box.at[0], box.at[1] - box.half[1], box.at[2] + i / steps * Math.max(0, box.half[2] - radius), radius, box.half[1] * 2);
+    }
+  }
+  return parts;
+}
+
+/**
+ * What a vehicle needs of the world itself where it would stand: its own shape there, and its hull's bodies clear of the
+ * ground, what is built and what grows, and on a server the unloaded resource-node index. A map build asks this of a
+ * found vehicle (tools/helicopter/sites.ts, tools/boat/sites.ts), so a map holds only what a host can park.
+ */
+export function vehicleFitsWorld(world: CollisionWorld & { readonly unloaded?: ServerWorld["unloaded"] }, x: number, y: number, z: number, yaw: number, def: VehicleDefinition): boolean {
   if (![x, y, z, yaw].every(Number.isFinite)) return false;
   if (isRotorVehicle(def)) {
     if (!helicopterPlacement(world, x, y, z, yaw, def)) return false;
   } else if (isBoatVehicle(def)) {
     if (!boatPlacement(world, x, y, z, yaw, def)) return false;
-  } else if (Math.abs(y - groundUnder(world.hf, x, z, spec.halfWidth)) > .2) return false;
+  } else if (Math.abs(y - groundUnder(world.hf, x, z, def.spec.halfWidth)) > .2) return false;
+  const unloaded = world.unloaded ?? null, sn = Math.sin(yaw), cs = Math.cos(yaw);
+  if (isRotorVehicle(def) && unloaded) {
+    // The disc is shallow, while a capsule with its radius would be a 9 m tall sphere: unloaded nodes are met by small
+    // spheres over it. Static geometry was checked by the shared helper.
+    const main = def.rotors[0]!;
+    for (let rz = -main.radius; rz <= main.radius; rz += .2) for (let rx = -main.radius; rx <= main.radius; rx += .2) {
+      if (rx * rx + rz * rz > main.radius * main.radius) continue;
+      const px = x + cs * (main.at[0] + rx) + sn * (main.at[2] + rz), pz = z - sn * (main.at[0] + rx) + cs * (main.at[2] + rz);
+      if (unloaded.meets(px, y + main.at[1] - .15, pz, .15, .3)) return false;
+    }
+  }
+  for (const part of hullParts(x, y, z, yaw, def)) {
+    if (part.height > .2 && (!capsuleFree(world, part.x, part.y, part.z, part.radius, part.height) || (unloaded?.meets(part.x, part.y, part.z, part.radius, part.height) ?? false))) return false;
+  }
+  return true;
+}
+
+/** Shared by authored parking and deployment: the world itself (vehicleFitsWorld), then the bodies standing there. */
+export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: number, yaw: number, def: VehicleDefinition): boolean {
+  if (!vehicleFitsWorld(world, x, y, z, yaw, def)) return false;
+  const ents = world.ents;
   if (isRotorVehicle(def) || isBoatVehicle(def)) {
-    const posed = { x, y, z, yaw, pitch: 0, roll: 0 }, ents = world.ents, pad = 15;
+    // The whole rigid vehicle against each body near, by its exact shape, adjacent rotor discs included.
+    const posed = { x, y, z, yaw, pitch: 0, roll: 0 }, pad = 15;
     for (let cz = Math.max(0, Math.floor((z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((z + pad) / CHUNK_SIZE)); cz++) {
       for (let cx = Math.max(0, Math.floor((x - pad) / CHUNK_SIZE)); cx <= Math.min(world.dims.chunksX - 1, Math.floor((x + pad) / CHUNK_SIZE)); cx++) {
         for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
@@ -259,46 +313,15 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
         }
       }
     }
+    return true;
   }
-  const parts: { x: number; y: number; z: number; radius: number; height: number }[] = [];
-  const add = (lx: number, ly: number, lz: number, radius: number, height: number): void => { parts.push({ x: x + cs * lx + sn * lz, y: y + ly, z: z - sn * lx + cs * lz, radius, height }); };
-  const along = Math.max(0, spec.halfLength - spec.halfWidth);
-  for (let i = -2; i <= 2; i++) add(0, spec.clearance, i * along / 2, spec.halfWidth, spec.height - spec.clearance);
-  if (isRotorVehicle(def)) {
-    const tail = def.spec.tail;
-    for (let i = 0; i <= 8; i++) {
-      const at = tail.from.map((v, axis) => v + (tail.to[axis]! - v) * i / 8);
-      add(at[0]!, at[1]! - tail.radius, at[2]!, tail.radius, tail.radius * 2);
-    }
-    const main = def.rotors[0]!;
-    // The disc is shallow, while a capsule with its radius would be a 9 m tall sphere. Cover unloaded nodes with
-    // small spheres and use one shallow cylinder for dynamic bodies. Static geometry was checked by the shared helper.
-    if (world.unloaded) for (let rz = -main.radius; rz <= main.radius; rz += .2) for (let rx = -main.radius; rx <= main.radius; rx += .2) {
-      if (rx * rx + rz * rz > main.radius * main.radius) continue;
-      const px = x + cs * (main.at[0] + rx) + sn * (main.at[2] + rz), pz = z - sn * (main.at[0] + rx) + cs * (main.at[2] + rz);
-      if (world.unloaded.meets(px, y + main.at[1] - .15, pz, .15, .3)) return false;
-    }
-    parts.push({ x: x + cs * main.at[0] + sn * main.at[2], y: y + main.at[1] - .08, z: z - sn * main.at[0] + cs * main.at[2], radius: main.radius, height: .16 });
-  }
-  if (isBoatVehicle(def)) {
-    const prop = def.spec.propeller;
-    add(prop.at[0], prop.at[1] - prop.radius, prop.at[2], prop.radius, prop.radius * 2);
-    for (const box of [...def.spec.hullBoxes, ...(def.spec.outboard?.boxes ?? [])]) {
-      if (Math.abs(box.at[2]) + box.half[2] <= spec.halfLength) continue;
-      const radius = Math.min(box.half[0], box.half[2]);
-      const steps = Math.max(1, Math.ceil(box.half[2] / radius));
-      for (let i = -steps; i <= steps; i++) add(box.at[0], box.at[1] - box.half[1], box.at[2] + i / steps * Math.max(0, box.half[2] - radius), radius, box.half[1] * 2);
-    }
-  }
-  for (const part of parts) {
-    if (part.height > .2 && !placeFree(world, part.x, part.y, part.z, part.radius, part.height)) return false;
-    if (isRotorVehicle(def) || isBoatVehicle(def)) continue; // Whole rigid vehicle/actor envelopes were checked above, including adjacent rotor discs.
-    // Dynamic bodies are separate from the static collision world. Test only nearby chunks and vertical overlap.
+  // A car's bodies against the bodies near, which are apart from the static world: nearby chunks and vertical overlap.
+  for (const part of hullParts(x, y, z, yaw, def)) {
     const pad = part.radius + 8;
     for (let cz = Math.max(0, Math.floor((part.z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((part.z + pad) / CHUNK_SIZE)); cz++) {
       for (let cx = Math.max(0, Math.floor((part.x - pad) / CHUNK_SIZE)); cx <= Math.min(world.dims.chunksX - 1, Math.floor((part.x + pad) / CHUNK_SIZE)); cx++) {
-        for (let e = world.ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = world.ents.next[e]!) {
-          const ents = world.ents, k = ents.kind[e]!;
+        for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
+          const k = ents.kind[e]!;
           if ((ents.flags[e]! & F_ALIVE) === 0 || part.y >= ents.y[e]! + world.reg.bodyHeight[k]! || part.y + part.height <= ents.y[e]!) continue;
           const other = world.reg.vehicle[k];
           if (other) {
