@@ -13,7 +13,7 @@ import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { MODE_GHOST, MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
-import { writeMap, type MapData } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, writeMap, type MapData } from "../../shared/world/mapfile.ts";
 import { FakeNet } from "../../tests/fixtures/assetnet.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
 import { SOURCE } from "../art/source.ts";
@@ -42,16 +42,17 @@ export interface KoruShot {
 }
 
 /** Deliberate viewpoints consume the authored geometry, floor and eye anchors; only camera composition is preview-owned. */
-export function koruReviewShots(): readonly KoruShot[] {
+export function koruReviewShots(map = koruCourse()): readonly KoruShot[] {
   const p = koruWorldPoint, { views, dimensions, decks, rig, docking } = KORU_LAYOUT;
+  const hf = mapHeightfield(map);
   const floor = (index: number, eye: readonly number[]) => p([eye[0]!, decks[index]!.floorY, eye[2]!]);
   const spectator = (eye: readonly number[]) => p([eye[0]!, eye[1]! - 1.62, eye[2]!]);
   const focus = p([0, dimensions.highestMast / 3, 0]);
   const framePoints = [p([-dimensions.beam / 2, 0, dimensions.hullMinZ]), p([dimensions.beam / 2, 0, dimensions.hullMaxZ]), p(dimensions.bowspritTip), ...rig.masts.map(mast => p([0, mast.tipY, mast.z]))];
   const walk = (name: string, deck: number, eye: readonly number[], target: readonly number[], extra: Partial<KoruShot> = {}): KoruShot => ({ name, feet: floor(deck, eye), target: p(target), mode: "walk", tier: "high", ...extra });
   return [
-    { name: "01-authentic-arrival", feet: [KORU_COURSE.spawn.x, docking.shoreLanding[1]!, KORU_COURSE.spawn.z], target: focus, mode: "walk", tier: "high", arrival: true, framePoints },
-    { name: "02-shore-scenic", feet: [KORU_COURSE.scenic.x, docking.shoreLanding[1]!, KORU_COURSE.scenic.z], target: focus, mode: "walk", tier: "high", framePoints },
+    { name: "01-authentic-arrival", feet: [KORU_COURSE.spawn.x, hf.heightAt(KORU_COURSE.spawn.x, KORU_COURSE.spawn.z), KORU_COURSE.spawn.z], target: focus, mode: "walk", tier: "high", arrival: true, framePoints },
+    { name: "02-shore-scenic", feet: [KORU_COURSE.scenic.x, hf.heightAt(KORU_COURSE.scenic.x, KORU_COURSE.scenic.z), KORU_COURSE.scenic.z], target: focus, mode: "walk", tier: "high", framePoints },
     { name: "03-port-profile", feet: spectator(views.profile), target: focus, mode: "spectator", tier: "high", framePoints },
     { name: "04-bow-quarter", feet: spectator(views.bowQuarter), target: focus, mode: "spectator", tier: "high" },
     { name: "05-stern-quarter", feet: spectator(views.sternQuarter), target: focus, mode: "spectator", tier: "high" },
@@ -185,4 +186,4 @@ export async function reviewKoru(map: MapData, shots: readonly KoruShot[], args 
   console.log(`${out}: ${report.length} native Koru views`);
 }
 
-if (import.meta.main) await reviewKoru(koruCourse(), koruReviewShots());
+if (import.meta.main) { const map = koruCourse(); await reviewKoru(map, koruReviewShots(map)); }

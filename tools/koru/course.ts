@@ -6,7 +6,7 @@ import { KORU_LAYOUT, koruPoint, koruStatics } from "../../content/landmarks/kor
 import { CHUNK_SIZE, chunkAt, chunkCount, type MapDims } from "../../shared/coords.ts";
 import { defaultPalette, nearestColour } from "../../shared/pack/palette.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
-import { writeMap, type MapData, type MapStatic, type NodeList } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, writeMap, type MapData, type MapStatic, type NodeList } from "../../shared/world/mapfile.ts";
 
 export const KORU_COURSE = {
   id: "preview:koru-marina", water: 0,
@@ -26,8 +26,19 @@ export interface MarinaPlacement {
 /** Listed native nodes retain their ordinary meshes, foliage, collision and harvest semantics. */
 function palms(dims: MapDims): NodeList {
   const points: { x: number; z: number; yaw: number }[] = [];
-  for (let z = 916; z <= 1132; z += 18) points.push({ x: 1104, z, yaw: (z * 997) & 65535 });
-  for (let z = 930; z <= 1120; z += 38) points.push({ x: 1132 + (z % 3) * 3, z, yaw: (z * 743) & 65535 });
+  const add = (x: number, z: number, yaw: number) => {
+    // Keep the actual hull and rig sightlines clear, including the palms' leaning crowns, from both shore viewpoints.
+    const blocked = [KORU_COURSE.spawn, KORU_COURSE.scenic].some(view => {
+      const t = (view.x - x) / (view.x - KORU_COURSE.vessel.x - KORU_LAYOUT.dimensions.beam / 2);
+      if (t <= 0 || t >= 1) return false;
+      const near = view.z + (KORU_COURSE.vessel.z + KORU_LAYOUT.dimensions.hullMinZ - view.z) * t - 12;
+      const far = view.z + (KORU_COURSE.vessel.z + KORU_LAYOUT.dimensions.bowspritTip[2]! - view.z) * t + 12;
+      return z >= near && z <= far;
+    });
+    if (!blocked) points.push({ x, z, yaw });
+  };
+  for (let z = 916; z <= 1132; z += 18) add(1104, z, (z * 997) & 65535);
+  for (let z = 930; z <= 1120; z += 38) add(1132 + (z % 3) * 3, z, (z * 743) & 65535);
   points.sort((a, b) => chunkAt(dims, a.x, a.z) - chunkAt(dims, b.x, b.z));
   const first = new Uint32Array(chunkCount(dims) + 1), kind = new Uint8Array(points.length);
   const x = new Uint16Array(points.length), z = new Uint16Array(points.length), yaw = new Uint16Array(points.length);
@@ -46,9 +57,10 @@ export function marinaCourse(placement: MarinaPlacement): MapData {
   const sand = nearestColour(palette, 170, 157, 127), stone = nearestColour(palette, 166, 163, 151), grass = nearestColour(palette, 112, 126, 93);
   for (let j = 0; j < hf.nz; j++) for (let i = 0; i < hf.nx; i++) {
     const x = i * hf.cell, z = j * hf.cell;
-    // A level arrival promenade and steep quay edge; the whole yacht remains over genuine deep water.
+    // The shore rises gently behind its level quay: a real walker sees the hull over the seawall, then descends to the pier.
     const edge = 1080 + (z < 880 || z > 1170 ? 38 * Math.sin(z / 145) : 0);
     let y = x >= edge ? deck : Math.max(-18, deck - (edge - x) * 1.5);
+    if (x >= edge) y += 8 * Math.max(0, Math.min(1, (x - 1086) / 66));
     if (x > 1168) y += 14 * (1 - Math.exp(-(x - 1168) / 120)) * (.55 + .45 * Math.sin(z / 118) ** 2);
     // Low headlands frame the harbour while leaving its western sea approach open.
     if ((z < 640 || z > 1400) && x > 760) {
@@ -56,7 +68,8 @@ export function marinaCourse(placement: MarinaPlacement): MapData {
       y = Math.max(y, ridge - 3);
     }
     hf.setSample(i, j, y);
-    hf.tint[j * hf.nx + i] = y < 0 ? sand : x < 1116 && z > 882 && z < 1166 ? stone : grass;
+    const promenade = (x < 1116 && z > 882 && z < 1166) || (x < 1160 && Math.abs(z - landingZ) < 4);
+    hf.tint[j * hf.nx + i] = y < 0 ? sand : promenade ? stone : grass;
   }
   const add = (kind: string, x: number, y: number, z: number, yaw = 0) => statics.push({ kind, x, y, z, yaw });
   const floor = (x: number, y: number, z: number, wood = false) => add(wood ? "core:ceiling_wood" : "core:ceiling_stone", x, y - .125, z);
@@ -75,8 +88,8 @@ export function marinaCourse(placement: MarinaPlacement): MapData {
   }
   for (let z = 934; z <= 1120; z += 30) {
     if (Math.abs(z - landingZ) < 10) continue;
-    add(ruinKind("zcounter", "clay"), 1094, deck + .5, z, 16384);
-    add(ruinKind("zshrub"), 1104, deck, z + 6);
+    add(ruinKind("zcounter", "clay"), 1094, hf.heightAt(1094, z) + .5, z, 16384);
+    add(ruinKind("zshrub"), 1104, hf.heightAt(1104, z + 6), z + 6);
   }
 
   // A lower floating finger pier serves the ordinary 6.8 m launch, a physical scale comparison a player may use.
@@ -102,9 +115,10 @@ export function koruWorldPoint(local: readonly number[]): readonly [number, numb
 }
 
 /** World-space feet from the genuine shore spawn to the authored gangway; the public route continues in KORU_LAYOUT. */
-export function koruApproach(): readonly (readonly [number, number, number])[] {
+export function koruApproach(map = koruCourse()): readonly (readonly [number, number, number])[] {
   const shore = koruWorldPoint(KORU_LAYOUT.docking.shoreLanding), approach = koruWorldPoint(KORU_LAYOUT.docking.shoreApproach);
-  return [[KORU_COURSE.spawn.x, shore[1], KORU_COURSE.spawn.z], [1084, shore[1], shore[2]], approach, shore];
+  const hf = mapHeightfield(map);
+  return [[KORU_COURSE.spawn.x, hf.heightAt(KORU_COURSE.spawn.x, KORU_COURSE.spawn.z), KORU_COURSE.spawn.z], [1086, shore[1], shore[2]], approach, shore];
 }
 
 export function koruCourse(): MapData {

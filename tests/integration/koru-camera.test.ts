@@ -6,6 +6,7 @@ import { MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { capsuleFree } from "../../shared/world/collide.ts";
 import { writeMap } from "../../shared/world/mapfile.ts";
+import { HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { KORU_COURSE, koruCourse } from "../../tools/koru/course.ts";
 import { koruReviewShots } from "../../tools/koru/review.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -18,12 +19,21 @@ test("the untouched marina arrival faces and frames the full hull, bowsprit and 
     h.run(1200, now => app.frame(now, 1200, 800));
     expect(app.session.own.x).toBeCloseTo(KORU_COURSE.spawn.x, 2);
     expect(app.session.own.z).toBeCloseTo(KORU_COURSE.spawn.z, 2);
+    expect(app.session.own.y).toBeCloseTo(h.world.hf.heightAt(KORU_COURSE.spawn.x, KORU_COURSE.spawn.z), 2);
     expect(app.session.own.mode).toBe(MODE_WALK); expect(app.session.own.grounded).toBe(true);
     expect(Math.sin(app.controls.yaw)).toBeCloseTo(-1, 6); expect(app.controls.pitch).toBe(0);
     const screen = new Float32Array(3);
     for (const point of koruReviewShots()[0]!.framePoints!) {
       expect(app.cam.project(...point, screen)).toBe(true);
       for (const coordinate of screen.subarray(0, 2)) { expect(coordinate).toBeGreaterThan(.02); expect(coordinate).toBeLessThan(.98); }
+      // Frustum containment alone missed a seawall-hidden hull and a foreground palm. Check the real sightline too.
+      const dx = point[0] - app.cam.x, dy = point[1] - app.cam.y, dz = point[2] - app.cam.z, distance = Math.hypot(dx, dy, dz);
+      const hit = castWorld(h.world, app.cam.x, app.cam.y, app.cam.z, dx / distance, dy / distance, dz / distance, distance);
+      if (hit !== HIT_NONE) {
+        expect(hit, `obstructed arrival point ${point}`).toBe(HIT_STRUCTURE);
+        const kind = h.world.structs.chunks[Math.floor(rayHit.ref / 65536)]!.kind[rayHit.ref % 65536]!;
+        expect(h.reg.defs[kind]!.id.startsWith("core:koru"), `arrival blocked by ${h.reg.defs[kind]!.id}`).toBe(true);
+      }
     }
     expect(app.session.stats.corrections).toBe(0);
   } finally { h.host.shutdown(); }
