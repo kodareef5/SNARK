@@ -163,6 +163,8 @@ export class App {
   private shown: Registry;
   private readonly pack: Pack;
   private last = -1;
+  /** Adopt the welcome's authored/saved facing once, before the first input overwrites it. */
+  private facing = false;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
   private helicopterViewHost = -1;
@@ -819,6 +821,12 @@ export class App {
     const c = this.controls;
     this.nowMs = nowMs;
     hud.vehicle = null;
+    if (!this.facing && session.state === "active") {
+      // Mouse movement while connecting is an offset from the arrival view, not a reason to face +Z.
+      c.yaw += session.ownYaw;
+      c.pitch += session.ownPitch;
+      this.facing = true;
+    }
 
     this.travel(nowMs);
     if (session.state === "closed") {
