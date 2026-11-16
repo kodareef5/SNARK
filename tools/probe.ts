@@ -34,6 +34,11 @@ if (!chrome) {
   process.exit(2);
 }
 
+if (process.argv.includes("--pages")) {
+  const { guideProbe } = await import("./pages/probe.ts");
+  process.exit(await guideProbe(chrome) ? 0 : 1);
+}
+
 // The lit probe builds the core pack itself and needs no client.
 if (!process.argv.includes("--lit")) await buildClient({ stress: process.argv.includes("--stress") });
 for (const [flag, run] of [["--textured", texturedProbe], ["--lit", litProbe]] as const) {

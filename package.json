@@ -25,7 +25,8 @@
     "bed-trip": "bun tools/bed-trip.ts",
     "agent-trip": "bun tools/agent-trip.ts",
     "events": "bun tools/events.ts",
-    "sounds": "bun tools/sounds.ts"
+    "sounds": "bun tools/sounds.ts",
+    "pages": "bun tools/pages.ts"
   },
   "devDependencies": {
     "@types/bun": "1.4.3",

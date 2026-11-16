@@ -14,6 +14,7 @@ import { bothWays, checkAsset } from "../../tools/art/check.ts";
 import { describe, gameTextures, materialsOf } from "../../tools/art/materials.ts";
 import { shared, type CreatureAsset, type MaterialSpec, type PiecesAsset } from "../../tools/art/spec.ts";
 import * as image from "../../tools/pack/image.ts";
+import * as surfaces from "../../tools/surfaces/build.ts";
 import { encodePng, readPicture, type Picture } from "../../tools/pack/image.ts";
 import { splitPack } from "../../tools/pack/split.ts";
 import { tangentsOf } from "../../tools/pack/surface.ts";
@@ -188,9 +189,16 @@ test("pieces take their materials by name: one of the asset's own, one that seve
 test("every texture the game's packs name has its pictures listed for the texture build, and listing them reads no picture", async () => {
   const named = corePack().header.textures ?? [];
   const read = spyOn(image, "readPicture");
-  const sources = await gameTextures();
-  expect(read).not.toHaveBeenCalled();
-  read.mockRestore();
+  const bake = spyOn(surfaces, "worldMaterial");
+  let sources: Awaited<ReturnType<typeof gameTextures>>;
+  try {
+    sources = await gameTextures();
+    expect(read).not.toHaveBeenCalled();
+    expect(bake).not.toHaveBeenCalled();
+  } finally {
+    read.mockRestore();
+    bake.mockRestore();
+  }
   expect(named.length).toBeGreaterThan(0);
   for (const t of named) expect([t.id, sources.find((s) => s.id === t.id)?.role, sources.find((s) => s.id === t.id)?.top]).toEqual([t.id, t.role, t.top]);
   // The examples are in no game pack, and theirs are found the same way.

@@ -3,6 +3,8 @@ import { join } from "node:path";
 import type { EntryKind, GuideData, GuideEntry, GuideMap, GuideMusic, GuideServer } from "../../shared/pages/types.ts";
 import { duration, entryCard, entryPath, escape, facts, icon, localUrl, mapPath, modelOf, routeId, sectionHead, serverPath, soundRow, words } from "./view/html.ts";
 import { filterBar, heading, layout, noResults } from "./view/layout.ts";
+import { renderMcp } from "./mcp.ts";
+import { renderReference } from "./reference.ts";
 
 const KINDS: readonly EntryKind[] = ["creatures", "characters", "items", "engrams", "vehicles", "structures"];
 const DESCRIPTIONS: Record<EntryKind, string> = {
@@ -76,6 +78,7 @@ function musicCard(track: GuideMusic, index: number): string {
 
 /** Complete HTML at every route; scripts enhance filters, media and map navigation only. */
 export async function renderGuide(data: GuideData, outDir: string): Promise<void> {
+  await Promise.all([renderMcp(data, outDir), renderReference(data, outDir)]);
   const routes = new Set<string>();
   const write = async (route: string, title: string, active: string, body: string, crumbs: { label: string; href: string }[] = []): Promise<void> => {
     if (routes.has(route)) throw new Error(`Duplicate guide route: ${route}`);
