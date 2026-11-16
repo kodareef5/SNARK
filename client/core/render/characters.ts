@@ -5,6 +5,7 @@ import type { SpeciesDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { Pose } from "../../../shared/anim/clip.ts";
 import { createMountMotion, mountOrigin, mountPose } from "../../../shared/anim/mount.ts";
+import { fitSeatControls } from "../../../shared/anim/seat-controls.ts";
 import { vehicleRotation } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
@@ -86,6 +87,7 @@ export interface VehicleSeatPose extends VehicleRenderPose {
   steer: number;
   role?: Seat["pose"];
   weapons?: boolean;
+  definition?: Seat;
 }
 
 interface BodySet {
@@ -361,7 +363,7 @@ export class Characters {
   seatPose(kind: number, slot: number, vehicle: VehicleRenderPose, at: ArrayLike<number>, yaw: number, aimYaw?: number): VehicleSeatPose | undefined {
     const def = this.creatures[kind]?.vehicle?.def, seat = def?.seats[slot - 1];
     if (!def || !seat) return undefined;
-    return { ...vehicle, x: at[0]!, y: at[1]!, z: at[2]!, yaw, driver: seat.driver === true, steer: def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer, ...(seat.pose ? { role: seat.pose } : {}), ...(seat.weapons === undefined ? {} : { weapons: seat.weapons }), ...(aimYaw === undefined ? {} : { aimYaw }) };
+    return { ...vehicle, definition: seat, x: at[0]!, y: at[1]!, z: at[2]!, yaw, driver: seat.driver === true, steer: def.movement === "rotor" ? 0 : vehicle.steering / def.spec.maxSteer, ...(seat.pose ? { role: seat.pose } : {}), ...(seat.weapons === undefined ? {} : { weapons: seat.weapons }), ...(aimYaw === undefined ? {} : { aimYaw }) };
   }
 
   /** Root on a seat, using the same body binding/proportions and pelvis solve as add(). Does not emit a draw. */
@@ -373,6 +375,7 @@ export class Characters {
     mountPose(this.mount, { role: seat.role ?? (seat.driver ? "drive" : "passenger"), tick: 0, startTick: 0, durationTicks: 1, steering: seat.steer }, this.pose);
     if (view) lookScales(view, this.scales);
     solve(HUMAN, this.pose, this.solved, set.rest, view ? this.scales : null);
+    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, view ? this.scales : null, seat.definition);
     vehicleRotation(seat, this.rotation);
     mountOrigin(this.solved, [seat.x, seat.y, seat.z], this.rotation, out);
     return true;
@@ -793,6 +796,7 @@ export class Characters {
         if (!seat && !vehicleSeat) this.pose.root[1]! += lookLift(scales, set.rest);
       }
       solve(HUMAN, this.pose, this.solved, set.rest, scales);
+      if (vehicleSeat?.definition) fitSeatControls(this.pose, this.solved, set.rest, scales, vehicleSeat.definition);
       if (seat) {
         // A rider sits in its seat's whole frame, and leans, pitches and banks as the seat does.
         writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, 0, 0, 0, 0);

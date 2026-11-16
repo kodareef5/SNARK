@@ -5,6 +5,7 @@ import { HUMAN, HUMAN_BONES } from '../shared/anim/human.ts';
 import { defaultLook, lookScales, LOOK_SEX, SEX_IDS } from '../shared/anim/look.ts';
 import type { PackRig } from '../shared/pack/pack.ts';
 import { createMountMotion, mountOrigin, mountPose } from '../shared/anim/mount.ts';
+import { fitSeatControls } from '../shared/anim/seat-controls.ts';
 import { Solved, solve } from '../shared/anim/skeleton.ts';
 import { CHUNK_SIZE, TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
@@ -773,7 +774,7 @@ export class Urban {
     const { world } = this.ctx, ents = world.ents;
     const state = this.state(vehicle), seat = [0, 0, 0], rotation = [0, 0, 0, 1], origin = [0, 0, 0];
     vehiclePoint(state, anchor, seat); vehicleRotation(state, rotation);
-    const def = world.reg.vehicle[ents.kind[vehicle]!]!, profile = def.seats.find(s => s.anchor === anchor)?.pose;
+    const def = world.reg.vehicle[ents.kind[vehicle]!]!, seatDefinition = def.seats.find(s => s.anchor === anchor), profile = seatDefinition?.pose;
     mountPose(this.motion, { role: profile ?? (driver ? 'drive' : 'passenger'), tick: world.tick, startTick: 0, durationTicks: 1, steering: isRotorVehicle(def) ? 0 : state.steering / def.spec.maxSteer }, this.pose);
     const look = ents.look[actor] ?? this.ctx.records.byPid.get(ents.pid[actor]!)?.look ?? PLAIN;
     const definition = world.reg.defs[ents.kind[actor]!];
@@ -781,6 +782,7 @@ export class Urban {
     const rest = this.rests.get(mesh + '_' + SEX_IDS[look[LOOK_SEX]!]) ?? HUMAN.rest;
     lookScales(look, this.scales);
     solve(HUMAN, this.pose, this.solved, rest, this.scales);
+    if (seatDefinition) fitSeatControls(this.pose, this.solved, rest, this.scales, seatDefinition);
     mountOrigin(this.solved, seat, rotation, origin);
     ents.loadBody(actor, this.body);
     this.body.x = origin[0]!; this.body.y = origin[1]!; this.body.z = origin[2]!;

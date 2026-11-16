@@ -12,6 +12,8 @@ export interface Seat {
   readonly pose?: "drive" | "passenger" | "pilot" | "cabin";
   /** False stows hand weapons and disables their actions while seated in an enclosed cabin. */
   readonly weapons?: boolean;
+  /** Pilot hand grips in the host's frame. Actual body proportions reach these without stretching. */
+  readonly controls?: { readonly left: readonly [number, number, number]; readonly right: readonly [number, number, number] };
   /**
    * Where the occupant sits: a car's occupant's pelvis, a saddle's top under the rider (shared/anim/seat.ts hangs the
    * rider's origin SEAT_DROP below it). The server pins it there and every client draws it there.
@@ -45,6 +47,7 @@ export function validateSeats(seats: readonly Seat[], doors: number, what: strin
       (seat.socket !== undefined && !(typeof seat.socket === "string" && seat.socket.length > 0 && seat.socket.length <= 64))) throw new Error(`invalid ${what} seat`);
     if ((seat.pose !== undefined && !["drive", "passenger", "pilot", "cabin"].includes(seat.pose)) ||
       (seat.weapons !== undefined && typeof seat.weapons !== "boolean")) throw new Error(`invalid ${what} seat profile`);
+    if (seat.controls && (seat.pose !== "pilot" || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
     names.add(seat.id);
     if (seat.driver) drivers++;
   }

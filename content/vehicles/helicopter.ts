@@ -18,7 +18,7 @@ export const HELICOPTER: HelicopterSpec = {
 export const HELICOPTER_VEHICLE: RotorVehicleDefinition = {
   id: "core:helicopter", movement: "rotor", spec: HELICOPTER, wreck: "core:helicopter_wreck",
   seats: [
-    { id: "pilot", driver: true, anchor: ART.anchors.seat_driver, entry: ART.anchors.approach_front_left, door: 0, pose: "pilot", weapons: false },
+    { id: "pilot", driver: true, anchor: ART.anchors.seat_driver, entry: ART.anchors.approach_front_left, door: 0, pose: "pilot", weapons: false, controls: { left: ART.anchors.collective, right: ART.anchors.cyclic } },
     { id: "front", anchor: ART.anchors.seat_front_passenger, entry: ART.anchors.approach_front_right, door: 1, pose: "cabin", weapons: false },
     { id: "rear_left", anchor: ART.anchors.seat_rear_left, entry: ART.anchors.approach_rear_left, door: 2, pose: "cabin", weapons: false },
     { id: "rear_right", anchor: ART.anchors.seat_rear_right, entry: ART.anchors.approach_rear_right, door: 3, pose: "cabin", weapons: false },
