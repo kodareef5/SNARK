@@ -129,7 +129,7 @@ test("Koru uses bounded native static modules at full scale with public paired c
   expect(KORU_LAYOUT.decks.map(d => d.floorY)).toEqual([.75, 3.75, 6.75, 9.75]);
   const statics = koruStatics(vessel.x, vessel.y, vessel.z);
   expect(statics.length).toBe(KORU_LAYOUT.modules.length - KORU_LAYOUT.doors.length);
-  const solid: (readonly number[])[] = [], hull: (readonly number[])[] = [];
+  const solid: (readonly number[])[] = [], hull: (readonly number[])[] = [], hullAndSpar: (readonly number[])[] = [];
   for (const module of KORU_LAYOUT.modules) {
     expect(module.boxes.length + module.hulls.length).toBeLessThanOrEqual(16);
     const kind = reg.index.get(module.id)!;
@@ -137,6 +137,8 @@ test("Koru uses bounded native static modules at full scale with public paired c
     for (let axis = 0; axis < 3; axis++) {
       expect(Math.abs(module.visualBounds.min[axis]!)).toBeLessThanOrEqual(16);
       expect(Math.abs(module.visualBounds.max[axis]!)).toBeLessThanOrEqual(16);
+      expect(Math.max(Math.abs(module.visualBounds.min[axis]!), Math.abs(module.visualBounds.max[axis]!)))
+        .toBeLessThanOrEqual([reg.halfX, reg.halfY, reg.halfZ][axis]![kind]! + .002);
     }
     const placed = statics.find(s => s.kind === module.id);
     if (!placed || module.category === "gangway") continue;
@@ -145,10 +147,13 @@ test("Koru uses bounded native static modules at full scale with public paired c
     for (const p of points) {
       const actual = koruPoint(placed.x, placed.y, placed.z, placed.yaw, p); solid.push(actual);
       if (module.category === "hull") hull.push(actual);
+      if (module.category === "hull" || module.category === "bowsprit") hullAndSpar.push(actual);
     }
   }
   // Measure the actual placed collision points, independently of the descriptive dimensions above.
-  expect(Math.max(...solid.map(p => p[2]!)) - Math.min(...solid.map(p => p[2]!))).toBeCloseTo(125, 2);
+  expect(Math.max(...hullAndSpar.map(p => p[2]!)) - Math.min(...hullAndSpar.map(p => p[2]!))).toBeCloseTo(125, 2);
+  // A few centimetres of end hardware may project beyond the spar; the full assembly still uses the published scale.
+  expect(Math.abs(Math.max(...solid.map(p => p[2]!)) - Math.min(...solid.map(p => p[2]!)) - 125)).toBeLessThan(.1);
   expect(Math.max(...hull.map(p => p[0]!)) - Math.min(...hull.map(p => p[0]!))).toBeCloseTo(17.2, 2);
 });
 
