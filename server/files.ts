@@ -1,19 +1,30 @@
 // The client's files over HTTP: whole, or one range of one. A file named after its own hash never changes, so it is
 // kept for good by whoever fetched it. Any other is checked again each time, and costs nothing if it is unchanged.
 
+import { existsSync } from "node:fs";
 import { join, normalize } from "node:path";
 
 const TYPES: Record<string, string> = { html: "text/html; charset=utf-8", css: "text/css; charset=utf-8", js: "text/javascript", snpk: "application/octet-stream", json: "application/json", png: "image/png", ttf: "font/ttf", txt: "text/plain; charset=utf-8", opus: "audio/ogg" };
 /** Sixteen hex digits in a name are the start of the SHA-256 of the file. */
 const HASHED = /\.[0-9a-f]{16}\./;
 
-export async function serveFile(dir: string, req: Request): Promise<Response> {
-  const url = new URL(req.url);
+/**
+ * The file at `pathname` under `dir`: the request's own path, or for a server reached at a path of its host the part of it
+ * under that path (server/main.ts placeOf).
+ */
+export async function serveFile(dir: string, req: Request, pathname = new URL(req.url).pathname): Promise<Response> {
   // A folder's address is its index.html, as the wiki's pages are written (tools/wiki.ts).
-  const path = normalize(join(dir, url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname));
+  const path = normalize(join(dir, pathname.endsWith("/") ? `${pathname}index.html` : pathname));
   if (!path.startsWith(dir)) return new Response("not found", { status: 404 });
   const file = Bun.file(path);
-  if (!(await file.exists())) return new Response("not found", { status: 404 });
+  if (!(await file.exists())) {
+    // A folder asked for without its slash goes on to its address with one, as /wiki to /wiki/, so that its page's
+    // relative addresses fall inside it. The way on is relative too, so it holds under any path the server is reached at.
+    if (!pathname.endsWith("/") && existsSync(join(path, "index.html"))) {
+      return new Response(null, { status: 308, headers: { location: `${pathname.slice(pathname.lastIndexOf("/") + 1)}/${new URL(req.url).search}` } });
+    }
+    return new Response("not found", { status: 404 });
+  }
   const size = file.size;
   const headers: Record<string, string> = { "content-type": TYPES[path.split(".").pop() ?? ""] ?? "application/octet-stream" };
   if (HASHED.test(path.slice(path.lastIndexOf("/") + 1))) headers["cache-control"] = "public, max-age=31536000, immutable";

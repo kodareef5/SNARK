@@ -82,7 +82,9 @@ for the travel list and choose Tampa. The page goes to port 8799 and shows the s
 your tribe has there, and you rise there with all you carried. An obelisk's terminal there and Miami bring you back, to a
 spawn point or your bed. A survivor whose page closed on the way, or that was turned away, is back on the server it left as
 soon as its owner joins there, and by itself after ten minutes. Reached through tunnels, give each server
-`--public-url https://<its own tunnel's host>`, and a page that came by one goes by the other's. An operator's cheats, which
+`--public-url https://<its own tunnel's host>`, and a page that came by one goes by the other's. Or give them one host, each
+at a path of its own (`--public-url /miami`), with `front.ts` in front of them for a tunnel that reaches one place: the
+start screen at `/` lists every world with how many play on it ([every world at one address](../planning/reference/operators.md#every-world-at-one-address)). An operator's cheats, which
 need `enablecheats` again after every arrival since an arrival is a new session: `travel [server]` lists the cluster's servers
 or sends the survivor from where it stands, `cluster` lists the cluster and who is away, and `cluster audit` says whether every
 item of it is accounted for. Now and then, `bun run cluster-trip` plays a survivor there and back through the game's agent on

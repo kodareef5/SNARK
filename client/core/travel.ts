@@ -1,6 +1,7 @@
 // Travel between the servers of a cluster, as a page does it. The server hands the page a ticket (S_TRAVEL); the page goes to
 // the other server's address with it, which only the page can work out, since only it knows how it reached this one; the page
 // there reads the ticket back and says hello with it. The ticket rides in the address's fragment, which no server is sent.
+// Beside it, the other addresses only the page can work out: its own server's sockets, and the links its menu shows.
 
 import { TICKET_BYTES } from "../../shared/net/protocol.ts";
 
@@ -27,12 +28,16 @@ export interface ClusterList {
 
 /** What the shell gives the app of the page. */
 export interface Page {
-  /** location.origin, location.protocol and location.hostname. */
+  /** location.origin, location.protocol, location.hostname, location.host and location.pathname. */
   origin: string;
   protocol: string;
   hostname: string;
+  host: string;
+  pathname: string;
   /** Goes to another address, leaving this page. */
   go(url: string): void;
+  /** Opens an address beside this page, which stays as it is: a link of the settings (SiteLink). */
+  open?(url: string): void;
   /** Reconnects this page with its current address and browser identity. */
   reload?(): void;
   /** Takes the ticket out of the address once the survivor has arrived, so a reload joins as anyone does. */
@@ -44,14 +49,54 @@ export interface Page {
 const hex = (bytes: Uint8Array): string => Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 
 /**
- * The address of server `to`. A page that came by this server's public address goes by the other's, if it has one; any other
- * goes to the other's port on the host it came by, which is right on this machine and on its network.
+ * The address of the socket `name` ("ws" or "voice") of the page's own server: beside the page, so under the path the server
+ * is reached at when it is reached at one (server/site.ts placeOf).
  */
-export function serverAddress(list: ClusterList, to: ClusterServer, page: Pick<Page, "origin" | "protocol" | "hostname">): string {
+export function socketAddress(page: Pick<Page, "protocol" | "host" | "pathname">, name: string): string {
+  return `${page.protocol === "https:" ? "wss" : "ws"}://${page.host}${page.pathname.slice(0, page.pathname.lastIndexOf("/") + 1)}${name}`;
+}
+
+/**
+ * Whether a page at `host` and `pathname` came by the path `base` through what sends each path to its world (server/front.ts,
+ * a tunnel's rules), and not straight to `port`, the port of the server reached at that path, which answers no other world.
+ */
+export function byPath(protocol: string, host: string, pathname: string, base: string, port: number): boolean {
+  const at = Number(/:(\d+)$/.exec(host)?.[1] ?? (protocol === "https:" || protocol === "wss:" ? 443 : 80));
+  return base.startsWith("/") && at !== port && (pathname === base || pathname.startsWith(`${base}/`));
+}
+
+/**
+ * The address of server `to`. Servers reached at paths of one host (a public address that is a path, as /miami) list each
+ * other by their paths: a page that came by this one's on the host in front of them goes by the other's there. A page that
+ * came by this server's public address goes by the other's, if it has one. Any other goes to the other's port on the host it
+ * came by, which is right on this machine and on its network.
+ */
+export function serverAddress(list: ClusterList, to: ClusterServer, page: Pick<Page, "origin" | "protocol" | "hostname" | "host" | "pathname">): string {
+  if (to.url.startsWith("/") && byPath(page.protocol, page.host, page.pathname, list.url, list.port)) return `${page.origin}${to.url}`;
   const origin = /^[a-z]+:\/\/[^/?#]+/i.exec(list.url)?.[0].toLowerCase() ?? "";
   if (origin !== "" && origin === page.origin.toLowerCase() && to.url !== "") return to.url;
   const host = page.hostname.includes(":") ? `[${page.hostname}]` : page.hostname;
-  return `${page.protocol}//${host}:${to.port}`;
+  // A server reached at a path answers its world only under it, at its port as anywhere.
+  return `${page.protocol}//${host}:${to.port}${to.url.startsWith("/") ? to.url : ""}`;
+}
+
+/** A link the menu shows: what it is, and where it goes, as links.json gives it (WikiUrl, RepositoryUrl). */
+export interface SiteLink {
+  label: string;
+  url: string;
+}
+
+/**
+ * The links of what links.json answers, in the order the menu shows them, without those the operator hid. A value that is
+ * not an http(s) address or a path of the site is not a link, whatever sent it.
+ */
+export function siteLinks(answer: unknown): SiteLink[] {
+  const a = (answer ?? {}) as Record<string, unknown>;
+  const out: SiteLink[] = [];
+  for (const [label, url] of [["Wiki", a.wiki], ["Source code", a.repository]] as const) {
+    if (typeof url === "string" && /^(https?:\/\/[^\s"'<>]+|\/[^\s"'<>]*)$/i.test(url.trim())) out.push({ label, url: url.trim() });
+  }
+  return out;
 }
 
 /** The page at `address` that a survivor named `name` arrives at with its ticket. */

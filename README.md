@@ -62,7 +62,7 @@ raptors that will come for you.
 | B | Hold to talk to those near; with Alt a whisper, with Shift a yell. The first press asks for the microphone |
 | Enter, Insert, / | Chat: to everyone, to those within 60 m, to your tribe. Tab changes channel, Enter says the line |
 | Backquote or Tab | Console. `help` lists commands; `tribe` founds and runs a tribe; `mute <name>` stops you hearing someone |
-| Escape | Close one screen, or open the glass menu; Settings, Controls, connection ping and Leave are here |
+| Escape | Close one screen, or open the glass menu; Settings, Controls, the wiki and the source code, connection ping and Leave are here |
 
 Interface preferences are kept in this browser. The play HUD hides diagnostic
 text by default; enable it under Settings → Interface. Controls shows keyboard

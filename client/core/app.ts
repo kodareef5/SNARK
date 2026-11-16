@@ -316,6 +316,7 @@ export class App {
     if (down && !repeat) this.ui.inputDevice = source;
     if (!this.ui.captureKeyboard && this.vehiclePlacement.key(code, down, repeat)) return true;
     if (this.ui.key(code, down, repeat, this.session)) {
+      this.openChosen();
       // A screen that captures the keyboard releases the body's keys and a push-to-talk microphone.
       if (this.ui.captureKeyboard) {
         this.blur();
@@ -500,7 +501,14 @@ export class App {
       if (Number.isInteger(slot) && slot >= 0 && slot < this.hud.hotbar.length) this.session.command(CMD_SELECT, (w) => w.u8(this.session.held === slot ? 255 : slot));
     }
     this.ui.pointer(kind, key, x, y, button, this.session);
+    this.openChosen();
     if (this.ui.menu) this.blur();
+  }
+
+  /** Opens a link the interface chose, now, while the click or key that chose it lets a page open one. */
+  private openChosen(): void {
+    const url = this.ui.takeOpening();
+    if (url !== null) this.page?.open?.(url);
   }
 
   private zoomMini(turn: number): void {

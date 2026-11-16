@@ -11,7 +11,7 @@ import { buildCombat } from "./combat.ts";
 import { buildHud, chatBand } from "./hud.ts";
 import { buildControls, KEY_CONTROL_GROUP, KEY_CONTROL_GLYPHS } from "./controls-help.ts";
 import { CONTROL_GROUPS } from "./controls-guide.ts";
-import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS } from "./menu.ts";
+import { buildMenu, KEY_CONTROLS_DEVICE, KEY_MENU_BACK, KEY_MENU_CONTROLS, KEY_MENU_LEAVE, KEY_MENU_OPEN, KEY_MENU_RESUME, KEY_MENU_SETTINGS, menuLink } from "./menu.ts";
 import { InventoryScreen } from "./inventory.ts";
 import { K_SLIDER, UiFrame } from "./nodes.ts";
 import { buildMap } from "./screens.ts";
@@ -21,6 +21,7 @@ import { buildSettings, settingsAdjust, settingsClick, settingsValue } from "./s
 import { KEY_STRUCT_NAME_INPUT, StructMenu } from "./structure.ts";
 import { KEY_NAME_INPUT, NamePrompt, buildOverhead } from "./tame.ts";
 import { TravelScreen } from "./travel.ts";
+import type { SiteLink } from "../travel.ts";
 import { SESSION_CREATING, SESSION_DEAD, TEXT_GLOBAL, TEXT_LOCAL, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 
 /** The channel each key opens the chat box on. */
@@ -53,6 +54,10 @@ export class Ui {
   inputDevice = 0;
   inspect = false;
   reconnectRequested = false;
+  /** The links the menu shows, as the page's server names them (links.json). */
+  links: readonly SiteLink[] = [];
+  /** A link chosen, for the app to open while the click or key that chose it is still the page's (takeOpening). */
+  private opening: string | null = null;
   menuFocus = KEY_MENU_RESUME;
   private focusNext = 0;
   private menuShift = false;
@@ -212,6 +217,20 @@ export class Ui {
     return false;
   }
 
+  /** The link a click or key chose since this was last asked, once: the app opens it at once, while the gesture is still the page's. */
+  takeOpening(): string | null {
+    const url = this.opening;
+    this.opening = null;
+    return url;
+  }
+
+  /** Takes a press of a link the menu shows, for the app to open (takeOpening). */
+  private chooseLink(key: number): boolean {
+    const url = menuLink(key, this.links);
+    if (url !== null) this.opening = url;
+    return url !== null;
+  }
+
   /** `kind` is 0 for down, 1 for up, 2 for move, over an interactive node. */
   pointer(kind: number, key: number, x: number, y: number, button: number, session: ClientSession | null): void {
     if(this.frame.find(key)?.kind===K_SLIDER) { if(kind===0 && button===0)this.focusTo(key); return; }
@@ -224,6 +243,7 @@ export class Ui {
         else if (key === KEY_MENU_CONTROLS) { this.help = true; this.helpDevice = this.inputDevice; this.focusTo(KEY_MENU_BACK); }
         else if (key === KEY_MENU_BACK) { this.options = this.help = false; this.focusTo(KEY_MENU_RESUME); }
         else if (key === KEY_MENU_LEAVE) { session?.close(); this.focusTo(KEY_MENU_RESUME); }
+        else if (!this.options && !this.help && this.chooseLink(key)) return;
         else if (this.help && (key === KEY_CONTROLS_DEVICE || key === KEY_CONTROLS_DEVICE + 1)) this.helpDevice = key - KEY_CONTROLS_DEVICE;
         else if (this.help && key >= KEY_CONTROL_GROUP && key < KEY_CONTROL_GROUP + CONTROL_GROUPS.length) this.helpGroup=key-KEY_CONTROL_GROUP;
         else if (this.help && key === KEY_CONTROL_GLYPHS) { this.settings.padGlyphs=1-this.settings.padGlyphs; this.settings.changed(); }
@@ -298,12 +318,12 @@ export class Ui {
         if (this.options) {
           buildSettings(f, this.settings, hud.micLevel, this.menuFocus);
         } else if (this.help) buildControls(f, this.helpDevice, this.menuFocus, this.helpGroup, this.settings.padGlyphs);
-        else buildMenu(f, hud, session?.state === "active", this.menuFocus);
+        else buildMenu(f, hud, session?.state === "active", this.menuFocus, this.links);
       } else if (this.creating && session) this.creator.build(f, this.palette, session.name);
       else if (this.dead && session) this.choosing.build(f, session, hud);
       else if (this.map && session) buildMap(f, session, hud);
       else if (this.character && session && this.registry) this.sheet.build(f, session, this.registry);
-      else if (this.options) buildSettings(f, this.settings, hud.micLevel);
+      else if (this.options) buildSettings(f, this.settings, hud.micLevel, 0);
       else if (this.travel.open && session) this.travel.build(f, session);
       else {
         this.inventory.build(f, session, this.registry, this.palette);
