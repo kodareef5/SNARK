@@ -6,7 +6,7 @@ OUT=ROOT/'content/landmarks/koru-layout.json'
 D={'schema':1,'id':'core:koru','frame':{'units':'metres','up':'+Y','forward':'+Z','port':'+X','waterline':0,'yawUnits':'degrees'},
  'evidence':{'published':{'lengthOverall':125,'beam':17.2,'source':'https://www.oceancoyacht.com/fleet/koru/'},'discrepancy':'Lateral title says125m; text says127m/16m. Builder baseline is used.','inferred':['hull stations','draft','mast stations and heights','deck datums','bowsprit proportion'],'original':['all room identities and positions','circulation and stairs','dock access','furniture layout']},
  'dimensions':{'hullMinZ':-54.5,'hullMaxZ':54.5,'bowspritTip':[0,8.5,70.5],'beam':17.2,'lowestKeel':-6.2,'highestMast':70},
- 'clearances':{'floorSpacing':3,'floorThickness':.2,'doorWidth':1.2,'doorHeight':2.6,'corridorWidth':1.8,'stairWidth':1.6,'ceilingClear':2.8,'railHeight':1.1},
+ 'clearances':{'floorSpacing':3,'floorThickness':.2,'doorWidth':1.6,'doorHeight':2.6,'corridorWidth':1.8,'stairWidth':1.6,'ceilingClear':2.8,'railHeight':1.1},
  'decks':[],'hullStations':[],'rooms':[],'modules':[],'stairs':[],'doors':[],'routes':[],'docking':{},'rig':{},'artBudget':{'levels':6,'totalFineTrianglesTarget':260000,'totalFineTrianglesMaximum':360000,'sharedTextureMegabytesMaximum':96,'materialsPerPieceMaximum':3,'nearFlatLevel':1,'defaultSails':'furled','notes':'Shared tiled marine finishes and bounded room furnishing; no portal culling is assumed.'}}
 mods=D['modules']
 def clean(v):
@@ -125,7 +125,7 @@ def room(name,label,level,bounds,entry,enclosed=False,door=None):
  if enclosed:
   # Entry is (side,centre): side0 aft,1 port,+X;2 forward;3 starboard,-X.
   side,c=entry;walls=[(x0,z0,x1,z0),(x1,z0,x1,z1),(x0,z1,x1,z1),(x0,z0,x0,z1)]
-  r['walls']=[wall(f'room_{name}_wall{k}',*ends,y,gap=(c,1.2) if k==side else None) for k,ends in enumerate(walls)]
+  r['walls']=[wall(f'room_{name}_wall{k}',*ends,y,gap=(c,1.6) if k==side else None) for k,ends in enumerate(walls)]
   p=[c,y,z0] if side==0 else [x1,y,c] if side==1 else [c,y,z1] if side==2 else [x0,y,c]
   r['entry']=p
   out=[p[0]+(1 if side==1 else -1 if side==3 else 0),y,p[2]+(1 if side==2 else -1 if side==0 else 0)]
@@ -160,7 +160,7 @@ room('forward_service','Forward service stair lobby',1,[-4.5,29,4.5,38],[0,0])
 room('aft_terrace','Upper aft terrace',2,[-5.9,-40,5.9,-29],[0,0])
 room('owner_suite','Owner suite',2,[-5.2,-29,5.2,-16],[2,0],False,'core:koru_door_owner')
 # Owner suite has an open service-stair side; one forward privacy bulkhead can be used independently.
-wall('owner_privacy',-5.2,-16,5.2,-16,6.75,gap=(0,1.2))
+wall('owner_privacy',-5.2,-16,5.2,-16,6.75,gap=(0,1.6))
 room('owner_bath','Owner bath and wardrobe',2,[-5.2,-16,-1.2,-10],[1,-13],True)
 room('upper_lounge','Upper lounge',2,[1.2,-16,5.2,-10],[0,0])
 room('upper_atrium','Upper grand atrium',2,[-5.2,-10,5.2,7],[0,0])
@@ -171,10 +171,10 @@ room('sun_bathing','Sun terrace',3,[-5.2,-18,5.2,-10],[0,0])
 room('sun_navigation','Upper observation terrace',3,[-5.2,-10,5.2,7],[0,0])
 # Three optional independent leaves: their hinge origins remain identical between reciprocal states.
 for name,cx,z,y,sign in [('vip_port',3.5,23,3.75,1),('vip_starboard',-3.5,23,3.75,1),('owner',0,-16,6.75,-1)]:
- hinge=[cx-.6,y,z];closed=box([cx-.6,y+.02,z-.03],[cx+.6,y+2.58,z+.03]);opened=box([cx-.63,y+.02,min(z,z+sign*1.2)],[cx-.57,y+2.58,max(z,z+sign*1.2)])
+ hinge=[cx-.8,y,z];closed=box([cx-.8,y+.02,z-.03],[cx+.8,y+2.58,z+.03]);opened=box([cx-.83,y+.02,min(z,z+sign*1.6)],[cx-.77,y+2.58,max(z,z+sign*1.6)])
  add('door_'+name,'door',boxes=[closed],origin=hinge,opens='door_'+name+'_open',meta={'hinge':hinge,'state':'closed'},color=101)
  add('door_'+name+'_open','door',boxes=[opened],origin=hinge,opens='door_'+name,placed=False,meta={'hinge':hinge,'state':'open'},color=101)
- D['doors'].append({'id':'core:koru_door_'+name,'open':'core:koru_door_'+name+'_open','hinge':hinge,'clearWidth':1.2,'clearHeight':2.6,'angle':sign*90})
+ D['doors'].append({'id':'core:koru_door_'+name,'open':'core:koru_door_'+name+'_open','hinge':hinge,'clearWidth':1.6,'clearHeight':2.6,'angle':sign*90})
 # Hull gate, landing, and mooring gangway: dock matches the outer anchor, while the inboard end overlaps the deck.
 add('gangway','gangway',boxes=[slab(7.8,20.4,-25,-23,3.75),box([7.8,3.75,-25.08],[20.4,4.85,-25]),box([7.8,3.75,-23],[20.4,4.85,-22.92])],meta={'clearWidth':2,'surface':'teak'},color=101)
 D['docking']={'shipLanding':[8.4,3.75,-24],'shoreLanding':[20.4,3.75,-24],'arrival':[0,3.75,-24],'clearWidth':2,'shoreApproach':[23,3.75,-24],'pierConnection':{'xMinimum':20.4,'zMinimum':-25.2,'zMaximum':-22.8},'hullGate':{'side':'port','zMin':-25.2,'zMax':-22.8,'sillY':3.75}}

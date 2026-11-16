@@ -83,7 +83,7 @@ for r in D['rooms']:
  if not r['enclosed']:continue
  p=r['entry'];side=r['entrySide'][0];axis='x' if side in(0,2) else 'z'
  # Sign is on the wall beside its doorway, never across the 2.6m clear lintel.
- at=[p[0]+.95 if axis=='x' else p[0],p[1]+1.65,p[2]+.95 if axis=='z' else p[2]]
+ at=[p[0]+1.22 if axis=='x' else p[0],p[1]+1.65,p[2]+1.22 if axis=='z' else p[2]]
  D['signs'].append({'room':r['id'],'label':r['label'],'at':at,'axis':axis})
 
 # Standing rigging is split into <=24m segments so every visual and collider remains inside the native +/-16m bound.
