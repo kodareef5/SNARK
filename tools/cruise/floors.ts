@@ -31,7 +31,8 @@ export function auditCruiseDeckFloors() {
   });
   const hf = new Heightfield(map.dims, TERRAIN_CELL, map.minY, map.stepY, map.heights, map.tint);
   const decks = cruiseRoomFloors({ hf, structs: floors }, plans, CRUISE_LAYOUT.decks, cruiseWorldPoint);
-  const sources = ["content/landmarks/cruise-layout.json", "shared/world/ray.ts", "shared/world/convex.ts",
+  const sources = ["content/landmarks/cruise-layout.json", "content/landmarks/cruise.ts", "content/landmarks/cruise-layout.ts",
+    "tools/cruise/floors.ts", "tools/cruise/course.ts", "shared/world/landmark.ts", "shared/world/ray.ts", "shared/world/convex.ts",
     "shared/world/structures.ts", "shared/world/frame.ts", "tests/fixtures/cruise-floors.ts"];
   return { scope: "All authored deck outline polygons minus explicit voids; native floor-only vertical rays on <=0.5 m grid and polygon edges, 0.02 m boundary inset. Supplemental sampled coverage, not a proof of every interior point.",
     sources: Object.fromEntries(sources.map(path => [path, createHash("sha256").update(readFileSync(resolve(import.meta.dir, "../..", path))).digest("hex")])),
