@@ -2,8 +2,8 @@
 export const HELICOPTER_ART = {
   id: "core:helicopter",
   envelope: { min: [-4.60, 0, -6.18], max: [4.60, 3.40, 4.30] },
-  cabin: { min: [-1.25, 0.55, -1.85], max: [1.25, 2.60, 2.45] },
-  interior: { min: [-1.17, 0.60, -1.65], max: [1.17, 2.50, 1.85] },
+  cabin: { min: [-1.25, 0.44, -2.02], max: [1.25, 2.60, 2.45] },
+  interior: { min: [-1.17, 0.505, -1.65], max: [1.17, 2.50, 1.85] },
   skids: { halfWidth: 1.40, front: 2.05, back: -1.95, radius: 0.075 },
   mainRotor: { center: [0, 3.15, -0.30], radius: 4.60, axis: [0, 1, 0] },
   tailRotor: { center: [0.28, 2.00, -5.50], radius: 0.68, axis: [1, 0, 0] },
