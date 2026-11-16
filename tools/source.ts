@@ -32,7 +32,8 @@ function git(dir: string, ...args: string[]): string {
 
 if (import.meta.main) {
   const out = resolve(process.argv[2] ?? join(ROOT, "var/source/repo"));
-  if (git(ROOT, "status", "--porcelain", "--untracked-files=no").trim() !== "") throw new Error("the working tree has changes: commit them first, the export is of what is committed");
+  const changed = git(ROOT, "diff", "--name-only", "HEAD").split("\n").filter((f) => f !== "" && shown(f));
+  if (changed.length > 0) throw new Error(`the export is of what is committed, and these have changes that are not:\n  ${changed.join("\n  ")}`);
   const list = join(ROOT, "var/source/names.txt");
   const names = existsSync(list) ? readFileSync(list, "utf8").split("\n").filter((l) => l.trim() !== "").map((l) => new RegExp(l.trim(), "i")) : [];
   const files = git(ROOT, "ls-files", "-z").split("\0").filter((f) => f !== "" && shown(f));
