@@ -568,7 +568,7 @@ def stairs(level):
     run = rise = 3.0 / STEPS
     s = 1.42
     nose, tread = 0.025, 0.05
-    if level == 2:
+    if level == 3:
         # The flight's slope midway between the steps' noses and their roots.
         p.extrude([(H, -H), (H, -H + rise / 2), (-H + run / 2, H), (-H, H), (-H, -H)], "x", -H, H, grid("boards"))
         return p.done()
@@ -652,7 +652,7 @@ PIECES = {
     "stairs": stairs,
 }
 
-# The ceiling and the stairs go from their second level straight to their plainest.
+# The ceiling goes from its second level straight to its plainest.
 for name, build in PIECES.items():
-    for level in range(3 if name in ("ceiling", "stairs") else 4):
+    for level in range(3 if name == "ceiling" else 4):
         build(level)
