@@ -6,6 +6,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
 import { LETTER_BLOCKS } from "../../content/lettering.ts";
+import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { TERMINALS } from "../../content/terminals.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
@@ -61,8 +62,8 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 3,
-    "structure/static": 8 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2,
-    shape: 17 + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2,
+    "structure/static": 8 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + KORU_LAYOUT.modules.length,
+    shape: 17 + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + KORU_LAYOUT.modules.length,
     material: 4,
     node: 14,
     "prop/container": 2,
@@ -72,7 +73,7 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     map: 5,
     rename: 58,
   });
-  expect(rest.length).toBe(299 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length);
+  expect(rest.length).toBe(299 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + KORU_LAYOUT.modules.length * 2);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};
