@@ -170,6 +170,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
   let raster: Rasterizer | null = null, packet: FramePacket | null = null;
   let quietFrames = 0, measure = false, measuredUploadFrames = 0;
   let resumedStreaming: unknown;
+  const rejectedSamples: { uploadFrames: number; lastUpload: unknown }[] = [];
   const frameTimes: number[] = [], coldTimes: number[] = [];
   const cold = { frames: 0, maxDraws: 0, maxTriangles: 0, maxCasters: 0, maxCityMakeMs: 0, maxCityMissing: 0, maxCityBehind: 0, maxResidentBytes: 0, maxUploadBytes: 0, dropped: 0, skipped: 0, casterDropped: 0 };
   const frame = (now: number) => {
@@ -183,7 +184,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
       resumedStreaming = { now, flying: residency?.flying, waiting: residency?.waiting, cityBehind: app.scene?.city?.stats.behind,
         meshes: packet?.assetUploads.map(upload => [files.manifest.meshes[upload.mesh]?.id, upload.level]), textures: packet?.texUploads.length };
     } }
-    else if (packet) {
+    if (packet) {
       coldTimes.push(elapsed); cold.frames++;
       cold.maxDraws = Math.max(cold.maxDraws, packet.drawCount); cold.maxTriangles = Math.max(cold.maxTriangles, packet.triangles);
       cold.maxCasters = Math.max(cold.maxCasters, packet.casterCount); cold.maxCityMakeMs = Math.max(cold.maxCityMakeMs, app.scene?.city?.stats.makeMs ?? 0);
@@ -215,13 +216,31 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
     }
     if (app.view.thirdPerson !== !!shot.thirdPerson) { app.key("KeyV", true); app.key("KeyV", false); }
     run(3600);
-    // Cover a complete sampling-length quiet interval before timing. A short
-    // lull can precede a delayed visibility/LOD request in a dense shoulder view.
-    for (let waits = 0; quietFrames < 180 && waits < 48; waits++) run(250);
-    if (quietFrames < 180) throw new Error(`${shot.name}: production asset streaming never settled for CPU sampling`);
-    const corrections = session.stats.corrections;
-    if (recordCpu) { measure = true; run(3000); measure = false; } else run(600);
-    if (measuredUploadFrames) throw new Error(`${shot.name}: asset streaming resumed during settled CPU sampling (${measuredUploadFrames} frames): ${JSON.stringify(resumedStreaming)}`);
+    let corrections = session.stats.corrections, accepted = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // A quiet lull can precede a delayed visibility/LOD request. Retry only
+      // within this bound; rejected sample timings and every packet peak stay
+      // in cold/settling evidence. The accepted window is wholly upload-free.
+      for (let waits = 0; quietFrames < 180 && waits < 48; waits++) run(250);
+      if (quietFrames < 180) throw new Error(`${shot.name}: production asset streaming never settled for CPU sampling`);
+      const before = { ...cold }, beforeTimes = coldTimes.length;
+      corrections = session.stats.corrections;
+      frameTimes.length = 0; measuredUploadFrames = 0; resumedStreaming = undefined;
+      // Harness.run rounds virtual durations up to client frames. Advancing
+      // one frame at a time avoids a floating deadline occasionally adding181.
+      measure = true;
+      for (let sample = 0; sample < 180; sample++) run(1);
+      measure = false;
+      if (measuredUploadFrames) {
+        rejectedSamples.push({ uploadFrames: measuredUploadFrames, lastUpload: resumedStreaming });
+        continue;
+      }
+      if (frameTimes.length !== 180) throw new Error(`${shot.name}: accepted sampling window must contain exactly 180 frames`);
+      Object.assign(cold, before); coldTimes.length = beforeTimes;
+      accepted = true;
+      break;
+    }
+    if (!accepted) throw new Error(`${shot.name}: streaming persisted through bounded sampling retries: ${JSON.stringify(rejectedSamples)}`);
     const p = packet as FramePacket | null, render = raster as Rasterizer | null;
     if (!p || (images && !render) || !app.scene) throw new Error(`${shot.name}: native App produced no frame`);
     if (shot.arrival && Math.hypot(ents.x[me.ent]! - shot.feet[0], ents.z[me.ent]! - shot.feet[2]) > .25) throw new Error(`${shot.name}: spawn search displaced the visitor from the authored arrival`);
@@ -278,7 +297,8 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
       placement: { ...placement, actualPlaced: placed.length, cruiseInstances: shipRows.length, auxiliaryPortAndKoruInstances: map.statics.length - shipRows.length },
       budget: { tier: tier.name, ...tier.budget, gpuBytes: tier.gpuBytes, uploadBytes: tier.uploadBytes },
       cold: { ...cold, assetTransport: "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.", medianMs: coldTimes[Math.floor(coldTimes.length / 2)], p95Ms: coldTimes[Math.ceil(coldTimes.length * .95) - 1], maxMs: coldTimes.at(-1),
-        scope: "App.frame from cold client arrival through placement and streaming; excludes server/network/raster/GPU work." },
+        retries: rejectedSamples.length, rejectedSamples,
+        scope: "App.frame from cold client arrival through placement and streaming, including every discarded sample; excludes the accepted window and server/network/raster/GPU work." },
       shipTarget: { triangles: draws.filter(draw => isShipMesh(draw.mesh)).reduce((sum, draw) => sum + draw.triangles, 0), draws: draws.filter(draw => isShipMesh(draw.mesh)).length, targetTriangles: 1000000, targetDraws: 600, note: "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry." },
       residency: { ...app.scene.assets.residency?.stats }, casterCount: p.casterCount,
       city: app.scene.city?.stats, handover, assets: app.scene.assets.line(),
