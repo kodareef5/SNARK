@@ -1,0 +1,53 @@
+{
+  "sounds": {
+    "notice": {
+      "range": 1, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/notice/moss-pt-27002-03975.wav", "from": "moss", "start": 0.05, "end": 1.74},
+        {"file": "takes/notice/moss-pt-27001-00000.wav", "from": "moss", "start": 0.0, "end": 2.235}
+      ]
+    },
+    "fanfare": {
+      "range": 1, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/fanfare/moss-pt-27010-00000.wav", "from": "moss", "start": 0.0, "end": 3.905},
+        {"file": "takes/fanfare/moss-pt-27011-00345.wav", "from": "moss", "start": 0.05, "end": 6.04}
+      ]
+    },
+    "coin": {
+      "range": 1, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/coin/moss-pt-27021-04445.wav", "from": "moss", "start": 0.05, "end": 1.135}
+      ]
+    },
+    "unlock": {
+      "range": 1, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/unlock/moss-pt-27030-00245.wav", "from": "moss", "start": 0.05, "end": 0.205},
+        {"file": "takes/unlock/moss-pt-27031-03155.wav", "from": "moss", "start": 0.05, "end": 0.33},
+        {"file": "takes/unlock/moss-pt-27030-04520.wav", "from": "moss", "start": 0.05, "end": 0.205},
+        {"file": "takes/unlock/moss-pt-27031-00500.wav", "from": "moss", "start": 0.05, "end": 0.335}
+      ]
+    },
+    "achievement": {
+      "range": 1, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/achievement/moss-pt-27041-00000.wav", "from": "moss", "start": 0.0, "end": 2.24},
+        {"file": "takes/achievement/moss-pt-27041-03975.wav", "from": "moss", "start": 0.05, "end": 2.66}
+      ]
+    },
+    "warning": {
+      "range": 1, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/warning/moss-pt-27051-02595.wav", "from": "moss", "start": 0.05, "end": 0.205},
+        {"file": "takes/warning/moss-pt-27051-01470.wav", "from": "moss", "start": 0.05, "end": 0.33}
+      ]
+    },
+    "countdown": {
+      "range": 1, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/countdown/moss-pt-27060-00200.wav", "from": "moss", "start": 0.05, "end": 7.75}
+      ]
+    }
+  }
+}

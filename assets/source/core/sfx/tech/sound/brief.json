@@ -1,0 +1,130 @@
+{
+  "asset": "core/sfx/tech",
+  "review": "../ref/sound",
+  "about": "The strange machines: an obelisk's hum, crystal chimes, energy pulses, a beam up, a shimmer and a hologram.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "obelisk": {
+      "kind": "impact",
+      "range": 200,
+      "level": -18,
+      "vary": 0.04,
+      "want": "an ancient machine humming",
+      "prompts": [
+        {
+          "id": "v4-26800",
+          "models": [
+            "moss"
+          ],
+          "seed": 26800,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A towering ancient alien machine hums with a deep resonant drone and soft shimmering harmonics, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "chime": {
+      "kind": "impact",
+      "range": 30,
+      "level": -16,
+      "vary": 0.04,
+      "want": "crystal chimes",
+      "prompts": [
+        {
+          "id": "v4-26810",
+          "models": [
+            "moss"
+          ],
+          "seed": 26810,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Glassy crystal chimes ring out a shimmering sparkle, four separate chimes with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "pulse": {
+      "kind": "impact",
+      "range": 80,
+      "level": -14,
+      "vary": 0.04,
+      "want": "an energy pulse",
+      "prompts": [
+        {
+          "id": "v4-26820",
+          "models": [
+            "moss"
+          ],
+          "seed": 26820,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A deep pulse of energy throbs outward with a wobbling whoomp, four separate pulses with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "beam": {
+      "kind": "impact",
+      "range": 80,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a beam up",
+      "prompts": [
+        {
+          "id": "v4-26830",
+          "models": [
+            "moss"
+          ],
+          "seed": 26830,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A teleporter beam: a rising sparkling shimmer and a bright whoosh upward, three separate beams with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "shimmer": {
+      "kind": "impact",
+      "range": 20,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a shimmer",
+      "prompts": [
+        {
+          "id": "v4-26840",
+          "models": [
+            "moss"
+          ],
+          "seed": 26840,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A soft magical shimmer, twinkling and sparkling, four separate shimmers with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "hologram": {
+      "kind": "impact",
+      "range": 15,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a hologram flickering",
+      "prompts": [
+        {
+          "id": "v4-26850",
+          "models": [
+            "moss"
+          ],
+          "seed": 26850,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A hologram projector flickers on with glitchy digital crackles and a soft hum, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

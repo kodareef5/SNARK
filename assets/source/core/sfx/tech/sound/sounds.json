@@ -1,0 +1,44 @@
+{
+  "sounds": {
+    "obelisk": {
+      "range": 200, "level": -18, "vary": 0.04, "loop": true,
+      "takes": [
+        {"file": "takes/obelisk/moss-pt-26801-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "chime": {
+      "range": 30, "level": -16, "vary": 0.04,
+      "takes": [
+        {"file": "takes/chime/moss-pt-26810-00000.wav", "from": "moss", "start": 0.0, "end": 7.14},
+        {"file": "takes/chime/moss-pt-26811-00000.wav", "from": "moss", "start": 0.0, "end": 6.215}
+      ]
+    },
+    "pulse": {
+      "range": 80, "level": -14, "vary": 0.04,
+      "takes": [
+        {"file": "takes/pulse/moss-pt-26820-00000.wav", "from": "moss", "start": 0.0, "end": 0.53}
+      ]
+    },
+    "beam": {
+      "range": 80, "level": -12, "vary": 0.04,
+      "takes": [
+        {"file": "takes/beam/moss-pt-26831-04550.wav", "from": "moss", "start": 0.05, "end": 2.355},
+        {"file": "takes/beam/moss-pt-26831-00555.wav", "from": "moss", "start": 0.05, "end": 1.7}
+      ]
+    },
+    "shimmer": {
+      "range": 20, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/shimmer/moss-pt-26841-06305.wav", "from": "moss", "start": 0.05, "end": 1.445},
+        {"file": "takes/shimmer/moss-pt-26841-00305.wav", "from": "moss", "start": 0.05, "end": 1.445}
+      ]
+    },
+    "hologram": {
+      "range": 15, "level": -18, "vary": 0.04,
+      "takes": [
+        {"file": "takes/hologram/moss-pt-26850-04150.wav", "from": "moss", "start": 0.05, "end": 0.585},
+        {"file": "takes/hologram/moss-pt-26850-00165.wav", "from": "moss", "start": 0.05, "end": 0.57}
+      ]
+    }
+  }
+}
