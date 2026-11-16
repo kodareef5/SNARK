@@ -1,6 +1,6 @@
 // Bakes bounded native-model packages and pictures. Nothing here starts a game server or rewrites source art.
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { HUMAN } from "../../shared/anim/human.ts";
@@ -11,22 +11,20 @@ import type { ModelBounds, ModelDocument, ModelTexture } from "../../shared/page
 import type { GuideEntry, GuideModel } from "../../shared/pages/types.ts";
 import { meshBounds, modelMesh, ModelPose } from "../../client/core/pages/model.ts";
 import { findAssets } from "../art/assets.ts";
-import { materialsOf, pictureFiles } from "../art/materials.ts";
+import { materialsOf } from "../art/materials.ts";
 import { buildCorePack } from "../pack/build.ts";
 import { encodePng } from "../pack/image.ts";
 import { rgbaPicture } from "../pack/texture.ts";
 import { buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../pack/write.ts";
 import { ModelView } from "../snap.ts";
 import { ModelTextures } from "./models/textures.ts";
+import { posterPixels } from "./models/poster.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 const CACHE = join(ROOT, ".cache/pages-models");
 // Bump when changing pose sampling, framing, poster settings or assembly. Packaging changes need no rerender.
-const VERSION = "guide-model-shared-1";
+const VERSION = "guide-model-shared-2";
 const MAKERS = ["tools/pack/image.ts", "tools/pack/texture.ts", "tools/art/materials.ts", "tools/snap.ts", "tools/snap/raster.ts", "client/core/pages/model.ts"];
-// Repackage already valid posters from the first exporter, without altering its immutable public files.
-const LEGACY_MAKER = "dfa3099e239d203d57be30aaaf939af110dae9e5a2ae9ac470d05d6a32b5f1d0";
-const LEGACY_RENDER = "7cfa3c9af72144b7ae52fe18895e0c735172819b50db6f2c76c66f0b952a5284";
 const hash = (data: string | Uint8Array): string => createHash("sha256").update(data).digest("hex").slice(0, 20);
 const label = (id: string): string => id.slice(id.lastIndexOf("/") + 1).replaceAll("_", " ");
 
@@ -110,10 +108,11 @@ export async function buildModels(outDir: string, entries: readonly GuideEntry[]
     const modelLabel = source.id === "core:survivor" ? "Human" : entry.label;
     const base = buildPack([mesh], core.palette, [], rig ? [rig] : []), pack = parsePack(base);
     const input = createHash("sha256").update(VERSION).update(makerHash).update(base).update(JSON.stringify(colors));
-    const legacy = createHash("sha256").update("guide-model-5").update(LEGACY_MAKER).update(base).update(JSON.stringify(colors));
+    const previous = createHash("sha256").update("guide-model-shared-1").update(makerHash).update(base).update(JSON.stringify(colors));
     for (const c of clips) {
       const rot = new Uint8Array(c.rot.buffer, c.rot.byteOffset, c.rot.byteLength), root = new Uint8Array(c.root.buffer, c.root.byteOffset, c.root.byteLength);
-      input.update(JSON.stringify([c.id, c.frames, c.loop])).update(rot).update(root); legacy.update(rot).update(root);
+      const metadata = JSON.stringify([c.id, c.frames, c.loop]);
+      input.update(metadata).update(rot).update(root); previous.update(metadata).update(rot).update(root);
     }
     const textureMaterials = (pack.header.textures ?? []).map((t) => materials.find((m) => t.id === `${m.id}/${t.role}`));
     if (textureMaterials.some((m) => !m)) continue;
@@ -122,45 +121,40 @@ export async function buildModels(outDir: string, entries: readonly GuideEntry[]
       const t = pack.header.textures![slot]!;
       if (t.role === "layer") continue;
       const baked = textureCache.get(textureMaterials[slot]!, t.role, Math.min(t.top, t.role === "base" ? 1024 : 512));
-      input.update(JSON.stringify([slot, t.role, baked.hash]));
+      const identity = JSON.stringify([slot, t.role, baked.hash]);
+      input.update(identity); previous.update(identity);
       textures.push({ slot, url: baked.url, role: t.role, width: baked.top, height: baked.top, bytes: baked.bytes });
       pictures.push({ slot, role: t.role, mips: baked.mips });
     }
     const hero = ["creatures", "vehicles", "characters"].includes(entry.kind), width = hero ? 768 : 480, height = hero ? 576 : 360;
-    input.update(JSON.stringify([modelLabel, width, height, hero ? 3 : 1]));
+    const settings = JSON.stringify([modelLabel, width, height, hero ? 3 : 1]);
+    input.update(settings).update(readFileSync(join(ROOT, "tools/pages/models/poster.ts"))); previous.update(settings);
     const fingerprint = input.digest("hex").slice(0, 20), dir = join(CACHE, fingerprint), url = `/media/models/${fingerprint}`;
     let record: GuideModel;
     if (existsSync(join(dir, "record.json"))) record = JSON.parse(readFileSync(join(dir, "record.json"), "utf8")) as GuideModel;
     else {
-      let reused: { dir: string; doc: ModelDocument; record: GuideModel } | undefined;
-      if (makerHash === LEGACY_RENDER && VERSION === "guide-model-shared-1") {
-        for (const m of new Set(textureMaterials)) for (const p of Object.values(pictureFiles(m!))) if (existsSync(p)) legacy.update(readFileSync(p));
-        const oldDir = join(CACHE, legacy.digest("hex").slice(0, 20));
-        if (existsSync(join(oldDir, "record.json"))) {
-          const oldRecord = JSON.parse(readFileSync(join(oldDir, "record.json"), "utf8")) as GuideModel;
-          const oldDoc = JSON.parse(readFileSync(join(oldDir, "model.json"), "utf8")) as ModelDocument;
-          if (oldRecord.images.length === (hero ? 3 : 1) && oldRecord.images[0]?.width === width && oldDoc.bounds.half) reused = { dir: oldDir, doc: oldDoc, record: oldRecord };
-        }
-      }
+      // Opaque-poster releases can donate bounds only. Their images and public bytes stay untouched.
+      const prior = join(CACHE, previous.digest("hex").slice(0, 20));
+      const oldDoc = existsSync(join(prior, "record.json")) ? JSON.parse(readFileSync(join(prior, "model.json"), "utf8")) as ModelDocument : undefined;
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, "model.snpk"), base);
       const defaultClip = clips.find((c) => c.id.endsWith("/idle")) ?? null;
-      const bounds = reused?.doc.bounds ?? clipBounds(pack, colors, defaultClip);
+      const bounds = oldDoc?.bounds ?? clipBounds(pack, colors, defaultClip);
       const doc: ModelDocument = { version: 1, id: source.id, label: modelLabel, pack: `${url}/model.snpk`, packBytes: base.length, colors, bounds, textures, clips: [] };
       for (const c of clips) {
         const bytes = buildPack([], core.palette, [c]), file = `clip-${hash(c.id)}.snpk`;
         writeFileSync(join(dir, file), bytes);
-        doc.clips.push({ id: c.id, label: label(c.id), url: `${url}/${file}`, bytes: bytes.length, seconds: Math.max(1, c.frames) / TICK_RATE, frames: c.frames, loop: c.loop, bounds: reused?.doc.clips.find((old) => old.id === c.id)?.bounds ?? clipBounds(pack, colors, c) });
+        doc.clips.push({ id: c.id, label: label(c.id), url: `${url}/${file}`, bytes: bytes.length, seconds: Math.max(1, c.frames) / TICK_RATE, frames: c.frames, loop: c.loop, bounds: oldDoc?.clips.find((old) => old.id === c.id)?.bounds ?? clipBounds(pack, colors, c) });
       }
-      const view = reused ? null : new ModelView(pack, width, height, [5 / 255, 17 / 255, 27 / 255]);
-      if (view) for (const p of pictures) view.texture(p.slot, p.role, p.mips().map((mip) => rgbaPicture(p.role, mip)));
+      const view = new ModelView(pack, width, height, [5 / 255, 17 / 255, 27 / 255]);
+      for (const p of pictures) view.texture(p.slot, p.role, p.mips().map((mip) => rgbaPicture(p.role, mip)));
       const pose = new ModelPose(pack); pose.sample(defaultClip, 0);
       const posed = meshBounds(pack.header.meshes.map((m) => modelMesh(pack, m, colors)), pose);
       const angles = hero ? [[35, 12], [110, 8], [205, 18]] : [[35, 18]];
       const images = angles.map(([around, above], k) => {
         const file = `view-${k}.png`;
-        if (view) { view.draw({ mesh: 0, level: 0, around: around!, above: above!, centre: posed.center, radius: posed.radius * 0.9, colors, rig: pose.rig, textured: !!pack.header.meshes[0]!.lods[0]!.sections }); png(join(dir, file), width, height, new Uint8Array(view.raster.color.buffer)); }
-        else copyFileSync(join(reused!.dir, file), join(dir, file));
+        view.draw({ mesh: 0, level: 0, around: around!, above: above!, centre: posed.center, radius: posed.radius * 0.9, colors, rig: pose.rig, textured: !!pack.header.meshes[0]!.lods[0]!.sections });
+        png(join(dir, file), width, height, posterPixels(view.raster));
         return { src: `${url}/${file}`, label: ["Three-quarter view", "Side view", "Rear view"][k]!, width, height };
       });
       writeFileSync(join(dir, "model.json"), JSON.stringify(doc));
