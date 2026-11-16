@@ -25,11 +25,12 @@ function vertexScore(cachePos: number, live: number): number {
 
 /**
  * The triangles from `first` to `first + count` of `indices` (counted in indices) in the order Forsyth's method takes
- * them, written back in place. Ties go to the triangle that came first.
+ * them, written back in place. Ties go to the triangle that came first. Returns the order, each by its place in the run.
  */
-export function cacheOrder(indices: Uint32Array, first: number, count: number, vertexCount: number): void {
+export function cacheOrder(indices: Uint32Array, first: number, count: number, vertexCount: number): Uint32Array {
   const tris = count / 3;
-  if (tris < 2) return;
+  const order = Uint32Array.from({ length: tris }, (_, t) => t);
+  if (tris < 2) return order;
   const run = indices.slice(first, first + count);
   // Each vertex's triangles, and how many of them are not yet taken.
   const live = new Uint32Array(vertexCount);
@@ -56,6 +57,7 @@ export function cacheOrder(indices: Uint32Array, first: number, count: number, v
     }
     const t = best;
     taken[t] = 1;
+    order[done] = t;
     const corner = [run[t * 3]!, run[t * 3 + 1]!, run[t * 3 + 2]!];
     for (const v of corner) {
       indices[out++] = v;
@@ -94,6 +96,7 @@ export function cacheOrder(indices: Uint32Array, first: number, count: number, v
       }
     }
   }
+  return order;
 }
 
 /** Renumbers vertices in the order the indices first use them, in place. Returns, for each new vertex, the old one: those never used last, in their old order. */
@@ -142,16 +145,46 @@ interface Level {
 }
 
 /**
- * A level drawn with materials: triangles for the cache inside each run but a cut-out one, which the writer put best seen
- * first (sprays.ts); then vertices, surfaces and skins in the order those first use them.
+ * A cut-out run ordered for the cache inside each of its sprays, which keep the order the writer put them in, best seen
+ * first (sprays.ts), since the frame budget draws a first share of the run. A spray here is triangles one after another
+ * that meet at a place, as a card's two sides do.
  */
+function orderSprays(indices: Uint32Array, first: number, count: number, vertices: Uint8Array): void {
+  const tris = count / 3;
+  const was = indices.slice(first, first + count);
+  const parent = Uint32Array.from({ length: tris }, (_, t) => t);
+  const find = (t: number): number => {
+    while (parent[t] !== t) t = parent[t] = parent[parent[t]!]!;
+    return t;
+  };
+  const owner = new Map<number, number>();
+  const view = new DataView(vertices.buffer, vertices.byteOffset, vertices.byteLength);
+  for (let k = 0; k < count; k++) {
+    const at = was[k]! * VERTEX_BYTES;
+    const place = view.getUint32(at, true) + view.getUint16(at + 4, true) * 2 ** 32;
+    const t = (k / 3) | 0;
+    const o = owner.get(place);
+    if (o === undefined) owner.set(place, t);
+    else parent[find(t)] = find(o);
+  }
+  const spray = new Uint32Array(tris);
+  for (let t = 1; t < tris; t++) spray[t] = spray[t - 1]! + (find(t) === find(t - 1) ? 0 : 1);
+  const order = Array.from(cacheOrder(indices, first, count, vertices.length / VERTEX_BYTES)).sort((a, b) => spray[a]! - spray[b]!);
+  order.forEach((t, k) => indices.set(was.subarray(t * 3, t * 3 + 3), first + k * 3));
+}
+
+/** A level drawn with materials: triangles for the cache inside each run, then vertices, surfaces and skins in the order those first use them. */
 function orderRuns(pack: Pack, lod: PackLod, cutout: (material: number) => boolean): Level {
   const indices = readIndices(pack, lod);
+  const vertices = lodVertices(pack, lod);
   const runs = lod.sections!;
-  for (let k = 0; k < runs.length; k += 3) if (!cutout(runs[k]!)) cacheOrder(indices, runs[k + 1]!, runs[k + 2]!, lod.vertexCount);
+  for (let k = 0; k < runs.length; k += 3) {
+    if (cutout(runs[k]!)) orderSprays(indices, runs[k + 1]!, runs[k + 2]!, vertices);
+    else cacheOrder(indices, runs[k + 1]!, runs[k + 2]!, lod.vertexCount);
+  }
   const from = fetchOrder(indices, lod.vertexCount);
   const skin = lodSkin(pack, lod);
-  return { indices, vertices: permuted(lodVertices(pack, lod), from, VERTEX_BYTES), surface: permuted(lodSurface(pack, lod)!, from, SURFACE_BYTES), skin: skin && permuted(skin, from, SKIN_BYTES) };
+  return { indices, vertices: permuted(vertices, from, VERTEX_BYTES), surface: permuted(lodSurface(pack, lod)!, from, SURFACE_BYTES), skin: skin && permuted(skin, from, SKIN_BYTES) };
 }
 
 /** A flat level: vertices of the same bytes made one (with no normals, those a source split for its faces), then ordered as one run. */
