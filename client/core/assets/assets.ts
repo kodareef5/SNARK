@@ -33,7 +33,7 @@ export class Assets {
   /** The variant of the textures the device takes. The shell says which. */
   format: TextureFormat = "rgba";
   /** The pixels a metre covers on screen from a metre away. */
-  private scale = 0;
+  scale = 0;
   /** The share of the tier's budget in use: less each time the graphics card runs out of memory or is lost. */
   private squeeze = 1;
   private pressures = 0;

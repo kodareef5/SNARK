@@ -14,6 +14,13 @@ import { WORLD_GLSL } from "./world-surfaces.ts";
 
 const f = (n: number): string => n.toFixed(4);
 
+const BONE = `mat3x4 bone(int i) {
+  int n = i * 3;
+  ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
+  return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
+}
+`;
+
 export const FLAT_FRAGMENT = `#version 300 es
 precision highp float;
 in vec3 vRel;
@@ -73,15 +80,16 @@ uniform sampler2D uPalette;
 uniform highp sampler2D uBones;
 out vec3 vRel;
 flat out vec3 vColor;
-void main() {
+${BONE}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p;
   if (uSkin > 0.5) {
-    // A body with bones: the instance names its first bone where a rigid one has its yaw. With uSkin 2 every vertex follows that bone.
-    int n = (int(iYaw * 65535.0 + 0.5) + (uSkin > 1.5 ? 0 : int(aBone))) * 3;
-    ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
+    // A body with bones: the instance names its first bone where a rigid one has its yaw. With uSkin 2 each vertex follows
+    // its bone of the pose the body stands in, whose first bone is uOffset.x, and then the instance's first bone.
     vec4 v = vec4(l + iPos, 1.0);
-    p = vec3(dot(texelFetch(uBones, at, 0), v), dot(texelFetch(uBones, at + ivec2(1, 0), 0), v), dot(texelFetch(uBones, at + ivec2(2, 0), 0), v));
+    int first = int(iYaw * 65535.0 + 0.5);
+    if (uSkin > 1.5) v = vec4(v * bone(int(uOffset.x) + int(aBone)), 1.0);
+    p = v * bone(first + (uSkin > 1.5 ? 0 : int(aBone)));
   } else {
     float t = iYaw * 6.283185307;
     float s = sin(t), c = cos(t);

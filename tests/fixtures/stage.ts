@@ -69,6 +69,8 @@ export interface Placed {
   regions?: readonly number[];
   /** Flags besides those the mesh and its materials call for. */
   flags?: number;
+  /** With DRAW_ONE_BONE, the first bone of the pose it stands in, as `pose` returned it about the camera. */
+  standIn?: number;
   /** Draws the level in palette colours, as the flat renderer does. */
   flat?: boolean;
   /** The level's slot on the card, for a stage with a manifest. */
@@ -158,6 +160,7 @@ export class Stage {
       p.drawFirst[d] = n;
       p.drawInstances[d] = 1;
       p.drawOffset.fill(0, d * 3, d * 3 + 3);
+      p.drawOffset[d * 3] = at.standIn ?? 0;
       p.drawFlags[d] = flags;
       if (!material) continue;
       p.drawFlags[d]! |= DRAW_TEXTURED | ((material.flags & MATERIAL_TWO_SIDED) !== 0 ? DRAW_TWO_SIDED : 0) | ((material.flags & MATERIAL_CUTOUT) !== 0 ? DRAW_CUTOUT : 0);
