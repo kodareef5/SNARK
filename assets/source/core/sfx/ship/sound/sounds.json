@@ -3,25 +3,25 @@
     "engine/idle": {
       "range": 60, "level": -20, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/idle/moss-pt-10001-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/idle/moss-pt-10001-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/low": {
       "range": 80, "level": -18, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/low/moss-pt-10010-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/low/moss-pt-10010-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/mid": {
       "range": 100, "level": -17, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/mid/moss-pt-10022-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/mid/moss-pt-10022-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/high": {
       "range": 120, "level": -16, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/high/moss-pt-10032-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/high/moss-pt-10032-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/start": {
@@ -58,13 +58,13 @@
     "hull/slow": {
       "range": 30, "level": -24, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/hull/slow/moss-pt-10090-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/hull/slow/moss-pt-10090-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "hull/fast": {
       "range": 60, "level": -20, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/hull/fast/moss-pt-10100-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/hull/fast/moss-pt-10100-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "bell": {

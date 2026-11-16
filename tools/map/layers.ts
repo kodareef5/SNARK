@@ -24,7 +24,7 @@ type Node = Place & { kind: string };
 type Spawn = Place & { name: string };
 type Vehicle = Place & Omit<MapVehicle, "yaw">;
 type Zone = { kinds: Record<string, number>; bare?: number };
-type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string } | { seed: number; perChunk: number; zones: Zone[]; zone: string } | { list: Node[] };
+type NodeLayer = { seed: number; perChunk: number; kinds: Record<string, number>; allow?: string; out?: string } | { seed: number; perChunk: number; zones: Zone[]; zone: string; out?: string } | { list: Node[] };
 type Region = { spawns: string; count: number; x: number; z: number; radius?: number; half?: [number, number] };
 type Water = { squares: string; bodies: { name: string; surface: number }[] };
 
@@ -72,12 +72,13 @@ export function readLayers(folder: string): MapData {
     return { cell, pixels: image.data.reverse() as Uint8Array };
   };
   const nodes = (json<NodeLayer[]>("nodes.json") ?? []).map((layer): Layer => {
+    const out = !("list" in layer) && layer.out ? { out: need(file(layer.out), layer.out) } : {};
     if ("zones" in layer) {
       const { cell, pixels } = squares(layer.zone);
-      return { seed: layer.seed, perChunk: layer.perChunk, zones: layer.zones.map((z) => ({ bare: z.bare ?? 0, kinds: Object.entries(z.kinds) })), zoneCell: cell, zone: pixels };
+      return { seed: layer.seed, perChunk: layer.perChunk, zones: layer.zones.map((z) => ({ bare: z.bare ?? 0, kinds: Object.entries(z.kinds) })), zoneCell: cell, zone: pixels, ...out };
     }
     if (!("list" in layer)) {
-      const scatter = { seed: layer.seed, perChunk: layer.perChunk, kinds: Object.entries(layer.kinds) };
+      const scatter = { seed: layer.seed, perChunk: layer.perChunk, kinds: Object.entries(layer.kinds), ...out };
       if (layer.allow === undefined) return { ...scatter, allowCell: 0, allow: null };
       const { cell, pixels } = squares(layer.allow);
       const allow = new Uint8Array(Math.ceil(pixels.length / 8));
@@ -167,6 +168,14 @@ export function writeLayers(map: MapData, folder: string): void {
   }
   if (map.nodes.length === 0) return;
   const layers = map.nodes.map((layer, i): NodeLayer => {
+    const written = plain(layer, i);
+    if ("first" in layer || !layer.out) return written;
+    put(`out-${i}.bits`, layer.out);
+    return { ...written, out: `out-${i}.bits` };
+  });
+  put("nodes.json", lines(layers));
+
+  function plain(layer: Layer, i: number): NodeLayer {
     if ("first" in layer) {
       const list: Node[] = [];
       for (let c = 0; c < chunkCount(map.dims); c++) {
@@ -179,7 +188,8 @@ export function writeLayers(map: MapData, folder: string): void {
     if ("zone" in layer) {
       const wide = (chunksX * CHUNK_SIZE) / layer.zoneCell;
       const high = (chunksZ * CHUNK_SIZE) / layer.zoneCell;
-      put(`zones-${i}.png`, writeGrey(wide, high, layer.zone.slice().reverse()));
+      const codes = layer.codes;
+      put(`zones-${i}.png`, writeGrey(wide, high, (codes ? layer.zone.map((v) => codes[v]!) : layer.zone.slice()).reverse()));
       return { seed: layer.seed, perChunk: layer.perChunk, zones: layer.zones.map((z) => ({ kinds: Object.fromEntries(z.kinds), ...(z.bare > 0 ? { bare: z.bare } : {}) })), zone: `zones-${i}.png` };
     }
     const scatter = { seed: layer.seed, perChunk: layer.perChunk, kinds: Object.fromEntries(layer.kinds) };
@@ -189,6 +199,5 @@ export function writeLayers(map: MapData, folder: string): void {
     const allow = layer.allow;
     put(`allow-${i}.png`, writeGrey(wide, high, Uint8Array.from({ length: wide * high }, (_, bit) => ((allow[bit >> 3]! >> (bit & 7)) & 1) * 255).reverse()));
     return { ...scatter, allow: `allow-${i}.png` };
-  });
-  put("nodes.json", lines(layers));
+  }
 }

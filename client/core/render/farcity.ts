@@ -53,12 +53,9 @@ const EMPTY = -2;
 /** Levels asked of makers, counted over every city of the page, so a maker's answer to one before is known for that. */
 let levelsAsked = 0;
 
-/**
- * What the scene draws a map's buildings from: its statics, null until they have come; which chunks the near store holds
- * whole; and where levels are made (here, if not given).
- */
+/** What the scene draws a map's buildings from: its statics, which chunks the near store holds whole, and where levels are made (here, if not given). */
 export interface CitySource {
-  readonly statics: CityStatics | null;
+  readonly statics: CityStatics;
   complete(chunk: number): boolean;
   readonly maker?: CityMaker;
 }
@@ -136,9 +133,6 @@ export class FarCity {
   private readonly dims: MapDims;
   private readonly hf: Heightfield;
   private readonly maker: CityMaker;
-  private readonly bounds: { center: readonly number[]; half: readonly number[] };
-  /** The map's statics, once they have come and the tiles are made of them. */
-  private city: CityStatics | null = null;
   private readonly tilesX: number;
   private readonly tiles: Tile[] = [];
   private readonly tileOfChunk: Int32Array;
@@ -171,7 +165,7 @@ export class FarCity {
   private readonly got: CityMade[] = [];
   /** The tiles that may be in reach: those within it and two tiles more of where the camera was when they were found. */
   private around: number[] = [];
-  private listed = new Uint8Array(0);
+  private readonly listed: Uint8Array;
   private readonly aroundAt = Float64Array.of(Infinity, Infinity, -1);
   /** Per chunk, the box its pieces' faces may reach, as a tile's; and per chunk of the tile being drawn, its depth ranges or 0. */
   private readonly chunkBox: Float64Array;
@@ -183,8 +177,8 @@ export class FarCity {
     this.dims = dims;
     this.hf = hf;
     this.mesh = mesh;
-    this.bounds = bounds;
     this.maker = source.maker ?? new InlineCityMaker();
+    this.maker.start(cityKinds(source.statics, hf, bounds));
     this.maker.onMade = () => this.feed();
     this.tilesX = Math.ceil(dims.chunksX / CITY_TILE);
     const chunks = chunkCount(dims);
@@ -192,26 +186,14 @@ export class FarCity {
     this.seenShape = new Int32Array(chunks).fill(-1);
     this.seenCells = new Uint32Array(chunks);
     this.goneVersion = new Uint32Array(chunks);
-    this.chunkBox = new Float64Array(chunks * 6);
-    this.begin();
-  }
-
-  /** Makes the tiles of the map's statics once they have come, and starts the maker on them. Whether they have. */
-  private begin(): boolean {
-    if (this.city) return true;
-    const city = this.source.statics;
-    if (!city) return false;
-    this.city = city;
-    this.maker.start(cityKinds(city, this.hf, this.bounds));
-    const chunks = chunkCount(this.dims);
-    const { first, x, y, z, kind, halfX, halfY, halfZ } = city;
+    const { first, x, y, z, kind, halfX, halfY, halfZ } = source.statics;
     const byTile = new Map<number, number[]>();
     for (let c = 0; c < chunks; c++) {
       if (first[c + 1] === first[c]) continue;
       const t = this.tileOf(c);
       byTile.set(t, [...(byTile.get(t) ?? []), c]);
     }
-    const cb = this.chunkBox;
+    const cb = (this.chunkBox = new Float64Array(chunks * 6));
     for (const t of byTile.keys()) {
       const list = byTile.get(t)!;
       const box = Float64Array.from([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
@@ -238,15 +220,10 @@ export class FarCity {
       }
       const base = Math.floor(box[1]!);
       if (box[4]! - base > FAR_HEIGHT) throw new Error(`far city: the pieces of tile ${t} stand ${Math.round(box[4]! - base)} m tall, and a tile holds ${FAR_HEIGHT}`);
-      for (const c of list) {
-        this.tileOfChunk[c] = this.tiles.length;
-        // Far blocks leave the cells these pieces fill to the city from now on (far.ts).
-        this.goneVersion[c]!++;
-      }
+      for (const c of list) this.tileOfChunk[c] = this.tiles.length;
       this.tiles.push({ t, chunks: list, box, base, primary: -1, held: [], unseen: 0, wants: 0, making: 0, epoch: 0, version: 0, rank: 0 });
     }
     this.listed = new Uint8Array(this.tiles.length);
-    return true;
   }
 
   /** Whether `chunk`'s statics are drawn here this frame, so the near store draws none of that chunk. */
@@ -269,7 +246,7 @@ export class FarCity {
   topsOf(chunk: number): Uint8Array | null {
     if (this.tileOfChunk[chunk]! < 0) return null;
     let tops = this.tops.get(chunk);
-    if (!tops) this.tops.set(chunk, (tops = cityTops(this.city!, chunk, this.hf, this.goneOf(chunk))));
+    if (!tops) this.tops.set(chunk, (tops = cityTops(this.source.statics, chunk, this.hf, this.goneOf(chunk))));
     return tops;
   }
 
@@ -279,7 +256,6 @@ export class FarCity {
    * and what they weigh is spent and reserved in `budget`.
    */
   update(p: FramePacket, budget: { spend(bytes: number): void; reserve(name: string, bytes: number): void }, cam: Camera, levels: readonly CityLevel[], reach: number, share: number, near: StructureStore | null, cells: FarStore | null): void {
-    if (!this.begin()) return;
     if (levels !== this.levels) {
       // Another tier: what was made at the old levels is let go.
       for (const tile of this.tiles) this.letGo(p, tile);
@@ -545,7 +521,7 @@ export class FarCity {
     this.asked.set(id, { tile: n, level, epoch: tile.epoch, version: tile.version });
     tile.making |= 1 << level;
     this.out++;
-    this.maker.make(cityJob(id, this.city!, this.hf, (c) => this.gone.get(c) ?? null, tile.chunks, this.levels[level]!, this.cornerX(tile.t) - LOCAL, tile.base, this.cornerZ(tile.t) - LOCAL));
+    this.maker.make(cityJob(id, this.source.statics, this.hf, (c) => this.gone.get(c) ?? null, tile.chunks, this.levels[level]!, this.cornerX(tile.t) - LOCAL, tile.base, this.cornerZ(tile.t) - LOCAL));
   }
 
   /** Keeps a worker making a few levels ahead, in this frame's order: in update, and as each level comes back. */
@@ -598,7 +574,7 @@ export class FarCity {
 
   /** Brings what stands up to date: chunks the near store holds whole, and the far feed's cells of the rest. */
   private standing(near: StructureStore | null, cells: FarStore | null): void {
-    const city = this.city!;
+    const city = this.source.statics;
     const changed = this.changed;
     changed.clear();
     // A chunk let go and held again is matched again, whatever its table's count of changes says.
