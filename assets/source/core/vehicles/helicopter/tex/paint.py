@@ -76,14 +76,14 @@ def body(variant):
 
     label=lettering(s,{"civilian":"UTILITY", "rescue":"RESCUE", "police":"POLICE"}[variant],-.90,.98,.94,1.25)
     label*=paint*(z>-.99)
-    # Letter ink is independent of the randomly selected paint, retaining readable contrast.
-    ink=rgb(.90,.91,.88) if variant=="police" else rgb(.10,.15,.16)
+    # Letter ink stays independent of body dyes and contrasts against the authored stripe.
+    ink=rgb(.10,.15,.16)
     s.base=mix(s.base,ink,label)
     s.mask*=1-label[:,None]
     s.rough=np.where(label>.1,.49,s.rough)
     # A small serial mark on the tail. It belongs to the livery, not the individual vehicle's persistent identity.
     tail_label=lettering(s,"U-04",-4.30,-2.50,1.75,1.99)*paint
-    s.base=mix(s.base,rgb(.75,.76,.69),tail_label)
+    s.base=mix(s.base,ink if variant=="police" else rgb(.75,.76,.69),tail_label)
     s.mask*=1-tail_label[:,None]
 
     damage,which=sites([((1.22,1.02,.8),.35),((-1.19,1.3,-1.1),.27),((.3,1.24,2.2),.34),((0,1.95,-3.5),.22),((.4,2.75,-.8),.25)],s,.5,89)
@@ -157,17 +157,42 @@ def cabin():
     s.base[gl&border]=rgb(.035,.045,.05)
     s.alpha[gi]=0
 
-    gauge=s.where("gauge")
-    # Static printed reference displays. The live instruments remain the HUD's telemetry.
-    display=np.tile(rgb(.018,.035,.038),(s.n,1))
-    horizon=y>1.385
-    display[horizon]=rgb(.075,.20,.26)
-    display[~horizon]=rgb(.19,.16,.10)
-    grid=(np.abs((y/.035)%1-.5)<.035)&(np.abs(np.abs(x)-.43)<.13)
-    display[grid]=rgb(.63,.71,.63)
-    cross=(np.abs(y-1.39)<.0016)&(np.abs(np.abs(x)-.43)<.08)
-    display[cross]=rgb(.86,.72,.20)
-    tagged(s,"gauge",display,.20)
+    # Original static reference graphics, authored at high chart density for the native 512px material layer.
+    # The cockpit HUD provides live telemetry; these screens establish an unmistakable instrument panel.
+    instruments=[]
+    font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",28)
+    small=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",22)
+    for side in range(2):
+        im=Image.new("RGB",(640,320),(8,17,23));d=ImageDraw.Draw(im)
+        if side==0:
+            d.rectangle((140,35,500,155),fill=(24,96,137));d.rectangle((140,156,500,285),fill=(108,74,35))
+            d.line((140,155,500,155),fill=(235,239,220),width=4)
+            for yy,length in ((65,45),(95,65),(125,45),(185,45),(215,65),(245,45)):
+                d.line((320-length,yy,320+length,yy),fill=(234,239,222),width=4)
+            d.line((245,160,297,160,310,172,320,160,330,172,343,160,395,160),fill=(255,208,52),width=7)
+            for xx,label in ((30,"SPD"),(535,"ALT")):
+                d.text((xx,38),label,font=small,fill=(206,226,220))
+                for yy in range(85,270,30):d.line((xx+8,yy,xx+45,yy),fill=(184,207,202),width=4)
+                d.rectangle((xx+2,145,xx+65,185),outline=(232,237,210),width=3)
+            d.text((20,2),"FLIGHT REF",font=font,fill=(213,228,224));d.text((492,287),"REF",font=small,fill=(116,157,163))
+        else:
+            d.text((20,2),"SERVICE REF",font=font,fill=(213,228,224))
+            for cx,label,angle in ((126,"RPM",-38),(324,"TEMP",-70),(522,"FUEL",-112)):
+                d.arc((cx-77,67,cx+77,221),195,345,fill=(96,183,159),width=13)
+                d.arc((cx-77,67,cx+77,221),325,345,fill=(231,181,65),width=13)
+                for degrees in range(195,346,30):
+                    a=math.radians(degrees);d.line((cx+60*math.cos(a),144+60*math.sin(a),cx+74*math.cos(a),144+74*math.sin(a)),fill=(231,238,219),width=4)
+                a=math.radians(angle);d.line((cx,144,cx+60*math.cos(a),144+60*math.sin(a)),fill=(236,237,207),width=5)
+                d.ellipse((cx-7,137,cx+7,151),fill=(239,202,56));d.text((cx-37,226),label,font=small,fill=(183,212,207))
+            d.rectangle((22,280,618,289),fill=(40,91,92))
+        instruments.append(np.asarray(im)/255)
+    display=np.tile(rgb(.02,.035,.04),(s.n,1))
+    for side,centre in enumerate((.43,-.43)):
+        # Viewed forward from the pilot, engine +X projects toward screen left.
+        u=(centre+.21-x)/.42;v=(1.46-y)/.145
+        valid=(u>=0)&(u<1)&(v>=0)&(v<1)&(s.N[:,2]<-.5)&s.where("gauge")
+        display[valid]=instruments[side][(v[valid]*319).astype(int),(u[valid]*639).astype(int)]
+    tagged(s,"gauge",display,.78)
     for centre in ((.38,1.84,1.87),(-1.2,1.80,-.8)):
         line,r=cracks(P,centre,(0,0,1) if centre[2]>0 else(-1,0,0),.28,39)
         m=gl&(line>.25)&(r<.28)

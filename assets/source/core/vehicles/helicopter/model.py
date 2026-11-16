@@ -17,7 +17,11 @@ SIZES = {"body": 2048, "trim": 2048, "cabin": 2048}
 groups = {name: [] for name, _ in BONES}
 
 
-def put(obj, bone="chassis"):
+def put(obj, bone="chassis", rigid=None):
+    # A stationary hub shares the rotor's existing texture charts but keeps the chassis weight. This lets the
+    # renderer replace fast blades with a motion card without hiding the hub hardware or changing UVs.
+    if rigid:
+        obj.vertex_groups.new(name=rigid).add(list(range(len(obj.data.vertices))),1,"REPLACE")
     groups[bone].append(obj)
     return obj
 
@@ -68,6 +72,23 @@ def tube(name, points, r, tag, n=12):
     return loft(name, rings, tag)
 
 
+def side_x(y,z):
+    w,low,high=sample(z)
+    c=(low+high)/2; h=(high-low)/2
+    v=max(-1,min(1,(y-c)/h))
+    co=abs(v)**(1/(.78 if v>=0 else .45))
+    return w*(max(0,1-co*co)**.5)**.64
+
+
+def bow_z(x,y):
+    z=1.38
+    for k in range(1000):
+        candidate=1.38+(2.45-1.38)*k/999
+        _,low,high=sample(candidate)
+        if low<=y<=high and abs(x)<=side_x(y,candidate): z=candidate
+    return z
+
+
 def glass(name, shell, cutter, axis, sign, bone="chassis"):
     pane = boolean(duplicate(shell, name), cutter, "INTERSECT")
     retag(pane, lambda t, c, n: "glass_in" if (n.x * sign < -.3 if axis == "x" else n.z < -.2) else "glass")
@@ -109,11 +130,14 @@ for side, suffix in ((1, "left"), (-1, "right")):
         remove(wc)
         put(door, bone)
         # The handle is behind the hinge, low enough for the standing survivor to reach.
-        hx = side*1.267
+        hx = side*(side_x(1.24,za+.30)+.008)
         put(rbox(f"{bone}-handle-pocket", (min(hx, hx+side*.018), 1.20, za+.18), (max(hx, hx+side*.018), 1.28, za+.42), .018, "plastic"), bone)
         put(cylinder(f"{bone}-handle", (hx+side*.026, 1.25, za+.22), (hx+side*.026, 1.25, za+.38), .018, "metal", 10), bone)
         for y in (1.02, 1.95):
-            put(cylinder(f"{bone}-hinge", (side*1.24, y-.045, zb-.02), (side*1.24, y+.045, zb-.02), .034, "metal", 12), bone)
+            hinge=side*(1.20 if row=="front" else 1.22)
+            skin=side*side_x(y,zb-.02)
+            put(rbox(f"{bone}-hinge-bracket",(min(skin,hinge)-.008,y-.032,zb-.065),(max(skin,hinge)+.008,y+.032,zb+.025),.008,"metal",2),bone)
+            put(cylinder(f"{bone}-hinge", (hinge, y-.045, zb-.02), (hinge, y+.045, zb-.02), .034, "metal", 12), bone)
 
 # Broad two-piece windscreen. Its inside is transparent; its outside keeps only a rim and restrained reflection streaks.
 for side in (1, -1):
@@ -151,10 +175,10 @@ for x in (.43, -.43):
     put(rbox("display", (x-.21, 1.315, 1.455), (x+.21, 1.46, 1.47), .006, "gauge", 2))
 for x in (-.13, 0, .13):
     put(cylinder("switch", (x, 1.28, 1.44), (x, 1.28, 1.47), .015, "amber" if x==0 else "metal", 10))
-put(tube("pilot-cyclic", [(0.48,.73,1.15), (.48,1.08,1.18), (.48,1.24,1.20)], .025, "metal"), "cyclic")
-put(rbox("cyclic-grip", (.445,1.20,1.17), (.515,1.34,1.24), .025, "grip"), "cyclic")
-put(cylinder("collective", (.81,.95,.42), (.81,1.18,.77), .025, "metal", 12))
-put(cylinder("collective-grip", (.81,1.18,.76), (.81,1.21,.93), .035, "grip", 12))
+put(tube("pilot-cyclic", [(0.48,.73,1.15), (.40,1.13,1.05), (.34,1.29,.97)], .025, "metal"), "cyclic")
+put(rbox("cyclic-grip", (.305,1.29,.935), (.375,1.43,1.005), .025, "grip"), "cyclic")
+put(cylinder("collective", (.81,.95,.42), (.76,1.30,.79), .025, "metal", 12))
+put(cylinder("collective-grip", (.76,1.30,.79), (.76,1.30,.95), .035, "grip", 12))
 for dx in (-.13,.13):
     put(cylinder("pedal-support", (.48+dx,.57,1.61), (.48+dx,.68,1.61), .02, "metal", 8))
     put(rbox("pedal", (.48+dx-.065,.66,1.53), (.48+dx+.065,.70,1.70), .018, "rubber"))
@@ -207,7 +231,8 @@ def blade(name, centre, radius, axis, angle, width, bone):
     for r,w,thick,sweep in ((.22,width*.62,.045,0),(.45,width,.037,0),(radius*.76,width,.022,.02),(radius-.13,width*.78,.012,.10),(radius,width*.42,.008,.17)):
         points=[]
         for chord,up in ((-.5,0),(-.34,.65),(.05,1),(.42,.40),(.5,0),(.05,-.45)):
-            a=r; b=chord*w+sweep; h=up*thick
+            b=chord*w+sweep; h=up*thick
+            a=math.sqrt(max(0,r*r-b*b)) if r==radius else r
             xx=a*math.cos(angle)-b*math.sin(angle); zz=a*math.sin(angle)+b*math.cos(angle)
             points.append((centre[0]+xx,centre[1]+h,centre[2]+zz) if axis=="y" else (centre[0]+h,centre[1]+xx,centre[2]+zz))
         rings.append(points)
@@ -218,16 +243,19 @@ def blade(name, centre, radius, axis, angle, width, bone):
 for k in range(4):
     blade(f"main-blade-{k}",(0,3.15,-.30),4.60,"y",k*math.tau/4,.235,"rotor_main")
     a=k*math.tau/4
-    put(cylinder("rotor-grip",(.15*math.cos(a),3.15,-.30+.15*math.sin(a)),(.48*math.cos(a),3.15,-.30+.48*math.sin(a)),.045,"metal",12),"rotor_main")
-put(cylinder("hub-cap",(0,3.20,-.30),(0,3.32,-.30),.23,"metal",24),"rotor_main")
+    put(cylinder("rotor-grip",(.15*math.cos(a),3.15,-.30+.15*math.sin(a)),(.48*math.cos(a),3.15,-.30+.48*math.sin(a)),.045,"metal",12),"rotor_main",rigid="chassis")
+put(cylinder("hub-cap",(0,3.20,-.30),(0,3.32,-.30),.23,"metal",24),"rotor_main",rigid="chassis")
 for k in range(2):
     blade(f"tail-blade-{k}",(.28,2,-5.50),.68,"x",.5+k*math.pi,.14,"rotor_tail")
-put(cylinder("tail-hub",(.23,2,-5.50),(.37,2,-5.50),.085,"metal",16),"rotor_tail")
+put(cylinder("tail-hub",(.23,2,-5.50),(.37,2,-5.50),.085,"metal",16),"rotor_tail",rigid="chassis")
 
 # Functional small details: navigation lamps, landing lamps, refuel cap and antennas. They remain opaque materials.
 for side in (-1,1):
-    put(rbox("navigation-light",(side*1.10-.04,1.40,1.35),(side*1.10+.04,1.47,1.48),.025,"taillamp" if side>0 else "headlamp"))
-    put(cylinder("landing-lamp",(side*.31,1.14,2.12),(side*.31,1.14,2.19),.075,"headlamp",16))
+    light_x=side*(side_x(1.435,1.415)+.015)
+    put(rbox("navigation-light",(light_x-.04,1.40,1.35),(light_x+.04,1.47,1.48),.025,"taillamp" if side>0 else "headlamp"))
+    front=bow_z(side*.31,1.14)
+    put(cylinder("landing-lamp-housing",(side*.31,1.14,front-.035),(side*.31,1.14,front+.035),.088,"plastic",16))
+    put(cylinder("landing-lamp",(side*.31,1.14,front+.025),(side*.31,1.14,front+.048),.075,"headlamp",16))
 put(cylinder("fuel-cap",(-1.253,1.25,-1.43),(-1.278,1.25,-1.43),.065,"metal",16))
 put(tube("aft-antenna",[(0,2.80,-1.10),(0,3.05,-1.28)],.012,"plastic",8))
 put(tube("belly-antenna",[(0,.58,-.75),(0,.28,-.95)],.012,"plastic",8))
@@ -265,7 +293,7 @@ for bone,o in parts.items():
     for m in final: me.materials.append(m)
     for p,t in zip(me.polygons,tags): p.material_index=MATERIALS.index(dict(TAGS)[t]); p.use_smooth=True
     me.set_sharp_from_angle(angle=math.radians(35))
-    group=o.vertex_groups.new(name=bone); group.add(list(range(len(me.vertices))),1,"REPLACE")
+    group=o.vertex_groups.new(name=bone); group.add([v.index for v in me.vertices if not v.groups],1,"REPLACE")
     o.parent=rig; o.modifiers.new("Armature","ARMATURE").object=rig
 
 digest=layout_hash(objects)

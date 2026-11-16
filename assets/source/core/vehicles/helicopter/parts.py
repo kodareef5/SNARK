@@ -23,7 +23,7 @@ TAG = {name: i for i, (name, _) in enumerate(TAGS)}
 MATERIALS = ["body", "trim", "cabin"]
 # Pixels a metre on each material's picture, before the layout scales them all to fit, and how much less some
 # faces get: what is seldom seen gets less.
-SPARE = {"under": 0.15, "liner": 0.3, "jamb": 0.5, "headliner": 0.5, "carpet": 0.6, "glass": 0.5, "glass_in": 0.05, "rubber": 0.6, "panel": 0.8}
+SPARE = {"gauge": 6.0, "under": 0.15, "liner": 0.3, "jamb": 0.5, "headliner": 0.5, "carpet": 0.6, "glass": 0.5, "glass_in": 0.05, "rubber": 0.6, "panel": 0.8}
 
 E2B = Matrix(((1, 0, 0, 0), (0, 0, -1, 0), (0, 1, 0, 0), (0, 0, 0, 1)))
 

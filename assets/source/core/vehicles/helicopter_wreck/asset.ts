@@ -3,7 +3,7 @@ import { shared } from "../../../../../tools/art/spec.ts";
 
 const intact = helicopterAsset();
 const maps = (name: string, cutout = false) => shared(import.meta.dir, `core:helicopter_wreck/${name}`, {
-  tiles: name === "body" ? 11.047 : name === "trim" ? 8.2211 : 12.9563,
+  tiles: name === "body" ? 11.0469 : name === "trim" ? 8.2517 : 12.7851,
   base: `tex/${name}_base.png`, normal: `../helicopter/tex/${name}_normal.png`, packed: `tex/${name}_packed.png`,
   regions: { mask: `tex/${name}_mask.png` }, height: `../helicopter/tex/${name}_height.png`, ...(cutout ? { cutout: true } : {}),
 });

@@ -17,10 +17,13 @@ for o in bpy.data.objects:
         if o.name=="rotor_main":
             r=math.hypot(x,y-.30)
             bend=max(0,r-1.10)
-            z-=bend*.19
+            z=2.40+(z-2.40)*.68-bend*.19
             y+=max(0,x-1.8)*.22
         elif o.name=="rotor_tail":
             z-=max(0,z-2)*.35
+            t=min(1,(y-2.0)/3.6)
+            x+=math.sin(t*math.pi/2)*.46
+            z-=t*.35
         elif o.name=="chassis":
             if y>2.0:
                 t=min(1,(y-2.0)/3.6)

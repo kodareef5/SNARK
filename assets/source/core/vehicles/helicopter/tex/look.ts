@@ -19,14 +19,14 @@ import { ModelView } from "../../../../../../tools/snap.ts";
 import { rgbaOf } from "../../../../../../tools/snap/files.ts";
 import { encodePng } from "../../../../../../tools/snap/png.ts";
 import { Stage } from "../../../../../../tests/fixtures/stage.ts";
-import { HELICOPTER_ART as COMPACT } from "../../../../../../content/vehicles/helicopter-art.ts";
+import { HELICOPTER_ART as H } from "../../../../../../content/vehicles/helicopter-art.ts";
 
 const args = process.argv.slice(2);
 const out = args.includes("--out") ? args[args.indexOf("--out") + 1] : undefined;
 if (!out) throw new Error("--out DIR");
 mkdirSync(out, { recursive: true });
 
-const ID = args.includes("--asset") ? args[args.indexOf("--asset") + 1]! : COMPACT.id;
+const ID = args.includes("--asset") ? args[args.indexOf("--asset") + 1]! : H.id;
 const asset = (await findAssets()).find((a) => a.id === ID)!;
 const pack = parsePack(new Uint8Array(readFileSync(asset.file)));
 const index = pack.meshIndex.get(ID)!;
@@ -85,7 +85,7 @@ function row(shot: Shot, side: number, ss: number, open = 0): { w: number; h: nu
 /** From the driver's eye (the contract's camera_driver), looking ahead and a little down: through the windscreen. */
 function driver(width: number, height: number): { w: number; h: number; img: Uint8Array } {
   const stage = new Stage(pack, width, height);
-  const [x, y, z] = COMPACT.anchors.camera_driver;
+  const [x, y, z] = H.anchors.camera_driver;
   [stage.cam.x, stage.cam.y, stage.cam.z, stage.cam.yaw, stage.cam.pitch, stage.cam.fovY] = [x, y, z, -0.12, -0.12, 1.2];
   stage.begin();
   textures.forEach((t, slot) => stage.texture(slot, t.role, t.pictures));
