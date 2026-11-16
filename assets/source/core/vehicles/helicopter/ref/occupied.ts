@@ -5,6 +5,7 @@ import { HELICOPTER_ART as H } from "../../../../../../content/vehicles/helicopt
 import { Pose } from "../../../../../../shared/anim/clip.ts";
 import { HUMAN, HUMAN_BONES } from "../../../../../../shared/anim/human.ts";
 import { defaultLook, REGION_COUNT, lookScales, setRegion } from "../../../../../../shared/anim/look.ts";
+import { fitPilotControls } from "../../../../../../shared/anim/mount-controls.ts";
 import { createMountMotion, mountPose } from "../../../../../../shared/anim/mount.ts";
 import { buildRig } from "../../../../../../shared/anim/rigs.ts";
 import { Solved, solve } from "../../../../../../shared/anim/skeleton.ts";
@@ -30,6 +31,7 @@ for(const extreme of ['large','small']) {
   const rest=Float32Array.from(human.header.rigs.find(r=>r.id===`human_${sex}`)!.rest),look=defaultLook();
   for(let region=0;region<REGION_COUNT;region++)setRegion(look,region,extreme==='large'?1:-1);lookScales(look,scale);
   mountPose(createMountMotion(),{role:seat==='seat_driver'?'pilot':'cabin',tick:0,startTick:0,durationTicks:1},pose);solve(HUMAN,pose,solved,rest,scale);
+  if(seat==='seat_driver')fitPilotControls(pose,solved,rest,scale,{position:H.anchors.collective.map((v,k)=>v-anchor[k]!)},{position:H.anchors.cyclic.map((v,k)=>v-anchor[k]!)});
   writeBones(matrix,0,solved,rest,scale,anchor[0]-solved.pos[0]!,anchor[1]-solved.pos[1]!,anchor[2]-solved.pos[2]!,0);
   const selected=humanMeshes.filter(m=>m.id===`core:human_${sex}/head`||m.id.startsWith(`core:human_${sex}/armor/hide/`));
   for(const mesh of selected){const fine=mesh.lods[0]!,positions=new Float32Array(fine.positions.length);
@@ -43,7 +45,7 @@ for(const extreme of ['large','small']) {
  const pack=parsePack(buildPack([...unpackMeshes(helicopter),...bodies],helicopter.palette,[],helicopter.header.rigs));
  const rig=buildRig(pack.header.rigs.find(r=>r.id===H.id)!,pack.clips)!;
  const textures=(pack.header.textures??[]).map(t=>rgbaOf(materials.find(m=>t.id===`${m.id}/${t.role}`)!,t.role,t.top,null));
- for(const [name,around,above,distance,open] of [['front',35,14,7.8,0],['side',90,10,7.4,0],['doors_open',55,16,7.0,1.1],['rear_doors',125,14,6.8,1.1]] as const){
+ for(const [name,around,above,distance,open] of [['front',35,14,7.8,0],['side',90,10,7.4,0],['doors_open',55,16,7.0,1.1],['rear_doors',125,14,6.8,1.1],['controls',54,26,3.0,1.4]] as const){
   const width=1400,height=950,stage=new Stage(pack,width,height),a=around*Math.PI/180,e=above*Math.PI/180;
   stage.cam.x=Math.sin(a)*Math.cos(e)*distance;stage.cam.y=1.45+Math.sin(e)*distance;stage.cam.z=Math.cos(a)*Math.cos(e)*distance;
   stage.cam.yaw=a+Math.PI;stage.cam.pitch=-e;stage.cam.fovY=.78;
