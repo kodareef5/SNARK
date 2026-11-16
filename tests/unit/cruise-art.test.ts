@@ -104,6 +104,33 @@ test("visible window panels, balcony slabs and upper stairs survive every author
   }
 });
 
+test("the AquaDome entrance remains open between its glazed sides at every distance stage", () => {
+  for (let stage = 0; stage < 6; stage++) {
+    const shell = cruiseArtSections(stage).filter(section => section.prototype.art.kind === "dome_dense");
+    expect(shell.length).toBeGreaterThan(0);
+    const hits = (x: number): boolean => {
+      const y = 47.2;
+      for (const section of shell) {
+        const p = section.positions, indices = section.indices;
+        for (let i = 0; i < indices.length; i += 3) {
+          const a = indices[i]! * 3, b = indices[i + 1]! * 3, c = indices[i + 2]! * 3;
+          const d = (p[b + 1]! - p[c + 1]!) * (p[a]! - p[c]!) + (p[c]! - p[b]!) * (p[a + 1]! - p[c + 1]!);
+          if (Math.abs(d) < 1e-10) continue;
+          const u = ((p[b + 1]! - p[c + 1]!) * (x - p[c]!) + (p[c]! - p[b]!) * (y - p[c + 1]!)) / d;
+          const v = ((p[c + 1]! - p[a + 1]!) * (x - p[c]!) + (p[a]! - p[c]!) * (y - p[c + 1]!)) / d;
+          if (u < 0 || v < 0 || u + v > 1) continue;
+          const z = u * p[a + 2]! + v * p[b + 2]! + (1 - u - v) * p[c + 2]!;
+          if (z >= 74 && z <= 88) return true;
+        }
+      }
+      return false;
+    };
+    expect(hits(5), `stage ${stage}, entrance`).toBe(false);
+    expect(hits(-12), `stage ${stage}, starboard glazing`).toBe(true);
+    expect(hits(12), `stage ${stage}, port glazing`).toBe(true);
+  }
+});
+
 /** A one-sided interior ray models the native backface rule; a two-sided hit hid the original Pearl fault. */
 function pearlFrontHit(lods: readonly SourceLod[], z: number, angle: number): boolean {
   const dx = Math.cos(angle), dy = Math.sin(angle);

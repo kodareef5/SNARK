@@ -81,11 +81,14 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     return cruisePoint(instance.at[0]!, instance.at[1]!, instance.at[2]!, Math.round(instance.yaw * 65536 / 360), point);
   };
   const pearl = CRUISE_LAYOUT.pearl.center;
+  const slideRuns = CRUISE_LAYOUT.instances.filter(instance => instance.placed && instance.id.startsWith("slide_0_") &&
+    prototypes.get(instance.prototype)?.category === "waterpark").sort((a, b) => Number(a.id.split("_").at(-1)) - Number(b.id.split("_").at(-1)));
+  if (!slideRuns.length) throw new Error("Cruise review requires the authored first slide course");
   const targets: Readonly<Record<string, readonly number[]>> = {
     promenade: [pearl[0]!, pearl[1]! - 1.8, pearl[2]!], pearl_cafe: fitting("cafe_sofa_1"),
     central_park: fitting("plant_8_8_1"), surfside: fitting("surfside_play_1"),
     theater: fitting("theater_screen"), dining_5: fitting("dining_table_5_1_14"), bridge: fitting("bridge_console_6"),
-    grove: fitting("lounger_18_2"), thrill: fitting("slide_0_8"), hideaway: fitting("hideaway_pool", [0, -.18, 0]),
+    grove: fitting("lounger_18_2"), thrill: fitting(slideRuns[Math.floor(slideRuns.length / 2)]!.id), hideaway: fitting("hideaway_pool", [0, -.18, 0]),
     medical: fitting("medical_fit_1_-14"), sample_interior: fitting("sample_interior", [2, 1.2, 1.6]),
     sample_suite: fitting("sample_suite", [2, 1.2, 1.6]), sample_ocean: fitting("sample_ocean", [2, 1.2, 1.6]),
     pearl, main_bar: fitting("main_bar_counter"), giovanni: fitting("giovanni_table_1"), casino: fitting("casino_table_5_1"),
@@ -94,7 +97,7 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     engine: fitting("engine_fit_1_12"), workshop: fitting("workshop_fit_1_12"),
     chill: fitting("lounger_15_17"), pool_edge: fitting("prototype_pool", [0, -.18, 0]), cloud: fitting("lounger_17_2"),
     grove_upper: [0, rooms.get("grove_upper")!.bounds.min[1]! + .8, 68],
-    waterpark: fitting("slide_0_0"), windjammer: fitting("windjammer_table_2"), pool_under: fitting("pool_lounge_sofa_1"),
+    waterpark: fitting(slideRuns[0]!.id), windjammer: fitting("windjammer_table_2"), pool_under: fitting("pool_lounge_sofa_1"),
   };
   const promenadeApproach = CRUISE_LAYOUT.routes.find(route => route.id === "pearl_arrival")?.anchors[1];
   if (!promenadeApproach) throw new Error("Cruise review requires the authored Promenade approach to the Pearl");
