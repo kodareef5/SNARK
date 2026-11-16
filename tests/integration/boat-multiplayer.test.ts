@@ -53,5 +53,12 @@ test("four players stay grouped through planing and docking over delayed links w
     expect(ents.vehicleGear[e]).toBe(0); expect(Math.hypot(ents.vx[e]!, ents.vz[e]!)).toBeGreaterThan(2);
     expect(pilot.drive).toBe(e);
     expect(crew.map((s, i) => s.stats.corrections - before[i]!)).toEqual([0, 0, 0, 0]);
+    // Lost pilot control cannot leave the motor driving forever or detach remaining passengers.
+    h.pilots[0]!.buttons = 0; h.pilots[0]!.moveZ = 127; h.run(300);
+    expect(ents.vehicleEngineOn[e]).toBe(1);
+    h.ends[0]!.close(); h.run(500);
+    expect(pilot.drive).toBe(-1); expect(ents.vehicleEngineOn[e]).toBe(0); expect(ents.vehicleGear[e]).toBe(0);
+    for (const session of crew.slice(1)) expect(ents.seat[h.client(session)!.ent]).toBe(e + 1);
+    expect([ents.x[e], ents.y[e], ents.z[e], ents.vx[e], ents.vz[e]].every(Number.isFinite)).toBe(true);
   } finally { h.host.shutdown(); }
 });
