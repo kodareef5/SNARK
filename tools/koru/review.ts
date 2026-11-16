@@ -76,7 +76,7 @@ function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
   raster.render(packet); [packet.drawCount, packet.tileCount, packet.casterCount, packet.cascadeCount] = counts;
 }
 
-function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, width: number, height: number, out: string) {
+function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, width: number, height: number, out: string, recordCpu: boolean) {
   const built = compileContent(CORE_CONTENT); if (!built.registry) throw new Error(built.errors.join("\n"));
   const reg = built.registry, h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips: pack.clips, rigs: pack.header.rigs }, reg);
   const boot = parsePack(files.files[0]!), port = new FakeNet(files.files, { keep: true });
@@ -113,7 +113,8 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
     run(3600);
     for (let waits = 0; quietFrames < 30 && waits < 48; waits++) run(250);
     if (quietFrames < 30) throw new Error(`${shot.name}: production asset streaming never settled for CPU sampling`);
-    const corrections = session.stats.corrections; measure = true; run(3000); measure = false;
+    const corrections = session.stats.corrections;
+    if (recordCpu) { measure = true; run(3000); measure = false; } else run(600);
     if (measuredUploadFrames) throw new Error(`${shot.name}: asset streaming resumed during settled CPU sampling`);
     const p = packet as FramePacket | null, render = raster as Rasterizer | null;
     if (!p || !render || !app.scene) throw new Error(`${shot.name}: native App produced no frame`);
@@ -146,8 +147,8 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
     frameTimes.sort((a, b) => a - b);
     const percentile = (p: number) => frameTimes[Math.max(0, Math.ceil(frameTimes.length * p) - 1)]!;
     return { ...shot, width, height, draws, submittedTriangles: p.triangles, drawCount: p.drawCount,
-      cpu: { samples: frameTimes.length, medianMs: percentile(.5), p95Ms: percentile(.95), p99Ms: percentile(.99), maxMs: percentile(1),
-        scope: "Settled App.frame wall time only; excludes authoritative server stepping, network delivery, image encoding, software rasterization and browser GPU work." },
+      cpu: recordCpu ? { samples: frameTimes.length, medianMs: percentile(.5), p95Ms: percentile(.95), p99Ms: percentile(.99), maxMs: percentile(1),
+        scope: "Settled App.frame wall time only; excludes authoritative server stepping, network delivery, image encoding, software rasterization and browser GPU work." } : { samples: 0, scope: "Visual-only review; CPU timing deliberately omitted." },
       dropped: p.dropped, skipped: p.skipped, casterDropped: p.casterDropped,
       city: app.scene.city?.stats, handover, assets: app.scene.assets.line(),
       camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch, thirdPerson: app.view.thirdPerson },
@@ -176,7 +177,7 @@ export async function reviewKoru(map: MapData, shots: readonly KoruShot[], args 
   if (only.length && existsSync(resolve(out, "report.json"))) report.push(...JSON.parse(readFileSync(resolve(out, "report.json"), "utf8")).shots.filter((s: { name: string }) => !selected.some(shot => shot.name === s.name)));
   for (const shot of selected) {
     console.log(`Native Koru review ${shot.name}`);
-    report.push({ ...capture(shot, map, pack, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out), packHash, assetStage: graybox ? "preliminary graybox" : "production" });
+    report.push({ ...capture(shot, map, pack, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only")), packHash, assetStage: graybox ? "preliminary graybox" : "production" });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native map → authoritative Harness → App → streamed production packs → native frame packet → Rasterizer", shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
