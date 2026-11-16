@@ -17,6 +17,7 @@ import { buildSounds } from "./pack/sound.ts";
 import { splitPack } from "./pack/split.ts";
 import { storeParts } from "./pack/store.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
+import { weigh } from "./sizes.ts";
 import { buildUiAssets } from "./ui/assets.ts";
 
 /** The stress cards as textures to build: every picture of each, from one pixel across up to its top. */
@@ -110,4 +111,5 @@ if (import.meta.main) {
   const t0 = performance.now();
   const { jsBytes, packBytes } = await buildClient({ stress: process.argv.includes("--stress") });
   console.log(`client/dist  main.js ${jsBytes} bytes, assets ${packBytes} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
+  if (!process.argv.includes("--stress") && !weigh(resolve(import.meta.dir, "../client/dist"))) process.exitCode = 1;
 }

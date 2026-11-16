@@ -184,7 +184,7 @@ test("every question is answered, a pass's cost is the slope of time against pas
   const before = new Map(card.gl.state);
   const q = new GpuQuestions(card.gl, () => card.gl.createTexture(), card.now, "astc", [390, 844], PLAN);
   const frames = ask(q, () => expect(card.gl.state).toEqual(before));
-  expect(frames).toBeLessThan(400);
+  expect(frames).toBeLessThan(500);
   const r = q.report;
   expect([r.timers, r.lostDuring]).toEqual([true, null]);
   // The fake reads every pixel back as grey: no answer is a yes, and none is left unasked.
@@ -201,10 +201,10 @@ test("every question is answered, a pass's cost is the slope of time against pas
   expect(per("flat")).toMatchObject({ slope: 0.03, timer: 0.03, k: 512 });
   expect(per("9 taps").slope).toBe(0.03);
   // The game's lit programs read noon's frame block: every draw of theirs had its buffer, or the fake would have drawn nothing.
-  expect(["lit", "lit haze 3.5 km", "far", "surface", "surface layered", "sky table", "sky 2 layers", "water waves", "lit on the sea", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(10).fill(0.03));
+  expect(["lit", "lit world near", "lit world fade", "lit haze 3.5 km", "far", "surface undyed whole", "surface undyed", "surface whole", "surface", "surface layered", "sky table", "sky 2 layers", "water waves", "lit on the sea", "lit shadowed"].map((n) => per(n).slope)).toEqual(Array(15).fill(0.03));
   expect(card.gl.invalid).toEqual([]);
-  // A draw's 0.01 ms on the clock: 1,000 of them are enough to time.
-  expect(per("draw")).toMatchObject({ slope: 10, error: 0, k: 1000 });
+  // A draw's cost is timed only through a renderer's executor, which this context has none of.
+  expect(r.passes.some((p) => p.per === "draw")).toBe(false);
   // Only the probe's own units were bound on.
   expect([...card.gl.boundOn].every((u) => PROBE_UNITS.includes(u))).toBe(true);
 });
@@ -214,7 +214,7 @@ test("a question past its deadline says it did not finish, and a lost context na
   const late = new GpuQuestions(slow.gl, () => slow.gl.createTexture(), slow.now, "bc", [390, 844], PLAN);
   ask(late, () => slow.tick(4000));
   expect([late.report.depthRange, late.report.seam]).toEqual(["neither (read 128,128,128)", "did not finish"]);
-  expect(late.report.passes.map((p) => p.note)).toEqual(Array(23).fill("did not finish"));
+  expect(late.report.passes.map((p) => p.note)).toEqual(Array(27).fill("did not finish"));
 
   const card = timedCard();
   const q = new GpuQuestions(card.gl, () => card.gl.createTexture(), card.now, "rgba", [390, 844], PLAN);
@@ -227,7 +227,7 @@ test("a question past its deadline says it did not finish, and a lost context na
   const r = q.report;
   expect(r.lostDuring).toBe("flat");
   expect(r.passes[0]!.note).toBe("lost the context");
-  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(22).fill("not asked: the context was lost during flat"));
+  expect(r.passes.slice(1).map((p) => p.note)).toEqual(Array(26).fill("not asked: the context was lost during flat"));
 
   // Lost in the middle of a question's step: what it read is not its answer.
   const dying: ReturnType<typeof fakeGl> = fakeGl({ read: () => dying.lose() });

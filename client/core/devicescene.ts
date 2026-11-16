@@ -1,14 +1,15 @@
 // What the device probe stands in front of the camera, and how it adds load a step at a time: bodies, building pieces,
-// rocks near and far, far bases, the terrain map's wood and elders' stand, and texture memory. The probe's server
-// stands the crowd and builds the base (tools/device.ts); the rest is added on the page, so that the link does not
-// limit what is measured.
+// a compact base, vehicles, rocks near and far, far bases, the terrain map's wood and elders' stand, and texture memory.
+// The probe's server stands the crowd and builds the bases (tools/device.ts); the rest is added on the page, so that the
+// link does not limit what is measured.
 
-import { LOOK_BYTES } from "../../shared/anim/look.ts";
+import { SLOT_NAMES } from "../../shared/anim/human.ts";
+import { LOOK_BYTES, randomLook } from "../../shared/anim/look.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { CHUNK_SIZE, type MapDims } from "../../shared/coords.ts";
 import { MAX_VIEW } from "../../shared/net/view.ts";
 import { Rng } from "../../shared/rng.ts";
-import { GEAR_COUNT } from "../../shared/sim/entities.ts";
+import { F_ALIVE, GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import type { NodeScatter, NodeZoned } from "../../shared/world/mapfile.ts";
 import { PROVING_SPAWN } from "../../shared/world/proving.ts";
@@ -24,7 +25,7 @@ const VIEW_FLAG_PROP = 8;
 /** Half the width of what every scene is laid out in, in radians: a portrait phone shows about 18 degrees each side. */
 const HALF_WEDGE = 0.28;
 
-/** Where the camera looks for each load: yaw 0 faces +Z, and a quarter turn faces +X. */
+/** Where the camera looks for each load: yaw 0 faces +Z, and a quarter turn faces +X. Vehicles stand where bodies do, and the compact base where the houses do, each alone. */
 export const LOOK = { bodies: Math.PI / 2, pieces: -Math.PI / 2, rocks: 0, crowd: Math.PI };
 
 /**
@@ -34,7 +35,7 @@ export const LOOK = { bodies: Math.PI / 2, pieces: -Math.PI / 2, rocks: 0, crowd
  * piece's `y` is its height over the ground at `floor`.
  */
 export function crowdScene(): { bodies: { species: string; x: number; z: number }[]; floor: { x: number; z: number }; pieces: { id: string; x: number; y: number; z: number; yaw: number }[] } {
-  const species = ["core:survivor", "core:parasaur", "core:raptor", "core:grazer"];
+  const species = ["core:survivor", "core:dodo", "core:pteranodon", "core:raptor", "core:parasaur"];
   const bodies: { species: string; x: number; z: number }[] = [];
   [4, 6, 8, 8, 10, 12].forEach((n, row) => {
     const d = 17 + row * 6;
@@ -87,12 +88,43 @@ export function basePieces(n: number): { id: string; x: number; y: number; z: nu
   return out;
 }
 
-/** Where `n` added bodies stand toward +X, in rows a body and a half apart that widen with distance, nearest first. */
-export function bodySpots(n: number): { x: number; z: number }[] {
+/**
+ * The compact base the probe's server builds for the base rungs, toward -X with its near face 10 m off: an ARK box base
+ * of 12 by 12 foundations, `storeys` storeys of walls round every room of 3 by 3 cells with a doorway and door facing the
+ * viewer, and a ceiling over every cell; each room thatch, wood or stone by turns. Foundations first, then storey by
+ * storey, so the first pieces of a taller base are a lower one.
+ */
+export function boxBase(storeys = 3): { id: string; x: number; y: number; z: number; yaw: number; house: { x: number; z: number } }[] {
+  const [N, ROOM, NEAR] = [12, 3, 10];
+  const x0 = PROVING_SPAWN.x - NEAR;
+  const z0 = PROVING_SPAWN.z - (N * 3) / 2;
+  const house = { x: x0 - (N * 3) / 2, z: PROVING_SPAWN.z };
+  const tier = (i: number, j: number): string => ["thatch", "wood", "stone"][(Math.floor(Math.min(i, N - 1) / ROOM) + Math.floor(Math.min(j, N - 1) / ROOM)) % 3]!;
+  const out: ReturnType<typeof boxBase> = [];
+  const add = (part: string, i: number, j: number, x: number, y: number, z: number, yaw: number): void => void out.push({ id: `core:${part}_${tier(i, j)}`, x, y, z, yaw, house });
+  for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) add("foundation", i, j, x0 - i * 3 - 1.5, 0.1875, z0 + j * 3 + 1.5, 0);
+  for (let s = 0; s < storeys; s++) {
+    const floor = 0.375 + s * 3.25;
+    for (let line = 0; line <= N; line++) {
+      if (line % ROOM !== 0) continue;
+      for (let c = 0; c < N; c++) {
+        const door = s === 0 && line === 0 && c === N / 2;
+        add(door ? "doorframe" : "wall", line, c, x0 - line * 3, floor + 1.5, z0 + c * 3 + 1.5, 16384);
+        if (door) add("door", line, c, x0, floor + 1.15625, z0 + c * 3 + 1.5, 16384);
+        add("wall", c, line, x0 - c * 3 - 1.5, floor + 1.5, z0 + line * 3, 0);
+      }
+    }
+    for (let i = 0; i < N; i++) for (let j = 0; j < N; j++) add("ceiling", i, j, x0 - i * 3 - 1.5, floor + 3.125, z0 + j * 3 + 1.5, 0);
+  }
+  return out;
+}
+
+/** Where `n` added bodies stand toward +X, in rows `gap` apart from `from` metres out that widen with distance, nearest first. */
+export function bodySpots(n: number, gap = 1.6, from = 6): { x: number; z: number }[] {
   const out: { x: number; z: number }[] = [];
-  for (let d = 6; out.length < n; d += 1.6) {
-    const across = Math.max(1, Math.floor((2 * Math.tan(HALF_WEDGE) * d) / 1.6));
-    for (let k = 0; k < across && out.length < n; k++) out.push({ x: PROVING_SPAWN.x + d, z: PROVING_SPAWN.z + (k - (across - 1) / 2) * 1.6 });
+  for (let d = from; out.length < n; d += gap) {
+    const across = Math.max(1, Math.floor((2 * Math.tan(HALF_WEDGE) * d) / gap));
+    for (let k = 0; k < across && out.length < n; k++) out.push({ x: PROVING_SPAWN.x + d, z: PROVING_SPAWN.z + (k - (across - 1) / 2) * gap });
   }
   return out;
 }
@@ -125,16 +157,38 @@ export function rocks(table: AssetTable, hf: Heightfield, near: number, far: num
 
 /**
  * Bodies added after the session has sampled its own: copies of those it has, each standing at one of `bodySpots`, posed
- * and coloured as its original. Every scene and system that reads the sample reads them too, as it would a crowd that
- * came over the link, but nothing of them crosses the link. `n` is how many are wanted.
+ * and coloured as its original. A survivor's copy is dressed, with a look, a set of armour and a held tool, and every
+ * other copy of a creature that takes a saddle wears one with a dressed survivor riding it. Then `vehicles` parked in
+ * rows of their own, the compact car, the helicopter and the boat by turns. Every scene and system that reads the
+ * sample reads them too, as it would a crowd that came over the link, but nothing of them crosses the link. `n` is how
+ * many bodies are wanted.
  */
 export class BodyCopies {
   n = 0;
+  vehicles = 0;
   private readonly spots = bodySpots(MAX_VIEW);
+  private readonly lot = bodySpots(MAX_VIEW, 6, 10);
   private readonly hf: Heightfield;
+  private readonly reg: Registry;
+  private readonly human: number;
+  private readonly parked: number[];
+  private readonly saddles = new Map<number, number>();
+  private readonly armour: number[][];
+  private readonly tools: number[];
+  private readonly looks: Uint8Array[];
 
-  constructor(session: { sampleRemote(out: RemoteSample, delayTicks?: number): void }, hf: Heightfield) {
-    this.hf = hf;
+  constructor(session: { sampleRemote(out: RemoteSample, delayTicks?: number): void }, hf: Heightfield, reg: Registry) {
+    [this.hf, this.reg] = [hf, reg];
+    const id = (name: string): number => reg.index.get(`core:${name}`) ?? 0;
+    [this.human, this.parked, this.tools] = [id("survivor"), ["compact", "helicopter", "boat"].map(id), [id("rifle"), id("hatchet")]];
+    reg.defs.forEach((d, k) => d?.type === "species" && reg.index.has(`core:saddle_${d.id.slice(5)}`) && this.saddles.set(k, id(`saddle_${d.id.slice(5)}`)));
+    this.armour = ["hide", "chitin", "flak"].map((set) => {
+      const worn = new Array<number>(SLOT_NAMES.length).fill(0);
+      reg.defs.forEach((d, k) => d?.type === "item" && d.wear && d.id.startsWith(`core:${set}_`) && (worn[SLOT_NAMES.indexOf(d.wear.slot)] = k));
+      return worn;
+    });
+    const rng = new Rng(5);
+    this.looks = Array.from({ length: 16 }, () => randomLook(rng));
     const sample = session.sampleRemote.bind(session);
     session.sampleRemote = (out, delayTicks) => {
       sample(out, delayTicks);
@@ -146,28 +200,66 @@ export class BodyCopies {
     const real = out.count;
     const bodies: number[] = [];
     for (let i = 0; i < real; i++) if ((out.flags[i]! & VIEW_FLAG_PROP) === 0) bodies.push(i);
+    const rider = bodies.find((b) => out.kind[b] === this.human) ?? -1;
     const room = Math.min(this.n, MAX_VIEW - real);
-    if (bodies.length === 0) return;
-    for (let i = 0; i < room; i++) {
-      const from = bodies[i % bodies.length]!;
-      const to = out.count++;
-      const spot = this.spots[i]!;
-      out.id[to] = 0x40000000 + i;
-      out.kind[to] = out.kind[from]!;
-      out.flags[to] = out.flags[from]!;
-      out.level[to] = out.level[from]!;
-      out.name[to] = "";
-      out.x[to] = spot.x;
-      out.z[to] = spot.z;
-      out.y[to] = Math.max(this.hf.heightAt(spot.x, spot.z), this.hf.waterAt(spot.x, spot.z));
-      out.yaw[to] = (i * 2.399963) % (2 * Math.PI);
-      out.anim[to] = out.anim[from]!;
-      out.colors.copyWithin(to * 6, from * 6, from * 6 + 6);
-      out.hasLook[to] = out.hasLook[from]!;
-      out.look.copyWithin(to * LOOK_BYTES, from * LOOK_BYTES, (from + 1) * LOOK_BYTES);
-      out.gear.copyWithin(to * GEAR_COUNT, from * GEAR_COUNT, (from + 1) * GEAR_COUNT);
-      out.team[to] = out.seat[to] = out.span[to] = out.grown[to] = 0;
+    for (let i = 0; i < room && bodies.length > 0; i++) {
+      const to = this.copy(out, bodies[i % bodies.length]!, i);
+      const saddle = this.saddles.get(out.kind[to]!);
+      if (out.kind[to] === this.human) this.dress(out, to, i);
+      else if (saddle !== undefined && rider >= 0 && i % 2 === 0 && i + 1 < room) {
+        out.gear[to * GEAR_COUNT + GEAR_WORN] = saddle;
+        const on = this.copy(out, rider, ++i);
+        this.dress(out, on, i);
+        out.seat[on] = out.id[to]! + 1;
+      }
     }
+    for (let v = 0; v < this.vehicles && out.count < MAX_VIEW; v++) this.park(out, v);
+  }
+
+  private copy(out: RemoteSample, from: number, i: number): number {
+    const to = out.count++;
+    const spot = this.spots[i]!;
+    out.id[to] = 0x40000000 + i;
+    out.kind[to] = out.kind[from]!;
+    out.flags[to] = out.flags[from]!;
+    out.level[to] = out.level[from]!;
+    out.name[to] = "";
+    out.x[to] = spot.x;
+    out.z[to] = spot.z;
+    out.y[to] = Math.max(this.hf.heightAt(spot.x, spot.z), this.hf.waterAt(spot.x, spot.z));
+    out.yaw[to] = (i * 2.399963) % (2 * Math.PI);
+    out.anim[to] = out.anim[from]!;
+    out.colors.copyWithin(to * 6, from * 6, from * 6 + 6);
+    out.hasLook[to] = out.hasLook[from]!;
+    out.look.copyWithin(to * LOOK_BYTES, from * LOOK_BYTES, (from + 1) * LOOK_BYTES);
+    out.gear.copyWithin(to * GEAR_COUNT, from * GEAR_COUNT, (from + 1) * GEAR_COUNT);
+    out.team[to] = out.seat[to] = out.seatSlot[to] = out.span[to] = out.grown[to] = 0;
+    return to;
+  }
+
+  private dress(out: RemoteSample, to: number, i: number): void {
+    const at = to * GEAR_COUNT;
+    out.hasLook[to] = 1;
+    out.look.set(this.looks[i % this.looks.length]!, to * LOOK_BYTES);
+    out.gear.fill(0, at, at + GEAR_COUNT);
+    out.gear[at + GEAR_HELD] = this.tools[i % this.tools.length]!;
+    this.armour[i % this.armour.length]!.forEach((item, slot) => (out.gear[at + GEAR_WORN + slot] = item));
+  }
+
+  /** The `v`th vehicle, parked level and whole with its engine off. */
+  private park(out: RemoteSample, v: number): void {
+    const to = out.count++;
+    const kind = this.parked[v % this.parked.length]!;
+    const spot = this.lot[v]!;
+    [out.id[to], out.kind[to], out.flags[to], out.level[to], out.name[to], out.anim[to], out.cue[to], out.hasLook[to]] = [0x40000000 + MAX_VIEW + v, kind, F_ALIVE, 1, "", 0, 0, 0];
+    [out.x[to], out.z[to], out.y[to], out.yaw[to]] = [spot.x, spot.z, Math.max(this.hf.heightAt(spot.x, spot.z), this.hf.waterAt(spot.x, spot.z)), (v * 2.399963) % (2 * Math.PI)];
+    out.colors.fill(0, to * 6, to * 6 + 6);
+    out.gear.fill(0, to * GEAR_COUNT, (to + 1) * GEAR_COUNT);
+    out.team[to] = out.seat[to] = out.seatSlot[to] = out.span[to] = out.grown[to] = 0;
+    for (const a of [out.vehiclePitch, out.vehicleRoll, out.steering, out.wheelAngle, out.vehicleGroundPitch, out.vehicleGroundRoll, out.vehicleRideOffset, out.vehicleDoors, out.vehicleGear, out.vehicleRpm, out.vehicleShifting, out.vehicleFlooding, out.vehicleRotorRpm, out.vehicleRotorPhase, out.vehicleEngineOn, out.vehicleQx, out.vehicleQy, out.vehicleQz]) a[to] = 0;
+    for (const a of [out.vehicleGrounded, out.vehicleHullCondition, out.vehicleFuel, out.vehicleEngineCondition, out.vehicleRotorCondition, out.vehicleQw]) a[to] = 1;
+    const movement = this.reg.vehicle[kind]?.movement;
+    [out.vehicleRotorcraft[to], out.vehicleBoat[to]] = [movement === "rotor" ? 1 : 0, movement === "boat" ? 1 : 0];
   }
 }
 
