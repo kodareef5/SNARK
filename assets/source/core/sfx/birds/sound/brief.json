@@ -1,0 +1,293 @@
+{
+  "asset": "core/sfx/birds",
+  "review": "../ref/sound",
+  "about": "Birds for the world: songbirds, crows, gulls, parrots, owls, a woodpecker, a hawk, a dawn chorus, a flock taking off, ducks, tropical birds, a dove, a hummingbird and a loon.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "song": {
+      "kind": "impact",
+      "range": 60,
+      "level": -18,
+      "vary": 0.04,
+      "want": "a songbird",
+      "prompts": [
+        {
+          "id": "v4-22000",
+          "models": [
+            "moss"
+          ],
+          "seed": 22000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A small songbird sings a bright warbling melody, four separate songs with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "crow": {
+      "kind": "impact",
+      "range": 120,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a crow",
+      "prompts": [
+        {
+          "id": "v4-22010",
+          "models": [
+            "moss"
+          ],
+          "seed": 22010,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A crow caws harshly, four separate caws with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "gull": {
+      "kind": "impact",
+      "range": 150,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a gull",
+      "prompts": [
+        {
+          "id": "v4-22020",
+          "models": [
+            "moss"
+          ],
+          "seed": 22020,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A seagull cries with a loud laughing squawk, four separate cries with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "parrot": {
+      "kind": "impact",
+      "range": 150,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a parrot",
+      "prompts": [
+        {
+          "id": "v4-22030",
+          "models": [
+            "moss"
+          ],
+          "seed": 22030,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A tropical parrot screeches loudly, four separate screeches with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "owl": {
+      "kind": "impact",
+      "range": 150,
+      "level": -18,
+      "vary": 0.04,
+      "want": "an owl at night",
+      "prompts": [
+        {
+          "id": "v4-22040",
+          "models": [
+            "moss"
+          ],
+          "seed": 22040,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "An owl hoots softly in the night, four separate hoots with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "woodpecker": {
+      "kind": "impact",
+      "range": 100,
+      "level": -16,
+      "vary": 0.04,
+      "want": "a woodpecker",
+      "prompts": [
+        {
+          "id": "v4-22050",
+          "models": [
+            "moss"
+          ],
+          "seed": 22050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woodpecker drums rapidly on a hollow tree trunk, four separate bursts with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "hawk": {
+      "kind": "impact",
+      "range": 400,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a hawk's cry",
+      "prompts": [
+        {
+          "id": "v4-22060",
+          "models": [
+            "moss"
+          ],
+          "seed": 22060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A hawk screeches high in the sky: a long piercing cry, three separate cries with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "chorus": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "a dawn chorus",
+      "prompts": [
+        {
+          "id": "v4-22070",
+          "models": [
+            "moss"
+          ],
+          "seed": 22070,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A dawn chorus in a forest: many songbirds chirping and singing together, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "flock": {
+      "kind": "impact",
+      "range": 80,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a flock taking off",
+      "prompts": [
+        {
+          "id": "v4-22080",
+          "models": [
+            "moss"
+          ],
+          "seed": 22080,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A flock of birds bursts into flight: a loud flurry of flapping wings, three separate takeoffs with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "duck": {
+      "kind": "impact",
+      "range": 80,
+      "level": -16,
+      "vary": 0.04,
+      "want": "ducks",
+      "prompts": [
+        {
+          "id": "v4-22090",
+          "models": [
+            "moss"
+          ],
+          "seed": 22090,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Ducks quack on a pond, four separate bursts of quacking with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "tropical": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.04,
+      "want": "tropical birds",
+      "prompts": [
+        {
+          "id": "v4-22100",
+          "models": [
+            "moss"
+          ],
+          "seed": 22100,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A tropical jungle full of exotic bird calls, whoops and chatters, steady. Recorded outdoors, no music, no voices."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "dove": {
+      "kind": "impact",
+      "range": 40,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a dove",
+      "prompts": [
+        {
+          "id": "v4-22110",
+          "models": [
+            "moss"
+          ],
+          "seed": 22110,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A dove coos softly, four separate coos with pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    },
+    "hummingbird": {
+      "kind": "impact",
+      "range": 15,
+      "level": -20,
+      "vary": 0.04,
+      "want": "a hummingbird",
+      "prompts": [
+        {
+          "id": "v4-22120",
+          "models": [
+            "moss"
+          ],
+          "seed": 22120,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A hummingbird's wings buzz as it hovers and darts away with tiny chirps, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "loon": {
+      "kind": "impact",
+      "range": 500,
+      "level": -16,
+      "vary": 0.04,
+      "want": "an eerie water bird at night",
+      "prompts": [
+        {
+          "id": "v4-22130",
+          "models": [
+            "moss"
+          ],
+          "seed": 22130,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 10,
+          "text": "A loon calls across a still lake at night: a long eerie wailing call, two separate calls with long pauses. Recorded outdoors, no music, no voices."
+        }
+      ]
+    }
+  }
+}

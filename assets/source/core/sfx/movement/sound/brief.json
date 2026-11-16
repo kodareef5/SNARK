@@ -1,0 +1,310 @@
+{
+  "asset": "core/sfx/movement",
+  "review": "../ref/sound",
+  "about": "Getting about: diving in, swimming under water, treading water, wading, the wind of a long fall, a hard landing from height, climbing ladders, rock and rope, pulling up onto a ledge, a parachute, a zipline, crawling and sliding.",
+  "bits": 16,
+  "notes": "v4 library (2026-11-15 night): many takes of many sounds, picked by measure and kept for the team to choose from, trim and wire. Nothing in the catalogue asks for these yet unless it says so.",
+  "slots": {
+    "dive": {
+      "kind": "impact",
+      "range": 30,
+      "level": -14,
+      "vary": 0.04,
+      "want": "diving into deep water",
+      "prompts": [
+        {
+          "id": "v4-23200",
+          "models": [
+            "moss"
+          ],
+          "seed": 23200,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A person dives headfirst into deep water: a sharp plunge and a rush of bubbles, four separate dives with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "underwater": {
+      "kind": "impact",
+      "range": 1,
+      "level": -22,
+      "vary": 0.04,
+      "want": "swimming under water",
+      "prompts": [
+        {
+          "id": "v4-23210",
+          "models": [
+            "moss"
+          ],
+          "seed": 23210,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Swimming strokes under water: muffled whooshes of moving water and bubbles, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "tread": {
+      "kind": "impact",
+      "range": 8,
+      "level": -22,
+      "vary": 0.04,
+      "want": "treading water",
+      "prompts": [
+        {
+          "id": "v4-23220",
+          "models": [
+            "moss"
+          ],
+          "seed": 23220,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A person treads water: gentle sloshing splashes, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "wade": {
+      "kind": "impact",
+      "range": 15,
+      "level": -20,
+      "vary": 0.04,
+      "want": "wading",
+      "prompts": [
+        {
+          "id": "v4-23230",
+          "models": [
+            "moss"
+          ],
+          "seed": 23230,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "A person wades through knee-deep water: heavy sloshing splashing steps, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "fall": {
+      "kind": "impact",
+      "range": 1,
+      "level": -18,
+      "vary": 0.04,
+      "want": "the wind of a long fall",
+      "prompts": [
+        {
+          "id": "v4-23240",
+          "models": [
+            "moss"
+          ],
+          "seed": 23240,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 20,
+          "text": "Falling through the air from a great height: wind roaring and flapping clothes, steady."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "splat": {
+      "kind": "impact",
+      "range": 40,
+      "level": -12,
+      "vary": 0.04,
+      "want": "a landing from height",
+      "prompts": [
+        {
+          "id": "v4-23250",
+          "models": [
+            "moss"
+          ],
+          "seed": 23250,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A body hits the ground hard after a long fall: a heavy crunching thud, four separate falls with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "ladder": {
+      "kind": "impact",
+      "range": 15,
+      "level": -20,
+      "vary": 0.04,
+      "want": "climbing a ladder",
+      "prompts": [
+        {
+          "id": "v4-23260",
+          "models": [
+            "moss"
+          ],
+          "seed": 23260,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Someone climbs a metal ladder: hands and boots clanking on the rungs, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "rock": {
+      "kind": "impact",
+      "range": 10,
+      "level": -20,
+      "vary": 0.04,
+      "want": "climbing rock",
+      "prompts": [
+        {
+          "id": "v4-23270",
+          "models": [
+            "moss"
+          ],
+          "seed": 23270,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "Hands and feet scrabble and grip on rough rock while climbing, stones scraping, five separate moves with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "rope": {
+      "kind": "impact",
+      "range": 10,
+      "level": -22,
+      "vary": 0.04,
+      "want": "climbing a rope",
+      "prompts": [
+        {
+          "id": "v4-23280",
+          "models": [
+            "moss"
+          ],
+          "seed": 23280,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Someone climbs a thick rope: the rope creaks and hands rub and grip, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "mantle": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.04,
+      "want": "pulling up onto a ledge",
+      "prompts": [
+        {
+          "id": "v4-23290",
+          "models": [
+            "moss"
+          ],
+          "seed": 23290,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A man pulls himself up onto a ledge with a grunt of effort and a scrape, four separate times with pauses. Close-miked, dry, no music, quiet background."
+        },
+        {
+          "id": "v4-23292",
+          "models": [
+            "moss"
+          ],
+          "seed": 23292,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A woman pulls herself up onto a ledge with a grunt of effort and a scrape, four separate times with pauses. Close-miked, dry, no music, quiet background."
+        }
+      ]
+    },
+    "parachute": {
+      "kind": "impact",
+      "range": 40,
+      "level": -14,
+      "vary": 0.04,
+      "want": "a parachute opening",
+      "prompts": [
+        {
+          "id": "v4-23300",
+          "models": [
+            "moss"
+          ],
+          "seed": 23300,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A parachute snaps open with a loud fluttering whump and the lines go taut, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "zipline": {
+      "kind": "impact",
+      "range": 30,
+      "level": -18,
+      "vary": 0.04,
+      "want": "riding a zipline",
+      "prompts": [
+        {
+          "id": "v4-23310",
+          "models": [
+            "moss"
+          ],
+          "seed": 23310,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A zipline trolley whizzes along a steel cable: a rising metallic whirring hiss, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "crawl": {
+      "kind": "impact",
+      "range": 6,
+      "level": -22,
+      "vary": 0.04,
+      "want": "crawling",
+      "prompts": [
+        {
+          "id": "v4-23320",
+          "models": [
+            "moss"
+          ],
+          "seed": 23320,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Someone crawls on hands and knees through dirt and leaves, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "slide": {
+      "kind": "impact",
+      "range": 15,
+      "level": -18,
+      "vary": 0.04,
+      "want": "sliding down a slope",
+      "prompts": [
+        {
+          "id": "v4-23330",
+          "models": [
+            "moss"
+          ],
+          "seed": 23330,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A person slides down a steep dirt slope: a long gritty scraping slide, three separate slides with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}
