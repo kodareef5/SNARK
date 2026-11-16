@@ -22,6 +22,9 @@ spec.loader.exec_module(module)
 prototypes = {p['id']: p for p in D['prototypes']}
 cells = [c for c in D['cells'] if any(m['category'] == 'pearl' for m in c['members'])]
 fine = Mesh(0)
+fine_exterior = Mesh(0)
+seams = []
+internal_caps = 0
 for instance in D['instances']:
     prototype = prototypes[instance['prototype']]
     if prototype['art']['kind'] != 'pearl':
@@ -31,7 +34,34 @@ for instance in D['instances']:
     orient(mesh)
     c, s = axes(instance['yaw'])
     at = [snap(v) for v in instance['at']]
-    fine.indexed([[at[0] + c*x + s*z, at[1] + y, at[2] - s*x + c*z] for x, y, z in mesh.v], mesh.f, 'ivory')
+    vertices = [[at[0] + c*x + s*z, at[1] + y, at[2] - s*x + c*z] for x, y, z in mesh.v]
+    fine.indexed(vertices, mesh.f, 'ivory')
+    angles = prototype['art']['angles']
+    seams.append((angles, at, instance['yaw']))
+    outside = []
+    for face in mesh.f:
+        internal = any(all(abs(mesh.v[i][0]*math.sin(a)-mesh.v[i][1]*math.cos(a)) < 1e-5 for i in face) for a in angles)
+        if internal:
+            internal_caps += 1
+        else:
+            outside.append(face)
+    fine_exterior.indexed(vertices, outside, 'ivory')
+
+# Every removed radial cap has the adjoining sector on its other side. All
+# sectors share the same origin and station profile; only their angle varies.
+seams.sort(key=lambda item:item[0][0])
+assert len(seams) == 16 and internal_caps == 512
+assert all(item[1:] == seams[0][1:] for item in seams)
+assert max(abs(seams[i][0][1]-seams[i+1][0][0]) for i in range(len(seams)-1)) < 1e-6
+assert abs(seams[0][0][0]) < 1e-6 and abs(seams[-1][0][1]-math.tau) < 1e-6
+
+def raw(mesh, label):
+    obj = mesh.object(label, D['pearl']['center'])
+    return {'positions': [x for v in obj.data.vertices for x in (v.co.x,v.co.z,-v.co.y)],
+            'indices': [i for face in obj.data.polygons for i in face.vertices]}
+
+visible_fine = raw(fine_exterior, 'whole_fine_exterior')
+visible_rows = []
 
 def in_cell(mesh, cell, label):
     """Preserve each source solid through the same six clipping planes as render()."""
@@ -50,9 +80,10 @@ def in_cell(mesh, cell, label):
 origin = D['pearl']['center']
 portal = math.sqrt((D['pearl']['diameter']/2)**2 - 5.6**2) - .20 - .003
 rows = []
-for level in (4, 5):
+for level in (3, 4, 5):
     coarse = Mesh(level)
     module.pearl(coarse, D, level)
+    visible_rows.append({'authoredLevel': level, 'fine': visible_fine, 'coarse': raw(coarse, 'whole_coarse'+str(level))})
     edges = {}
     for face in coarse.f:
         for a, b in zip(face, face[1:] + face[:1]):
@@ -84,4 +115,5 @@ for level in (4, 5):
         assert tree.ray_cast(eye, Vector((0, 0, 1)), 13.2)[0] is None, ('quantized portal', level, i)
 paths = [helper, source/'model_parts.py', source/'model_cells.py', source/'parts.py',
          source.parents[3]/'content/landmarks/cruise-layout.json']
-output.write_text(json.dumps({'sources': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}, 'rows': rows}))
+output.write_text(json.dumps({'sources': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}, 'rows': rows,
+                             'exterior': visible_rows, 'pairedInternalCaps': internal_caps}))
