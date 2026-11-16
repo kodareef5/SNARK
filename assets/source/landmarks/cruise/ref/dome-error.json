@@ -1,0 +1,467 @@
+{
+  "schema": 1,
+  "scope": "Sampled bidirectional exterior P95 bound, not an all-camera guarantee or delivered-pack acceptance. Whole raw occluders; all retained candidate positions set native shared bounds. Artificial cell caps and clear target faces excluded. Actual clear/front-face traversal. Corner and triangle-middle sample normals deduplicated for rays; conservative raw occurrence multiplicities retained in the bound.",
+  "identities": {
+    "layoutSHA256": "40568816ce4a8c5b0b254ede2a92dd3c29e2b4a36ea69eb4c43b943894e64f61",
+    "rawIndexSHA256": "c332c366040acaf7795a573edcbc46dadd32826d42e82feeaa9f977a16e0e6e9",
+    "candidateIndexSHA256": "17f887d89f5df1daac0bfdcb2076c4b0a8ddb6b83e88408f436ea83e7d41e3cf",
+    "candidateFilesSHA256": "0d58115bb6928448f5757f57d71f518b63f872c9f11dbf00241652186ba31088",
+    "nativeSources": {
+      "tools/pack/write.ts": "7357fbbb8ed2f231e930a2ea614b7020e065bfb18ae17c1e1a073e87d9e038f4",
+      "tools/pack/error.ts": "fbc0dd89d5bd823f8ec3ce550df692e7d087152797bb450eadba2834165c93aa",
+      "tools/art/check.ts": "64688629d27e3f5ce99177252014d030b06eb2f742bfef32d21d7a2d7608e0d8"
+    },
+    "diagnosticSources": {
+      "dome-error.ts": "f1d4e560f464ee37c0c617c69389664ec3d1c5d33e486ec027a4118de9a35bb2",
+      "dome-error.py": "854d1c04b5f1d2dc03831644331b743744cd1f9616b545caf801ed749c2bbba0"
+    },
+    "modelSourcesObserved": {
+      "asset.ts": "c9e4aa6b7ee7fd564304bc3a562c1d7c55dfb2ee097b0a0a1d51ad1a4cdbcdfd",
+      "model.py": "c56b86173abdf8107bee7f01a23e5a51cb307759107f47c4d9204da5fad37edc",
+      "model_aquatheater.py": "1459f4265558271fa4637b8bb007263ed2edf6d165d8acb7a0851a2a0e82da56",
+      "model_cells.py": "18828b61a1c7d89839e348f181f20aecba00645a08ba4d90f37524d911ab8db4",
+      "model_exterior.py": "71112bc04829f2ef6bfca4704635c43df9c0d2e65cb2f130cb5903f5695e6f82",
+      "model_far_facades.py": "32d8bd388a22725898dd4aa3197c5cf8041453a3723461e5441a9e4a480aaf76",
+      "model_far_lifeboat.py": "bfe727a4347d0de3d674316e5d518967ff52d2c5eb9923085cd8c0f7e9160ca1",
+      "model_far_pearl.py": "8fa4335ccd74fc802fb1be3815b361ef86821b5ed31cf716728314e35e863514",
+      "model_far_slides.py": "1d18ee5c0fb5e877820e99550f784aa58e1e2746170649fa32d9abbd7b18ebc1",
+      "model_interiors.py": "46aa7a191fa08d02bb7dcacc1e2a2f73fbe0a68bab38163463a8e22d67963d2e",
+      "model_parts.py": "5660df2cb4e64aaeb8a5402029c3a30b08f440d26745cf6827197c2b28d6a5ec",
+      "parts.py": "f829426cef80a4e006ef25fda566acef07b2beb574eb82aaaccd36554cdfc339"
+    },
+    "modelScope": "Observed source hashes, not a claim the frozen raw was regenerated from current source. Source may have evolved after the frozen census; raw hashes identify the measured geometry.",
+    "usedGeometryAndClearSHA256": "bc7ffe0a80cca27e74bacc524dd18e102db2434be13f2e584d15a8508c1102d7"
+  },
+  "parameters": {
+    "targetCells": [
+      "cruise:cell_0226",
+      "cruise:cell_0227"
+    ],
+    "threshold": 0.06,
+    "targetSurfaceExclusion": 0.002,
+    "capIdentification": 0.0003,
+    "rayAdvance": 1e-05,
+    "maxSkips": 512,
+    "cameraRadius": 250,
+    "cameraAzimuthStep": 10,
+    "cameraElevations": [
+      -10,
+      -5,
+      0,
+      5,
+      10,
+      20,
+      35,
+      50,
+      70,
+      90
+    ],
+    "sharedViewpoints": 481
+  },
+  "targetSpatialBounds": [
+    {
+      "cell": "cruise:cell_0226",
+      "min": [
+        -16,
+        48,
+        96
+      ],
+      "max": [
+        0,
+        64,
+        112
+      ]
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "min": [
+        -16,
+        48,
+        112
+      ],
+      "max": [
+        0,
+        64,
+        128
+      ]
+    }
+  ],
+  "wholeCellNativeP95": [
+    {
+      "cell": "cruise:cell_0226",
+      "origin": [
+        -8,
+        56,
+        104
+      ],
+      "p95": 0.07548422814645972,
+      "half": [
+        8,
+        2.7481727600097656,
+        8
+      ]
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "origin": [
+        -8,
+        56,
+        120
+      ],
+      "p95": 0.07541073296972756,
+      "half": [
+        8,
+        2.7481727600097656,
+        8
+      ]
+    }
+  ],
+  "nearSamples": 39030,
+  "overThresholdSamples": 5413,
+  "overThresholdRays": 1122232,
+  "classification": {
+    "cruise:cell_0226:overThreshold": 2688,
+    "cruise:cell_0226:occludedBad": 2687,
+    "cruise:cell_0227:overThreshold": 2725,
+    "cruise:cell_0227:occludedBad": 2725,
+    "cruise:cell_0226:visibleBad": 1
+  },
+  "bounds": [
+    {
+      "cell": "cruise:cell_0226",
+      "visibleOrUnresolvedBadPositionOccurrences": 3,
+      "visibleGoodLower": 60,
+      "badShareUpper": 0.047619047619047616
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "visibleOrUnresolvedBadPositionOccurrences": 0,
+      "visibleGoodLower": 40,
+      "badShareUpper": 0.0
+    }
+  ],
+  "reverse": [
+    {
+      "cell": "cruise:cell_0226",
+      "samples": 840,
+      "p95": 0.001148401526734233,
+      "max": 0.0012391305062919855,
+      "overThreshold": []
+    },
+    {
+      "cell": "cruise:cell_0227",
+      "samples": 840,
+      "p95": 0.0011984226293861866,
+      "max": 0.0013116582995280623,
+      "overThreshold": []
+    }
+  ],
+  "unresolvedBadRays": [],
+  "visibleGoodWitnesses": {
+    "cruise:cell_0226": {
+      "count": 60,
+      "allWitnessesSHA256": "e1c0c152f1a4d2a13438553368dfca8d32b5173737ca2f858ba0057a2f9b2b8d",
+      "examples": [
+        {
+          "cell": "cruise:cell_0226",
+          "triangle": 881,
+          "sample": "centroid",
+          "owner": "aquadome_8_2",
+          "point": [
+            -15.938067436218262,
+            59.70133590698242,
+            111.96443939208984
+          ],
+          "normal": [
+            -0.4361784756183624,
+            0.8996862173080444,
+            -0.017692627385258675
+          ],
+          "error": 0.0007000885671004653,
+          "eye": [
+            -213.21713256835938,
+            3.3879547119140625,
+            235.10096740722656
+          ],
+          "eyeLabel": "outside250:150:-10",
+          "hit": {
+            "owner": "aquadome_8_2",
+            "point": [
+              -15.938079833984375,
+              59.70133590698242,
+              111.96444702148438
+            ],
+            "distance": 239.27561950683594
+          }
+        },
+        {
+          "cell": "cruise:cell_0226",
+          "triangle": 882,
+          "sample": "centroid",
+          "owner": "aquadome_8_2",
+          "point": [
+            -15.850825309753418,
+            59.73139190673828,
+            111.32989501953125
+          ],
+          "normal": [
+            -0.4363330602645874,
+            0.8996176719665527,
+            -0.017364295199513435
+          ],
+          "error": 0.0006783541175536811,
+          "eye": [
+            -213.21713256835938,
+            3.3879547119140625,
+            235.10096740722656
+          ],
+          "eyeLabel": "outside250:150:-10",
+          "hit": {
+            "owner": "aquadome_8_2",
+            "point": [
+              -15.850814819335938,
+              59.73139953613281,
+              111.32988739013672
+            ],
+            "distance": 239.68170166015625
+          }
+        }
+      ]
+    },
+    "cruise:cell_0227": {
+      "count": 40,
+      "allWitnessesSHA256": "e87defa500a908efa701a2d452b88b36adf1ff39d1ecbd3133492f949a15fb7b",
+      "examples": [
+        {
+          "cell": "cruise:cell_0227",
+          "triangle": 273,
+          "sample": "centroid",
+          "owner": "aquadome_4_2",
+          "point": [
+            -0.000244140625,
+            60.86833190917969,
+            127.12677001953125
+          ],
+          "normal": [
+            0.40571027994155884,
+            0.88519686460495,
+            0.2276526242494583
+          ],
+          "error": 0.000244140625,
+          "eye": [
+            190.7823486328125,
+            25.011062622070312,
+            272.08538818359375
+          ],
+          "eyeLabel": "outside250:40:-5",
+          "hit": {
+            "owner": "aquadome_4_2",
+            "point": [
+              -1.52587890625e-05,
+              60.868289947509766,
+              127.12693786621094
+            ],
+            "distance": 242.2738037109375
+          }
+        },
+        {
+          "cell": "cruise:cell_0227",
+          "triangle": 303,
+          "sample": "centroid",
+          "owner": "aquadome_4_2",
+          "point": [
+            -0.00048828125,
+            61.63825988769531,
+            123.18743896484375
+          ],
+          "normal": [
+            0.44840744137763977,
+            0.8844580054283142,
+            0.12909261882305145
+          ],
+          "error": 0.00048828125,
+          "eye": [
+            216.50634765625,
+            46.79999923706055,
+            237.0
+          ],
+          "eyeLabel": "outside250:30:0",
+          "hit": {
+            "owner": "aquadome_4_2",
+            "point": [
+              -0.00048828125,
+              61.63825988769531,
+              123.18743896484375
+            ],
+            "distance": 245.04832458496094
+          }
+        }
+      ]
+    }
+  },
+  "visibleBadWitnesses": [
+    {
+      "cell": "cruise:cell_0226",
+      "triangle": 1440,
+      "sample": "b",
+      "owner": "aquadome_9_2",
+      "point": [
+        -15.172094345092773,
+        57.50212097167969,
+        96.0
+      ],
+      "normal": [
+        0.7440333366394043,
+        -0.38137486577033997,
+        0.5486051440238953
+      ],
+      "error": 0.0693039521574974,
+      "eye": [
+        90.5210952758789,
+        3.326152801513672,
+        315.98614501953125
+      ],
+      "eyeLabel": "normal-offset:4",
+      "hit": null
+    }
+  ],
+  "visibleBoundaryProbe": [
+    {
+      "cell": "cruise:cell_0226",
+      "triangle": 1440,
+      "fractionToCentroid": 0,
+      "point": [
+        -15.172094345092773,
+        57.50212097167969,
+        96.0
+      ],
+      "error": 0.0693039521574974,
+      "eye": [
+        90.5210952758789,
+        3.326152801513672,
+        315.98614501953125
+      ],
+      "earlierBlocker": null,
+      "firstHit": {
+        "owner": "aquadome_9_2",
+        "point": [
+          -15.172096252441406,
+          57.50212097167969,
+          96.0
+        ],
+        "distance": 249.9999542236328
+      },
+      "targetDistance": 249.9999775390615
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "triangle": 1440,
+      "fractionToCentroid": 0.05,
+      "point": [
+        -15.175862312316895,
+        57.50459671020508,
+        96.0068359375
+      ],
+      "error": 0.06746050715446472,
+      "eye": [
+        90.5210952758789,
+        3.326152801513672,
+        315.98614501953125
+      ],
+      "earlierBlocker": null,
+      "firstHit": {
+        "owner": "aquadome_9_2",
+        "point": [
+          -15.175865173339844,
+          57.50459671020508,
+          96.00682067871094
+        ],
+        "distance": 249.99609375
+      },
+      "targetDistance": 249.99609176632643
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "triangle": 1440,
+      "fractionToCentroid": 0.25,
+      "point": [
+        -15.190934181213379,
+        57.51450729370117,
+        96.03416442871094
+      ],
+      "error": 0.060123685747385025,
+      "eye": [
+        90.5210952758789,
+        3.326152801513672,
+        315.98614501953125
+      ],
+      "earlierBlocker": null,
+      "firstHit": {
+        "owner": "aquadome_9_2",
+        "point": [
+          -15.190940856933594,
+          57.51451110839844,
+          96.03414916992188
+        ],
+        "distance": 249.98056030273438
+      },
+      "targetDistance": 249.9805710223734
+    },
+    {
+      "cell": "cruise:cell_0226",
+      "triangle": 1440,
+      "fractionToCentroid": 1,
+      "point": [
+        -15.247454643249512,
+        57.55166244506836,
+        96.13664245605469
+      ],
+      "error": 0.0324535071849823,
+      "eye": [
+        90.5210952758789,
+        3.326152801513672,
+        315.98614501953125
+      ],
+      "earlierBlocker": null,
+      "firstHit": {
+        "owner": "aquadome_9_2",
+        "point": [
+          -15.247444152832031,
+          57.551658630371094,
+          96.13664245605469
+        ],
+        "distance": 249.92234802246094
+      },
+      "targetDistance": 249.92238004012742
+    }
+  ],
+  "supportsSampledP95": true,
+  "limits": [
+    "Unused GLTF vertices can change final native shared bounds; final packed-art and visual gates remain required.",
+    "A real small visible boundary patch exceeds0.06m (about0.0693m); this is a P95 bound, not a maximum bound.",
+    "Earlier full visible-P95 attempts stopped at a grazing ray skip bound after about35.5k/39k samples. They supply no full-P95 result. This diagnostic uses complete over-threshold classification and positive good-sample lower bounds instead; unresolved bad rays count conservatively.",
+    "Observed model source hashes may postdate frozen raw generation; raw/index hashes identify the measured artifact."
+  ],
+  "investigationHistory": {
+    "completedThresholdClassification": "All5,413 over-threshold samples were classified against exterior viewpoints, with1visible point/normal sample and no unresolved bad rays. Expanded raw non-cap occurrences at that position are conservatively counted3times in the final bound.",
+    "incompleteFullVisibleP95Attempts": "Two attempts to classify all39,030 sample normals stopped around35,500 at a grazing alpha/backface traversal hitting its512-step guard, including one attempt with nonnegative distance advancement. Neither attempt supplies a full visible-P95 result. The completed certificate uses the stated conservative counting bound and checks reverse samples directly.",
+    "realVisibleArea": "The boundary vertex is not dismissed as a seam: moving5% toward its triangle centroid stays visible at about0.06746m error;25% inward is about0.06012m. The0.06m statement is a sampled P95 bound, not a maximum-error claim."
+  },
+  "reproduce": {
+    "command": [
+      "bun",
+      "tools/cruise/dome-error.ts",
+      "--raw",
+      "<whole-raw-directory>",
+      "--candidate",
+      "<corrected-cardinal-raw-directory>",
+      "--source",
+      "assets/source/landmarks/cruise",
+      "--out",
+      "var/cruise-preview/dome-error.json"
+    ],
+    "requirements": "Existing Blender authoring environment with numpy/mathutils plus repository Bun; optional --blender chooses executable. No new routine test dependency.",
+    "inputs": "Frozen whole raw index+triangle+clear files and corrected cardinal candidate raw files with the recorded hashes. Candidate native bounds use every retained level; no hardcoded workstation path or external package.",
+    "output": "Full reproducible report retains all100 positive good witnesses and source hashes; this certificate includes representative witnesses and canonical full-witness hashes."
+  }
+}
