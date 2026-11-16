@@ -125,7 +125,7 @@ export interface SessionOptions {
   /** Content as written. ClientSession.registry holds the server-tuned version after the welcome. */
   registry: Registry;
   password?: string;
-  /** Pack.clips.hash. The server must pose with the same clips. */
+  /** Manifest.clipHash, the hash of every clip of the build. The server must pose with the same clips. */
   clipHash?: number;
   /** A look for a new survivor (shared/anim/look.ts). Without one, a new name waits in the creator for `create`. */
   look?: Uint8Array;

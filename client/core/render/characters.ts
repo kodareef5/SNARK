@@ -20,9 +20,9 @@ import { MODE_FLYER, STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/cha
 import { Solved, boneToModel, solve } from "../../../shared/anim/skeleton.ts";
 import { CreatureAnim, advanceCreature, creaturePose } from "../../../shared/anim/creature.ts";
 import { Gait } from "../../../shared/anim/gait.ts";
-import { buildRigs } from "../../../shared/anim/rigs.ts";
+import { buildRig, buildRigs } from "../../../shared/anim/rigs.ts";
 import { BODY_REACH } from "../../../shared/anim/zones.ts";
-import type { Pack } from "../../../shared/pack/pack.ts";
+import type { Pack, PackRig } from "../../../shared/pack/pack.ts";
 import type { CollisionWorld } from "../../../shared/world/collide.ts";
 import type { Assets } from "../assets/assets.ts";
 import { Corpses, type Corpse } from "../ragdoll.ts";
@@ -45,6 +45,8 @@ const PLAIN = defaultLook();
 interface Creature {
   /** What it plays on its rig. */
   anim: CreatureAnim;
+  /** The manifest's skeleton whose clips it waits for, standing at rest until they come; -1 once it has its clips. */
+  clips: number;
   mesh: number;
   color: number;
   /** How far each level of its mesh lies from the finest, in metres. */
@@ -196,6 +198,10 @@ export class Characters {
   private readonly kinds: (BodyKind | null)[];
   /** Per content index. Set for a species with a non-human skeleton whose rig and mesh are in the pack. */
   private readonly creatures: (Creature | null)[];
+  /** What each kind of creature plays, by content index, which its dead are posed by too; and the kinds whose clips have not come. */
+  private readonly anims: (CreatureAnim | null)[];
+  private readonly waiting: number[];
+  private readonly rigs: readonly PackRig[];
   /** Per content index. */
   private readonly worn: (Worn | null)[];
   private readonly held: (Held | null)[];
@@ -335,6 +341,7 @@ export class Characters {
         armor: sets.map((set) => Int32Array.from(SLOT_NAMES, (part) => human(bind.own(piece(set, part), "worn", body)))),
       };
     };
+    this.rigs = pack.header.rigs;
     const rigs = buildRigs(pack.header.rigs, pack.clips);
     this.saddle = Uint8Array.from(reg.saddleFits, (fits) => (fits !== 0 ? 1 : 0));
     this.creatures = reg.defs.map((d, i) => {
@@ -352,7 +359,7 @@ export class Characters {
         if (m >= 0) worn.set(item, m);
       });
       const wreck = bind.own(d.id, "wreck");
-      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), oriented: new Solved(rig.bones) };
+      return { wreck, wreckError: wreck >= 0 ? table.error[wreck]! : [], anim: new CreatureAnim(rig, reg.runAt[i]!, reg.move[i]?.swimSpeed ?? 0), clips: table.skeletons.get(id) ?? -1, mesh, color: d.color, error: table.error[mesh]!, saddled, saddledError: saddled >= 0 ? table.error[saddled]! : [], worn, vehicle: vehicleRig(reg.vehicle[i] ?? null, rig.names), oriented: new Solved(rig.bones) };
     });
     this.kinds = reg.defs.map((d) => {
       if (d?.type !== "species" || d.skeleton !== HUMAN.id) return null;
@@ -364,7 +371,9 @@ export class Characters {
       }
       return bodies.length > 0 ? { sets: bodies, color: d.color } : null;
     });
-    this.dead = new Corpses(this.creatures.map((c) => c?.anim ?? null), reg.birthScale);
+    this.anims = this.creatures.map((c) => c?.anim ?? null);
+    this.waiting = this.creatures.flatMap((c, kind) => (c && c.clips >= 0 ? [kind] : []));
+    this.dead = new Corpses(this.anims, reg.birthScale);
     const st = new AnimState();
     for (const stance of [STANCE_STAND, STANCE_CROUCH]) {
       st.stance = stance;
@@ -815,6 +824,7 @@ export class Characters {
     const far = Math.sqrt(x * x + y * y + z * z) / size;
     const lod = this.levelOf(id, error, far);
     if (!unseen) this.assets.wantTextured(mesh, lod, far);
+    if (!unseen && c.clips >= 0) this.assets.wantClips(c.clips);
     const key = this.keyOf(mesh * this.levels + lod, layer > 0 && this.assets.wantLayers(mesh, lod, far) ? layer : 0, stand);
     this.key[n] = key < 0 ? 0 : key;
     this.firstBone[n] = first;
@@ -935,6 +945,31 @@ export class Characters {
     // Ids of bodies long gone would otherwise be kept for good.
     if (this.last.size > 4096) this.last.clear();
     if (++this.frame % FORGET_GAIT === 0) for (const id of this.gaits.keys()) if (this.frame - this.gaits.get(id)!.seen > FORGET_GAIT) this.gaits.delete(id);
+    if (this.waiting.length > 0) this.takeClips();
+  }
+
+  /**
+   * Gives each creature waiting for its skeleton's clips those that have come. From then it plays them as it would have
+   * from the first: its stand-ins are made again, and each of its bodies is posed anew, its gait taken up where the server
+   * has it, as a body first seen then is.
+   */
+  private takeClips(): void {
+    let kept = 0;
+    for (const kind of this.waiting) {
+      const c = this.creatures[kind]!;
+      const set = this.assets.clips(c.clips);
+      if (!set) {
+        this.waiting[kept++] = kind;
+        continue;
+      }
+      const rig = buildRig(this.rigs.find((r) => r.id === c.anim.rig.id)!, set)!;
+      c.anim = this.anims[kind] = new CreatureAnim(rig, this.reg.runAt[kind]!, this.reg.move[kind]?.swimSpeed ?? 0);
+      c.clips = -1;
+      this.standIns[kind * 2] = [];
+      // A creature's form is its kind times four (creatureSolved).
+      for (const id of this.gaits.keys()) if (this.gaits.get(id)!.form >> 2 === kind) this.gaits.delete(id);
+    }
+    this.waiting.length = kept;
   }
 
   /** The level a body `distance` off is drawn at: as the tier asks, and coarser at the governor's bodies step (Tier.bodyError). */

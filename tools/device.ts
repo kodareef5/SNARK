@@ -26,6 +26,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { inflateRawSync } from "node:zlib";
 import { TIERS } from "../client/core/assets/tiers.ts";
 import { AXES, FAR_CHUNKS, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, TREE_TIERS, WOODS, deviceScenarios, scenesOf, type DeviceReport, type LayerAnswer, type LayerCount, type Mode } from "../client/core/device.ts";
 import { BASE_MOST, STAND, basePieces, boxBase, crowdScene, terrainWood } from "../client/core/devicescene.ts";
@@ -35,6 +36,7 @@ import { startServer } from "../server/main.ts";
 import { loadConfig } from "../server/settings/config.ts";
 import { stopOnSignals } from "../server/signals.ts";
 import { compileContent } from "../shared/content/registry.ts";
+import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { writeMap } from "../shared/world/mapfile.ts";
@@ -369,8 +371,10 @@ if (import.meta.main) {
   await buildClient({ stress: true, dist });
   const servedAtStart = servedFiles(dist);
   const manifest = parseManifest(readFileSync(join(dist, "assets/manifest.json"), "utf8"));
-  const pack = parsePack(new Uint8Array(readFileSync(join(dist, "assets", manifest.files[manifest.boot]!.name))));
-  const expected = Object.fromEntries(deviceScenarios(compileContent(CORE_CONTENT).registry!, pack).map(([name, run]) => [name, run()]));
+  const served = (file: number): Uint8Array => new Uint8Array(readFileSync(join(dist, "assets", manifest.files[file]!.name)));
+  const pack = parsePack(served(manifest.boot));
+  const clips = allClips(manifest, pack, served, (stored) => new Uint8Array(inflateRawSync(stored)));
+  const expected = Object.fromEntries(deviceScenarios(compileContent(CORE_CONTENT).registry!, pack.header.rigs, clips).map(([name, run]) => [name, run()]));
 
   const token = randomBytes(16).toString("hex");
   const password = randomBytes(8).toString("hex");

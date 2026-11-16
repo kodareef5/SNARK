@@ -10,7 +10,7 @@ import { boneToModel, solve, type Solved } from "../../../shared/anim/skeleton.t
 import type { Registry } from "../../../shared/content/registry.ts";
 import { TICK_RATE } from "../../../shared/coords.ts";
 import { hashString } from "../../../shared/hash.ts";
-import { OCCASIONS, type DetailEffect, type DetailEntry, type DetailPicture, type Occasion, type PackDetails } from "../../../shared/pack/details.ts";
+import { OCCASIONS, type DetailEffect, type DetailEntry, type DetailPicture, type DetailSheet, type Occasion, type PackDetails } from "../../../shared/pack/details.ts";
 import { Rng } from "../../../shared/rng.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
 import { sortU32 } from "../../../shared/sort.ts";
@@ -87,6 +87,11 @@ export class Details {
   private readonly effects: readonly DetailEffect[];
   private readonly pictures: readonly DetailPicture[];
   private readonly books: (Book | null)[];
+  /** The kinds that have a book, each species' sheet, and what each kind plays as it is drawn. */
+  private readonly booked: readonly number[];
+  private readonly sheets: readonly (DetailSheet | null)[];
+  private readonly animOf: (kind: number) => CreatureAnim | null;
+  private readonly reg: Registry;
   private readonly waiting: Waiting[] = [];
   private readonly palette: Uint8Array;
   private readonly st = new AnimState();
@@ -121,25 +126,31 @@ export class Details {
     this.effects = details?.effects ?? [];
     this.pictures = details?.pictures ?? [];
     this.pool = new Pool(MAX_DETAILS);
+    this.reg = reg;
+    this.animOf = animOf;
     const listens = new Uint16Array(reg.defs.length);
-    this.books = reg.defs.map((d, kind) => {
-      const sheet = d?.type === "species" ? details?.sheets.find((s) => s.owner === d.id) : undefined;
-      const anim = sheet ? animOf(kind) : null;
-      if (!sheet || !anim) return null;
-      const moments: Partial<Record<Occasion, number>> = { down: bodyDown(anim.rig, anim.torporIn ?? anim.death), death: bodyDown(anim.rig, anim.death), up: bodyUp(anim.rig, anim.torporOut) };
-      const answers: Book["answers"] = {};
-      for (const o of Object.keys(sheet.cues) as Occasion[]) {
-        const cue = sheet.cues[o]!;
-        answers[o] = cue.effects.map((entry) => ({ entry, effect: this.effects[entry.effect]!, delay: entry.at === "down" ? (moments[o] ?? 0) : entry.at === "now" ? 0 : entry.at }));
-        listens[kind]! |= 1 << OCCASIONS.indexOf(o);
-      }
-      return { anim, answers, colour: d!.type === "species" ? d!.color : 0, height: reg.bodyHeight[kind]!, radius: reg.bodyRadius[kind]!, vehicle: reg.vehicle[kind] ?? null };
+    this.sheets = reg.defs.map((d) => (d?.type === "species" ? (details?.sheets.find((s) => s.owner === d.id) ?? null) : null));
+    this.books = reg.defs.map((_, kind) => {
+      const anim = this.sheets[kind] ? animOf(kind) : null;
+      return anim ? this.bookOf(kind, anim) : null;
     });
+    this.booked = this.books.flatMap((b, kind) => (b ? [kind] : []));
+    for (const kind of this.booked) for (const o of Object.keys(this.sheets[kind]!.cues)) listens[kind]! |= 1 << OCCASIONS.indexOf(o as Occasion);
     this.occasions = new Occasions(
       this.books.map((b) => b?.anim ?? null),
       listens,
       (o) => 1 << OCCASIONS.indexOf(o),
     );
+  }
+
+  /** What a species of `kind` answers, as it plays `anim`. */
+  private bookOf(kind: number, anim: CreatureAnim): Book {
+    const sheet = this.sheets[kind]!;
+    const d = this.reg.defs[kind]!;
+    const moments: Partial<Record<Occasion, number>> = { down: bodyDown(anim.rig, anim.torporIn ?? anim.death), death: bodyDown(anim.rig, anim.death), up: bodyUp(anim.rig, anim.torporOut) };
+    const answers: Book["answers"] = {};
+    for (const o of Object.keys(sheet.cues) as Occasion[]) answers[o] = sheet.cues[o]!.effects.map((entry) => ({ entry, effect: this.effects[entry.effect]!, delay: entry.at === "down" ? (moments[o] ?? 0) : entry.at === "now" ? 0 : entry.at }));
+    return { anim, answers, colour: d.type === "species" ? d.color : 0, height: this.reg.bodyHeight[kind]!, radius: this.reg.bodyRadius[kind]!, vehicle: this.reg.vehicle[kind] ?? null };
   }
 
   /**
@@ -151,6 +162,13 @@ export class Details {
     const dt = this.last === this.last ? Math.min(LONGEST_STEP, Math.max(0, (tick - this.last) / TICK_RATE)) : 0;
     this.last = tick;
     if (this.effects.length === 0) return 0;
+    // A species whose clips have come, on a rig made anew with them, plays them from now, and its moments are read from them.
+    for (const kind of this.booked) {
+      const anim = this.animOf(kind);
+      if (!anim || anim.rig === this.books[kind]!.anim.rig) continue;
+      this.books[kind] = this.bookOf(kind, anim);
+      this.occasions.renew(kind, anim);
+    }
     const ex = cam.x;
     const ey = cam.y;
     const ez = cam.z;

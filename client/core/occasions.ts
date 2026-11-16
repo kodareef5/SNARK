@@ -78,6 +78,7 @@ export interface Viewer {
 
 class Seen {
   frame = 0;
+  kind = 0;
   anim = 0;
   cue = 0;
   /** The turn of its idle it stood in, -1 while it was not standing. */
@@ -96,17 +97,28 @@ export class Occasions {
   private frame = 0;
   /** By kind, the occasions anything answers, a bit each in OCCASIONS's order; 0 leaves the kind alone. */
   private readonly listens: Uint16Array;
-  private readonly anims: readonly (CreatureAnim | null)[];
+  private readonly anims: (CreatureAnim | null)[];
   /** By kind and idle variant (CreatureAnim.idles), the seconds into it its beak meets the ground. */
   private readonly pecks: (readonly (readonly number[])[] | null)[];
   private readonly bit: (o: Occasion) => number;
 
   /** `bit` gives an occasion's bit in `listens`. */
   constructor(anims: readonly (CreatureAnim | null)[], listens: Uint16Array, bit: (o: Occasion) => number) {
-    this.anims = anims;
+    this.anims = [...anims];
     this.listens = listens;
     this.bit = bit;
-    this.pecks = anims.map((a, kind) => (a && (listens[kind]! & bit("peck")) !== 0 ? a.idles.map((clip) => (/\/idle_peck$/.test(clip.id) ? socketDips(a.rig, clip, "beak_tip") : [])) : null));
+    this.pecks = anims.map((a, kind) => this.pecksOf(a, kind));
+  }
+
+  private pecksOf(a: CreatureAnim | null, kind: number): (readonly number[])[] | null {
+    return a && (this.listens[kind]! & this.bit("peck")) !== 0 ? a.idles.map((clip) => (/\/idle_peck$/.test(clip.id) ? socketDips(a.rig, clip, "beak_tip") : [])) : null;
+  }
+
+  /** A kind whose skeleton's clips have come plays `anim` from now: each body of it is followed afresh, as one first seen. */
+  renew(kind: number, anim: CreatureAnim): void {
+    this.anims[kind] = anim;
+    this.pecks[kind] = this.pecksOf(anim, kind);
+    for (const [id, b] of this.bodies) if (b.kind === kind) this.bodies.delete(id);
   }
 
   /**
@@ -129,6 +141,7 @@ export class Occasions {
       const first = !b;
       if (!b) this.bodies.set(id, (b = new Seen()));
       b.frame = frame;
+      b.kind = kind;
       st.unpack(remote.anim[i]!, remote.cue[i]!);
       st.seed = bodySeed(id);
       if (!first) {
