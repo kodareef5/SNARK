@@ -43,7 +43,7 @@ document.addEventListener("keydown", (event) => {
   if (target?.matches("input,select,textarea") || target?.isContentEditable) return;
   if (event.key === "/" || ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k")) {
     event.preventDefault();
-    one<HTMLInputElement>(".wiki-search input,.global-search input")?.focus();
+    (one<HTMLInputElement>(".wiki-search input") ?? one<HTMLInputElement>(".global-search input"))?.focus();
   }
 });
 
