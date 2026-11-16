@@ -1,9 +1,24 @@
 """Distant lifeboats retain the photographed hull and canopy, in engine metres."""
 from model_exterior import _outline, _shell, _side_panel, _side_x, _door
 
+CORNER_FIT = .72
+
+
+def _far_outline(y, half_x, half_z, steps, front_drop=0):
+    """Fit the rounded corners while retaining every cardinal width/length."""
+    rx = min(.74, half_x * .46) * CORNER_FIT
+    front = min(1.42, half_z * .35) * CORNER_FIT
+    rear = min(.78, half_z * .35) * CORNER_FIT
+    points = [(half_x, half_z-front), (half_x-rx, half_z),
+              (-half_x+rx, half_z), (-half_x, half_z-front),
+              (-half_x, -half_z+rear), (-half_x+rx, -half_z),
+              (half_x-rx, -half_z), (half_x, -half_z+rear)]
+    return [(x, y-front_drop*max(0, (z-4.8)/max(.01, half_z-4.8)), z) for x, z in points]
+
 
 def lifeboat(mesh, level):
     steps = 5 if level == 2 else 3 if level == 3 else 2
+    outline = _outline if level < 4 else _far_outline
     if level < 4:
         stations = [(-2.02, 1.12, 5.85), (-1.72, 1.82, 6.85),
                     (-1.14, 2.48, 7.25), (-.60, 2.65, 7.42),
@@ -18,10 +33,10 @@ def lifeboat(mesh, level):
                     (-1.14, 2.48, 7.25), (-.475, 2.70, 7.48),
                     (.45, 2.60, 7.32)]
         bands = ['enamel'] * 4
-    _shell(mesh, [_outline(y, x, z, steps) for y, x, z in stations], bands)
+    _shell(mesh, [outline(y, x, z, steps) for y, x, z in stations], bands)
     canopy = [(.46, 2.60, 7.31, 0), (1.30, 2.54, 7.20, 0),
               (1.75, 2.38, 6.98, .20), (2.00, 2.06, 6.76, .45)]
-    _shell(mesh, [_outline(y, x, z, steps, dip) for y, x, z, dip in canopy], ['yellow'] * 3, 'yellow')
+    _shell(mesh, [outline(y, x, z, steps, dip) for y, x, z, dip in canopy], ['yellow'] * 3, 'yellow')
     for side in (-1, 1):
         for z in (-4.80, -3.48, 2.55, 3.87):
             if level == 2:
