@@ -106,7 +106,8 @@ import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/n
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
 import type { CitySource } from "./render/farcity.ts";
-import type { CityStatics } from "../../shared/world/city.ts";
+import { CityStatics } from "../../shared/world/city.ts";
+import type { MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
@@ -129,7 +130,7 @@ export interface SessionOptions {
   resolveMap(mapId: string, mapHash: number, dims: MapDims): Heightfield | null;
   /** The map's resource nodes, from the same pure function the server uses. */
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
-  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts), or null until they arrive (cityArrived). */
+  /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). Without it the far city is made of the statics staticsArrived gives. */
   city?(registry: Registry): CityStatics | null;
 }
 
@@ -441,6 +442,8 @@ export class ClientSession {
   readonly far = new FarStore();
   /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
   private whole = new Uint8Array(0);
+  /** The map's statics once they have come (staticsArrived). */
+  private mapStatics: MapStatics | null = null;
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
@@ -1293,9 +1296,8 @@ export class ClientSession {
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
-    const statics = this.opts.city?.(reg) ?? null;
-    const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete } } : {};
-    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city };
+    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes };
+    this.startCity();
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
@@ -1306,11 +1308,17 @@ export class ClientSession {
     this.state = "active";
   }
 
-  /** Call when the map's statics arrive after the welcome: the far city starts with them. */
-  cityArrived(): void {
+  /** Call when the map's statics arrive after the session began: the far city starts with them. */
+  staticsArrived(statics: MapStatics): void {
+    this.mapStatics = statics;
+    this.startCity();
+  }
+
+  private startCity(): void {
     const world = this.world;
-    const statics = world && !world.city ? this.opts.city?.(this.registry) ?? null : null;
-    if (world && statics && statics.count > 0) world.city = { statics, complete: world.far.complete };
+    if (!world || world.city) return;
+    const statics = this.opts.city?.(this.registry) ?? (this.mapStatics ? new CityStatics(world.dims, this.mapStatics, this.registry) : null);
+    if (statics && statics.count > 0) world.city = { statics, complete: world.far.complete };
   }
 
   private snapshot(r: BitReader): void {

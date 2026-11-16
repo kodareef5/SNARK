@@ -62,6 +62,16 @@ const HEADER_BYTES = 48;
 const GROUND_AT = 12;
 /** A static's bytes in STAT's columns: id, yaw, x, y, z. */
 const STAT_ROW = 2 + 2 + 3 + 3 + 3;
+/** Statics read between yields when read a step at a time: about a millisecond's work here, a few on a phone. */
+const SLICE = 1 << 15;
+
+/** What `steps` comes to, run without a pause. */
+function finish<T>(steps: Generator<void, T>): T {
+  for (;;) {
+    const r = steps.next();
+    if (r.done) return r.value;
+  }
+}
 /** Slots a chunk's nodes may take over every layer (shared/world/nodes.ts). */
 const NODE_SLOTS = 256;
 /** A listed node's place in its chunk is a u16 of this many steps a metre. */
@@ -99,38 +109,41 @@ export class MapStatics {
   /** The row of the map's `i`th piece. */
   readonly row: Uint32Array;
 
-  /**
-   * `n` pieces in the map's order, `read` putting the `i`th in `p` as [its index in `kinds`, yaw, x, y, z on the lattice].
-   * It is called for every `i` in order, and then again.
-   */
-  constructor(dims: MapDims, kinds: readonly string[], n: number, read: (i: number, p: Float64Array) => void) {
+  private constructor(kinds: readonly string[], chunks: number, n: number) {
     this.kinds = kinds;
-    const chunks = chunkCount(dims);
-    const first = (this.first = new Uint32Array(chunks + 1));
-    const row = (this.row = new Uint32Array(n));
-    const p = new Float64Array(5);
-    for (let i = 0; i < n; i++) {
-      read(i, p);
-      row[i] = chunkAt(dims, p[2]!, p[4]!);
-      first[row[i]! + 1]!++;
-    }
-    for (let c = 0; c < chunks; c++) first[c + 1]! += first[c]!;
-    const at = first.slice(0, chunks);
+    this.first = new Uint32Array(chunks + 1);
+    this.row = new Uint32Array(n);
     this.kind = new Uint16Array(n);
     this.yaw = new Uint16Array(n);
     this.x = new Float32Array(n);
     this.y = new Float32Array(n);
     this.z = new Float32Array(n);
+  }
+
+  /** Pieces as columns in the map's order, `kind` indexing `kinds` and centres on the lattice, grouped by chunk a slice at a time. */
+  static *group(dims: MapDims, kinds: readonly string[], kind: Uint16Array, yaw: Uint16Array, x: Float32Array, y: Float32Array, z: Float32Array): Generator<void, MapStatics> {
+    const n = kind.length;
+    const chunks = chunkCount(dims);
+    const t = new MapStatics(kinds, chunks, n);
+    const { first, row } = t;
     for (let i = 0; i < n; i++) {
-      read(i, p);
+      row[i] = chunkAt(dims, x[i]!, z[i]!);
+      first[row[i]! + 1]!++;
+      if (i % SLICE === SLICE - 1) yield;
+    }
+    for (let c = 0; c < chunks; c++) first[c + 1]! += first[c]!;
+    const at = first.slice(0, chunks);
+    for (let i = 0; i < n; i++) {
       const r = at[row[i]!]!++;
       row[i] = r;
-      this.kind[r] = p[0]!;
-      this.yaw[r] = p[1]!;
-      this.x[r] = p[2]!;
-      this.y[r] = p[3]!;
-      this.z[r] = p[4]!;
+      t.kind[r] = kind[i]!;
+      t.yaw[r] = yaw[i]!;
+      t.x[r] = x[i]!;
+      t.y[r] = y[i]!;
+      t.z[r] = z[i]!;
+      if (i % SLICE === SLICE - 1) yield;
     }
+    return t;
   }
 
   /** `statics` as a table: itself if it is one, or a list's pieces with their centres set on the lattice as a file would. */
@@ -139,14 +152,8 @@ export class MapStatics {
     const ids = new Map<string, number>();
     for (const s of statics) if (!ids.has(s.kind)) ids.set(s.kind, ids.size);
     const snap = (v: number): number => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
-    return new MapStatics(dims, [...ids.keys()], statics.length, (i, p) => {
-      const s = statics[i]!;
-      p[0] = ids.get(s.kind)!;
-      p[1] = s.yaw;
-      p[2] = snap(s.x);
-      p[3] = snap(s.y);
-      p[4] = snap(s.z);
-    });
+    const [kind, yaw] = [Uint16Array.from(statics, (s) => ids.get(s.kind)!), Uint16Array.from(statics, (s) => s.yaw)];
+    return finish(MapStatics.group(dims, [...ids.keys()], kind, yaw, Float32Array.from(statics, (s) => snap(s.x)), Float32Array.from(statics, (s) => snap(s.y)), Float32Array.from(statics, (s) => snap(s.z))));
   }
 
   get length(): number {
@@ -729,30 +736,30 @@ function readNodes(r: In, dims: MapDims): NodeLayer {
   return list;
 }
 
-function readStatics(s: In, dims: MapDims): MapStatics {
+function* readStatics(s: In, dims: MapDims): Generator<void, MapStatics> {
   const ids = Array.from({ length: s.u16() }, () => s.text());
   const n = s.u32();
   const b = s.take(n * STAT_ROW);
-  const at = (column: number, i: number, bytes: number): number => {
-    let v = 0;
-    for (let k = 0; k < bytes; k++) v |= b[(column + k) * n + i]! << (8 * k);
-    return v;
-  };
+  const [kind, yaw] = [new Uint16Array(n), new Uint16Array(n)];
+  const [xs, ys, zs] = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
   const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
-  let [x, y, z, yaw] = [0, 0, 0, 0];
-  return new MapStatics(dims, ids, n, (i, p) => {
-    if (i === 0) [x, y, z, yaw] = [0, 0, 0, 0];
-    p[0] = at(0, i, 2);
-    if (p[0] >= ids.length) throw new Error("map: a static piece is of a kind its table does not name");
-    yaw = (yaw + at(2, i, 2)) & 0xffff;
-    x = (x + unzig(at(4, i, 3))) & 0xffffff;
-    y = ((y + unzig(at(7, i, 3))) << 8) >> 8;
-    z = (z + unzig(at(10, i, 3))) & 0xffffff;
-    p[1] = yaw;
-    p[2] = x / STRUCT_UNITS;
-    p[3] = y / STRUCT_UNITS;
-    p[4] = z / STRUCT_UNITS;
-  });
+  const three = (column: number, i: number): number => unzig(b[column * n + i]! | (b[(column + 1) * n + i]! << 8) | (b[(column + 2) * n + i]! << 16));
+  const [wide, deep] = [dims.chunksX * CHUNK_SIZE * STRUCT_UNITS, dims.chunksZ * CHUNK_SIZE * STRUCT_UNITS];
+  let [x, y, z, turn] = [0, 0, 0, 0];
+  for (let i = 0; i < n; i++) {
+    kind[i] = b[i]! | (b[n + i]! << 8);
+    if (kind[i]! >= ids.length) throw new Error("map: a static piece is of a kind its table does not name");
+    yaw[i] = turn = (turn + (b[2 * n + i]! | (b[3 * n + i]! << 8))) & 0xffff;
+    x = (x + three(4, i)) & 0xffffff;
+    y = ((y + three(7, i)) << 8) >> 8;
+    z = (z + three(10, i)) & 0xffffff;
+    if (x > wide || z > deep || y < WORLD_MIN_Y * STRUCT_UNITS || y > WORLD_MAX_Y * STRUCT_UNITS) throw new Error(`map: a ${ids[kind[i]!]} at ${x / STRUCT_UNITS}, ${y / STRUCT_UNITS}, ${z / STRUCT_UNITS} is off the map`);
+    xs[i] = x / STRUCT_UNITS;
+    ys[i] = y / STRUCT_UNITS;
+    zs[i] = z / STRUCT_UNITS;
+    if (i % SLICE === SLICE - 1) yield;
+  }
+  return yield* MapStatics.group(dims, ids, kind, yaw, xs, ys, zs);
 }
 
 function read(r: In): Omit<MapFile, "hash"> {
@@ -793,7 +800,7 @@ function read(r: In): Omit<MapFile, "hash"> {
       tint = s.bytes.slice();
     } else if (tag === "STAT") {
       if (statics) throw new Error("map: it has two STAT sections");
-      statics = readStatics(s, dims);
+      statics = finish(readStatics(s, dims));
     } else if (tag === "NODE") nodes.push(readNodes(s, dims));
     else if (tag === "SPWN") {
       for (let n = s.u8(); n > 0; n--) spawns.push({ name: s.text(), x: s.i32() / STRUCT_UNITS, z: s.i32() / STRUCT_UNITS, yaw: s.u16() });
@@ -850,7 +857,7 @@ function read(r: In): Omit<MapFile, "hash"> {
     if (!vehicles[index]) throw new Error("map: parked vehicle extension names a missing vehicle");
     vehicles[index] = { ...vehicles[index]!, ...extra };
   }
-  statics ??= new MapStatics(dims, [], 0, () => {});
+  statics ??= MapStatics.of(dims, []);
   return { id, dims, minY, stepY, seaLevel, heights, tint: tint ?? new Uint8Array(heights.length), statics, nodes, spawns, ...(regions.length > 0 ? { regions } : {}), ...(vehicles.length > 0 ? { vehicles } : {}), ...(water ? { water } : {}) };
 }
 
@@ -888,14 +895,26 @@ export function parseMap(file: Uint8Array, verify = true): MapFile {
   return { ...map, hash };
 }
 
-/** The statics of a file of `dims` from its bytes past `groundBytes`, read apart from the rest. */
+/**
+ * The statics of a file of `dims` from its bytes past `groundBytes`, read apart from the rest a slice at a time: a client
+ * takes a step between frames, so a city's million pieces come in without a hitch.
+ */
+export function* staticsSteps(rest: Uint8Array, dims: MapDims): Generator<void, MapStatics> {
+  if (rest.length === 0) return MapStatics.of(dims, []);
+  const steps = within(() => {
+    const r = new In(rest);
+    if (String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()) !== "STAT") throw new Error("map: what follows its ground is not its statics");
+    return readStatics(new In(r.take(r.u32())), dims);
+  });
+  for (;;) {
+    const step = within(() => steps.next());
+    if (step.done) return step.value;
+    yield;
+  }
+}
+
 export function parseStatics(rest: Uint8Array, dims: MapDims): MapStatics {
-  if (rest.length === 0) return new MapStatics(dims, [], 0, () => {});
-  const r = new In(rest);
-  if (String.fromCharCode(r.u8(), r.u8(), r.u8(), r.u8()) !== "STAT") throw new Error("map: what follows its ground is not its statics");
-  const statics = within(() => readStatics(new In(r.take(r.u32())), dims));
-  checkStatics(dims, statics);
-  return statics;
+  return finish(staticsSteps(rest, dims));
 }
 
 /** Where a map's build puts the file at `path` compressed for the wire, `br` or `gz`: beside it, named by its hash. */

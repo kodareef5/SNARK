@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
-import { MapStatics, groundBytes, mapHeightfield, mapNodes, parseMap, parseStatics, placeStatics, writeMap, type MapData, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
+import { MapStatics, groundBytes, mapHeightfield, mapNodes, parseMap, parseStatics, placeStatics, staticsSteps, writeMap, type MapData, type NodeScatter, type NodeZoned } from "../../shared/world/mapfile.ts";
 import { nodeForms, scatterNodes, type NodeSpot } from "../../shared/world/nodes.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { busyMap, flatMap } from "../fixtures/map.ts";
@@ -39,6 +39,19 @@ test("a file's ground comes before its statics, and each reads alone: the ground
   const far = [{ kind: "core:wall", x: 0, y: -1024, z: 64, yaw: 65535 }, { kind: "core:wall", x: 16384, y: 3072, z: 0, yaw: 0 }, { kind: "core:wall", x: 0.5, y: 0, z: 63.5, yaw: 1 }];
   const wide = writeMap({ ...flatMap(1), dims, heights: new Uint16Array(samples), tint: new Uint8Array(samples), statics: far });
   expect([...parseStatics(wide.subarray(groundBytes(wide)), dims)]).toEqual([...MapStatics.of(dims, far)]);
+  // Read a step at a time, a city's pieces come to the same table, a slice of them a step.
+  const many = Array.from({ length: 70000 }, (_, i) => ({ kind: i % 3 ? "core:wall" : "core:crate", x: (i % 250) / 4, y: 1 + (i % 7), z: (i * 7) % 64, yaw: i % 65536 }));
+  const city = writeMap({ ...flatMap(1), statics: many });
+  const steps = staticsSteps(city.subarray(groundBytes(city)), { chunksX: 1, chunksZ: 1 });
+  let step = steps.next();
+  let taken = 0;
+  for (; !step.done; step = steps.next()) taken++;
+  expect([taken >= 4, [...step.value].slice(-3)]).toEqual([true, [...MapStatics.of({ chunksX: 1, chunksZ: 1 }, many)].slice(-3)]);
+  // A piece off the map in the file itself is refused as one in a map written so would be.
+  const off = city.slice();
+  // The high byte of the last piece's x, in the third of x's planes: the columns end the file.
+  off[off.length - 13 * many.length + 6 * many.length + many.length - 1]! = 0x7f;
+  expect(() => parseStatics(off.subarray(groundBytes(city)), { chunksX: 1, chunksZ: 1 })).toThrow("is off the map");
 });
 
 test("slots taken out of a scattered layer stand empty, and the rest are the scatter's", () => {

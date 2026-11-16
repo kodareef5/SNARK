@@ -7,10 +7,9 @@ import { parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { WorkerPort } from "../assets/port.ts";
 import { DEFAULT_TIER, tierOf } from "../core/assets/tiers.ts";
-import { CityStatics } from "../../shared/world/city.ts";
-import { mapHeightfield, mapNodes, parseMap, parseStatics, type MapStatics } from "../../shared/world/mapfile.ts";
+import { mapHeightfield, mapNodes } from "../../shared/world/mapfile.ts";
 import { App } from "../core/app.ts";
-import { fetchBytes, fetchJson, fetchMap, fetchText } from "../core/fetched.ts";
+import { fetchBytes, fetchJson, fetchMapFile, fetchText } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
 import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
 import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
@@ -45,14 +44,12 @@ async function boot(): Promise<void> {
   const reg = compileContent(CORE_CONTENT).registry!;
   // The server names its map's file, fetched while the assets are. The renderer draws from its ground, which comes first, and
   // the far city from its statics, which arrive while the world is drawn.
-  const mapFile = (async () => fetchMap(fetch, ((await fetchJson(fetch, "map.json")) as { file: string }).file))();
+  const mapFile = fetchMapFile(fetch, () => new Promise((go) => setTimeout(go)));
   // The manifest says where every level of every mesh is. The boot pack is fetched whole, and the rest as it is wanted.
   const manifest = parseManifest(await fetchText(fetch, "assets/manifest.json"));
   const pack = parsePack(new Uint8Array(await fetchBytes(fetch, `assets/${manifest.files[manifest.boot]!.name}`)));
   const port = new WorkerPort(manifest, "assets", tierOf(DEFAULT_TIER).diskBytes, params.get("assetnet"));
-  const fetched = await mapFile;
-  // Its hash is taken on trust: the file is named by its SHA-256, and the welcome names the hash it must have.
-  const map = parseMap(fetched.ground, false);
+  const { map, statics } = await mapFile;
   const hf = mapHeightfield(map);
   const canvas = document.querySelector<HTMLCanvasElement>("#view")!;
   // The texture variant is the best this device takes, or the one ?texfmt= names if it takes that.
@@ -61,9 +58,6 @@ async function boot(): Promise<void> {
   const widest = renderer.gl.getParameter(renderer.gl.MAX_TEXTURE_SIZE) as number;
   const ground = groundSize(hf);
   if (Math.max(...ground.width, ...ground.height) > widest) throw new Error(`this map's ground is ${ground.width[0]} by ${ground.height[0]} texels, and this device draws ground of at most ${widest} a side`);
-  // The map's pieces until the far city is made of them, which holds what it draws and lets the rest go.
-  let pieces: MapStatics | null = null;
-  let city: CityStatics | null = null;
   const session = new ClientSession(connect(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`), {
     ...loadIdentity({ getItem: (key) => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value) }, (bytes) => { crypto.getRandomValues(bytes); }, arrival?.name ?? params.get("name"), arrival !== null),
     ...(arrival ? { ticket: arrival.ticket } : {}),
@@ -75,15 +69,8 @@ async function boot(): Promise<void> {
     ...(selfcheck || bench || device || params.has("quick") ? { look: defaultLook() } : {}),
     resolveMap: (id, hash) => (id === map.id && hash === map.hash ? hf : null),
     nodes: (ground, content) => mapNodes(map, ground, content),
-    city: (content) => {
-      if (pieces) [city, pieces] = [new CityStatics(map.dims, pieces, content), null];
-      return city;
-    },
   });
-  void fetched.rest.then((bytes) => {
-    pieces = parseStatics(bytes, map.dims);
-    session.cityArrived();
-  });
+  void statics.then((pieces) => session.staticsArrived(pieces));
   const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
   const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   session.prediction.enabled = selfcheck;

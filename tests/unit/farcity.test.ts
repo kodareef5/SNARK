@@ -227,6 +227,21 @@ test("far blocks draw only what players built above the city: none for a chunk o
   expect(q.drawFade.subarray(0, q.drawCount).filter((f, d) => f > 0 && q.drawBuffer[d] !== CITY_BUFFER).length).toBeGreaterThan(0);
 });
 
+test("statics that come after the first frame start the far city then, and the far blocks made before leave its cells to it", () => {
+  const [x, z] = mid(6, 6);
+  const w = cityWorld({ chunks: 16, statics: building(x, z, 0, 3), late: true });
+  const blocks = (p: FramePacket): number => p.drawFade.subarray(0, p.drawCount).filter((f, d) => f > 0 && p.drawBuffer[d] !== CITY_BUFFER).length;
+  w.send(w.chunkOf(x, z));
+  w.look(x, 6, z, 500, 0.3, 40);
+  const before = w.frame();
+  expect([w.scene.city, cityDraws(before).length, blocks(before) > 0]).toEqual([null, 0, true]);
+  w.arrive();
+  const started = w.frame();
+  expect([w.scene.city !== null, blocks(started)]).toEqual([true, 0]);
+  w.scene.city!.makeMs = Infinity;
+  expect(cityDraws(w.frame()).length).toBeGreaterThan(0);
+});
+
 test("the lattice fades out over the end of its reach exactly where the mass fades in", () => {
   for (let x = 0; x < 4; x++) {
     for (let y = 0; y < 4; y++) {

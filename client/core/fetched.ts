@@ -1,7 +1,7 @@
 // What the page fetches whole as it starts. A request that fails says which it was and what the server answered, not
 // a parser's complaint about the answer.
 
-import { groundBytes } from "../../shared/world/mapfile.ts";
+import { groundBytes, parseMap, staticsSteps, type MapFile, type MapStatics } from "../../shared/world/mapfile.ts";
 
 export interface Answer {
   ok: boolean;
@@ -69,6 +69,23 @@ export async function fetchMap(get: Get, url: string): Promise<{ ground: Uint8Ar
     return all;
   })();
   return { ground, rest };
+}
+
+/**
+ * The map the server names in map.json: read from its ground as soon as that is in, and its statics read after a step at
+ * a time, `pause` between steps letting frames be drawn. Its hash is taken on trust: the file is named by its SHA-256,
+ * and the welcome names the hash it must have.
+ */
+export async function fetchMapFile(get: Get, pause: () => Promise<void>): Promise<{ map: MapFile; statics: Promise<MapStatics> }> {
+  const { ground, rest } = await fetchMap(get, ((await fetchJson(get, "map.json")) as { file: string }).file);
+  const map = parseMap(ground, false);
+  const statics = rest.then(async (bytes) => {
+    const steps = staticsSteps(bytes, map.dims);
+    let step = steps.next();
+    for (; !step.done; step = steps.next()) await pause();
+    return step.value;
+  });
+  return { map, statics };
 }
 
 export async function fetchJson(get: Get, url: string): Promise<unknown> {
