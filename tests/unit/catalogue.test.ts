@@ -7,6 +7,7 @@ import { RUIN_BLOCKS } from "../../content/miami-ruins.ts";
 import { SLOPE_BLOCKS, SLOPE_SHAPES } from "../../content/slopes.ts";
 import { LETTER_BLOCKS } from "../../content/lettering.ts";
 import { TERMINALS } from "../../content/terminals.ts";
+import { WRECKS } from "../../content/vehicles/wrecks.ts";
 import { EVENTS } from "../../server/events/catalog.ts";
 import { CATALOG } from "../../server/settings/catalog.ts";
 import { CLASSES, FIELDS, classFaults, classOf, defFaults, type Field } from "../../shared/content/classes.ts";
@@ -60,8 +61,9 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "structure/container": 3,
     "structure/station": 2,
     "structure/bed": 3,
-    "structure/static": 8 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2,
-    shape: 17 + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2,
+    // And the street wrecks, a shape each look and a static each of its kinds (content/vehicles/wrecks.ts).
+    "structure/static": 8 + RUIN_BLOCKS.filter((d) => d.type === "structure").length + TERMINALS.length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "structure").length,
+    shape: 17 + RUIN_BLOCKS.filter((d) => d.type === "shape").length + SLOPE_SHAPES.length + LETTER_BLOCKS.length / 2 + WRECKS.filter((d) => d.type === "shape").length,
     material: 4,
     node: 14,
     "prop/container": 2,
@@ -71,7 +73,7 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     map: 5,
     rename: 58,
   });
-  expect(rest.length).toBe(289 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length);
+  expect(rest.length).toBe(289 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

@@ -85,9 +85,13 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const spawns = placeSpawns(ground, world, toSample, size);
   const regions = placeRegions(ground, size, spawns, world.easyAroundSpawns ?? 0);
   lap(`${spawns.length} spawn points, ${regions.length} spawn regions`);
+  // A parked car stands well off where survivors arrive and where they leave, so neither's walk meets it.
+  const apart = world.heaps === false ? vocabulary(source).street.cars.parked.fromSpawn : 0;
+  const vehicles = site.vehicles.filter((c) => ![...spawns, ...obelisks].some((s) => Math.hypot(s.x - c.x, s.z - c.z) < apart));
+  lap(`${vehicles.length} parked vehicles`);
   // Nothing grows within 8 m of a spawn point, so nobody arrives inside a tree, nor within 14 m of an obelisk's middle,
-  // so none stands in it or before its terminal.
-  const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const)];
+  // so none stands in it or before its terminal, nor within 6 m of a parked car.
+  const clearings = [...spawns.map((s) => [(size - s.x) / 2, (size - s.z) / 2, 16] as const), ...obelisks.map((o) => [(size - o.x) / 2, (size - o.z) / 2, 49] as const), ...vehicles.map((c) => [(size - c.x) / 2, (size - c.z) / 2, 9] as const)];
   const growth = world.heaps === false ? vocabulary(source).growth : undefined;
   const nodes = makeNodes(ground, world, (col, row) => (!growth && site.clearPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1) || clearings.some(([c, r, d2]) => (c - col) ** 2 + (r - row) ** 2 < d2), (col, row) => site.lowPlants[Math.floor(row / 2) * ((n - 1) / 2) + Math.floor(col / 2)] === 1, growth);
   lap("nodes");
@@ -119,6 +123,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   put("spawns.json", lines(spawns));
   put("regions.json", lines(regions));
   if (statics.length > 0) put("statics.json", lines(statics));
+  if (vehicles.length > 0) put("vehicles.json", lines(vehicles));
   // Lakes above the sea as bodies of water, in squares of a sample.
   if (ground.lakes) {
     const water = waterLayer({ chunksX: chunks, chunksZ: chunks }, world.minY, world.stepY, 2, ground.lakes.bodies, lakeSquares(ground.lakes, n, 2));
@@ -214,6 +219,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     staticTotal: statics.length,
     staticMaxChunk: packedMax,
     staticMaxChunkBeforePacking: maxChunk,
+    vehicles: vehicles.length,
     deepestWater: Number(deepest.toFixed(2)),
     highestGround: Number(highest.toFixed(2)),
     landmarks: statics.length === 0 ? landmarks : [],

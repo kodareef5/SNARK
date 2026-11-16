@@ -10,6 +10,9 @@ import { stack, tower } from "./ruin-layouts.ts";
 import { extendRules, vocabulary, type Rule } from "./ruin-vocabulary.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 import { RUIN_SHAPES } from "../../content/ruins.ts";
+import { WRECK_KINDS } from "../../content/vehicles/wrecks.ts";
+import { extentOf, meets, type Box } from "./ruin-obstacles.ts";
+import { carPicker } from "./street-cars.ts";
 import { CityStatics, cellPart } from "../../shared/world/city.ts";
 
 const source = process.env.MAPWORLD_TEST_SOURCE ?? readdirSync("assets/source/maps").map((name) => `assets/source/maps/${name}`).find((path) => existsSync(`${path}/ruins/vocabulary.json`))!;
@@ -234,14 +237,33 @@ test("mapped water on both sides removes a wide earth bridge bank but keeps its 
 
 test("every assembly refers to an available box and every choice resolves a form and damage rule", () => {
   const v = vocabulary(source); const reg = flatWorld().reg;
+  // A car part names a family of street.cars.looks, and every look a family names has kinds the content has.
+  const looks = v.street.cars.looks;
   for (const a of Object.values(v.assemblies)) for (const [shape, x, y, z, finish, yaw] of a.parts) {
-    expect(reg.index.has(`core:zruin_${shape}_${finish === "finish" ? "concrete" : finish}`)).toBe(true);
+    if (shape === "car") expect(looks[finish]?.length).toBeGreaterThan(0);
+    else expect(reg.index.has(`core:zruin_${shape}_${finish === "finish" ? "concrete" : finish}`)).toBe(true);
     expect([x, y, z, yaw ?? 0].every(Number.isFinite)).toBe(true);
   }
+  for (const rows of Object.values(looks)) for (const [look] of rows) expect(WRECK_KINDS[look]?.every((k) => reg.index.has(k))).toBe(true);
   for (const c of v.choices) {
     if (c.form) expect(v.forms[c.form]).toBeDefined();
     for (const mode of c.collapse ?? []) expect(v.damage[mode]).toBeDefined();
   }
+});
+
+test("a wreck stands on its origin, cars nose to tail meet only when closer than their length, and a place's car is the same every time", () => {
+  for (const kinds of Object.values(WRECK_KINDS)) for (const kind of kinds) { const e = extentOf(kind); expect(e.at[1] - e.size[1] / 2).toBeCloseTo(0); }
+  const car = (z: number, yaw: number): Box => ({ x: 0, y: .75, z, yaw, size: [1.84, 1.5, 4] });
+  expect(meets(car(0, 0), car(4.1, 0))).toBe(false);
+  expect(meets(car(0, 0), car(3.9, 0))).toBe(true);
+  expect(meets(car(0, 30), { x: 1.5, y: .75, z: 1.2, yaw: 30, size: [1.84, 1.5, 4] })).toBe(true);
+  const v = vocabulary(source); const pick = carPicker(v.street.cars, v.seed);
+  const places = Array.from({ length: 400 }, (_, i) => [100 + i * 7.3, 200 + i * 3.1] as const);
+  const kinds = places.map(([x, z]) => pick(x, z, "upright"));
+  expect(places.map(([x, z]) => pick(x, z, "upright"))).toEqual(kinds);
+  const allowed = new Set([...v.street.cars.looks.upright!, ...v.street.cars.looks.fire!].flatMap(([look]) => WRECK_KINDS[look]!));
+  expect(kinds.every((k) => allowed.has(k))).toBe(true);
+  expect(new Set(kinds).size).toBeGreaterThan(12);
 });
 
 test("a neighbouring facade yields to a room route while its floor and stair support survive", async () => {
