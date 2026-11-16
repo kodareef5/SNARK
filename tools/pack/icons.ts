@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import { join, resolve } from "node:path";
 import { deflateSync, inflateRawSync } from "node:zlib";
 import { CORE_CONTENT } from "../../content/core.ts";
-import type { Def, ItemDef } from "../../shared/content/defs.ts";
+import type { Def, ItemDef, SpeciesDef } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { slotsOf } from "../../shared/content/slots.ts";
 import { ICONS_A_SHEET, ICON_SIZE, SHEET_COLUMNS, iconAt, sheetShapes, type ManifestIcons } from "../../shared/pack/icons.ts";
@@ -75,7 +75,8 @@ export interface IconSubject {
 export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) => boolean): IconSubject[] {
   const items = defs.filter((d): d is ItemDef => d !== null && d.type === "item");
   const structures = new Map(defs.filter((d): d is Def => d !== null && d.type === "structure").map((d) => [d.id, d]));
-  const uses = slotsOf([...items, ...structures.values()]);
+  const vehicles = new Map(defs.filter((d): d is SpeciesDef => d !== null && d.type === "species" && d.class === "vehicle").map(d => [d.id, d]));
+  const uses = slotsOf([...items, ...structures.values(), ...vehicles.values()]);
   const own = (owner: string, slot: string): string => uses.find((u) => u.owner === owner && u.slot === slot && u.id !== "" && has(u.id))?.id ?? "";
   const colour = (d: Def): number => (d as { color?: number }).color ?? 15;
   const out: IconSubject[] = [];
@@ -84,8 +85,11 @@ export function iconSubjects(defs: readonly (Def | null)[], has: (mesh: string) 
     let [mesh, colors] = [own(d.id, "dropped") || own(d.id, "held"), colour(d)];
     const placed = mesh === "" && d.class === "structure" ? structures.get(d.places?.[0] ?? "") : undefined;
     if (placed) [mesh, colors] = [own(d.id, "preview") || own(placed.id, "mesh"), colour(placed)];
+    // An assembly shows the vehicle it will deploy, using the same authored preview/body slots as placement.
+    const deployed = mesh === "" && d.class === "vehicle" ? vehicles.get(d.deploys ?? "") : undefined;
+    if (deployed) mesh = own(d.id, "preview") || own(deployed.id, "body");
     if (icon === "" || mesh === "") continue;
-    out.push({ icon, owner: d.id, mesh, colors: [colors, 0, 0, 0, 0, 0] });
+    out.push({ icon, owner: d.id, mesh, colors: deployed ? Array.from({ length: 6 }, (_, i) => deployed.regions?.[i]?.colors[0]?.[0] ?? 0) : [colors, 0, 0, 0, 0, 0] });
   }
   return out;
 }

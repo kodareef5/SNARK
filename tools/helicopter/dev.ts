@@ -11,7 +11,7 @@ import { buildClient } from "../build-client.ts";
 /** Ready utility aircraft, worn rescue and police examples, and real seated crew. Persisted once per isolated save. */
 export function seedHelicopterPreview(host: Host): number {
   const { world, records } = host, spawn = world.spawn;
-  const types = [["core:helicopter", "Utility flight demonstrator", -18], ["core:helicopter_rescue", "Rescue aircraft", 0], ["core:helicopter_police", "Police aircraft", 18]] as const;
+  const types = [["core:helicopter", "Utility demonstrator", -18], ["core:helicopter_rescue", "Rescue aircraft", 0], ["core:helicopter_police", "Police aircraft", 18]] as const;
   let made = 0;
   for (const [index, [kind, label, offset]] of types.entries()) {
     const id = `preview-helicopter-${index}`, origin = `${world.mapId}/${id}`;
