@@ -30,6 +30,7 @@ export default {
   // By the names model.py gives them.
   materials: { masonry: material("masonry"), flags: material("flags"), dressed: material("dressed"), timber: material("timber"), iron: material("iron") },
   // Every walling stone is a solid of its own, 30 triangles at the finest and 14 at the next, so a wall is about
-  // 3,000 at its finest, 1,500 within about 50 m, 200 to 140 m and a box beyond.
-  budgets: { triangles: [3200, 1600, 260, 16], texture: { top: 2048, megabytes: 80 } },
+  // 3,000 at its finest, 1,500 from about 45 m, 200 from 60 m and a box from 140 m. Beside a doorway or a window the
+  // next level lays each run of a course as one stone; the stairs' next level keeps their cheek walls uncrowned.
+  budgets: { triangles: [3200, 2000, 800, 260], texture: { top: 2048, megabytes: 80 } },
 } satisfies PiecesAsset;
