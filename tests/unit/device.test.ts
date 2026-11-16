@@ -107,7 +107,7 @@ test("the ladder climbs each axis of each tier the device takes until a rung bre
   expect(climb(16384, () => false, "medium draws 512").at(-1)).toBe("medium draws 512");
 });
 
-const phase = (o: Partial<PhaseReport> = {}): PhaseReport => ({ tier: "medium", scene: "plain", ratio: 1, canvas: [1, 1], settleMs: 500, settled: true, frames: 90, frameMs: { median: 16.7, p95: 17, p99: 18, worst: 20 }, buildMs: spread([1]), drawMs: spread([0.5]), gpuMs: null, gpuOff: null, drawCalls: 50, triangles: 1000, textured: 0, bones: 0, dropped: 0, skipped: 0, fetched: 0, failed: 0, failedHow: "", refused: 0, missed: 0, lost: 0, fellTo: null, ...o });
+const phase = (o: Partial<PhaseReport> = {}): PhaseReport => ({ tier: "medium", scene: "plain", ratio: 1, canvas: [1, 1], settleMs: 500, settled: true, frames: 90, frameMs: { median: 16.7, p95: 17, p99: 18, worst: 20 }, buildMs: spread([1]), drawMs: spread([0.5]), gpuMs: null, gpuOff: null, drawCalls: 50, triangles: 1000, textured: 0, bones: 0, casterDraws: 0, casterTris: 0, dropped: 0, skipped: 0, fetched: 0, failed: 0, failedHow: "", refused: 0, missed: 0, lost: 0, fellTo: null, ...o });
 
 test("a rung holds by its frames only when it drew all it was given, settled, fetched what it asked for, had its uploads taken and kept its tier", () => {
   expect(judgeRung(phase(), 16.7)).toEqual({ held: true, limit: "", invalid: "" });
@@ -131,7 +131,7 @@ test("a rung holds by its frames only when it drew all it was given, settled, fe
 });
 
 test("the soak takes half of what the ladder held on its tier, a rung down, or its own amounts without a ladder", () => {
-  const rung = (axis: RungReport["axis"], n: number, held: boolean): RungReport => ({ tier: "high", axis, n, held, limit: "", invalid: "", canvas: [], settled: true, frameMs: spread([]), buildMs: 0, drawMs: 0, calls: 0, tris: 0, bones: 0, mat: 0, fetched: 0, failed: 0, refused: 0, missed: 0 });
+  const rung = (axis: RungReport["axis"], n: number, held: boolean): RungReport => ({ tier: "high", axis, n, held, limit: "", invalid: "", canvas: [], settled: true, frameMs: spread([]), buildMs: 0, drawMs: 0, calls: 0, tris: 0, bones: 0, mat: 0, casterDraws: 0, casterTris: 0, fetched: 0, failed: 0, refused: 0, missed: 0 });
   const ladder = [rung("bodies", 400, true), rung("bodies", 800, false), rung("pieces", 4096, true), rung("triangles", 64, true), rung("draws", 256, false)];
   expect(soakLoad(ladder, "high")).toEqual({ load: { stress: true, bodies: 200, pieces: 2048, near: 32, far: 0 }, from: "half what the ladder held on high" });
   expect(soakLoad(null, "high").from).toBe("defaults");
