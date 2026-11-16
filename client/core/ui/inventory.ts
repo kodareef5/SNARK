@@ -197,11 +197,12 @@ export class InventoryScreen {
     const inv = this.box(session, box);
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
-      // Only a carried item can be used, but a torpor dose in an open creature's inventory can be fed to it.
+      // Only a carried item can be used, but in an open creature's inventory a torpor dose is fed to it and a saddle put on.
+      const onCreature = (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0 || (this.registry?.saddleFits[inv.item[slot]!] ?? 0) !== 0;
       if (box === BOX_SELF && this.registry?.vehicleDeploy[inv.item[slot]!] && !(inv.flags[slot]! & FLAG_BLUEPRINT)) {
         this.onDeploy?.(slot); if (this.onDeploy) this.close(session);
       } else if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
-      else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
+      else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && onCreature) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
       this.held = -1;
       return;
     }
