@@ -107,7 +107,7 @@ function refused(req: Request, who: string, gate: BoardGate): Response | null {
 /**
  * The board's answer to a request, or null for a request that is not the board's. `page` is the built sounds.html, and
  * `owners` makes the list of owners when it is asked for. `pathname` is the request's path, or for a server reached at a
- * path of its host the part of it under that path (server/main.ts placeOf).
+ * path of its host the part of it under that path (server/site.ts placeOf).
  */
 export function soundBoard(req: Request, who: string, gate: BoardGate, page: string, owners: () => BoardOwner[], root = SOURCE_DIR, pathname = new URL(req.url).pathname): Response | null {
   let path = pathname;

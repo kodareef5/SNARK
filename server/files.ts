@@ -10,7 +10,7 @@ const HASHED = /\.[0-9a-f]{16}\./;
 
 /**
  * The file at `pathname` under `dir`: the request's own path, or for a server reached at a path of its host the part of it
- * under that path (server/main.ts placeOf).
+ * under that path (server/site.ts placeOf).
  */
 export async function serveFile(dir: string, req: Request, pathname = new URL(req.url).pathname): Promise<Response> {
   // A folder's address is its index.html, as the wiki's pages are written (tools/wiki.ts).

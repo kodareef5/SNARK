@@ -25,12 +25,14 @@ const SITE_PATHS = new Set(["wiki", "assets", "source"]);
 
 /**
  * The path a server is reached at, from its public address (--public-url): "/miami" for https://play.example/miami and for
- * /miami itself, "" for an address at the root of its host, or none. Throws for a path that is not plain words, or that the
- * site uses.
+ * /miami itself, "" for an address at the root of its host, or none. Throws for an address that is not http(s) or a path,
+ * a path that is not plain words, or one that the site uses.
  */
 export function pathOf(publicUrl: string): string {
-  const path = (publicUrl.startsWith("/") ? publicUrl : (/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*([^?#]*)/i.exec(publicUrl)?.[1] ?? "")).replace(/\/+$/, "");
-  if (path !== "" && !/^(\/[A-Za-z0-9._~-]+)+$/.test(path)) throw new Error(`--public-url ${publicUrl}: its path must be words of letters, digits, -, _, . and ~ between slashes`);
+  const whole = /^https?:\/\/[^/?#\s]+([^?#\s]*)$/i.exec(publicUrl);
+  if (publicUrl !== "" && !publicUrl.startsWith("/") && !whole) throw new Error(`--public-url ${publicUrl}: it is an http or https address, or a path`);
+  const path = (whole ? whole[1]! : publicUrl).replace(/\/+$/, "");
+  if (path !== "" && !/^(\/[A-Za-z0-9][A-Za-z0-9._~-]*)+$/.test(path)) throw new Error(`--public-url ${publicUrl}: its path must be words of letters, digits, -, _, . and ~ between slashes`);
   if (SITE_PATHS.has(path.split("/")[1] ?? "")) throw new Error(`--public-url ${publicUrl}: /${path.split("/")[1]} is the site's own, so no world may be reached there`);
   return path;
 }
@@ -50,18 +52,20 @@ export function placeOf(base: string, pathname: string): { at: "world" | "site" 
 /** A link setting's value if it is an http(s) address or a path of the site, and else "", so nothing else is ever a link. */
 export function linkOf(value: string): string {
   const v = value.trim();
-  return /^(https?:\/\/[^\s"'<>]+|\/[^\s"'<>]*)$/i.test(v) ? v : "";
+  return /^(https?:\/\/[^\s"'<>\\]+|\/(?![/\\])[^\s"'<>\\]*)$/i.test(v) ? v : "";
 }
 
 /**
  * Where the start screen sends a page for a world: under its path on the site's own host when it is reached at one, at its
- * address when that is a whole one, and else at its port on the host (`host`, as the request named it) the page came by.
+ * address when that is a whole one, and else at its port on the host (`host`, as the request named it) the page came by,
+ * under its path if it has one. A page that came `straight` to a world's port, past whatever sends each path to its world,
+ * goes to the other's port, the one place it answers.
  */
-export function worldAddress(w: Pick<Destination, "url" | "port">, host: string): string {
-  if (w.url.startsWith("/")) return `${w.url}/`;
-  if (w.url !== "") return `${w.url.replace(/\/+$/, "")}/`;
-  const name = host.replace(/:\d+$/, "");
-  return `//${name}:${w.port}/`;
+export function worldAddress(w: Pick<Destination, "url" | "port">, host: string, straight: boolean): string {
+  const path = w.url.startsWith("/") ? w.url : "";
+  if (path !== "" && !straight) return `${path}/`;
+  if (path === "" && w.url !== "") return `${w.url.replace(/\/+$/, "")}/`;
+  return `//${host.replace(/:\d+$/, "")}:${w.port}${path}/`;
 }
 
 const esc = (s: string): string => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);

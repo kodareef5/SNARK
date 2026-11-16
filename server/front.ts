@@ -10,6 +10,7 @@
 
 import type { ServerWebSocket } from "bun";
 import { resolve } from "node:path";
+import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG } from "../shared/net/transport.ts";
 import { ClusterFolder, LIVE_MS, type Announcement } from "./cluster/folder.ts";
 import { pathOf } from "./site.ts";
 
@@ -38,17 +39,38 @@ export function frontWorlds(all: readonly Announcement[], now: number): FrontWor
 }
 
 /**
- * Where a request for `pathname` goes: to the world whose path it falls under, the path itself included (that world sends it
- * on with its slash), and else, for the site, to the lowest world reached at a path, which answers the site, or failing one
- * the lowest of all. Null when none is running.
+ * Where a request for `pathname` goes: to the world with the longest path it falls under, the path itself included (that
+ * world sends it on with its slash), and else, for the site, to the lowest world reached at a path, which answers the site,
+ * or failing one the lowest of all. Null when none is running.
  */
 export function frontRoute(worlds: readonly FrontWorld[], pathname: string): FrontWorld | null {
-  for (const w of worlds) if (w.path !== "" && (pathname === w.path || pathname.startsWith(`${w.path}/`))) return w;
-  return worlds.find((w) => w.path !== "") ?? worlds[0] ?? null;
+  let best: FrontWorld | null = null;
+  for (const w of worlds) if (w.path.length > (best?.path.length ?? 0) && (pathname === w.path || pathname.startsWith(`${w.path}/`))) best = w;
+  return best ?? worlds.find((w) => w.path !== "") ?? worlds[0] ?? null;
+}
+
+const onThisMachine = (address: string): boolean => address === "::1" || address.startsWith("127.") || address.startsWith("::ffff:127.");
+
+/**
+ * Who a request came from: its peer, or for a peer on this machine (the front, a tunnel's connector) the last address its
+ * X-Forwarded-For names that is not on this machine, which the proxy nearest the client wrote. Nothing reaching a server
+ * from elsewhere may say who it is.
+ */
+export function clientAddress(peer: string, forwarded: string | null): string {
+  if (forwarded === null || !onThisMachine(peer)) return peer;
+  let who = peer;
+  for (const part of forwarded.split(",")) {
+    const a = part.trim();
+    if (/^[0-9a-f.:]{2,45}$/i.test(a) && !onThisMachine(a)) who = a;
+  }
+  return who;
 }
 
 /** Headers that belong to one connection and so are not passed on. */
 const HOP = ["connection", "keep-alive", "proxy-connection", "transfer-encoding", "upgrade", "te", "trailer"];
+
+/** SnapshotBytesMax at its most, so the front skips nothing a world would send. */
+const SNAPSHOT_BYTES_MOST = 2200;
 
 /** A close code a socket may be closed with: the one given where it may be sent, and else a plain close. */
 export function closeCode(code: number): number {
@@ -58,8 +80,9 @@ export function closeCode(code: number): number {
 interface Pipe {
   /** The world's socket, open before the page's is taken. */
   up: WebSocket;
+  voice: boolean;
   /** What the world sent before the page's socket was open, sent once it is. */
-  early: (string | Uint8Array)[];
+  early: Uint8Array[];
   down: ServerWebSocket<Pipe> | null;
 }
 
@@ -77,13 +100,24 @@ function openUp(target: string, headers: Record<string, string>): Promise<WebSoc
   });
 }
 
+/**
+ * Sends a world's message on to its page. The world sees no backlog past the front, so the front keeps the world's rule
+ * (backlog): what a slow page would wait behind is skipped, and a page far behind is dropped.
+ */
+function sendDown(ws: ServerWebSocket<Pipe>, m: Uint8Array): void {
+  const buffered = ws.getBufferedAmount();
+  const rule = ws.data.voice ? (buffered > VOICE_BACKLOG ? 1 : 0) : backlog(m[0] ?? 0, buffered, SNAPSHOT_BYTES_MOST);
+  if (rule === 2) ws.close(1008, "too slow");
+  else if (rule === 0) ws.send(m);
+}
+
 /** Passes a request on to `to`, as it came, and its answer back as it was sent: compressed where it was. */
-async function pass(req: Request, url: URL, to: FrontWorld): Promise<Response> {
+async function pass(req: Request, url: URL, to: FrontWorld, forwarded: string): Promise<Response> {
   const headers = new Headers(req.headers);
   for (const h of HOP) headers.delete(h);
+  headers.set("x-forwarded-for", forwarded);
   try {
-    const body = req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
-    const res = await fetch(`http://127.0.0.1:${to.port}${url.pathname}${url.search}`, { method: req.method, headers, body, redirect: "manual", decompress: false });
+    const res = await fetch(`http://127.0.0.1:${to.port}${url.pathname}${url.search}`, { method: req.method, headers, redirect: "manual", decompress: false, signal: req.signal });
     const back = new Headers(res.headers);
     for (const h of HOP) back.delete(h);
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers: back });
@@ -119,22 +153,29 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
     port,
     ...(hostname ? { hostname } : {}),
     async fetch(req, srv) {
+      // The worlds take nothing but these from a page, outside a development server.
+      if (req.method !== "GET" && req.method !== "HEAD") return new Response("not here", { status: 405, headers: { allow: "GET, HEAD" } });
       const url = new URL(req.url);
       const to = frontRoute(worlds(), url.pathname);
       if (!to) return new Response("no world of this cluster is running", { status: 503, headers: { "retry-after": "10" } });
-      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return pass(req, url, to);
+      // The world believes who the client is from a proxy on its own machine (clientAddress).
+      const peer = srv.requestIP(req)?.address ?? "";
+      const was = req.headers.get("x-forwarded-for");
+      const forwarded = was ? `${was}, ${peer}` : peer;
+      if (req.headers.get("upgrade")?.toLowerCase() !== "websocket") return pass(req, url, to, forwarded);
       // The world checks the page's origin against the host the page asked for, so both go on as the page sent them.
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = { "x-forwarded-for": forwarded };
       for (const h of ["origin", "host", "user-agent"]) {
         const v = req.headers.get(h);
         if (v) headers[h] = v;
       }
       const up = await openUp(`ws://127.0.0.1:${to.port}${url.pathname}${url.search}`, headers);
       if (!up) return new Response("that world did not take the socket", { status: 403 });
-      const data: Pipe = { up, early: [], down: null };
+      const data: Pipe = { up, voice: url.pathname.endsWith("/voice"), early: [], down: null };
       up.onmessage = (e) => {
-        const m = typeof e.data === "string" ? e.data : new Uint8Array(e.data as ArrayBuffer);
-        if (data.down) data.down.send(m);
+        if (typeof e.data === "string") return;
+        const m = new Uint8Array(e.data as ArrayBuffer);
+        if (data.down) sendDown(data.down, m);
         else data.early.push(m);
       };
       up.onclose = (e) => data.down?.close(closeCode(e.code), e.reason);
@@ -143,9 +184,10 @@ export function startFront(dir: string, port = 8787, hostname?: string, log: (li
       return new Response("expected a WebSocket", { status: 400 });
     },
     websocket: {
+      maxPayloadLength: MESSAGE_BYTES_MAX,
       open(ws) {
         ws.data.down = ws;
-        for (const m of ws.data.early) ws.send(m);
+        for (const m of ws.data.early) sendDown(ws, m);
         ws.data.early.length = 0;
         // The world may have gone while the page's socket was being taken.
         if (ws.data.up.readyState !== WebSocket.OPEN) ws.close(1011, "that world is not answering");

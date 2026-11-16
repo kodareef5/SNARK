@@ -4,7 +4,7 @@
 import { CORE_CONTENT } from "../content/core.ts";
 import { compileContent } from "../shared/content/registry.ts";
 import { TICK_RATE } from "../shared/coords.ts";
-import { CH_RELIABLE, type Connection } from "../shared/net/transport.ts";
+import { backlog, MESSAGE_BYTES_MAX, VOICE_BACKLOG, type Connection } from "../shared/net/transport.ts";
 import { PROBE_BODY, PROBE_CREATURE } from "../shared/world/proving.ts";
 import { createHost, type Host } from "./host.ts";
 import { LIVE_FILE, formatReport, loadConfigFolder } from "./settings/config.ts";
@@ -20,6 +20,7 @@ import { parsePack } from "../shared/pack/pack.ts";
 import { allClips } from "../shared/pack/clips.ts";
 import { parseManifest } from "../shared/pack/manifest.ts";
 import { serveFile } from "./files.ts";
+import { clientAddress } from "./front.ts";
 import { boardOwners, soundBoard, type BoardGate } from "./sound-board.ts";
 import { CUES } from "../shared/sound/cues.ts";
 import { mapCopy } from "../shared/world/mapfile.ts";
@@ -80,28 +81,13 @@ export interface RunningServer {
   stop(): void;
 }
 
-/** Unsent bytes at which a slow client is dropped. */
-const HARD_BACKLOG = 4 * 1024 * 1024;
-
-/**
- * What a socket does with a message on `channel` when `buffered` bytes wait unsent: 0 sends it, 1 skips it, 2 drops the
- * client. Unreliable traffic waits behind no more than two snapshots of `snapshotBytes`, so what a stall leaves queued is
- * not seconds of stale snapshots.
- */
-export function backlog(channel: number, buffered: number, snapshotBytes: number): number {
-  // A datagram that cannot be sent now is dropped, as an unreliable channel would drop it.
-  if (channel !== CH_RELIABLE && buffered > 2 * snapshotBytes) return 1;
-  return buffered > HARD_BACKLOG ? 2 : 0;
-}
-
-/** Unsent bytes at which a listener's voice packets are dropped. About a quarter second of everyone it can hear. */
-const VOICE_BACKLOG = 16 * 1024;
-
 interface Socket {
   conn: Connection | null;
   /** Set for a voice socket, which carries voice packets and nothing else. */
   voice: VoicePeer | null;
   isVoice: boolean;
+  /** Who it came from (clientAddress). */
+  address: string;
 }
 
 /** Returns a reader of the live file in a config folder, or undefined for no folder. */
@@ -248,15 +234,17 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
     const c = host.cluster;
     const map = mapLabel(registry, host.world.mapId);
     const all: Omit<Destination, "world" | "why">[] = c ? [c.here(), ...c.destinations()].sort((a, b) => a.world - b.world) : [{ name: host.rules.text("SessionName") || map, map, port: server.port ?? 0, url: base, players: host.game.playerCount, max: host.game.opts.maxClients }];
-    return all.map((w) => ({ name: w.name, map: w.map, address: worldAddress(w, requestHost), players: w.players, max: w.max }));
+    const straight = Number(/:(\d+)$/.exec(requestHost)?.[1] ?? 0) === server.port;
+    return all.map((w) => ({ name: w.name, map: w.map, address: worldAddress(w, requestHost, straight), players: w.players, max: w.max }));
   };
-  /** The site around a world reached at a path: its start screen, the page the source link goes to, and the client's files. */
-  const site = (req: Request, path: string): Response | Promise<Response> => {
-    if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links()));
+  /**
+   * What every server answers alike, under its world's path and on the site around it: where the game's links go, and the
+   * page the source link goes to.
+   */
+  const alike = (path: string): Response | null => {
+    if (path === "/links.json") return new Response(JSON.stringify(links()), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
     if (path === "/source" || path === "/source/") return htmlResponse(comingSoonPage());
-    // The sound board is a world's, behind its admin password (soundBoard), and not the site's to hand out.
-    if (path === "/sounds.html" || path.startsWith("/admin/")) return new Response("not found", { status: 404 });
-    return serveFile(clientDir, req, path);
+    return null;
   };
 
   /** A message is a channel byte and then what the game wrote. The game's writers hold 16 KB, and a welcome a little more. */
@@ -274,7 +262,14 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       if (answered) return answered;
       const { at, path } = placeOf(base, url.pathname);
       if (at === "slash") return new Response(null, { status: 308, headers: { location: `${base}/${url.search}` } });
-      if (at === "site") return site(req, path);
+      const same = alike(path);
+      if (same) return same;
+      if (at === "site") {
+        if (path === "/" || path === "/index.html") return htmlResponse(startPage(worlds(req.headers.get("host") ?? ""), links()));
+        // The sound board is a world's, behind its admin password (soundBoard), and not the site's to hand out.
+        return path === "/sounds.html" || path.startsWith("/admin/") ? new Response("not found", { status: 404 }) : serveFile(clientDir, req, path);
+      }
+      const who = clientAddress(srv.requestIP(req)?.address ?? "", req.headers.get("x-forwarded-for"));
       if (path === "/ws" || path === "/voice") {
         // A page on another site may not use its visitor's browser, and that visitor's address, to reach this server.
         const origin = req.headers.get("origin");
@@ -286,12 +281,9 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
           }
           return new Response("pages of this site may not connect to this server", { status: 403 });
         }
-        return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: path === "/voice" } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
+        return srv.upgrade(req, { data: { conn: null, voice: null, isVoice: path === "/voice", address: who } }) ? undefined : new Response("expected a WebSocket", { status: 400 });
       }
       if (path === "/cluster.json") return new Response(JSON.stringify(clusterList(host)), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-      if (path === "/links.json") return new Response(JSON.stringify(links()), { headers: { "content-type": "application/json", "cache-control": "no-cache" } });
-      // Where RepositoryUrl goes by default, on a server at the root of its host as on the site around one reached at a path.
-      if (path === "/source" || path === "/source/") return htmlResponse(comingSoonPage());
       if (path === "/__selfcheck" && req.method === "POST" && opts.dev) {
         report(await req.json());
         return new Response("ok");
@@ -302,7 +294,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         measured(result);
         return new Response("ok");
       }
-      const sounds = soundBoard(req, srv.requestIP(req)?.address ?? "", board, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
+      const sounds = soundBoard(req, who, board, join(clientDir, "sounds.html"), () => boardOwners(registry, families), undefined, path);
       if (sounds) return sounds;
       const map = mapRoute(path, req.headers.get("accept-encoding") ?? "");
       if (map) return map;
@@ -312,7 +304,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
       return file;
     },
     websocket: {
-      maxPayloadLength: 4096,
+      maxPayloadLength: MESSAGE_BYTES_MAX,
       open(ws) {
         if (ws.data.isVoice) {
           ws.data.voice = host.voice.connect({
@@ -329,7 +321,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
         }
         const conn: Connection & { open: boolean } = {
           open: true,
-          address: ws.remoteAddress,
+          address: ws.data.address,
           onMessage: null,
           onClose: null,
           send(channel, data) {

@@ -21,9 +21,8 @@
   # A folder of config\ (ARK's GameUserSettings.ini and Game.ini) every world starts from. Empty: the defaults.
   ServerConfig = 'config/official'
 
-  # ARK's ?Key=Value and -Flag settings given to every world. Every player comes through the front, from this
-  # machine's own address, so a limit per address would count them all as one: PendingPerAddress=0 lifts it.
-  Settings = @('?PendingPerAddress=0')
+  # ARK's ?Key=Value and -Flag settings given to every world, such as '?MaxPlayers=70'.
+  Settings = @()
 
   # Where each world keeps its save, <SaveDir>\<Map>.db, and where it reads its map, <MapDir>\<Map>.snmap
   # (bun tools/mapworld/build.ts <map> writes it there).
