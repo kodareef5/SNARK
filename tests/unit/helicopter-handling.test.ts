@@ -124,6 +124,26 @@ test("rotor's empty space stays empty; full quaternion transforms agree for plac
   expect(rayVehicle(def, s.x, s.y, s.z, s.yaw, s.x, s.y - 1, s.z + 8, 0, 0, -1, spec.height, s)).toBeLessThan(8);
 });
 
+test("a shallow brush reports normal impact speed while a head-on strike reports its closing speed", () => {
+  const { world, structs } = native(); structs.add(1, 96, 15, 100.38, 0, 0, 100);
+  const brush = flight(14); brush.vx = 30; brush.vz = .2;
+  const glancing = run(brush, 10, command(), world);
+  expect(glancing.blocked).toContain("structure:"); expect(glancing.rotor).toBe(true);
+  expect(glancing.impact).toBeLessThan(2);
+  const head = flight(14); head.vz = 30;
+  const direct = run(head, 2, command(), world);
+  expect(direct.blocked).toContain("structure:"); expect(direct.impact).toBeGreaterThan(25);
+});
+
+test("high-speed diagonal map-edge contact keeps the entire aircraft inside and dissipates only inward velocity", () => {
+  const { world, hf } = native(), s = flight(80); s.x = s.z = hf.sizeX - 7; s.vx = s.vz = 90;
+  const report = run(s, 30, command(), world);
+  expect(report.blocked).toBe("map-edge");
+  expect(world.blocked(s, s, def)).toBeNull();
+  expect(s.x).toBeLessThan(hf.sizeX - 4); expect(s.z).toBeLessThan(hf.sizeZ - 4);
+  expect(Math.abs(s.vx)).toBeLessThan(1); expect(Math.abs(s.vz)).toBeLessThan(1);
+});
+
 test("seeded direct and assisted sequences replay to identical state with finite normalized orientation", () => {
   const a = flight(500), b = { ...a }; let seed = 19;
   for (let tick = 0; tick < 600; tick++) {

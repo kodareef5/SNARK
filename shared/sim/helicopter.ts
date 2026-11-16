@@ -203,12 +203,12 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
     }
     const hit = world.blocked(previous, s, def);
     if (hit) {
-      const speed = len3(s.vx, s.vy, s.vz);
-      recordHit(hit, speed + (hit.rotor ? angular * span : 0));
       const vx = s.vx, vy = s.vy, vz = s.vz;
-      Object.assign(s, previous); s.yawRate = s.pitchRate = s.rollRate = 0;
       const nx = hit.nx ?? 0, ny = hit.ny ?? 0, nz = hit.nz ?? 0;
       const into = Math.min(0, vx * nx + vy * ny + vz * nz);
+      const impact = len3(nx, ny, nz) > .9 ? -into : len3(vx, vy, vz);
+      recordHit(hit, impact + (hit.rotor ? angular * span : 0));
+      Object.assign(s, previous); s.yawRate = s.pitchRate = s.rollRate = 0;
       const slide = { ...s, vx: vx - nx * into, vy: vy - ny * into, vz: vz - nz * into, grounded: false };
       slide.x += slide.vx * dt; slide.y += slide.vy * dt; slide.z += slide.vz * dt;
       if (len3(nx, ny, nz) > 0.9 && !world.blocked(s, slide, def)) Object.assign(s, slide);
