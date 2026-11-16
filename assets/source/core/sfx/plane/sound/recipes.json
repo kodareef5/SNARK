@@ -600,6 +600,231 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/touchdown/moss-pt-40243-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "touchdown",
+      "prompt_id": "v5-40240",
+      "prompt": "Loud and close: an airplane's rubber tyres hit the runway with one sharp screech and a heavy thud, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40243,
+      "seconds": 5,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40243.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Loud and close: an airplane's rubber tyres hit the runway with one sharp screech and a heavy thud, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 5.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7eb6897a02ebbea21324c4f09ad0399195dbb86c38e59ed45f1e057b902d8972",
+      "worker": {
+        "takes": 8,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 275.0,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 8.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "e46c81d7f73628c33a231864a4f64d6241674e5ac572638a9f9026bcd6c7692b",
+      "cut": {
+        "source_file": "moss-pt-40243.wav",
+        "source_frames": 240000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          88080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/touchdown/moss-pt-40252-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "touchdown",
+      "prompt_id": "v5-40250",
+      "prompt": "A jet's landing gear slams onto concrete: a hard metallic thump and a short burst of tyre squeal and smoke, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40252,
+      "seconds": 5,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40252.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A jet's landing gear slams onto concrete: a hard metallic thump and a short burst of tyre squeal and smoke, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 5.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "1611f7d16fc8f498e37acec7faf2c17ffd44420072266c2bfae31ce0e4951a0a",
+      "worker": {
+        "takes": 8,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 275.0,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 8.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "8b3e437aa841ce18fd696195e3ed4904808ba4fd324ff6788368a00794b231d1",
+      "cut": {
+        "source_file": "moss-pt-40252.wav",
+        "source_frames": 240000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          104160
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/touchdown/moss-pt-40250-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "touchdown",
+      "prompt_id": "v5-40250",
+      "prompt": "A jet's landing gear slams onto concrete: a hard metallic thump and a short burst of tyre squeal and smoke, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40250,
+      "seconds": 5,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40250.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A jet's landing gear slams onto concrete: a hard metallic thump and a short burst of tyre squeal and smoke, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 5.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e425aabdca6c5f51cdcd20c598a65da85fc897e4062f5aa36a8f137031b0ee97",
+      "worker": {
+        "takes": 8,
+        "process": {
+          "max_rss_gb": 7.23
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.1,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 275.0,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 8.2,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7beafb69a52b181fb6f3c85c64c1d7300423fb73cbdc3206c7701a862d185174",
+      "cut": {
+        "source_file": "moss-pt-40250.wav",
+        "source_frames": 240000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          118176
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/stall/moss-pt-9290-00000.wav": {
       "model": "moss",
       "backend": "torch",

@@ -48,6 +48,14 @@
         {"file": "takes/gear/moss-pt-9270-05165.wav", "from": "moss", "start": 0.05, "end": 2.885}
       ]
     },
+    "touchdown": {
+      "range": 80, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/touchdown/moss-pt-40243-00000.wav", "from": "moss", "start": 0.0, "end": 1.785},
+        {"file": "takes/touchdown/moss-pt-40252-00000.wav", "from": "moss", "start": 0.0, "end": 2.12},
+        {"file": "takes/touchdown/moss-pt-40250-00000.wav", "from": "moss", "start": 0.0, "end": 2.412}
+      ]
+    },
     "stall": {
       "range": 5, "level": -18, "vary": 0.0,
       "takes": [

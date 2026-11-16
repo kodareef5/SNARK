@@ -199,6 +199,28 @@
           "takes_moss-pt": 3,
           "seconds": 6,
           "text": "One small airplane landing: its tyres chirp and squeal briefly on the runway with a thump, then silence. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40240",
+          "models": [
+            "moss"
+          ],
+          "seed": 40240,
+          "takes": 4,
+          "takes_moss-pt": 4,
+          "seconds": 5,
+          "text": "Loud and close: an airplane's rubber tyres hit the runway with one sharp screech and a heavy thud, then silence. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40250",
+          "models": [
+            "moss"
+          ],
+          "seed": 40250,
+          "takes": 4,
+          "takes_moss-pt": 4,
+          "seconds": 5,
+          "text": "A jet's landing gear slams onto concrete: a hard metallic thump and a short burst of tyre squeal and smoke, then silence. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },
