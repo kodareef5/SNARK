@@ -1198,6 +1198,9 @@ def death_air():
     set_wing(struck, "r", fold=0.02, flap=4.0, sweep=0.0, curl=2.0)
     aim_neck(struck, (0.04, 1.30, 0.52), Vector((0.0, -0.4, 1.0)), q(pitch=10.0, roll=6.0))
     limp = limp_aloft(mirrored_pose(DEAD), beak=0.5)
+    # In the air the body rolls back a little toward level, so the lower wing's skin keeps out of its flank.
+    limp.turn["pelvis"] = q(roll=-12.0) @ limp.turn["pelvis"]
+    limp.body.y += 0.08
     poses = [GLIDE, struck, limp]
     timing = {
         "body": Keys([(0, 0.0), (3, 1.0), (LIMP - 4, 1.9), (LIMP, 2.0)]),
