@@ -3,7 +3,7 @@
 import { expect, test } from "bun:test";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { FAR_BUFFER, FAR_SLOTS, farPart } from "../../client/core/render/far.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { QUAD_FACES, quadBytes, quadIndices, type FramePacket } from "../../client/core/render/packet.ts";
 import { CHUNK_SIZE, chunkAt } from "../../shared/coords.ts";
 import { VERTEX_BYTES } from "../../shared/pack/pack.ts";
 import { Rng } from "../../shared/rng.ts";
@@ -25,10 +25,10 @@ function tileVertices(w: FarWorld, p: FramePacket): number[][] {
     const u = p.assetUploads.find((u) => u.slot === p.drawSlot[d] && u.slot >= FAR_SLOTS);
     if (!u) continue;
     const m = w.pack.header.meshes[u.mesh]!;
-    const at = (u.indexCount * u.indexBytes + 3) & ~3;
-    const view = new DataView(u.data.buffer, u.data.byteOffset + at);
+    expect(u.quads).toBe(true);
+    const view = new DataView(u.data.buffer, u.data.byteOffset);
     const to = [w.cam.x, w.cam.y, w.cam.z].map((c, a) => c + p.drawOffset[d * 3 + a]!);
-    for (let v = 0; v * VERTEX_BYTES < u.data.length - at; v++) out.push([0, 1, 2].map((a) => to[a]! + m.center[a]! + (view.getInt16(v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]!));
+    for (let v = 0; v * VERTEX_BYTES < u.data.length; v++) out.push([0, 1, 2].map((a) => to[a]! + m.center[a]! + (view.getInt16(v * VERTEX_BYTES + a * 2, true) / 32767) * m.half[a]!));
   }
   return out;
 }
@@ -149,6 +149,16 @@ test("a base's coverage falls from all to none in even steps over the last tenth
   expect([coverage[0], coverage.at(-1)]).toEqual([1, 0]);
   // Each step is a whole number of the pattern's sixteen places.
   for (const c of coverage) expect(Math.abs(c * 16 - Math.round(c * 16))).toBeLessThan(0.02);
+});
+
+test("a level of quads is drawn by the indices the card holds once: each face's two triangles, 16-bit as far as they reach and 32-bit past that", () => {
+  const face = (q: Uint16Array | Uint32Array, f: number): number[] => Array.from(q.subarray(f * 6, f * 6 + 6));
+  const short = quadIndices(6, 2);
+  expect([short instanceof Uint16Array, short.length, face(short, 0), face(short, QUAD_FACES - 1)]).toEqual([true, QUAD_FACES * 6, [0, 1, 2, 0, 2, 3], [65532, 65533, 65534, 65532, 65534, 65535]]);
+  expect([quadBytes(QUAD_FACES), quadBytes(QUAD_FACES + 1)]).toEqual([2, 4]);
+  // 32-bit ones in steps of 4,096 faces, as many as the widest level asks.
+  const wide = quadIndices((QUAD_FACES + 1) * 6, 4);
+  expect([wide instanceof Uint32Array, wide.length, face(wide, QUAD_FACES)]).toEqual([true, (QUAD_FACES + 4096) * 6, [65536, 65537, 65538, 65536, 65538, 65539]]);
 });
 
 test("the same cells give the same tile bytes, and cells sent again unchanged make the same tile", () => {

@@ -7,6 +7,7 @@ import { CHUNK_SIZE, chunkCount, chunkCx, chunkCz, type MapDims } from "../../..
 import { VERTEX_BYTES } from "../../../shared/pack/pack.ts";
 import { cellPart, mergedPart, type CityForm, type CityPart, type CityStatics, type Gone } from "../../../shared/world/city.ts";
 import { HeightWindow, type Heightfield } from "../../../shared/world/heightfield.ts";
+import { quadBytes } from "./packet.ts";
 
 /** What every level of a map's city is made with: its kinds, the ground's scale, and FAR_MESH's bounds its vertices are stored within. */
 export interface CityKinds {
@@ -52,7 +53,7 @@ export interface CityJob {
   readonly heights: Uint16Array;
 }
 
-/** A level made: what goes on the card (indices, then vertices from the next multiple of 4), and each chunk's run of indices. */
+/** A level made: what goes on the card, its vertices, drawn with the quads' indices (packet.ts quadIndices), and each chunk's run of those. */
 export interface CityMade {
   readonly id: number;
   readonly data: Uint8Array;
@@ -180,34 +181,23 @@ export class LevelMaking {
   finish(): CityMade {
     const { k, job, parts } = this;
     const faces = parts.reduce((n, part) => n + part.faces, 0);
-    const verts = faces * 4;
-    const indexBytes = verts > 65535 ? 4 : 2;
-    const start = (faces * 6 * indexBytes + 3) & ~3;
-    const data = new Uint8Array(start + verts * VERTEX_BYTES);
-    const index = indexBytes === 4 ? new Uint32Array(data.buffer, 0, faces * 6) : new Uint16Array(data.buffer, 0, faces * 6);
+    const data = new Uint8Array(faces * 4 * VERTEX_BYTES);
     const view = new DataView(data.buffer);
     const ce = k.center, h = k.half;
     const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - ce[a]!) / h[a]!) * 32767)));
     const first = new Uint32Array(parts.length);
     const count = new Uint32Array(parts.length);
     let v = 0;
-    let n = 0;
     parts.forEach((part, r) => {
       const chunk = job.chunks[r]!;
       const dx = chunkCx(k.dims, chunk) * CHUNK_SIZE - job.ox;
       const dz = chunkCz(k.dims, chunk) * CHUNK_SIZE - job.oz;
-      first[r] = n;
+      first[r] = (v / 4) * 6;
       count[r] = part.faces * 6;
       const { pos, color } = part;
       for (let f = 0; f < part.faces; f++, v += 4) {
-        index[n++] = v;
-        index[n++] = v + 1;
-        index[n++] = v + 2;
-        index[n++] = v;
-        index[n++] = v + 2;
-        index[n++] = v + 3;
         for (let e = 0; e < 4; e++) {
-          const o = start + (v + e) * VERTEX_BYTES;
+          const o = (v + e) * VERTEX_BYTES;
           const p = (f * 4 + e) * 3;
           view.setInt16(o, q(pos[p]! + dx, 0), true);
           view.setInt16(o + 2, q(pos[p + 1]! - job.oy, 1), true);
@@ -216,7 +206,7 @@ export class LevelMaking {
         }
       }
     });
-    return { id: job.id, data, indexBytes, first, count };
+    return { id: job.id, data, indexBytes: quadBytes(faces), first, count };
   }
 }
 

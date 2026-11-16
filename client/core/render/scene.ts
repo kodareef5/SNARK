@@ -458,7 +458,7 @@ export class Scene {
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.bootLevel(mesh, table.tris[mesh]!.length - 1);
     const looks: NodeLooks = { meshOfForm: this.meshOfForm, sizeOfForm: this.sizeOfForm, colorOfForm: this.colorOfForm, side: table.side, low: table.low, high: table.high, tris: table.tris, last };
     this.nodesFar = world.farNodes ? new FarNodes(world.farNodes, world.far?.cells ?? null, world.dims, reg, looks) : null;
-    this.lakes = world.hf.water && far >= 0 ? new Lakes(world.hf, world.hf.water, far, pack.header.meshes[far]!) : null;
+    this.lakes = world.hf.water && far >= 0 ? new Lakes(world.hf, world.hf.water, far) : null;
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
     this.worldMaterial = table.materials.findIndex((m) => m.id === SURFACE_MATERIAL);
