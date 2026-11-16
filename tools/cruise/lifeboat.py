@@ -9,6 +9,7 @@ source, helper, output = map(Path, sys.argv[sys.argv.index('--') + 1:])
 sys.path.insert(0, str(source))
 from parts import Mesh
 from model_exterior import lifeboat as detailed
+from model_exterior import _door
 
 spec = importlib.util.spec_from_file_location('audited_lifeboat', helper)
 module = importlib.util.module_from_spec(spec)
@@ -52,5 +53,11 @@ for level in range(1, 6):
                  'exterior': raw(envelope(mesh, joined=level >= 4, exterior=True), 'exterior'+str(level)),
                  'full': raw(mesh, 'full'+str(level))})
 files = [source/'model_exterior.py', source/'parts.py', helper]
-output.write_text(json.dumps({'sources': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}, 'rows': rows}))
+door_fine, door_fit = Mesh(2), Mesh(2)
+for side in (-1, 1):
+    for z in (-4.80, -3.48, 2.55, 3.87):
+        _door(door_fine, side, z)
+        _door(door_fit, side, z, panel=module._panel_surface)
+output.write_text(json.dumps({'sources': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}, 'rows': rows,
+                             'doors': {'fine': raw(door_fine, 'door_fine'), 'fit': raw(door_fit, 'door_fit')}}))
 print('lifeboat diagnostic ready')

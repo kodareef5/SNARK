@@ -60,21 +60,21 @@ def _side_panel(m, side, z0, z1, y0, y1, tag, stand=.016, depth=.012):
     m.loft(rings, tag)
 
 
-def _door(m, side, center):
+def _door(m, side, center, panel=_side_panel):
     """Closed fabric closure with a separate small window and sewn border."""
     z0, z1 = center - .49, center + .49
     # Different lower/upper fabric pieces meet with a narrow shadow seam.
-    _side_panel(m, side, z0, z1, -.31, .444, 'enamel')
-    _side_panel(m, side, z0, z1, .456, 1.59, 'yellow')
-    _side_panel(m, side, center - .22, center + .22, .12, 1.23,
+    panel(m, side, z0, z1, -.31, .444, 'enamel')
+    panel(m, side, z0, z1, .456, 1.59, 'yellow')
+    panel(m, side, center - .22, center + .22, .12, 1.23,
                 'navy', stand=.045, depth=.010)
     if m.level < 3:
         # Narrow sewn hems and bottom folds, all standing off the hull surface.
         for z in (z0 + .025, z1 - .055):
-            _side_panel(m, side, z, z + .03, -.30, 1.58,
+            panel(m, side, z, z + .03, -.30, 1.58,
                         'enamel', stand=.060, depth=.008)
         for y in (-.21, -.04, 1.49):
-            _side_panel(m, side, z0 + .06, z1 - .06, y, y + .025,
+            panel(m, side, z0 + .06, z1 - .06, y, y + .025,
                         'enamel', stand=.060, depth=.008)
         # Grab handles beside the closure, not a large bus-window frame.
         for z in (z0 - .11, z1 + .11):

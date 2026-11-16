@@ -4,6 +4,13 @@ from model_exterior import _outline, _shell, _side_panel, _side_x, _door
 CORNER_FIT = .72
 
 
+def _panel_surface(mesh, side, z0, z1, y0, y1, tag, stand=.016, depth=.012):
+    """Keep both sides of thin door fabric at its midplane (at most 6 mm)."""
+    mesh.indexed([(side * (_side_x(y) + stand + depth/2), y, z)
+                  for y, z in ((y0,z0), (y0,z1), (y1,z1), (y1,z0))],
+                 [(0,1,2,3), (3,2,1,0)], tag)
+
+
 def _far_outline(y, half_x, half_z, steps, front_drop=0):
     """Fit the rounded corners while retaining every cardinal width/length."""
     rx = min(.74, half_x * .46) * CORNER_FIT
@@ -50,7 +57,7 @@ def lifeboat(mesh, level):
     for side in (-1, 1):
         for z in (-4.80, -3.48, 2.55, 3.87):
             if level == 2:
-                _door(mesh, side, z)
+                _door(mesh, side, z, panel=_panel_surface)
             elif level < 4:
                 _side_panel(mesh, side, z - .22, z + .22, .12, 1.23, 'navy', stand=.045, depth=.010)
             else:
