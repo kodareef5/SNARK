@@ -35,10 +35,30 @@ def finish(D,p,world,place,box,ys):
  def coating(poly,side):
   # The inner face overlaps the white shell by 5 mm; the visible face clears it by 45 mm.
   # All parts remain above water and inside the separate published deckhouse/bridge envelope.
-  return [[side*(shell(z,y)+offset),y,z] for offset in(-.005,.045) for z,y in poly]
+  # A straight stroke spanning a hull-station bend would cut through the white
+  # shell. Split at those bends before fitting the actual closed coating solids.
+  cuts=sorted(set([min(v[0] for v in poly),max(v[0] for v in poly)]+
+                  [s['z'] for s in stations if min(v[0] for v in poly)<s['z']<max(v[0] for v in poly)]))
+  pieces=[]
+  for lo,hi in zip(cuts,cuts[1:]):
+   clipped=poly
+   for bound,sign in((lo,1),(hi,-1)):
+    result=[]
+    for a,b in zip(clipped,clipped[1:]+clipped[:1]):
+     ina=(a[0]-bound)*sign>=-1e-9;inb=(b[0]-bound)*sign>=-1e-9
+     if ina:result.append(a)
+     if ina!=inb:
+      t=(bound-a[0])/(b[0]-a[0]);result.append((bound,a[1]+t*(b[1]-a[1])))
+    clipped=result
+   unique=[]
+   for v in clipped:
+    if not any(math.dist(v,w)<1e-8 for w in unique):unique.append(v)
+   if len(unique)>=3 and abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(unique,unique[1:]+unique[:1])))>1e-9:
+    pieces.append([[side*(shell(z,y)+offset),y,z] for offset in(-.005,.045) for z,y in unique])
+  return pieces
 
  def row(name,side,zs,y,w,h):
-  hulls=[coating([(z-w/2,y-h/2),(z+w/2,y-h/2),(z+w/2,y+h/2),(z-w/2,y+h/2)],side) for z in zs]
+  hulls=[part for z in zs for part in coating([(z-w/2,y-h/2),(z+w/2,y-h/2),(z+w/2,y+h/2),(z-w/2,y+h/2)],side)]
   q,o=world('hull_glazing','hull_detail',hs=hulls,art={'kind':'solids','finish':'navy'},color=29)
   place(name,q,o,'3','sealed-hull-glazing')
 
@@ -61,12 +81,13 @@ def finish(D,p,world,place,box,ys):
      # Square-capped strokes overlap slightly at joints, with no coincident internal caps.
      poly=[(ax-dx*r-dy*r,ay-dy*r+dx*r),(bx+dx*r-dy*r,by+dy*r+dx*r),
            (bx+dx*r+dy*r,by+dy*r-dx*r),(ax-dx*r+dy*r,ay-dy*r-dx*r)]
-     hulls.append(coating([(91+side*z,yy) for z,yy in poly],side))
-   q,o=world('hull_letter','hull_detail',hs=hulls,art={'kind':'solids','finish':'navy'},color=29)
-   place(f'hull_name_{side}_{text}_{index}',q,o,'2','ship-name')
+     hulls.extend(coating([(91-side*z,yy) for z,yy in poly],side))
+   for group in range(0,len(hulls),16):
+    q,o=world('hull_letter','hull_detail',hs=hulls[group:group+16],art={'kind':'solids','finish':'navy'},color=29)
+    place(f'hull_name_{side}_{text}_{index}_{group//16}',q,o,'2','ship-name')
 
- # Each side reads correctly to a viewer outside: port's text advances toward the bow;
- # starboard's advances toward the stern. The complete name occupies the same forward band.
+ # In the native camera, an outside starboard viewer sees +Z toward screen-right;
+ # port reads toward -Z. The complete name occupies the same forward band on both sides.
  for side in(-1,1):
   word('ICON',-29,2.0,5,6.6,side)
   word('OF',-4.5,5.8,2.1,2.35,side)
