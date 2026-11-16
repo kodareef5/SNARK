@@ -1,0 +1,73 @@
+{
+  "subject": "Koru, Oceanco 2023 three-masted schooner; not the unrelated 1983 Feadship of the same name",
+  "primaryPage": "https://www.oceancoyacht.com/fleet/koru/",
+  "scaleBaseline": {
+    "overallLengthM": 125,
+    "beamM": 17.2,
+    "authority": "Oceanco published fleet specifications"
+  },
+  "secondaryPrimaryPage": "https://www.lateral.engineering/projects/koru-125m-410ft/",
+  "dimensionNote": "The builder gives 125 m / 17.2 m. The co-architect page is internally inconsistent (125 m title, 127 m and 16 m body). Model baseline follows the builder; no claim of millimetre-accurate shipyard reconstruction.",
+  "photos": [
+    {
+      "file": "photos/01-profile.jpg",
+      "url": "https://www.oceancoyacht.com/wp-content/uploads/1-1-scaled.jpg",
+      "publisher": "Oceanco",
+      "retrieved": "2026-11-16",
+      "sha256": "1f72b9f97447c5e56844b3b7f1d940aeef670b41312f64ba6111c97c67665c27",
+      "bytes": 474665,
+      "use": "Modeling reference only; never production texture",
+      "notes": "Broadside under sail: hull silhouette, bowsprit, deckhouse heights and three masts."
+    },
+    {
+      "file": "photos/02-aerial.jpg",
+      "url": "https://www.oceancoyacht.com/wp-content/uploads/DJI_0351TomVanOossanen1-1800x1349.jpg",
+      "publisher": "Oceanco",
+      "retrieved": "2026-11-16",
+      "sha256": "5864a22c7bd94ebfa1c1f3df13c9414e21b4b8dfa16b469d34f0227d71f6d3e2",
+      "bytes": 361787,
+      "use": "Modeling reference only; never production texture",
+      "notes": "Bow aerial detail: deck planking, mast base, stays and foredeck scale."
+    },
+    {
+      "file": "photos/03-exterior.jpg",
+      "url": "https://www.oceancoyacht.com/wp-content/uploads/2-2-1800x1202.jpg",
+      "publisher": "Oceanco",
+      "retrieved": "2026-11-16",
+      "sha256": "49c61c8f8fd5067f8de7af19ed76846cbe8537e2d3a47f7b0c8a164495715056",
+      "bytes": 253813,
+      "use": "Modeling reference only; never production texture",
+      "notes": "Bow and forward deckhouse detail: figurehead/scrollwork, portholes, mast platforms, windows and visible human scale."
+    },
+    {
+      "file": "photos/04-exterior.jpg",
+      "url": "https://www.oceancoyacht.com/wp-content/uploads/3-1-1800x1202.jpg",
+      "publisher": "Oceanco",
+      "retrieved": "2026-11-16",
+      "sha256": "e8db1cd777c582a9ce5fd3a5e8b415d45ef22448aaa356095bdba762f662342d",
+      "bytes": 222738,
+      "use": "Modeling reference only; never production texture",
+      "notes": "Bow-quarter full rig: raised foredeck, stepped hull/deckhouse outline, boot stripe, bowsprit and mast proportions."
+    },
+    {
+      "file": "photos/05-exterior.jpg",
+      "url": "https://www.oceancoyacht.com/wp-content/uploads/4-1-1800x1202.jpg",
+      "publisher": "Oceanco",
+      "retrieved": "2026-11-16",
+      "sha256": "8029ef50f0c9ce129f1ea7a0145936784fb09dc7e042f508df5256d0a6d20faa",
+      "bytes": 203457,
+      "use": "Modeling reference only; never production texture",
+      "notes": "Stern quarter: canoe stern, aft deck levels, rails and deckhouse glazing."
+    },
+    {
+      "file": "photos/06-decks.jpg",
+      "url": "https://www.oceancoyacht.com/wp-content/uploads/7-1800x1348.jpg",
+      "publisher": "Oceanco",
+      "retrieved": "2026-11-16",
+      "sha256": "c202aa520e8c2018c9b9e7a6173fe7344e689e673be59bed580313ee6d6f5eb3",
+      "bytes": 677736,
+      "use": "Modeling reference only; never production texture",
+      "notes": "High aerial: longitudinal deckhouse placement, masts, booms and deck terraces."
+    }
+  ]
+}

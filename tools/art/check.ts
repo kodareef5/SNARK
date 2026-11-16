@@ -64,6 +64,8 @@ export const REST_SLACK = 0.002;
 export const PIECE_TRIANGLES = [[0, 3200], [50, 2000], [100, 800], [250, 250], [500, 60]] as const;
 /** Metres on medium a building piece keeps its materials to at least, so a base does not go flat across a yard. */
 export const PIECE_TEXTURED = 80;
+/** What a landmark's 16 m cell of its ship or building may draw from each distance on medium: five building pieces' worth. */
+export const LANDMARK_TRIANGLES = PIECE_TRIANGLES.map(([metres, most]) => [metres, most * 5] as const);
 const PIECES = new Set(BUILDING_CONTENT.flatMap((d) => (d.type === "structure" && d.class === "piece" ? [d.id] : [])));
 
 export interface LevelFacts {

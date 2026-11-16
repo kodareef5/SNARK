@@ -1,13 +1,13 @@
 import json,math
 from pathlib import Path
 HERE=Path(__file__).resolve().parent
-ROOT=HERE.parents[4]
+ROOT=HERE.parents[3]
 OUT=ROOT/'content/landmarks/koru-layout.json'
-D={'schema':1,'id':'core:koru','frame':{'units':'metres','up':'+Y','forward':'+Z','port':'+X','waterline':0,'yawUnits':'degrees'},
+D={'schema':2,'id':'koru','frame':{'units':'metres','up':'+Y','forward':'+Z','port':'+X','waterline':0,'yawUnits':'degrees'},
  'evidence':{'published':{'lengthOverall':125,'beam':17.2,'source':'https://www.oceancoyacht.com/fleet/koru/'},'discrepancy':'Lateral title says125m; text says127m/16m. Builder baseline is used.','inferred':['hull stations','draft','mast stations and heights','deck datums','bowsprit proportion'],'original':['all room identities and positions','circulation and stairs','dock access','furniture layout']},
  'dimensions':{'hullMinZ':-54.5,'hullMaxZ':54.5,'bowspritTip':[0,8.5,70.5],'beam':17.2,'lowestKeel':-6.2,'highestMast':70},
  'clearances':{'floorSpacing':3,'floorThickness':.2,'doorWidth':1.6,'doorHeight':2.6,'corridorWidth':1.8,'stairWidth':1.6,'ceilingClear':2.8,'railHeight':1.1},
- 'decks':[],'hullStations':[],'rooms':[],'modules':[],'stairs':[],'doors':[],'routes':[],'docking':{},'rig':{},'artBudget':{'levels':6,'totalFineTrianglesTarget':260000,'totalFineTrianglesMaximum':360000,'sharedTextureMegabytesMaximum':96,'materialsPerPieceMaximum':3,'nearFlatLevel':1,'defaultSails':'furled','notes':'Shared tiled marine finishes and bounded room furnishing; no portal culling is assumed.'}}
+ 'decks':[],'hullStations':[],'rooms':[],'modules':[],'stairs':[],'doors':[],'routes':[],'docking':{},'rig':{},'cells':[],'travel':{}}
 mods=D['modules']
 def clean(v):
  if isinstance(v,float):return round(v,6)
@@ -23,12 +23,12 @@ def add(name,category,boxes=[],hulls=[],origin=None,meta={},color=103,placed=Tru
  ps+=[p for b in look for p in corners(b)]
  lo=[min(p[k] for p in ps) for k in range(3)];hi=[max(p[k] for p in ps) for k in range(3)]
  o=origin or [(lo[k]+hi[k])/2 for k in range(3)]
- m={'id':'core:koru_'+name,'mesh':'core:koru_'+name,'category':category,'origin':o,'yaw':0,'color':color,'placed':placed,
+ m={'id':'koru:'+name,'mesh':'none','category':category,'origin':o,'yaw':0,'color':color,'placed':placed,
     'boxes':[{'at':[b['at'][k]-o[k] for k in range(3)],'half':b['half']} for b in boxes],
     'hulls':[{'points':[[p[k]-o[k] for k in range(3)] for p in h]} for h in hulls],
     'visualBounds':{'min':[lo[k]-o[k] for k in range(3)],'max':[hi[k]-o[k] for k in range(3)]},'art':meta}
  if look:m['look']={'boxes':[{'at':[b['at'][k]-o[k] for k in range(3)],'half':b['half']} for b in look]}
- if opens:m['opens']='core:koru_'+opens
+ if opens:m['opens']='koru:'+opens
  assert len(boxes)+len(hulls)<=16,name
  assert max(abs(x) for v in m['visualBounds'].values() for x in v)<=16.000001,(name,m['visualBounds'])
  mods.append(clean(m));return m['id']
@@ -91,6 +91,16 @@ for level,profile in enumerate(profiles):
    ya=y+max(0,za-40)*.065 if level==2 else y;yb=y+max(0,zb-40)*.065 if level==2 else y
    hs.append([[x,yy,z] for z,yy,lo,hi in [(za,ya,vals[0],vals[1]),(zb,yb,vals[2],vals[3])] for x in (lo,hi) for yy in (yy-.2,yy)])
   if hs:add(f'{deck["id"]}_floor_{i:02}','floor',hulls=hs,meta={'deck':level,'woodDirection':'+Z'},color=101)
+# Bulkheads close both ends of the lower deck, from the closed underwater hull to the deck above, their edges in the
+# side shell. The aft one passes under the pool basin.
+def inside(z,y):
+ _,w,_,s=station(z);return w*(.9+.1*y/s)-.12
+def bulkhead(name,z0,z1,parts):
+ edge=lambda x,z,y:inside(z,y) if x=='port' else -inside(z,y) if x=='starboard' else x
+ hs=[[[edge(x,z,y),y,z] for z in(z0,z1) for x in(a,b) for y in(y0,y1)] for a,b,y0,y1 in parts]
+ add('bulkhead_'+name,'bulkhead',hulls=hs,meta={'z':[z0,z1],'deck':0},color=232)
+bulkhead('aft',-46.2,-46,[('starboard',-2.1,0,3.55),(2.1,'port',0,3.55),(-2.2,2.2,0,2.55)])
+bulkhead('fore',40,40.2,[('starboard','port',0,6.55)])
 # Paired dogleg flights: low entry at -Z, a wide turning landing at +Z, upper exit back at -Z.
 for name,cx,cz,low,high in cores:
  for d in range(low,high):
@@ -154,11 +164,11 @@ room('grand_atrium','Grand stair atrium',1,[-5.8,-4,5.8,5],[0,0])
 room('library','Library',1,[-5.8,5,-1.2,15],[1,10],True)
 room('music','Music and games salon',1,[1.2,5,5.8,15],[3,10],True)
 room('fore_foyer','Foremast foyer',1,[-5.8,15,5.8,23],[0,0])
-room('vip_port','Port guest suite',1,[1.2,23,5.8,29],[0,3.5],True,'core:koru_door_vip_port')
-room('vip_starboard','Starboard guest suite',1,[-5.8,23,-1.2,29],[0,-3.5],True,'core:koru_door_vip_starboard')
+room('vip_port','Port guest suite',1,[1.2,23,5.8,29],[0,3.5],True,'koru:door_vip_port')
+room('vip_starboard','Starboard guest suite',1,[-5.8,23,-1.2,29],[0,-3.5],True,'koru:door_vip_starboard')
 room('forward_service','Forward service stair lobby',1,[-4.5,29,4.5,38],[0,0])
 room('aft_terrace','Upper aft terrace',2,[-5.9,-40,5.9,-29],[0,0])
-room('owner_suite','Owner suite',2,[-5.2,-29,5.2,-16],[2,0],False,'core:koru_door_owner')
+room('owner_suite','Owner suite',2,[-5.2,-29,5.2,-16],[2,0],False,'koru:door_owner')
 # Owner suite has an open service-stair side; one forward privacy bulkhead can be used independently.
 wall('owner_privacy',-5.2,-16,5.2,-16,6.75,gap=(0,1.6))
 room('owner_bath','Owner bath and wardrobe',2,[-5.2,-16,-1.2,-10],[1,-13],True)
@@ -174,14 +184,24 @@ for name,cx,z,y,sign in [('vip_port',3.5,23,3.75,1),('vip_starboard',-3.5,23,3.7
  hinge=[cx-.8,y,z];closed=box([cx-.8,y+.02,z-.03],[cx+.8,y+2.58,z+.03]);opened=box([cx-.83,y+.02,min(z,z+sign*1.6)],[cx-.77,y+2.58,max(z,z+sign*1.6)])
  add('door_'+name,'door',boxes=[closed],origin=hinge,opens='door_'+name+'_open',meta={'hinge':hinge,'state':'closed'},color=101)
  add('door_'+name+'_open','door',boxes=[opened],origin=hinge,opens='door_'+name,placed=False,meta={'hinge':hinge,'state':'open'},color=101)
- D['doors'].append({'id':'core:koru_door_'+name,'open':'core:koru_door_'+name+'_open','hinge':hinge,'clearWidth':1.6,'clearHeight':2.6,'angle':sign*90})
+ D['doors'].append({'id':'koru:door_'+name,'open':'koru:door_'+name+'_open','hinge':hinge,'clearWidth':1.6,'clearHeight':2.6,'angle':sign*90})
 # Hull gate, landing, and mooring gangway: dock matches the outer anchor, while the inboard end overlaps the deck.
 add('gangway','gangway',boxes=[slab(7.8,20.4,-25,-23,3.75),box([7.8,3.75,-25.08],[20.4,4.85,-25]),box([7.8,3.75,-23],[20.4,4.85,-22.92])],meta={'clearWidth':2,'surface':'teak'},color=101)
 D['docking']={'shipLanding':[8.4,3.75,-24],'shoreLanding':[20.4,3.75,-24],'arrival':[0,3.75,-24],'clearWidth':2,'shoreApproach':[23,3.75,-24],'pierConnection':{'xMinimum':20.4,'zMinimum':-25.2,'zMaximum':-22.8},'hullGate':{'side':'port','zMin':-25.2,'zMax':-22.8,'sillY':3.75}}
 D['routes'].append({'id':'shore_to_arrival','kind':'boarding','anchors':[[20.3,3.75,-24],[14,3.75,-24],[8.4,3.75,-24],[6,3.75,-24],[0,3.75,-24]]})
+# Stern steps: a swimmer walks out of the sea up a convex ramp of 34 degrees, guarded from just above the water, to a
+# landing on the stern between the main deck's rails.
+SY0,SY1,SZ0,SZ1,SDECK=-1.0,3.75,-62.6,-55.6,-53.3
+def stern_y(z):return SY0+(SY1-SY0)*(z-SZ0)/(SZ1-SZ0)
+zg=SZ0+(SZ1-SZ0)*(.3-SY0)/(SY1-SY0)
+add('stern_steps','steps',boxes=[slab(-.8,.8,SZ1,SDECK,SY1),box([-.88,SY1,SZ1],[-.8,SY1+1.1,-53.5]),box([.8,SY1,SZ1],[.88,SY1+1.1,-53.5])],
+ hulls=[ramp_points(-.8,.8,SZ0,SZ1,SY0,SY1,.3)]+[ramp_points(x,x+.08,zg,SZ1,.3+1.1,SY1+1.1,1.1) for x in(-.88,.8)],
+ origin=[0,SY1,-54.5],meta={'flight':[[-.8,SY0,SZ0],[.8,SY1,SZ1]],'landing':[SZ1,SDECK],'riser':.2,'guardFromZ':zg},color=101)
+D['docking']['sternSteps']={'sea':[0,SY0,SZ0],'deck':[0,SY1,SDECK],'clearWidth':1.6}
+D['routes'].append({'id':'stern_steps','kind':'boarding','anchors':[[0,stern_y(SZ0+.3),SZ0+.3],[0,stern_y(SZ0+3.5),SZ0+3.5],[0,SY1,SZ1+.3],[0,SY1,SDECK],[0,SY1,-52.4],[2.7,SY1,-51],[2.8,SY1,-47],[3.2,SY1,-46]]})
 # Rig trunks stay out of the circulation through explicit lobby bypasses, and are split below the 32m piece bound.
-masts=[{'id':'fore','z':20,'tipY':70,'baseY':.75,'boomY':12.8,'boomAft':20},{'id':'main','z':-8,'tipY':67,'baseY':.75,'boomY':12.8,'boomAft':22},{'id':'mizzen','z':-30,'tipY':64,'baseY':.75,'boomY':10.8,'boomAft':18}]
-D['rig']={'masts':masts,'sails':'furled','standingRigging':'authored segments following these stations; no sailing simulation','bowsprit':{'heel':[0,7.7,50],'tip':[0,8.5,70.5]}}
+masts=[{'id':'fore','z':20,'tipY':70,'baseY':.75,'boomY':12.8,'boomAft':20},{'id':'main','z':-8,'tipY':67,'baseY':.75,'boomY':12.8,'boomAft':20},{'id':'mizzen','z':-30,'tipY':64,'baseY':.75,'boomY':10.8,'boomAft':18}]
+D['rig']={'masts':masts,'bowsprit':{'heel':[0,7.7,50],'tip':[0,8.5,70.5]},'sails':[]}
 for mast in masts:
  cuts=[.75,15.75,39.75,mast['tipY']]
  for i,(ya,yb) in enumerate(zip(cuts,cuts[1:])):
@@ -189,6 +209,14 @@ for mast in masts:
   add(f'mast_{mast["id"]}_{i}','mast',boxes=[box([-r,ya,mast['z']-r],[r,yb,mast['z']+r])],meta={'mast':mast['id'],'radius':r,'ends':[[0,ya,mast['z']],[0,yb,mast['z']]],'finish':'white_spar'},color=232)
  add('boom_'+mast['id'],'boom',boxes=[box([-.38,mast['boomY']-.38,mast['z']-mast['boomAft']],[.38,mast['boomY']+.38,mast['z']])],meta={'mast':mast['id'],'furledSail':True},color=232)
 add('bowsprit','bowsprit',hulls=[[[x,y,z] for z,y in [(50,7.7),(70.5,8.5)] for x in(-.25,.25) for y in(y-.25,y+.25)]],meta=D['rig']['bowsprit'],color=232)
+# Sails, set, ship-local: three gaff sails, the foot on the boom and the head on a gaff, and two jibs whose luff is a stay.
+for mast,foot,peak,throat,aft,camber in [(masts[0],19,57.5,42.5,11,.9),(masts[1],18.6,56.5,41.5,11,.9),(masts[2],17,51.5,36.5,9,.8)]:
+ z=mast['z']-.56;y=mast['boomY']+.27
+ D['rig']['sails'].append({'id':mast['id'],'kind':'gaff','sheet':'koru:sail_'+mast['id'],'gaff':'koru:sail_'+mast['id']+'_gaff','camber':camber,
+  'tack':[0,y,z],'clew':[0,y,z-foot],'peak':[0,peak,z-aft],'throat':[0,throat,z]})
+for name,heel,head,clew,camber in [('outer',[0,8.5,70.5],[0,69,20],[0,27,43],1.0),('inner',[0,7.8,52],[0,58,20],[0,17,29.8],.8)]:
+ up=[(b-a)/math.dist(heel,head) for a,b in zip(heel,head)]
+ D['rig']['sails'].append({'id':name,'kind':'jib','sheet':'koru:sail_'+name,'camber':camber,'tack':[a+.6*u for a,u in zip(heel,up)],'head':[b-.6*u for b,u in zip(head,up)],'clew':clew})
 # Baseline ordered promenade/atrium routes; door-suite branches are separate above.
 for d in range(3):
  y=.75+3*d
@@ -214,7 +242,7 @@ for r in D['rooms']:
  if r['id']=='aft_terrace':p[0]=3.2
  r['entry']=p
  D['routes'].append({'id':'room_'+r['id'],'kind':'room','deck':d,'anchors':[p]})
-D['routes'].append({'id':'owner_privacy','kind':'door','deck':2,'requiresOpen':'core:koru_door_owner','anchors':[[0,6.75,-14.8],[0,6.75,-16],[0,6.75,-17.2]]})
+D['routes'].append({'id':'owner_privacy','kind':'door','deck':2,'requiresOpen':'koru:door_owner','anchors':[[0,6.75,-14.8],[0,6.75,-16],[0,6.75,-17.2]]})
 # Continuous collision guards on weather-deck edges; visible artwork will be slender posts/rails.
 for d in (1,2,3):
  profile=profiles[d];y=.75+3*d
@@ -246,7 +274,43 @@ for d in(1,2,3):
 # Additional exterior/furnishing modules are authored in a separate readable source fragment.
 exec(compile((HERE/'layout_details.py').read_text(), str(HERE/'layout_details.py'), 'exec'))
 add('sail_control','sail_control',boxes=[box([7.10,3.75,-22.15],[7.80,4.67,-21.45])],origin=[7.45,3.75,-21.8],meta={'label':'SAILS','aim':[7.45,4.58,-21.8],'approach':[7.45,3.75,-24]},color=230)
-D['views']={'arrival':[4,5.37,-24],'lowerInterior':[0,2.37,-12],'mainSalon':[3.2,5.37,-34],'upperBridge':[3,8.37,12],'sunTerrace':[3,11.37,-18],'stairs':[3,5.37,-3.2],'profile':[115,35,-10],'bowQuarter':[75,32,92],'sternQuarter':[65,28,-90]}
-D['notes']=['All interior room names/bounds are original interpretation, not an authenticated private layout.','Modules are collision authority. Fine visual bevels/trim must remain within their stated visualBounds or explicitly update this contract.','Window apertures are geometrically clear in near flat artwork; collision may retain a thin glazing pane.','All occupied floor datums remain above seaY0; below-floor tanks/keel volume is closed and inaccessible.','Pools and tubs are visual architectural features; only the surrounding circulation is required for first-delivery traversal.','No individual room portal culling is assumed. Furnishings must leave the published route envelopes clear.']
+# The sails' motion in the control's frame, from furled (how a world starts) to set. A gaff sail's sheet is scaled down
+# its hoist onto the boom while its gaff drops and turns onto the bundle; a jib's sheet is scaled across its luff onto
+# its stay. Each mesh is modelled about its pivot in the frame of its set placement.
+def qaxis(axis,angle):return [v*math.sin(angle/2) for v in axis]+[math.cos(angle/2)]
+def qframe(x,y,z):
+ m=[[x[i],y[i],z[i]] for i in range(3)];w=math.sqrt(1+m[0][0]+m[1][1]+m[2][2])/2;assert w>.1
+ return [(m[2][1]-m[1][2])/(4*w),(m[0][2]-m[2][0])/(4*w),(m[1][0]-m[0][1])/(4*w),w]
+def unit(v):return [a/math.sqrt(sum(b*b for b in v)) for a in v]
+co=next(m for m in mods if m['id']=='koru:sail_control')['origin']
+local=lambda p:[p[k]-co[k] for k in range(3)]
+BUNDLE=.6;parts=[]
+for s in D['rig']['sails']:
+ t=s['tack']
+ if s['kind']=='gaff':
+  th,pk=s['throat'],s['peak'];k=BUNDLE/(th[1]-t[1]);rise=pk[1]-th[1];run=th[2]-pk[2]
+  parts.extend([{'mesh':s['sheet'],'from':{'at':local(t),'scale':[.3,k,1]},'to':{'at':local(t)}},
+   {'mesh':s['gaff'],'from':{'at':local([t[0],t[1]+BUNDLE,t[2]]),'turn':qaxis([1,0,0],math.atan2(k*rise,run)-math.atan2(rise,run))},'to':{'at':local(th)}}])
+ else:
+  luff=unit([b-a for a,b in zip(t,s['head'])]);c=[b-a for a,b in zip(t,s['clew'])];d=sum(a*b for a,b in zip(c,luff))
+  chord=unit([a-d*b for a,b in zip(c,luff)]);normal=[chord[1]*luff[2]-chord[2]*luff[1],chord[2]*luff[0]-chord[0]*luff[2],chord[0]*luff[1]-chord[1]*luff[0]]
+  q=qframe(chord,luff,normal)
+  parts.append({'mesh':s['sheet'],'from':{'at':local(t),'turn':q,'scale':[.015,1,.3]},'to':{'at':local(t),'turn':q}})
+assert len(parts)<=16
+D['travel']={'static':'koru:sail_control','seconds':18,'parts':parts}
+# Cells: 16 m of the ship's length, the whole beam wide. A cell is one mesh, modelled in its anchor's frame and drawn by
+# the anchor's static; its other modules draw nothing and are collision alone. A door draws itself.
+for m in mods:
+ if m['category']=='door':m['mesh']=m['id']
+drawn=[m for m in mods if m['placed'] and m['category']!='door']
+cellof=lambda m:math.floor((m['origin'][2]+56)/16)
+for k in sorted({cellof(m) for m in drawn}):
+ assert k>=0
+ members=[m for m in drawn if cellof(m)==k];cid=f'koru:cell_{k:02}';mid=[0,3.75,-48+16*k]
+ anchor=min((m for m in members if m['category']!='sail_control'),key=lambda m:math.dist(m['origin'],mid))
+ anchor['mesh']=cid
+ for m in members:m['cell']=cid
+ D['cells'].append({'id':cid,'anchor':anchor['id']})
+for m in mods:del m['visualBounds']
 OUT.write_text(json.dumps(clean(D),indent=2)+'\n')
-print('wrote',OUT,'modules',len(mods),'rooms',len(D['rooms']),'stairs',len(D['stairs']),'routes',len(D['routes']))
+print('wrote',OUT,'modules',len(mods),'cells',len(D['cells']),'rooms',len(D['rooms']),'stairs',len(D['stairs']),'routes',len(D['routes']))
