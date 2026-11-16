@@ -3,11 +3,12 @@ import { KORU } from "../../content/landmarks/koru.ts";
 import { withLandmarks } from "../../client/core/fetched.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
+import { meshKnown, parseManifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
 import { landmarkGround, placeLandmark, type Landmark } from "../../shared/world/landmark.ts";
 import { groundBytes, parseMap, writeMap } from "../../shared/world/mapfile.ts";
-import { splitPack } from "../../tools/pack/split.ts";
+import { bootManifest, splitPack } from "../../tools/pack/split.ts";
 import { boxMesh, buildPack } from "../../tools/pack/write.ts";
 import { Assets } from "../../client/core/assets/assets.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
@@ -82,6 +83,31 @@ test("a client on a map with a landmark fetches its manifest and boot file, and 
   // A map with none asks for nothing and keeps the core's as they are.
   const bare = await withLandmarks(get, undefined, reg, core.manifest, parsePack(core.files[core.manifest.boot]!.bytes));
   expect([bare.reg, bare.manifest, asked.length]).toEqual([reg, core.manifest, 2]);
+});
+
+test("a cold core page learns beside a landmark without moving its boot geometry or warming another client", () => {
+  const box = (id: string, half: number) => ({ id, lods: [boxMesh([half, half, half], 3)] });
+  const core = splitPack(buildPack([box("core:page-test", 1)], defaultPalette()), "core", { boot: () => false });
+  const more = splitPack(buildPack([box("test:cell", 3)], defaultPalette()), "test");
+  const initial = joinLandmark({ manifest: parseManifest(JSON.stringify(bootManifest(core.manifest))), boot: parsePack(core.files[core.manifest.boot]!.bytes) },
+    { manifest: more.manifest, boot: parsePack(more.files[more.manifest.boot]!.bytes) }, "landmarks");
+  const files = [...core.files.map(file => file.bytes), ...more.files.filter((_, i) => i !== more.manifest.boot).map(file => file.bytes)];
+  const reg = compileContent([]).registry!;
+  for (let client = 0; client < 2; client++) {
+    const manifest = structuredClone(initial.manifest), port = new FakeNet(files), assets = new Assets(reg, initial.boot, manifest, port);
+    expect(manifest.meshes.map(meshKnown)).toEqual([false, true]);
+    expect([assets.level(0, 0), assets.level(1, 0)]).toEqual([-1, 0]);
+    const packet = new FramePacket();
+    for (let frame = 0; frame < 12; frame++) {
+      const now = frame * 1000 / 60; port.advance(now); packet.beginFrame(); assets.begin(now, 669, 1.2217);
+      assets.want(0, 0, 1); assets.want(1, 0, 1); assets.end(packet, now);
+    }
+    expect([assets.level(0, 0), assets.level(1, 0)]).toEqual([0, 0]);
+    expect(manifest.meshes.map(meshKnown)).toEqual([true, true]);
+    expect(assets.table.tris.map(levels => levels[0])).toEqual([12, 12]);
+    expect(assets.table.radius[1]).toBeCloseTo(Math.sqrt(27), 5);
+    expect(initial.manifest.meshes.map(meshKnown)).toEqual([false, true]);
+  }
 });
 
 test("Koru's levels stream from its own files joined after the core's: its coarsest drawn from the boot at once, its finest fetched", () => {

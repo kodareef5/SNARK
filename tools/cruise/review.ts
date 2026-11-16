@@ -16,7 +16,7 @@ import { hashBytes, hashString } from "../../shared/hash.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { allClips } from "../../shared/pack/clips.ts";
 import { joinLandmark } from "../../shared/pack/join.ts";
-import { defaultPalette } from "../../shared/pack/palette.ts";
+import { meshKnown, parseManifest } from "../../shared/pack/manifest.ts";
 import { MODE_GHOST, MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
 import { F_GROUNDED } from "../../shared/sim/entities.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
@@ -25,9 +25,9 @@ import { mapHeightfield, parseMap, writeMap, type MapData } from "../../shared/w
 import { HIT_NONE, HIT_STRUCTURE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import { FakeNet } from "../../tests/fixtures/assetnet.ts";
 import { Harness } from "../../tests/fixtures/net.ts";
-import { LANDMARKS, SOURCE, readPacks } from "../art/source.ts";
-import { buildPack } from "../pack/write.ts";
-import { gameFiles, namedTextures, rgbaOf, splitWithTextures, type GameFiles } from "../snap/files.ts";
+import { LANDMARKS, SOURCE } from "../art/source.ts";
+import { buildClient } from "../build-client.ts";
+import type { GameFiles } from "../snap/files.ts";
 import { encodePng } from "../snap/png.ts";
 import { Rasterizer } from "../snap/raster.ts";
 import { drawUi } from "../snap/ui.ts";
@@ -163,22 +163,21 @@ export function cruiseHeadingShots(shots: readonly CruiseShot[]): readonly Cruis
 
 const isShipMesh = (id: string): boolean => id.startsWith("cruise:") && !id.startsWith("cruise:port_");
 
-/** Source art through the same separate manifest/boot join as the browser, with native rgba textures. */
+/** Read the actual production build, including its initially unknown paged core meshes. */
 async function cruiseFiles(names: readonly string[]): Promise<GameFiles & { boot: Pack }> {
-  const core = await gameFiles(SOURCE), files = [...core.files], named = await namedTextures(SOURCE);
-  let joined = { manifest: core.manifest, boot: parsePack(core.files[core.manifest.boot]!) };
+  // Rebuild here so source/pack ownership checks and rendered files cannot silently
+  // refer to different revisions. Quick changes Brotli effort, not runtime assets.
+  await buildClient({ quick: true });
+  const assets = resolve(import.meta.dir, "../../client/dist/assets");
+  const manifest = parseManifest(readFileSync(join(assets, "manifest.json"), "utf8"));
+  if (!manifest.pages?.length || !manifest.meshes.some(mesh => !meshKnown(mesh))) throw new Error("Cruise review requires main's cold paged core manifest");
+  const files: Uint8Array[] = manifest.files.map(file => readFileSync(join(assets, file.name)));
+  let joined = { manifest, boot: parsePack(files[manifest.boot]!) };
   for (const name of names) {
-    const art = readPacks(join(LANDMARKS, name));
-    const own = splitWithTextures(buildPack(art.meshes, defaultPalette(), [], art.rigs), texture => {
-      const source = named.get(texture.id);
-      if (!source) throw new Error(`No authored texture for ${texture.id}`);
-      return rgbaOf(source.material, source.role, source.top);
-    });
-    // splitWithTextures uses the core stem. Give each separate source file its landmark's name,
-    // as buildLandmarks does, before the native join rewrites file indices and boot offsets.
-    for (const file of own.manifest.files) file.name = file.name.replace(/^core\./, `${name}.`);
-    joined = joinLandmark(joined, { manifest: own.manifest, boot: parsePack(own.files[own.manifest.boot]!) }, "landmarks");
-    files.push(...own.files.filter((_, index) => index !== own.manifest.boot));
+    const own = parseManifest(readFileSync(join(assets, "landmarks", `${name}.json`), "utf8"));
+    const bytes = own.files.map(file => readFileSync(join(assets, "landmarks", file.name)));
+    joined = joinLandmark(joined, { manifest: own, boot: parsePack(bytes[own.boot]!) }, "landmarks");
+    files.push(...bytes.filter((_, index) => index !== own.boot));
   }
   return { ...joined, files };
 }
@@ -191,6 +190,11 @@ function uploadOnly(raster: Rasterizer, packet: FramePacket): void {
 }
 
 function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, files: GameFiles, width: number, height: number, out: string, recordCpu: boolean, images: boolean) {
+  // Residency learns page rows in place. Each camera needs its own initial
+  // manifest so an earlier view cannot turn a cold-load check into a warm one.
+  files = { ...files, manifest: structuredClone(files.manifest) };
+  const unknownAtStart = files.manifest.meshes.filter(mesh => !meshKnown(mesh)).length;
+  if (!unknownAtStart) throw new Error(`${shot.name}: core pages were hydrated before the cold review began`);
   const built = compileContent(CORE_CONTENT); if (!built.registry) throw new Error(built.errors.join("\n"));
   const h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips, rigs: pack.header.rigs }, built.registry);
   const reg = h.reg, placement = assertCruiseMap(map, reg);
@@ -205,7 +209,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, clips: ClipSet, fil
   let resumedStreaming: unknown;
   const rejectedSamples: { uploadFrames: number; lastUpload: unknown }[] = [];
   const frameTimes: number[] = [], coldTimes: number[] = [];
-  const cold = { frames: 0, maxDraws: 0, maxTriangles: 0, maxCasters: 0, maxCityMakeMs: 0, maxCityMissing: 0, maxCityBehind: 0, maxResidentBytes: 0, maxUploadBytes: 0, dropped: 0, skipped: 0, casterDropped: 0 };
+  const cold = { pages: files.manifest.pages!.length, unknownAtStart, frames: 0, maxDraws: 0, maxTriangles: 0, maxCasters: 0, maxCityMakeMs: 0, maxCityMissing: 0, maxCityBehind: 0, maxResidentBytes: 0, maxUploadBytes: 0, dropped: 0, skipped: 0, casterDropped: 0 };
   const frame = (now: number) => {
     port.advance(now);
     const started = performance.now(); packet = app.frame(now, width, height); const elapsed = performance.now() - started;
