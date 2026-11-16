@@ -11,7 +11,7 @@ import type { CastTest } from "./terrain.ts";
 
 const IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0] as const;
 
-/** Rest-space skin matrices: rigid connected folds, and a rigid head spar following their vertical extension. */
+/** Rest-space skin matrices: rigid connected folds and a uniformly retracting head spar aligned to their height. */
 export function sailPose(out: Float32Array, sail: SailVisual, progress: number): void {
   const p = Math.max(0, Math.min(1, progress));
   for (let i = 0; i < sail.bones.length; i++) out.set(IDENTITY, i * BONE_FLOATS);
@@ -31,9 +31,13 @@ export function sailPose(out: Float32Array, sail: SailVisual, progress: number):
   const gaff = sail.gaff;
   if (gaff) {
     const fraction = Math.max(0, Math.min(1, along / sail.bands.at(-1)!.upper));
-    const angle = gaff.lowerAngle - Math.asin(fraction * Math.sin(gaff.lowerAngle)), c = Math.cos(angle), s = Math.sin(angle);
+    const dy = gaff.peak[1] - gaff.throat[1], dz = gaff.peak[2] - gaff.throat[2];
+    // This deliberately simple stowing motion keeps the cloth head joined instead of leaving a long rigid spur.
+    // Uniform scale preserves native transformed normals; the raised endpoint above remains exact rest geometry.
+    const scale = Math.hypot(fraction * dy, dz) / Math.hypot(dy, dz);
+    const angle = gaff.lowerAngle - Math.atan2(fraction * dy, dz), c = Math.cos(angle) * scale, s = Math.sin(angle) * scale;
     const [, y, z] = gaff.throat, targetY = gaff.lowerThroatY + (y - gaff.lowerThroatY) * fraction;
-    out.set([1, 0, 0, 0, 0, c, -s, targetY - c * y + s * z, 0, s, c, z - s * y - c * z], sail.bones.indexOf(gaff.bone) * BONE_FLOATS);
+    out.set([scale, 0, 0, gaff.throat[0] * (1 - scale), 0, c, -s, targetY - c * y + s * z, 0, s, c, z - s * y - c * z], sail.bones.indexOf(gaff.bone) * BONE_FLOATS);
   }
 }
 

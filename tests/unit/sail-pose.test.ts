@@ -24,7 +24,7 @@ test("authored rigid folds retain shared hinges, fixed jib luffs and exact raise
           seamError = Math.max(seamError, separation(point(pose, lower.index, vertex), point(pose, upper.index, vertex)));
         }
       }
-      for (let bone = 0; bone < sail.bones.length; bone++) for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) {
+      for (let bone = 0; bone < sail.bones.length; bone++) if (sail.bones[bone] !== sail.gaff?.bone) for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) {
         const offset = bone * 12, dot = [0, 1, 2].reduce((sum, c) => sum + pose[offset + a * 4 + c]! * pose[offset + b * 4 + c]!, 0);
         rigidityError = Math.max(rigidityError, Math.abs(dot - (a === b ? 1 : 0)));
       }
@@ -35,21 +35,27 @@ test("authored rigid folds retain shared hinges, fixed jib luffs and exact raise
   expect(seamError).toBeLessThan(.00001); expect(rigidityError).toBeLessThan(.000001); expect(luffError).toBe(0);
 });
 
-test("gaffs keep their physical length through the hoist and lowered cloth forms a compact stack", () => {
-  let lengthError = 0, height = 0;
+test("retracting gaffs retain uniform normal-safe scale and align with the folded cloth head", () => {
+  let chordError = 0, uniformError = 0, height = 0;
   for (const sail of sails.filter(sail => sail.gaff)) {
     const pose = new Float32Array(sail.bones.length * 12), gaff = sail.gaff!;
     for (let i = 0; i <= 100; i++) {
       sailPose(pose, sail, i / 100);
       const bone = sail.bones.indexOf(gaff.bone), throat = point(pose, bone, gaff.throat), peak = point(pose, bone, gaff.peak);
-      lengthError = Math.max(lengthError, Math.abs(separation(throat, peak) - separation(gaff.throat, gaff.peak)));
+      chordError = Math.max(chordError, Math.abs((peak[2]! - throat[2]!) - (gaff.peak[2] - gaff.throat[2])));
+      const offset = bone * 12, scaleSquared = pose[offset]! * pose[offset]!;
+      for (let a = 0; a < 3; a++) for (let b = 0; b < 3; b++) {
+        const dot = [0, 1, 2].reduce((sum, c) => sum + pose[offset + a * 4 + c]! * pose[offset + b * 4 + c]!, 0);
+        uniformError = Math.max(uniformError, Math.abs(dot - (a === b ? scaleSquared : 0)));
+      }
+      expect(scaleSquared).toBeGreaterThan(.2); expect(scaleSquared).toBeLessThanOrEqual(1);
       if (i === 0) {
         height = Math.max(height, peak[1]!, throat[1]!);
         for (const band of sail.bands) height = Math.max(height, point(pose, band.index, [0, band.upper, 0])[1]!);
       }
     }
   }
-  expect(lengthError).toBeLessThan(.00001); expect(height).toBeLessThan(.6);
+  expect(chordError).toBeLessThan(.00001); expect(uniformError).toBeLessThan(.000001); expect(height).toBeLessThan(.6);
 });
 
 test("sail camera-relative poses share the native arbitrary-yaw placement frame and weighted bounds", () => {
