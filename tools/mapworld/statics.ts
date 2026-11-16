@@ -31,6 +31,8 @@ export interface Footprint {
 
 export interface Site {
   readonly growthRoutes: { points: { x: number; y: number; z: number }[]; width: number }[];
+  /** Drivable vehicles a new world parks, as the layers folder's vehicles.json takes them: yaw in degrees as a piece's. */
+  readonly vehicles: { kind: string; x: number; z: number; yaw: number }[];
   readonly source: string;
   readonly world: World;
   readonly ground: Ground;
@@ -61,6 +63,7 @@ export function siteOf(world: World, ground: Ground, size: number, source: strin
     world,
     ground,
     growthRoutes: [],
+    vehicles: [],
     clearPlants: new Uint8Array(((n - 1) / 2) ** 2),
     lowPlants: new Uint8Array(((n - 1) / 2) ** 2),
     footprints: ground.heaps.ruins.map((ruin) => ({ building: ruin.building, ruin, district: world.districts[ruin.district - 1] ?? null })),

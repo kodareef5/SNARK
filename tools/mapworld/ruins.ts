@@ -7,11 +7,14 @@ import { accessPlanner, gradeApproaches, type Approach } from "./ruin-access.ts"
 import { clearCirculation, reconcileRubble } from "./ruin-clearance.ts";
 import { contextualize } from "./ruin-context.ts";
 import { joinFrontages } from "./ruin-frontage.ts";
-import { obstacleIndex, obstructs } from "./ruin-obstacles.ts";
+import { boxOf, extentOf, middleOf, obstacleIndex, obstructs } from "./ruin-obstacles.ts";
+import { carPicker, frameYaw, parkCars, roadIndex } from "./street-cars.ts";
+import { COMPACT_VEHICLE } from "../../content/vehicles/compact.ts";
+import { wreckLook } from "../../content/vehicles/wrecks.ts";
 import { S } from "./ground.ts";
 import { compactWalls, reserveRoutes, frameOf, inRing, Mason, tilesOf, worldPoint, type Frame } from "./ruin-geometry.ts";
 import { assembly, layout } from "./ruin-layouts.ts";
-import { ruleFor, vocabulary, type Rule } from "./ruin-vocabulary.ts";
+import { ruleFor, vocabulary, type Rule, type Vocabulary } from "./ruin-vocabulary.ts";
 import { hash3 } from "./raster.ts";
 import { readSurvey, surveyInventory } from "./survey.ts";
 import { makeSigns, nearSign } from "./signs.ts";
@@ -242,12 +245,12 @@ export function makeRuins(site: Site): StaticPiece[] {
     }
     if (m.rooms.some((r) => obstacles.blocked(r.points) || m.pieces.some((p) => obstructs(p, r.points)))) return false;
     for (const p of m.pieces) {
-      const [w, h, d] = RUIN_SHAPES[p.kind.split("_")[1] as RuinShape];
-      const nearby = propCorridors({ ...m.frame, x: p.x, z: p.z, width: w, depth: d });
+      const [w, h, d] = extentOf(p.kind).size; const mid = middleOf(p);
+      const nearby = propCorridors({ ...m.frame, x: mid.x, z: mid.z, width: w, depth: d });
       if (nearby.some((c) => {
-        if (p.y + h / 2 < c.low || p.y - h / 2 > c.high) return false;
+        if (mid.y + h / 2 < c.low || mid.y - h / 2 > c.high) return false;
         const angle = p.yaw * Math.PI / 180; const co = Math.cos(angle); const si = Math.sin(angle);
-        const local = (q: readonly number[]): number[] => [(q[0]! - p.x) * co - (q[1]! - p.z) * si, (q[0]! - p.x) * si + (q[1]! - p.z) * co];
+        const local = (q: readonly number[]): number[] => [(q[0]! - mid.x) * co - (q[1]! - mid.z) * si, (q[0]! - mid.x) * si + (q[1]! - mid.z) * co];
         const a = local(c.a); const b = local(c.b); const half = [w / 2 + c.width / 2, d / 2 + c.width / 2];
         let enter = 0; let leave = 1;
         for (let axis = 0; axis < 2; axis++) {
@@ -271,10 +274,18 @@ export function makeRuins(site: Site): StaticPiece[] {
   };
   const infrastructure = makeInfrastructure(site, acceptProp);
   const joinedFrontages = joinFrontages(records, v, acceptProp);
-  const streets = makeStreetPieces(site, v, acceptProp);
+  const roads = roadIndex(site);
+  const streets = makeStreetPieces(site, v, acceptProp, obstacles, roads);
   // Lettered signs come after the passes that read every piece as a box of the ruin kit.
   const signs = makeSigns(site, accept);
   const publicPlaces = makePublicPlaces(site, data.places, acceptProp, nearSign(site, 60));
+  const parked = parkCars(site, pieces, roads, v.street.cars, v.seed, { id: COMPACT_VEHICLE.id, def: COMPACT_VEHICLE });
+  for (const p of parked) {
+    // Nothing grows on it or where its doors open.
+    const a = p.yaw * Math.PI / 180; const y = site.groundAt(p.x, p.z); const reach = COMPACT_VEHICLE.spec.halfLength + 1;
+    site.growthRoutes.push({ points: [{ x: p.x - Math.sin(a) * reach, y, z: p.z - Math.cos(a) * reach }, { x: p.x + Math.sin(a) * reach, y, z: p.z + Math.cos(a) * reach }], width: 5 });
+    site.vehicles.push({ kind: p.kind, x: p.x, z: p.z, yaw: p.yaw });
+  }
   const side = (site.ground.n - 1) / 2;
   for (const p of data.places) {
     const radius = v.growth.lowAroundPlace[p.kind]; if (!radius) continue;
@@ -308,6 +319,8 @@ export function makeRuins(site: Site): StaticPiece[] {
   put("survey.json", { ...inventory, status: "stopped; enrichment by unambiguous name only", pending: [], unavailable: inventory.pending, enrichmentMatches: data.research.size });
   put("places.json", publicPlaces);
   put("signs.json", signs);
+  put("parked.json", parked);
+  const wrecks = pieces.filter((p) => wreckLook(p.kind));
   put("sightlines.json", sightlines);
   put("buildings.json", records);
   put("roof-gardens.json", records.flatMap((r) => {
@@ -316,7 +329,7 @@ export function makeRuins(site: Site): StaticPiece[] {
   }));
   put("generation.json", { version: v.version, seed: v.seed, labelsFingerprint: data.fingerprint, staticFingerprint: digest(pieces),
     blocks: pieces.length, buildings: records.length, footprints: site.footprints.length, rejected, keptAsGround, kinds: usedKinds, topChunks,
-    clearance, streets, event: { ...v.event, sheltered: records.filter((r) => (r.shelter ?? 0) > .1).length, exposure: tally(records.map((r) => (Math.floor((r.exposure ?? 0) * 10) / 10).toFixed(1))) }, frontage: { joined: joinedFrontages, buildings: records.filter((r) => r.party?.length).length, partyEdges: records.reduce((n, r) => n + (r.party?.length ?? 0), 0) }, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
+    clearance, streets, cars: { pieces: wrecks.length, byLook: tally(wrecks.map((p) => wreckLook(p.kind)!.mesh)), byKind: tally(wrecks.map((p) => p.kind)), parked: parked.length }, event: { ...v.event, sheltered: records.filter((r) => (r.shelter ?? 0) > .1).length, exposure: tally(records.map((r) => (Math.floor((r.exposure ?? 0) * 10) / 10).toFixed(1))) }, frontage: { joined: joinedFrontages, buildings: records.filter((r) => r.party?.length).length, partyEdges: records.reduce((n, r) => n + (r.party?.length ?? 0), 0) }, byForm: tally(records.map((r) => r.form)), byCollapse: tally(records.map((r) => r.collapse)), roomRoutes: records.reduce((n, r) => n + r.rooms.length, 0),
     piecesByKind: Object.fromEntries([...new Set(records.map((r) => r.kind))].sort().map((kind) => { const rows = records.filter((r) => r.kind === kind); return [kind, { buildings: rows.length, pieces: rows.reduce((n, r) => n + r.blocks, 0), max: Math.max(...rows.map((r) => r.blocks)) }]; })),
     byRecipe: tally(records.map((r) => r.recipe)), byDistrict: tally(records.map((r) => r.district)),
     reduced: records.filter((r) => r.detail > 0).map((r) => ({ part: r.part, name: r.name, detail: r.detail })),
@@ -423,10 +436,35 @@ function makePublicPlaces(site: Site, places: PublicPlace[], accept: (m: Mason) 
   return out;
 }
 
-function makeStreetPieces(site: Site, v: ReturnType<typeof vocabulary>, accept: (m: Mason) => boolean): Record<string, number> {
+/**
+ * The street's wrecks and furniture. Pile-ups and the like stand across a street at points of a grid, turned along it
+ * with a gap left through them; single assemblies stand at a street's edge, on a verge or in a yard. Along a street, an
+ * assembly faces the way traffic on its side runs, and one with `kerb` is set in from the kerb; a car may be slewed out
+ * of line. On a verge a car has run off the road; in a yard it is parked in a row or left at any angle. Each car's kind is
+ * chosen where it stands (street-cars.ts); every piece stands clear of the pieces already set down.
+ */
+function makeStreetPieces(site: Site, v: Vocabulary, accept: (m: Mason) => boolean, obstacles: ReturnType<typeof obstacleIndex>, roads: ReturnType<typeof roadIndex>): Record<string, number> {
   const out: Record<string, number> = {}; const size = (site.ground.n - 1) * 2; const spacing = v.street.spacing;
   const at = (x: number, z: number): number => Math.round((size - z) / 2) * site.ground.n + Math.round((size - x) / 2);
   const road = (surface: number | undefined): boolean => surface === S.STREET || surface === S.HIGHWAY;
+  const cars = v.street.cars; const pick = carPicker(cars, v.seed);
+  const rule: Rule = { recipe: "street", height: 0, finish: "rust", feature: "", holes: 0, wall: 0, bay: 8, matched: [], provisional: false, assemblies: v.assemblies };
+  const frameAt = (x: number, z: number, yaw: number, width: number, depth: number): Frame => { const a = yaw * Math.PI / 180; return { x, z, yaw, c: Math.cos(a), s: Math.sin(a), width, depth, rings: [] }; };
+  const turn = (h: number, from: number, to: number): number => (h & 1 ? 1 : -1) * (from + (to - from) * ((h >>> 1) % 1000) / 1000);
+  // A car stands on its own ground, every corner of it within `rise` of that, none on a building's floor or in water.
+  const settle = (m: Mason, rise: number): boolean => {
+    for (let i = 0; i < m.pieces.length; i++) {
+      const p = m.pieces[i]!; if (!wreckLook(p.kind)) continue;
+      const y = site.groundAt(p.x, p.z); m.pieces[i] = { ...p, y };
+      const { size: [w, , d], at: [ox, , oz] } = extentOf(p.kind); const a = p.yaw * Math.PI / 180; const c = Math.cos(a); const s = Math.sin(a);
+      for (const [u, q] of [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2], [0, 0]]) {
+        const x = p.x + (ox + u!) * c + (oz + q!) * s; const z = p.z - (ox + u!) * s + (oz + q!) * c;
+        if (site.ground.surface[at(x, z)] === S.FLOOR || site.groundAt(x, z) < .1 || Math.abs(site.groundAt(x, z) - y) > rise) return false;
+      }
+    }
+    return true;
+  };
+  const clear = (m: Mason): boolean => !m.pieces.some((p) => obstacles.hits(boxOf(p), .2));
   const clusters: { id: string; x: number; y: number; z: number; yaw: number; name: string; points: { x: number; y: number; z: number }[] }[] = [];
   const remnants: { id: string; assembly: string; origin: [number, number, number]; facing: number }[] = [];
   const clusterBins = new Map<number, { x: number; z: number }[]>();
@@ -436,13 +474,15 @@ function makeStreetPieces(site: Site, v: ReturnType<typeof vocabulary>, accept: 
     const vertical = road(site.ground.surface[at(x, z - 12)]) && road(site.ground.surface[at(x, z + 12)]);
     const horizontal = road(site.ground.surface[at(x - 12, z)]) && road(site.ground.surface[at(x + 12, z)]);
     const names = surface === S.YARD ? v.street.yardClusters : vertical && horizontal ? v.street.junctionAssemblies : v.street.edgeAssemblies;
-    const name = names[h % names.length]!; const yaw = vertical ? 90 : 0; const a = yaw * Math.PI / 180;
-    const m = new Mason({ x, z, yaw, c: Math.cos(a), s: Math.sin(a), width: 36, depth: 20, rings: [] }, site.groundAt(x, z));
-    assembly(m, { recipe: "street", height: 0, finish: "rust", feature: "", holes: 0, wall: 0, bay: 8, matched: [], provisional: false, assemblies: v.assemblies }, name, 0, 0, 0);
+    const name = names[h % names.length]!; const near = roads.near(x, z, 12);
+    const yaw = near ? (frameYaw(near.dx, near.dz) + (h >>> 16 & 1) * 180) % 360 : vertical ? 90 : 0;
+    const m = new Mason(frameAt(x, z, yaw, 36, 20), site.groundAt(x, z)); m.pick = pick;
+    assembly(m, rule, name, 0, 0, 0);
     const points = (v.assemblies[name]!.passage ?? []).map(([u, v]) => { const [x, z] = m.point(u, v); return { x, y: m.base, z }; });
     if (points.some((p) => Math.abs(site.groundAt(p.x, p.z) - m.base) > .25 || site.ground.surface[at(p.x, p.z)] === S.FLOOR)) continue;
     m.rooms.push({ kind: "street-gap", points });
     if (m.pieces.some((p) => site.ground.surface[at(p.x, p.z)] === S.FLOOR || site.groundAt(p.x, p.z) < .1 || Math.abs(site.groundAt(p.x, p.z) - m.base) > 1)) continue;
+    if (!settle(m, .4) || !clear(m)) continue;
     if (accept(m)) {
       out[name] = (out[name] ?? 0) + 1; clusters.push({ id: `cluster:${x}:${z}`, x, y: m.base, z, yaw, name, points });
       gradeApproaches(site, points.slice(1).map((p, i) => ({ street: points[i]!, door: p, core: p, ramp: 1 })), -1);
@@ -465,12 +505,30 @@ function makeStreetPieces(site: Site, v: ReturnType<typeof vocabulary>, accept: 
     const edge = vertical ? site.ground.surface[at(x + 4, z)] !== surface || site.ground.surface[at(x - 4, z)] !== surface : site.ground.surface[at(x, z + 4)] !== surface || site.ground.surface[at(x, z - 4)] !== surface;
     if (!yard && !edge) continue;
     const names = yard ? v.street.yardAssemblies : v.street.assemblies; const name = names[h % names.length]!;
-    const yaw = vertical ? 90 : 0; const angle = yaw * Math.PI / 180;
-    const frame: Frame = { x, z, yaw, c: Math.cos(angle), s: Math.sin(angle), width: 16, depth: 8, rings: [] };
-    const m = new Mason(frame, site.groundAt(x, z));
-    assembly(m, { recipe: "street", height: 0, finish: "rust", feature: "", holes: 0, wall: 0, bay: 8, matched: [], provisional: false, assemblies: v.assemblies }, name, 0, 0, 0);
+    const kerb = v.assemblies[name]!.kerb; const isCar = v.assemblies[name]!.parts.some(([shape]) => shape === "car");
+    const swing = hash3(z, x, v.seed + 911); const near = roads.near(x, z, yard ? 40 : 16);
+    let [px, pz, yaw] = [x, z, vertical ? 90 : 0];
+    if (near && yard) yaw = frameYaw(near.dx, near.dz) + (swing & 2 ? 90 : 0) + turn(swing >>> 2, 0, 6);
+    else if (!near && yard && isCar) yaw = (swing >>> 2) % 360;
+    else if (near) {
+      // Facing the way traffic on its side runs: along the line where it is on the line's right, against it on its left.
+      const f = near.right ? 1 : -1; const hx = near.dx * f; const hz = near.dz * f;
+      yaw = frameYaw(hx, hz);
+      if (verge && isCar) yaw += turn(swing, 8, 35);
+      else if (kerb !== undefined) {
+        // In from the kerb on the right of its heading, where the line's foot is the street's middle.
+        const slewed = isCar && (swing >>> 8) / 16777216 < cars.slewed;
+        const inset = near.segment.half - kerb - (slewed ? .6 : 0);
+        px = near.fx - hz * inset; pz = near.fz + hx * inset;
+        if (isCar) yaw += slewed ? turn(swing, 12, 30) : turn(swing, 0, 2.5);
+      }
+    }
+    yaw = (yaw % 360 + 360) % 360;
+    const m = new Mason(frameAt(px, pz, yaw, 16, 8), site.groundAt(px, pz)); m.pick = pick;
+    assembly(m, rule, name, 0, 0, 0);
     if (m.pieces.some((p) => { const j = at(p.x, p.z); return site.ground.surface[j] === S.FLOOR || site.groundAt(p.x, p.z) < .1; })) continue;
-    m.cover(0, 0, 9); if (accept(m)) { out[name] = (out[name] ?? 0) + 1; remnants.push({ id: `edge:${x}:${z}`, assembly: name, origin: [x, m.base, z], facing: yaw }); }
+    if (!settle(m, .35) || !clear(m)) continue;
+    m.cover(0, 0, 9); if (accept(m)) { out[name] = (out[name] ?? 0) + 1; remnants.push({ id: `edge:${x}:${z}`, assembly: name, origin: [px, m.base, pz], facing: yaw }); }
   }
   const folder = join(site.source, "reports", site.world.ruins?.report ?? "ruins"); mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "street-clusters.json"), JSON.stringify(clusters) + "\n");

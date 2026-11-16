@@ -206,7 +206,7 @@ function mergeFloors(m: Mason, tiles: Tile[], bay: number, y: number): void {
 
 export function assembly(m: Mason, rule: Rule, name: string, u: number, y: number, v: number): void {
   const first = m.pieces.length;
-  for (const [shape, du, dy, dv, finish, turn] of rule.assemblies?.[name]?.parts ?? []) m.put(shape, u + du, y + dy, v + dv, finish === "finish" ? rule.finish : finish, turn ?? 0);
+  for (const [shape, du, dy, dv, finish, turn] of rule.assemblies?.[name]?.parts ?? []) m.part(shape, u + du, y + dy, v + dv, finish === "finish" ? rule.finish : finish, turn ?? 0);
   if (rule.assemblies?.[name]?.role === "roof identity") m.assemblies.push(m.pieces.slice(first));
 }
 
@@ -221,7 +221,7 @@ function interior(m: Mason, t: Tile, dir: number, floors: number, base: number, 
     const profile: Vocabulary["interiors"][string] = rule.interiors?.[kind] ?? { divider: "wall4", back: "wall8", parts: [["zcounter", 1.5, .5, 1, "finish"]] };
     if (profile.divider) m.put(profile.divider, t.u + dir * 4, y + RUIN_SHAPES[profile.divider][1] / 2, t.v, rule.finish, 90);
     if (profile.back) m.put(profile.back, t.u, y + RUIN_SHAPES[profile.back][1] / 2, t.v + 4, rule.finish);
-    for (const [shape, du, dy, dv, finish, turn] of profile.parts) m.put(shape, t.u - dir * du, y + dy, t.v + dv, finish === "finish" ? rule.finish : finish, turn ?? 0);
+    for (const [shape, du, dy, dv, finish, turn] of profile.parts) m.part(shape, t.u - dir * du, y + dy, t.v + dv, finish === "finish" ? rule.finish : finish, turn ?? 0);
     if (level === 0 || level === floors - 1) {
       const points = [[t.u + dir * 4.8, t.v - 2.9], [t.u + dir * 2, t.v - 2.9], [t.u + dir * 2, t.v + 2.9], [t.u + dir * 4.8, t.v + 2.9], [t.u + dir * 4.8, t.v - 2.9]].map(([u, v]) => { const [x, z] = m.point(u!, v!); return { x, y: m.base + y, z }; });
       m.rooms.push({ kind, points });
@@ -526,7 +526,7 @@ function compose(m: Mason, tiles: Tile[], rule: Rule, opts: LayoutOptions, compo
     if (op.op === "arena") arena(m, tiles, rule, opts);
     if (op.op === "parts" || op.op === "front") {
       const front = op.op === "front" ? Math.min(...tiles.map((t) => t.v)) - 4 : 0;
-      for (const [shape, u, y, v, finish, turn] of op.parts ?? []) m.put(shape, u, y + (op.fromTop ? rule.height : 0), v + front, finish === "finish" ? rule.finish : finish, turn ?? 0);
+      for (const [shape, u, y, v, finish, turn] of op.parts ?? []) m.part(shape, u, y + (op.fromTop ? rule.height : 0), v + front, finish === "finish" ? rule.finish : finish, turn ?? 0);
     }
     if (op.op === "ribs") {
       const edge = (op.rear ? Math.max : Math.min)(...selected.map((t) => t.j));

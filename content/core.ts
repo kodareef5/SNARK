@@ -17,6 +17,7 @@ import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
 import { ROADS } from "./vehicles/roads.ts";
 import { COMPACT_SPECIES } from "./vehicles/compact.ts";
+import { WRECKS } from "./vehicles/wrecks.ts";
 import { CIVILIAN } from "./civilians.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
@@ -386,6 +387,7 @@ const ALL: readonly Def[] = [
   ...CREATURES,
   COMPACT_SPECIES,
   ...ROADS,
+  ...WRECKS,
   CIVILIAN,
   ...SPAWNS,
   ...KNOCKOUT,
