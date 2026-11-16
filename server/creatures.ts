@@ -337,8 +337,8 @@ export class Creatures {
       }
       ents.loadBody(e, b);
       let buttons = mind.buttons[e]! | pressed;
-      // In water it swims at its swim speed and comes up for air.
-      if (swims) buttons = (buttons & ~BTN_SPRINT) | (this.under(e, p) ? BTN_JUMP : 0);
+      // In water it swims at its swim speed and comes up for air. A flyer floats up by itself, and its jump would take it off.
+      if (swims) buttons = (buttons & ~BTN_SPRINT) | (!p.flies && this.under(e, p) ? BTN_JUMP : 0);
       const x0 = b.x;
       const z0 = b.z;
       stepBody(world, b, 0, move, this.still[kind] ? ents.yaw[e]! : mind.look[e]!, mind.pitch[e]!, buttons, p, TICK_DT);

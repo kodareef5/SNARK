@@ -35,10 +35,14 @@ test("the pack carries each creature as its asset describes it: a rig that is a 
     // What the asset drops is gone, and what it hangs elsewhere hangs there.
     expect(rig.names.filter((n) => spec.skeleton.drop?.test(n))).toEqual([]);
     for (const [bone, parent] of Object.entries(spec.skeleton.reparent ?? {})) expect([bone, rig.names[rig.parent[rig.names.indexOf(bone)]!]]).toEqual([bone, parent]);
-    // It stands on its feet, its left is at +X and it faces +Z.
+    // It stands on its feet in its idle (a flyer rests in its glide), its left is at +X and it faces +Z.
     const at = (name: string): number[] => Array.from(rig.rest.subarray(rig.names.indexOf(name) * 3, rig.names.indexOf(name) * 3 + 3));
+    const idle = rig.clips.get("idle");
+    if (idle) sampleClip(idle, 0, rig.a);
+    else rig.a.rest();
+    solve(rig, rig.a, rig.solved);
     for (const foot of spec.feet) {
-      expect([foot, Math.abs(at(foot)[1]!) < rig.mid * 0.2]).toEqual([foot, true]);
+      expect([foot, Math.abs(rig.solved.pos[rig.names.indexOf(foot) * 3 + 1]!) < rig.mid * 0.2]).toEqual([foot, true]);
       if (/[._]L$/i.test(foot)) expect(at(foot)[0]!).toBeGreaterThan(0);
       if (/[._]R$/i.test(foot)) expect(at(foot)[0]!).toBeLessThan(0);
     }
@@ -166,8 +170,8 @@ test("a creature is hit where it is: its head from in front, every zone from som
   }
 });
 
-// A flyer in its own flight, on the pteranodon's block-out and its blocked movement clips (tests/fixtures/flyer). Clips
-// the block-out does not have yet, the bite in the air, the grab, the carry, the release and the limp fall, are made here.
+// A flyer in its own flight, on the pteranodon's rig and clips. Clips that stand in for its own where a test needs a
+// simpler one are made here.
 
 const flyer = flyerAnim();
 const frig = flyer.rig;
@@ -346,7 +350,7 @@ test("a client's gait eases a step of a flyer's speed or bank over a few ticks, 
   expect(overClips(flyer, T, steps)).toBeGreaterThan(SLACK);
 });
 
-/** A clip on the block-out's bones that turns `bones` about their own x axis by `angle(frame)` radians, and the rest not. */
+/** A clip on the pteranodon's bones that turns `bones` about their own x axis by `angle(frame)` radians, and the rest not. */
 function madeClip(name: string, frames: number, loop: boolean, bones: readonly string[], angle: (f: number) => number): Clip {
   const n = frig.bones;
   const rot = new Float32Array(frames * n * 4);

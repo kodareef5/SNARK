@@ -323,7 +323,7 @@ test("in the whole client the riding camera is behind the look, on a boom as lon
   expect(seen[1]!.back).toBeGreaterThan(seen[0]!.back * 1.5);
 });
 
-test("on the block-out pteranodon in a hard bank, its rider is pinned in her seat's whole frame and a shot at her head as it is drawn there finds her head", () => {
+test("on the pteranodon in a hard bank, its rider is pinned in her seat's whole frame and a shot at her head as it is drawn there finds her head", () => {
   const m = mounted(60, ["bob"]);
   const { h, e } = m;
   const ents = h.world.ents, pilot = h.pilots[0]!;

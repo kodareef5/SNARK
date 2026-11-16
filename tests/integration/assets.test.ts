@@ -138,8 +138,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was e73ea001 until the street wrecks' kinds (content/vehicles/wrecks.ts) numbered the meshes after them on; without them it is that again.
   // Rigid species on lit tiers now carry DRAW_PLAIN, keeping the world atlas off their palette draws. Only the
   // grazer's flag changes in these medium-tier frames: clearing it reproduces the previous entire 300-frame pin.
-  expect(beforePlain).toBe("b8ace535");
-  expect(hash).toBe("49a5944d");
+  // It was b8ace535, and 49a5944d, until the pteranodon's mesh became its own (content/creatures/pteranodon.ts) and no longer
+  // a grey box, which numbers the meshes after it anew; with its mesh a box again they are those again.
+  expect(beforePlain).toBe("aca29c81");
+  expect(hash).toBe("291b6419");
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -152,6 +154,7 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was e48a2ec9 until the preserving bin's grey box (S3), as above; without the bin it is that again.
   // It was 32d21d3d until the refining forge's grey boxes (S1), as above; without the forge it is that again.
   // It was c7cb77a9 until the street wrecks' kinds, as above; without them it is that again.
-  expect(saddled.beforePlain).toBe("d122e6e1");
-  expect(saddled.hash).toBe("c0721ce1");
+  // They were d122e6e1 and c0721ce1 until the pteranodon's mesh became its own, as above.
+  expect(saddled.beforePlain).toBe("a49f75cd");
+  expect(saddled.hash).toBe("40c252f5");
 });

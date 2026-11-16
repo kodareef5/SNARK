@@ -127,13 +127,13 @@ export default {
   // It walks on its feet and on the hands of its folded wings.
   feet: ["toes_l", "toes_r", "fingers_l", "fingers_r"],
   // Metres a turn of the clip. The walk's 20 frames at its 2.6 m/s. The rest have no ground under them, so each is stated
-  // as the speed it plays alone at: the swim's 30 frames at 3 m/s, fly's 30 at 6 m/s, and fly_fast's 15 at the wild
-  // sprint's 16.5 m/s (a tame sprints at 18.975, where it plays a little faster).
+  // as the speed it plays alone at (D547): the swim's 30 frames at 3 m/s, fly's 30 at 6 m/s, and fly_fast's 15 at 16 m/s,
+  // the wild sprint's 16.5 as the pose word carries it in steps of 2 m/s.
   gaits: {
     walk: { stride: 1.5 },
     swim: { stride: 3, stated: "it paddles in water, with no ground to hold a foot to; played at its swimming speed, 3 m/s" },
     fly: { stride: 6, stated: "it flies, with no ground under it; played alone at its flying speed, 6 m/s" },
-    fly_fast: { stride: 8.25, stated: "it flies, with no ground under it; played alone at its wild sprint, 16.5 m/s" },
+    fly_fast: { stride: 8, stated: "it flies, with no ground under it; played alone from its wild sprint as sent, 16 m/s" },
   },
   budgets: {
     // Only level 0 is the model's; the build makes the rest. Level 6 is the flat M seen from below.

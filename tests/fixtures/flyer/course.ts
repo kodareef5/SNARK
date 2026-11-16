@@ -1,14 +1,14 @@
-// A ridden flight on the block-out pteranodon over the proving ground, through everything its pose shows: taking off from
+// A ridden flight on the pteranodon over the proving ground, through everything its pose shows: taking off from
 // a crouch, hovering, flapping off, a turn, a climb, a sprint, a hard turn, a dive, braking to a hover, a barrel roll, a
 // glide, skimming in to land, and setting down again from high up. The look moves as a hand on a mouse moves it.
 
 import { App } from "../../../client/core/app.ts";
 import type { ClientSession } from "../../../client/core/session.ts";
 import { RESULT_OK } from "../../../shared/net/protocol.ts";
-import { parsePack } from "../../../shared/pack/pack.ts";
 import { BTN_BRAKE, BTN_JUMP, BTN_ROLL, BTN_SPRINT } from "../../../shared/sim/character.ts";
 import { Harness } from "../net.ts";
-import { FLYER, flyerHost, flyerPackBytes, flyerRegistry } from "./flyer.ts";
+import { corePack } from "../pack.ts";
+import { FLYER } from "./flyer.ts";
 
 export interface Mounted {
   h: Harness;
@@ -24,14 +24,13 @@ export interface Mounted {
 
 /**
  * Ada on a `latencyMs` link and the others on the proving ground's plaza, Ada on a saddled pteranodon of her tribe with
- * full stamina; with `app`, Ada is a whole client drawing the block-out.
+ * full stamina; with `app`, Ada is a whole client drawing it.
  */
 export function mounted(latencyMs = 60, others: string[] = [], app = false): Mounted {
-  const reg = flyerRegistry();
-  const host = flyerHost();
-  const h = new Harness({}, 1, 60, { dev: true, clips: host.clips, rigs: host.rigs }, reg);
+  const h = new Harness({}, 1, 60, { dev: true });
+  const reg = h.reg;
   const ada = h.join("ada", { latencyMs }, { manual: app });
-  const whole = app ? new App(ada, reg, parsePack(flyerPackBytes())) : null;
+  const whole = app ? new App(ada, reg, corePack()) : null;
   const run = (ms: number, each?: (now: number) => void): void =>
     h.run(ms, (now) => {
       whole?.frame(now, 640, 360);

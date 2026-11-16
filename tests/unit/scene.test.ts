@@ -423,7 +423,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1588438482 until the ruins' sloped parts (content/ruins.ts, round five's flights, ramps, pitched roofs and
   // fallen plates) took mesh numbers; without them it is that again.
   // It was 1425549560 until the street wrecks' kinds (content/vehicles/wrecks.ts) took mesh numbers; without them it is that again.
-  expect(hash).toBe(3505982741);
+  // It was 3505982741 until the pteranodon was drawn on its own art in place of its grey box; with its mesh a box again it is that again.
+  expect(hash).toBe(818617635);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of

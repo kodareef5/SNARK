@@ -1,4 +1,4 @@
-// A flyer's pose on a running server and its clients (planning/reference/flyers-plan.md, FL4): the block-out pteranodon
+// A flyer's pose on a running server and its clients (planning/reference/flyers-plan.md, FL4): the pteranodon
 // ridden through a whole flight, posed by the server for its hit zones, drawn by two other clients from what they are
 // sent and by its rider's own client from what it predicts.
 
