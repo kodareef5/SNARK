@@ -76,6 +76,11 @@ def finish(D,p,world,place,box,ys,beam):
  # Explicit ceiling for the upper suite, which has open sky instead of a full deck above.
  q,o=world('suite_ceiling','ceiling',[box([11,56.16,39.8],[19,56.4,46.2])],art={'kind':'floor','finish':'enamel'},color=232)
  place('suite_ceiling',q,o,'17','suite')
+ # Pearl's low structural root is closed machinery space on deck4, not a falsely full-height casino aisle.
+ q,o=world('pearl_root','superstructure',[box([10,9.8,-13.6],[18,14,-2.4])],art={'kind':'wall','finish':'marble'},color=104)
+ place('pearl_root',q,o,'4','pearl-structure')
+ casino=next(r for r in D['rooms'] if r['id']=='casino')
+ casino['footprint']={'polygons':[[[-17,-56],[17,-56],[17,36],[-17,36]]],'holes':[[[10,-13.6],[17,-13.6],[17,-2.4],[10,-2.4]]]}
  # The forward bridge is beyond the next deck's outline, so it has a real independent roof.
  for xi,(x0,x1) in enumerate([(-20,-8),(-8,4),(4,16),(16,20)]):
   for zi,(z0,z1) in enumerate([(119,131),(131,143)]):

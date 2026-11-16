@@ -151,7 +151,7 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
  for i,z in enumerate(range(-44,33,11)):
   for side in(-1,1):
    furnish(f'casino_table_{i}_{side}','gaming_table',[side*7,9.8,z],[3,.95,2],'4','leaf')
-   furnish(f'casino_slots_{i}_{side}','slots',[side*12.5,9.8,z],[2.4,1.9,.7],'4','purple')
+   if not(side>0 and z==-11):furnish(f'casino_slots_{i}_{side}','slots',[side*12.5,9.8,z],[2.4,1.9,.7],'4','purple')
  for deck in ['3','4','5']:
   y=ys[deck];room('dining_'+deck,'Dining Room',deck,[-21,-154,21,-101],[0,y,-123],'aft_'+deck,[[-1.1,y,-96]],True,entry=[0,y,-101])
   for i,z in enumerate(range(-145,-104,10)):

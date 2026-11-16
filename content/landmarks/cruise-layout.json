@@ -197381,6 +197381,43 @@
       }
     },
     {
+      "id": "core:cruise_pearl_root_30f6d8affd",
+      "mesh": "core:cruise_pearl_root_30f6d8affd",
+      "category": "superstructure",
+      "color": 104,
+      "boxes": [
+        {
+          "at": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "half": [
+            4.0,
+            2.1,
+            5.6
+          ]
+        }
+      ],
+      "hulls": [],
+      "visualBounds": {
+        "min": [
+          -4.0,
+          -2.1,
+          -5.6
+        ],
+        "max": [
+          4.0,
+          2.1,
+          5.6
+        ]
+      },
+      "art": {
+        "kind": "wall",
+        "finish": "marble"
+      }
+    },
+    {
       "id": "core:cruise_bridge_roof_03460de75b",
       "mesh": "core:cruise_bridge_roof_03460de75b",
       "category": "ceiling",
@@ -285374,19 +285411,6 @@
       "placed": true
     },
     {
-      "id": "casino_slots_3_1",
-      "prototype": "core:cruise_furniture_slots_e2f85d0d38",
-      "at": [
-        12.5,
-        9.8,
-        -11
-      ],
-      "yaw": 0,
-      "deck": "4",
-      "section": "furnished-4",
-      "placed": true
-    },
-    {
       "id": "casino_table_4_-1",
       "prototype": "core:cruise_furniture_gaming_table_9539dd0e67",
       "at": [
@@ -312401,6 +312425,19 @@
       "placed": true
     },
     {
+      "id": "pearl_root",
+      "prototype": "core:cruise_pearl_root_30f6d8affd",
+      "at": [
+        14.0,
+        11.9,
+        -8.0
+      ],
+      "yaw": 0,
+      "deck": "4",
+      "section": "pearl-structure",
+      "placed": true
+    },
+    {
       "id": "bridge_roof_0_0",
       "prototype": "core:cruise_bridge_roof_03460de75b",
       "at": [
@@ -314334,7 +314371,49 @@
         9.8,
         0
       ],
-      "evidence": "original-fitted-interior-informed-by-public-plan"
+      "evidence": "original-fitted-interior-informed-by-public-plan",
+      "footprint": {
+        "polygons": [
+          [
+            [
+              -17,
+              -56
+            ],
+            [
+              17,
+              -56
+            ],
+            [
+              17,
+              36
+            ],
+            [
+              -17,
+              36
+            ]
+          ]
+        ],
+        "holes": [
+          [
+            [
+              10,
+              -13.6
+            ],
+            [
+              17,
+              -13.6
+            ],
+            [
+              17,
+              -2.4
+            ],
+            [
+              10,
+              -2.4
+            ]
+          ]
+        ]
+      }
     },
     {
       "id": "dining_3",
@@ -319941,12 +320020,12 @@
           -76.6
         ],
         [
-          15.5,
+          -15.5,
           9.8,
           -76.6
         ],
         [
-          15.5,
+          -15.5,
           9.8,
           59.4
         ],

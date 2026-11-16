@@ -178,7 +178,7 @@ def populate(D,prototype,instance,box,node):
  for i,d in enumerate(D['decks'][:15]):
   label=d['id'];y=d['floorY'];a=f'fore_{label}';b=f'aft_{label}'
   if any(n['id']==a for n in D['graph']['nodes']) and any(n['id']==b for n in D['graph']['nodes']):
-   aisle=-15.5 if label in('5','6','7','8') else 24 if label=='17' else 25 if int(label)>=15 else 15.5
+   aisle=-15.5 if label in('4','5','6','7','8') else 24 if label=='17' else 25 if int(label)>=15 else 15.5
    anchors=[[-1.1,y,-76.6],[aisle,y,-76.6],[aisle,y,59.4],[-1.1,y,59.4]]
    if int(label)>=16:anchors=[[-1.1,y,-76.6],[-1.1,y,-88],[aisle,y,-88],[aisle,y,59.4],[-1.1,y,59.4]]
    route('spine_'+label,'corridor',b,a,anchors,1.8 if label=='17' else 2.4)
