@@ -602,7 +602,7 @@ export class App {
       const state = s.sails.states().find(state => state.ref === ref);
       if (!state) return "Sail control connecting";
       const progress = sailsProgress(state, s.sails.tick()), action = state.target === 1 ? "E lower sails" : "E raise sails";
-      return progress === state.target ? action : `${action} · ${state.target === 1 ? "Raising" : "Lowering"} ${Math.round(progress * 100)}%`;
+      return progress === state.target ? action : `${action} - ${state.target === 1 ? "Raising" : "Lowering"} ${Math.round(progress * 100)}%`;
     }
     if (kind === this.reg.index.get(TRAVEL_TERMINAL)) {
       this.terminalAimed = ref;

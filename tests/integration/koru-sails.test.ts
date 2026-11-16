@@ -52,13 +52,13 @@ test("a native visitor walks aboard and uses the public sail winch, sees progres
     app.key("KeyE", false); run(100);
     const first = h.host.sails.states()[0]!;
     expect(first.target).toBe(1); expect(sailsProgress(first, h.world.tick)).toBeGreaterThan(.06);
-    expect(app.hud.prompt).toMatch(/^E lower sails · Raising \d+%$/);
+    expect(app.hud.prompt).toMatch(/^E lower sails - Raising \d+%$/);
     expect(app.ui.structure.open).toBe(false); expect(h.client(s)!.open).toBe(0);
     const from = sailsProgress(first, h.world.tick);
     app.key("KeyE", true); run(100); app.key("KeyE", false); run(150);
     const reversed = h.host.sails.states()[0]!;
     expect(reversed.target).toBe(0); expect(Math.abs(reversed.from - from)).toBeLessThan(.01);
-    expect(app.hud.prompt).toMatch(/^E raise sails · Lowering \d+%$/);
+    expect(app.hud.prompt).toMatch(/^E raise sails - Lowering \d+%$/);
     expect(s.stats.corrections - before).toBe(0);
     expect(h.world.structs.chunks[Math.floor(first.ref / 65536)]!.kind[first.ref & 0xffff]).toBe(first.kind);
     run(2000); expect(app.hud.prompt).toBe("E raise sails");
