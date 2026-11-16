@@ -362,7 +362,7 @@ def ceiling(level):
     """Floorboards over four hewn joists inside a rim of beams, with an end-grain
     block at each corner; the joists' ends show in the rim, and the underside of
     the boards is the ceiling of the room below. Its next level is the deck as one
-    board on the rim and joists, still with its pictures."""
+    board on the rim, blocks and joists, still with its pictures."""
     p = Piece(named("ceiling", level), surface=level < 2)
     top, bottom = 0.125, -0.115
     thick = 0.05
@@ -378,10 +378,9 @@ def ceiling(level):
     for s, band in ((-1, 2), (1, 6)):
         member(p, level, (-inner, s * (r - w / 2), zc), (inner, s * (r - w / 2), zc), w, hgt, Z, (band, band + 1, band, band + 3), None, 510 + s, along0=H - inner)
         member(p, level, (s * (r - w / 2), -inner, zc), (s * (r - w / 2), inner, zc), w, hgt, Z, (band + 3, band + 4, band + 3, band + 5), None, 520 + s, along0=H - inner)
-    if level == 0:
-        for i, (sx, sy) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1))):
-            c = (sx * (r - w / 2), sy * (r - w / 2))
-            member(p, level, (c[0], c[1], bottom), (c[0], c[1], z1), w, w, Y, (4, 5, 6, 7), None, 525 + i, ROUGH * 0.3)
+    for i, (sx, sy) in enumerate(((-1, -1), (1, -1), (1, 1), (-1, 1))):
+        c = (sx * (r - w / 2), sy * (r - w / 2))
+        member(p, level, (c[0], c[1], bottom), (c[0], c[1], z1), w, w, Y, (4, 5, 6, 7), None, 525 + i, ROUGH * 0.3)
     for i, (x, band) in enumerate(((-0.9, 11), (-0.3, 5), (0.3, 8), (0.9, 1))):
         member(p, level, (x, -inner, zc + 0.012), (x, inner, zc + 0.012), 0.13, hgt - 0.024, Z, (band, band + 1, band, band + 1), None, 530 + i, along0=H - inner)
     if level == 0:
