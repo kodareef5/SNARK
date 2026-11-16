@@ -14,6 +14,7 @@ import { CLASSES, FIELDS, classFaults, classOf, defFaults, type Field } from "..
 import type { Def } from "../../shared/content/defs.ts";
 import { compilePacks, type ContentPack } from "../../shared/content/packs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import { fillSlot, slotAddress, slotsOf } from "../../shared/content/slots.ts";
 import { FEATURES } from "../../shared/features.ts";
 import { CORE_PACK } from "../../content/core.ts";
 import { CREATURES } from "../../content/creatures/index.ts";
@@ -36,6 +37,23 @@ test("the class table is sound: parents exist, stubs name what they wait for, sl
   expect(classFaults()).toEqual([]);
   // A definition type and the table's families agree.
   expect(Object.keys(FIELDS).filter((type) => !CLASSES.some((r) => r.type === type))).toEqual([]);
+});
+
+test("the public sail control requires all five named cloth meshes, with no substitute when one is missing", () => {
+  const owner = "core:koru_sail_control";
+  const uses = slotsOf(CORE_CONTENT).filter(use => use.owner === owner && use.slot === "sails");
+  const names = ["fore", "main", "mizzen", "outer", "inner"];
+  expect(uses.map(use => [use.key, use.id, use.need, use.fallback])).toEqual(names.map(name => [name, `core:koru_sail_${name}`, "must", ["none"]]));
+  const available = new Set([owner, ...names.map(name => `core:koru_sail_${name}`)]);
+  const missing = () => uses.filter(use => use.need === "must" && fillSlot(use, (asset, id) => asset === "mesh" && available.has(id)).id === "").map(slotAddress);
+  expect(missing()).toEqual([]);
+  // The normal required-slot gate still reports each absent mesh, even though the control's own mesh exists.
+  for (const name of names) {
+    const id = `core:koru_sail_${name}`;
+    available.delete(id);
+    expect(missing()).toEqual([`${owner}#sails/${name}`]);
+    available.add(id);
+  }
 });
 
 test("the core pack's definitions fall into the classes, each passing its row, and old ids are renamed", () => {

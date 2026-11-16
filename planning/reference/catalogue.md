@@ -175,7 +175,7 @@ Asset slots:
 - `structure/container`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
 - `structure/station`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
 - `structure/bed`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
-- `structure/static`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `box` then `shape`; `#sails/<sails>` mesh, must with `sails`, from `{sail}`, else .
+- `structure/static`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `box` then `shape`; `#sails/<sails>` mesh, must with `sails`, from `{sail}`, else `none`.
 - `structure/defence`: `#mesh` mesh, must, from `{mesh}`, else `{id}` then `shape`; `#destroyed` mesh, may, from `{id}/destroyed`, else `none`; `#preview` mesh, may, from `{id}/preview`, else `#mesh`.
 
 ARK's names: `sails` is public moored-landmark sail control and visual rig; `shape` is SnapPoints; `hp` is Health; `material` is StructureSettingsClass; `slots` is an inventory component; `decayDays` is DecayDestructionPeriod; `burns` is the fuel a station takes and how long each piece burns in it; `cooks` is whether a lit station cooks raw meat, as a campfire does and a forge does not; `keeps` is GetSpoilingTimeMultiplier of its inventory; `powered` is bRequiresPower: its crafting runs only while it is on; `dry` is not lit, or not working, under water.
