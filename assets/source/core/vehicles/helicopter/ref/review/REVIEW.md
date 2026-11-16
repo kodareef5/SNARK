@@ -34,3 +34,11 @@ bun assets/source/core/vehicles/helicopter/tex/look.ts --asset core:helicopter_r
 bun assets/source/core/vehicles/helicopter/tex/look.ts --asset core:helicopter_police --out artifacts/helicopter-review/police
 bun assets/source/core/vehicles/helicopter/tex/look.ts --asset core:helicopter_wreck --out artifacts/helicopter-review/wreck
 ```
+
+## On main
+
+`main/` holds five of the twelve views `bun tools/helicopter/review.ts` made on
+`r9/helicopter-land` (2026-11-16), after the merge onto main: the civilian aircraft
+with four seated, the pilot's cockpit with main's glass instruments, banked and
+inverted flight, and the inverted wreck. All twelve kept four seated where seated,
+with no dropped or skipped draws. The ground is main's world surfaces' paving.
