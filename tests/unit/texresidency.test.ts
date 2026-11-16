@@ -144,6 +144,28 @@ test("on a slow, lossy link a body turns from flat to its materials when the car
   expect([w.r.stats.requests - requests, w.r.flying, w.dropped]).toEqual([0, 0, { levels: 0, textures: 0 }]);
 });
 
+test("a level and its surface that would pass a frame's bytes together go up in two frames, and the level is drawn once its surface is there", () => {
+  const [level, surface, skin] = SET.manifest.meshes[0]!.levels[0]!.parts.map((p) => p.bytes);
+  const upload = level! + surface! + skin! - 1;
+  const w = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 0 })), { bytesPerSecond: 50e6 }, { uploadBytes: upload });
+  const went = new Map<string, number>();
+  for (let f = 0; f < 180; f++) {
+    w.frame(-3.5);
+    let bytes = 0;
+    for (const u of w.packet.assetUploads) {
+      if (u.level < LEVELS - 1) bytes += u.data.length;
+      went.set(`${u.of === undefined ? "level" : "surface"} ${u.of ?? u.slot}`, f);
+    }
+    for (const u of w.packet.texUploads) bytes += u.data.length;
+    expect(bytes).toBeLessThanOrEqual(upload);
+    // A body drawn at a level of the mesh file has that level's surface on the card: it is never drawn flat on its way to it.
+    for (let i = 0; i < 3; i++) if (w.drawn[i]! < LEVELS - 1) expect(w.card.surfaces.has(w.r.slot(i, w.drawn[i]!))).toBe(true);
+  }
+  const slots = [0, 1, 2].map((i) => w.r.slot(i, 0));
+  expect(slots.map((s) => went.get(`surface ${s}`)! > went.get(`level ${s}`)!)).toEqual([true, true, true]);
+  expect([w.settled(), [...w.shown], [...w.lapsed], [...w.drawn]]).toEqual([true, [1, 1, 1], [0, 0, 0], [0, 0, 0]]);
+});
+
 test("the same seed gives the same requests and the same rows in the same frames", () => {
   const runs = [0, 1].map(() => {
     const w = world([0, 1, 2].map((i) => ({ mesh: i, x: (i - 1) * 3, z: 60 })), { latencyMs: 60, bytesPerSecond: 2e6, loss: 0.2, seed: 9 }, { uploadBytes: 32 * 1024 });

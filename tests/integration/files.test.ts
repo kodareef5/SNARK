@@ -49,7 +49,9 @@ test("a whole file goes out compressed where a copy was built for it and the bro
   const packed = await get("/manifest.json", { "accept-encoding": "gzip, br" });
   expect([packed.status, packed.headers.get("content-encoding"), packed.headers.get("vary")]).toEqual([200, "br", "accept-encoding"]);
   expect(new TextDecoder().decode(brotliDecompressSync(await body(packed)))).toBe('{"version":1}');
-  expect((await get("/manifest.json", { "accept-encoding": "gzip" })).headers.get("content-encoding")).toBeNull();
+  // Sent as it is to a browser that takes no Brotli, it still says it varies, so no shared cache hands it to one that does.
+  const plain = await get("/manifest.json", { "accept-encoding": "gzip" });
+  expect([plain.headers.get("content-encoding"), plain.headers.get("vary")]).toEqual([null, "accept-encoding"]);
   const part = await get("/manifest.json", { "accept-encoding": "br", range: "bytes=0-3" });
   expect([part.status, part.headers.get("content-encoding"), await part.text()]).toEqual([206, null, '{"ve']);
   expect((await get("/index.html", { "accept-encoding": "br" })).headers.get("content-encoding")).toBeNull();
