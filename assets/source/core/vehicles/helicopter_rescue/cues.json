@@ -1,0 +1,95 @@
+{
+  "cues": {
+    "land": {
+      "effects": [
+        {
+          "effect": "dust_ring",
+          "from": "ground",
+          "on": [
+            "grass",
+            "sand",
+            "stone",
+            "built"
+          ]
+        }
+      ]
+    },
+    "struck": {
+      "effects": [
+        {
+          "effect": "core:helicopter/metal_shards",
+          "from": "hit"
+        },
+        {
+          "effect": "grit",
+          "from": "hit",
+          "count": [
+            2,
+            4
+          ]
+        }
+      ]
+    },
+    "death": {
+      "effects": [
+        {
+          "effect": "core:helicopter/metal_shards",
+          "from": "body",
+          "count": [
+            6,
+            9
+          ]
+        },
+        {
+          "effect": "dust_ring",
+          "from": "ground"
+        }
+      ]
+    },
+    "splash": {
+      "effects": [
+        {
+          "effect": "splash_drops",
+          "from": "ground"
+        },
+        {
+          "effect": "splash_ring",
+          "from": "ground"
+        }
+      ]
+    },
+    "rotor_wash": {
+      "effects": [
+        {
+          "effect": "core:helicopter/rotor_wash",
+          "from": "ground",
+          "on": [
+            "grass",
+            "sand",
+            "stone",
+            "built"
+          ]
+        },
+        {
+          "effect": "splash_drops",
+          "from": "ground",
+          "count": [
+            2,
+            3
+          ],
+          "on": [
+            "water"
+          ]
+        }
+      ]
+    },
+    "engine_smoke": {
+      "effects": [
+        {
+          "effect": "core:helicopter/engine_smoke",
+          "from": "exhaust"
+        }
+      ]
+    }
+  }
+}

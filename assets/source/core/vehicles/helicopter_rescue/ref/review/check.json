@@ -1,0 +1,1991 @@
+{
+  "id": "core:helicopter_rescue",
+  "kind": "creature",
+  "meshes": [
+    {
+      "id": "core:helicopter_rescue",
+      "size": [
+        9.199999809265137,
+        3.3199991434812546,
+        10.300999641418457
+      ],
+      "levels": [
+        {
+          "triangles": 33224,
+          "vertices": 26913,
+          "budget": 38000,
+          "error": 0,
+          "from": 0,
+          "tall": 0,
+          "starts": [
+            null,
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            }
+          ],
+          "parts": 124,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1656,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 18000,
+          "vertices": 17651,
+          "budget": 18000,
+          "error": 0.00272,
+          "from": 9.535144662961848,
+          "tall": 268.52934248745436,
+          "starts": [
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 9.535144662961848,
+              "tall": 268.52934248745436
+            },
+            {
+              "from": 14.983798756082903,
+              "tall": 170.88230885565278
+            },
+            {
+              "from": 26.221647823145084,
+              "tall": 97.64703363180158
+            }
+          ],
+          "parts": 124,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1646,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 7000,
+          "vertices": 4325,
+          "budget": 7000,
+          "error": 0.0245,
+          "from": 85.88641332447251,
+          "tall": 29.812237206770448,
+          "starts": [
+            {
+              "from": 42.94320666223626,
+              "tall": 59.624474413540895
+            },
+            {
+              "from": 85.88641332447251,
+              "tall": 29.812237206770448
+            },
+            {
+              "from": 134.96436379559967,
+              "tall": 18.97142367703574
+            },
+            {
+              "from": 236.18763664229942,
+              "tall": 10.840813529734708
+            }
+          ],
+          "parts": 97,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1519,
+          "collapsed": 0
+        },
+        {
+          "triangles": 2598,
+          "vertices": 1763,
+          "budget": 2600,
+          "error": 0.10296,
+          "from": 360.9332700362322,
+          "tall": 7.094015263848835,
+          "starts": [
+            {
+              "from": 180.4666350181161,
+              "tall": 14.18803052769767
+            },
+            {
+              "from": 360.9332700362322,
+              "tall": 7.094015263848835
+            },
+            {
+              "from": 567.1808529140792,
+              "tall": 4.514373349721986
+            },
+            {
+              "from": 992.5664925996387,
+              "tall": 2.579641914126849
+            }
+          ],
+          "parts": 51,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 846,
+          "collapsed": 0
+        },
+        {
+          "triangles": 1000,
+          "vertices": 725,
+          "budget": 1000,
+          "error": 0.29853,
+          "from": 1046.5171824389706,
+          "tall": 2.4466546463198875,
+          "starts": [
+            {
+              "from": 523.2585912194853,
+              "tall": 4.893309292639775
+            },
+            {
+              "from": 1046.5171824389706,
+              "tall": 2.4466546463198875
+            },
+            {
+              "from": 1644.5270009755252,
+              "tall": 1.55696204765811
+            },
+            {
+              "from": 2877.9222517071694,
+              "tall": 0.8896925986617772
+            }
+          ],
+          "parts": 27,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 337,
+          "collapsed": 0
+        },
+        {
+          "triangles": 480,
+          "vertices": 372,
+          "budget": 480,
+          "error": 0.55016,
+          "from": 1928.6232307996652,
+          "tall": 1.3276134425728443,
+          "starts": [
+            {
+              "from": 964.3116153998326,
+              "tall": 2.6552268851456886
+            },
+            {
+              "from": 1928.6232307996652,
+              "tall": 1.3276134425728443
+            },
+            {
+              "from": 3030.6936483994737,
+              "tall": 0.844844918000901
+            },
+            {
+              "from": 5303.713884699079,
+              "tall": 0.48276852457194336
+            }
+          ],
+          "parts": 14,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 182,
+          "collapsed": 0
+        }
+      ],
+      "materials": [
+        {
+          "id": "core:helicopter/body_rescue",
+          "span": 11.047,
+          "texels": 185.3896985606952
+        },
+        {
+          "id": "core:helicopter/cabin",
+          "span": 12.9563,
+          "texels": 158.0698193156997
+        },
+        {
+          "id": "core:helicopter/trim",
+          "span": 8.2211,
+          "texels": 249.1150819233436
+        }
+      ],
+      "strays": 0
+    }
+  ],
+  "clips": [],
+  "gaits": [],
+  "textures": [
+    {
+      "id": "core:helicopter/body_rescue",
+      "name": "body",
+      "layers": [
+        {
+          "what": "base",
+          "file": "../helicopter/tex/rescue/body_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/rescue/body_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/rescue/body_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "hurt",
+          "file": "../helicopter/tex/rescue/body_hurt.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "decay",
+          "file": "../helicopter/tex/rescue/body_decay.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "../helicopter/tex/rescue/body_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "../helicopter/tex/rescue/body_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "layer": 512,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 11.047,
+      "tiles": true,
+      "mean": [
+        202,
+        202,
+        201
+      ],
+      "nearest": {
+        "colour": 1,
+        "distance": 5.744562646538029
+      },
+      "normal": {
+        "x": 0.888060539294927,
+        "y": 0.7296977685760793,
+        "length": 1.0000101777859183,
+        "off": 0.004067085229336742
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 1.003921568627451,
+        "cover": [
+          0.8770740658629175,
+          0.09636344909667968,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "core:helicopter/trim",
+      "name": "trim",
+      "layers": [
+        {
+          "what": "base",
+          "file": "../helicopter/tex/trim_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/trim_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/trim_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "hurt",
+          "file": "../helicopter/tex/trim_hurt.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "decay",
+          "file": "../helicopter/tex/trim_decay.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "../helicopter/tex/trim_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "../helicopter/tex/trim_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "layer": 512,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 8.2211,
+      "tiles": true,
+      "mean": [
+        65,
+        54,
+        45
+      ],
+      "nearest": {
+        "colour": 116,
+        "distance": 9.695359714832657
+      },
+      "normal": {
+        "x": 0.994172930249267,
+        "y": 0.9954284478528446,
+        "length": 0.9999791747713375,
+        "off": 0.005041540105474418
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 0,
+        "cover": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "core:helicopter/cabin",
+      "name": "cabin",
+      "layers": [
+        {
+          "what": "base",
+          "file": "../helicopter/tex/cabin_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/cabin_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/cabin_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "hurt",
+          "file": "../helicopter/tex/cabin_hurt.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "decay",
+          "file": "../helicopter/tex/cabin_decay.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "../helicopter/tex/cabin_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "../helicopter/tex/cabin_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "layer": 512,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 12.9563,
+      "tiles": true,
+      "mean": [
+        113,
+        113,
+        109
+      ],
+      "nearest": {
+        "colour": 87,
+        "distance": 14.456832294800959
+      },
+      "normal": {
+        "x": 0.8077643590274918,
+        "y": 0.655829155424965,
+        "length": 1.0000208753873958,
+        "off": 0.0034542417452201324
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 1,
+        "cover": [
+          0,
+          0,
+          0.1552154129626704,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "megabytes": {
+    "textures": 59.999982833862305,
+    "budget": 80
+  },
+  "pictures": true,
+  "notes": [
+    "no hit capsules: nothing can hit it"
+  ],
+  "faults": [],
+  "rig": {
+    "skeleton": "core:helicopter",
+    "bones": 8,
+    "capsules": 0,
+    "buried": [],
+    "sockets": [
+      "seat_driver",
+      "seat_front_passenger",
+      "seat_rear_left",
+      "seat_rear_right",
+      "approach_front_left",
+      "approach_front_right",
+      "approach_rear_left",
+      "approach_rear_right",
+      "camera_driver",
+      "camera_front_passenger",
+      "camera_rear_left",
+      "camera_rear_right",
+      "camera_chase",
+      "rotor_main",
+      "rotor_tail",
+      "exhaust",
+      "landing",
+      "cyclic",
+      "collective",
+      "pedals",
+      "refuel"
+    ]
+  },
+  "sheet": {
+    "file": "sheet.png",
+    "width": 1560,
+    "height": 6171,
+    "pages": [
+      {
+        "name": "views",
+        "file": "sheet.views.png",
+        "y": 0,
+        "width": 1560,
+        "height": 1471
+      },
+      {
+        "name": "levels",
+        "file": "sheet.levels.png",
+        "y": 1471,
+        "width": 1560,
+        "height": 2326
+      },
+      {
+        "name": "materials",
+        "file": "sheet.materials.png",
+        "y": 3797,
+        "width": 1560,
+        "height": 1420
+      },
+      {
+        "name": "rig",
+        "file": "sheet.rig.png",
+        "y": 5217,
+        "width": 1560,
+        "height": 954
+      }
+    ],
+    "cells": [
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 12,
+        "y": 279,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 397,
+        "y": 279,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 782,
+        "y": 279,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 1167,
+        "y": 279,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 12,
+        "y": 569,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 397,
+        "y": 569,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 782,
+        "y": 569,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 1167,
+        "y": 569,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 12,
+        "y": 879,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 397,
+        "y": 879,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 782,
+        "y": 879,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 1167,
+        "y": 879,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 12,
+        "y": 1169,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 397,
+        "y": 1169,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 782,
+        "y": 1169,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "views",
+        "x": 1167,
+        "y": 1169,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 12,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 204,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 396,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 588,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 780,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 972,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1164,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1356,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 12,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 204,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 396,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 588,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 780,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 972,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1164,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1356,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 12,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 204,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 396,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 588,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 780,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 972,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1164,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1356,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 12,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 204,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 396,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 588,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 780,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 972,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1164,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1356,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 12,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 204,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 396,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 588,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 780,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 972,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1164,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_rescue",
+        "page": "levels",
+        "x": 1356,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 396,
+        "y": 938,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 9.535144662961848,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 780,
+        "y": 938,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 14.983798756082903,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 1164,
+        "y": 938,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 26.221647823145084,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 12,
+        "y": 1164,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "lowpoly",
+        "distance": 42.94320666223626,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 396,
+        "y": 1164,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 85.88641332447251,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 780,
+        "y": 1164,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 134.96436379559967,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 1164,
+        "y": 1164,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 236.18763664229942,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 12,
+        "y": 1390,
+        "width": 80,
+        "height": 80,
+        "level": 3,
+        "around": 290,
+        "above": 10,
+        "tier": "lowpoly",
+        "distance": 180.4666350181161,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 396,
+        "y": 1390,
+        "width": 80,
+        "height": 80,
+        "level": 3,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 360.9332700362322,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 780,
+        "y": 1390,
+        "width": 80,
+        "height": 80,
+        "level": 3,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 567.1808529140792,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 1164,
+        "y": 1390,
+        "width": 80,
+        "height": 80,
+        "level": 3,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 992.5664925996387,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 12,
+        "y": 1616,
+        "width": 80,
+        "height": 80,
+        "level": 4,
+        "around": 290,
+        "above": 10,
+        "tier": "lowpoly",
+        "distance": 523.2585912194853,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 396,
+        "y": 1616,
+        "width": 80,
+        "height": 80,
+        "level": 4,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 1046.5171824389706,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 780,
+        "y": 1616,
+        "width": 80,
+        "height": 80,
+        "level": 4,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 1644.5270009755252,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 1164,
+        "y": 1616,
+        "width": 80,
+        "height": 80,
+        "level": 4,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 2877.9222517071694,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 12,
+        "y": 1842,
+        "width": 80,
+        "height": 80,
+        "level": 5,
+        "around": 290,
+        "above": 10,
+        "tier": "lowpoly",
+        "distance": 964.3116153998326,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 396,
+        "y": 1842,
+        "width": 80,
+        "height": 80,
+        "level": 5,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 1928.6232307996652,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 780,
+        "y": 1842,
+        "width": 80,
+        "height": 80,
+        "level": 5,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 3030.6936483994737,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_rescue",
+        "x": 1164,
+        "y": 1842,
+        "width": 80,
+        "height": 80,
+        "level": 5,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 5303.713884699079,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_rescue",
+        "x": 12,
+        "y": 2108,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 85.88641332447251,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_rescue",
+        "x": 12,
+        "y": 2208,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 85.88641332447251,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_rescue",
+        "x": 524,
+        "y": 2108,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 134.96436379559967,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_rescue",
+        "x": 524,
+        "y": 2208,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 134.96436379559967,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_rescue",
+        "x": 1036,
+        "y": 2108,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 236.18763664229942,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_rescue",
+        "x": 1036,
+        "y": 2208,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 236.18763664229942,
+        "textured": false
+      },
+      {
+        "what": "checker",
+        "mesh": "core:helicopter_rescue",
+        "page": "materials",
+        "x": 12,
+        "y": 476,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "checker",
+        "mesh": "core:helicopter_rescue",
+        "page": "materials",
+        "x": 397,
+        "y": 476,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "checker",
+        "mesh": "core:helicopter_rescue",
+        "page": "materials",
+        "x": 782,
+        "y": 476,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89,
+        "textured": true
+      },
+      {
+        "what": "checker",
+        "mesh": "core:helicopter_rescue",
+        "page": "materials",
+        "x": 1167,
+        "y": 476,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": -40,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_rescue",
+        "dye": "asset",
+        "page": "materials",
+        "x": 12,
+        "y": 786,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_rescue",
+        "dye": "asset",
+        "page": "materials",
+        "x": 397,
+        "y": 786,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_rescue",
+        "dye": "asset",
+        "page": "materials",
+        "x": 782,
+        "y": 786,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_rescue",
+        "dye": "asset",
+        "page": "materials",
+        "x": 1167,
+        "y": 786,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": -40,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_rescue",
+        "dye": "loud",
+        "page": "materials",
+        "x": 12,
+        "y": 1118,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_rescue",
+        "dye": "loud",
+        "page": "materials",
+        "x": 397,
+        "y": 1118,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_rescue",
+        "dye": "loud",
+        "page": "materials",
+        "x": 782,
+        "y": 1118,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_rescue",
+        "dye": "loud",
+        "page": "materials",
+        "x": 1167,
+        "y": 1118,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": -40,
+        "textured": true
+      },
+      {
+        "what": "wireframe",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 12,
+        "y": 32,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 0
+      },
+      {
+        "what": "wireframe",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 397,
+        "y": 32,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15
+      },
+      {
+        "what": "wireframe",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 782,
+        "y": 32,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89
+      },
+      {
+        "what": "wireframe",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 1167,
+        "y": 32,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 15
+      },
+      {
+        "what": "bones",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 12,
+        "y": 342,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 0
+      },
+      {
+        "what": "bones",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 397,
+        "y": 342,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15
+      },
+      {
+        "what": "bones",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 782,
+        "y": 342,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89
+      },
+      {
+        "what": "capsules",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 12,
+        "y": 652,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 0
+      },
+      {
+        "what": "capsules",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 397,
+        "y": 652,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 0,
+        "above": 0
+      },
+      {
+        "what": "capsules",
+        "mesh": "core:helicopter_rescue",
+        "page": "rig",
+        "x": 782,
+        "y": 652,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89
+      }
+    ]
+  }
+}

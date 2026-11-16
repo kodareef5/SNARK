@@ -1,0 +1,233 @@
+{
+  "cues": {
+    "land": {
+      "effects": [
+        {
+          "effect": "dust_ring",
+          "from": "ground",
+          "on": [
+            "grass",
+            "sand",
+            "stone",
+            "built"
+          ]
+        }
+      ]
+    },
+    "struck": {
+      "effects": [
+        {
+          "effect": "metal_shards",
+          "from": "hit"
+        },
+        {
+          "effect": "grit",
+          "from": "hit",
+          "count": [
+            2,
+            4
+          ]
+        }
+      ]
+    },
+    "death": {
+      "effects": [
+        {
+          "effect": "metal_shards",
+          "from": "body",
+          "count": [
+            6,
+            9
+          ]
+        },
+        {
+          "effect": "dust_ring",
+          "from": "ground"
+        }
+      ]
+    },
+    "splash": {
+      "effects": [
+        {
+          "effect": "splash_drops",
+          "from": "ground"
+        },
+        {
+          "effect": "splash_ring",
+          "from": "ground"
+        }
+      ]
+    },
+    "rotor_wash": {
+      "effects": [
+        {
+          "effect": "rotor_wash",
+          "from": "ground",
+          "on": [
+            "grass",
+            "sand",
+            "stone",
+            "built"
+          ]
+        },
+        {
+          "effect": "splash_drops",
+          "from": "ground",
+          "count": [
+            2,
+            3
+          ],
+          "on": [
+            "water"
+          ]
+        }
+      ]
+    },
+    "engine_smoke": {
+      "effects": [
+        {
+          "effect": "engine_smoke",
+          "from": "exhaust"
+        }
+      ]
+    }
+  },
+  "effects": {
+    "metal_shards": {
+      "pictures": [
+        "metal_shard"
+      ],
+      "count": [
+        2,
+        4
+      ],
+      "life": [
+        0.7,
+        1.4
+      ],
+      "size": [
+        0.045,
+        0.13
+      ],
+      "speed": [
+        1.5,
+        3.5
+      ],
+      "shape": {
+        "sphere": 0.15
+      },
+      "up": 0.5,
+      "drag": 0.3,
+      "gravity": 1,
+      "fall": 12,
+      "wind": 0.25,
+      "settle": 2,
+      "fade": 0.4,
+      "flutter": {
+        "sway": 0.01,
+        "hz": 2,
+        "rock": 1.2,
+        "turn": 5
+      },
+      "colour": [
+        199,
+        207,
+        212
+      ],
+      "vary": 0.12,
+      "face": "free",
+      "pass": "cutout",
+      "lit": true,
+      "reach": 45
+    },
+    "rotor_wash": {
+      "pictures": [
+        "dust_1",
+        "dust_2",
+        "dust_3",
+        "dust_4"
+      ],
+      "count": [
+        3,
+        4
+      ],
+      "shape": {
+        "ring": 1.8
+      },
+      "speed": [
+        2.0,
+        3.5
+      ],
+      "up": 0.1,
+      "size": [
+        0.3,
+        0.45
+      ],
+      "grow": 2.2,
+      "life": [
+        0.65,
+        1.05
+      ],
+      "fade": 0.6,
+      "drag": 1.5,
+      "gravity": -0.03,
+      "wind": 0.7,
+      "flutter": {
+        "turn": 0.3
+      },
+      "colour": "ground",
+      "vary": 0.06,
+      "face": "camera",
+      "pass": "blend",
+      "reach": 55
+    },
+    "engine_smoke": {
+      "pictures": [
+        "dust_1",
+        "dust_2",
+        "dust_3",
+        "dust_4"
+      ],
+      "count": [
+        1,
+        1
+      ],
+      "shape": {
+        "sphere": 0.05
+      },
+      "speed": [
+        0.25,
+        0.45
+      ],
+      "up": 0.95,
+      "size": [
+        0.17,
+        0.27
+      ],
+      "grow": 2.6,
+      "life": [
+        1.4,
+        2.2
+      ],
+      "fade": 1.0,
+      "drag": 0.65,
+      "gravity": -0.025,
+      "wind": 0.9,
+      "colour": [
+        92,
+        95,
+        96
+      ],
+      "vary": 0.12,
+      "face": "camera",
+      "pass": "blend",
+      "reach": 65
+    }
+  },
+  "pictures": {
+    "metal_shard": {
+      "file": "details/metal_shard-clean.png",
+      "flat": "grain"
+    }
+  }
+}

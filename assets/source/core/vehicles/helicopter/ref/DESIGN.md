@@ -1,0 +1,21 @@
+# The utility helicopter
+
+An original four-seat transport: a broad, softly faceted cabin with a glazed nose, four independent doors, a low instrument console, upholstered seats, raised turbine fairing, a tapered tail with a swept fin, four main blades and two tail blades. Structural struts join the long skids to the belly and wide rubber steps serve both rows. It has no mounted weapon fittings.
+
+The mechanical measurements live in `content/vehicles/helicopter-art.ts`. Engine coordinates are metres, +Y up, +Z forward, +X the pilot's left; the origin is on the resting skid support plane. Blender's model is rotated into its export frame once. Every moving part is rigid on its named bone; the authoritative vehicle provides its attitude and rotor phase.
+
+The cabin was enlarged before modelling to fit the game's survivors. Seat pelvis anchors are X ±0.48, Y 1.10, front Z 0.65 and rear Z −0.95. The roof above the seats rises to 2.60, the shell is about 65 mm thick, and the low console ends at 1.52. Human proportions are preserved. Pilot and cabin seat profiles keep hands on the controls or in the lap. The cabin uses hollow geometry; no invisible solid box surrounds the occupants.
+
+The nose and roof follow sampled curved sections. The inner volume follows the same curved shell, leaving continuous wall thickness around the rounded belly and bow. Each door is cut from that shell and then inset, with a separately cut window, hinges, handle and frame. The UV layout follows connected face charts and guards its hash against textures made for an older model.
+
+Three liveries share all geometry, pivots, sockets, trim and cabin. Their painted panels differ: utility, rescue and police lettering, with paint region 0, stripe region 1 and upholstery region 2. Graphics do not copy real agencies. Panels have restrained fasteners and seams; the metal, intake mesh, skid treads, seat stitching, instruments and controls have distinct material responses. Clear window centres use the renderer's native cutout material, with visible perimeter and sparse edge reflections; opaque glass must never hide the pilot's view.
+
+The six mesh levels are made through the native surface simplifier. The first two keep textures; the remaining four keep the palette and dye regions. Review includes the last textured level beside the first flat level, silhouette against the sky, front and rear doors open, cockpit sightlines, and all damage stages. Rotor blade tips retain a contrasting band at range.
+
+`helicopter_wreck` is built from the same model and UV layout on the same eight-bone skeleton. Its blades bend, tail sags, bow is crushed and panels buckle while all surfaces remain closed. It can retain any final aircraft attitude, including an inverted impact. Wreck materials are the complete burnt/damaged state of the same seven-map material sets.
+
+The generated concept and the Blender geometry review are design evidence. Native rendered sheets and the game's preview are the final presentation evidence. Sound production belongs to the separate sound workstream; rotor, exhaust and landing sockets are ready for effects and sound cue integration.
+
+The real human fit audit (`bun ref/fit.ts --bounds --write`) reads the native body pack, including every armor, hair and beard mesh, both sexes and all four seats. Independent bone-axis intervals cover every creator slider combination. It tests entire interval boxes against each interpolated inner-shell polygon, including quadratic extrema between stations. Head motion is sampled across yaw ±0.8 and look pitch ±π/2, with an angle-times-radius allowance between samples. The accepted initial fit has 59.5 mm minimum cross-section clearance; the head retains 348.8 mm before a conservative 133.8 mm continuous-look allowance. Pilot grip alignment is a separate refinement in progress.
+
+The first accepted native build has 33,224 / 18,000 / 7,000 / 2,598 / 1,000 / 480 triangles, no holes, reversed edges, inward components or shared mirrored UV wedges. Texture maps use 60 MB in the largest tier; livery variants share trim/cabin maps. The UV grid is quantized before tangent export, preventing microscopic Boolean cuts from changing orientation later in the native 16-bit pack.

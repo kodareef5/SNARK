@@ -1,0 +1,1922 @@
+{
+  "id": "core:helicopter_wreck",
+  "kind": "creature",
+  "meshes": [
+    {
+      "id": "core:helicopter_wreck",
+      "size": [
+        9.199999809265137,
+        3.389999069273472,
+        10.300999641418457
+      ],
+      "levels": [
+        {
+          "triangles": 33224,
+          "vertices": 26914,
+          "budget": 38000,
+          "error": 0,
+          "from": 0,
+          "tall": 0,
+          "starts": [
+            null,
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            }
+          ],
+          "parts": 124,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1660,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 18000,
+          "vertices": 17476,
+          "budget": 18000,
+          "error": 0.00362,
+          "from": 12.690155764677163,
+          "tall": 206.02204288402316,
+          "starts": [
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 12.690155764677163,
+              "tall": 206.02204288402316
+            },
+            {
+              "from": 19.941673344492685,
+              "tall": 131.10493638074203
+            },
+            {
+              "from": 34.8979283528622,
+              "tall": 74.91710650328115
+            }
+          ],
+          "parts": 124,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1635,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 7000,
+          "vertices": 4864,
+          "budget": 7000,
+          "error": 0.0282,
+          "from": 98.85701452041326,
+          "tall": 26.4468012496512,
+          "starts": [
+            {
+              "from": 49.42850726020663,
+              "tall": 52.8936024993024
+            },
+            {
+              "from": 98.85701452041326,
+              "tall": 26.4468012496512
+            },
+            {
+              "from": 155.34673710350654,
+              "tall": 16.8297826134144
+            },
+            {
+              "from": 271.85678993113646,
+              "tall": 9.617018636236802
+            }
+          ],
+          "parts": 104,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1447,
+          "collapsed": 0
+        },
+        {
+          "triangles": 2600,
+          "vertices": 1935,
+          "budget": 2600,
+          "error": 0.09174,
+          "from": 321.60079830151466,
+          "tall": 8.129494170919598,
+          "starts": [
+            {
+              "from": 160.80039915075733,
+              "tall": 16.258988341839196
+            },
+            {
+              "from": 321.60079830151466,
+              "tall": 8.129494170919598
+            },
+            {
+              "from": 505.3726830452373,
+              "tall": 5.17331447240338
+            },
+            {
+              "from": 884.4021953291654,
+              "tall": 2.956179698516217
+            }
+          ],
+          "parts": 58,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 671,
+          "collapsed": 0
+        },
+        {
+          "triangles": 1000,
+          "vertices": 815,
+          "budget": 1000,
+          "error": 0.20109,
+          "from": 704.9346471599257,
+          "tall": 3.708786091999422,
+          "starts": [
+            {
+              "from": 352.46732357996285,
+              "tall": 7.417572183998844
+            },
+            {
+              "from": 704.9346471599257,
+              "tall": 3.708786091999422
+            },
+            {
+              "from": 1107.754445537026,
+              "tall": 2.3601366039996328
+            },
+            {
+              "from": 1938.5702796897956,
+              "tall": 1.34864948799979
+            }
+          ],
+          "parts": 33,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 262,
+          "collapsed": 0
+        },
+        {
+          "triangles": 478,
+          "vertices": 415,
+          "budget": 480,
+          "error": 0.41501,
+          "from": 1454.8457303587484,
+          "tall": 1.7970646375753934,
+          "starts": [
+            {
+              "from": 727.4228651793742,
+              "tall": 3.5941292751507867
+            },
+            {
+              "from": 1454.8457303587484,
+              "tall": 1.7970646375753934
+            },
+            {
+              "from": 2286.1861477066045,
+              "tall": 1.1435865875479776
+            },
+            {
+              "from": 4000.8257584865582,
+              "tall": 0.6534780500274157
+            }
+          ],
+          "parts": 22,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 134,
+          "collapsed": 0
+        }
+      ],
+      "materials": [
+        {
+          "id": "core:helicopter_wreck/body",
+          "span": 10.9331,
+          "texels": 187.3210708765126
+        },
+        {
+          "id": "core:helicopter_wreck/cabin",
+          "span": 12.9197,
+          "texels": 158.51761263806435
+        },
+        {
+          "id": "core:helicopter_wreck/trim",
+          "span": 8.0726,
+          "texels": 253.69769343210368
+        }
+      ],
+      "strays": 0
+    }
+  ],
+  "clips": [],
+  "gaits": [],
+  "textures": [
+    {
+      "id": "core:helicopter_wreck/body",
+      "name": "body",
+      "layers": [
+        {
+          "what": "base",
+          "file": "tex/body_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/body_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/body_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "tex/body_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "tex/body_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 11.047,
+      "tiles": true,
+      "mean": [
+        54,
+        41,
+        33
+      ],
+      "nearest": {
+        "colour": 235,
+        "distance": 7.0710678118654755
+      },
+      "normal": {
+        "x": 0.888060539294927,
+        "y": 0.7296977685760793,
+        "length": 1.0000101777859183,
+        "off": 0.004067085229336742
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 0,
+        "cover": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "core:helicopter_wreck/trim",
+      "name": "trim",
+      "layers": [
+        {
+          "what": "base",
+          "file": "tex/trim_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/trim_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/trim_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "tex/trim_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "tex/trim_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 8.2211,
+      "tiles": true,
+      "mean": [
+        38,
+        33,
+        29
+      ],
+      "nearest": {
+        "colour": 229,
+        "distance": 9.055385138137417
+      },
+      "normal": {
+        "x": 0.994172930249267,
+        "y": 0.9954284478528446,
+        "length": 0.9999791747713375,
+        "off": 0.005041540105474418
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 0,
+        "cover": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "core:helicopter_wreck/cabin",
+      "name": "cabin",
+      "layers": [
+        {
+          "what": "base",
+          "file": "tex/cabin_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/cabin_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/cabin_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "tex/cabin_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "tex/cabin_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 12.9563,
+      "tiles": true,
+      "mean": [
+        29,
+        27,
+        25
+      ],
+      "nearest": {
+        "colour": 230,
+        "distance": 9.9498743710662
+      },
+      "normal": {
+        "x": 0.8077643590274918,
+        "y": 0.655829155424965,
+        "length": 1.0000208753873958,
+        "off": 0.0034542417452201324
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 0,
+        "cover": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "megabytes": {
+    "textures": 55.99998664855957,
+    "budget": 80
+  },
+  "pictures": true,
+  "notes": [
+    "no hit capsules: nothing can hit it"
+  ],
+  "faults": [],
+  "rig": {
+    "skeleton": "core:helicopter",
+    "bones": 8,
+    "capsules": 0,
+    "buried": [],
+    "sockets": [
+      "seat_driver",
+      "seat_front_passenger",
+      "seat_rear_left",
+      "seat_rear_right",
+      "approach_front_left",
+      "approach_front_right",
+      "approach_rear_left",
+      "approach_rear_right",
+      "camera_driver",
+      "camera_front_passenger",
+      "camera_rear_left",
+      "camera_rear_right",
+      "camera_chase",
+      "rotor_main",
+      "rotor_tail",
+      "exhaust",
+      "landing",
+      "cyclic",
+      "collective",
+      "pedals",
+      "refuel"
+    ]
+  },
+  "sheet": {
+    "file": "sheet.png",
+    "width": 1560,
+    "height": 6171,
+    "pages": [
+      {
+        "name": "views",
+        "file": "sheet.views.png",
+        "y": 0,
+        "width": 1560,
+        "height": 1471
+      },
+      {
+        "name": "levels",
+        "file": "sheet.levels.png",
+        "y": 1471,
+        "width": 1560,
+        "height": 2326
+      },
+      {
+        "name": "materials",
+        "file": "sheet.materials.png",
+        "y": 3797,
+        "width": 1560,
+        "height": 1420
+      },
+      {
+        "name": "rig",
+        "file": "sheet.rig.png",
+        "y": 5217,
+        "width": 1560,
+        "height": 954
+      }
+    ],
+    "cells": [
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 12,
+        "y": 279,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 397,
+        "y": 279,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 782,
+        "y": 279,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 1167,
+        "y": 279,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 12,
+        "y": 569,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 397,
+        "y": 569,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 782,
+        "y": 569,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 1167,
+        "y": 569,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 12,
+        "y": 879,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 397,
+        "y": 879,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 782,
+        "y": 879,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 1167,
+        "y": 879,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 12,
+        "y": 1169,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 397,
+        "y": 1169,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 782,
+        "y": 1169,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "views",
+        "x": 1167,
+        "y": 1169,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 12,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 204,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 396,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 588,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 780,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 972,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1164,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "materials",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1356,
+        "y": 32,
+        "width": 186,
+        "height": 140,
+        "level": 1,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 12,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 204,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 396,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 588,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 780,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 972,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1164,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1356,
+        "y": 198,
+        "width": 186,
+        "height": 140,
+        "level": 2,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 12,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 204,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 396,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 588,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 780,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 972,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1164,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1356,
+        "y": 364,
+        "width": 186,
+        "height": 140,
+        "level": 3,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 12,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 204,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 396,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 588,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 780,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 972,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1164,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1356,
+        "y": 530,
+        "width": 186,
+        "height": 140,
+        "level": 4,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 12,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 0,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 204,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 45,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 396,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 90,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 588,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 135,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 780,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 180,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 972,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 225,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1164,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 270,
+        "above": 12
+      },
+      {
+        "what": "shaded",
+        "mesh": "core:helicopter_wreck",
+        "page": "levels",
+        "x": 1356,
+        "y": 696,
+        "width": 186,
+        "height": 140,
+        "level": 5,
+        "around": 315,
+        "above": 12
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 396,
+        "y": 938,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 12.690155764677163,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 780,
+        "y": 938,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 19.941673344492685,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 1164,
+        "y": 938,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 34.8979283528622,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 12,
+        "y": 1164,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "lowpoly",
+        "distance": 49.42850726020663,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 396,
+        "y": 1164,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 98.85701452041326,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 780,
+        "y": 1164,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 155.34673710350654,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 1164,
+        "y": 1164,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 271.85678993113646,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 12,
+        "y": 1390,
+        "width": 80,
+        "height": 80,
+        "level": 3,
+        "around": 290,
+        "above": 10,
+        "tier": "lowpoly",
+        "distance": 160.80039915075733,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 396,
+        "y": 1390,
+        "width": 80,
+        "height": 80,
+        "level": 3,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 321.60079830151466,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 780,
+        "y": 1390,
+        "width": 80,
+        "height": 80,
+        "level": 3,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 505.3726830452373,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 1164,
+        "y": 1390,
+        "width": 80,
+        "height": 80,
+        "level": 3,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 884.4021953291654,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 12,
+        "y": 1616,
+        "width": 80,
+        "height": 80,
+        "level": 4,
+        "around": 290,
+        "above": 10,
+        "tier": "lowpoly",
+        "distance": 352.46732357996285,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 396,
+        "y": 1616,
+        "width": 80,
+        "height": 80,
+        "level": 4,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 704.9346471599257,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 780,
+        "y": 1616,
+        "width": 80,
+        "height": 80,
+        "level": 4,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 1107.754445537026,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 1164,
+        "y": 1616,
+        "width": 80,
+        "height": 80,
+        "level": 4,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 1938.5702796897956,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 12,
+        "y": 1842,
+        "width": 80,
+        "height": 80,
+        "level": 5,
+        "around": 290,
+        "above": 10,
+        "tier": "lowpoly",
+        "distance": 727.4228651793742,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 396,
+        "y": 1842,
+        "width": 80,
+        "height": 80,
+        "level": 5,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 1454.8457303587484,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 780,
+        "y": 1842,
+        "width": 80,
+        "height": 80,
+        "level": 5,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 2286.1861477066045,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "as seen",
+        "mesh": "core:helicopter_wreck",
+        "x": 1164,
+        "y": 1842,
+        "width": 80,
+        "height": 80,
+        "level": 5,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 4000.8257584865582,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_wreck",
+        "x": 12,
+        "y": 2108,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 98.85701452041326,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_wreck",
+        "x": 12,
+        "y": 2208,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "medium",
+        "distance": 98.85701452041326,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_wreck",
+        "x": 524,
+        "y": 2108,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 155.34673710350654,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_wreck",
+        "x": 524,
+        "y": 2208,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "high",
+        "distance": 155.34673710350654,
+        "textured": false
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_wreck",
+        "x": 1036,
+        "y": 2108,
+        "width": 80,
+        "height": 80,
+        "level": 1,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 271.85678993113646,
+        "textured": true
+      },
+      {
+        "page": "levels",
+        "what": "handover",
+        "mesh": "core:helicopter_wreck",
+        "x": 1036,
+        "y": 2208,
+        "width": 80,
+        "height": 80,
+        "level": 2,
+        "around": 290,
+        "above": 10,
+        "tier": "ultra",
+        "distance": 271.85678993113646,
+        "textured": false
+      },
+      {
+        "what": "checker",
+        "mesh": "core:helicopter_wreck",
+        "page": "materials",
+        "x": 12,
+        "y": 476,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "checker",
+        "mesh": "core:helicopter_wreck",
+        "page": "materials",
+        "x": 397,
+        "y": 476,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "checker",
+        "mesh": "core:helicopter_wreck",
+        "page": "materials",
+        "x": 782,
+        "y": 476,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89,
+        "textured": true
+      },
+      {
+        "what": "checker",
+        "mesh": "core:helicopter_wreck",
+        "page": "materials",
+        "x": 1167,
+        "y": 476,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": -40,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_wreck",
+        "dye": "asset",
+        "page": "materials",
+        "x": 12,
+        "y": 786,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_wreck",
+        "dye": "asset",
+        "page": "materials",
+        "x": 397,
+        "y": 786,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_wreck",
+        "dye": "asset",
+        "page": "materials",
+        "x": 782,
+        "y": 786,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_wreck",
+        "dye": "asset",
+        "page": "materials",
+        "x": 1167,
+        "y": 786,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": -40,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_wreck",
+        "dye": "loud",
+        "page": "materials",
+        "x": 12,
+        "y": 1118,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_wreck",
+        "dye": "loud",
+        "page": "materials",
+        "x": 397,
+        "y": 1118,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 15,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_wreck",
+        "dye": "loud",
+        "page": "materials",
+        "x": 782,
+        "y": 1118,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89,
+        "textured": true
+      },
+      {
+        "what": "regions",
+        "mesh": "core:helicopter_wreck",
+        "dye": "loud",
+        "page": "materials",
+        "x": 1167,
+        "y": 1118,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 135,
+        "above": -40,
+        "textured": true
+      },
+      {
+        "what": "wireframe",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 12,
+        "y": 32,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 0
+      },
+      {
+        "what": "wireframe",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 397,
+        "y": 32,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15
+      },
+      {
+        "what": "wireframe",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 782,
+        "y": 32,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89
+      },
+      {
+        "what": "wireframe",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 1167,
+        "y": 32,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 225,
+        "above": 15
+      },
+      {
+        "what": "bones",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 12,
+        "y": 342,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 0
+      },
+      {
+        "what": "bones",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 397,
+        "y": 342,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 45,
+        "above": 15
+      },
+      {
+        "what": "bones",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 782,
+        "y": 342,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89
+      },
+      {
+        "what": "capsules",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 12,
+        "y": 652,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 0
+      },
+      {
+        "what": "capsules",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 397,
+        "y": 652,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 0,
+        "above": 0
+      },
+      {
+        "what": "capsules",
+        "mesh": "core:helicopter_wreck",
+        "page": "rig",
+        "x": 782,
+        "y": 652,
+        "width": 379,
+        "height": 284,
+        "level": 0,
+        "around": 270,
+        "above": 89
+      }
+    ]
+  }
+}

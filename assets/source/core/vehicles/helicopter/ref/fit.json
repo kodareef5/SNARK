@@ -1,0 +1,29 @@
+{
+  "pointsTested": 2756900,
+  "worst": {
+    "margin": 0.0694740631658095,
+    "mesh": "core:human_m/armor/hide/feet",
+    "sex": "m",
+    "seat": "seat_driver",
+    "profile": "large",
+    "at": [
+      0.7247449796901122,
+      0.6946426650591874,
+      1.6558964202822282
+    ]
+  },
+  "headWorst": {
+    "margin": 0.3754123284593735,
+    "mesh": "core:human_m/armor/hide/head",
+    "sex": "m",
+    "seat": "seat_driver",
+    "profile": "large",
+    "at": [
+      0.5141278204260749,
+      2.0867907496996594,
+      0.6691909207059277
+    ]
+  },
+  "headMotionAllowance": 0.13379159496132967,
+  "failures": []
+}
