@@ -5,7 +5,8 @@ of a source convex part and a cell. Logical art/route records remain independent
 Run directly with input/output JSON paths for a diagnostic; the author calls finish
 AFTER its ordinary six-decimal source normalization, and must not round again.
 """
-import copy,itertools,json,math,sys
+import copy,hashlib,itertools,json,math,sys
+from pathlib import Path
 from collections import defaultdict
 from functools import lru_cache
 
@@ -230,7 +231,7 @@ def self_test():
  return cases
 
 if __name__=='__main__':
- if sys.argv[1:] == ['--self-test']:print(json.dumps(self_test()))
+ if sys.argv[1:] == ['--self-test']:print(json.dumps({'source':'assets/source/landmarks/cruise/layout_collision_cells.py','sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'cases':self_test()},separators=(',',':')))
  else:
   D=json.load(open(sys.argv[1]));report=finish(D)
   with open(sys.argv[2],'w') as f:json.dump(D,f,indent=2);f.write('\n')
