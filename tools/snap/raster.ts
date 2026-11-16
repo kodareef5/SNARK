@@ -490,7 +490,8 @@ export class Rasterizer {
   /** The terrain tiles in depth range `range`. */
   private terrain(p: FramePacket, range: number): void {
     const hf = this.hf;
-    this.fade = this.hand = 0;
+    this.fade = this.hand = this.bone = 0;
+    this.plain = false;
     this.drawing = -1;
     const row = TILE_QUADS + 1;
     const pos = new Float32Array(row * row * 3);
@@ -773,6 +774,7 @@ export class Rasterizer {
     const [ox, oy, oz] = [p.drawOffset[d * 3]!, p.drawOffset[d * 3 + 1]!, p.drawOffset[d * 3 + 2]!];
     this.plain = (p.drawFlags[d]! & DRAW_PLAIN) !== 0 || (p.lit && (p.drawFlags[d]! & (DRAW_SIZED | DRAW_PULLED)) !== 0);
     this.fadeShare = p.frame[FRAME.fade]!;
+    this.bone = 0;
     const out = this.scratch.length >= ATLAS_WIDTH * 3 ? this.scratch : (this.scratch = new Float32Array(ATLAS_WIDTH * 3));
     const atlas = this.atlas;
     for (let k = 0; k < p.drawInstances[d]!; k++) {

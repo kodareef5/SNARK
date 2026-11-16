@@ -4,6 +4,7 @@ import { expect, test } from "bun:test";
 import { tierOf, type Tier } from "../../client/core/assets/tiers.ts";
 import type { AssetRequest } from "../../client/core/assets/port.ts";
 import { DRAW_BLEND, DRAW_CUTOUT, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, SIZE_REGION, TRANSIENT_BUFFER, stepOf, type FramePacket } from "../../client/core/render/packet.ts";
+import { drawProgram } from "../../client/core/render/programs.ts";
 import type { Cutouts, OwnBody } from "../../client/core/render/scene.ts";
 import { Falling } from "../../client/core/rubble.ts";
 import { AnimState } from "../../shared/anim/pose.ts";
@@ -30,9 +31,20 @@ const BODY = DRAW_SKINNED | DRAW_PLAIN;
 /** Yaw, in a structure's units, of a piece that faces the camera. */
 const FACING = 32768;
 
-/** What a frame draws of a mesh, a row a draw: its level, flags and instances, and for a draw with a material that and its run of indices. */
+/**
+ * What a frame draws of a mesh, a row a draw: its level, flags and instances, and for a draw with a material that and its
+ * run of indices. The rows are in `rows` order, as a step's draws come by what they bind (scene.ts order).
+ */
 function drawn(w: World, p: FramePacket, id: string): number[][] {
-  return w.draws(p, id).map((d) => [p.drawLod[d]!, p.drawFlags[d]!, p.drawInstances[d]!, ...((p.drawFlags[d]! & DRAW_TEXTURED) === 0 ? [] : [p.drawMaterial[d]!, p.drawFirstIndex[d]!, p.drawIndexCount[d]!])]);
+  return rows(w.draws(p, id).map((d) => [p.drawLod[d]!, p.drawFlags[d]!, p.drawInstances[d]!, ...((p.drawFlags[d]! & DRAW_TEXTURED) === 0 ? [] : [p.drawMaterial[d]!, p.drawFirstIndex[d]!, p.drawIndexCount[d]!])]));
+}
+
+/** Rows of numbers in order, by their first number, then their second, and so on. */
+function rows(r: number[][]): number[][] {
+  return r.sort((a, b) => {
+    for (let i = 0; i < Math.min(a.length, b.length); i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+    return a.length - b.length;
+  });
 }
 
 const textured = (p: FramePacket, d: number): boolean => (p.drawFlags[d]! & DRAW_TEXTURED) !== 0;
@@ -91,7 +103,7 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   let p = slow.frame();
   expect([p.drawCount, p.skipped, p.texUploads.length]).toEqual([18, 0, 0]);
   for (let d = 0; d < p.drawCount; d++) expect(textured(p, d)).toBe(false);
-  expect(drawn(slow, p, TUBE)).toEqual([[1, 0, 1], [1, BODY, 1], [1, 0, 1]]);
+  expect(drawn(slow, p, TUBE)).toEqual(rows([[1, 0, 1], [1, BODY, 1], [1, 0, 1]]));
   const before = slow.raster.color.slice();
   expect(before).not.toEqual(whole.raster.color);
 
@@ -122,15 +134,15 @@ test("a scene streamed over a slow, lossy link draws with no material the card l
   // materials, their cut-out lattices after every opaque draw. The one about to be built is see-through, and flat.
   const planks = (pieces: number, flags = 0): number[] => [0, flags | DRAW_TEXTURED, pieces, plank, 0, 3];
   const lattices = (pieces: number, flags = 0): number[] => [0, flags | DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3];
-  expect(drawn(slow, p, PANEL)).toEqual([planks(3), planks(1, BODY), planks(1), lattices(3), lattices(1, BODY), lattices(1), [0, DRAW_BLEND, 1]]);
+  expect(drawn(slow, p, PANEL)).toEqual(rows([planks(3), planks(1, BODY), planks(1), lattices(3), lattices(1, BODY), lattices(1), [0, DRAW_BLEND, 1]]));
   // The post is the tube on no bones and the creature is the tube on its own, both now at its finest level. The loose
   // thing is far enough off for the second.
   const tube = (flags: number, level = 0): number[][] => [[level, flags | DRAW_TEXTURED, 1, hide, 0, 1152 >> (level * 2)], [level, flags | DRAW_TEXTURED | DRAW_TWO_SIDED, 1, horn, 1152 >> (level * 2), 384 >> (level * 2)]];
-  expect(drawn(slow, p, TUBE)).toEqual([...tube(0), ...tube(BODY), ...tube(0, 1)]);
+  expect(drawn(slow, p, TUBE)).toEqual(rows([...tube(0), ...tube(BODY), ...tube(0, 1)]));
   // What is held hangs on the hand's bone as it did, and the viewer's own is drawn last, over everything. The bodies
   // they hang on have no materials, and are drawn flat.
-  expect(drawn(slow, p, CLUB)).toEqual([[0, BODY | DRAW_TEXTURED, 1, wood, 0, 36], [0, BODY | DRAW_NEAR | DRAW_TEXTURED, 1, wood, 0, 36]]);
-  expect(drawn(slow, p, "core:mannequin/torso")).toEqual([[0, BODY, 1], [0, BODY | DRAW_NEAR, 1]]);
+  expect(drawn(slow, p, CLUB)).toEqual(rows([[0, BODY | DRAW_TEXTURED, 1, wood, 0, 36], [0, BODY | DRAW_NEAR | DRAW_TEXTURED, 1, wood, 0, 36]]));
+  expect(drawn(slow, p, "core:mannequin/torso")).toEqual(rows([[0, BODY, 1], [0, BODY | DRAW_NEAR, 1]]));
   expect(textured(p, p.drawCount - 1)).toBe(true);
   expect(slow.raster.color).toEqual(whole.raster.color);
   expect(slow.raster.color).not.toEqual(before);
@@ -168,6 +180,49 @@ test("a step's cut-out draws come after all its opaque ones; as they were made, 
   const none = shot("none");
   expect(none.draws.map((d) => d.what).sort()).toEqual(made.draws.filter((d) => !d.cut).map((d) => d.what).sort());
   expect(none.picture).not.toEqual(made.picture);
+});
+
+test("an opaque step's draws come by what they bind, a program, a material and a level at a time, so neighbours change less than as made; see-through draws keep their order, and the picture is the same", () => {
+  // Panels in two chunks, each a plank and a cut-out lattice, tubes and posts among them, each a hide and a horn, and a
+  // see-through panel about to be built.
+  const w = sceneWorld();
+  for (let i = 0; i < 12; i++) w.structs.add(w.kind(PANEL), 26 + (i % 6) * 2.5, 0, i < 6 ? 30 : 70, FACING, 0, 1);
+  for (let i = 0; i < 6; i++) w.place(i % 2 ? TUBE : POST, 27 + i * 2, 25 + (i % 3), { colors: [8, 7, 14, 6], yaw: Math.PI / 2 });
+  Object.assign(w.scene.ghost, { kind: w.kind(PANEL), x: 31, y: 0, z: 27, yaw: FACING, color: 9 });
+  for (let f = 0; f < 8; f++) w.frame();
+  const materials = w.manifest.materials!;
+  const shot = (cutouts: Cutouts) => {
+    w.scene.cutouts = cutouts;
+    const p = w.frame();
+    const draws = Array.from({ length: p.drawCount }, (_, d) => ({
+      step: stepOf(p, d),
+      cut: (p.drawFlags[d]! & DRAW_CUTOUT) !== 0,
+      see: (p.drawFlags[d]! & DRAW_BLEND) !== 0,
+      state: [drawProgram(p, d, materials[p.drawMaterial[d]!]), textured(p, d) ? p.drawMaterial[d] : -1, p.drawSlot[d]].join(),
+      what: [p.drawSlot[d], p.drawBuffer[d], p.drawFirst[d], p.drawFlags[d], p.drawMaterial[d], p.drawPass[d]].join(),
+    }));
+    return { draws, picture: w.raster.color.slice() };
+  };
+  /** Programs, materials and levels changed from one draw to the next, and the instances a level is drawn from. */
+  const changes = (draws: { state: string; what: string }[]): number => {
+    const from = new Map<string, string>();
+    let n = 0;
+    draws.forEach((d, i) => {
+      const [program, material, slot] = d.state.split(","), [, buffer, first] = d.what.split(",");
+      const was = i > 0 ? draws[i - 1]!.state.split(",") : [];
+      n += Number(program !== was[0]) + Number(material !== "-1" && material !== was[1]) + Number(slot !== was[2]) + Number(from.get(slot!) !== `${buffer} ${first}`);
+      from.set(slot!, `${buffer} ${first}`);
+    });
+    return n;
+  };
+  const [made, last] = [shot("made"), shot("last")];
+  // Each state is drawn in one run of its step's part, its cut-outs or the rest.
+  const runs = last.draws.filter((d, i) => !d.see && (i === 0 || d.state !== last.draws[i - 1]!.state || d.step !== last.draws[i - 1]!.step));
+  expect(new Set(runs.map((d) => `${d.step} ${d.cut} ${d.state}`)).size).toBe(runs.length);
+  expect(changes(last.draws)).toBeLessThan(changes(made.draws));
+  expect(last.draws.filter((d) => d.see).map((d) => d.what)).toEqual(made.draws.filter((d) => d.see).map((d) => d.what));
+  expect(last.draws.map((d) => d.what).sort()).toEqual(made.draws.map((d) => d.what).sort());
+  expect(last.picture).toEqual(made.picture);
 });
 
 test("a body drawn with its materials and the same body drawn flat agree in mean colour, as near as the palette and the two ways of lighting allow", () => {
@@ -214,7 +269,7 @@ test("a wall of one piece whose material tiles is the same two draws at 10 piece
   const [few, many] = [wall(10, true), wall(1000, false)];
   const [plank, lattice] = [material(few.w, PANEL), material(few.w, `${PANEL}/lattice`)];
   for (const [{ w, p }, pieces] of [[few, 10], [many, 1000]] as const) {
-    expect(drawn(w, p, PANEL)).toEqual([[0, DRAW_TEXTURED, pieces, plank, 0, 3], [0, DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]]);
+    expect(drawn(w, p, PANEL)).toEqual(rows([[0, DRAW_TEXTURED, pieces, plank, 0, 3], [0, DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]]));
     expect([p.drawCount, p.dropped]).toEqual([2, 0]);
   }
   expect(many.p.triangles - few.p.triangles).toBe(990 * 2);
@@ -235,7 +290,7 @@ test("a body that steps back to a level whose surface has not come keeps its mat
   for (let f = 0; f < 5; f++) p = w.frame();
   const [hide, horn] = [material(w, "test:tube/hide"), material(w, "test:tube/horn")];
   const flags = BODY | DRAW_TEXTURED;
-  const finest = [[0, flags, 1, hide, 0, 1152], [0, flags | DRAW_TWO_SIDED, 1, horn, 1152, 384]];
+  const finest = rows([[0, flags, 1, hide, 0, 1152], [0, flags | DRAW_TWO_SIDED, 1, horn, 1152, 384]]);
   expect(drawn(w, p, TUBE)).toEqual(finest);
   // Eight metres off the second level is wanted. The card has it, flat, from the boot pack.
   w.remote.z[body] = 28;
@@ -244,7 +299,7 @@ test("a body that steps back to a level whose surface has not come keeps its mat
   w.port.request = ask;
   ask(held[0]!);
   for (let f = 0; f < 3; f++) p = w.frame();
-  expect(drawn(w, p, TUBE)).toEqual([[1, flags, 1, hide, 0, 288], [1, flags | DRAW_TWO_SIDED, 1, horn, 288, 96]]);
+  expect(drawn(w, p, TUBE)).toEqual(rows([[1, flags, 1, hide, 0, 288], [1, flags | DRAW_TWO_SIDED, 1, horn, 288, 96]]));
 });
 
 test("a body the frame has no bones to pose is drawn on one bone in the pose it stands in, with its materials", () => {
@@ -257,10 +312,10 @@ test("a body the frame has no bones to pose is drawn on one bone in the pose it 
   for (let f = 0; f < 4; f++) p = w.frame();
   const [hide, horn] = [material(w, "test:tube/hide"), material(w, "test:tube/horn")];
   const flags = BODY | DRAW_TEXTURED;
-  expect(drawn(w, p, TUBE)).toEqual([
+  expect(drawn(w, p, TUBE)).toEqual(rows([
     [0, flags, 2, hide, 0, 1152], [0, flags | DRAW_TWO_SIDED, 2, horn, 1152, 384],
     [0, flags | DRAW_ONE_BONE, 4, hide, 0, 1152], [0, flags | DRAW_ONE_BONE | DRAW_TWO_SIDED, 4, horn, 1152, 384],
-  ]);
+  ]));
   expect([p.boneCount, w.scene.characters.posed, p.dropped]).toEqual([10, 2, 0]);
   const bodies = w.raster.color.slice();
   const ids = w.raster.pickId.slice();
@@ -434,7 +489,11 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // whose bones the frame keeps for it and whose first bone its draw's offset names, in a draw after the rest (the order
   // of draws); and from frame 200 the frame has 66 bones, not 40, as few as leaves bones for those poses and drops
   // nothing. Every body here is near enough to be posed every frame: posing all of them every frame gives this hash too.
-  expect(hash).toBe(4216232697);
+  // It was 4216232697 until a step's opaque draws came by what they bind (scene.ts order), and a frame of one depth range
+  // was put in its steps as one of two is, its see-through draws after its opaque ones: only the draws' order moved.
+  // Rasterized, each of the 300 frames is the picture it was with the steps put in place alone; against before, 82 pixels
+  // of 35 frames differ, where the ghost, made before the loose tube, now goes over it.
+  expect(hash).toBe(4128384313);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -454,8 +513,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2182034391 until the street wrecks' kinds, as above; without them it is that again.
   // It was 1893532195 until the pteranodon was drawn on its own art, as above.
   // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
-  // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above.
-  expect(saddled.hash).toBe(2400700468);
+  // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above, and
+  // 2400700468 until the draws came by what they bind, as above, the pictures moving as above's.
+  expect(saddled.hash).toBe(2731922610);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {
