@@ -483,7 +483,7 @@ export interface DeviceInfo {
   memoryGB: number | null;
   touch: number;
   /** Whether the page took the device for touch-first, which draws each tier as its touch rule says (tiers.ts forTouch). */
-  touchFirst?: boolean;
+  touchFirst: boolean;
   features: Record<string, boolean | string | number>;
 }
 

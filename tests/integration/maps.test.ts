@@ -1,4 +1,3 @@
-import { Database } from "bun:sqlite";
 import { afterAll, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -132,30 +131,20 @@ test("a map's parked vehicles are set down once, in a new world, owned by nobody
   }
 });
 
-test("a save records the map it was made on, and loads onto another only when the server is told to", () => {
+test("a save records the map it was made on, and loads onto no other", () => {
   const db = join(dir, "map.db");
   const reg = coreRegistry();
   const flat = writeMap(flatMap(2));
   const edited = writeMap(flatMap(2, { statics: [{ kind: "core:crate", x: 40, y: 0.5, z: 40, yaw: 0 }] }));
   const other = writeMap(flatMap(2, { id: "test:other" }));
-  const restart = (map: Uint8Array<ArrayBuffer>, allowMapMismatch = false): boolean => {
-    const host = createHost(reg, { dbPath: db, map, allowMapMismatch });
+  const restart = (map: Uint8Array<ArrayBuffer>): boolean => {
+    const host = createHost(reg, { dbPath: db, map });
     host.shutdown();
     return host.loaded!.fresh;
   };
   expect([restart(flat), restart(flat)]).toEqual([true, false]);
-  expect(() => restart(edited)).toThrow(`save is for other bytes of map "test:flat" (hash ${parseMap(flat).hash.toString(16).padStart(8, "0")}, and this file's is ${parseMap(edited).hash.toString(16).padStart(8, "0")}): start with the map file it was made on, or with --allow-map-mismatch`);
-  expect(() => restart(other)).toThrow('save is for map "test:flat", not "test:other"');
-  // Told to, it loads, and the save is that map's from then on.
-  expect([restart(other, true), restart(other)]).toEqual([false, false]);
-  expect(() => restart(flat)).toThrow('save is for map "test:other", not "test:flat"');
-  // A save from before maps were files has no hash. It loads onto the map of its id and takes that map's hash.
-  const save = new Database(db);
-  save.run("DELETE FROM meta WHERE key = 'map_hash'");
-  save.close();
-  const renamed = writeMap(flatMap(2, { id: "test:other", tint: flatMap(2).tint.fill(7) }));
-  expect(restart(renamed)).toBe(false);
-  expect(() => restart(other)).toThrow('save is for other bytes of map "test:other"');
+  expect(() => restart(edited)).toThrow(`save is for other bytes of map "test:flat" (hash ${parseMap(flat).hash.toString(16).padStart(8, "0")}, and this file's is ${parseMap(edited).hash.toString(16).padStart(8, "0")}): start with the map file it was made on`);
+  expect(() => restart(other)).toThrow('save is for map "test:flat", not "test:other": start with the map file it was made on');
 });
 
 test("the proving ground loaded from its file is the one its functions build: every height, piece and node slot, and the same simulation", () => {

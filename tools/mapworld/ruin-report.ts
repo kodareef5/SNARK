@@ -10,7 +10,6 @@ const config = existsSync(configFile) ? JSON.parse(readFileSync(configFile, "utf
 copyFileSync(join("var/maps", basename(paths.mapFile, ".snmap"), "stats.json"), join(root, "build.json"));
 const g = read("generation.json"); const build = read("build.json"); const samples = existsSync(join(root, "samples.json")) ? read("samples.json") : { samples: [] };
 if (existsSync(join(root, "chunks.json"))) {
-  build.staticMaxChunkBeforePacking ??= build.staticMaxChunk;
   build.staticMaxChunk = read("chunks.json").maximum;
   writeFileSync(join(root, "build.json"), JSON.stringify(build, null, 2) + "\n");
 }

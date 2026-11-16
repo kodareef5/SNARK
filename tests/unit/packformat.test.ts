@@ -47,7 +47,7 @@ test("a texture's steps are a prefix of its bytes, and the sizes are the ones th
   expect([topIn("rgba", 4096), topIn("bc", 4096), topIn("rgba", 512)]).toEqual([1024, 4096, 512]);
 });
 
-test("a version 4 pack carries a surface, a skin, sections and materials, and says where a mesh turns flat", () => {
+test("a pack carries a surface, a skin, sections and materials, and says where a mesh turns flat", () => {
   const pack = parsePack(quadPack());
   const [fine, coarse] = pack.header.meshes[0]!.lods;
   expect(lodSurface(pack, fine!)!.length).toBe(4 * SURFACE_BYTES);
@@ -100,18 +100,6 @@ test("the manifest lists a level's surface and skin as parts of their own, and w
     change(m);
     expect(() => parseManifest(JSON.stringify(m))).toThrow(reason);
   }
-});
-
-test("a version 1 manifest, which had flat levels only, is still read", () => {
-  const bytes = quadPack((h) => {
-    const mesh = h.meshes[0]!;
-    delete mesh.flat;
-    mesh.lods = [mesh.lods[1]!];
-    delete h.materials;
-    delete h.textures;
-  });
-  const manifest = describePack(parsePack(bytes), { name: "t.snpk", bytes: bytes.length });
-  expect(parseManifest(JSON.stringify({ ...manifest, version: 1 })).meshes[0]!.levels.length).toBe(1);
 });
 
 test("the flat renderer's shader text is the text low poly was always drawn with", () => {

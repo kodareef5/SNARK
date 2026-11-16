@@ -115,21 +115,10 @@ export class Items {
   /** The record's inventory, settled for spoilage up to this tick. Created on first use. */
   inv(rec: EntityRecord): Inventory {
     let inv = rec.inv;
-    const def = this.reg.defs[rec.kind];
-    const species = def?.type === "species" ? (def as SpeciesDef) : null;
     if (!inv) {
+      const def = this.reg.defs[rec.kind];
       const bag = (def?.type === "species" || def?.type === "prop" || def?.type === "structure" ? def.slots : undefined) ?? DEFAULT_SLOTS;
-      inv = rec.inv = new Inventory(bag + (species?.equips ? GEAR_SLOTS : 0), bag);
-    } else if (species?.equips && inv.hotbar < 0) {
-      // A save from before equipment gets the gear slots it lacked.
-      const grown = new Inventory(inv.cap + GEAR_SLOTS, inv.cap);
-      for (let s = 0; s < inv.cap; s++) {
-        if (inv.item[s] === 0) continue;
-        grown.set(s, inv.item[s]!, inv.count[s]!, inv.quality[s]!, inv.dur[s]!, inv.spoilAt[s]!, inv.flags[s]!);
-        grown.setRef(s, inv.refOf(s));
-      }
-      inv = rec.inv = grown;
-      this.changed(rec);
+      inv = rec.inv = new Inventory(bag + (def?.type === "species" && (def as SpeciesDef).equips ? GEAR_SLOTS : 0), bag);
     }
     inv.keep = this.reg.keeps[rec.kind]!;
     // A burning fire is worked out first, so cooking happens before the leftovers spoil.

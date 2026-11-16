@@ -54,17 +54,16 @@ const MAX_HOSTS = 1 << 16;
 const MAX_ACTORS = 1 << 16;
 /** Namespaced extension, preserved by the normal record codec even in builds without vehicles. */
 const VEHICLE_COMPONENT = 0x757262;
-/** One preserved unreadable component, bounded by the record codec's ordinary part limit. */
-const VEHICLE_QUARANTINE = 0x757263;
 /**
- * The saved component, little-endian: version u8 (4), these fields as f32 in this order, then whether it stands on its
- * wheels u8. Versions 1 to 3 held the first 6, 13 and 16 and are read. A field added goes at the end, after the wheels
- * byte, as version 5, and restoreSaved gives an older component that field's parked default.
+ * The saved component, little-endian: a version u8 (4 wheeled, 5 rotor, 6 boat), these fields as f32 in this order and
+ * whether it stands on its wheels u8, then for a rotor or a boat its own fields as f32 and whether its engine runs u8.
  */
 const VEHICLE_FIELDS = ["vehicleYaw", "vehiclePitch", "vehicleRoll", "steering", "wheelAngle", "fuel", "vehicleYawRate", "vehiclePitchRate", "vehicleRollRate", "vehicleGroundPitch", "vehicleGroundRoll", "vehicleRideOffset", "vehicleRideVelocity", "vx", "vy", "vz", "vehicleGear", "vehicleRpm", "vehicleShiftTime", "vehiclePayloadMass"] as const;
 const ROTOR_FIELDS = ["vehicleRotorRpm", "vehicleRotorPhase", "vehicleEngineCondition", "vehicleRotorCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleCollective"] as const;
 const BOAT_FIELDS = ["vehicleEngineCondition", "vehicleQx", "vehicleQy", "vehicleQz", "vehicleQw", "vehicleFlooding"] as const;
 const V4_BYTES = 2 + VEHICLE_FIELDS.length * 4;
+const formOf = (movement: VehicleDefinition['movement']): { version: number; extra: readonly (typeof ROTOR_FIELDS[number] | typeof BOAT_FIELDS[number])[] } =>
+  movement === 'rotor' ? { version: 5, extra: ROTOR_FIELDS } : movement === 'boat' ? { version: 6, extra: BOAT_FIELDS } : { version: 4, extra: [] };
 const PLAIN = defaultLook();
 /** How often a car at rest that nobody drives is stepped, to find the ground gone from under it. */
 const REST_TICKS = 30;
@@ -77,7 +76,6 @@ export class Urban {
   private readonly ctx: UrbanContext;
   private readonly hosts = new Map<number, HostSeat>();
   private readonly scopes = new Map<number, Scope>();
-  private readonly preserveComponent = new Set<number>();
   /** The entities sessions drive this tick. */
   private readonly drivers = new Set<number>();
   /** The bytes a car's mechanical component would be saved as, made again each tick without allocating. */
@@ -169,31 +167,16 @@ export class Urban {
     return true;
   }
 
-  /** Reads a saved component into `this.body`. A save from another build or a retuned
-   * definition must never stop the world loading: unreadable components keep the parked
-   * defaults, and readable ones are clamped to the current definition.
-   */
+  /** Reads a saved component into `this.body`, clamped to the current definition, which settings may have retuned. */
   private restoreSaved(pid: number, saved: Uint8Array, definition: VehicleDefinition): void {
-    const b = this.body, version = saved[0]!;
-    const count = version === 1 ? 6 : version === 2 ? 13 : version === 3 ? 16 : version === 4 || version === 5 || version === 6 ? VEHICLE_FIELDS.length : 0;
-    const extraFields = version === 5 ? ROTOR_FIELDS : version === 6 ? BOAT_FIELDS : [];
-    const size = 1 + count * 4 + (version >= 3 ? 1 : 0) + (extraFields.length ? extraFields.length * 4 + 1 : 0);
-    if (!count || saved.length !== size) {
-      this.quarantine(pid, saved, `version ${version} (${saved.length} bytes)`);
-      return;
-    }
+    const b = this.body, { version, extra } = formOf(definition.movement), size = V4_BYTES + (extra.length ? extra.length * 4 + 1 : 0);
+    if (saved[0] !== version || saved.length !== size) throw new Error(`vehicle ${pid}: its saved state is version ${saved[0]} in ${saved.length} bytes, and this build reads version ${version} in ${size}`);
     const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
-    const values = Array.from({ length: count }, (_, i) => view.getFloat32(1 + i * 4, true));
-    const rotor = extraFields.map((_, i) => view.getFloat32(V4_BYTES + i * 4, true));
-    if (!values.every(Number.isFinite) || !rotor.every(Number.isFinite) || (version >= 3 && saved[1 + count * 4]! > 1) || (version >= 5 && saved[saved.length - 1]! > 1)) {
-      this.quarantine(pid, saved, 'invalid numeric or contact state');
-      return;
-    }
-    for (let i = 0; i < count; i++) b[VEHICLE_FIELDS[i]!] = values[i]!;
-    if (version === 1) { b.vehicleGroundPitch = b.vehiclePitch; b.vehicleGroundRoll = b.vehicleRoll; }
-    if (version >= 3) b.grounded = saved[1 + count * 4]! !== 0;
-    // Earlier components stored a parked pose without translational velocity.
-    else b.vehicleYawRate = b.vehiclePitchRate = b.vehicleRollRate = b.vehicleRideVelocity = 0;
+    const values = VEHICLE_FIELDS.map((_, i) => view.getFloat32(1 + i * 4, true));
+    const rotor = extra.map((_, i) => view.getFloat32(V4_BYTES + i * 4, true));
+    if (!values.every(Number.isFinite) || !rotor.every(Number.isFinite) || saved[V4_BYTES - 1]! > 1 || saved[size - 1]! > 1) throw new Error(`vehicle ${pid}: its saved state is unreadable`);
+    for (let i = 0; i < VEHICLE_FIELDS.length; i++) b[VEHICLE_FIELDS[i]!] = values[i]!;
+    b.grounded = saved[V4_BYTES - 1]! !== 0;
     const clampTo = (v: number, lo: number, hi: number): number => Math.fround(Math.min(hi, Math.max(lo, v)));
     const train = isWheelVehicle(definition) ? definition.spec.drivetrain : undefined;
     const spec = definition.spec, travel = isWheelVehicle(definition) ? definition.spec.suspensionTravel ?? .18 : 0;
@@ -221,19 +204,17 @@ export class Urban {
       b.vy = clampTo(b.vy, -60, 60);
     }
     b.fuel = clampTo(b.fuel, 0, definition.spec.fuelCapacity);
-    if (version >= 4) {
-      b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, isBoatVehicle(definition) ? 1 : train?.forwardRatios.length ?? 12));
-      b.vehicleRpm = clampTo(b.vehicleRpm, 0, isBoatVehicle(definition) ? definition.spec.maxRpm : train?.redlineRpm ?? 32767);
-      b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, isBoatVehicle(definition) ? definition.spec.shiftDelay : train?.shiftCooldown ?? 1);
-      // Payload is recomputed from records right after loading.
-      b.vehiclePayloadMass = 0;
-    }
-    if (version === 5) {
-      b.vehicleRotorRpm = clampTo(rotor[0]!, 0, isRotorVehicle(definition) ? definition.spec.rotorRpm : 0);
+    b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, isBoatVehicle(definition) ? 1 : train?.forwardRatios.length ?? 12));
+    b.vehicleRpm = clampTo(b.vehicleRpm, 0, isBoatVehicle(definition) ? definition.spec.maxRpm : train?.redlineRpm ?? 32767);
+    b.vehicleShiftTime = clampTo(b.vehicleShiftTime, 0, isBoatVehicle(definition) ? definition.spec.shiftDelay : train?.shiftCooldown ?? 1);
+    // Payload is recomputed from records right after loading.
+    b.vehiclePayloadMass = 0;
+    if (isRotorVehicle(definition)) {
+      b.vehicleRotorRpm = clampTo(rotor[0]!, 0, definition.spec.rotorRpm);
       b.vehicleRotorPhase = wrapped(rotor[1]!);
       b.vehicleEngineCondition = clampTo(rotor[2]!, 0, 1);
       b.vehicleRotorCondition = clampTo(rotor[3]!, 0, 1);
-      b.vehicleEngineOn = isRotorVehicle(definition) && saved[saved.length - 1] === 1;
+      b.vehicleEngineOn = saved[size - 1] === 1;
       const norm = Math.hypot(rotor[4]!, rotor[5]!, rotor[6]!, rotor[7]!);
       if (norm > 1e-6) {
         b.vehicleQx = Math.fround(rotor[4]! / norm); b.vehicleQy = Math.fround(rotor[5]! / norm);
@@ -241,27 +222,14 @@ export class Urban {
       } else { b.vehicleQx = b.vehicleQz = 0; b.vehicleQy = Math.fround(Math.sin(b.vehicleYaw / 2)); b.vehicleQw = Math.fround(Math.cos(b.vehicleYaw / 2)); }
       b.vehicleCollective = clampTo(rotor[8]!, 0, 1);
     }
-    if (version === 6) {
+    if (isBoatVehicle(definition)) {
       b.vehicleEngineCondition = clampTo(rotor[0]!, 0, 1);
       b.vehicleFlooding = clampTo(rotor[5]!, 0, 1);
-      b.vehicleEngineOn = isBoatVehicle(definition) && saved[saved.length - 1] === 1;
+      b.vehicleEngineOn = saved[size - 1] === 1;
       const norm = Math.hypot(rotor[1]!, rotor[2]!, rotor[3]!, rotor[4]!);
       if (norm > 1e-6) { b.vehicleQx = Math.fround(rotor[1]! / norm); b.vehicleQy = Math.fround(rotor[2]! / norm); b.vehicleQz = Math.fround(rotor[3]! / norm); b.vehicleQw = Math.fround(rotor[4]! / norm); }
     }
-    if (version < 5 && !isWheelVehicle(definition)) { b.vehicleQx = b.vehicleQz = 0; b.vehicleQy = Math.fround(Math.sin(b.vehicleYaw / 2)); b.vehicleQw = Math.fround(Math.cos(b.vehicleYaw / 2)); }
     b.yaw = Math.round(b.vehicleYaw * 65536 / TAU) & 65535;
-  }
-
-  private quarantine(pid: number, saved: Uint8Array, reason: string): void {
-    const rec = this.ctx.records.byPid.get(pid);
-    if (!rec) return;
-    const old = rec.extra.get(VEHICLE_QUARANTINE);
-    if (!old) rec.extra.set(VEHICLE_QUARANTINE, saved);
-    else if (old.length !== saved.length || !old.every((n, i) => saved[i] === n)) this.preserveComponent.add(pid);
-    // If a second different unreadable component arrives, keep both existing blobs;
-    // this incarnation runs parked defaults without replacing the current component.
-    console.warn(`vehicle ${pid}: preserved unreadable ${reason}; using parked defaults${this.preserveComponent.has(pid) ? ' without saving mechanical updates' : ''}`);
-    this.ctx.records.dirty.add(pid);
   }
 
   private note(host: HostSeat): void {
@@ -293,7 +261,6 @@ export class Urban {
       if (c) c.ownDirty = true;
     }
     this.hosts.delete(pid);
-    this.preserveComponent.delete(pid);
     this.impacts.delete(pid); this.hurtAt.delete(pid); this.health.delete(pid);
   }
 
@@ -890,11 +857,10 @@ export class Urban {
   private save(e: number): void {
     const { world, records } = this.ctx, ents = world.ents;
     const rec = records.byPid.get(ents.pid[e]!);
-    if (!rec || this.preserveComponent.has(rec.pid)) return;
-    const movement = world.reg.vehicle[rec.kind]?.movement;
-    const extra = movement === 'rotor' ? ROTOR_FIELDS : movement === 'boat' ? BOAT_FIELDS : [];
+    if (!rec) return;
+    const { version, extra } = formOf(world.reg.vehicle[rec.kind]?.movement);
     const bytes = this.saving.subarray(0, V4_BYTES + (extra.length ? extra.length * 4 + 1 : 0)), view = this.savingView;
-    bytes[0] = movement === 'rotor' ? 5 : movement === 'boat' ? 6 : 4;
+    bytes[0] = version;
     const b = this.saved;
     ents.loadBody(e, b);
     for (let i = 0; i < VEHICLE_FIELDS.length; i++) view.setFloat32(1 + i * 4, b[VEHICLE_FIELDS[i]!], true);

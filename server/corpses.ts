@@ -270,8 +270,8 @@ export class Corpses {
     const wreck = def?.movement === "rotor" ? createHelicopter(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : def?.movement === "boat" ? createBoat(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : null;
     if (wreck && "flooding" in wreck) { wreck.hullCondition = 0; wreck.engineCondition = 0; }
     const saved = rec.extra.get(WRECK_COMPONENT);
-    const marine = saved?.[0] === 2 && wreck && "flooding" in wreck;
-    if (wreck && saved?.length === 1 + (WRECK_FIELDS.length + (marine ? BOAT_WRECK_FIELDS.length : 0)) * 4 && (saved[0] === 1 || marine)) {
+    const marine = wreck !== null && "flooding" in wreck;
+    if (wreck && saved?.[0] === (marine ? 2 : 1) && saved.length === 1 + (WRECK_FIELDS.length + (marine ? BOAT_WRECK_FIELDS.length : 0)) * 4) {
       const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
       const values = WRECK_FIELDS.map((_, i) => view.getFloat32(1 + i * 4, true));
       if (values.every(Number.isFinite)) {
@@ -281,14 +281,12 @@ export class Corpses {
         for (const field of ["vx", "vy", "vz"] as const) wreck[field] = Math.max(-120, Math.min(120, wreck[field]));
         for (const field of ["pitchRate", "yawRate", "rollRate"] as const) wreck[field] = Math.max(-5, Math.min(5, wreck[field]));
         if ("flooding" in wreck) {
-          if (marine) {
-            const fields = BOAT_WRECK_FIELDS.map((_, i) => view.getFloat32(1 + (WRECK_FIELDS.length + i) * 4, true));
-            if (fields.every(Number.isFinite)) {
-              wreck.flooding = Math.max(0, Math.min(1, fields[0]!));
-              wreck.steering = Math.max(-1, Math.min(1, fields[1]!));
-              wreck.payloadMass = Math.max(0, Math.min(1e6, fields[2]!));
-            }
-          } else wreck.flooding = 1; // Version 1 boat wrecks were already fully flooded.
+          const fields = BOAT_WRECK_FIELDS.map((_, i) => view.getFloat32(1 + (WRECK_FIELDS.length + i) * 4, true));
+          if (fields.every(Number.isFinite)) {
+            wreck.flooding = Math.max(0, Math.min(1, fields[0]!));
+            wreck.steering = Math.max(-1, Math.min(1, fields[1]!));
+            wreck.payloadMass = Math.max(0, Math.min(1e6, fields[2]!));
+          }
         }
       }
     }

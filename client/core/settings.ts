@@ -58,7 +58,7 @@ export class Settings {
   restoreInterface(text: string | null): void {
     try {
       const saved = JSON.parse(text ?? "{}");
-      if (!saved || Array.isArray(saved) || (saved.version !== undefined && saved.version !== 1)) return;
+      if (!saved || Array.isArray(saved) || saved.version !== 1) return;
       for (const key of SAVED_FLAGS) if (typeof saved[key] === "boolean") this[key] = saved[key];
       for (const [key, lo, hi] of SAVED_NUMBERS) if (Number.isFinite(saved[key])) this[key] = Math.max(lo, Math.min(hi, saved[key]));
       this.minimapZoom = Math.round(this.minimapZoom);

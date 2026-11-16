@@ -87,7 +87,7 @@ test("on a slope a body comes into the world on its lower sphere: where it was a
   expect(Math.abs(y - groundUnder(h.world.hf, x, z, p.radius))).toBeLessThan(0.001);
 });
 
-test("a survivor saved on a slope before bodies stood on their lower sphere comes back where it was, lifted onto the hill", () => {
+test("a survivor whose saved place is inside a hill comes back where it was, lifted onto the hill", () => {
   const h = new Harness();
   const first = h.join("ada");
   h.run(400);
@@ -95,7 +95,7 @@ test("a survivor saved on a slope before bodies stood on their lower sphere come
   first.close();
   h.run(6000); // past the linger
   expect(h.world.ents.count).toBe(0);
-  // Saved standing on the ground under its middle, which is now inside the hill.
+  // Saved standing on the ground under its middle, which is inside the hill.
   rec.x = SLOPE.x;
   rec.z = SLOPE.z;
   rec.y = h.world.hf.heightAt(SLOPE.x, SLOPE.z);
