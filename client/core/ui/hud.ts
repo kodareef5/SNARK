@@ -251,7 +251,9 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     }
   }
   if (m.crosshair) {
-    if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, m.prompt.slice(0, 38));
+    // The helm panel already carries the exit control; repeating it over the centre overlaps portrait instruments.
+    const exitInPanel = m.vehicle?.active && m.vehicle.boat && m.prompt === "E  exit vehicle";
+    if (m.prompt !== "" && !exitInPanel) f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, m.prompt.slice(0, 38));
     if (m.actionKind !== ACTION_NONE) f.add(KEY_ACTION, K_BAR, W / 2 - 40, H / 2 + 38, 80, 5, m.actionKind === ACTION_DRAW ? S_STAMINA : S_OXYGEN).value = m.actionFraction;
   }
   // The status line sits left of the vitals, or above them on a narrow canvas.
