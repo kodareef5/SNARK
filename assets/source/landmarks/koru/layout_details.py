@@ -111,13 +111,14 @@ stay('forestay_outer',[0,8.5,70.5],[0,69,20],.042)
 stay('forestay_inner',[0,7.8,52],[0,58,20],.038)
 stay('main_interstay',[0,68.8,20],[0,65.8,-8],.024)
 stay('mizzen_interstay',[0,65.8,-8],[0,62.8,-30],.024)
-stay('mizzen_backstay',[0,62.8,-30],[0,4.8,-51.5],.028)
-# Running lines tie booms back to their actual mast/working deck rather than floating disconnected.
+# The backstay is split to the quarters' rail tops, clear of the mizzen sail and of the walk up from the stern steps.
+for sign in(-1,1):stay(f'mizzen_backstay_{"p" if sign>0 else "s"}',[0,62.8,-30],[sign*(width(profiles[1],-50.5)+.04),4.85,-50.5],.028)
+# Topping lifts tie each boom's end to its masthead, to port of the sail.
 for mast in masts:
- stay('topping_'+mast['id'],[0,mast['boomY'],mast['z']-mast['boomAft']],[0,mast['tipY']-3,mast['z']],.022)
+ stay('topping_'+mast['id'],[.26,mast['boomY']+.06,mast['z']-mast['boomAft']+.2],[.2,mast['tipY']-3,mast['z']-.3],.022)
 # Sparse bow ornament and transom flag attach to physical fittings; they do not change published hull/bowsprit extent.
 add('bow_scroll','ornament',boxes=[box([-.12,6.7,52.8],[.12,7.2,53.4])],look=[box([-1.8,6.7,49.4],[1.8,7.45,53.8])],meta={'kind':'gilded_scroll'},color=51)
-add('stern_flag','flag',boxes=[box([-.025,3.7,-51.5],[.025,6.0,-51.45])],look=[box([0,4.6,-53.1],[.85,5.9,-51.4])],meta={'kind':'maritime_ensign'},color=232)
+add('stern_flag','flag',boxes=[box([-1.225,3.7,-51.5],[-1.175,6.0,-51.45])],look=[box([-2.05,4.6,-53.1],[-1.2,5.9,-51.4])],meta={'kind':'maritime_ensign','staff':[-1.2,3.72,-51.475]},color=232)
 
 D['routes'].append({'id':'aft_pool_access','kind':'circulation','deck':1,'anchors':[[2.5,3.75,-34],[3.2,3.75,-36],[3.2,3.75,-38],[3.2,3.75,-40],[3.2,3.75,-46]]})
 

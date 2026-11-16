@@ -1,0 +1,18 @@
+{
+  "navy": {"cell":0,"rgb":[22,32,43],"roughness":0.28,"metal":0.2},
+  "cream": {"cell":1,"rgb":[226,224,211],"roughness":0.36,"metal":0.06},
+  "teak": {"cell":2,"rgb":[153,111,72],"roughness":0.52,"metal":0},
+  "mahogany": {"cell":3,"rgb":[104,66,43],"roughness":0.32,"metal":0},
+  "brass": {"cell":4,"rgb":[191,156,79],"roughness":0.28,"metal":0.85},
+  "steel": {"cell":5,"rgb":[177,185,189],"roughness":0.22,"metal":0.92},
+  "glass": {"cell":6,"rgb":[80,116,128],"roughness":0.13,"metal":0.45},
+  "fabric": {"cell":7,"rgb":[216,208,188],"roughness":0.9,"metal":0},
+  "dark": {"cell":8,"rgb":[29,30,30],"roughness":0.76,"metal":0},
+  "white": {"cell":9,"rgb":[239,238,226],"roughness":0.64,"metal":0},
+  "rug": {"cell":10,"rgb":[130,112,88],"roughness":0.92,"metal":0},
+  "screen": {"cell":11,"rgb":[30,59,66],"roughness":0.22,"metal":0},
+  "pool": {"cell":12,"rgb":[91,163,169],"roughness":0.16,"metal":0.05},
+  "red": {"cell":13,"rgb":[151,47,44],"roughness":0.6,"metal":0},
+  "green": {"cell":14,"rgb":[65,87,59],"roughness":0.86,"metal":0},
+  "slate": {"cell":15,"rgb":[99,105,108],"roughness":0.7,"metal":0.12}
+}
