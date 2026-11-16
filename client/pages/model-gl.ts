@@ -1,6 +1,6 @@
 // A model-only WebGL shell. Geometry, palette and pose sampling come from the native game format.
 import { Camera } from "../core/render/camera.ts";
-import { MODEL_STRIDE, modelMesh, type ModelPose } from "../core/pages/model.ts";
+import { MODEL_STRIDE, modelDistance, modelMesh, type ModelPose } from "../core/pages/model.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "../../shared/pack/pack.ts";
 import type { ModelBounds, ModelDocument } from "../../shared/pages/model.ts";
 
@@ -118,7 +118,7 @@ export class ModelGl {
     if (this.canvas.width !== width || this.canvas.height !== height) { this.canvas.width = width; this.canvas.height = height; }
     gl.viewport(0, 0, width, height); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.useProgram(this.program);
     c.aspect = width / height; c.fovY = 0.72;
-    const distance = bounds.radius / Math.sin(Math.min(c.fovY, 2 * Math.atan(Math.tan(c.fovY / 2) * c.aspect)) / 2) * zoom;
+    const distance = modelDistance(bounds, yaw, pitch, c.aspect, c.fovY) * zoom;
     c.x = bounds.center[0] + Math.sin(yaw) * Math.cos(pitch) * distance; c.y = bounds.center[1] + Math.sin(pitch) * distance; c.z = bounds.center[2] + Math.cos(yaw) * Math.cos(pitch) * distance;
     c.yaw = yaw + Math.PI; c.pitch = -pitch; c.near = Math.max(0.005, distance - bounds.radius * 2); c.far = distance + bounds.radius * 3; c.update();
     gl.uniformMatrix4fv(this.uniform("uView"), false, c.viewProj); gl.uniform3f(this.uniform("uCamera"), c.x, c.y, c.z);

@@ -76,5 +76,20 @@ export function meshBounds(meshes: readonly ModelMesh[], pose: ModelPose): Model
     for (let k = 0; k < 3; k++) { low[k] = Math.min(low[k]!, p[k]!); high[k] = Math.max(high[k]!, p[k]!); }
   }
   const center = low.map((v, k) => (v + high[k]!) / 2) as [number, number, number];
-  return { center, radius: Math.max(0.05, Math.hypot(...high.map((v, k) => (v - low[k]!) / 2))), height: Math.max(0.01, high[1]! - low[1]!) };
+  const half = high.map((v, k) => (v - low[k]!) / 2) as [number, number, number];
+  return { center, half, radius: Math.max(0.05, Math.hypot(...half)), height: Math.max(0.01, high[1]! - low[1]!) };
+}
+
+/** Fit all box corners to the viewport, including depth, instead of shrinking wide creatures to a sphere. */
+export function modelDistance(bounds: ModelBounds, yaw: number, pitch: number, aspect: number, fov: number): number {
+  if (!bounds.half) return bounds.radius / Math.sin(Math.min(fov, 2 * Math.atan(Math.tan(fov / 2) * aspect)) / 2);
+  const sy = Math.sin(yaw), cy = Math.cos(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch), tangent = Math.tan(fov / 2);
+  let distance = bounds.radius * 0.1;
+  for (let k = 0; k < 8; k++) {
+    const x = bounds.half[0] * (k & 1 ? 1 : -1), y = bounds.half[1] * (k & 2 ? 1 : -1), z = bounds.half[2] * (k & 4 ? 1 : -1);
+    const depth = x * sy * cp + y * sp + z * cy * cp;
+    const right = x * cy - z * sy, up = -x * sy * sp + y * cp - z * cy * sp;
+    distance = Math.max(distance, depth + Math.abs(right) / (tangent * aspect), depth + Math.abs(up) / tangent);
+  }
+  return distance + bounds.radius * 0.04;
 }

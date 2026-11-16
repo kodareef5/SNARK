@@ -3,7 +3,7 @@ import { Pose } from "../shared/anim/clip.ts";
 import { parsePack } from "../shared/pack/pack.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
 import { modelDocument, type ModelDocument } from "../shared/pages/model.ts";
-import { meshBounds, modelMesh, ModelPose } from "../client/core/pages/model.ts";
+import { meshBounds, modelDistance, modelMesh, ModelPose } from "../client/core/pages/model.ts";
 import { buildPack, type SourceMesh } from "../tools/pack/write.ts";
 import { previewMesh } from "../tools/pages/models.ts";
 
@@ -44,4 +44,18 @@ test("preview level selection retains a textured level and leaves the source unc
   expect(preview.lods[0]!.error).toBe(0);
   expect(source.lods).toHaveLength(2);
   expect(source.lods[0]!.error).toBe(0.1);
+});
+
+test("camera framing fits wide wings and tall models at both desktop and phone aspect ratios", () => {
+  for (const half of [[6, 0.5, 1], [0.5, 3, 0.5]] as [number, number, number][]) for (const aspect of [0.8, 2]) for (const yaw of [0, 0.6, 1.5]) {
+    const pitch = 0.2, b = { center: [0, 0, 0] as [number, number, number], half, radius: Math.hypot(...half), height: half[1] * 2 };
+    const d = modelDistance(b, yaw, pitch, aspect, 0.72), sy = Math.sin(yaw), cy = Math.cos(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch);
+    for (let k = 0; k < 8; k++) {
+      const x = half[0] * (k & 1 ? 1 : -1), y = half[1] * (k & 2 ? 1 : -1), z = half[2] * (k & 4 ? 1 : -1), depth = d - (x * sy * cp + y * sp + z * cy * cp);
+      expect(Math.abs(x * cy - z * sy) / depth).toBeLessThan(Math.tan(0.36) * aspect);
+      expect(Math.abs(-x * sy * sp + y * cp - z * cy * sp) / depth).toBeLessThan(Math.tan(0.36));
+    }
+  }
+  const wide = { ...bounds, half: [6, 0.5, 1] as [number, number, number], radius: 6.2 };
+  expect(modelDistance(wide, 0, 0, 2, 0.72)).toBeLessThan(modelDistance({ ...wide, half: undefined }, 0, 0, 2, 0.72) * 0.6);
 });

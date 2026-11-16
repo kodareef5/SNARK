@@ -59,8 +59,9 @@ function colours(id: string): number[] {
 }
 function union(bounds: readonly ModelBounds[]): ModelBounds {
   const low = [Infinity, Infinity, Infinity], high = [-Infinity, -Infinity, -Infinity];
-  for (const b of bounds) for (let k = 0; k < 3; k++) { low[k] = Math.min(low[k]!, b.center[k]! - b.radius); high[k] = Math.max(high[k]!, b.center[k]! + b.radius); }
-  return { center: low.map((v, k) => (v + high[k]!) / 2) as [number, number, number], radius: Math.max(...high.map((v, k) => (v - low[k]!) / 2)), height: Math.max(...bounds.map((b) => b.height)) };
+  for (const b of bounds) for (let k = 0; k < 3; k++) { const extent = b.half?.[k] ?? b.radius; low[k] = Math.min(low[k]!, b.center[k]! - extent); high[k] = Math.max(high[k]!, b.center[k]! + extent); }
+  const half = high.map((v, k) => (v - low[k]!) / 2) as [number, number, number];
+  return { center: low.map((v, k) => (v + high[k]!) / 2) as [number, number, number], half, radius: Math.max(0.05, Math.hypot(...half)), height: high[1]! - low[1]! };
 }
 function clipBounds(pack: Pack, colors: readonly number[], clip: Clip | null): ModelBounds {
   const pose = new ModelPose(pack), meshes = pack.header.meshes.map((m) => modelMesh(pack, m, colors));
