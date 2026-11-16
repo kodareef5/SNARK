@@ -47,6 +47,6 @@ export class Layers {
 
   /** Called once a frame. */
   begin(): void {
-    if (++this.frame % FORGET === 0) for (const [id, s] of this.shown) if (this.frame - s.seen > FORGET) this.shown.delete(id);
+    if (++this.frame % FORGET === 0) for (const id of this.shown.keys()) if (this.frame - this.shown.get(id)!.seen > FORGET) this.shown.delete(id);
   }
 }

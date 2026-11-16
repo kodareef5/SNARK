@@ -33,6 +33,12 @@ export interface AssetUpload {
   indexBytes: 2 | 4;
   of?: number;
   skinAt?: number;
+  /**
+   * For one that goes up in pieces over several frames: where `data` begins in its `whole` bytes. The piece at 0 makes
+   * room for the whole, and it is drawn once the last has gone.
+   */
+  at?: number;
+  whole?: number;
 }
 
 /**
@@ -131,6 +137,8 @@ export class Residency {
   private readonly drawn: Uint8Array;
   /** Set on a level put on the card in a frame before its surface: it is kept, and drawn once the surface follows. */
   private readonly apart: Uint8Array;
+  /** Bytes the card has been handed of a level or a surface going up in pieces. From the first of them it holds the whole. */
+  private readonly given: Uint32Array;
   private readonly data: (Uint8Array | null)[];
   /**
    * Two rings, one of levels and surfaces through `root` and one of textures through `texRoot`: what is resident and
@@ -235,6 +243,7 @@ export class Residency {
     this.rehashed = new Uint8Array(slots);
     this.drawn = new Uint8Array(slots);
     this.apart = new Uint8Array(this.levels);
+    this.given = new Uint32Array(this.texBase);
     this.data = new Array<Uint8Array | null>(slots).fill(null);
     this.prev = new Int32Array(slots + 4);
     this.next = new Int32Array(slots + 4);
@@ -682,11 +691,12 @@ export class Residency {
     return { positions, colors, indices };
   }
 
-  private upload(slot: number, data: Uint8Array, out: AssetUpload[]): void {
+  private upload(slot: number, data: Uint8Array, out: AssetUpload[], at = 0, whole = data.length): void {
     const of = slot < this.levels ? slot : slot - this.levels;
     const level = this.levelAt(of);
-    if (of === slot) out.push({ slot, mesh: this.meshOf[of]!, level: this.levelOf[of]!, data, indexCount: level.tris * 3, indexBytes: level.index });
-    else out.push({ slot, mesh: this.meshOf[of]!, level: this.levelOf[of]!, data, indexCount: 0, indexBytes: level.index, of, skinAt: level.parts[1]!.bytes });
+    const piece = data.length < whole ? { at, whole } : {};
+    if (of === slot) out.push({ slot, mesh: this.meshOf[of]!, level: this.levelOf[of]!, data, indexCount: level.tris * 3, indexBytes: level.index, ...piece });
+    else out.push({ slot, mesh: this.meshOf[of]!, level: this.levelOf[of]!, data, indexCount: 0, indexBytes: level.index, of, skinAt: level.parts[1]!.bytes, ...piece });
     this.stats.uploaded += data.length;
   }
 
@@ -732,6 +742,7 @@ export class Residency {
   /** The graphics card could not take a level or a surface it was sent. */
   failed(slot: number): void {
     this.stats.refused++;
+    this.restart(slot);
     if (this.state[slot] !== RESIDENT) return;
     if (this.inBoot[slot] === 0) this.unlink(slot);
     this.state[slot] = ABSENT;
@@ -755,7 +766,7 @@ export class Residency {
     this.late.length = 0;
     if (!this.port) return;
 
-    // What nobody wants any longer is given up, on its way or arrived. A copy of a texture that the card has begun is finished.
+    // What nobody wants any longer is given up, on its way or arrived. What the card has begun is finished.
     let kept = 0;
     for (const slot of this.under) {
       const idle = this.frame - this.seen[slot]! > IDLE_FRAMES;
@@ -765,7 +776,7 @@ export class Residency {
         this.undo(slot);
         this.state[slot] = ABSENT;
         this.stats.cancelled++;
-      } else if (this.state[slot] === ARRIVED && idle && (slot < this.texBase || this.gone[slot - this.texBase] === 0)) {
+      } else if (this.state[slot] === ARRIVED && idle && (slot < this.texBase ? this.given[slot] : this.gone[slot - this.texBase]) === 0) {
         if (slot >= this.levels && slot < this.texBase) this.apart[slot - this.levels] = 0;
         this.data[slot] = null;
         this.waiting -= this.size[slot]!;
@@ -777,8 +788,9 @@ export class Residency {
     }
     this.under.length = kept;
 
-    // What has arrived goes on the card, most urgent first, within what the frame's bytes have left. One always goes.
-    const urgent = (slot: number): number => (this.seen[slot] === this.frame ? this.urgency[slot]! : -1);
+    // What has arrived goes on the card, what it has begun of a level first and then the most urgent, within what the
+    // frame's bytes have left. Something always goes.
+    const urgent = (slot: number): number => (slot < this.texBase && this.given[slot]! > 0 ? Infinity : this.seen[slot] === this.frame ? this.urgency[slot]! : -1);
     const byUrgency = (a: number, b: number): number => urgent(b) - urgent(a) || a - b;
     let sent = this.spent;
     this.full = this.short = false;
@@ -793,25 +805,31 @@ export class Residency {
         if (this.state[slot] === ARRIVED) this.under[kept++] = slot;
         continue;
       }
-      // A surface goes up with its level, or in a later frame where the two would pass what this one has left.
-      let pair = slot < this.levels && this.state[this.levels + slot] === ARRIVED ? this.levels + slot : -1;
-      if (pair >= 0 && sent + this.size[slot]! + this.size[pair]! > this.uploadBytes) pair = -1;
-      const bytes = this.size[slot]! + (pair < 0 ? 0 : this.size[pair]!);
-      if ((slot >= this.levels && this.state[slot - this.levels] !== RESIDENT) || (sent > this.spent && sent + bytes > this.uploadBytes)) {
+      // A level or a surface that would pass what the frame has left goes in pieces of what is left, over the frames
+      // that follow, and with nothing left one small part goes. A surface goes up with its level where the two fit,
+      // or after it.
+      const left = this.uploadBytes - sent;
+      const room = left > 0 ? left : sent > this.spent ? 0 : SMALL_PART;
+      if ((slot >= this.levels && this.state[slot - this.levels] !== RESIDENT) || room === 0) {
         this.under[kept++] = slot;
         continue;
       }
-      this.makeRoom(bytes, drops);
-      // What this frame draws already fills the card past its overflow. It waits, and everything is asked for coarser.
-      if (this.ledger + bytes > this.budget * OVERFLOW) this.full = true;
-      if (this.ledger + bytes > this.budget * OVERFLOW || (slot >= this.levels && this.state[slot - this.levels] !== RESIDENT)) {
-        this.under[kept++] = slot;
-        continue;
+      let pair = slot < this.levels && this.given[slot] === 0 && this.state[this.levels + slot] === ARRIVED ? this.levels + slot : -1;
+      if (pair >= 0 && this.size[slot]! + this.size[pair]! > room) pair = -1;
+      if (this.given[slot] === 0) {
+        const bytes = this.size[slot]! + (pair < 0 ? 0 : this.size[pair]!);
+        this.makeRoom(bytes, drops);
+        // What this frame draws already fills the card past its overflow. It waits, and everything is asked for coarser.
+        if (this.ledger + bytes > this.budget * OVERFLOW) this.full = true;
+        if (this.ledger + bytes > this.budget * OVERFLOW || (slot >= this.levels && this.state[slot - this.levels] !== RESIDENT)) {
+          this.under[kept++] = slot;
+          continue;
+        }
       }
-      this.take(slot, uploads);
-      if (pair >= 0) this.take(pair, uploads);
-      else if (slot < this.levels && this.state[this.levels + slot] === ARRIVED) this.apart[slot] = 1;
-      sent += bytes;
+      sent += this.take(slot, uploads, room);
+      if (pair >= 0) sent += this.take(pair, uploads, room);
+      if (this.state[slot] === ARRIVED) this.under[kept++] = slot;
+      else if (pair < 0 && slot < this.levels && this.state[this.levels + slot] === ARRIVED) this.apart[slot] = 1;
     }
     this.under.length = kept;
 
@@ -878,15 +896,31 @@ export class Residency {
     this.stats.requests++;
   }
 
-  /** A level or a surface that has arrived goes on the card. */
-  private take(slot: number, uploads: AssetUpload[]): void {
+  /**
+   * A level or a surface that has arrived goes on the card, as much of it as `room` allows from where it was left: the
+   * card holds the whole from its first piece, and draws it once the last has gone. Returns the bytes sent.
+   */
+  private take(slot: number, uploads: AssetUpload[], room: number): number {
+    const at = this.given[slot]!;
+    const size = this.size[slot]!;
+    const bytes = Math.min(size - at, room);
+    if (at === 0) this.ledger += size;
+    this.upload(slot, this.data[slot]!.subarray(at, at + bytes), uploads, at, size);
+    this.given[slot] = at + bytes < size ? at + bytes : 0;
+    if (at + bytes < size) return bytes;
     this.apart[slot < this.levels ? slot : slot - this.levels] = 0;
-    this.upload(slot, this.data[slot]!, uploads);
     this.data[slot] = null;
     this.state[slot] = RESIDENT;
-    this.waiting -= this.size[slot]!;
-    this.ledger += this.size[slot]!;
+    this.waiting -= size;
     this.toTail(slot);
+    return bytes;
+  }
+
+  /** The card lets go of what it had begun of a level or a surface, which is begun again. */
+  private restart(slot: number): void {
+    if (this.given[slot] === 0) return;
+    this.given[slot] = 0;
+    this.ledger -= this.size[slot]!;
   }
 
   /**
@@ -1001,8 +1035,9 @@ export class Residency {
     while (this.ledger + bytes > this.budget) {
       const slot = this.next[this.root]!;
       if (slot === this.mark) break;
-      // A surface is no use without its level, and goes first.
+      // A surface is no use without its level, and goes first, or what the card had of it.
       if (slot < this.levels && this.state[this.levels + slot] === RESIDENT) this.evict(this.levels + slot, drops);
+      if (slot < this.levels) this.restart(this.levels + slot);
       this.evict(slot, drops);
     }
   }
@@ -1079,6 +1114,7 @@ export class Residency {
       this.gone[t] = 0;
       this.settle(t);
     }
+    this.given.fill(0);
     this.ledger = this.texLedger = 0;
     this.fromBoot.length = 0;
     this.empty();

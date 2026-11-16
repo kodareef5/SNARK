@@ -51,17 +51,11 @@ export function sample(t: Texture, u: number, v: number, spread: number, out: Fl
   if (level > whole) bilinear(t, top - whole - 1, u, v, level - whole, out);
 }
 
-const worldMean = new Float64Array(4);
-
-/** Atlas filtering matching worldRead: clamp within the finish, then fade to its isolated mean. */
+/** Atlas filtering matching worldRead: no finer than the top, no coarser than eight texels a cell, and within the finish. */
 export function sampleWorldTexture(t: Texture, u: number, v: number, spread: number, out: Float64Array): void {
   const top = t.pictures.length - 1;
   const lod = Math.max(0, Math.min(top + spread, Math.max(0, top - WORLD_MIN_MIP)));
   const x = Math.floor(u * 4) / 4, y = Math.floor(v * 4) / 4;
-  const fade = Math.max(0, Math.min(1, (spread + WORLD_MIN_MIP) / (WORLD_MIN_MIP - 2)));
-  if (fade > 0) sample(t, x + 0.125, y + 0.125, -Math.min(top, 4), worldMean);
-  if (fade >= 1) { out.set(worldMean); return; }
   const margin = 0.5 * 2 ** (Math.ceil(lod) - top);
   sample(t, Math.max(x + margin, Math.min(x + 0.25 - margin, u)), Math.max(y + margin, Math.min(y + 0.25 - margin, v)), lod - top, out);
-  if (fade > 0) for (let c = 0; c < t.channels; c++) out[c] = out[c]! * (1 - fade) + worldMean[c]! * fade;
 }

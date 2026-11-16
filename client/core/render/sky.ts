@@ -161,7 +161,7 @@ const GATHERED = GATHER.reduce((sum, g) => sum + g[2], 0);
 export function sunCoord(height: number): number {
   const s = Math.max(-1, Math.min(1, height / SUN_TOP));
   let along = 0.5 + 0.5 * Math.sign(s) * Math.sqrt(Math.abs(s));
-  for (const [from, to, share] of GATHER) along += share * Math.max(0, Math.min(1, (height - from) / (to - from)));
+  for (const g of GATHER) along += g[2] * Math.max(0, Math.min(1, (height - g[0]) / (g[1] - g[0])));
   return along / (1 + GATHERED);
 }
 
@@ -310,9 +310,32 @@ function fromBase64(text: string): Uint8Array {
   return out;
 }
 
+declare const __SKY_FILE__: string;
+/** A page's build writes the table to a file of its own, named here, and leaves it out of the script. */
+export const SKY_FILE = typeof __SKY_FILE__ === "string" ? __SKY_FILE__ : "";
+
+/** The table as its file holds it: each byte less the one four before it, which the next texel mostly repeats. */
+export function skyFile(table: Uint8Array): Uint8Array {
+  const file = new Uint8Array(table.length);
+  for (let i = 0; i < table.length; i++) file[i] = table[i]! - (i >= 4 ? table[i - 4]! : 0);
+  return file;
+}
+
+/** The page's table, from its file. Given before anything asks for the sky. */
+export function giveSky(file: Uint8Array): void {
+  const table = file.slice();
+  for (let i = 4; i < table.length; i++) table[i] = table[i]! + table[i - 4]!;
+  if (table.length !== SKY_SIZE * SKY_SIZE * SKY_SLICES * 4) throw new Error(`the sky's table is ${table.length} bytes`);
+  made = { table, lights: Float32Array.from(SKY_LIGHTS) };
+}
+
 /** The table and its light, as tools/sky/build.ts made them. */
 export function theSky(): Sky {
-  return (made ??= { table: fromBase64(SKY_TABLE), lights: Float32Array.from(SKY_LIGHTS) });
+  return (made ??= typeof __SKY_FILE__ === "string" ? notGiven() : { table: fromBase64(SKY_TABLE), lights: Float32Array.from(SKY_LIGHTS) });
+}
+
+function notGiven(): never {
+  throw new Error("the sky's table was asked for before the page gave it");
 }
 
 /** Light after exposure as the screen shows it, 0 to 255: the tone curve, then sRGB. */
@@ -367,7 +390,9 @@ const unit = new Float32Array(FRAME_FLOATS);
  */
 export function cardTakes(n: Vec, v: Vec, l: Vec): { light: number; sky: number } {
   unit.fill(0);
-  unit.set([l[0]!, l[1]!, l[2]!], FRAME.sun);
+  unit[FRAME.sun] = l[0]!;
+  unit[FRAME.sun + 1] = l[1]!;
+  unit[FRAME.sun + 2] = l[2]!;
   unit.fill(1, FRAME.sunColor, FRAME.sunColor + 3);
   // A fully rough highlight mirrors nothing, so what the sky shows in the reflected direction does not matter.
   lit(takes, GREY, [0, 1, 0], n, v, unit, UP);

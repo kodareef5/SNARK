@@ -37,7 +37,6 @@ export class UiView {
   private readonly bound = new Map<number, Bound>();
   private scale = 0;
   private pass = 0;
-  private readonly pictures = new Map<number, { canvas: HTMLCanvasElement; version: number }>();
 
   constructor(root: HTMLElement, events: UiEvents) {
     this.root = root;
@@ -120,7 +119,7 @@ export class UiView {
       if (n.kind === K_IMAGE) {
         const image = f.images[n.image];
         // A picture in a file is the background, the part shown scaled to fill the node. The browser fetches the file once.
-        const [w, h] = [n.sw || image?.width || 1, n.sh || image?.height || 1];
+        const w = n.sw || image?.width || 1, h = n.sh || image?.height || 1;
         const src = image?.url ? `url("${image.url}") ${(n.sx / Math.max(1, image.width - w)) * 100}% ${(n.sy / Math.max(1, image.height - h)) * 100}% / ${(image.width / w) * 100}% ${(image.height / h) * 100}% no-repeat` : "";
         if (src !== "" && b.src !== src) {
           b.src = src;
@@ -132,15 +131,11 @@ export class UiView {
         if (image && !image.url && (b.version !== image.version || b.src !== crop)) {
           b.version = image.version;
           b.src = crop;
-          let source = this.pictures.get(n.image);
-          if (!source) this.pictures.set(n.image, source = { canvas: document.createElement("canvas"), version: -1 });
-          if (source.version !== image.version) {
-            source.canvas.width = image.width; source.canvas.height = image.height; source.version = image.version;
-            source.canvas.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(image.data), image.width, image.height), 0, 0);
-          }
           const canvas = b.el as HTMLCanvasElement;
-          canvas.width = w; canvas.height = h;
-          canvas.getContext("2d")!.drawImage(source.canvas, n.sx, n.sy, w, h, 0, 0, w, h);
+          if (canvas.width !== w) canvas.width = w;
+          if (canvas.height !== h) canvas.height = h;
+          // The part shown goes straight from the picture's own pixels onto the node.
+          canvas.getContext("2d")!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), -n.sx, -n.sy, n.sx, n.sy, w, h);
         }
       }
       if (b.interactive !== n.interactive) {
@@ -156,7 +151,8 @@ export class UiView {
       }
       if (n.focus && document.activeElement !== b.el) b.el.focus();
     }
-    for (const [key, b] of this.bound) {
+    for (const key of this.bound.keys()) {
+      const b = this.bound.get(key)!;
       if (b.seen === pass) continue;
       b.el.remove();
       this.bound.delete(key);

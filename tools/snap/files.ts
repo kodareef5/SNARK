@@ -3,7 +3,6 @@
 // asset folders. That takes seconds, so each texture is kept under .cache/snap by the bytes it was made from.
 
 import { worldMaterial, worldSurfaceMesh } from "../surfaces/build.ts";
-import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -55,8 +54,6 @@ export function rgbaOf(m: Material, role: TextureRole, top: number, cache: strin
   const side = topIn("rgba", top);
   const sizes = Array.from({ length: Math.log2(side) + 1 }, (_, k) => pictureBytes("rgba", role, 1 << k, 1));
   const hash = createHash("sha256").update((makers ??= MAKERS.map((f) => readFileSync(join(import.meta.dir, f), "utf8")).join("\0")));
-  // Its custom coarse mips can change even when the three source PNGs do not.
-  if (m.id === SURFACE_MATERIAL) hash.update(readFileSync(join(import.meta.dir, "../surfaces/build.ts")));
   hash.update(JSON.stringify([role, top]));
   const files = pictureFiles(m);
   for (const what of MADE_FROM[role]) if (files[what] !== undefined && existsSync(files[what])) hash.update(what).update(readFileSync(files[what]));

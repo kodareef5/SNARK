@@ -54,9 +54,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * mechanical state and seat after the flight counters, and a view entry's vehicle parts (view.ts).
  * 19: rotor state/condition, observer rotor and service parts, and vehicle maintenance/deployment commands.
  * 20: marine hull/flooding state and physical shoreline recovery. 21: compact chunk rows, rows in place, and chunks
- * taken from the map (HELLO_STATICS).
+ * taken from the map (HELLO_STATICS). 22: the map's statics told of after the hello (CMD_STATICS).
  */
-export const PROTOCOL_VERSION = 21;
+export const PROTOCOL_VERSION = 22;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -351,6 +351,12 @@ export const CMD_TRAVEL = 31;
 /** Vehicle service: action u8 then generation-qualified target u32 (refuel adds count u8, 0 fills).
  * Deploy instead sends own inventory slot u8, x/y/z f32 and yaw u16. */
 export const CMD_VEHICLE = 32;
+/**
+ * Protocol 22. The client holds the map's statics now, as a browser does once the end of the map file has come, though its
+ * hello did not say HELLO_STATICS. The answer, OK, is the place in the reliable stream from which chunks are sent as to a
+ * client whose hello did; INVALID where the world has no map file.
+ */
+export const CMD_STATICS = 33;
 export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;

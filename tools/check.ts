@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
-import { dynamicLoads, stripComments } from "./policy.ts";
+import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
@@ -19,8 +19,11 @@ const ROOT = resolve(import.meta.dir, "..");
  * held to a budget: on a busy machine it times the neighbours.
  */
 const TEST_CPU_BUDGET = 440;
-/** Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's phases. */
-const SHELL_MAX_LINES = 1150;
+/**
+ * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's
+ * phases; the last 50 hold the executor's mirror of the card's state, which sends a frame's changes alone.
+ */
+const SHELL_MAX_LINES = 1200;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
@@ -44,7 +47,8 @@ const ZONES: Zone[] = [
   { dir: "client/voice", may: ["shared", "client/core", "client/voice"], builtins: false },
   { dir: "client/assets", may: ["shared", "client/core", "client/assets"], builtins: false },
   { dir: "client/sound", may: ["shared", "client/core", "client/sound"], builtins: false },
-  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/shell"], builtins: false },
+  { dir: "client/city", may: ["shared", "client/core", "client/city"], builtins: false },
+  { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/city", "client/shell"], builtins: false },
   { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
   // What a module is written against. It names nothing of the server's own.
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },
@@ -63,6 +67,13 @@ const DETERMINISTIC_FILES = ["tools/pack/simplify.ts", "tools/pack/error.ts", "t
 const NONDETERMINISTIC = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log2|log10|log1p|pow|hypot|cbrt|random)\b|\*\*|\bDate\.now\b|\bperformance\.now\b/;
 /** Seeded randomness only, wherever game state is produced. */
 const SEEDED_ONLY_DIRS = ["shared", "server", "client/core", "content"];
+/** The frame's build and the shell's work each frame, where an array made on every call is garbage every frame (madeArrays). */
+const FRAME_DIRS = ["client/core/render", "client/core/details", "client/shell/gl.ts", "client/shell/ui.ts"];
+const MADE_ARRAY = {
+  destructured: "`[a, b] = [x, y]` makes an array each time it runs, even in Safari's top tier; write a plain assignment each (`a = x; b = y;`, `const a = x, b = y;`)",
+  set: "`t.set([x, y], k)` makes an array each time it runs; write the elements (`t[k] = x; t[k + 1] = y;`)",
+  for: "`for (const [k, v] of …)` makes an array for each entry of a Map; walk `map.keys()` or `map.values()` and look up the rest, or a list by index",
+} as const;
 
 const problems: string[] = [];
 const fail = (msg: string) => problems.push(msg);
@@ -174,6 +185,7 @@ function checkPolicy(): void {
     if (SEEDED_ONLY_DIRS.some((d) => rel.startsWith(d + "/")) && /\bMath\.random\b/.test(src)) {
       fail(`${rel}: Math.random is not allowed; use the seeded Rng in shared/rng.ts`);
     }
+    if (FRAME_DIRS.some((d) => rel === d || rel.startsWith(d + "/"))) for (const hit of madeArrays(src)) fail(`${rel}:${hit.line}: ${MADE_ARRAY[hit.what]}`);
   }
 
   if (shellLines > SHELL_MAX_LINES) {

@@ -100,7 +100,7 @@ try {
     if (s.lookup) {
       r.shadowLookup = s.lookup;
       r.programs.clear();
-      r.current = null;
+      r.current = r.warmed = null;
     }
     const frames = await get("/shot/" + s.key);
     const blob = await bytes("/shot/" + s.key + ".bin");

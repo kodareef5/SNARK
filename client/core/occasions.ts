@@ -131,44 +131,32 @@ export class Occasions {
       b.frame = frame;
       st.unpack(remote.anim[i]!, remote.cue[i]!);
       st.seed = bodySeed(id);
-      const happen = (occasion: Occasion, at: number): Happening | null => {
-        if ((listens & this.bit(occasion)) === 0) return null;
-        const h: Happening = {
-          occasion, id, kind, tick: at, x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, yaw: remote.yaw[i]!, size: 1, anim: remote.anim[i]!, cue: remote.cue[i]!,
-          grounded: st.grounded, colours: remote.colors.slice(i * 6, i * 6 + 6), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null,
-        };
-        out.push(h);
-        return h;
-      };
       if (!first) {
         was.unpack(b.anim, b.cue);
         const cueChanged = (remote.cue[i]! & 0xffe) !== (b.cue & 0xffe);
         const landed = cueChanged && st.cue === CUE_LAND;
-        if (landed) happen("land", started(tick, st.cueStart));
-        else if (cueChanged && st.cue === CUE_TAKEOFF) happen("take_off", started(tick, st.cueStart));
+        if (landed) this.happen("land", started(tick, st.cueStart), remote, i);
+        else if (cueChanged && st.cue === CUE_TAKEOFF) this.happen("take_off", started(tick, st.cueStart), remote, i);
         // Knocked out off the ground, it goes down where it lands.
-        else if (cueChanged && st.cue === CUE_TORPOR && !(st.out && !st.grounded && st.mode !== MODE_SWIM)) happen(st.out ? "down" : "up", started(tick, st.cueStart));
+        else if (cueChanged && st.cue === CUE_TORPOR && !(st.out && !st.grounded && st.mode !== MODE_SWIM)) this.happen(st.out ? "down" : "up", started(tick, st.cueStart), remote, i);
         // One knocked out has a landing cue only where its kind falls limp on a clip, so its landing is read from its state.
-        if (!landed && st.out && st.grounded && !was.grounded && was.out) happen("land", tick);
+        if (!landed && st.out && st.grounded && !was.grounded && was.out) this.happen("land", tick, remote, i);
         if (((remote.cue[i]! >>> 12) & 0x3ff) !== ((b.cue >>> 12) & 0x3ff) && st.layer === LAYER_FLINCH) {
-          const h = happen("struck", started(tick, st.layerStart));
+          const h = this.happen("struck", started(tick, st.layerStart), remote, i);
           if (h) this.striker(h, remote, i, shots, viewer, nowMs);
         }
-        if (was.held && !st.held && !st.grounded && st.speed * SPEED_STEP >= THROWN_SPEED) happen("thrown", tick);
-        if (was.mode !== MODE_SWIM && st.mode === MODE_SWIM && !was.grounded) happen("splash", tick);
+        if (was.held && !st.held && !st.grounded && st.speed * SPEED_STEP >= THROWN_SPEED) this.happen("thrown", tick, remote, i);
+        if (was.mode !== MODE_SWIM && st.mode === MODE_SWIM && !was.grounded) this.happen("splash", tick, remote, i);
       }
       b.anim = remote.anim[i]!;
       b.cue = remote.cue[i]!;
       const anim = this.anims[kind];
       if (!anim) continue;
       const d = Math.hypot(remote.x[i]! - ex, remote.y[i]! - ey, remote.z[i]! - ez);
-      if ((listens & this.bit("peck")) !== 0) this.peck(kind, anim, b, st, tick, first || d > PECK_REACH, (at) => happen("peck", at));
-      if ((listens & this.bit("step")) !== 0 && d < STEP_REACH) this.step(anim, b, st, tick, remote.x[i]!, remote.z[i]!, remote.yaw[i]!, (at, foot) => {
-        const h = happen("step", at);
-        if (h) h.foot = foot;
-      });
+      if ((listens & this.bit("peck")) !== 0) this.peck(kind, anim, b, st, tick, first || d > PECK_REACH, remote, i);
+      if ((listens & this.bit("step")) !== 0 && d < STEP_REACH) this.step(anim, b, st, tick, remote, i);
     }
-    for (const [id, b] of this.bodies) if (b.frame !== frame) this.bodies.delete(id);
+    for (const id of this.bodies.keys()) if (this.bodies.get(id)!.frame !== frame) this.bodies.delete(id);
     for (const c of corpses) {
       if (this.corpses.has(c.id)) continue;
       // One that died in its own flight is met where it comes down, as it lands.
@@ -216,8 +204,20 @@ export class Occasions {
     }
   }
 
+  /** Records that `occasion` happened at `at` to body `i`, as `this.st` has it, if its kind answers it. */
+  private happen(occasion: Occasion, at: number, remote: RemoteSample, i: number): Happening | null {
+    const kind = remote.kind[i]!;
+    if (((this.listens[kind] ?? 0) & this.bit(occasion)) === 0) return null;
+    const h: Happening = {
+      occasion, id: remote.id[i]!, kind, tick: at, x: remote.x[i]!, y: remote.y[i]!, z: remote.z[i]!, yaw: remote.yaw[i]!, size: 1, anim: remote.anim[i]!, cue: remote.cue[i]!,
+      grounded: this.st.grounded, colours: remote.colors.slice(i * 6, i * 6 + 6), fromX: NaN, fromY: NaN, fromZ: NaN, foot: -1, corpse: null,
+    };
+    this.happened.push(h);
+    return h;
+  }
+
   /** At each turn of its idle that it stands through, the idle chosen may be a peck at the ground. */
-  private peck(kind: number, a: CreatureAnim, b: Seen, st: AnimState, tick: number, quiet: boolean, happen: (at: number) => void): void {
+  private peck(kind: number, a: CreatureAnim, b: Seen, st: AnimState, tick: number, quiet: boolean, remote: RemoteSample, i: number): void {
     const standing = st.speed === 0 && st.grounded && !st.out && !st.held && st.mode !== MODE_SWIM && (st.action & 7) === ACT_NONE && st.cue === CUE_NONE;
     if (!standing || a.idles.length === 0) {
       b.slot = -1;
@@ -229,22 +229,24 @@ export class Occasions {
       const which = idleOf(a, st.seed, t);
       const dips = which >= 0 ? (this.pecks[kind]?.[which] ?? []) : [];
       // The turn began at slot * a.slot in its own clock, which is the tick plus its seed.
-      for (const s of dips) happen(slot * a.slot - st.seed + s * TICK_RATE);
+      for (const s of dips) this.happen("peck", slot * a.slot - st.seed + s * TICK_RATE, remote, i);
     }
     b.slot = slot;
   }
 
   /** A foot coming down: where the gait, moved on by the ground covered, passes the plant of either foot, running. */
-  private step(a: CreatureAnim, b: Seen, st: AnimState, tick: number, x: number, z: number, yaw: number, happen: (at: number, foot: number) => void): void {
+  private step(a: CreatureAnim, b: Seen, st: AnimState, tick: number, remote: RemoteSample, i: number): void {
     const g = b.gait;
     const before = g.phase;
     const gap = tick - g.tick;
-    advanceCreature(a, g, st, tick, x, z, yaw, 1);
+    advanceCreature(a, g, st, tick, remote.x[i]!, remote.z[i]!, remote.yaw[i]!, 1);
     if (!(gap > 0 && gap <= 4) || !st.grounded || st.mode === MODE_SWIM || st.speed * SPEED_STEP < a.runAt || a.rig.feet.length < 2) return;
     const moved = g.phase - before + (g.phase < before ? 1 : 0);
     if (moved <= 0 || moved >= 0.5) return;
-    if (before < 0.5 && before + moved >= 0.5) happen(tick, a.rig.feet[1]!);
-    else if (before + moved >= 1) happen(tick, a.rig.feet[0]!);
+    const second = before < 0.5 && before + moved >= 0.5;
+    if (!second && before + moved < 1) return;
+    const h = this.happen("step", tick, remote, i);
+    if (h) h.foot = a.rig.feet[second ? 1 : 0]!;
   }
 }
 

@@ -47,7 +47,7 @@ D253 stores tint, not land-cover identity. Several surfaces share colours, so th
 
 - `world-surfaces.ts` contains matching CPU/GLSL projection, hash, sampling and weather operations. Natural surfaces blend three translated, quarter-turned samples with smooth triangular weights. Directional materials keep aligned joints. Continuous 37 m variation and smaller stain fields suppress broad repetition.
 - UVs come from absolute metre coordinates on the dominant face axis. Camera movement is added back before sampling. Texture derivatives are taken before wrapping/rotation. Explicit mip filtering, fading normal strength and cell-average colour at large footprints avoid distant texture sparkle.
-- The 16 px atlas mip gives every finish its own constant 4 × 4 compression block. Reading the ordinary 4 px atlas mip would compress sixteen unrelated finishes together. Trilinear guards cover both mips being sampled.
+- A distant finish fades to its cell mean, baked into both renderers from the atlas's 4 × 4 mip (`WORLD_MEANS`), and reads no texture. Trilinear guards keep the detail mips inside each cell.
 - Lit vertex programs carry a semantic surface index; terrain and solids use different lookup tables. The shell binds three shared texture maps and city uniforms. The software rasterizer defers world-surface shading until visibility is resolved and computes the same projected footprint.
 - `Scene` requests the atlas through normal material residency and tier caps. A never-drawn metadata mesh sorts after existing mesh IDs. Pack/texture discovery includes the deterministic atlas source. No new draw, triangle, per-static material, authored UV or map-format change is required.
 - Authored material draws continue through SURFACE. Their simplified vegetation/node LODs keep palette shading rather than acquiring a concrete finish. Fully rough plain draws avoid the extra sky reflection lookup.
@@ -121,7 +121,7 @@ Actual BC7/BC5, ASTC and RGBA files were encoded through the repo's encoders, wi
 
 These are the complete requested mip prefixes, excluding the shared file header, manifest and HTTP overhead. The first compressed step is about 16 KiB for all three maps. There are no region-mask downloads. High has twice medium's surface resolution. Ultra shares this atlas ceiling and shows more through its existing geometry, reach and shadow settings. The portable RGBA variant is capped at 1024 by the engine, so software high/ultra captures cannot demonstrate the GPU's 2048 texture detail.
 
-Natural surfaces use nine texture reads near the camera, up to eighteen while fading to the cell average, and three once fully coarse. Directional finishes use three, up to six in the fade. Macro noise and shared PBR lighting add arithmetic. This is a real fragment cost even though draw counts do not change. A phone GPU timing is still required.
+Natural surfaces read five textures near the camera and while fading to the cell mean (the base of three cells, the normal and packed maps of the heaviest), four once their relief has faded, and none once fully coarse. Directional finishes read three, then two, then none. Macro noise and shared PBR lighting add arithmetic. This is a real fragment cost even though draw counts do not change. A phone GPU timing is still required.
 
 Flyer camera costs, shown as **draws / millions of triangles**. Each capture has its full `rendering*.json` alongside it.
 
