@@ -8,11 +8,11 @@ import { availableParallelism } from "node:os";
 import { join, resolve } from "node:path";
 import { Worker } from "node:worker_threads";
 import type { Manifest } from "../../shared/pack/manifest.ts";
-import { MATERIAL_CUTOUT } from "../../shared/pack/pack.ts";
-import { TEXTURE_FORMATS, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
+import { MATERIAL_CUTOUT, setTexture, textureOf } from "../../shared/pack/pack.ts";
+import { TEXTURE_FORMATS, TEXTURE_ROLES, type TextureFormat, type TextureRole } from "../../shared/pack/texture.ts";
 import type { AstcKind } from "./astc.ts";
 import type { SplitFile } from "./split.ts";
-import { rgbaTexture, writeTextureFile, type EncodedTexture, type PlacedTexture } from "./texture.ts";
+import { isNeutral, rgbaTexture, writeTextureFile, type EncodedTexture, type PlacedTexture } from "./texture.ts";
 
 /** A texture for the build: what the manifest lists of it, and a way to its pictures. */
 export interface TextureSource {
@@ -123,6 +123,11 @@ export interface EncodeOptions {
   alpha?: ReadonlySet<string>;
   /** The text of an encoder, which is part of what a picture is kept under. The encoder's own file where not given. */
   encoders?: Readonly<Partial<Record<BlockFormat, string>>>;
+  /**
+   * Writes a texture whose role, alpha and pictures are an earlier one's once, for both, and leaves out one that is
+   * its role's neutral in every texel a shader reads, which a material without that map is drawn with.
+   */
+  share?: boolean;
 }
 
 export interface EncodeReport {
@@ -134,14 +139,15 @@ export interface EncodeReport {
 }
 
 /**
- * The texture file of each variant, in the order of TEXTURE_FORMATS, and where each texture is in it. The bytes are
- * the same whatever the number of threads and however the blocks are shared out among them.
+ * The texture file of each variant, in the order of TEXTURE_FORMATS, where each texture is in it, and the place in the
+ * files of each source: its own, another's with `share` where they are the same, or -1 where it was left out. The
+ * bytes are the same whatever the number of threads and however the blocks are shared out among them.
  *
  * A picture is kept under the hash of its pixels, its role, its variant, how it is encoded and the text of its
  * encoder's source file, so changing an encoder encodes everything again and nothing else has to be remembered.
  * Where nothing reads alpha the block variants are given it as 255, so no bits are spent on it.
  */
-export async function encodeTextures(sources: readonly TextureSource[], opts: EncodeOptions = {}): Promise<{ variants: { format: TextureFormat; bytes: Uint8Array; placed: PlacedTexture[] }[]; report: EncodeReport }> {
+export async function encodeTextures(sources: readonly TextureSource[], opts: EncodeOptions = {}): Promise<{ variants: { format: TextureFormat; bytes: Uint8Array; placed: PlacedTexture[] }[]; report: EncodeReport; places: number[] }> {
   const cache = opts.cache === undefined ? TEXTURE_CACHE : opts.cache;
   const cut = opts.cut ?? CUT;
   const text = (file: string): string => readFileSync(join(import.meta.dir, file), "utf8");
@@ -164,12 +170,29 @@ export async function encodeTextures(sources: readonly TextureSource[], opts: En
   /** By key, so that pictures that are the same are encoded once. */
   const made = new Map<string, Promise<Uint8Array>>();
   const textures: Record<TextureFormat, EncodedTexture[]> = { bc: [], astc: [], rgba: [] };
+  const places: number[] = [];
+  /** The place of each texture written, by its role, alpha and pictures as given. */
+  const written = new Map<string, number>();
   try {
     // A texture at a time, so that no more than one texture's pictures are held unencoded. Its blocks keep every thread busy.
     for (const s of sources) {
       const mips = s.mips();
       if (mips.length !== Math.log2(s.top) + 1 || mips.some((m, i) => m.length !== 4 ** i * 4)) throw new Error(`texture ${s.id}: its pictures are not the sizes from 1 to ${s.top} pixels across`);
       const alpha = (s.role === "base" && (opts.alpha?.has(s.id) ?? false)) || s.role === "layer";
+      if (opts.share) {
+        if (isNeutral(s.role, alpha, mips)) {
+          places.push(-1);
+          continue;
+        }
+        const same = sha(JSON.stringify([s.role, alpha, ...mips.map((m) => sha(m))]));
+        const had = written.get(same);
+        if (had !== undefined) {
+          places.push(had);
+          continue;
+        }
+        written.set(same, textures.rgba.length);
+      }
+      places.push(textures.rgba.length);
       const pictures: Promise<Uint8Array>[][] = [[], []];
       mips.forEach((mip, i) => {
         const rgba = new Uint8Array(new SharedArrayBuffer(mip.length));
@@ -192,7 +215,7 @@ export async function encodeTextures(sources: readonly TextureSource[], opts: En
   } finally {
     await threads.close();
   }
-  return { variants: TEXTURE_FORMATS.map((format) => ({ format, ...writeTextureFile(format, textures[format]) })), report };
+  return { variants: TEXTURE_FORMATS.map((format) => ({ format, ...writeTextureFile(format, textures[format]) })), report, places };
 }
 
 export interface TextureFile extends SplitFile {
@@ -201,9 +224,10 @@ export interface TextureFile extends SplitFile {
 
 /**
  * Encodes the textures of a build and lists them in its manifest: the three files after the files it has, and where
- * each texture is in each. The textures the manifest names keep their places, since materials name them by place, and
- * each must have a source. Sources that nothing names follow them. Returns the files to write, which are none when
- * there are no textures.
+ * each texture is in each. Each texture the manifest names must have a source, and sources that nothing names follow
+ * them. Textures that are the same are listed once, under the first one's id, and one that is its role's neutral is
+ * left out (`share`), so the materials are told the places of theirs again. Returns the files to write, which are
+ * none when there are no textures.
  */
 export async function buildTextures(manifest: Manifest, sources: readonly TextureSource[], name: string, opts: EncodeOptions = {}): Promise<{ files: TextureFile[]; report: EncodeReport }> {
   const named = manifest.textures ?? [];
@@ -220,9 +244,11 @@ export async function buildTextures(manifest: Manifest, sources: readonly Textur
   if (all.length === 0) return { files: [], report: { pictures: 0, encoded: 0, megapixels: 0 } };
   const alpha = new Set<string>();
   for (const m of manifest.materials ?? []) if (m.base >= 0 && ((m.flags & MATERIAL_CUTOUT) !== 0 || m.emissive > 0)) alpha.add(named[m.base]!.id);
-  const { variants, report } = await encodeTextures(all, { ...opts, alpha });
+  const { variants, report, places } = await encodeTextures(all, { ...opts, alpha, share: true });
   const first = manifest.files.length;
-  manifest.textures = all.map((s, i) => ({ id: s.id, role: s.role, top: s.top, in: Object.fromEntries(variants.map((v, k) => [v.format, { file: first + k, ...v.placed[i]! }])) }));
+  const kept = all.filter((_, i) => places[i] !== -1 && places.indexOf(places[i]!) === i);
+  manifest.textures = kept.map((s, i) => ({ id: s.id, role: s.role, top: s.top, in: Object.fromEntries(variants.map((v, k) => [v.format, { file: first + k, ...v.placed[i]! }])) }));
+  for (const m of manifest.materials ?? []) for (const role of TEXTURE_ROLES) if (textureOf(m, role) >= 0) setTexture(m, role, places[textureOf(m, role)]!);
   const files = variants.map((v): TextureFile => ({ name: `${name}.tex.${v.format}.sntx`, role: "tex", format: v.format, bytes: v.bytes }));
   for (const f of files) manifest.files.push({ name: f.name, bytes: f.bytes.length, role: "tex", format: f.format });
   return { files, report };

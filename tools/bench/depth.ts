@@ -11,16 +11,15 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { CHUNK_SIZE } from "../../shared/coords.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
-import { Rng } from "../../shared/rng.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
 import { StructureStore } from "../../shared/world/structures.ts";
 import { buildCorePack } from "../pack/build.ts";
+import { BASE_TIERS, asTextured, benchBases, boxBase, type Piece } from "./base.ts";
 
 type Section = (title: string) => void;
 type Row = (name: string, value: number, unit: string, budget?: number | null) => void;
 
 const DIMS = { chunksX: 128, chunksZ: 128 };
-const KINDS = ["core:foundation", "core:wall", "core:wall", "core:ceiling", "core:ceiling", "core:pillar", "core:crate", "core:block"];
 /** The chunks a client holds, this many either way of the camera's. */
 const HELD = 4;
 const BASES = 20;
@@ -39,28 +38,14 @@ export function terrain(): Heightfield {
   return hf;
 }
 
-/** A piece: its kind, place and turn. */
-export type Piece = [number, number, number, number, number];
-
-/** The bench map's 250 bases of 2,000 pieces, made in the order tools/bench.ts makes them, so they are the same, by chunk. */
-export function bases(reg: Registry, hf: Heightfield, halfY: (kind: number) => number): { centers: [number, number][]; byChunk: Map<number, Piece[]> } {
-  const rng = new Rng(2026);
-  const kinds = KINDS.map((id) => reg.index.get(id)!);
-  const centers: [number, number][] = [];
+/** The bench map's bases (base.ts), by chunk. */
+export function bases(reg: Registry, hf: Heightfield): { centers: [number, number][]; byChunk: Map<number, Piece[]> } {
+  const { centers, pieces } = benchBases(reg, hf);
   const byChunk = new Map<number, Piece[]>();
-  for (let b = 0; b < 250; b++) {
-    const [cx, cz] = [Math.round(rng.range(400, 7790) / 3) * 3, Math.round(rng.range(400, 7790) / 3) * 3];
-    centers.push([cx, cz]);
-    const y0 = hf.heightAt(cx, cz);
-    for (let n = 0; n < 2000; n++) {
-      const kind = kinds[rng.int(kinds.length)]!;
-      const x = cx + (rng.int(15) - 7) * 3;
-      const z = cz + (rng.int(15) - 7) * 3;
-      const piece: Piece = [kind, x, y0 + rng.int(4) * 3.3 + halfY(kind), z, rng.int(4) * 16384];
-      const chunk = Math.floor(z / CHUNK_SIZE) * DIMS.chunksX + Math.floor(x / CHUNK_SIZE);
-      if (!byChunk.has(chunk)) byChunk.set(chunk, []);
-      byChunk.get(chunk)!.push(piece);
-    }
+  for (const piece of pieces.flat()) {
+    const chunk = Math.floor(piece[3] / CHUNK_SIZE) * DIMS.chunksX + Math.floor(piece[1] / CHUNK_SIZE);
+    if (!byChunk.has(chunk)) byChunk.set(chunk, []);
+    byChunk.get(chunk)!.push(piece);
   }
   return { centers, byChunk };
 }
@@ -77,6 +62,7 @@ export function held(reg: Registry, pack: Pack, hf: Heightfield, x: number, z: n
   }
   const scene = new Scene({ dims: DIMS, hf, structs }, reg, pack);
   scene.viewHeight = 1080;
+  asTextured(scene);
   return scene;
 }
 
@@ -131,8 +117,7 @@ export function benchDepth(section: Section, record: Row): void {
   const reg = compileContent(CORE_CONTENT).registry!;
   const pack = parsePack(buildCorePack());
   const hf = terrain();
-  const probe = new StructureStore(DIMS, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-  const { centers, byChunk } = bases(reg, hf, (kind) => probe.halfYOf(kind));
+  const { centers, byChunk } = bases(reg, hf);
 
   section(`Two depth ranges (headless): the chunks a client holds round each of ${BASES} bench bases, from 60 m off it, turning`);
   const bench: Turned = { one: [], two: [], oneMs: [], twoMs: [], at256: [] };
@@ -147,16 +132,10 @@ export function benchDepth(section: Section, record: Row): void {
 
   section(`Two depth ranges (headless): a city, the ${(HELD * 2 + 1) ** 2} chunks a client holds each built up with 1,000 pieces, from its middle, turning`);
   const [x, z] = [4096 + 32, 4096 + 32];
-  const rng = new Rng(9);
-  const kinds = KINDS.map((id) => reg.index.get(id)!);
   const city: Turned = { one: [], two: [], oneMs: [], twoMs: [], at256: [] };
   const scene = held(reg, pack, hf, x, z, (chunk) => {
     const [x0, z0] = [(chunk % DIMS.chunksX) * CHUNK_SIZE, Math.floor(chunk / DIMS.chunksX) * CHUNK_SIZE];
-    return Array.from({ length: 1000 }, (): Piece => {
-      const kind = kinds[rng.int(kinds.length)]!;
-      const [px, pz] = [x0 + 1.5 + rng.int(21) * 3, z0 + 1.5 + rng.int(21) * 3];
-      return [kind, px, hf.heightAt(px, pz) + rng.int(4) * 3.3 + probe.halfYOf(kind), pz, rng.int(4) * 16384];
-    });
+    return boxBase(reg, BASE_TIERS[chunk % 3]!, x0 + 14, hf.heightAt(x0 + 32, z0 + 32), z0 + 14, 12, 3, 1000);
   });
   const cam = new Camera();
   [cam.x, cam.z, cam.aspect] = [x, z, 16 / 9];

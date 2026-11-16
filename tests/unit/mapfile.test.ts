@@ -37,6 +37,9 @@ test("a file that is damaged, foreign or unplayable is refused, and the reason s
   flipped[file.length >> 1]! ^= 4;
   expect(() => parseMap(flipped)).toThrow("map: the file is damaged");
   expect(() => parseMap(file.subarray(0, file.length - 9))).toThrow("map: the file is damaged");
+  // A page fetched the file by its SHA-256, so it reads the body without hashing it again.
+  expect(parseMap(file, false)).toEqual(parseMap(file));
+  expect(() => parseMap(file.subarray(0, file.length - 9), false)).toThrow("map: a section runs past its end");
   expect(() => parseMap(new Uint8Array(100))).toThrow("map: this is not a map file");
   expect(() => parseMap(file.subarray(0, 20))).toThrow("map: this is not a map file");
   expect(() => parseMap(rehashed((view) => view.setUint16(4, 4, true)))).toThrow("map: version 4 is not one this build reads");

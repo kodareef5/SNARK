@@ -12,10 +12,11 @@ export const TOKEN = "0123456789abcdef0123456789abcdef";
 export const TIMING: Timing = { measureMs: 300, rungMs: 100, settleMs: 3000, loadMs: 20000, soakMs: 2000, holdMs: 100, flightMs: 2000, teleportMs: 500, turnMs: 200 };
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 27_2_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.8103.37 Mobile/15E148 Safari/604.1";
 
-/** A browser made of numbers. Its timers never fire, so nothing is waited out. `frameMs` is the display's interval. */
-export function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; tests?: string; frameMs?: number; stand?: (k: number) => number[] | null; layers?: (path: string) => unknown } = {}) {
+/** A browser made of numbers. Its timers never fire, so nothing is waited out. `frameMs` is the display's interval, and `bases` stands what a page asks the server for. */
+export function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; tests?: string; frameMs?: number; stand?: (k: number) => number[] | null; layers?: (path: string) => unknown; bases?: (n: number, box: boolean) => number } = {}) {
   const posts: DeviceReport[] = [];
   const asked: number[] = [];
+  const boxed: number[] = [];
   const page = { text: "", whole: false, saved: opts.saved ?? null };
   let frame = 0;
   const b: DeviceBrowser = {
@@ -29,7 +30,8 @@ export function browser(opts: { saved?: string; clock?: () => number; expected?:
     fetch: (path, body) => {
       if (path === "report") posts.push(JSON.parse(body!) as DeviceReport);
       if (path.startsWith("base/")) asked.push(Number(path.slice(5)));
-      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : path === "report" ? { skipped: 3 + posts.length, overflows: 1 } : path.startsWith("stand/") ? (opts.stand?.(Number(path.slice(6))) ?? null) : path.startsWith("layers/") ? (opts.layers?.(path) ?? null) : { pieces: asked.at(-1) };
+      if (path.startsWith("box/")) boxed.push(Number(path.slice(4)));
+      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : path === "report" ? { skipped: 3 + posts.length, overflows: 1 } : path.startsWith("stand/") ? (opts.stand?.(Number(path.slice(6))) ?? null) : path.startsWith("layers/") ? (opts.layers?.(path) ?? null) : { pieces: opts.bases?.(Number(path.split("/")[1]), path.startsWith("box/")) ?? Number(path.split("/")[1]) };
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(value) });
     },
     load: () => page.saved,
@@ -39,12 +41,13 @@ export function browser(opts: { saved?: string; clock?: () => number; expected?:
     rest: () => {},
     entries: () => [{ transferSize: 300000, encodedBodySize: 280000 }, { transferSize: 0, encodedBodySize: 200000 }],
   };
-  return { b, posts, page, asked };
+  return { b, posts, page, asked, boxed };
 }
 
 /**
  * A renderer of a phone that takes textures 2,048 wide at most and `room` megabytes of them. It draws nothing, and its
- * canvas is what a test says. `spent` is the time its draws would take a GPU, 0.1 ms each, for a page's clock to add.
+ * canvas is what a test says. `spent` is the time its draws would take a GPU, 0.1 ms each, for a page's clock to add;
+ * its executor spends as long on each draw and caster of a packet, and `kinds` lists the flags of the draws it was given.
  */
 export function renderer(room = 300) {
   const heard = new Map<string, () => void>();
@@ -60,14 +63,19 @@ export function renderer(room = 300) {
       canvas: { addEventListener: (type: string, fn: () => void) => heard.set(type, fn) },
     },
   });
+  const kinds = new Set<number>();
   const r: RendererLike = {
     gl,
     rendererName: "a test GPU",
     format: "astc",
     drawCalls: 50,
     readPixel: () => [0, 0, 0],
+    draw: (p) => {
+      for (let d = 0; d < p.drawCount; d++) kinds.add(p.drawFlags[d]!);
+      spent += 0.1 * (p.drawCount + p.casterCount);
+    },
   };
-  return { r, gl, fire: (type: string) => heard.get(type)!(), tiles: () => tiles, spent: () => spent };
+  return { r, gl, fire: (type: string) => heard.get(type)!(), tiles: () => tiles, spent: () => spent, kinds };
 }
 
 export const settle = (): Promise<void> => new Promise((r) => setTimeout(r, 0));

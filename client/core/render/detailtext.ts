@@ -155,7 +155,9 @@ void main() {
 export function rotorOf(x: number, y: number, density: number, out: Float64Array | number[]): void {
   const r = Math.hypot(x, y);
   const ease = (a: number, b: number) => { const t = Math.max(0, Math.min(1, (r - a) / (b - a))); return t * t * (3 - 2 * t); };
-  [out[0], out[1], out[2]] = [Math.min(.65, density / Math.max(r, .12)) * ease(.09, .17) * (1 - ease(.975, 1)), ease(.91, .94), 1];
+  out[0] = Math.min(.65, density / Math.max(r, .12)) * ease(.09, .17) * (1 - ease(.975, 1));
+  out[1] = ease(.91, .94);
+  out[2] = 1;
 }
 
 /** `shapeOf`'s twin: how much of a flat shape shows at corner (x, y), the share of the second colour, and the shade. */
@@ -167,20 +169,30 @@ export function shapeOf(shape: number, x: number, y: number, out: Float64Array |
     const vane = t < 0.12 ? 0 : 0.88 * Math.sqrt(Math.max(0, 1 - ((t - 0.56) / 0.44) ** 2));
     const w = Math.max(vane, t < 0.3 ? 0.07 : 0);
     const edge = Math.abs(x);
-    [out[0], out[1], out[2]] = [clamp((w - edge) / 0.12 + 0.5), t >= 0.84 ? 1 : 0, edge < 0.05 ? 1.12 : 1 - (0.3 * edge) / Math.max(w, 0.01)];
+    out[0] = clamp((w - edge) / 0.12 + 0.5);
+    out[1] = t >= 0.84 ? 1 : 0;
+    out[2] = edge < 0.05 ? 1.12 : 1 - (0.3 * edge) / Math.max(w, 0.01);
   } else if (shape === 1) {
     const lump = 0.08 * Math.sin(5 * Math.atan2(y, x) + 1.3);
     const a = clamp((0.92 + lump - r) / 0.5);
-    [out[0], out[1], out[2]] = [a * a, 0, 0.88 + 0.12 * y];
-  } else if (shape === 2) [out[0], out[1], out[2]] = [clamp((0.9 - r) / 0.15), 0, 0.92 + 0.35 * Math.max(0, 1 - Math.hypot(x + 0.3, y - 0.35) * 2.5)];
-  else if (shape === 3) [out[0], out[1], out[2]] = [clamp(1 - Math.abs(r - 0.78) / 0.14), 0, 1];
+    out[0] = a * a;
+    out[1] = 0;
+    out[2] = 0.88 + 0.12 * y;
+  } else if (shape === 2) {
+    out[0] = clamp((0.9 - r) / 0.15);
+    out[1] = 0;
+    out[2] = 0.92 + 0.35 * Math.max(0, 1 - Math.hypot(x + 0.3, y - 0.35) * 2.5);
+  }
+  else if (shape === 3) { out[0] = clamp(1 - Math.abs(r - 0.78) / 0.14); out[1] = 0; out[2] = 1; }
   else {
     let a = 0;
     for (let k = 0; k < 5; k++) {
       const s = k * 1.37 + 0.4;
       a = Math.max(a, clamp((0.2 - Math.hypot(x - 0.6 * Math.cos(s * 2.3), y - 0.6 * Math.sin(s * 3.1))) / 0.06));
     }
-    [out[0], out[1], out[2]] = [a, 0, 0.85 + 0.15 * y];
+    out[0] = a;
+    out[1] = 0;
+    out[2] = 0.85 + 0.15 * y;
   }
 }
 

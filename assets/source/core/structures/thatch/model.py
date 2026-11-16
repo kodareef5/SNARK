@@ -1,9 +1,9 @@
 # The thatch tier: long reed thatch hung in two tiers on a frame of hand-cut poles. Builds the foundation, wall,
-# doorframe, ceiling, door and open door, each with three coarser levels of its own.
+# doorframe, ceiling, door and open door, each whole and as the solid drawn far off (pieces.py).
 #
-# Geometry is worked out in kit.py's engine axes and turned into Blender's (x, -z, y) as each object is made. Level 0
-# has texture coordinates in metres over each material's span and at most three materials. Levels 1 to 3 have none and
-# are drawn in flat colours, a material per colour, varied bundle by bundle and pole by pole.
+# Geometry is worked out in kit.py's engine axes and turned into Blender's (x, -z, y) as each object is made. The whole
+# piece has texture coordinates in metres over each material's span and at most three materials; the far solid has
+# none and is drawn in flat colours, a material per colour.
 
 import math
 import os
@@ -25,7 +25,7 @@ MATERIALS = {}
 
 
 def material(name):
-    """A level 0 material is named for its pictures, which asset.ts lists. A flat level's is named f<rrggbb> for the
+    """A material with pictures is named for them, as asset.ts lists them. A flat one is named f<rrggbb> for the
     colour it is drawn in, and the converter takes the palette colour nearest it."""
     if name in MATERIALS:
         return MATERIALS[name]
@@ -79,6 +79,5 @@ def to_object(mesh, name, lift):
 
 
 for name, build, lift in pieces.PIECES:
-    for lod in range(4):
-        mesh = build(lod)
-        to_object(mesh, name if lod == 0 else f"{name}_LOD{lod}", lift)
+    to_object(build(), name, lift)
+    to_object(pieces.FAR[name](), f"{name}_LOD1", lift)

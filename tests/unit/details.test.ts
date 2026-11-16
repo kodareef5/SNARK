@@ -229,7 +229,6 @@ test("the rasterizer draws a landing on low poly and on medium from the same num
     view.raster.render(p);
     let changed = 0;
     for (let i = 0; i < frame.length; i += 4) if (frame[i] !== view.raster.color[i] || frame[i + 1] !== view.raster.color[i + 1]) changed++;
-X
     // The picture is held to what they changed, which other work on the ground may move.
     const places = new Float32Array(p.detailCount * DETAIL.colourA);
     for (let k = 0; k < p.detailCount; k++) places.set(p.details.subarray(k * DETAIL_FLOATS, k * DETAIL_FLOATS + DETAIL.colourA), k * DETAIL.colourA);
@@ -237,7 +236,9 @@ X
     expect(changed).toBeGreaterThan(400);
     expect(changed).toBeLessThan(4000);
   }
-  expect(seen).toEqual(["lowpoly: 2 draws, 5 particles 1909612026", "medium: 2 draws, 10 particles 3919961625"]);
+  // They were 1909612026 and 3919961625 until clips were stored to 0.025 degrees and roots to 1/4096 m (pack version 5):
+  // the dust starts at most 0.07 mm from where it did.
+  expect(seen).toEqual(["lowpoly: 2 draws, 5 particles 1852344675", "medium: 2 draws, 10 particles 325987692"]);
 });
 
 test("the ground's kind and the dust it gives: sand at the shore, soil from grass, pale stone, none on water", () => {

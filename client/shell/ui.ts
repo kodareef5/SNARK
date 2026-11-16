@@ -37,7 +37,6 @@ export class UiView {
   private readonly bound = new Map<number, Bound>();
   private scale = 0;
   private pass = 0;
-  private readonly pictures = new Map<number, { canvas: HTMLCanvasElement; version: number }>();
 
   constructor(root: HTMLElement, events: UiEvents) {
     this.root = root;
@@ -132,15 +131,10 @@ export class UiView {
         if (image && !image.url && (b.version !== image.version || b.src !== crop)) {
           b.version = image.version;
           b.src = crop;
-          let source = this.pictures.get(n.image);
-          if (!source) this.pictures.set(n.image, source = { canvas: document.createElement("canvas"), version: -1 });
-          if (source.version !== image.version) {
-            source.canvas.width = image.width; source.canvas.height = image.height; source.version = image.version;
-            source.canvas.getContext("2d")!.putImageData(new ImageData(new Uint8ClampedArray(image.data), image.width, image.height), 0, 0);
-          }
           const canvas = b.el as HTMLCanvasElement;
-          canvas.width = w; canvas.height = h;
-          canvas.getContext("2d")!.drawImage(source.canvas, n.sx, n.sy, w, h, 0, 0, w, h);
+          if (canvas.width !== w || canvas.height !== h) [canvas.width, canvas.height] = [w, h];
+          // The part shown goes straight from the picture's own pixels onto the node.
+          canvas.getContext("2d")!.putImageData(new ImageData(image.data as Uint8ClampedArray<ArrayBuffer>, image.width, image.height), -n.sx, -n.sy, n.sx, n.sy, w, h);
         }
       }
       if (b.interactive !== n.interactive) {

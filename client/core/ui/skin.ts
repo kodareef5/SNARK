@@ -84,8 +84,9 @@ export function skinPixels(): UiImage {
   return fallback;
 }
 
+/** A page shows the sheet's file, which it preloads. Headless consumers, and a page that cannot decode the file, draw the stand-in. */
 export function installSkin(f: UiFrame): UiImage {
-  return f.images[IMAGE_SKIN] ??= { ...skinPixels() };
+  return f.images[IMAGE_SKIN] ??= SKIN_URL ? { width: SKIN_WIDTH, height: SKIN_HEIGHT, data: new Uint8ClampedArray(0), version: 0, url: SKIN_URL } : { ...skinPixels() };
 }
 
 export function skinPart(f: UiFrame, key: number, x: number, y: number, w: number, h: number, sx: number, sy: number, sw: number, sh: number): UiNode {

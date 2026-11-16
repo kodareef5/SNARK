@@ -299,7 +299,7 @@ export class Corpses {
    * place the wire can carry, which only a body no longer moving between the two snapshots drawn has.
    */
   private follow(c: Corpse, r: RemoteSample, i: number, tick: number): void {
-    const [x, y, z] = [r.x[i]!, r.y[i]!, r.z[i]!];
+    const x = r.x[i]!, y = r.y[i]!, z = r.z[i]!;
     if (!bodyFalls(r.anim[i]!) && x === c.x && y === c.y && z === c.z && wireX(x) === x && wireY(y) === y && wireX(z) === z) {
       c.falling = false;
       c.landed = Math.floor(tick);

@@ -10,10 +10,11 @@ sounds like a placeholder.
 
 The engine path is done and tested headless (`planning/architecture/sound.md` describes it):
 
-- `shared/pack/sound.ts`, `shared/pack/rice.ts`: a sound is `<owner>/sound/<name>` (`core:dodo/sound/call`), takes
-  coded losslessly with FLAC's fixed predictors and Rice residuals, written here.
-- `tools/pack/sound.ts`: `bun run build` reads each asset's `sound/sounds.json`, cuts, levels, resamples to 32 kHz and
-  codes every take. The dodo's 49 takes come to 38.9 s in 1.27 MB (51% of 16-bit), coded in 0.2 s.
+- `shared/pack/sound.ts`, `shared/pack/transform.ts`: a sound is `<owner>/sound/<name>` (`core:dodo/sound/call`), takes
+  coded with a transform code of our own (an MDCT, steps chosen by what each band masks), written here.
+- `tools/pack/sound.ts`: `bun run build` reads each asset's `sound/sounds.json`, cuts, levels, brings each sound to the
+  lowest rate its takes need (8 to 32 kHz) and codes every take. A cue sheet's sounds go to the game only once a cue
+  the game fires reaches them (`shared/sound/reach.ts`); until then the sound board plays them from the loose file.
 - `client/core/sound/`: the library (fetched beside meshes, decoded a take a frame, 48 MB budget), what creatures are
   heard doing from the state they already replicate (startle, landing, pain, peck, going down, the call idle,
   footfalls by gait phase and ground, death), and 32 voices with limits by kind and sound.

@@ -9,7 +9,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { cpus, loadavg, tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { SLOW_TEST, TEST_WATCH, TEST_WORKERS, hungAfter } from "../tests/fixtures/load.ts";
-import { dynamicLoads, stripComments } from "./policy.ts";
+import { dynamicLoads, madeArrays, stripComments } from "./policy.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
@@ -66,6 +66,13 @@ const DETERMINISTIC_FILES = ["tools/pack/simplify.ts", "tools/pack/error.ts", "t
 const NONDETERMINISTIC = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|expm1|log|log2|log10|log1p|pow|hypot|cbrt|random)\b|\*\*|\bDate\.now\b|\bperformance\.now\b/;
 /** Seeded randomness only, wherever game state is produced. */
 const SEEDED_ONLY_DIRS = ["shared", "server", "client/core", "content"];
+/** The frame's build, where an array made on every call is garbage every frame (madeArrays). */
+const FRAME_DIRS = ["client/core/render", "client/core/details"];
+const MADE_ARRAY = {
+  destructured: "`[a, b] = [x, y]` makes an array each time it runs, even in Safari's top tier; write a plain assignment each (`a = x; b = y;`, `const a = x, b = y;`)",
+  set: "`t.set([x, y], k)` makes an array each time it runs; write the elements (`t[k] = x; t[k + 1] = y;`)",
+  for: "`for (const [k, v] of …)` makes an array for each entry of a Map; walk `map.keys()` or `map.values()` and look up the rest, or a list by index",
+} as const;
 
 const problems: string[] = [];
 const fail = (msg: string) => problems.push(msg);
@@ -177,6 +184,7 @@ function checkPolicy(): void {
     if (SEEDED_ONLY_DIRS.some((d) => rel.startsWith(d + "/")) && /\bMath\.random\b/.test(src)) {
       fail(`${rel}: Math.random is not allowed; use the seeded Rng in shared/rng.ts`);
     }
+    if (FRAME_DIRS.some((d) => rel.startsWith(d + "/"))) for (const hit of madeArrays(src)) fail(`${rel}:${hit.line}: ${MADE_ARRAY[hit.what]}`);
   }
 
   if (shellLines > SHELL_MAX_LINES) {
@@ -278,6 +286,8 @@ function stopHung(dir: string, workers: number, most: Map<string, number>, stopp
       continue;
     }
     const [file, n, since, limit] = line.split("\t");
+    // Read while its worker was rewriting it.
+    if (!since) continue;
     const ran = Date.now() - Number(since);
     const allowed = Math.max(most.get(line) ?? Number(limit), hungAfter(file!, workers));
     most.set(line, allowed);

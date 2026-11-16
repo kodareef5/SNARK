@@ -162,9 +162,16 @@ test("a build's manifest lists the three files and where each texture is in them
   for (let p = 3; p < TUBE_PIXELS * 16 * 4; p += 4) holed[6]![p] = 0;
   manifest.materials![1]!.flags |= MATERIAL_CUTOUT;
   const extra: TextureSource = { id: "test:unnamed", role: "mask", top: TUBE_PIXELS, mips: () => mips.mro };
-  const sources = [extra, ...tube().map((s) => (s.role === "base" ? { ...s, mips: () => holed } : s))];
+  // A third material names a texture that is the tube's normal again, and masks that dye nothing anywhere.
+  manifest.textures!.push({ id: `${TUBE}/normal_again`, role: "normal", top: TUBE_PIXELS, in: {} }, { id: `${TUBE}/blank`, role: "mask", top: TUBE_PIXELS, in: {} });
+  manifest.materials!.push({ ...manifest.materials![0]!, id: `${TUBE}/again`, normal: 5, mask: 6, mask2: -1 });
+  const blank = mips.mask.map((m) => m.map((_, k) => ((k & 3) === 3 ? 255 : 0)));
+  const again: TextureSource[] = [{ id: `${TUBE}/normal_again`, role: "normal", top: TUBE_PIXELS, mips: () => mips.normal }, { id: `${TUBE}/blank`, role: "mask", top: TUBE_PIXELS, mips: () => blank }];
+  const sources = [extra, ...tube().map((s) => (s.role === "base" ? { ...s, mips: () => holed } : s)), ...again];
   const { files, report } = await buildTextures(manifest, sources, "tube", { workers: 2, cache: null });
-  expect(report.encoded).toBe(PICTURES + 14);
+  expect([report.pictures, report.encoded]).toEqual([PICTURES + 14, PICTURES + 14]);
+  // The one is listed once and the other not at all, and the materials name what is left.
+  expect(manifest.materials!.map((m) => [m.normal, m.mask, m.mask2])).toEqual([[4, 1, 2], [4, -1, -1], [4, -1, -1]]);
   expect(files.map((f) => [f.name, f.role, f.format])).toEqual([["tube.tex.bc.sntx", "tex", "bc"], ["tube.tex.astc.sntx", "tex", "astc"], ["tube.tex.rgba.sntx", "tex", "rgba"]]);
   const parsed = parseManifest(JSON.stringify(manifest));
   expect(parsed.files.slice(2)).toEqual(files.map((f) => ({ name: f.name, bytes: f.bytes.length, role: "tex", format: f.format })));
