@@ -17,6 +17,7 @@ import { TERMINALS } from "./terminals.ts";
 import { SPAWNS } from "./spawns.ts";
 import { ROADS } from "./vehicles/roads.ts";
 import { COMPACT_SPECIES } from "./vehicles/compact.ts";
+import { BOATS } from "./vehicles/boat.ts";
 import { HELICOPTERS } from "./vehicles/helicopter.ts";
 import { HELICOPTER_ITEMS } from "./vehicles/helicopter-items.ts";
 import { CIVILIAN } from "./civilians.ts";
@@ -388,6 +389,7 @@ const ALL: readonly Def[] = [
   ...CREATURES,
   COMPACT_SPECIES,
   ...HELICOPTERS,
+  ...BOATS,
   ...HELICOPTER_ITEMS,
   ...ROADS,
   CIVILIAN,

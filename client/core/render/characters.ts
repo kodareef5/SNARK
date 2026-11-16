@@ -377,7 +377,7 @@ export class Characters {
     mountPose(this.mount, { role: seat.role ?? (seat.driver ? "drive" : "passenger"), tick: 0, startTick: 0, durationTicks: 1, steering: seat.steer }, this.pose);
     if (view) lookScales(view, this.scales);
     solve(HUMAN, this.pose, this.solved, set.rest, view ? this.scales : null);
-    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, view ? this.scales : null, seat.definition);
+    if (seat.definition) fitSeatControls(this.pose, this.solved, set.rest, view ? this.scales : null, seat.definition, seat.steering);
     vehicleRotation(seat, this.rotation);
     mountOrigin(this.solved, [seat.x, seat.y, seat.z], this.rotation, out);
     return true;
@@ -803,7 +803,7 @@ export class Characters {
         if (!seat && !vehicleSeat) this.pose.root[1]! += lookLift(scales, set.rest);
       }
       solve(HUMAN, this.pose, this.solved, set.rest, scales);
-      if (vehicleSeat?.definition) fitSeatControls(this.pose, this.solved, set.rest, scales, vehicleSeat.definition);
+      if (vehicleSeat?.definition) fitSeatControls(this.pose, this.solved, set.rest, scales, vehicleSeat.definition, vehicleSeat.steering);
       if (seat) {
         // A rider sits in its seat's whole frame, and leans, pitches and banks as the seat does.
         writeBones(p.bones, first * BONE_FLOATS, this.solved, set.rest, scales, 0, 0, 0, 0);

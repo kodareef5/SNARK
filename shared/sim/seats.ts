@@ -13,7 +13,12 @@ export interface Seat {
   /** False stows hand weapons and disables their actions while seated in an enclosed cabin. */
   readonly weapons?: boolean;
   /** Pilot hand grips in the host's frame. Actual body proportions reach these without stretching. */
-  readonly controls?: { readonly left: readonly [number, number, number]; readonly right: readonly [number, number, number] };
+  readonly controls?: {
+    readonly left: readonly [number, number, number]; readonly right: readonly [number, number, number];
+    readonly style?: "helicopter" | "helm";
+    /** A steering-driven control rotates its grips and grasp about this authored pivot. */
+    readonly turn?: { readonly pivot: readonly [number, number, number]; readonly axis: readonly [number, number, number]; readonly ratio: number };
+  };
   /**
    * Where the occupant sits: a car's occupant's pelvis, a saddle's top under the rider (shared/anim/seat.ts hangs the
    * rider's origin SEAT_DROP below it). The server pins it there and every client draws it there.
@@ -48,6 +53,9 @@ export function validateSeats(seats: readonly Seat[], doors: number, what: strin
     if ((seat.pose !== undefined && !["drive", "passenger", "pilot", "cabin"].includes(seat.pose)) ||
       (seat.weapons !== undefined && typeof seat.weapons !== "boolean")) throw new Error(`invalid ${what} seat profile`);
     if (seat.controls && (seat.pose !== "pilot" || !seat.driver || !vec(seat.controls.left) || !vec(seat.controls.right))) throw new Error(`invalid ${what} pilot controls`);
+    if (seat.controls?.style !== undefined && seat.controls.style !== "helicopter" && seat.controls.style !== "helm") throw new Error(`invalid ${what} control style`);
+    const turn = seat.controls?.turn;
+    if (turn && (!vec(turn.pivot) || !vec(turn.axis) || Math.abs(turn.axis.reduce((n: number, v: number) => n + v * v, 0) - 1) > 1e-6 || !Number.isFinite(turn.ratio) || Math.abs(turn.ratio) > 50)) throw new Error(`invalid ${what} moving controls`);
     names.add(seat.id);
     if (seat.driver) drivers++;
   }
