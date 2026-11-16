@@ -1,29 +1,28 @@
-// The code as it may be shown outside: the tracked text of the code's folders and the planning documents, with no art,
-// no pictures and no history. `bun run source [dir]` writes it to `dir` (var/source/repo) and makes it the one commit
-// of a repository there, to be pushed over the last one. A document that says a name on the local list
+// The code as it may be shown outside: the tracked text of the code's folders, with no art, no pictures, no planning
+// documents and no history. `bun run source [dir]` writes it to `dir` (var/source/repo) and makes it the one commit of
+// a repository there, to be pushed over the last one. A document that says a name on the local list
 // (var/source/names.txt, a pattern a line, not in git) is held back and listed; code that says one stops the export.
+// The licence and the top README are the owner's to sign, and are not looked through.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
 const TEXT = new Set(["ts", "js", "json", "md", "py", "css", "html", "ini", "toml", "lock", "txt", "sh", "ps1", "psd1", "yml", "overpassql", "gitignore"]);
-const PLANNING = new Set(["md", "ts", "json"]);
 /** What the tests and the Blender example read, whatever its kind. */
 const FIXTURES = /^(tests\/fixtures|tools\/blender\/example)\//;
 const MOST = 2 * 1024 * 1024;
 
 /** Whether a tracked file is part of the code as shown. */
 export function shown(path: string): boolean {
-  if (path.startsWith("assets/")) return false;
+  if (path.startsWith("assets/") || path.startsWith("planning/")) return false;
   const name = path.slice(path.lastIndexOf("/") + 1);
   if (name === "LICENSE" || name === "NOTICE" || FIXTURES.test(path)) return true;
   const ext = name.slice(name.lastIndexOf(".") + 1);
-  return (path.startsWith("planning/") ? PLANNING : TEXT).has(ext);
+  return TEXT.has(ext);
 }
 
-/** A document may be held back; anything else that says a name stops the export. */
-const document = (path: string): boolean => path.startsWith("planning/") || path.endsWith(".md");
+const SIGNED = new Set(["LICENSE", "README.md"]);
 
 function git(dir: string, ...args: string[]): string {
   const run = Bun.spawnSync(["git", "-C", dir, ...args]);
@@ -49,9 +48,9 @@ if (import.meta.main) {
       continue;
     }
     const text = FIXTURES.test(file) ? "" : readFileSync(join(ROOT, file), "utf8");
-    const said = names.filter((n) => n.test(text) || n.test(file));
+    const said = SIGNED.has(file) ? [] : names.filter((n) => n.test(text) || n.test(file));
     if (said.length > 0) {
-      (document(file) ? held : stops).push(`${file} (${said.map((n) => n.source).join(", ")})`);
+      (file.endsWith(".md") ? held : stops).push(`${file} (${said.map((n) => n.source).join(", ")})`);
       continue;
     }
     kept.push(file);
@@ -73,7 +72,7 @@ if (import.meta.main) {
   if (!existsSync(join(out, ".git"))) git(out, "init", "-q", "-b", "main");
   git(out, "add", "-A");
   const from = git(ROOT, "rev-parse", "--short", "HEAD").trim();
-  const message = `Source as of ${new Date().toISOString().slice(0, 10)}, from ${from}\n\nThe code and the planning documents: no art, no pictures and no history.`;
+  const message = `Source as of ${new Date().toISOString().slice(0, 10)}, from ${from}\n\nThe code: no art, no pictures, no planning documents and no history.`;
   const commit = git(out, "commit-tree", git(out, "write-tree").trim(), "-m", message).trim();
   git(out, "update-ref", "refs/heads/main", commit);
   git(out, "reset", "-q", "--hard", "main");
