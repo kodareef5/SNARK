@@ -134,7 +134,7 @@ try {
   const a = await play(url, name, home);
   started.push(a);
   const tools = await a.tools();
-  hold("the agent offers servers and travel", tools.includes("servers") && tools.includes("travel"));
+  hold("the agent offers travel", tools.includes("travel"));
   let s = await joined(a);
   hold("the survivor is in the world on the first server", s.self !== undefined, brief(s.self ?? s));
   // A survivor new on a throwaway server stands at the first spawn point, where an arrival with no bed rises.
@@ -144,14 +144,14 @@ try {
   const tree = ((await a.tool("observe", { radius: 48 })).tree ?? [])[0];
   if (tree) console.log("  harvest:", brief(await a.tool("harvest", { id: tree[0], count: 5, wait_s: 45 }), 160));
   // It leaves from somewhere that is not where it spawned, with a bed of its own there to rise at when it comes back.
-  console.log("  walk:", brief(await a.tool("walk_to", { x: s.self.x + 9, z: s.self.z + 7, wait_s: 30 }), 120));
+  console.log("  walk:", brief(await a.tool("go_to", { x: s.self.x + 9, z: s.self.z + 7, wait_s: 30 }), 120));
   s = await a.tool("status");
   const before = carried(s);
   const bedFrom = s.self;
   console.log("  bed:", brief(await a.tool("console", { line: "place bed" }), 120));
   hold("it carries something to take along", (s.inventory ?? []).length > 0, brief(s.inventory, 200));
 
-  const list = await a.tool("servers");
+  const list = await a.tool("travel");
   const others = (list.servers ?? []) as any[];
   const to = value("--to") ?? others[0]?.name;
   hold("the cluster lists another server", others.length > 0 && to !== undefined, brief(list));

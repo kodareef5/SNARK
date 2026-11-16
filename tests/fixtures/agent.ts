@@ -17,11 +17,13 @@ export interface Play {
   /** Virtual milliseconds, the agent ticking each frame. */
   run(ms: number): void;
   /** One request over the protocol. Resolves with the reply, parsed, or null if none came in `ms`. */
-  ask(method: string, params?: unknown, ms?: number): Promise<{ result?: any; error?: { code: number; message: string } } | null>;
+  ask(method: string, params?: unknown, ms?: number): Promise<{ result?: any; error?: { code: number; message: string; data?: any } } | null>;
   /** Calls a tool and runs the world until it answers. */
   call(tool: string, args?: Record<string, unknown>, ms?: number): Promise<Answer>;
   /** The reply to one raw line, with no time passing. */
   line(text: string): Promise<string | null>;
+  /** Notifications the server wrote, such as progress, oldest first. */
+  notes: any[];
   /** Types a console line a fifth of a second after the last, which is as often as the tool allows. Returns what the server printed. */
   typed(line: string): Promise<string[]>;
   /** The content index of a core item. */
@@ -35,13 +37,14 @@ export function play(host: HostOptions = {}, opts: AgentOptions = { console: tru
   const h = new Harness({}, 1, 60, { dev: true, ...host });
   const s = h.join(name, {}, { manual: true });
   const agent = new Agent(s, opts);
-  const mcp = new Mcp(agent, "snark", "");
+  const notes: any[] = [];
+  const mcp = new Mcp(agent, "snark", "", (line) => notes.push(JSON.parse(line)));
   const run = (ms: number): void => h.run(ms, (now) => agent.tick(now));
   run(500);
   let next = 0;
   const ask: Play["ask"] = async (method, params, ms = 60000) => {
     let out: string | null | undefined;
-    void mcp.handle(JSON.stringify({ jsonrpc: "2.0", id: ++next, method, params })).then((reply) => (out = reply));
+    void mcp.handle(JSON.stringify({ jsonrpc: "2.0", id: ++next, method, ...(params === undefined ? {} : { params }) })).then((reply) => (out = reply));
     // A promise settles between slices, never inside one.
     for (let t = 0; out === undefined && t <= ms; t += SLICE) {
       await new Promise((r) => setImmediate(r));
@@ -58,5 +61,5 @@ export function play(host: HostOptions = {}, opts: AgentOptions = { console: tru
     run(200);
     return (await call("console", { line })).lines as string[];
   };
-  return { h, s, agent, rec: h.host.records.byPid.get(h.client(s)!.pid)!, run, ask, call, typed, line: (text) => mcp.handle(text), id: (item) => h.reg.index.get(`core:${item}`)! };
+  return { h, s, agent, rec: h.host.records.byPid.get(h.client(s)!.pid)!, run, ask, call, typed, line: (text) => mcp.handle(text), notes, id: (item) => h.reg.index.get(`core:${item}`)! };
 }
