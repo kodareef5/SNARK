@@ -76,12 +76,14 @@ export class RotorBlur {
 
   /** The caller reserves `count` entries before cosmetic particles; cards are kept far to near. */
   write(p: FramePacket): void {
+    if (this.count === 0) return;
     const cards = this.cards, order = this.order.subarray(0, this.count);
     const distance = (i: number) => { const o = i * DETAIL_FLOATS; return cards[o]! ** 2 + cards[o + 1]! ** 2 + cards[o + 2]! ** 2; };
     order.sort((a, b) => distance(b) - distance(a));
+    // As words, so that every bit of the colours is kept.
     for (const n of order) {
-      const o = n * DETAIL_FLOATS;
-      p.details.set(cards.subarray(o, o + DETAIL_FLOATS), p.detailCount++ * DETAIL_FLOATS);
+      const from = n * DETAIL_FLOATS, to = p.detailCount++ * DETAIL_FLOATS;
+      for (let f = 0; f < DETAIL_FLOATS; f++) p.detailWords[to + f] = this.words[from + f]!;
     }
   }
 
