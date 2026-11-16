@@ -289,8 +289,9 @@ STANCE = {
 # hips. The battens point where the skin should go: the first back from the elbow toward the hip, the second down and
 # back from the wrist, high enough that they and the skin's rear edge stay above the ground through every ground clip
 # (check_clip); the inner skin hangs in layers between the arm's strut and the leg, hidden behind the outer wing, which
-# hangs from the finger (FINGER_ROLL). They and model.py's membrane weights were searched together so the folded skin
-# crosses neither itself, the body nor the other wing in STANCE (ref/wing/checks.json).
+# hangs from the finger (FINGER_ROLL). They and model.py's membrane weights were searched together (ref/wing/fold.py)
+# so the folded skin keeps out of itself, the body and the other wing in STANCE and through the animators' clips
+# (ref/wing/checks.json, ref/wing/clips.json).
 FOLD = {
     "elbow":    (0.300, 0.580, -0.170),
     "wrist":    (0.340, 0.360, 0.300),
@@ -301,8 +302,8 @@ FOLD = {
     "wing_2":   (0.420, 0.700, -0.360),
     "wing_3":   (0.420, 0.950, -0.790),
     "wing_4":   (0.410, 1.076, -1.128),
-    "web_1":    (0.450, 0.335, -1.224),
-    "web_2":    (0.736, 0.283, -0.156),
+    "web_1":    (0.519, 0.353, -1.163),
+    "web_2":    (0.817, 0.279, -0.153),
     "web_3":    (0.498, 0.316, 0.429),
 }
 # The wing tucked in the air, halfway to FOLD: where each joint lies with the body at rest (level). The elbow goes back
@@ -318,16 +319,17 @@ TUCK = {
     "wing_2":   (0.440, 0.660, -1.580),
     "wing_3":   (0.420, 0.640, -2.080),
     "wing_4":   (0.390, 0.630, -2.440),
-    "web_1":    (0.428, 0.600, -0.962),
-    "web_2":    (0.612, 0.688, -1.836),
+    "web_1":    (0.577, 0.709, -1.030),
+    "web_2":    (0.926, 0.464, -1.772),
     "web_3":    (0.770, 0.193, -1.564),
 }
 
 # How far the wing finger's four bones roll about their own length in TUCK and in FOLD, in degrees: the joints do not
 # move, but the membrane on the finger turns with it, so folded on the ground the outer wing hangs from the finger as
-# one panel down to the ground and the rear edge, as the concept's folded views have it. The third batten rides on the
-# finger and rolls with it; its targets above are where it points before the roll.
-FINGER_ROLL = {"tuck": 1.7, "fold": 36.9}
+# one panel toward the ground and the rear edge, as the concept's folded views have it, standing a little out from the
+# inner layers so they stay apart as the arms move. The third batten rides on the finger and rolls with it; its
+# targets above are where it points before the roll.
+FINGER_ROLL = {"tuck": 7.2, "fold": 36.9}
 
 # =====================================================================================================================
 # Block-out masses. Fitted to the concept views (ref/blockout_vs_concept.png).

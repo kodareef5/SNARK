@@ -132,8 +132,8 @@ ROOT_IN = 0.030
 # How the membrane's weights are laid out (membrane_weights): where the battens take over going back across the chord
 # (v0 to v1, as fractions of the chord, nearer the body and further out), how much at most (rib_max), how far out
 # the body's own bones reach before the first batten (root_reach, a fraction of the span), how the change between two
-# battens is eased across the span, and how many rounds of smoothing. Searched with rig.py's fold (ref/wing/).
-MEMBRANE_FIT = {"v0": 0.0, "v1_inner": 0.120, "v1_outer": 0.759, "rib_max": 0.826, "root_reach": 0.0913,
+# battens is eased across the span, and how many rounds of smoothing. Searched with rig.py's fold (ref/wing/fold.py).
+MEMBRANE_FIT = {"v0": 0.0, "v1_inner": 0.124, "v1_outer": 0.850, "rib_max": 0.875, "root_reach": 0.0913,
                 "span_ease": 0.0, "smooth": 6}
 # The front membrane: columns from the shoulder to the wrist, rows from the arm to its free edge.
 FRONT_COLUMNS, FRONT_ROWS = 10, 3
@@ -1187,7 +1187,7 @@ def membrane_weights(grid, fracs, skin):
     bone at the tip; and nearest the body, the body's own bones). The battens take over going back across the chord,
     and the result is smoothed over the grid. MEMBRANE_FIT's numbers were searched together with rig.py's FOLD, TUCK
     and FINGER_ROLL so the folded skin lies in layers that do not cross one another or the body, with no fold tighter
-    than the skin is thick (ref/wing/)."""
+    than the skin is thick (ref/wing/fold.py)."""
     F = MEMBRANE_FIT
     nu, nv = grid.shape[:2]
     left = rig._JOINT["upper_arm_l"][0]

@@ -121,6 +121,26 @@ def measure(obj, rest_centres, groups):
     return {"self": selfs, "body": len(inner.overlap(body)), "wings": len(wl.overlap(wr)), "inverted": inverted}
 
 
+def groups_of(obj):
+    """Which faces at rest are each wing's membrane, the left's not grown into the body, and the solid body; and every
+    face's centre at rest."""
+    me = obj.data
+    names = list(obj["islands"])
+    isl = me.attributes["island"].data
+    cell = me.attributes["cell"].data
+    centre = [p.center.copy() for p in me.polygons]
+    piece = [names[isl[p.index].value] for p in me.polygons]
+    wing = lambda f: piece[f].startswith("membrane") and cell[f].value >= 0
+    solid = lambda f: piece[f] in ("torso", "neck", "head", "beak", "leg")
+    return {
+        "wing_l": lambda f: wing(f) and centre[f].x > 0,
+        "wing_r": lambda f: wing(f) and centre[f].x < 0,
+        # the root's first two columns and the leading edge's first row are grown into the body and the arm
+        "wing_l_inner": lambda f: wing(f) and centre[f].x > 0 and cell[f].value // 256 >= 2 and cell[f].value % 256 >= 1,
+        "body": solid,
+    }, centre
+
+
 def main():
     sys.dont_write_bytecode = True
     sys.path.insert(0, FOLDER)
@@ -131,21 +151,7 @@ def main():
     import rig
     r = rig.find()
     obj = bpy.data.objects["pteranodon_model"]
-    me = obj.data
-    names = list(obj["islands"])
-    isl = me.attributes["island"].data
-    cell = me.attributes["cell"].data
-    centre = [p.center.copy() for p in me.polygons]
-    piece = [names[isl[p.index].value] for p in me.polygons]
-    wing = lambda f: piece[f].startswith("membrane") and cell[f].value >= 0
-    solid = lambda f: piece[f] in ("torso", "neck", "head", "beak", "leg")
-    groups = {
-        "wing_l": lambda f: wing(f) and centre[f].x > 0,
-        "wing_r": lambda f: wing(f) and centre[f].x < 0,
-        # the root's first two columns and the leading edge's first row are grown into the body and the arm
-        "wing_l_inner": lambda f: wing(f) and centre[f].x > 0 and cell[f].value // 256 >= 2 and cell[f].value % 256 >= 1,
-        "body": solid,
-    }
+    groups, centre = groups_of(obj)
     report = {}
     for name, spec in POSES.items():
         pose(rig, r, spec)
