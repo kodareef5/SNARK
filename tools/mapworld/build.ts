@@ -24,6 +24,8 @@ import { STATIC_LAYERS, siteOf } from "./statics.ts";
 import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
 import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
+import { boatSites, mappedBoatSites } from "../boat/sites.ts";
+import type { BuildingLabel, PublicPlace } from "./labels.ts";
 import { growRuins } from "./ruin-growth.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -155,14 +157,18 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     const radius = Math.max(...building.rings[0]!.map(point => Math.hypot(point[0]! - building.e, point[1]! - building.n)));
     aircraftSites.push({ id: `building-${building.id}`, kind, x, z, radius });
   }
-  // After the parked cars, which keep their places in the list, and clear of them.
+  // After the parked cars, which keep their places in the list, and clear of them; the boats clear of both.
+  const parked = map.vehicles ?? [];
   const aircraft = helicopterSites(map, reg, aircraftSites);
-  if (aircraft.length) {
-    const all = [...(map.vehicles ?? []), ...aircraft];
+  const waterfrontPlaces = JSON.parse(readFileSync(join(source, "blocks/places.json"), "utf8")) as PublicPlace[];
+  const waterfrontLabels = JSON.parse(readFileSync(join(source, "blocks/labels.json"), "utf8")) as Record<string, BuildingLabel>;
+  const boats = boatSites({ ...map, vehicles: [...parked, ...aircraft] }, reg, mappedBoatSites(waterfrontPlaces, waterfrontLabels, site.toEngine));
+  if (aircraft.length + boats.length > 0) {
+    const all = [...parked, ...aircraft, ...boats];
     map = { ...map, vehicles: all };
     put("vehicles.json", lines(all.map(v => ({ ...v, yaw: v.yaw * 360 / 65536 }))));
   }
-  lap(`${aircraft.length} found aircraft at surveyed service sites and industrial yards`);
+  lap(`${aircraft.length} found aircraft at surveyed service sites and industrial yards; ${boats.length} boats at mapped waterfronts`);
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
   writeFileSync(`${file}.tmp`, bytes);

@@ -48,6 +48,8 @@ const DASH_W = 212;
 const DASH_H = 106;
 const HELI_W = 244;
 const HELI_H = 178;
+const BOAT_W = 254;
+const BOAT_H = 178;
 /** Indices of the minimap's picture and the map screen's in the frame's image table. */
 export const IMAGE_MINIMAP = 1;
 export const IMAGE_MAP = 2;
@@ -171,9 +173,9 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   }
 
   // The car's instruments sit under the minimap and its clock, or in the minimap's place while it is hidden. A
-  // helicopter's are taller, with its flight state and its keys.
+  // helicopter's and a boat's are taller, with their state and their keys.
   const dash = m.vehicle?.active ? m.vehicle : null;
-  const dashW = dash?.rotor ? HELI_W : DASH_W, dashH = dash?.rotor ? HELI_H : DASH_H;
+  const dashW = dash?.rotor ? HELI_W : dash?.boat ? BOAT_W : DASH_W, dashH = dash?.rotor ? HELI_H : dash?.boat ? BOAT_H : DASH_H;
   const dashY = options.minimap ? mapY + MINIMAP_SIZE + 28 : mapY;
   if (mapTools) {
     const beside = dash && !options.minimap ? dashW + 4 : 0;
@@ -182,7 +184,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     toggle.label = options.minimap ? "Hide minimap" : "Show minimap";
     toggle.interactive = true;
   }
-  if (dash && !dash.rotor) {
+  if (dash && !dash.rotor && !dash.boat) {
     const x = W - MARGIN - DASH_W, y = dashY;
     glass(f, KEY_VEHICLE, x, y, DASH_W, DASH_H);
     f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(dash.speed * 3.6).toString().padStart(3, "0"));
@@ -210,6 +212,22 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     f.text(KEY_VEHICLE + 7, x + 12, y + 119, line, S_MENU_NOTE, v.engineOn ? "Space/Ctrl collective · Shift agile" : "Hold Space to start and lift");
     f.text(KEY_VEHICLE + 8, x + 12, y + 137, line, S_MENU_NOTE, "C flight mode · Hold X recover");
     f.text(KEY_VEHICLE + 9, x + 12, y + 155, line, S_MENU_NOTE, v.grounded ? "V cockpit/chase · E exit" : "V cockpit/chase · Land to exit");
+  }
+  if (dash?.boat) {
+    const v = dash, x = W - MARGIN - BOAT_W, y = dashY, line = BOAT_W - 24;
+    glass(f, KEY_VEHICLE, x, y, BOAT_W, BOAT_H);
+    f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(v.speed * 1.94384).toString().padStart(2, "0"));
+    f.text(KEY_VEHICLE + 10, x + 64, y + 15, 40, S_MENU_NOTE, "kn");
+    f.text(KEY_VEHICLE + 1, x + BOAT_W - 104, y + 15, 92, S_MENU_NOTE, v.gear < 0 ? "REVERSE" : v.gear > 0 ? "AHEAD" : "NEUTRAL");
+    f.add(KEY_VEHICLE + 2, K_BAR, x + 12, y + 41, line, 3, S_MENU_FOCUS).value = Math.min(1, v.rpm / v.redline);
+    f.text(KEY_VEHICLE + 3, x + 12, y + 47, line, S_MENU_NOTE, `${Math.round(v.rpm / 100) * 100} rpm · Fuel ${Math.round(v.fuel * 100)}%`);
+    const alarm = v.capsized ? "CAPSIZED - E to escape" : v.flooding >= .5 ? `FLOODING ${Math.round(v.flooding * 100)}% - E to escape` : v.flooding > .04 ? `TAKING WATER ${Math.round(v.flooding * 100)}% - repair hull` : "";
+    f.text(KEY_VEHICLE + 4, x + 12, y + 65, line, alarm ? S_WARNING : S_MENU_NOTE, alarm || `Hull ${Math.round(v.hullCondition * 100)}% · Engine ${Math.round(v.engineCondition * 100)}%`);
+    f.text(KEY_VEHICLE + 5, x + 12, y + 83, line, S_MENU_NOTE, v.precision ? "PRECISION THROTTLE" : v.engineOn ? "ENGINE ON" : "W/S to start engine");
+    f.text(KEY_VEHICLE + 6, x + 12, y + 101, line, S_MENU_NOTE, "W/S ahead/reverse · A/D steer");
+    f.text(KEY_VEHICLE + 7, x + 12, y + 119, line, S_MENU_NOTE, "Space neutral · Shift precision");
+    f.text(KEY_VEHICLE + 8, x + 12, y + 137, line, S_MENU_NOTE, "V helm/chase · Mouse look");
+    f.text(KEY_VEHICLE + 9, x + 12, y + 155, line, S_MENU_NOTE, "E leave helm · F cargo/service");
   }
 
   const barW = 150;
@@ -280,7 +298,9 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     }
   }
   if (m.crosshair) {
-    if (m.prompt !== "") f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, fitText(m.prompt, 300, S_PROMPT));
+    // The helm panel already carries the exit control; repeating it over the centre overlaps portrait instruments.
+    const exitInPanel = m.vehicle?.active && m.vehicle.boat && m.prompt === "E  exit vehicle";
+    if (m.prompt !== "" && !exitInPanel) f.text(KEY_PROMPT, W / 2 - 150, H / 2 + 14, 300, S_PROMPT, fitText(m.prompt, 300, S_PROMPT));
     if (m.actionKind !== ACTION_NONE) f.add(KEY_ACTION, K_BAR, W / 2 - 40, H / 2 + 38, 80, 5, m.actionKind === ACTION_DRAW ? S_STAMINA : S_OXYGEN).value = m.actionFraction;
   }
   if (m.status !== "") f.text(KEY_STATUS, MARGIN, H / 2 - 100, W - MARGIN * 2, S_TEXT, m.status.slice(0, Math.floor((W - MARGIN * 2) / 7.8)));

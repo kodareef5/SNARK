@@ -1,0 +1,209 @@
+{
+  "verified": "2026-11-15",
+  "map": "core:tampa",
+  "sourceMapSha256": "d64faf5883e67a7b18c8a22075fd27c9bdc1f428d0f275323c422b172b1c7b68",
+  "method": "boatSites over the finished Tampa heightfield, static structures and streamed nodes. Candidate labels come directly from assets/source/maps/tampa/blocks/{places,labels}.json; coordinates use the mapworld site transform [half-e, half+n].",
+  "validation": [
+    "Exact waterline and real hull/motor depth and collision checks",
+    "Within 64m of a traversable shore path",
+    "180m minimum boat spacing; independent service quotas",
+    "No berth or terrain mutations and no synthetic POI tags"
+  ],
+  "candidateSites": 263,
+  "count": 11,
+  "variants": {
+    "core:boat": 10,
+    "core:boat_rescue": 1,
+    "core:boat_police": 0
+  },
+  "examples": [
+    {
+      "id": "boat/building/27493491",
+      "sourceName": "Tampa Fire Station #17",
+      "sourceKind": "fire_station"
+    },
+    {
+      "id": "boat/place/pier/Water Works Park Boat Dock@519.6,1614.4",
+      "sourceKind": "pier"
+    }
+  ],
+  "note": "No mapped police site passed waterfront/depth/collision/access constraints in this Tampa build. Police variants remain eligible at actual police waterfront sites and are exercised by the deterministic coastal fixture.",
+  "boats": [
+    {
+      "id": "boat/building/27493491",
+      "kind": "core:boat_rescue",
+      "x": 2066.8703110582846,
+      "y": -0.3499999992898665,
+      "z": 1585.3678817194934,
+      "yaw": 53248,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@1504.7,-544.3",
+      "kind": "core:boat",
+      "x": 2559.3,
+      "y": -0.3499999992898665,
+      "z": 3535.7,
+      "yaw": 0,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@1917.9,-3966.5",
+      "kind": "core:boat",
+      "x": 2183.0551813004513,
+      "y": -0.3499999992898665,
+      "z": 82.19266270539642,
+      "yaw": 20480,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@1125.1,-363.8",
+      "kind": "core:boat",
+      "x": 2944.5568542494925,
+      "y": -0.3499999992898665,
+      "z": 3705.8568542494922,
+      "yaw": 8192,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@2573.7,-3129.2",
+      "kind": "core:boat",
+      "x": 1519.8641450403613,
+      "y": -0.3499999992898665,
+      "z": 922.5541301643173,
+      "yaw": 36864,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@812.8,270.8",
+      "kind": "core:boat",
+      "x": 3262.5137084989847,
+      "y": -0.3499999992898665,
+      "z": 4323.486291501015,
+      "yaw": 24576,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@1736.3,-3978.8",
+      "kind": "core:boat",
+      "x": 2367.7,
+      "y": -0.3499999992898665,
+      "z": 85.19999999999982,
+      "yaw": 16384,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@2243.7,-2491.9",
+      "kind": "core:boat",
+      "x": 1820.3000000000002,
+      "y": -0.3499999992898665,
+      "z": 1572.1,
+      "yaw": 40960,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/Water Works Park Boat Dock@519.6,1614.4",
+      "kind": "core:boat",
+      "x": 3544.4,
+      "y": -0.3499999992898665,
+      "z": 5678.4,
+      "yaw": 49152,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@1688.7,-478.6",
+      "kind": "core:boat",
+      "x": 2375.3,
+      "y": -0.3499999992898665,
+      "z": 3585.4,
+      "yaw": 57344,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    },
+    {
+      "id": "boat/place/pier/unnamed@173.7,1780",
+      "kind": "core:boat",
+      "x": 3895.9568542494926,
+      "y": -0.3499999992898665,
+      "z": 5838.343145750508,
+      "yaw": 57344,
+      "condition": [
+        0.58,
+        0.88
+      ],
+      "fuel": [
+        0.04,
+        0.42
+      ]
+    }
+  ]
+}

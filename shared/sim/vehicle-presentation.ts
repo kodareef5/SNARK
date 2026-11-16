@@ -36,3 +36,8 @@ export function interpolateRotorPhase(a: number, b: number, rpmA: number, rpmB: 
   const delta = b - a + Math.round((expected - (b - a)) / TAU) * TAU;
   return a + delta * t;
 }
+
+/** Healthy and dry is zero, so ordinary entities need no marine payload. Observer precision is 1/255. */
+export const packBoatWater = (hull: number, flooding: number): number => Math.round(clamp(1 - hull, 0, 1) * 255) | (Math.round(clamp(flooding, 0, 1) * 255) << 8);
+export const unpackBoatHullCondition = (water: number): number => 1 - (water & 255) / 255;
+export const unpackBoatFlooding = (water: number): number => (water >>> 8) / 255;

@@ -5,11 +5,11 @@ import { REJECT_VERSION, RESULT_DENIED, RESULT_OK, writeHello } from "../../shar
 import { CH_RELIABLE } from "../../shared/net/transport.ts";
 import { Harness, testKey } from "../fixtures/net.ts";
 
-test("protocol 19 carries rotorcraft state, and previous layouts are refused", () => {
+test("protocol 20 carries rotorcraft and boat state, and previous layouts are refused", () => {
   const h = new Harness({}, 1, 60, { dev: true, clips: NO_CLIPS, rigs: [] });
   try {
     const reasons: number[] = [];
-    for (const version of [13, 15, 16, 17, 18]) {
+    for (const version of [13, 15, 16, 17, 18, 19]) {
       const end = h.net.connect();
       end.onMessage = (_ch, data) => reasons.push(data[1]!);
       const w = new BitWriter(128);
@@ -17,7 +17,7 @@ test("protocol 19 carries rotorcraft state, and previous layouts are refused", (
       end.send(CH_RELIABLE, w.bytes()); h.run(100);
       expect(end.open).toBe(false);
     }
-    expect(reasons).toEqual([REJECT_VERSION, REJECT_VERSION, REJECT_VERSION, REJECT_VERSION, REJECT_VERSION]);
+    expect(reasons).toEqual([REJECT_VERSION, REJECT_VERSION, REJECT_VERSION, REJECT_VERSION, REJECT_VERSION, REJECT_VERSION]);
     expect(h.server.playerCount).toBe(0);
   } finally { h.host.shutdown(); }
 });

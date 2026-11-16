@@ -47,7 +47,7 @@ export interface Corpse {
   y: number;
   z: number;
   readonly yaw: number;
-  /** Rotorcraft salvage is rigid and retains its replicated full attitude, including inversion. */
+  /** Vehicle salvage with full attitude is rigid and retains its replicated full attitude, including inversion. */
   readonly rigid: boolean;
   qx: number;
   qy: number;
@@ -248,7 +248,7 @@ export class Corpses {
       from = k;
     }
     let alive: Pose | null = null;
-    const rigid = r.vehicleRotorcraft[i] !== 0;
+    const rigid = r.vehicleRotorcraft[i] !== 0 || r.vehicleBoat[i] !== 0;
     if (from >= 0 && !rigid) {
       const f = fallen[from]!;
       fallen.splice(from, 1);

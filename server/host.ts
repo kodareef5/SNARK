@@ -18,7 +18,8 @@ import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Urban } from "./urban.ts";
 import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type VehicleStart } from "./vehicle-service.ts";
-import { isRotorVehicle } from "../shared/sim/vehicle.ts";
+import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
+import { boatRestY } from "../shared/sim/boat.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
 import { Entangle } from "./entangle.ts";
@@ -413,9 +414,9 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     const kind = reg.index.get(id);
     if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
     const def = reg.vehicle[kind]!;
-    const y = start.y ?? groundUnder(world.hf, x, z, def.spec.halfWidth);
+    const y = start.y ?? (isBoatVehicle(def) ? boatRestY(def.spec, world.hf.waterAt(x, z)) : groundUnder(world.hf, x, z, def.spec.halfWidth));
     if (!Number.isFinite(y) || [start.hull, start.engine, start.rotor, start.fuel].some(n => n !== undefined && (!Number.isFinite(n) || n < 0 || n > 1))) return -1;
-    if (isRotorVehicle(def) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
+    if ((isRotorVehicle(def) || isBoatVehicle(def)) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
     const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
@@ -427,6 +428,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     world.ents.vehicleQy[e] = Math.fround(Math.sin(yaw / 2)); world.ents.vehicleQw[e] = Math.fround(Math.cos(yaw / 2));
     world.ents.fuel[e] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
     world.ents.vehicleEngineCondition[e] = start.engine ?? 1; world.ents.vehicleRotorCondition[e] = start.rotor ?? 1;
+    world.ents.vehicleHullCondition[e] = Math.max(.01, start.hull ?? 1); world.ents.vehicleFlooding[e] = 0;
     if (start.origin) rec.extra.set(VEHICLE_ORIGIN, new TextEncoder().encode(start.origin));
     if (persistence) persistence.attach(rec, e);
     records.dirty.add(rec.pid);
@@ -532,7 +534,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
   };
   game.onVehicleStep = e => urban.impact(e);
-  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e), impact: (e, speed, rotor) => urban.collision(e, speed, rotor) });
+  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e), impact: (e, speed, rotor, propeller) => urban.collision(e, speed, rotor, propeller) });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
   death.offMount = (c) => (urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
@@ -662,6 +664,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (taker) taming.meal(taker);
     buffs.died(rec);
     spawner?.left(rec);
+    if (reg.vehicle[rec.kind]?.movement === "boat") urban.releaseHost(rec.pid);
     corpses.fell(rec, cause, by);
     if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);

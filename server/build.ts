@@ -10,8 +10,9 @@ import { HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayHit } from "../sh
 import { F_ALIVE, F_PROP } from "../shared/sim/entities.ts";
 import { SKIN, capsuleFree, capsuleKind, groundUnder } from "../shared/world/collide.ts";
 import { vehicleMeetsKind } from "../shared/world/vehicle.ts";
-import { isRotorVehicle } from "../shared/sim/vehicle.ts";
+import { isBoatVehicle, isRotorVehicle } from "../shared/sim/vehicle.ts";
 import { helicopterMeetsKind } from "../shared/world/helicopter.ts";
+import { boatMeetsKind } from "../shared/world/boat.ts";
 import { BUILD_REACH, ON_TOP, ROLE_FOUNDATION, ROLE_PILLAR, floorTop, freePose, obstructed, poseAt, restPose, tooHigh, units, type Pose } from "../shared/world/snap.ts";
 import { Collapse } from "../shared/world/collapse.ts";
 import { Found, GONE_FELL, GONE_TAKEN } from "../shared/world/structures.ts";
@@ -703,11 +704,13 @@ export class Build {
           if ((ents.flags[i]! & (F_ALIVE | F_PROP)) !== F_ALIVE) continue;
           const k = ents.kind[i]!, car = reg.vehicle[k];
           // A vehicle is its whole hull, nose to boot, not a body of its half width.
-          if (car && isRotorVehicle(car)) {
-            if (helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, {
+          if (car && (isRotorVehicle(car) || isBoatVehicle(car))) {
+            const frame = {
               x: ents.x[i]!, y: ents.y[i]!, z: ents.z[i]!, yaw: ents.vehicleYaw[i]!, pitch: ents.vehiclePitch[i]!, roll: ents.vehicleRoll[i]!,
-              qx: ents.vehicleQx[i]!, qy: ents.vehicleQy[i]!, qz: ents.vehicleQz[i]!, qw: ents.vehicleQw[i]!,
-            }, BODY_SLACK)) return true;
+              qx: ents.vehicleQx[i]!, qy: ents.vehicleQy[i]!, qz: ents.vehicleQz[i]!, qw: ents.vehicleQw[i]!, steering: ents.steering[i]!,
+            };
+            if (isBoatVehicle(car) ? boatMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)
+              : helicopterMeetsKind(reg.parts, kind, x, y, z, yaw, car, frame, BODY_SLACK)) return true;
             continue;
           }
           if (car ? vehicleMeetsKind(reg.parts, kind, x, y, z, yaw, car.spec, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[i]!, BODY_SLACK) : capsuleKind(reg.parts, kind, x, y, z, yaw, ents.x[i]!, ents.y[i]!, ents.z[i]!, reg.bodyRadius[k]!, reg.bodyHeight[k]!, BODY_SLACK)) return true;

@@ -1,0 +1,562 @@
+{
+  "id": "core:boat_wreck",
+  "kind": "creature",
+  "meshes": [
+    {
+      "id": "core:boat_wreck",
+      "size": [
+        2.7099997997283936,
+        2.5876462757587433,
+        7.222214221954346
+      ],
+      "levels": [
+        {
+          "triangles": 27744,
+          "vertices": 24014,
+          "budget": 38000,
+          "error": 0,
+          "from": 0,
+          "tall": 0,
+          "starts": [
+            null,
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            }
+          ],
+          "parts": 141,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 8,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 18000,
+          "vertices": 17968,
+          "budget": 18000,
+          "error": 0.00208,
+          "from": 7.291581212853176,
+          "tall": 273.6933560898671,
+          "starts": [
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 7.291581212853176,
+              "tall": 273.6933560898671
+            },
+            {
+              "from": 11.458199048769275,
+              "tall": 174.16849932991545
+            },
+            {
+              "from": 20.051848335346232,
+              "tall": 99.52485675995169
+            }
+          ],
+          "parts": 141,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 8,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 7000,
+          "vertices": 5667,
+          "budget": 7000,
+          "error": 0.01517,
+          "from": 53.179464903357065,
+          "tall": 37.526841177780064,
+          "starts": [
+            {
+              "from": 26.589732451678532,
+              "tall": 75.05368235556013
+            },
+            {
+              "from": 53.179464903357065,
+              "tall": 37.526841177780064
+            },
+            {
+              "from": 83.56773056241823,
+              "tall": 23.880717113132768
+            },
+            {
+              "from": 146.24352848423192,
+              "tall": 13.646124064647296
+            }
+          ],
+          "parts": 137,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 8,
+          "collapsed": 0
+        },
+        {
+          "triangles": 2600,
+          "vertices": 2254,
+          "budget": 2600,
+          "error": 0.05994,
+          "from": 210.12373937424013,
+          "tall": 9.49753387832705,
+          "starts": [
+            {
+              "from": 105.06186968712007,
+              "tall": 18.9950677566541
+            },
+            {
+              "from": 210.12373937424013,
+              "tall": 9.49753387832705
+            },
+            {
+              "from": 330.1944475880916,
+              "tall": 6.043885195299033
+            },
+            {
+              "from": 577.8402832791603,
+              "tall": 3.453648683028019
+            }
+          ],
+          "parts": 87,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 19,
+          "collapsed": 0
+        },
+        {
+          "triangles": 1000,
+          "vertices": 889,
+          "budget": 1000,
+          "error": 0.15924,
+          "from": 558.2266309301634,
+          "tall": 3.574994854728231,
+          "starts": [
+            {
+              "from": 279.1133154650817,
+              "tall": 7.149989709456462
+            },
+            {
+              "from": 558.2266309301634,
+              "tall": 3.574994854728231
+            },
+            {
+              "from": 877.213277175971,
+              "tall": 2.2749967257361474
+            },
+            {
+              "from": 1535.1232350579494,
+              "tall": 1.2999981289920841
+            }
+          ],
+          "parts": 52,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 32,
+          "collapsed": 0
+        },
+        {
+          "triangles": 480,
+          "vertices": 448,
+          "budget": 480,
+          "error": 0.23562,
+          "from": 825.9819064290699,
+          "tall": 2.416102965227585,
+          "starts": [
+            {
+              "from": 412.99095321453495,
+              "tall": 4.83220593045517
+            },
+            {
+              "from": 825.9819064290699,
+              "tall": 2.416102965227585
+            },
+            {
+              "from": 1297.9715672456812,
+              "tall": 1.5375200687811905
+            },
+            {
+              "from": 2271.450242679942,
+              "tall": 0.8785828964463945
+            }
+          ],
+          "parts": 39,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 21,
+          "collapsed": 0
+        }
+      ],
+      "materials": [
+        {
+          "id": "core:boat_wreck/body",
+          "span": 9.2128,
+          "texels": 222.29940951719348
+        },
+        {
+          "id": "core:boat_wreck/cabin",
+          "span": 12.6586,
+          "texels": 161.78724345504241
+        },
+        {
+          "id": "core:boat_wreck/trim",
+          "span": 7.5131,
+          "texels": 272.59054185356246
+        }
+      ],
+      "strays": 0
+    }
+  ],
+  "clips": [],
+  "gaits": [],
+  "textures": [
+    {
+      "id": "core:boat_wreck/body",
+      "name": "body",
+      "layers": [
+        {
+          "what": "base",
+          "file": "tex/body_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../boat/tex/body_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../boat/tex/body_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "tex/body_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "tex/body_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 9.2261,
+      "tiles": true,
+      "mean": [
+        61,
+        58,
+        50
+      ],
+      "nearest": {
+        "colour": 95,
+        "distance": 5.916079783099616
+      },
+      "normal": {
+        "x": 0.7216104958292823,
+        "y": 0.5409698484360153,
+        "length": 1.0000213153347777,
+        "off": 0.0034542417452201324
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 0,
+        "cover": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "core:boat_wreck/trim",
+      "name": "trim",
+      "layers": [
+        {
+          "what": "base",
+          "file": "tex/trim_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../boat/tex/trim_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../boat/tex/trim_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "tex/trim_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "tex/trim_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 6.1395,
+      "tiles": true,
+      "mean": [
+        40,
+        40,
+        36
+      ],
+      "nearest": {
+        "colour": 82,
+        "distance": 7.211102550927979
+      },
+      "normal": {
+        "x": 0.9739318149218639,
+        "y": 0.9861588980056022,
+        "length": 1.0000272024886474,
+        "off": 0.004423467360986533
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 0,
+        "cover": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "core:boat_wreck/cabin",
+      "name": "cabin",
+      "layers": [
+        {
+          "what": "base",
+          "file": "tex/cabin_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../boat/tex/cabin_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../boat/tex/cabin_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "tex/cabin_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "tex/cabin_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 11.968,
+      "tiles": true,
+      "mean": [
+        38,
+        39,
+        34
+      ],
+      "nearest": {
+        "colour": 82,
+        "distance": 8.306623862918075
+      },
+      "normal": {
+        "x": 0.6376919724799591,
+        "y": 0.5708539926724273,
+        "length": 1.0000166986217276,
+        "off": 0.0038675309171425365
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 0,
+        "cover": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "megabytes": {
+    "textures": 55.99998664855957,
+    "budget": 80
+  },
+  "pictures": true,
+  "notes": [
+    "no hit capsules: nothing can hit it"
+  ],
+  "faults": [],
+  "rig": {
+    "skeleton": "core:boat",
+    "bones": 5,
+    "capsules": 0,
+    "buried": [],
+    "sockets": [
+      "seat_driver",
+      "seat_front_passenger",
+      "seat_rear_left",
+      "seat_rear_right",
+      "approach_front_left",
+      "approach_front_right",
+      "approach_rear_left",
+      "approach_rear_right",
+      "boarding_water",
+      "boarding_ladder",
+      "boarding_deck",
+      "camera_driver",
+      "camera_front_passenger",
+      "camera_rear_left",
+      "camera_rear_right",
+      "camera_chase",
+      "helm_left",
+      "helm_right",
+      "throttle",
+      "cargo",
+      "refuel",
+      "engine",
+      "exhaust",
+      "wake_left",
+      "wake_right",
+      "spray_left",
+      "spray_right",
+      "propeller",
+      "tow"
+    ]
+  }
+}

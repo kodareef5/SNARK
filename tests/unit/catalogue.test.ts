@@ -49,13 +49,13 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     "item/weapon": 3,
     "item/armor": 20,
     "item/structure": 29,
-    "item/vehicle": 1,
-    engram: 54,
+    "item/vehicle": 2,
+    engram: 55,
     levels: 1,
     "species/survivor": 1,
     "species/target": 1,
     // The car, and the civilian who may drive one (content/vehicles, content/civilians.ts).
-    "species/vehicle": 4,
+    "species/vehicle": 7,
     "species/civilian": 1,
     // And three road surfaces to drive on, on a paving shape of their own.
     "structure/piece": 36,
@@ -74,7 +74,7 @@ test("the core pack's definitions fall into the classes, each passing its row, a
     map: 5,
     rename: 58,
   });
-  expect(rest.length).toBe(294 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length);
+  expect(rest.length).toBe(299 + RUIN_BLOCKS.length + TERMINALS.length + SLOPE_BLOCKS.length + LETTER_BLOCKS.length + WRECKS.length);
   // Each creature file has one species, and what else it has is the egg it lays, its saddle and how the saddle is made.
   expect(CORE_CONTENT.length).toBe(rest.length + CREATURES.length + FEATURES_CONTENT.length);
   const brought: Record<string, number> = {};

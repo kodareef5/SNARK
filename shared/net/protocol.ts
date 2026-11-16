@@ -43,8 +43,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 17: the stations wave's (planning/reference/stations-plan.md, S0), OWN_STATION's layout. 18: vehicles: a body's
  * mechanical state and seat after the flight counters, and a view entry's vehicle parts (view.ts).
  * 19: rotor state/condition, observer rotor and service parts, and vehicle maintenance/deployment commands.
+ * 20: marine hull/flooding state and physical shoreline recovery.
  */
-export const PROTOCOL_VERSION = 19;
+export const PROTOCOL_VERSION = 20;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -100,6 +101,9 @@ function writeVehicle(w: BitWriter, b: Body): void {
       w.f32(b.vehicleQw);
       w.f32(b.vehicleCollective);
     }
+    const marine = b.vehicleHullCondition !== 1 || b.vehicleFlooding !== 0;
+    w.bool(marine);
+    if (marine) { w.f32(b.vehicleHullCondition); w.f32(b.vehicleFlooding); }
     // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
   }
   // A seat costs a body one bit when it has none: the entity it sits on, the seat's place in it from 1, and the entity's generation.
@@ -136,6 +140,9 @@ function readVehicle(r: BitReader, b: Body): void {
   b.vehicleQz = rotor ? r.f32() : 0;
   b.vehicleQw = rotor ? r.f32() : 1;
   b.vehicleCollective = rotor ? r.f32() : 0;
+  const marine = b.vehicle && r.bool();
+  b.vehicleHullCondition = marine ? r.f32() : 1;
+  b.vehicleFlooding = marine ? r.f32() : 0;
   b.seat = r.bool() ? r.varint() + 1 : 0;
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;
   b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
@@ -335,6 +342,8 @@ export const VEHICLE_INSPECT = 0;
 export const VEHICLE_REFUEL = 1;
 export const VEHICLE_REPAIR = 2;
 export const VEHICLE_DEPLOY = 3;
+/** A nearby survivor pushes a stopped, engine-off boat toward reachable deeper water. */
+export const VEHICLE_RECOVER = 4;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;

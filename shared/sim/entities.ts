@@ -80,6 +80,8 @@ export class EntityStore {
   vehicleRotorRpm: Float32Array;
   vehicleRotorPhase: Float32Array;
   vehicleEngineCondition: Float32Array;
+  vehicleFlooding: Float32Array;
+  vehicleHullCondition: Float32Array;
   vehicleRotorCondition: Float32Array;
   vehicleEngineOn: Uint8Array;
   vehicleQx: Float32Array;
@@ -198,6 +200,8 @@ export class EntityStore {
     this.vehicleRotorRpm = new Float32Array(cap);
     this.vehicleRotorPhase = new Float32Array(cap);
     this.vehicleEngineCondition = new Float32Array(cap);
+    this.vehicleFlooding = new Float32Array(cap);
+    this.vehicleHullCondition = new Float32Array(cap);
     this.vehicleRotorCondition = new Float32Array(cap);
     this.vehicleEngineOn = new Uint8Array(cap);
     this.vehicleQx = new Float32Array(cap);
@@ -297,6 +301,8 @@ export class EntityStore {
     this.vehicleRotorRpm[i] = 0;
     this.vehicleRotorPhase[i] = 0;
     this.vehicleEngineCondition[i] = 1;
+    this.vehicleFlooding[i] = 0;
+    this.vehicleHullCondition[i] = 1;
     this.vehicleRotorCondition[i] = 1;
     this.vehicleEngineOn[i] = 0;
     this.vehicleQx[i] = 0;
@@ -382,6 +388,8 @@ export class EntityStore {
     this.vehicleRotorRpm = wider(this.vehicleRotorRpm, cap);
     this.vehicleRotorPhase = wider(this.vehicleRotorPhase, cap);
     this.vehicleEngineCondition = wider(this.vehicleEngineCondition, cap);
+    this.vehicleFlooding = wider(this.vehicleFlooding, cap);
+    this.vehicleHullCondition = wider(this.vehicleHullCondition, cap);
     this.vehicleRotorCondition = wider(this.vehicleRotorCondition, cap);
     this.vehicleEngineOn = wider(this.vehicleEngineOn, cap);
     this.vehicleQx = wider(this.vehicleQx, cap);
@@ -552,6 +560,8 @@ export class EntityStore {
     b.vehicleRotorRpm = this.vehicleRotorRpm[i]!;
     b.vehicleRotorPhase = this.vehicleRotorPhase[i]!;
     b.vehicleEngineCondition = this.vehicleEngineCondition[i]!;
+    b.vehicleFlooding = this.vehicleFlooding[i]!;
+    b.vehicleHullCondition = this.vehicleHullCondition[i]!;
     b.vehicleRotorCondition = this.vehicleRotorCondition[i]!;
     b.vehicleEngineOn = this.vehicleEngineOn[i] !== 0;
     b.vehicleQx = this.vehicleQx[i]!;
@@ -607,6 +617,8 @@ export class EntityStore {
     this.vehicleRotorRpm[i] = b.vehicleRotorRpm;
     this.vehicleRotorPhase[i] = b.vehicleRotorPhase;
     this.vehicleEngineCondition[i] = b.vehicleEngineCondition;
+    this.vehicleFlooding[i] = b.vehicleFlooding;
+    this.vehicleHullCondition[i] = b.vehicleHullCondition;
     this.vehicleRotorCondition[i] = b.vehicleRotorCondition;
     this.vehicleEngineOn[i] = b.vehicleEngineOn ? 1 : 0;
     this.vehicleQx[i] = b.vehicleQx;

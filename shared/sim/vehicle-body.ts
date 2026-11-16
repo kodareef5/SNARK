@@ -3,22 +3,28 @@ import { TICK_DT } from "../coords.ts";
 import { TAU, clamp } from "../math/scalar.ts";
 import type { CollisionWorld } from "../world/collide.ts";
 import { helicopterWorld } from "../world/helicopter.ts";
+import { boatWorld } from "../world/boat.ts";
+import { stepBoat, type BoatState, type BoatStep } from "./boat.ts";
 import { stepHelicopter, type HelicopterState, type HelicopterStep } from "./helicopter.ts";
 import { StaticVehicleWorld } from "../world/vehicle.ts";
 import { BTN_CROUCH, BTN_MOD, BTN_PRIMARY, BTN_PRONE, BTN_SECONDARY, BTN_SPRINT, BTN_JUMP, MODE_NONE, MODE_WALK, type Body, stepOut } from "./character.ts";
 import { stepVehicle, type VehicleDefinition } from "./vehicle.ts";
 
 const worlds = new WeakMap<CollisionWorld, StaticVehicleWorld>();
-const state: HelicopterState = { qx: 0, qy: 0, qz: 0, qw: 1, collective: 0, rotorRpm: 0, rotorPhase: 0, engineCondition: 1, rotorCondition: 1, engineOn: false, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0 };
+const state: HelicopterState & BoatState = { qx: 0, qy: 0, qz: 0, qw: 1, collective: 0, rotorRpm: 0, rotorPhase: 0, engineCondition: 1, rotorCondition: 1, engineOn: false, hullCondition: 1, flooding: 0, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0, vx: 0, vz: 0, steering: 0, wheelAngle: 0, fuel: 0, vy: 0, grounded: true, yawRate: 0, pitchRate: 0, rollRate: 0, groundPitch: 0, groundRoll: 0, rideOffset: 0, rideVelocity: 0, gear: 0, engineRpm: 0, shiftTime: 0, payloadMass: 0 };
 
 /** The last vehicle step. Authority consumes this immediately for impact/water damage; prediction uses only its movement. */
-export const vehicleStep: HelicopterStep = { blocked: null, impactSpeed: 0, rotorHit: false, water: false, landSpeed: 0, fuelUsed: 0, surface: "ground" };
+export const vehicleStep: HelicopterStep & Pick<BoatStep, "propHit" | "capsized" | "immersion" | "propellerImmersion" | "planing"> = {
+  blocked: null, impactSpeed: 0, rotorHit: false, water: false, landSpeed: 0, fuelUsed: 0, surface: "ground",
+  propHit: false, capsized: false, immersion: 0, propellerImmersion: 0, planing: 0,
+};
 
 /** Inputs use the ordinary signed bytes/buttons. Wheel and rotor controllers interpret them separately. */
 export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ: number, buttons: number, def: VehicleDefinition, dt = TICK_DT, _yaw = b.yaw, pilot = true): void {
   if (dt !== TICK_DT) throw new Error("vehicles step at the shared fixed tick");
   stepOut.landSpeed = 0;
   vehicleStep.blocked = null; vehicleStep.impactSpeed = vehicleStep.landSpeed = vehicleStep.fuelUsed = 0; vehicleStep.rotorHit = vehicleStep.water = false;
+  vehicleStep.propHit = vehicleStep.capsized = false; vehicleStep.immersion = vehicleStep.propellerImmersion = vehicleStep.planing = 0;
   if (b.mode === MODE_NONE) { b.vx = b.vy = b.vz = 0; return; }
   let world = worlds.get(w);
   if (!world) { world = new StaticVehicleWorld(w); worlds.set(w, world); }
@@ -50,6 +56,17 @@ export function stepVehicleBody(w: CollisionWorld, b: Body, moveX: number, moveZ
     b.vehicleRotorRpm = state.rotorRpm; b.vehicleRotorPhase = state.rotorPhase; b.vehicleCollective = state.collective;
     b.vehicleEngineCondition = state.engineCondition; b.vehicleRotorCondition = state.rotorCondition; b.vehicleEngineOn = state.engineOn;
     stepOut.landSpeed = vehicleStep.landSpeed;
+  } else if (def.movement === "boat") {
+    state.qx = b.vehicleQx; state.qy = b.vehicleQy; state.qz = b.vehicleQz; state.qw = b.vehicleQw;
+    state.engineCondition = b.vehicleEngineCondition; state.engineOn = b.vehicleEngineOn;
+    state.hullCondition = b.vehicleHullCondition; state.flooding = b.vehicleFlooding;
+    Object.assign(vehicleStep, stepBoat(state, {
+      throttle: moveZ / 127 * ((buttons & BTN_SPRINT) !== 0 ? .25 : 1), steer: -moveX / 127,
+      neutral: (buttons & BTN_JUMP) !== 0, pilot,
+    }, def, boatWorld(w)));
+    b.vehicleQx = state.qx; b.vehicleQy = state.qy; b.vehicleQz = state.qz; b.vehicleQw = state.qw;
+    b.vehicleEngineCondition = state.engineCondition; b.vehicleEngineOn = state.engineOn;
+    b.vehicleHullCondition = state.hullCondition; b.vehicleFlooding = state.flooding;
   } else Object.assign(vehicleStep, stepVehicle(state, { throttle: moveZ / 127, steer: -moveX / 127, brake: 0, handbrake: (buttons & BTN_JUMP) !== 0 }, def.spec, world));
   b.vehicle = true; b.mode = MODE_WALK; b.grounded = state.grounded; b.stance = 0;
   // The store and wire use f32: round here on BOTH sides before another predicted tick.

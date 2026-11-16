@@ -1,0 +1,88 @@
+{
+  "cues": {
+    "boat_wake": {
+      "effects": [
+        {
+          "effect": "core:boat/wake_foam",
+          "from": "wake_left",
+          "on": [
+            "water"
+          ]
+        },
+        {
+          "effect": "core:boat/wake_foam",
+          "from": "wake_right",
+          "on": [
+            "water"
+          ]
+        }
+      ]
+    },
+    "boat_spray": {
+      "effects": [
+        {
+          "effect": "core:boat/bow_spray",
+          "from": "spray_left",
+          "on": [
+            "water"
+          ]
+        },
+        {
+          "effect": "core:boat/bow_spray",
+          "from": "spray_right",
+          "on": [
+            "water"
+          ]
+        }
+      ]
+    },
+    "splash": {
+      "effects": [
+        {
+          "effect": "splash_drops",
+          "from": "ground"
+        },
+        {
+          "effect": "splash_ring",
+          "from": "ground"
+        }
+      ]
+    },
+    "struck": {
+      "effects": [
+        {
+          "effect": "grit",
+          "from": "hit",
+          "count": [
+            2,
+            4
+          ]
+        }
+      ]
+    },
+    "death": {
+      "effects": [
+        {
+          "effect": "splash_drops",
+          "from": "ground",
+          "count": [
+            8,
+            12
+          ]
+        },
+        {
+          "effect": "splash_ring",
+          "from": "ground"
+        }
+      ]
+    },
+    "engine_smoke": {
+      "effects": [
+        {
+          "effect": "core:boat/engine_smoke",
+          "from": "engine"
+        }
+      ]
+    }
+  }
+}

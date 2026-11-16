@@ -213,9 +213,9 @@ cue("crate/land", "prop", "build", "world", "waits:loot", "a supply crate lands"
 // or an outboard alike.
 const VEHICLE = "species/vehicle";
 const WAITS_VEHICLES = "waits:vehicles";
-// A rotorcraft fires these from its snapshot state (client/core/sound/vehicles.ts); a car waits for them still.
-const ROTOR_FIRES = new Set(["engine/{revs}", "engine/start", "engine/stop", "vehicle/cabin", "vehicle/wash", "vehicle/wash/water"]);
-const vstatus = (name: string): CueStatus => (ROTOR_FIRES.has(name) ? "fire" : WAITS_VEHICLES);
+// A rotorcraft and a boat fire these from their snapshot state (client/core/sound/vehicles.ts); a car waits for them still.
+const FIRED = new Set(["engine/{revs}", "engine/start", "engine/stop", "vehicle/cabin", "vehicle/wash", "vehicle/wash/water", "vehicle/hull/slow", "vehicle/hull/fast"]);
+const vstatus = (name: string): CueStatus => (FIRED.has(name) ? "fire" : WAITS_VEHICLES);
 const vfalls = (n: string, shared = true): string[] => [`{owner}/${n}`, `{family}/${n}`, ...(shared ? [`core:vehicle/${n}`] : [])];
 cue("engine/{revs}", VEHICLE, "vehicle", "body", vstatus("engine/{revs}"), "a running engine (a rotor, a propeller, an outboard): four layers looped, faded across by rpm and each played faster or slower to meet it", { loop: true, falls: vfalls("engine/{revs}") });
 for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", vstatus(`engine/${n}`), `the engine: ${n} (the telemetry's engine state)`, { falls: vfalls(`engine/${n}`) });

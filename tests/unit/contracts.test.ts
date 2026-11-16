@@ -59,7 +59,7 @@ test("the new codes are each one of their kind, and deadlines have kinds of thei
   expect(new Set(ops).size).toBe(ops.length);
   // 14 is the cluster's, 15 the beds', 16 the flyers' (below), 17 the stations wave's (tests/unit/stations-contracts.test.ts),
   // 18 the vehicles' (tests/integration/vehicle-contracts.test.ts).
-  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 19]);
+  expect([P.CMD_CARRY, P.CMD_TAKE, P.PROTOCOL_VERSION]).toEqual([27, 28, 20]);
   const orders = [P.ORDER_STAY, P.ORDER_FOLLOW, P.ORDER_STANCE, P.ORDER_STANCE + 1, P.ORDER_STANCE + 2, P.ORDER_UNSADDLE, P.ORDER_MATE, P.ORDER_UNMATE, P.ORDER_WANDER, P.ORDER_ATTACK, P.ORDER_YOURS, P.ORDER_LAND];
   expect(new Set(orders).size).toBe(orders.length);
   expect(Math.max(...orders)).toBeLessThan(P.ORDER_LEVEL);
@@ -77,7 +77,7 @@ test("the new columns change nothing for content that does not use them", () => 
     if (d.type === "species") expect({ ...reg.tamedMove[i]!, slopeCos: 0 }).toEqual({ ...reg.move[i]!, slopeCos: 0, ...sprints });
     // The pteranodon is carried as 149 of drag weight by what can lift it, its mass is 190, and its kind takes fright with
     // it within 15 m. A vehicle's mass is its curb mass.
-    const dragged = ({ "core:pteranodon": [15, 149, 190, 0, 0], "core:compact": [0, 0, 1100, 0, 0], "core:helicopter": [0, 0, 1050, 0, 0], "core:helicopter_rescue": [0, 0, 1050, 0, 0], "core:helicopter_police": [0, 0, 1050, 0, 0] } as Record<string, number[]>)[d.id];
+    const dragged = ({ "core:pteranodon": [15, 149, 190, 0, 0], "core:compact": [0, 0, 1100, 0, 0], "core:helicopter": [0, 0, 1050, 0, 0], "core:helicopter_rescue": [0, 0, 1050, 0, 0], "core:helicopter_police": [0, 0, 1050, 0, 0], "core:boat": [0, 0, 1400, 0, 0], "core:boat_rescue": [0, 0, 1400, 0, 0], "core:boat_police": [0, 0, 1400, 0, 0] } as Record<string, number[]>)[d.id];
     if (d.id !== "core:dodo") expect([reg.alarm[i], reg.drag[i], reg.mass[i], reg.carriable[i], reg.eggChance[i]]).toEqual(dragged ?? [0, 0, 0, 0, 0]);
     expect(reg.drawSize[i]).toBe(1);
     if (!["core:survivor", "core:club", "core:pick"].includes(d.id)) expect(reg.meleeTorpor[i]).toBe(0);
