@@ -236,21 +236,21 @@ export function writePages(m: Manifest, blobs: readonly Uint8Array[]): Uint8Arra
 
 /**
  * The manifest as a client first reads it: in full, the rows of the meshes the boot file holds and of the materials and
- * textures one of those, or none of the paged, is drawn with; every other mesh a stub and every other material and
- * texture null, its row in a page.
+ * textures one of those, or none of the paged, is drawn with, or that `named` says the client finds by name; every
+ * other mesh a stub and every other material and texture null, its row in a page.
  */
-export function bootManifest(m: Manifest): unknown {
+export function bootManifest(m: Manifest, named: (material: string) => boolean = () => false): unknown {
   const paged = new Set<number>();
   const kept = new Set<number>();
   for (const mesh of m.meshes) for (const l of mesh.levels) for (let k = 0; k < (l.sections?.length ?? 0); k += 3) (mesh.page === undefined ? kept : paged).add(l.sections![k]!);
-  const away = (k: number): boolean => paged.has(k) && !kept.has(k);
+  const away = (k: number): boolean => paged.has(k) && !kept.has(k) && !named(m.materials![k]!.id);
   const textures = new Set<number>();
-  const named = new Set<number>();
+  const used = new Set<number>();
   (m.materials ?? []).forEach((mat, k) => {
     for (const role of TEXTURE_ROLES) {
       const t = textureOf(mat, role);
       if (t < 0) continue;
-      named.add(t);
+      used.add(t);
       if (!away(k)) textures.add(t);
     }
   });
@@ -264,7 +264,7 @@ export function bootManifest(m: Manifest): unknown {
   });
   const out: Record<string, unknown> = { ...m, meshes };
   if (m.materials) out.materials = m.materials.map((mat, k) => (away(k) ? null : mat));
-  if (m.textures) out.textures = m.textures.map((t, k) => (named.has(k) && !textures.has(k) ? null : t));
+  if (m.textures) out.textures = m.textures.map((t, k) => (used.has(k) && !textures.has(k) ? null : t));
   delete out.sounds;
   return out;
 }

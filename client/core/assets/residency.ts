@@ -16,7 +16,7 @@
 // comes off the budget, and what goes onto the card that is not an asset is spent from the same frame's allowance.
 
 import type { ClipSet } from "../../../shared/anim/clip.ts";
-import { meshKnown, readPage, skeletonClips, type Manifest, type ManifestLevel } from "../../../shared/pack/manifest.ts";
+import { meshKnown, readPage, skeletonClips, storedBytes, type Manifest, type ManifestLevel } from "../../../shared/pack/manifest.ts";
 import { VERTEX_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { LAST_STEP, STEP0_SIZE, blockOf, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import { Rng } from "../../../shared/rng.ts";
@@ -145,6 +145,8 @@ export class Residency {
   /** Each mesh's page, -1 for one the boot pack holds, and whether its row is here. */
   private readonly pageOf: Int32Array;
   private readonly knownMesh: Uint8Array;
+  /** By the first page of a request, how many pages that follow it in its file come in the same request. */
+  private readonly run: Uint16Array;
   /** Meshes whose pages came in this frame's `begin`, for what keeps what it read of a mesh. */
   readonly learned: number[] = [];
   /** Set by `download`: each page that comes has its meshes' parts kept as well. */
@@ -256,6 +258,7 @@ export class Residency {
     this.levelOf = new Uint8Array(this.levels);
     this.pageOf = Int32Array.from(manifest.meshes, (m) => m.page ?? -1);
     this.knownMesh = new Uint8Array(manifest.meshes.length);
+    this.run = new Uint16Array(manifest.pages?.length ?? 0);
     this.size = new Uint32Array(slots);
     this.inBoot = new Uint8Array(slots);
     this.heldBytes = new Array<Uint8Array | null>(this.levels).fill(null);
@@ -434,7 +437,9 @@ export class Residency {
 
   /** Bytes of the request a slot is waiting on. A level's may bring its surface. */
   private asked(slot: number): number {
-    return this.size[slot]! + (slot < this.levels && this.state[this.levels + slot] === RIDING ? this.size[this.levels + slot]! : 0);
+    let bytes = this.size[slot]!;
+    if (slot >= this.pageBase) for (let k = 1; k <= this.run[slot - this.pageBase]!; k++) bytes += this.size[slot + k]!;
+    return bytes + (slot < this.levels && this.state[this.levels + slot] === RIDING ? this.size[this.levels + slot]! : 0);
   }
 
   /** A request has ended, however it ended. */
@@ -450,6 +455,9 @@ export class Residency {
     } else if (this.isTexture(slot)) {
       this.texComing -= this.size[slot]!;
       this.settle(slot - this.texBase);
+    } else if (slot >= this.pageBase) {
+      for (let k = 1; k <= this.run[slot - this.pageBase]!; k++) this.state[slot + k] = ABSENT;
+      this.run[slot - this.pageBase] = 0;
     }
   }
 
@@ -495,11 +503,13 @@ export class Residency {
       if (a.data && a.data.length === this.asked(slot)) {
         this.tries[slot] = 0;
         if (slot >= this.pageBase) {
-          if (this.learnPage(slot - this.pageBase, a.data)) this.state[slot] = RESIDENT;
-          else {
-            this.state[slot] = DEAD;
-            this.stats.dead++;
+          // The pages of a request come one after another, each as long as it is.
+          for (let k = 0, at = 0; k <= this.run[slot - this.pageBase]!; k++) {
+            const page = a.data.subarray(at, (at += this.size[slot + k]!));
+            this.state[slot + k] = this.learnPage(slot + k - this.pageBase, page) ? RESIDENT : DEAD;
+            if (this.state[slot + k] === DEAD) this.stats.dead++;
           }
+          this.run[slot - this.pageBase] = 0;
           continue;
         }
         if (slot >= this.clipBase) {
@@ -989,7 +999,8 @@ export class Residency {
         }
       }
       if (bytes > SMALL_PART && this.flyingLarge >= this.inFlight - this.smallLanes) continue;
-      this.ask(slot, rider, goal);
+      if (slot >= this.pageBase) this.askPages(slot, nowMs);
+      else this.ask(slot, rider, goal);
     }
     if ((this.short || this.texLedger > this.texBudget) && this.shrinking === 0 && this.flying < this.inFlight && this.waiting < WAITING_LIMIT) this.shrink(nowMs);
 
@@ -999,12 +1010,33 @@ export class Residency {
     else if (this.relax > 1 && this.ledger < this.budget * 0.7) this.relax = Math.max(1, this.relax / 1.02);
   }
 
-  /** Asks the port for a level, with its surface if `rider` is that, for a surface, for steps 0 to `goal` of a texture, or for clips or a page. */
+  /** Asks for a page with the pages wanted this frame that lie next to it in its file, as many as a small part's bytes allow. */
+  private askPages(slot: number, nowMs: number): void {
+    const pages = this.manifest.pages!;
+    /** Whether page `q`, wanted and not yet asked for, joins page `p` that lies before or after it. */
+    const joins = (q: number, p: number): boolean => {
+      const s = this.pageBase + q;
+      const [a, b] = q < p ? [pages[q]!, pages[p]!] : [pages[p]!, pages[q]!];
+      return this.seen[s] === this.frame && this.state[s] === ABSENT && this.retryAt[s]! <= nowMs && bytes + this.size[s]! <= SMALL_PART && a.file === b.file && a.at + storedBytes(a.part) === b.at;
+    };
+    let first = slot - this.pageBase, last = first, bytes = this.size[slot]!;
+    while (first > 0 && joins(first - 1, first)) bytes += this.size[this.pageBase + --first]!;
+    while (last + 1 < pages.length && joins(last + 1, last)) bytes += this.size[this.pageBase + ++last]!;
+    this.run[first] = last - first;
+    for (let q = first + 1; q <= last; q++) this.state[this.pageBase + q] = RIDING;
+    this.ask(this.pageBase + first, -1, 0);
+  }
+
+  /** Asks the port for a level, with its surface if `rider` is that, for a surface, for steps 0 to `goal` of a texture, or for clips or pages. */
   private ask(slot: number, rider: number, goal: number): void {
     const parts: AssetPart[] = [];
     let file: number;
-    if (slot >= this.clipBase) {
-      const e = slot >= this.pageBase ? this.manifest.pages![slot - this.pageBase]! : this.manifest.clips![slot - this.clipBase]!;
+    if (slot >= this.pageBase) {
+      const first = slot - this.pageBase;
+      file = this.manifest.pages![first]!.file;
+      for (let q = first; q <= first + this.run[first]!; q++) parts.push(wholePart(this.manifest.pages![q]!));
+    } else if (slot >= this.clipBase) {
+      const e = this.manifest.clips![slot - this.clipBase]!;
       file = e.file;
       parts.push(wholePart(e));
     } else if (slot >= this.texBase) {

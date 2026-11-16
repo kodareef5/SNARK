@@ -5,9 +5,11 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { inflateRawSync } from "node:zlib";
+import { SURFACE_MATERIAL } from "../content/surfaces.ts";
 import { parseManifest, readPages, storedStep } from "../shared/pack/manifest.ts";
+import { textureOf } from "../shared/pack/pack.ts";
 import type { ManifestSound } from "../shared/pack/sound.ts";
-import { STEP0_SIZE, stepOf, topIn, type TextureFormat } from "../shared/pack/texture.ts";
+import { STEP0_SIZE, TEXTURE_ROLES, stepOf, topIn, type TextureFormat } from "../shared/pack/texture.ts";
 
 const KB = 1024;
 const MB = 1024 * KB;
@@ -40,14 +42,17 @@ export function weigh(dist: string): boolean {
   const script = [...page.matchAll(/rel="modulepreload" href="([^"]+)"/g)].map((x) => `${x[1]}.br`);
   const fetched = (JSON.parse(/for \(const href of (\[[^\]]*\])\)/.exec(page)![1]!) as string[]).filter((n) => existsSync(join(dist, n))).map((n) => `${n}.br`);
   const hud = readdirSync(join(dist, "assets")).filter((n) => /^hud\.\w+\.png$|^hud-font\.\w+\.ttf\.br$/.test(n)).map((n) => `assets/${n}`);
-  const textures = (format: TextureFormat, widest: number): number => {
+  const textures = (format: TextureFormat, widest: number, only?: readonly number[]): number => {
     let bytes = 0;
-    for (const t of m.textures ?? []) {
-      const v = t.in[format];
+    for (const [k, t] of (m.textures ?? []).entries()) {
+      const v = only && !only.includes(k) ? undefined : t.in[format];
       if (v) for (let s = 0; s <= stepOf(Math.min(widest, topIn(format, t.top))); s++) bytes += storedStep(v, format, t.role, s);
     }
     return bytes;
   };
+  // The world's finishes, which the ground and every piece without art of its own wear, are asked for once the world is drawn.
+  const world = m.materials?.find((x) => x.id === SURFACE_MATERIAL);
+  const finishes = world ? TEXTURE_ROLES.map((role) => textureOf(world, role)).filter((t) => t >= 0) : [];
   const sounds = m.sounds ?? [];
   const seconds = sounds.reduce((s, x) => s + x.takes.reduce((a, t) => a + t.samples, 0) / x.rate, 0);
   const music = join(dist, "assets/music");
@@ -58,6 +63,8 @@ export function weigh(dist: string): boolean {
     ["manifest", size("assets/manifest.json")],
     ["boot pack, Brotli", size(`${boot}.br`)],
     ["everything before the first frame, Brotli", ["index.html.br", ...script, "assets-worker.js.br", ...fetched, ...hud].reduce((s, n) => s + size(n), 0)],
+    ["the world's finishes to 1,024, astc", textures("astc", 1024, finishes)],
+    ["the world's finishes to 1,024, bc", textures("bc", 1024, finishes)],
     ["page file", fileOf("page")],
     ["mesh file", fileOf("mesh")],
     ["clip file", fileOf("clip")],

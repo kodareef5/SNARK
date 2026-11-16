@@ -50,11 +50,14 @@ test("paged, the boot file holds only the meshes it is told to, and every other 
   const { files, manifest, blobs } = splitPack(whole, "core", { boot: (id) => boot.has(id), place: (id) => [group(id), 0] });
   expect(files.map((f) => f.role)).toEqual(["boot", "mesh", "clip", "page"]);
   expect(parsePack(files[0]!.bytes).header.meshes.map((m) => m.id).sort()).toEqual([...boot].sort());
-  // What a client reads first names every mesh, and holds the rows of the boot file's alone.
-  const wire = JSON.stringify(bootManifest(manifest));
+  // What a client reads first names every mesh, and holds the rows of the boot file's alone, and of a material it finds
+  // by name though paged meshes alone are drawn with it.
+  const shared = manifest.materials!.findIndex((_, k) => manifest.meshes.some((m) => m.page !== undefined && m.levels.some((l) => l.sections?.includes(k))));
+  const wire = JSON.stringify(bootManifest(manifest, (id) => id === manifest.materials![shared]!.id));
   const read = parseManifest(wire);
   expect(read.meshes.map((m) => m.id)).toEqual(pack.header.meshes.map((m) => m.id));
   expect(read.meshes.filter(meshKnown).map((m) => m.id).sort()).toEqual([...boot].sort());
+  expect([read.materials![shared]!.id, read.materials!.filter((x) => x.id === "").length > 10]).toEqual([manifest.materials![shared]!.id, true]);
   expect(wire.length).toBeLessThan(JSON.stringify(manifest).length / 4);
   // A page is of one group and no more than its bytes allow, but for a mesh larger than a page alone.
   for (const [p, blob] of blobs.entries()) {

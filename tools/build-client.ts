@@ -9,9 +9,12 @@ import { join, resolve, sep } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
 import { Binding } from "../client/core/assets/bind.ts";
 import { AssetTable } from "../client/core/assets/table.ts";
+import { SKY_MATERIAL } from "../client/core/render/atmosphere.ts";
 import { FAR_MESH, farColours } from "../client/core/render/far.ts";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
+import { WATER_MATERIAL } from "../client/core/render/water.ts";
 import { CORE_CONTENT } from "../content/core.ts";
+import { SURFACE_MATERIAL } from "../content/surfaces.ts";
 import { compileContent, type Registry } from "../shared/content/registry.ts";
 import { fillSlot, slotsOf } from "../shared/content/slots.ts";
 import { describePack } from "../shared/pack/manifest.ts";
@@ -189,7 +192,9 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     manifest.soundRows = `sounds.${partHash(rows)}.json`;
     writeFileSync(join(dist, "assets", manifest.soundRows), rows);
   }
-  writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(bootManifest(manifest)));
+  // The materials the client finds by name: the world's finishes, the sky's and the water's.
+  const named = new Set([SURFACE_MATERIAL, SKY_MATERIAL, WATER_MATERIAL]);
+  writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(bootManifest(manifest, (id) => named.has(id))));
   // The page asks for its script and the files the first frame needs as it is read. The server names its map's file, so main.js asks for that.
   const boot = `assets/${manifest.files[manifest.boot]!.name}`;
   const modules = ["main.js", ...pieces].map((f) => `<link rel="modulepreload" href="${f}">`).join("\n");

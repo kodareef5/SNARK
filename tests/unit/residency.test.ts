@@ -71,10 +71,10 @@ test("paged, a rock is drawn only once its page has come: pages are asked for fi
   const rocks = ROCKS.map((r) => ({ ...r, mesh: manifest.meshes.findIndex((m) => m.id === SET.manifest.meshes[r.mesh]!.id) }));
   const w = assetWorld({ files: split.files, manifest }, rocks, { latencyMs: 100, bytesPerSecond: 2.5e6 });
   w.frame(0);
-  // The first frame draws none of them, and asks for every page they are on, before any level or texture.
+  // The first frame draws none of them, and asks for every page they are on before any level or texture, the pages
+  // that lie side by side in one request.
   const pages = new Set(rocks.map((r) => split.manifest.meshes[r.mesh]!.page));
-  const asked = w.port.log.map((l) => Number(l.split(" ")[3]));
-  expect([w.drawn.every((l) => l < 0), asked.length, asked.every((u) => u >= 4e6)]).toEqual([true, pages.size, true]);
+  expect([pages.size > 2, w.drawn.every((l) => l < 0), w.port.log.length, w.port.log[0]!.endsWith(` x${pages.size}`), Number(w.port.log[0]!.split(" ")[3]) >= 4e6]).toEqual([true, true, 1, true, true]);
   // A round trip and the pages' bytes later, every rock is drawn at a level its page holds, and nothing more is left out.
   let frames = 1;
   while (w.drawn.some((l) => l < 0)) (w.frame(0), frames++);
@@ -84,6 +84,12 @@ test("paged, a rock is drawn only once its page has come: pages are asked for fi
   w.run(8, 0);
   expect([w.settled(), w.r.stats.skipped - skipped, w.r.stats.dead]).toEqual([true, 0, 0]);
   expect(manifest.meshes.every(meshKnown)).toBe(true);
+  // The nearest rocks on the last page: a request reaches back as well as on, and no page comes twice.
+  const near = parseManifest(JSON.stringify(bootManifest(split.manifest)));
+  const back = assetWorld({ files: split.files, manifest: near }, rocks.map((r, i) => ({ ...r, z: 10 + 12 * (rocks.length - 1 - i) })), { latencyMs: 100, bytesPerSecond: 2.5e6 });
+  back.run(4, 0);
+  expect([back.port.log.filter((l) => Number(l.split(" ")[3]) >= 4e6).length, back.drawn.every((l) => l >= 0)]).toEqual([1, true]);
+  for (const e of near.pages!) expect(back.port.over.get(`2:${e.at}`)).toBe(1);
 });
 
 test("the same flight twice asks for the same things in the same order", () => {
