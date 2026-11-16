@@ -282,3 +282,14 @@ test("a fire's piece and lanes and a job's paused unit are saved and loaded, and
   const without = new RecordCodec(Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, ids.map(([s, i]): [string, number] => [i === ingot ? "gone:thing" : s, i]), reg.ids.length), false);
   expect(without.decode(row)!.fire!.lanes).toEqual([{ item: spark, ticks: 3 }]);
 });
+
+test("a creature told only to wander keeps every part of its record", () => {
+  const ids = reg.ids.map((s, i): [string, number] => [s, i]);
+  const codec = new RecordCodec(Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, ids, reg.ids.length), false);
+  const rec = new EntityRecord(78, id(reg, "dodo"));
+  rec.wander = true;
+  rec.team = 2;
+  rec.xp = 5;
+  const back = codec.decode({ pid: 78, kind: rec.kind, x: 0, y: 0, z: 0, yaw: 0, data: codec.encode(rec).slice() })!;
+  expect([back.wander, back.team, back.xp]).toEqual([true, 2, 5]);
+});
