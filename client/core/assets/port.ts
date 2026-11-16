@@ -33,8 +33,8 @@ export function levelParts(level: ManifestLevel, from: number, to: number): Asse
   return out;
 }
 
-/** A skeleton's clips, where its file has them. */
-export function clipPart(e: ManifestClips): AssetPart {
+/** A skeleton's clips or a page, where its file has them. */
+export function wholePart(e: Pick<ManifestClips, "at" | "part">): AssetPart {
   const p = e.part;
   return p.stored === undefined ? { offset: e.at, length: p.bytes, hash: p.hash } : { offset: e.at, length: p.stored, hash: p.hash, inflated: p.bytes };
 }
@@ -53,7 +53,7 @@ export function textureParts(tex: ManifestTexture, format: TextureFormat, last: 
 }
 
 export interface AssetRequest {
-  /** The level of a mesh, its surface, the step of a texture, or the skeleton's clips, the bytes are for. */
+  /** The level of a mesh, its surface, the step of a texture, a skeleton's clips or a page, the bytes are for. */
   slot: number;
   /** Index of the pack file in the manifest. */
   file: number;

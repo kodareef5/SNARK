@@ -9,8 +9,25 @@ import { placeFree } from "../place.ts";
 import { named, type Console, type ConsoleCommand } from "../console.ts";
 import { V_HEALTH } from "../../shared/sim/vitals.ts";
 import { CAUSE_KILLED, statOf } from "../survival.ts";
+import { RESULT_OK } from "../../shared/net/protocol.ts";
+import type { Client } from "../game.ts";
+import type { Host } from "../host.ts";
 
 const needsBody = "this needs a body; you have none right now";
+
+/**
+ * A vehicle parked ahead of `c`, nose away, four metres past its own reach (a rotor's sweep, a tail), where it fits: a
+ * boat only on water. `said` is what was parked and where, or why not.
+ */
+export function parkAhead(host: Host, c: Client, kind: number, team: number): { e: number; said: string } {
+  const reg = host.world.reg;
+  const vehicle = reg.vehicle[kind]!;
+  const id = reg.ids[kind]!;
+  const a = (c.heldYaw / 65536) * 2 * Math.PI;
+  const at = 4 + Math.max(vehicle.spec.halfLength, ...("rotors" in vehicle ? vehicle.rotors.map((r) => Math.hypot(r.at[0], r.at[2]) + r.radius) : []));
+  const e = host.spawnVehicle(id, c.body.x + Math.sin(a) * at, c.body.z + Math.cos(a) * at, team, a);
+  return { e, said: e < 0 ? `no room for ${id} ${Math.round(at)} m ahead${vehicle.movement === "boat" ? ", or no water there" : ""}` : `${id} ${Math.round(at)} m ahead` };
+}
 
 export function addAdminCommands(con: Console): void {
   const commands: ConsoleCommand[] = [
@@ -171,15 +188,10 @@ export function addAdminCommands(con: Console): void {
         const count = args[2] === undefined ? 1 : parseNumber(args[2]);
         if (!Number.isInteger(count) || count < 1 || count > 64) return "count must be a whole number from 1 to 64";
         const a = (c.heldYaw / 65536) * 2 * Math.PI;
-        // A vehicle is parked nose away, four metres past its own reach (a rotor's sweep, a tail), where it fits: a
-        // boat only on water.
-        const vehicle = reg.vehicle[kind];
-        if (vehicle) {
+        if (reg.vehicle[kind]) {
           if (count !== 1) return "a vehicle is spawned one at a time";
-          const reach = Math.max(vehicle.spec.halfLength, ..."rotors" in vehicle ? vehicle.rotors.map((r) => Math.hypot(r.at[0], r.at[2]) + r.radius) : []);
-          const at = 4 + reach;
-          const v = ctx.host.spawnVehicle(id, c.body.x + Math.sin(a) * at, c.body.z + Math.cos(a) * at, 0, a);
-          return v < 0 ? `no room for ${id} ${Math.round(at)} m ahead${vehicle.movement === "boat" ? ", or no water there" : ""}` : `spawned ${id} ${Math.round(at)} m ahead`;
+          const parked = parkAhead(ctx.host, c, kind, 0);
+          return parked.e < 0 ? parked.said : `spawned ${parked.said}`;
         }
         // A flock is a disc of them about two metres apart, its near edge four metres ahead.
         const spread = count === 1 ? 0 : 2 * Math.sqrt(count);
@@ -194,6 +206,33 @@ export function addAdminCommands(con: Console): void {
         }
         if (e < 0) return "no room for it there";
         return count === 1 ? `spawned ${id} level ${world.ents.level[e]}` : `spawned ${made} of ${count} ${id} level ${level}`;
+      },
+    },
+    {
+      name: "driver",
+      usage: "[vehicle]",
+      examples: ["driver", "driver helicopter"],
+      help: "Park a car ahead as spawn does, nobody's, with a civilian getting in at its wheel: someone to pull out of it. A compact unless another vehicle is named; a boat is boarded from the water and is not one.",
+      admin: true,
+      run(ctx, args) {
+        const c = ctx.client;
+        if (!c) return needsBody;
+        const host = ctx.host;
+        const reg = host.world.reg;
+        const kind = named(reg, args[0] ?? "compact", "species");
+        if (typeof kind === "string") return kind;
+        const vehicle = reg.vehicle[kind];
+        const seat = vehicle?.seats.find((s) => s.driver);
+        if (!vehicle || !seat) return `${reg.ids[kind]} is not a vehicle`;
+        if (vehicle.movement === "boat") return "a boat is boarded from the water: spawn it, and a civilian";
+        const who = reg.index.get("core:civilian")!;
+        const parked = parkAhead(host, c, kind, 0);
+        if (parked.e < 0) return parked.said;
+        const door = [0, 0, 0];
+        host.urban.door(parked.e, seat, reg.move[who]!.radius, door);
+        const e = host.spawnCreature("core:civilian", door[0]!, door[2]!, 1, "admin");
+        if (e < 0 || host.urban.seatNpc(e, parked.e, seat.id) !== RESULT_OK) return `spawned ${parked.said}; no civilian could get in at its door`;
+        return `spawned ${parked.said}, a civilian getting in at its wheel`;
       },
     },
     {

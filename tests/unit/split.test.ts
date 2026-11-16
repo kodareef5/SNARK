@@ -6,7 +6,8 @@ import { lodIndices, lodVertices, parsePack } from "../../shared/pack/pack.ts";
 import { corePackBytes } from "../fixtures/pack.ts";
 import { surfaceError } from "../../tools/pack/error.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
-import { BOOT_LEVEL_BYTES, splitPack } from "../../tools/pack/split.ts";
+import { HELD_LEVEL_BYTES, PAGE_BYTES, bootManifest, splitPack } from "../../tools/pack/split.ts";
+import { meshKnown, readPage } from "../../shared/pack/manifest.ts";
 import { LEVEL_COLOURS, stressMeshes, stressSet } from "../../tools/pack/stress.ts";
 
 test("a split pack holds every level once, byte for byte, with the coarsest of each mesh in the boot file", () => {
@@ -31,7 +32,7 @@ test("a split pack holds every level once, byte for byte, with the coarsest of e
       expect(got.subarray(0, from.lods[l]!.indexCount * level.index)).toEqual(lodIndices(pack, from.lods[l]!));
       expect(got.subarray(bytes - level.verts * 8)).toEqual(lodVertices(pack, from.lods[l]!));
       const last = l === m.levels.length - 1;
-      expect(level.file).toBe(last || bytes <= BOOT_LEVEL_BYTES ? 0 : 1);
+      expect(level.file).toBe(last || bytes <= HELD_LEVEL_BYTES ? 0 : 1);
       if (level.file === 1) streamed++;
     });
   });
@@ -39,6 +40,48 @@ test("a split pack holds every level once, byte for byte, with the coarsest of e
   // The three files together are little more than the one.
   expect(files.reduce((sum, f) => sum + f.bytes.length, 0)).toBeLessThan(whole.length * 1.06);
   expect(files[0]!.bytes.length).toBeLessThan(whole.length * 0.6);
+});
+
+test("paged, the boot file holds only the meshes it is told to, and every other mesh's row and smallest levels are in its page", () => {
+  const whole = corePackBytes();
+  const pack = parsePack(whole);
+  const boot = new Set(["core:missing", "core:far", "core:human_m/torso"]);
+  const group = (id: string): number => (id.includes("ruin") ? 0 : 1);
+  const { files, manifest, blobs } = splitPack(whole, "core", { boot: (id) => boot.has(id), place: (id) => [group(id), 0] });
+  expect(files.map((f) => f.role)).toEqual(["boot", "mesh", "clip", "page"]);
+  expect(parsePack(files[0]!.bytes).header.meshes.map((m) => m.id).sort()).toEqual([...boot].sort());
+  // What a client reads first names every mesh, and holds the rows of the boot file's alone, and of a material it finds
+  // by name though paged meshes alone are drawn with it.
+  const shared = manifest.materials!.findIndex((_, k) => manifest.meshes.some((m) => m.page !== undefined && m.levels.some((l) => l.sections?.includes(k))));
+  const wire = JSON.stringify(bootManifest(manifest, (id) => id === manifest.materials![shared]!.id));
+  const read = parseManifest(wire);
+  expect(read.meshes.map((m) => m.id)).toEqual(pack.header.meshes.map((m) => m.id));
+  expect(read.meshes.filter(meshKnown).map((m) => m.id).sort()).toEqual([...boot].sort());
+  expect([read.materials![shared]!.id, read.materials!.filter((x) => x.id === "").length > 10]).toEqual([manifest.materials![shared]!.id, true]);
+  expect(wire.length).toBeLessThan(JSON.stringify(manifest).length / 4);
+  // A page is of one group and no more than its bytes allow, but for a mesh larger than a page alone.
+  for (const [p, blob] of blobs.entries()) {
+    const groups = new Set(manifest.meshes.filter((m) => m.page === p).map((m) => group(m.id)));
+    expect([groups.size, blob.length <= PAGE_BYTES || manifest.meshes.filter((m) => m.page === p).length === 1]).toEqual([1, true]);
+  }
+  // Each page gives back the rows the whole manifest has, and holds the first parts of the levels it says.
+  const pages = files[3]!.bytes;
+  for (const [p, e] of manifest.pages!.entries()) {
+    const bytes = pages.subarray(e.at, e.at + e.part.bytes);
+    expect(partHash(bytes)).toBe(e.part.hash);
+    const got = readPage(read, p, bytes);
+    expect(got.blob).toEqual(blobs[p]!);
+    for (const i of got.meshes) {
+      expect(read.meshes[i]).toEqual(manifest.meshes[i]!);
+      manifest.meshes[i]!.levels.forEach((level, l) => {
+        const held = l === manifest.meshes[i]!.levels.length - 1 || level.parts[0]!.bytes <= HELD_LEVEL_BYTES;
+        expect(level.file).toBe(held ? 3 : 1);
+        if (held) expect(partHash(got.blob.subarray(level.at, level.at + level.parts[0]!.bytes))).toBe(level.parts[0]!.hash);
+      });
+    }
+  }
+  expect(read.meshes.every(meshKnown)).toBe(true);
+  expect(read.materials).toEqual(manifest.materials!);
 });
 
 test("the boot file holds the survivor's clips, and the clip file each creature skeleton's as the whole pack had them", () => {

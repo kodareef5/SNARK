@@ -1,24 +1,27 @@
-// What is on the graphics card, and what is asked for, kept and let go to keep it so. There are four kinds of slot.
+// What is on the graphics card, and what is asked for, kept and let go to keep it so. There are five kinds of slot.
 // A level is the indices and flat vertices of one level of a mesh. A surface is what that level needs besides to be
 // drawn with materials, its surface and its skin, and is of use only with its level. A texture holds its pictures up
 // to some step, and changes step by being made again from its first picture while the card still draws with the old.
-// A skeleton's clips never go on the card: they are read as they come and kept.
+// A skeleton's clips never go on the card: they are read as they come and kept. A page is the rows of some meshes and
+// of what they are drawn with, and their smallest levels: a mesh whose page has not come is asked for by its page,
+// before anything else, and is not drawn.
 //
-// What the boot pack holds is resident as soon as it is wanted and is never let go, so there is always some level of
-// every mesh to draw. Everything else is asked of the port, most urgent first, put on the card within a frame's
-// allowance of bytes, and let go, least lately drawn first, when the card's budget is passed. Textures have a share of
-// the budget and a ring of their own, and levels and surfaces have what textures leave of it.
+// What the boot pack and the pages that have come hold is resident as soon as it is wanted and is never let go, so
+// there is always some level of every mesh known to draw. Everything else is asked of the port, most urgent first, put
+// on the card within a frame's allowance of bytes, and let go, least lately drawn first, when the card's budget is
+// passed. Textures have a share of the budget and a ring of their own, and levels and surfaces have what textures
+// leave of it.
 //
 // What the card holds that is not an asset (terrain pictures, shadow maps, the sky, far meshes) is reserved by name and
 // comes off the budget, and what goes onto the card that is not an asset is spent from the same frame's allowance.
 
 import type { ClipSet } from "../../../shared/anim/clip.ts";
-import { skeletonClips, type Manifest, type ManifestLevel } from "../../../shared/pack/manifest.ts";
+import { meshKnown, readPage, skeletonClips, storedBytes, type Manifest, type ManifestLevel } from "../../../shared/pack/manifest.ts";
 import { VERTEX_BYTES, type Pack } from "../../../shared/pack/pack.ts";
 import { LAST_STEP, STEP0_SIZE, blockOf, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import { Rng } from "../../../shared/rng.ts";
 import type { TextureUpload } from "../render/packet.ts";
-import { FAIL_HASH, FAIL_RANGE, clipPart, levelParts, textureParts, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
+import { FAIL_HASH, FAIL_RANGE, levelParts, textureParts, wholePart, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
 
 /**
  * A level to put on the graphics card: its indices and then its vertices, as the pack holds them. With `of` it is a
@@ -68,6 +71,8 @@ const MAPS = 5;
 const NEEDED: readonly number[] = [0, 3, 4];
 /** Step 0 of what a material is not drawn without is more urgent than anything else, by this much and again by how near it is. */
 export const FIRST = 1e6;
+/** A page is more urgent than step 0 of any texture: nothing of its meshes is drawn without it. */
+const PAGE_FIRST = 4 * FIRST;
 /** How urgent a material's textures are against one another. */
 const WEIGHT: readonly number[] = [1, 0.5, 0.25, 1, 1];
 /** A texture in view is remade smaller only if what is left would do for this many times the pixels it covers. */
@@ -127,18 +132,30 @@ export class Residency {
   private readonly first: Uint32Array;
   /**
    * How many levels there are. The surface of the level in slot s is slot `levels + s`, texture t is slot `texBase + t`,
-   * and the clips of the manifest's skeleton c are slot `clipBase + c`.
+   * the clips of the manifest's skeleton c are slot `clipBase + c`, and page p is slot `pageBase + p`.
    */
   private readonly levels: number;
   private readonly texBase: number;
   private readonly clipBase: number;
+  private readonly pageBase: number;
   /** Each skeleton's clips once they have come. */
   private readonly clipSets: (ClipSet | null)[];
   private readonly meshOf: Uint32Array;
   private readonly levelOf: Uint8Array;
+  /** Each mesh's page, -1 for one the boot pack holds, and whether its row is here. */
+  private readonly pageOf: Int32Array;
+  private readonly knownMesh: Uint8Array;
+  /** By the first page of a request, how many pages that follow it in its file come in the same request. */
+  private readonly run: Uint16Array;
+  /** Meshes whose pages came in this frame's `begin`, for what keeps what it read of a mesh. */
+  readonly learned: number[] = [];
+  /** Set by `download`: each page that comes has its meshes' parts kept as well. */
+  private keepAll = false;
   /** Bytes of a level or a surface. For a texture, bytes of the copy on its way. */
   private readonly size: Uint32Array;
+  /** Set on a level the boot pack or a page that has come holds, and on a surface the boot pack holds, and the first part of such a level. */
   private readonly inBoot: Uint8Array;
+  private readonly heldBytes: (Uint8Array | null)[];
   private readonly state: Uint8Array;
   /** The frame each slot was last wanted in, and how urgently in that frame. */
   private readonly seen: Uint32Array;
@@ -220,7 +237,8 @@ export class Residency {
     return (this.manifest.textures ?? []).map((texture, t) => ({ id: texture.id, have: this.has[t]!, goal: this.goal[t]!, state: this.state[this.texBase + t]!, wanted: this.seen[this.texBase + t] === this.frame }));
   }
 
-  constructor(manifest: Manifest, boot: Pack, port: AssetPort | null, seed = 1) {
+  /** `pages` are the blobs of pages whose rows a tool has read into the manifest already (shared/pack/manifest.ts `readPages`), by page. */
+  constructor(manifest: Manifest, boot: Pack, port: AssetPort | null, pages: readonly Uint8Array[] = [], seed = 1) {
     this.manifest = manifest;
     this.boot = boot;
     this.port = port;
@@ -234,26 +252,30 @@ export class Residency {
     this.clipBase = this.texBase + textures.length;
     const clips = manifest.clips ?? [];
     this.clipSets = clips.map(() => null);
-    const slots = this.clipBase + clips.length;
+    this.pageBase = this.clipBase + clips.length;
+    const slots = this.pageBase + (manifest.pages?.length ?? 0);
     this.meshOf = new Uint32Array(this.levels);
     this.levelOf = new Uint8Array(this.levels);
+    this.pageOf = Int32Array.from(manifest.meshes, (m) => m.page ?? -1);
+    this.knownMesh = new Uint8Array(manifest.meshes.length);
+    this.run = new Uint16Array(manifest.pages?.length ?? 0);
     this.size = new Uint32Array(slots);
     this.inBoot = new Uint8Array(slots);
+    this.heldBytes = new Array<Uint8Array | null>(this.levels).fill(null);
     this.runs = new Array<readonly number[]>(this.levels).fill(NONE);
-    manifest.meshes.forEach((m, i) =>
-      m.levels.forEach((level, l) => {
-        const slot = this.first[i]! + l;
-        this.meshOf[slot] = i;
-        this.levelOf[slot] = l;
-        this.size[slot] = level.parts[0]!.bytes;
-        for (let k = 1; k < level.parts.length; k++) this.size[this.levels + slot]! += level.parts[k]!.bytes;
-        this.inBoot[slot] = level.file === manifest.boot ? 1 : 0;
-        this.inBoot[this.levels + slot] = (level.surface ?? level).file === manifest.boot ? 1 : 0;
-        if (level.sections) this.runs[slot] = level.sections;
-      }),
-    );
+    manifest.meshes.forEach((m, i) => {
+      m.levels.forEach((_, l) => {
+        this.meshOf[this.first[i]! + l] = i;
+        this.levelOf[this.first[i]! + l] = l;
+      });
+      if (!meshKnown(m)) return;
+      if (m.page !== undefined && !pages[m.page]) throw new Error(`residency: the blob of the page of ${m.id} is not given`);
+      this.learnMesh(i, m.page === undefined ? null : pages[m.page]!);
+    });
     clips.forEach((e, c) => (this.size[this.clipBase + c] = e.part.bytes));
+    (manifest.pages ?? []).forEach((p, k) => (this.size[this.pageBase + k] = p.part.bytes));
     this.state = new Uint8Array(slots);
+    pages.forEach((blob, p) => blob && (this.state[this.pageBase + p] = RESIDENT));
     this.seen = new Uint32Array(slots);
     this.urgency = new Float32Array(slots);
     this.tries = new Uint8Array(slots);
@@ -278,18 +300,7 @@ export class Residency {
     this.matSeen = new Uint32Array(materials.length);
     this.matLayer = new Int32Array(materials.length);
     this.layerUnder = new Uint8Array(materials.length);
-    materials.forEach((m, i) => {
-      const maps = [m.base, m.normal, m.mro, m.mask, m.mask2 ?? -1];
-      const steps = maps.map((t) => (t < 0 ? 0 : stepOf(textures[t]!.top)));
-      this.matTop[i] = Math.max(...steps);
-      maps.forEach((t, r) => {
-        this.matTex[i * MAPS + r] = t;
-        this.matUnder[i * MAPS + r] = t < 0 ? 0 : this.matTop[i]! - steps[r]!;
-      });
-      const layer = m.layer ?? -1;
-      this.matLayer[i] = layer;
-      this.layerUnder[i] = layer < 0 ? 0 : Math.max(0, this.matTop[i]! - stepOf(textures[layer]!.top));
-    });
+    materials.forEach((_, i) => this.learnMaterial(i));
     this.has = new Int8Array(textures.length).fill(-1);
     this.goal = new Int8Array(textures.length).fill(-1);
     this.limit = new Int8Array(textures.length);
@@ -304,23 +315,79 @@ export class Residency {
   /** Works out, for the variant, how far each texture goes and what its steps weigh. */
   private retable(): void {
     this.made = this.format;
-    (this.manifest.textures ?? []).forEach((tex, t) => {
-      this.limit[t] = this.port && tex.in[this.made] ? stepOf(topIn(this.made, tex.top)) : -1;
-      const block = blockOf(this.made, tex.in[this.made] ?? {});
-      for (let k = 0, bytes = 0; k <= this.limit[t]!; k++) this.through[t * STEPS + k] = bytes += stepBytes(this.made, tex.role, k, block);
-    });
-    this.recan();
+    for (let t = 0; t < this.limit.length; t++) this.learnTexture(t);
+    for (let slot = 0; slot < this.levels; slot++) this.can[slot] = this.canDraw(slot);
   }
 
-  /** Works out which levels can be drawn with their materials at all: those with a surface whose materials' base colours and masks can be had. */
-  private recan(): void {
-    const had = (t: number): boolean => t < 0 || this.limit[t]! >= 0;
-    for (let slot = 0; slot < this.levels; slot++) {
-      const runs = this.runs[slot]!;
-      let can = this.size[this.levels + slot]! > 0 && runs.length > 0;
-      for (let k = 0; k < runs.length; k += 3) for (const r of NEEDED) can &&= had(this.matTex[runs[k]! * MAPS + r]!);
-      this.can[slot] = can ? 1 : 0;
+  private learnTexture(t: number): void {
+    const tex = this.manifest.textures![t]!;
+    this.limit[t] = this.port && tex.in[this.made] ? stepOf(topIn(this.made, tex.top)) : -1;
+    const block = blockOf(this.made, tex.in[this.made] ?? {});
+    for (let k = 0, bytes = 0; k <= this.limit[t]!; k++) this.through[t * STEPS + k] = bytes += stepBytes(this.made, tex.role, k, block);
+  }
+
+  private learnMaterial(i: number): void {
+    const m = this.manifest.materials![i]!;
+    const textures = this.manifest.textures!;
+    const maps = [m.base, m.normal, m.mro, m.mask, m.mask2 ?? -1];
+    const steps = maps.map((t) => (t < 0 ? 0 : stepOf(textures[t]!.top)));
+    this.matTop[i] = Math.max(...steps);
+    maps.forEach((t, r) => {
+      this.matTex[i * MAPS + r] = t;
+      this.matUnder[i * MAPS + r] = t < 0 ? 0 : this.matTop[i]! - steps[r]!;
+    });
+    const layer = m.layer ?? -1;
+    this.matLayer[i] = layer;
+    this.layerUnder[i] = layer < 0 ? 0 : Math.max(0, this.matTop[i]! - stepOf(textures[layer]!.top));
+  }
+
+  /** What the manifest says of a mesh whose row is here, with the blob of its page where it has one. */
+  private learnMesh(i: number, blob: Uint8Array | null): void {
+    this.manifest.meshes[i]!.levels.forEach((level, l) => {
+      const slot = this.first[i]! + l;
+      const bytes = level.parts[0]!.bytes;
+      this.size[slot] = bytes;
+      this.size[this.levels + slot] = level.parts.reduce((sum, p, k) => (k > 0 ? sum + p.bytes : 0), 0);
+      const role = this.manifest.files[level.file]!.role;
+      const from = level.at - this.boot.blobAt;
+      this.heldBytes[slot] = level.file === this.manifest.boot ? this.boot.blob.subarray(from, from + bytes) : role === "page" ? blob!.subarray(level.at, level.at + bytes) : null;
+      this.inBoot[slot] = this.heldBytes[slot] ? 1 : 0;
+      this.inBoot[this.levels + slot] = (level.surface ?? level).file === this.manifest.boot ? 1 : 0;
+      this.runs[slot] = level.sections ?? NONE;
+    });
+    this.knownMesh[i] = 1;
+  }
+
+  /** A page has come: the rows it holds, and the levels it holds from its blob. False where it is not the page it should be. */
+  private learnPage(p: number, data: Uint8Array): boolean {
+    let page: ReturnType<typeof readPage>;
+    try {
+      page = readPage(this.manifest, p, data);
+    } catch {
+      return false;
     }
+    for (const t of page.textures) this.learnTexture(t);
+    for (const k of page.materials) this.learnMaterial(k);
+    for (const i of page.meshes) {
+      this.learnMesh(i, page.blob);
+      for (let s = this.first[i]!; s < this.first[i + 1]!; s++) this.can[s] = this.canDraw(s);
+      this.learned.push(i);
+    }
+    if (this.keepAll) this.keepParts(page.meshes, page.textures, false);
+    return true;
+  }
+
+  /** Whether a level can be drawn with its materials at all: it has a surface, and its materials' base colours and masks can be had. */
+  private canDraw(slot: number): number {
+    const runs = this.runs[slot]!;
+    let can = this.size[this.levels + slot]! > 0 && runs.length > 0;
+    for (let k = 0; k < runs.length; k += 3) {
+      for (const r of NEEDED) {
+        const t = this.matTex[runs[k]! * MAPS + r]!;
+        can &&= t < 0 || this.limit[t]! >= 0;
+      }
+    }
+    return can ? 1 : 0;
   }
 
   /** The slot of a level of a mesh. */
@@ -370,7 +437,9 @@ export class Residency {
 
   /** Bytes of the request a slot is waiting on. A level's may bring its surface. */
   private asked(slot: number): number {
-    return this.size[slot]! + (slot < this.levels && this.state[this.levels + slot] === RIDING ? this.size[this.levels + slot]! : 0);
+    let bytes = this.size[slot]!;
+    if (slot >= this.pageBase) for (let k = 1; k <= this.run[slot - this.pageBase]!; k++) bytes += this.size[slot + k]!;
+    return bytes + (slot < this.levels && this.state[this.levels + slot] === RIDING ? this.size[this.levels + slot]! : 0);
   }
 
   /** A request has ended, however it ended. */
@@ -386,6 +455,9 @@ export class Residency {
     } else if (this.isTexture(slot)) {
       this.texComing -= this.size[slot]!;
       this.settle(slot - this.texBase);
+    } else if (slot >= this.pageBase) {
+      for (let k = 1; k <= this.run[slot - this.pageBase]!; k++) this.state[slot + k] = ABSENT;
+      this.run[slot - this.pageBase] = 0;
     }
   }
 
@@ -412,6 +484,7 @@ export class Residency {
     this.toTail(this.texMark, this.texRoot);
     this.texMarked = 0;
     if (this.format !== this.made) this.remake();
+    this.learned.length = 0;
     if (!this.port) return;
     const shared = this.port.protocol === "h2" || this.port.protocol.startsWith("h3");
     this.inFlight = shared ? IN_FLIGHT_SHARED : IN_FLIGHT;
@@ -429,6 +502,16 @@ export class Residency {
       // A port that brings fewer bytes than were asked for has failed, whatever it says.
       if (a.data && a.data.length === this.asked(slot)) {
         this.tries[slot] = 0;
+        if (slot >= this.pageBase) {
+          // The pages of a request come one after another, each as long as it is.
+          for (let k = 0, at = 0; k <= this.run[slot - this.pageBase]!; k++) {
+            const page = a.data.subarray(at, (at += this.size[slot + k]!));
+            this.state[slot + k] = this.learnPage(slot + k - this.pageBase, page) ? RESIDENT : DEAD;
+            if (this.state[slot + k] === DEAD) this.stats.dead++;
+          }
+          this.run[slot - this.pageBase] = 0;
+          continue;
+        }
         if (slot >= this.clipBase) {
           this.clipSets[slot - this.clipBase] = skeletonClips(this.manifest.clips![slot - this.clipBase]!, a.data);
           this.state[slot] = RESIDENT;
@@ -465,7 +548,7 @@ export class Residency {
           this.limit[slot - this.texBase] = this.goal[slot - this.texBase]! - 1;
           this.state[slot] = ABSENT;
           this.rehashed[slot] = 0;
-          if (this.goal[slot - this.texBase] === 0) this.recan();
+          if (this.goal[slot - this.texBase] === 0) for (let s = 0; s < this.levels; s++) this.can[s] = this.canDraw(s);
         } else this.state[slot] = DEAD;
       } else {
         this.state[slot] = ABSENT;
@@ -491,9 +574,17 @@ export class Residency {
     if (this.state[slot] === ABSENT && this.inBoot[slot] === 0) this.wants.push(slot);
   }
 
-  /** Says a level is wanted this frame, and how urgently against the others. */
+  /** Says a level is wanted this frame, and how urgently against the others: its mesh's page, where that has not come. */
   want(mesh: number, level: number, urgency: number): void {
-    this.wantSlot(this.first[mesh]! + level, urgency);
+    if (this.knownMesh[mesh] === 1) this.wantSlot(this.first[mesh]! + level, urgency);
+    else this.wantSlot(this.pageBase + this.pageOf[mesh]!, PAGE_FIRST + urgency);
+  }
+
+  /** Whether a mesh's row is here, to be drawn and to say what it is drawn with. Where not, its page is wanted. */
+  known(mesh: number): boolean {
+    if (this.knownMesh[mesh] === 1) return true;
+    this.want(mesh, 0, 0);
+    return false;
   }
 
   /** Says the surface of a level is wanted this frame too. False, with nothing wanted, where there are no textures or the level is never drawn with materials. */
@@ -600,9 +691,13 @@ export class Residency {
 
   /**
    * The level of `mesh` to draw when `wanted` is asked for: that level if it is resident, else the next coarser that
-   * is, else the nearest finer. -1 if there is none, which cannot be once the boot pack is here.
+   * is, else the nearest finer. -1 if there is none, which cannot be once its row is here.
    */
   level(mesh: number, wanted: number): number {
+    if (!this.known(mesh)) {
+      this.stats.skipped++;
+      return -1;
+    }
     const base = this.first[mesh]!;
     const count = this.first[mesh + 1]! - base;
     const want = wanted < count ? wanted : count - 1;
@@ -654,7 +749,7 @@ export class Residency {
     return ready;
   }
 
-  /** Bit l for each level of `mesh` the card holds or can take from the boot pack: what can be drawn without fetching. */
+  /** Bit l for each level of `mesh` the card holds or can take from the boot pack or its page: what can be drawn without fetching. */
   held(mesh: number): number {
     let bits = 0;
     const base = this.first[mesh]!;
@@ -701,21 +796,14 @@ export class Residency {
     return this.manifest.meshes[this.meshOf[of]!]!.levels[this.levelOf[of]!]!;
   }
 
-  /** Where in its file a level's first part starts, or its surface: after the first part, unless the manifest says where else. */
-  private startOf(slot: number): number {
-    const level = this.levelAt(slot);
-    return slot < this.levels ? level.at : level.surface ? level.surface.at : level.at + level.parts[0]!.bytes;
-  }
-
   /**
-   * A level of a mesh as the boot pack holds it, or null where it does not: its vertices in metres from the mesh's
-   * origin, as the flat programs place them, their palette colours, and its triangles' corners.
+   * A level of a mesh as the boot pack or its page holds it, or null where neither does: its vertices in metres from the
+   * mesh's origin, as the flat programs place them, their palette colours, and its triangles' corners.
    */
-  bootLevel(mesh: number, level: number): { positions: Float32Array; colors: Uint8Array; indices: Uint32Array } | null {
+  heldGeometry(mesh: number, level: number): { positions: Float32Array; colors: Uint8Array; indices: Uint32Array } | null {
     const slot = this.slot(mesh, level);
-    if (level >= this.manifest.meshes[mesh]!.levels.length || this.inBoot[slot] !== 1) return null;
-    const at = this.startOf(slot) - this.boot.blobAt;
-    const data = this.boot.blob.subarray(at, at + this.size[slot]!);
+    const data = level < this.manifest.meshes[mesh]!.levels.length ? this.heldBytes[slot] : null;
+    if (!data) return null;
     const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
     const { tris, index } = this.levelAt(slot);
     const indices = new Uint32Array(tris * 3);
@@ -742,24 +830,34 @@ export class Residency {
   }
 
   /**
-   * Asks the port to keep everything this tier may fetch, so nothing need be fetched while playing: every level that
-   * is not in the boot pack and, where there are textures, its surface and every texture as far as the tier takes it,
-   * and every skeleton's clips. Returns their bytes.
+   * Asks the port to keep everything this tier may fetch, so nothing need be fetched while playing: every page, every
+   * level that is not held and, where there are textures, its surface and every texture as far as the tier takes it,
+   * and every skeleton's clips. A page asked for from now brings its meshes' parts the same way. Returns the bytes
+   * asked for of what is known.
    */
   download(): number {
+    this.keepAll = true;
+    const meshes: number[] = [];
+    for (let i = 0; i < this.knownMesh.length; i++) if (this.knownMesh[i] === 1) meshes.push(i);
+    return this.keepParts(meshes, Array.from(this.limit, (_, t) => t), true);
+  }
+
+  private keepParts(meshes: readonly number[], textures: readonly number[], clips: boolean): number {
     const parts: { file: number; part: AssetPart }[] = [];
     let bytes = 0;
     const add = (file: number, part: AssetPart): void => {
       parts.push({ file, part });
       bytes += part.length;
     };
-    for (let slot = 0; slot < this.levels; slot++) {
-      const level = this.levelAt(slot);
-      if (this.inBoot[slot] === 0) for (const p of levelParts(level, 0, 1)) add(level.file, p);
-      if (this.cap < 0 || this.inBoot[this.levels + slot] === 1) continue;
-      for (const p of levelParts(level, 1, level.parts.length)) add((level.surface ?? level).file, p);
+    for (const i of meshes) {
+      for (let slot = this.first[i]!; slot < this.first[i + 1]!; slot++) {
+        const level = this.levelAt(slot);
+        if (this.inBoot[slot] === 0) for (const p of levelParts(level, 0, 1)) add(level.file, p);
+        if (this.cap < 0 || this.inBoot[this.levels + slot] === 1) continue;
+        for (const p of levelParts(level, 1, level.parts.length)) add((level.surface ?? level).file, p);
+      }
     }
-    for (const e of this.manifest.clips ?? []) add(e.file, clipPart(e));
+    if (clips) for (const e of this.manifest.clips ?? []) add(e.file, wholePart(e));
     if (this.cap >= 0) {
       // A texture is taken as far as the material that shows it widest would.
       const most = new Int8Array(this.has.length).fill(-1);
@@ -767,10 +865,11 @@ export class Residency {
         const t = this.matTex[k]!;
         if (t >= 0) most[t] = Math.max(most[t]!, Math.min(this.limit[t]!, Math.max(0, Math.min(this.cap, this.matTop[Math.floor(k / MAPS)]!) - this.matUnder[k]!)));
       }
-      (this.manifest.textures ?? []).forEach((tex, t) => {
+      for (const t of textures) {
+        const tex = this.manifest.textures![t]!;
         const v = tex.in[this.made];
         if (v && most[t]! >= 0) for (const p of textureParts(tex, this.made, most[t]!)) add(v.file, p);
-      });
+      }
     }
     this.port?.fill(parts);
     return bytes;
@@ -799,19 +898,17 @@ export class Residency {
 
   /** Ends a frame: `uploads`, `drops` and the same for textures are what the graphics card must do before it draws this frame, the drops first. */
   end(uploads: AssetUpload[], drops: number[], texUploads: TextureUpload[], texDrops: number[], nowMs: number): void {
-    for (const slot of this.fromBoot) {
-      const at = this.startOf(slot) - this.boot.blobAt;
-      this.upload(slot, this.boot.blob.subarray(at, at + this.size[slot]!), uploads);
-    }
+    for (const slot of this.fromBoot) this.upload(slot, this.heldBytes[slot]!, uploads);
     this.fromBoot.length = 0;
     for (const t of this.late) texDrops.push(t);
     this.late.length = 0;
     if (!this.port) return;
+    if (this.keepAll) for (let slot = this.pageBase; slot < this.size.length; slot++) this.wantSlot(slot, 0);
 
-    // What nobody wants any longer is given up, on its way or arrived. What the card has begun is finished.
+    // What nobody wants any longer is given up, on its way or arrived, but for a page, which every mesh of it needs. What the card has begun is finished.
     let kept = 0;
     for (const slot of this.under) {
-      const idle = this.frame - this.seen[slot]! > IDLE_FRAMES;
+      const idle = slot < this.pageBase && this.frame - this.seen[slot]! > IDLE_FRAMES;
       if (this.state[slot] === LOADING && idle) {
         this.port.cancel(slot);
         this.land(slot);
@@ -902,7 +999,8 @@ export class Residency {
         }
       }
       if (bytes > SMALL_PART && this.flyingLarge >= this.inFlight - this.smallLanes) continue;
-      this.ask(slot, rider, goal);
+      if (slot >= this.pageBase) this.askPages(slot, nowMs);
+      else this.ask(slot, rider, goal);
     }
     if ((this.short || this.texLedger > this.texBudget) && this.shrinking === 0 && this.flying < this.inFlight && this.waiting < WAITING_LIMIT) this.shrink(nowMs);
 
@@ -912,14 +1010,35 @@ export class Residency {
     else if (this.relax > 1 && this.ledger < this.budget * 0.7) this.relax = Math.max(1, this.relax / 1.02);
   }
 
-  /** Asks the port for a level, with its surface if `rider` is that, for a surface, for steps 0 to `goal` of a texture, or for clips. */
+  /** Asks for a page with the pages wanted this frame that lie next to it in its file, as many as a small part's bytes allow. */
+  private askPages(slot: number, nowMs: number): void {
+    const pages = this.manifest.pages!;
+    /** Whether page `q`, wanted and not yet asked for, joins page `p` that lies before or after it. */
+    const joins = (q: number, p: number): boolean => {
+      const s = this.pageBase + q;
+      const [a, b] = q < p ? [pages[q]!, pages[p]!] : [pages[p]!, pages[q]!];
+      return this.seen[s] === this.frame && this.state[s] === ABSENT && this.retryAt[s]! <= nowMs && bytes + this.size[s]! <= SMALL_PART && a.file === b.file && a.at + storedBytes(a.part) === b.at;
+    };
+    let first = slot - this.pageBase, last = first, bytes = this.size[slot]!;
+    while (first > 0 && joins(first - 1, first)) bytes += this.size[this.pageBase + --first]!;
+    while (last + 1 < pages.length && joins(last + 1, last)) bytes += this.size[this.pageBase + ++last]!;
+    this.run[first] = last - first;
+    for (let q = first + 1; q <= last; q++) this.state[this.pageBase + q] = RIDING;
+    this.ask(this.pageBase + first, -1, 0);
+  }
+
+  /** Asks the port for a level, with its surface if `rider` is that, for a surface, for steps 0 to `goal` of a texture, or for clips or pages. */
   private ask(slot: number, rider: number, goal: number): void {
     const parts: AssetPart[] = [];
     let file: number;
-    if (slot >= this.clipBase) {
+    if (slot >= this.pageBase) {
+      const first = slot - this.pageBase;
+      file = this.manifest.pages![first]!.file;
+      for (let q = first; q <= first + this.run[first]!; q++) parts.push(wholePart(this.manifest.pages![q]!));
+    } else if (slot >= this.clipBase) {
       const e = this.manifest.clips![slot - this.clipBase]!;
       file = e.file;
-      parts.push(clipPart(e));
+      parts.push(wholePart(e));
     } else if (slot >= this.texBase) {
       const t = slot - this.texBase;
       const tex = this.manifest.textures![t]!;

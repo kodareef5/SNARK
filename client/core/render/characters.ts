@@ -1075,7 +1075,9 @@ export class Characters {
     let covered = false;
     for (let slot = 0; slot < SLOT_COUNT; slot++) {
       const worn = gear ? this.worn[gear[gearAt + GEAR_WORN + slot]!] : null;
-      const piece = worn && worn.slot === slot ? (set.armor[worn.set]?.[slot] ?? -1) : -1;
+      // A piece whose page has not come is asked for, and the body's own part stands in until it does.
+      const cut = worn && worn.slot === slot ? (set.armor[worn.set]?.[slot] ?? -1) : -1;
+      const piece = cut >= 0 && this.assets.known(cut) ? cut : -1;
       const hidden = headless && slot === SLOT_HEAD;
       if (hidden && casts === 0) continue;
       if (piece >= 0) {

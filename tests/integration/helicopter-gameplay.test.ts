@@ -46,6 +46,24 @@ test("an assembly consumes exactly once after legal placement, while unsupported
   } finally { h.host.shutdown(); }
 });
 
+test("gmsummon parks a helicopter for the tribe, fuelled; driver parks one with a civilian getting in as its pilot", () => {
+  const { h, c, actor } = setup();
+  try {
+    const session = h.sessions[0]!, ents = h.world.ents, heli = h.reg.index.get("core:helicopter")!;
+    h.say(session, "enablecheats");
+    expect(h.say(session, "gmsummon helicopter")[0]).toMatch(/^summoned core:helicopter \d+ m ahead, your tribe's$/);
+    const mine = [...h.host.records.byPid.values()].find(r => r.kind === heli)!, e = h.host.records.entOf.get(mine.pid)!;
+    expect(mine.team).toBe(actor.team);
+    expect(ents.fuel[ents.vrow[e]!]).toBe(h.reg.vehicle[heli]!.spec.fuelCapacity);
+    ents.setPosition(c.ent, ents.x[e]! + 30, 0, ents.z[e]!);
+    expect(h.say(session, "driver helicopter")[0]).toMatch(/^spawned core:helicopter \d+ m ahead, a civilian getting in at its wheel$/);
+    h.run(1500);
+    const pilot = [...h.host.records.byPid.values()].find(r => h.reg.ids[r.kind] === "core:civilian")!;
+    const flown = [...h.host.records.byPid.values()].find(r => r.kind === heli && r.team === 0)!;
+    expect(h.host.urban.occupancy.occupant(flown.pid, "pilot")).toBe(pilot.pid);
+  } finally { h.host.shutdown(); }
+});
+
 test("maintenance requires a stopped authorized nearby aircraft and preserves the inventory ledger", () => {
   const { h, c, actor } = setup();
   try {

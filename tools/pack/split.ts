@@ -1,17 +1,20 @@
-// Splits a whole pack into the file a client fetches at start, the file it fetches a level at a time and the file it
-// fetches a creature skeleton's clips from, and writes the manifest that says where every level and clip is.
+// Splits a whole pack into the file a client fetches at start, the file it fetches a level at a time, the file it
+// fetches a creature skeleton's clips from and the file of pages, and writes the manifest that says where everything is.
 
-import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh } from "../../shared/pack/manifest.ts";
-import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, parsePack, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
+import { MANIFEST_VERSION, type Manifest, type ManifestClips, type ManifestFile, type ManifestLevel, type ManifestMesh, type MeshStub, type PageRows } from "../../shared/pack/manifest.ts";
+import { CLIP_ROOT_BYTES, SKIN_BYTES, SURFACE_BYTES, VERTEX_BYTES, clipRotBytes, detailsAtlas, lodVertices, parsePack, textureOf, type PackClip, type PackHeader, type PackLod } from "../../shared/pack/pack.ts";
 import { PARTS_HEADER_BYTES, PARTS_MAGIC, PARTS_VERSION } from "../../shared/pack/stored.ts";
-import { partsAt } from "./manifest.ts";
+import { TEXTURE_ROLES } from "../../shared/pack/texture.ts";
+import { partHash, partsAt } from "./manifest.ts";
 import { PackBlob } from "./write.ts";
 
 /**
- * A level of no more bytes than this goes in the boot file with the coarsest, and a skeleton's clips of no more stay
- * in it: asking for either alone would cost more than it weighs.
+ * A level of no more bytes than this is held with the coarsest, in the boot file or its mesh's page, and a skeleton's
+ * clips of no more stay in the boot file: asking for either alone would cost more than it weighs.
  */
-export const BOOT_LEVEL_BYTES = 4096;
+export const HELD_LEVEL_BYTES = 4096;
+/** A page takes meshes until the levels it holds come to this many bytes. */
+export const PAGE_BYTES = 24 * 1024;
 
 export interface SplitFile {
   name: string;
@@ -19,10 +22,18 @@ export interface SplitFile {
   bytes: Uint8Array;
 }
 
+export interface SplitOptions {
+  /** Whether the boot file holds a mesh's smallest levels. Each mesh it does not is in a page. Every mesh where not given. */
+  boot?: (id: string) => boolean;
+  /** Where a paged mesh goes: meshes of two groups share no page, and in a group they go by place, then as the pack has them. */
+  place?: (id: string) => readonly [group: number, place: number];
+}
+
 const pad4 = (n: number): number => (n + 3) & ~3;
 
-/** Where a level went. `surfaceAt` is where the mesh file's blob has its surface and skin when the boot file has the rest of it, and -1 otherwise. */
+/** Where a level went. `surfaceAt` is where the mesh file's blob has its surface and skin when the boot file or a page has the rest of it, and -1 otherwise. */
 interface Placed {
+  /** 0 the boot file, 1 the mesh file, 2 a page. */
   file: number;
   lod: PackLod;
   sizes: number[];
@@ -30,15 +41,18 @@ interface Placed {
 }
 
 /**
- * The boot file holds the palette, the rigs, the survivor's clips, the coarsest level of every mesh and every small
- * level, so a client that has it can draw everything, coarsely, and pose its own body. It holds them flat: the surface
- * and the skin of a level are always in the mesh file, with every other level. Both are packs, though only the manifest
- * says where the mesh file has the surface of a level that is in the boot file. Each creature skeleton's clips are one
- * part of the clip file, a file of parts none of which is yet deflated. The bytes of a part are what they were in the
- * whole pack.
+ * The boot file holds the palette, the rigs, the survivor's clips, the details atlas and the smallest levels of the
+ * meshes `boot` names: the coarsest and every one of HELD_LEVEL_BYTES or less, so a client that has it can draw those,
+ * coarsely, and pose its own body. Each other mesh's smallest levels are in its page, with its row. Both hold them flat:
+ * the surface and the skin of a level are always in the mesh file, with every other level. The boot and mesh files are
+ * packs, though only the manifest says where the mesh file has the surface of a level held elsewhere. Each creature
+ * skeleton's clips are one part of the clip file. Neither the clip file's parts nor the pages are yet deflated. The bytes
+ * of a part are what they were in the whole pack. `blobs` are the pages' blobs.
  */
-export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]; manifest: Manifest } {
+export function splitPack(whole: Uint8Array, name: string, opts: SplitOptions = {}): { files: SplitFile[]; manifest: Manifest; blobs: Uint8Array[] } {
   const pack = parsePack(whole);
+  const isBoot = opts.boot ?? (() => true);
+  const place = opts.place ?? (() => [0, 0] as const);
   const blobs = [new PackBlob(), new PackBlob()];
   const headers: PackHeader[] = blobs.map((b) => ({ paletteOffset: b.append(pack.palette), meshes: [], rigs: [], clips: [] }));
   headers[0]!.rigs = pack.header.rigs;
@@ -47,18 +61,40 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
   if (pack.header.textures) headers[1]!.textures = pack.header.textures;
   const details = pack.header.details;
   if (details) headers[0]!.details = { ...details, atlas: { ...details.atlas, offset: blobs[0]!.append(detailsAtlas(pack)) } };
+  const held = (m: (typeof pack.header.meshes)[number], level: number, bytes: number): boolean => level === m.lods.length - 1 || bytes <= HELD_LEVEL_BYTES;
+  const firstBytes = (lod: PackLod): number => pad4(lod.indexCount * lod.indexBytes) + lod.vertexCount * VERTEX_BYTES;
+  // Paged meshes by group and place, each page as many as its bytes allow.
+  const pageOf = new Int32Array(pack.header.meshes.length).fill(-1);
+  const paged = pack.header.meshes.map((m, i) => i).filter((i) => !isBoot(pack.header.meshes[i]!.id));
+  const at = paged.map((i) => place(pack.header.meshes[i]!.id));
+  const order = paged.map((_, k) => k).sort((a, b) => at[a]![0] - at[b]![0] || at[a]![1] - at[b]![1] || paged[a]! - paged[b]!);
+  const pages: PackBlob[] = [];
+  let group = NaN;
+  let size = 0;
+  for (const k of order) {
+    const m = pack.header.meshes[paged[k]!]!;
+    const bytes = m.lods.reduce((sum, lod, l) => sum + (held(m, l, firstBytes(lod)) ? pad4(firstBytes(lod)) : 0), 0);
+    if (pages.length === 0 || at[k]![0] !== group || (size > 0 && size + bytes > PAGE_BYTES)) {
+      pages.push(new PackBlob());
+      size = 0;
+    }
+    group = at[k]![0];
+    size += bytes;
+    pageOf[paged[k]!] = pages.length - 1;
+  }
   const placed: Placed[][] = [];
-  for (const m of pack.header.meshes) {
+  pack.header.meshes.forEach((m, i) => {
     const levels: Placed[] = [];
     m.lods.forEach((lod, level) => {
-      const sizes = [pad4(lod.indexCount * lod.indexBytes) + lod.vertexCount * VERTEX_BYTES];
+      const sizes = [firstBytes(lod)];
       if (lod.surfaceOffset !== undefined) sizes.push(lod.vertexCount * SURFACE_BYTES);
       if (lod.skinOffset !== undefined) sizes.push(lod.vertexCount * SKIN_BYTES);
       const bytes = sizes[0]!;
       const rest = (sizes[1] ?? 0) + (sizes[2] ?? 0);
-      const file = level === m.lods.length - 1 || bytes <= BOOT_LEVEL_BYTES ? 0 : 1;
-      const at = blobs[file]!.append(pack.blob.subarray(lod.indexOffset, lod.indexOffset + bytes + (file === 1 ? rest : 0)));
-      const surfaceAt = file === 0 && rest > 0 ? blobs[1]!.append(pack.blob.subarray(lod.indexOffset + bytes, lod.indexOffset + bytes + rest)) : -1;
+      const file = !held(m, level, bytes) ? 1 : pageOf[i]! < 0 ? 0 : 2;
+      const blob = file === 2 ? pages[pageOf[i]!]! : blobs[file]!;
+      const at = blob.append(pack.blob.subarray(lod.indexOffset, lod.indexOffset + bytes + (file === 1 ? rest : 0)));
+      const surfaceAt = file !== 1 && rest > 0 ? blobs[1]!.append(pack.blob.subarray(lod.indexOffset + bytes, lod.indexOffset + bytes + rest)) : -1;
       const { surfaceOffset, skinOffset, sections, ...flat } = lod;
       const moved: PackLod = { ...(file === 1 ? lod : flat), indexOffset: at, vertexOffset: at + pad4(lod.indexCount * lod.indexBytes) };
       if (file === 1 && surfaceOffset !== undefined) moved.surfaceOffset = at + bytes;
@@ -73,7 +109,7 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
       const surfaced = lods.filter((l) => l.surfaceOffset !== undefined).length;
       if (lods.length > 0) headers[file]!.meshes.push(surfaced > 0 ? { ...mesh, lods, flat: surfaced } : { ...mesh, lods });
     }
-  }
+  });
   const rot = (c: PackClip): Uint8Array => pack.blob.subarray(c.rotOffset, c.rotOffset + c.frames * clipRotBytes(c.bones));
   const root = (c: PackClip): Uint8Array => pack.blob.subarray(c.rootOffset, c.rootOffset + c.frames * CLIP_ROOT_BYTES);
   const rigOf = (c: PackClip): string => c.id.slice(0, c.id.lastIndexOf("/"));
@@ -85,7 +121,7 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
   let end = PARTS_HEADER_BYTES;
   for (const [rig, list] of skeletons) {
     const bytes = list.reduce((sum, c) => sum + c.frames * (clipRotBytes(c.bones) + CLIP_ROOT_BYTES), 0);
-    if (bytes <= BOOT_LEVEL_BYTES) continue;
+    if (bytes <= HELD_LEVEL_BYTES) continue;
     const part = new Uint8Array(bytes);
     let at = 0;
     for (const c of list) {
@@ -113,6 +149,9 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
     for (const e of streamed) e.part.hash = partsAt(bytes, e.at, [e.part.bytes])[0]!.hash;
     files.push({ name: `${name}.clip.snpt`, role: "clip", bytes });
   }
+  const pageFile = files.length;
+  const pageBlobs = pages.map(joined);
+  if (pages.length > 0) files.push({ name: `${name}.page.snpt`, role: "page", bytes: new Uint8Array(PARTS_HEADER_BYTES) });
   const blobAt = files.slice(0, 2).map((f) => parsePack(f.bytes).blobAt);
   const meshes = pack.header.meshes.map((m, i): ManifestMesh => {
     const out: ManifestMesh = { id: m.id, center: m.center, half: m.half, levels: [] };
@@ -121,9 +160,12 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
     if (m.skeleton !== undefined && m.lods[0]!.vertexCount > 0) out.bone = lodVertices(pack, m.lods[0]!)[7]!;
     if (m.flat !== undefined) out.flat = m.flat;
     if (m.uv !== undefined) out.uv = m.uv;
+    if (pageOf[i]! >= 0) out.page = pageOf[i]!;
     out.levels = placed[i]!.map((l, k): ManifestLevel => {
-      const at = blobAt[l.file]! + l.lod.indexOffset;
-      const level: ManifestLevel = { file: l.file, at, verts: l.lod.vertexCount, tris: l.lod.indexCount / 3, index: l.lod.indexBytes, error: l.lod.error, parts: partsAt(files[l.file]!.bytes, at, l.surfaceAt < 0 ? l.sizes : l.sizes.slice(0, 1)) };
+      const inPage = l.file === 2;
+      const at = inPage ? l.lod.indexOffset : blobAt[l.file]! + l.lod.indexOffset;
+      const first = inPage ? partsAt(pageBlobs[pageOf[i]!]!, at, l.sizes.slice(0, 1)) : partsAt(files[l.file]!.bytes, at, l.surfaceAt < 0 ? l.sizes : l.sizes.slice(0, 1));
+      const level: ManifestLevel = { file: inPage ? pageFile : l.file, at, verts: l.lod.vertexCount, tris: l.lod.indexCount / 3, index: l.lod.indexBytes, error: l.lod.error, parts: first };
       if (l.surfaceAt >= 0) {
         level.surface = { file: 1, at: blobAt[1]! + l.surfaceAt };
         level.parts.push(...partsAt(files[1]!.bytes, level.surface.at, l.sizes.slice(1)));
@@ -138,5 +180,91 @@ export function splitPack(whole: Uint8Array, name: string): { files: SplitFile[]
   if (streamed.length > 0) manifest.clips = streamed;
   if (pack.header.materials) manifest.materials = pack.header.materials;
   if (pack.header.textures) manifest.textures = pack.header.textures.map((t) => ({ ...t, in: {} }));
-  return { files, manifest };
+  if (pages.length > 0) {
+    manifest.pages = pages.map(() => ({ file: pageFile, at: 0, part: { bytes: 0, hash: "" } }));
+    files[pageFile]!.bytes = writePages(manifest, pageBlobs);
+  }
+  return { files, manifest, blobs: pageBlobs };
+}
+
+/** A blob's bytes as one array. */
+function joined(b: PackBlob): Uint8Array {
+  const out = new Uint8Array(b.size);
+  let at = 0;
+  for (const p of b.parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+}
+
+/** The rows page `p` holds: its meshes', the materials their sections name and the textures those name. */
+function pageRows(m: Manifest, p: number): PageRows {
+  const meshes = m.meshes.flatMap((mesh, i): [number, ManifestMesh][] => (mesh.page === p ? [[i, mesh]] : []));
+  const materials = [...new Set(meshes.flatMap(([, mesh]) => mesh.levels.flatMap((l) => (l.sections ?? []).filter((_, k) => k % 3 === 0))))].sort((a, b) => a - b);
+  const textures = [...new Set(materials.flatMap((k) => TEXTURE_ROLES.map((role) => textureOf(m.materials![k]!, role)).filter((t) => t >= 0)))].sort((a, b) => a - b);
+  return { meshes, materials: materials.map((k) => [k, m.materials![k]!]), textures: textures.map((t) => [t, m.textures![t]!]) };
+}
+
+/**
+ * The page file as the manifest's rows now stand: each page its rows as JSON and its blob, one after another behind a
+ * parts header, with `pages` saying where each is and its hash. Rows say where everything else is, so this is written
+ * again once the other files are stored.
+ */
+export function writePages(m: Manifest, blobs: readonly Uint8Array[]): Uint8Array {
+  const pages = blobs.map((blob, p) => {
+    const json = new TextEncoder().encode(JSON.stringify(pageRows(m, p)));
+    const bytes = new Uint8Array(4 + pad4(json.length) + blob.length).fill(0x20, 4 + json.length, 4 + pad4(json.length));
+    new DataView(bytes.buffer).setUint32(0, json.length, true);
+    bytes.set(json, 4);
+    bytes.set(blob, 4 + pad4(json.length));
+    return bytes;
+  });
+  const out = new Uint8Array(pages.reduce((sum, p) => sum + p.length, PARTS_HEADER_BYTES));
+  new DataView(out.buffer).setUint32(0, PARTS_MAGIC, true);
+  new DataView(out.buffer).setUint16(4, PARTS_VERSION, true);
+  let at = PARTS_HEADER_BYTES;
+  pages.forEach((bytes, p) => {
+    out.set(bytes, at);
+    const file = m.pages![p]!.file;
+    m.pages![p] = { file, at, part: { bytes: bytes.length, hash: partHash(bytes) } };
+    at += bytes.length;
+  });
+  m.files[m.pages![0]!.file]!.bytes = out.length;
+  return out;
+}
+
+/**
+ * The manifest as a client first reads it: in full, the rows of the meshes the boot file holds and of the materials and
+ * textures one of those, or none of the paged, is drawn with, or that `named` says the client finds by name; every
+ * other mesh a stub and every other material and texture null, its row in a page.
+ */
+export function bootManifest(m: Manifest, named: (material: string) => boolean = () => false): unknown {
+  const paged = new Set<number>();
+  const kept = new Set<number>();
+  for (const mesh of m.meshes) for (const l of mesh.levels) for (let k = 0; k < (l.sections?.length ?? 0); k += 3) (mesh.page === undefined ? kept : paged).add(l.sections![k]!);
+  const away = (k: number): boolean => paged.has(k) && !kept.has(k) && !named(m.materials![k]!.id);
+  const textures = new Set<number>();
+  const used = new Set<number>();
+  (m.materials ?? []).forEach((mat, k) => {
+    for (const role of TEXTURE_ROLES) {
+      const t = textureOf(mat, role);
+      if (t < 0) continue;
+      used.add(t);
+      if (!away(k)) textures.add(t);
+    }
+  });
+  const meshes = m.meshes.map((mesh): ManifestMesh | MeshStub => {
+    if (mesh.page === undefined) return mesh;
+    const stub: MeshStub = { id: mesh.id, page: mesh.page, count: mesh.levels.length };
+    if (mesh.skeleton !== undefined) stub.skeleton = mesh.skeleton;
+    if (mesh.rig !== undefined) stub.rig = mesh.rig;
+    if (mesh.bone !== undefined) stub.bone = mesh.bone;
+    return stub;
+  });
+  const out: Record<string, unknown> = { ...m, meshes };
+  if (m.materials) out.materials = m.materials.map((mat, k) => (away(k) ? null : mat));
+  if (m.textures) out.textures = m.textures.map((t, k) => (used.has(k) && !textures.has(k) ? null : t));
+  delete out.sounds;
+  return out;
 }

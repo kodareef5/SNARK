@@ -1,5 +1,6 @@
 import { parseNumber } from "../../shared/console.ts";
 import { named, type Console, type ConsoleCommand } from "../console.ts";
+import { parkAhead } from "./admin.ts";
 
 const needsBody = "this needs a body; you have none right now";
 
@@ -26,7 +27,8 @@ export function addCreatureCommands(con: Console): void {
     {
       name: "gmsummon",
       usage: "<species> [level]",
-      help: "Put a creature four metres in front of you, your tribe's already and wearing its saddle where one is made for it. It may be named without its pack: pteranodon for core:pteranodon.",
+      examples: ["gmsummon pteranodon 150", "gmsummon helicopter"],
+      help: "Put a creature four metres in front of you, your tribe's already and wearing its saddle where one is made for it; a vehicle is parked ahead as spawn parks it, your tribe's and fuelled. It may be named without its pack: pteranodon for core:pteranodon.",
       admin: true,
       run(ctx, args) {
         const c = ctx.client;
@@ -37,7 +39,10 @@ export function addCreatureCommands(con: Console): void {
         const kind = named(reg, args[0], "species");
         if (typeof kind === "string") return kind;
         const id = reg.ids[kind]!;
-        if (reg.vehicle[kind]) return `${id} is a vehicle: spawn it`;
+        if (reg.vehicle[kind]) {
+          const parked = parkAhead(host, c, kind, me.team);
+          return parked.e < 0 ? parked.said : `summoned ${parked.said}, your tribe's`;
+        }
         const level = args[1] === undefined ? 1 : parseNumber(args[1]);
         if (!Number.isInteger(level) || level < 1 || level > 1000) return "level must be a whole number from 1 to 1000";
         const a = (c.heldYaw / 65536) * 2 * Math.PI;

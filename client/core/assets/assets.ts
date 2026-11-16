@@ -1,7 +1,7 @@
 // The asset library: what assets there are, which fills each slot of the content, how fine a level each thing is drawn
 // at and how wide its textures, and which of them are on the graphics card. Given one whole pack, every level is in it
 // and is resident when first drawn. Given a manifest and a port, only the boot pack is here at start and the rest is
-// asked for as it is wanted.
+// asked for as it is wanted: a mesh's page first, which says what the mesh is.
 
 import type { ClipSet } from "../../../shared/anim/clip.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
@@ -26,9 +26,12 @@ function within(errors: readonly number[], finest: number, limit: number): numbe
 }
 
 export class Assets {
+  readonly manifest: Manifest;
   readonly table: AssetTable;
   readonly bind: Binding;
   readonly residency: Residency;
+  /** Counts the frames in which pages came, for what keeps what it worked out of the meshes known. */
+  learnt = 0;
   /** The graphics tier: how much error on screen is let pass, the finest level ever drawn, and how wide a texture. */
   tier: Tier = tierOf(DEFAULT_TIER);
   /** The variant of the textures the device takes. The shell says which. */
@@ -39,11 +42,12 @@ export class Assets {
   private squeeze = 1;
   private pressures = 0;
 
-  /** Without a manifest the pack is taken to hold every level of every mesh. */
-  constructor(reg: Registry, pack: Pack, manifest: Manifest = describePack(pack, { name: "", bytes: pack.blobAt + pack.blob.length }), port: AssetPort | null = null) {
+  /** Without a manifest the pack is taken to hold every level of every mesh. `pages` are as Residency takes them. */
+  constructor(reg: Registry, pack: Pack, manifest: Manifest = describePack(pack, { name: "", bytes: pack.blobAt + pack.blob.length }), port: AssetPort | null = null, pages: readonly Uint8Array[] = []) {
+    this.manifest = manifest;
     this.table = new AssetTable(manifest, pack);
     this.bind = new Binding(reg.defs, this.table);
-    this.residency = new Residency(manifest, pack, port);
+    this.residency = new Residency(manifest, pack, port, pages);
     this.begin(0, 720, 1.2217);
   }
 
@@ -58,6 +62,13 @@ export class Assets {
     r.format = this.format;
     r.uploadBytes = this.tier.uploadBytes;
     r.begin(nowMs);
+    for (const mesh of r.learned) this.table.learn(mesh);
+    if (r.learned.length > 0) this.learnt++;
+  }
+
+  /** Whether a mesh's row is here, so it can be drawn and its parts named. Where not, its page is asked for. */
+  known(mesh: number): boolean {
+    return this.residency.known(mesh);
   }
 
   /**

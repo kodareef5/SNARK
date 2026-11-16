@@ -1,6 +1,7 @@
 // The ranged files of a build as it serves them. Every part a client fetches by range (a level's indices and vertices,
-// its surface, its skin, a skeleton's clips, a step of a texture) is stored deflated where that makes it smaller, so a range brings fewer
-// bytes and the client inflates them (shared/pack/stored.ts). The boot file is fetched whole and is left as it is.
+// its surface, its skin, a skeleton's clips, a page, a step of a texture) is stored deflated where that makes it smaller,
+// so a range brings fewer bytes and the client inflates them (shared/pack/stored.ts). The boot file is fetched whole and
+// is left as it is.
 
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -49,11 +50,11 @@ function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
   const parts: Part[][] = files.map(() => []);
   for (const mesh of manifest.meshes) {
     for (const level of mesh.levels) {
-      if (files[level.file]!.role !== "boot") {
+      if (files[level.file]!.role === "mesh") {
         parts[level.file]!.push({ at: level.at, bytes: level.parts[0]!.bytes, filters: [[FILTER_LEVEL, [level.tris * 3, level.index]], [FILTER_NONE, []]], put: (at, stored) => void ((level.at = at), stored < level.parts[0]!.bytes && (level.parts[0]!.stored = stored)) });
       }
       const rest = level.surface ?? level;
-      if (files[rest.file]!.role === "boot") continue;
+      if (files[rest.file]!.role !== "mesh") continue;
       let at = level.surface ? level.surface.at : level.at + level.parts[0]!.bytes;
       level.parts.forEach((p, k) => {
         if (k === 0) return;
@@ -65,7 +66,7 @@ function partsOf(files: readonly SplitFile[], manifest: Manifest): Part[][] {
     }
   }
   // A skeleton's clips are in planes already.
-  for (const e of manifest.clips ?? []) parts[e.file]!.push({ at: e.at, bytes: e.part.bytes, filters: [[FILTER_NONE, []]], put: (at, stored) => void ((e.at = at), stored < e.part.bytes && (e.part.stored = stored)) });
+  for (const e of [...(manifest.clips ?? []), ...(manifest.pages ?? [])]) parts[e.file]!.push({ at: e.at, bytes: e.part.bytes, filters: [[FILTER_NONE, []]], put: (at, stored) => void ((e.at = at), stored < e.part.bytes && (e.part.stored = stored)) });
   for (const tex of manifest.textures ?? []) {
     for (const [format, v] of Object.entries(tex.in) as [TextureFormat, NonNullable<(typeof tex.in)[TextureFormat]>][]) {
       const stored: number[] = [];
@@ -130,6 +131,8 @@ export interface StoreOptions {
   workers?: number;
   /** The folder deflated parts are kept in, or null to keep none. */
   cache?: string | null;
+  /** The files to store, by index. Every ranged file where not given. */
+  only?: readonly number[];
 }
 
 export interface StoreReport {
@@ -176,10 +179,11 @@ export async function storeParts(files: readonly SplitFile[], manifest: Manifest
     }
     return out;
   };
+  const only = (f: number): boolean => files[f]!.role !== "boot" && (opts.only?.includes(f) ?? true);
   const lists = partsOf(files, manifest);
   const stored: Uint8Array[][] = lists.map(() => []);
   /** Parts not yet begun, as file and place in its list. A few more are under way than there are threads, so no more than those are held filtered. */
-  const todo = lists.flatMap((list, f) => list.map((_, k) => [f, k] as const));
+  const todo = lists.flatMap((list, f) => (only(f) ? list.map((_, k) => [f, k] as const) : []));
   const work = async (): Promise<void> => {
     for (let next = todo.shift(); next; next = todo.shift()) {
       const [f, k] = next;
@@ -202,7 +206,7 @@ export async function storeParts(files: readonly SplitFile[], manifest: Manifest
   try {
     await Promise.all(Array.from({ length: workers * 2 }, work));
     const out = files.map((file, f): SplitFile => {
-      if (file.role === "boot") return file;
+      if (!only(f)) return file;
       const list = lists[f]!;
       const body = stored[f]!;
       const bytes = new Uint8Array(body.reduce((sum, b) => sum + b.length, file.role === "tex" ? TEXTURE_HEADER_BYTES : PARTS_HEADER_BYTES));

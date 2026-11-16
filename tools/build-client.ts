@@ -1,25 +1,37 @@
-// Builds client/dist: the bundled shell, the workers and worklets, the page, and the core assets as a boot file, a mesh
-// file, a texture file for each variant and a manifest. An asset file is named after its own hash, so a browser keeps
-// it for good. What is fetched whole has a Brotli copy beside it. What is fetched by range is stored a part at a time,
-// deflated where that is smaller, and every level is ordered for the vertex cache first, a flat one welded.
+// Builds client/dist: the bundled shell, the workers and worklets, the page, the content, and the core assets as a boot
+// file, a mesh file, a page file, a texture file for each variant and a manifest. An asset file is named after its own
+// hash, so a browser keeps it for good. What is fetched whole has a Brotli copy beside it. What is fetched by range is
+// stored a part at a time, deflated where that is smaller, and every level is ordered for the vertex cache first, a
+// flat one welded. What the first frame waits for holds the survivor and nothing else that grows with the catalogue.
 
 import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { brotliCompressSync, constants } from "node:zlib";
+import { Binding } from "../client/core/assets/bind.ts";
+import { AssetTable } from "../client/core/assets/table.ts";
+import { SKY_MATERIAL } from "../client/core/render/atmosphere.ts";
+import { FAR_MESH, farColours } from "../client/core/render/far.ts";
 import { skyFile, theSky } from "../client/core/render/sky.ts";
+import { WATER_MATERIAL } from "../client/core/render/water.ts";
 import { CORE_CONTENT } from "../content/core.ts";
-import { compileContent } from "../shared/content/registry.ts";
+import { SURFACE_MATERIAL } from "../content/surfaces.ts";
+import { HUMAN } from "../shared/anim/human.ts";
+import { compileContent, type Registry } from "../shared/content/registry.ts";
+import { fillSlot, slotsOf } from "../shared/content/slots.ts";
+import { describePack } from "../shared/pack/manifest.ts";
+import { parsePack, type Pack } from "../shared/pack/pack.ts";
 import { soundsHeard } from "../shared/sound/reach.ts";
+import { nodeForms } from "../shared/world/nodes.ts";
 import { gameTextures } from "./art/materials.ts";
 import { LANDMARKS, SOURCE, readPacks } from "./art/source.ts";
 import { defaultPalette } from "../shared/pack/palette.ts";
-import { buildCorePack, importedMeshes } from "./pack/build.ts";
+import { BEAM_MESH, MISSING_MESH, WATER_MESH, buildCorePack, importedMeshes } from "./pack/build.ts";
 import { buildTextures, type TextureSource } from "./pack/encode.ts";
 import { gameIcons } from "./pack/icons.ts";
 import { partHash } from "./pack/manifest.ts";
 import { orderPack } from "./pack/order.ts";
 import { SOUND_RATES, buildSounds, findSheets, type SoundReport } from "./pack/sound.ts";
-import { splitPack } from "./pack/split.ts";
+import { bootManifest, splitPack, writePages } from "./pack/split.ts";
 import { storeParts } from "./pack/store.ts";
 import { buildPack } from "./pack/write.ts";
 import { STRESS_CARDS, cardPicture, spoilStress, stressMeshes } from "./pack/stress.ts";
@@ -40,6 +52,67 @@ export function brotli(bytes: Uint8Array, quick: boolean): Uint8Array {
 }
 
 /**
+ * What the boot file holds and how the rest is paged: the bodies, hair and beards of the species on the human skeleton
+ * (the survivor's among them) and the meshes the client finds by name in the boot file, and the others grouped by the kind of definition that first draws them and placed in
+ * the order of the content, so a page holds what is seen together: a node's living forms apart from what is left of
+ * one used up. A mesh no slot names goes with the nearest name that one does.
+ */
+export function paging(reg: Registry, pack: Pack): { boot: (id: string) => boolean; place: (id: string) => readonly [number, number] } {
+  const has = (asset: string, id: string): boolean => asset === "mesh" && pack.meshIndex.has(id);
+  const boot = new Set([MISSING_MESH, WATER_MESH, BEAM_MESH, FAR_MESH]);
+  const places = new Map<string, readonly [number, number]>();
+  const kinds = new Map<string, number>();
+  const note = (id: string, kind: string): void => {
+    if (id === "" || places.has(id)) return;
+    if (!kinds.has(kind)) kinds.set(kind, kinds.size);
+    places.set(id, [kinds.get(kind)!, places.size]);
+  };
+  const kindOf = (k: number): string => `${reg.defs[k]!.type}/${(reg.defs[k] as { class?: string }).class ?? ""}`;
+  for (const u of slotsOf(reg.defs.filter((d) => d !== null))) {
+    if (u.asset !== "mesh") continue;
+    const owner = reg.index.get(u.owner)!;
+    const id = fillSlot(u, has).id;
+    // A body on the human skeleton is drawn at one level for all its parts, worked out as the scene starts.
+    const d = reg.defs[owner]!;
+    if (d.type === "species" && d.skeleton === HUMAN.id && ["body", "hair", "beard"].includes(u.slot) && id !== "") boot.add(id);
+    note(id, kindOf(owner));
+  }
+  const forms = nodeForms(reg);
+  for (let f = 1; f < forms.count; f++) if (pack.meshIndex.has(forms.mesh[f]!)) note(forms.mesh[f]!, `${kindOf(forms.kind[f]!)}${forms.depleted[f] === 1 ? "/used" : ""}`);
+  // The stress scene places its meshes by their rows as it starts (client/core/stress.ts).
+  for (const id of pack.meshIndex.keys()) if (id.startsWith("stress:")) boot.add(id);
+  const ids = [...pack.meshIndex.keys()].sort();
+  const common = (a: string, b: string): number => {
+    let n = 0;
+    while (n < a.length && a[n] === b[n]) n++;
+    return n;
+  };
+  const named = new Set(places.keys());
+  ids.forEach((id, k) => {
+    if (named.has(id)) return;
+    let before = k - 1, after = k + 1;
+    while (before >= 0 && !named.has(ids[before]!)) before--;
+    while (after < ids.length && !named.has(ids[after]!)) after++;
+    const near = [ids[before], ids[after]].filter((n): n is string => n !== undefined).sort((a, b) => common(id, b) - common(id, a))[0];
+    places.set(id, near === undefined ? [kinds.size, 0] : places.get(near)!);
+  });
+  return { boot: (id) => boot.has(id), place: (id) => places.get(id) ?? [kinds.size, 0] };
+}
+
+/** The colour far blocks draw each palette colour in, from every piece's coarsest level in the whole pack, bound as a scene binds it. */
+function wholeFarColours(reg: Registry, pack: Pack): number[] {
+  const table = new AssetTable(describePack(pack, { name: "", bytes: 0 }), pack);
+  const bind = new Binding(reg.defs, table);
+  const missing = table.find(MISSING_MESH);
+  const meshOf = (k: number): number => {
+    const d = reg.defs[k];
+    const mesh = d && "mesh" in d && !(d.type === "structure" && d.mesh === "none") ? bind.mesh(d.id, d.type === "species" ? "body" : "mesh") : -1;
+    return mesh === missing ? -1 : mesh;
+  };
+  return [...farColours(reg, pack, meshOf)];
+}
+
+/**
  * With `stress`, the stress meshes and cards are built as well, three of the meshes listed wrongly, for the page at ?stress=1
  * to draw. With `quick`, the Brotli copies are made quickly and not as small as they can be. `dist` is where it all goes,
  * client/dist if not given.
@@ -51,13 +124,15 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
   for (const f of existsSync(dist) ? readdirSync(dist) : []) if (f.startsWith("chunk-")) rmSync(join(dist, f));
   mkdirSync(join(dist, "assets"), { recursive: true });
   const ui = buildUiAssets(dist);
-  // The sky's table is a file of its own, not a string in the script.
+  // The sky's table and the content are files of their own, not strings in the script.
   const sky = skyFile(theSky().table), skyName = `assets/sky.${partHash(sky)}.bin`;
   writeFileSync(join(dist, skyName), sky);
+  const content = new TextEncoder().encode(JSON.stringify(CORE_CONTENT)), contentName = `assets/content.${partHash(content)}.json`;
+  writeFileSync(join(dist, contentName), content);
   // Workers and worklets run in their own threads, so each is bundled as a separate file. The page's script is split, so
   // that the device probe is fetched only by a page that runs it.
   const bundle = async (files: string[], splitting: boolean): Promise<Bun.BuildArtifact[]> => {
-    const result = await Bun.build({ entrypoints: files.map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", splitting, target: "browser", minify: true, sourcemap: "linked", define: { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __SKY_FILE__: JSON.stringify(skyName) } });
+    const result = await Bun.build({ entrypoints: files.map((f) => join(root, f)), outdir: dist, naming: "[name].[ext]", splitting, target: "browser", minify: true, sourcemap: "linked", define: { __HUD_ATLAS_URL__: JSON.stringify(ui.atlas), __SKY_FILE__: JSON.stringify(skyName), __CONTENT_FILE__: JSON.stringify(contentName) } });
     if (!result.success) throw new Error(result.logs.map(String).join("\n"));
     return result.outputs;
   };
@@ -72,9 +147,12 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     // The lab goes beside the files it plays: assets/music/listen.html on the dev server.
     cpSync(music, join(dist, "assets/music"), { recursive: true, filter: (f) => statSync(f).isDirectory() || (/\.(opus|json|js|html)$/.test(f) && !f.slice(music.length).includes(`${sep}sound${sep}`)) });
   }
+  const { registry } = compileContent(CORE_CONTENT);
   const core = orderPack(buildCorePack([...importedMeshes(), ...(opts.stress ? stressMeshes() : [])]));
-  const split = splitPack(core, "core");
+  const whole = parsePack(core);
+  const split = splitPack(core, "core", paging(registry!, whole));
   const manifest = split.manifest;
+  const pageFile = split.files.findIndex((f) => f.role === "page");
   // The game's own textures, from its asset folders but its landmarks', and the cards.
   const sources: TextureSource[] = [...(await gameTextures()), ...(opts.stress ? stressCards() : [])];
   let t0 = performance.now();
@@ -84,15 +162,20 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     console.log(`textures     ${manifest.textures!.length} in ${textures.files.length} variants, ${textures.files.reduce((sum, f) => sum + f.bytes.length, 0)} bytes: ${encoded} of ${pictures} pictures encoded (${megapixels.toFixed(1)} megapixels), ${(performance.now() - t0).toFixed(0)} ms`);
   }
   t0 = performance.now();
-  const { files, report } = await storeParts([...split.files, ...textures.files], manifest);
-  console.log(`parts        ${report.parts} in ${files.length - 1} files, ${report.raw} bytes stored in ${report.stored}: ${report.deflated} deflated, ${report.made} of them anew, ${(performance.now() - t0).toFixed(0)} ms`);
+  const ranged = [...split.files, ...textures.files];
+  const first = await storeParts(ranged, manifest, { only: ranged.flatMap((f, i) => (f.role === "page" ? [] : [i])) });
+  if (opts.stress) spoilStress(first.files, manifest);
+  // The pages say where everything else is stored, so they are written and stored after it.
+  first.files[pageFile] = { ...first.files[pageFile]!, bytes: writePages(manifest, split.blobs) };
+  const { files, report: pages } = await storeParts(first.files, manifest, { only: [pageFile] });
+  const report = { parts: first.report.parts + pages.parts, raw: first.report.raw + pages.raw, stored: first.report.stored + pages.stored, deflated: first.report.deflated + pages.deflated, made: first.report.made + pages.made };
+  console.log(`parts        ${report.parts} in ${files.length - 1} files, ${report.raw} bytes stored in ${report.stored}: ${report.deflated} deflated, ${report.made} of them anew, ${manifest.pages!.length} pages in ${pages.stored} bytes, ${(performance.now() - t0).toFixed(0)} ms`);
+  manifest.farColours = wholeFarColours(registry!, whole);
   // The inventory pictures, drawn from the meshes and the textures as stored, in sheets after the other files.
   files.push(...(await gameIcons(core, manifest, files)));
-  if (opts.stress) spoilStress(files, manifest);
   // Sounds are a file of their own, fetched a sound at a time and stored as they are coded: those a cue the game fires
   // can reach. The rest go in a file of their own for the sound board, which lists them from loose.json.
   t0 = performance.now();
-  const { registry } = compileContent(CORE_CONTENT);
   const ids = findSheets().flatMap((s) => Object.keys(s.sheet.sounds).map((name) => `${s.owner}/sound/${name}`));
   const sounds = buildSounds(files.length, undefined, undefined, soundsHeard(ids, registry!));
   if (sounds) {
@@ -111,14 +194,22 @@ export async function buildClient(opts: { stress?: boolean; quick?: boolean; dis
     writeFileSync(join(dist, "assets", name), sounds.loose.bytes);
     writeFileSync(join(dist, "assets/loose.json"), JSON.stringify({ file: name, sounds: sounds.loose.sounds }));
   }
-  writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(manifest));
+  // The sounds' rows are read when the sound library starts, not before the first frame.
+  const rows = manifest.sounds ? new TextEncoder().encode(JSON.stringify(manifest.sounds)) : null;
+  if (rows) {
+    manifest.soundRows = `sounds.${partHash(rows)}.json`;
+    writeFileSync(join(dist, "assets", manifest.soundRows), rows);
+  }
+  // The materials the client finds by name: the world's finishes, the sky's and the water's.
+  const named = new Set([SURFACE_MATERIAL, SKY_MATERIAL, WATER_MATERIAL]);
+  writeFileSync(join(dist, "assets/manifest.json"), JSON.stringify(bootManifest(manifest, (id) => named.has(id))));
   const landmarks = await buildLandmarks(dist, opts.quick ?? false);
   // The page asks for its script and the files the first frame needs as it is read. The server names its map's file, so main.js asks for that.
   const boot = `assets/${manifest.files[manifest.boot]!.name}`;
   const modules = ["main.js", ...pieces].map((f) => `<link rel="modulepreload" href="${f}">`).join("\n");
-  writeFileSync(join(dist, "index.html"), readFileSync(join(root, "client/index.html"), "utf8").replaceAll("HUD_FONT_URL", ui.font).replaceAll("HUD_ATLAS_URL", ui.atlas).replace("<!-- MODULES -->", modules).replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName])));
-  const whole = ["index.html", "assets/manifest.json", boot, skyName, ...scripts];
-  for (const name of whole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
+  writeFileSync(join(dist, "index.html"), readFileSync(join(root, "client/index.html"), "utf8").replaceAll("HUD_FONT_URL", ui.font).replaceAll("HUD_ATLAS_URL", ui.atlas).replace("<!-- MODULES -->", modules).replace("FETCHED", JSON.stringify(["map.json", "assets/manifest.json", boot, skyName, contentName])));
+  const fetchedWhole = ["index.html", "assets/manifest.json", boot, skyName, contentName, ...(rows ? [`assets/${manifest.soundRows}`] : []), ...scripts];
+  for (const name of fetchedWhole) writeFileSync(join(dist, `${name}.br`), brotli(readFileSync(join(dist, name)), opts.quick ?? false));
   return { jsBytes: ["main.js", ...pieces].reduce((sum, f) => sum + statSync(join(dist, f)).size, 0), packBytes: files.reduce((sum, f) => sum + (f.role === "tex" ? 0 : f.bytes.length), 0) + landmarks };
 }
 

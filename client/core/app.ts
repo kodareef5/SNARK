@@ -146,6 +146,8 @@ export class App {
   debug = false;
   /** The manifest and the asset port the scene is made with once the session has a world. */
   stream: { manifest: Manifest; port: AssetPort } | undefined;
+  /** The asset port shared with the sounds, once there is a scene and a device to play on. */
+  private split: SplitPort | null = null;
   /** Smoothed. */
   fps = 60;
   /** False while the self-check holds the body still. */
@@ -918,13 +920,8 @@ export class App {
     }
     if (!this.scene) {
       // Sounds share the asset port, each side taking only what it asked for.
-      const split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
-      this.scene = new Scene(world, this.reg, this.pack, split ? { manifest: this.stream!.manifest, port: split.assets } : this.stream);
-      if (split) {
-        this.sounds = new Sounds(this.stream!.manifest, split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
-        hearSession(session, this.sounds);
-        this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
-      }
+      this.split = this.sound && this.stream ? new SplitPort(this.stream.port) : null;
+      this.scene = new Scene(world, this.reg, this.pack, this.split ? { manifest: this.stream!.manifest, port: this.split.assets } : this.stream);
       this.scene.shots = this.shots;
       this.scene.plainSky = this.plainSky;
       if (this.stress) {
@@ -936,6 +933,12 @@ export class App {
       const chart = (hud.chart = new Chart(world.hf, this.pack.palette));
       this.ui.frame.images[IMAGE_MINIMAP] = chart.mini.image;
       this.ui.frame.images[IMAGE_MAP] = chart.full.image;
+    }
+    // The sound library starts once the sounds' rows have come.
+    if (this.split && !this.sounds && this.stream!.manifest.sounds) {
+      this.sounds = new Sounds(this.stream!.manifest, this.split.sounds, this.reg, (kind) => this.scene!.characters.creature(kind), this.soundDecoder ?? undefined, this.pack.header.details?.sheets ?? []);
+      hearSession(session, this.sounds);
+      this.ui.hear = (key) => this.sounds?.hearUi(cueKey(key));
     }
     hud.status = this.debug ? `${this.scene.assets.line()}${this.sounds ? `; ${this.sounds.line()}` : ""}` : "";
     // Sampled before the camera, which puts a passenger in its seat on the vehicle as it is drawn.

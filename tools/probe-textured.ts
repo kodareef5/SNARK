@@ -32,7 +32,8 @@ import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../cont
 import { CORE_CONTENT } from "../content/core.ts";
 import type { NodeDef } from "../shared/content/defs.ts";
 import { compileContent } from "../shared/content/registry.ts";
-import { parseManifest, type Manifest } from "../shared/pack/manifest.ts";
+import { inflateRawSync } from "node:zlib";
+import { parseManifest, readPages, type Manifest } from "../shared/pack/manifest.ts";
 import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack } from "../shared/pack/pack.ts";
 import type { TextureFormat, TextureRole } from "../shared/pack/texture.ts";
 import { Rng } from "../shared/rng.ts";
@@ -326,7 +327,7 @@ interface House {
  * the card and nothing has moved for a few frames, twice: from nothing, and after a lost context. The rasterizer
  * takes the same frames as they come and draws the last.
  */
-function house(manifest: Manifest, files: Uint8Array[], format: TextureFormat, tierName: string): House {
+function house(manifest: Manifest, files: Uint8Array[], pages: readonly Uint8Array[], format: TextureFormat, tierName: string): House {
   // The oak is a kind of its own here, the first of the live oaks, which grows to that size alone.
   const oak = CORE_CONTENT.find((d): d is NodeDef => d.type === "node" && d.id === "core:oak")!;
   const reg = compileContent([...CORE_CONTENT, { ...oak, id: SMALL_OAK.id, size: [SMALL_OAK.size, SMALL_OAK.size], variants: oak.variants!.slice(0, 1) }]).registry!;
@@ -353,7 +354,7 @@ function house(manifest: Manifest, files: Uint8Array[], format: TextureFormat, t
   }
   const pack = parsePack(files[manifest.boot]!);
   const port = new FakeNet(files);
-  const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes }, reg, pack, { manifest, port });
+  const scene = new Scene({ dims: PROVING_DIMS, hf, structs, nodes }, reg, pack, { manifest, port, pages });
   // The GPU's air, which the rasterizer leaves out (D264), would add up to 6 levels to dark leaves 20 m off.
   scene.plainSky = true;
   const tier = tierOf(tierName);
@@ -672,13 +673,15 @@ interface Hello {
 /** Runs the page in Chrome and judges what it sends. True if everything passed. */
 export async function texturedProbe(chrome: string): Promise<boolean> {
   const manifest = parseManifest(readFileSync(join(DIST, "assets/manifest.json"), "utf8"));
+  const files = manifest.files.map((f) => new Uint8Array(readFileSync(join(DIST, "assets", f.name))));
+  // Every page read at once, so the page is served the manifest whole.
+  const pages = readPages(manifest, (f) => files[f]!, (stored) => new Uint8Array(inflateRawSync(stored)));
   // The thatch has no cut-out or two-sided material. Its cord is cut out here and its poles two-sided, which changes
   // nothing drawn, since the cord's alpha is whole and a pole is closed, so that the shell's paths for both are run.
   for (const m of manifest.materials ?? []) {
     if (m.id.endsWith("/Cord")) [m.flags, m.cutoff] = [m.flags | MATERIAL_CUTOUT, 0.5];
     if (m.id.endsWith("/Pole")) m.flags |= MATERIAL_TWO_SIDED;
   }
-  const files = manifest.files.map((f) => new Uint8Array(readFileSync(join(DIST, "assets", f.name))));
   const modules = await Bun.build({ entrypoints: ["client/shell/gl.ts", "client/core/render/packet.ts", "shared/pack/pack.ts", "shared/pack/manifest.ts", "shared/world/proving.ts"].map((f) => join(ROOT, f)), target: "browser", splitting: true, format: "esm", naming: "[name].[ext]" });
   if (!modules.success) throw new Error(modules.logs.map(String).join("\n"));
   const served = new Map<string, Blob>(modules.outputs.map((o) => [`/m/${o.path.slice(2)}`, o]));
@@ -701,7 +704,7 @@ export async function texturedProbe(chrome: string): Promise<boolean> {
     if (!houses.has(key)) {
       const [format, tier] = key.split("/") as [TextureFormat, string];
       const t0 = performance.now();
-      houses.set(key, house(manifest, files, format, tier));
+      houses.set(key, house(manifest, files, pages, format, tier));
       console.log(`  the house, ${key}: ${houses.get(key)!.frames.length} frames built and rasterized in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
     }
     return houses.get(key)!;

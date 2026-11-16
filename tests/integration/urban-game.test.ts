@@ -105,6 +105,32 @@ test('real NPC seats are session-independent; carjack transfers only control and
   } finally { h.host.shutdown(); }
 });
 
+test('driver parks a car with a civilian at its wheel, who is pulled out of it; gmsummon parks one for the tribe', () => {
+  const { h, ada, me, car, x, z, owner } = setup();
+  try {
+    const ents = h.world.ents, compact = h.reg.index.get('core:compact')!, civilian = h.reg.index.get('core:civilian')!;
+    const of = (kind: number, not = -1): number => { for (let e = 0; e < ents.count; e++) if (ents.kind[e] === kind && e !== not && ents.pid[e]! > 0) return e; return -1; };
+    expect(h.say(ada, 'driver boat')[0]).toBe('a boat is boarded from the water: spawn it, and a civilian');
+    expect(h.say(ada, 'driver raptor')[0]).toBe('core:raptor is not a vehicle');
+    expect(h.say(ada, 'driver')[0]).toMatch(/^spawned core:compact \d+ m ahead, a civilian getting in at its wheel$/);
+    h.run(800);
+    const driven = of(compact, car), driver = of(civilian);
+    expect(driven).toBeGreaterThanOrEqual(0);
+    expect(ents.seatSlot[driver]).toBe(1);
+    expect(h.host.records.byPid.get(ents.pid[driven]!)!.team).toBe(0);
+    h.say(ada, `tp ${ents.x[driven]! + 1.6} ${ents.z[driven]! + 0.12}`);
+    use(h, 0, driven);
+    expect(me.drive).toBe(driven);
+    expect(ents.seat[driver]).toBe(0);
+    use(h, 0, driven);
+    expect(me.drive).toBe(-1);
+    h.say(ada, `tp ${x + 12} ${z}`);
+    expect(h.say(ada, 'gmsummon compact')[0]).toMatch(/^summoned core:compact \d+ m ahead, your tribe's$/);
+    expect([...h.host.records.byPid.values()].filter((r) => r.kind === compact && r.team === owner)).toHaveLength(2);
+    expect(h.host.items.audit()).toEqual([]);
+  } finally { h.host.shutdown(); }
+});
+
 test('normal record codec restores vehicle fuel and wheel state without changing legal owner or cargo', () => {
   const dir = mkdtempSync(join(tmpdir(), 'snark-urban-real-')), dbPath = join(dir, 'world.db');
   let host: Harness | null = null;
