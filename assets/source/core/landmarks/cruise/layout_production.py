@@ -168,7 +168,7 @@ def finish(D,p,raw,world,place,box,node,route,rect,ys,beam):
  furnish('ice_arena','stage',[0,9.8,-167],[20,.02,16],'4','ivory')
  for side in(-1,1):
   for j,z in enumerate([-161,-166,-171]):furnish(f'ice_bench_{side}_{j}','seating_row',[side*14.3,9.8,z],[4.2,1.1,1.4],'4','blue',90)
- room('fitness','Fitness Center','6',[-8,160,8,171],[0,18.4,164],'fore_6',[[22,18.4,59.4],[22,18.4,96],[19,18.4,152],[8,18.4,158],[0,18.4,158]],True,entry=[0,18.4,160])
+ room('fitness','Fitness Center','6',[-8,160,8,171],[0,18.4,164],'fore_6',[[22,18.4,59.4],[22,18.4,96],[19,18.4,143],[0,18.4,143],[0,18.4,158]],True,entry=[0,18.4,160])
  for side in(-1,1):
   for i,z in enumerate([163,166,169]):furnish(f'fitness_{side}_{i}','gym',[side*5,18.4,z],[2,1.7,2],'6','rubber')
  room('spa','Vitality Spa','14',[-16,80,16,106],[0,42,94],'fore_14',[[5,42,59.4],[5,42,76],[0,42,76]],True,entry=[0,42,80])

@@ -115,7 +115,7 @@ def finish(D,p,world,place,box,ys,beam):
   if int(deck['id'])>19:continue
   q=p('deck_wayfinding','sign',[box([-.65,1.3,-.06],[.65,1.85,.06]),box([-.035,0,-.035],[.035,1.3,.035])],
       art={'kind':'sign','board':0,'label':'DECK '+deck['id']},color=29)
-  place('deck_wayfinding_'+deck['id'],q,[4.3,deck['floorY'],64],deck['id'],'wayfinding')
+  place('deck_wayfinding_'+deck['id'],q,[-4.3,deck['floorY'],64],deck['id'],'wayfinding')
  q=p('ship_name','sign',[box([-2.3,1.4,-.06],[2.3,2.3,.06]),box([-2,0,-.05],[-1.92,1.4,.05]),box([1.92,0,-.05],[2,1.4,.05])],
      art={'kind':'sign','board':0,'label':'ICON OF THE SEAS'},color=29)
  place('arrival_ship_name',q,[24,14,-34],'5','wayfinding')

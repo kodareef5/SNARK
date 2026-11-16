@@ -131,9 +131,23 @@ def populate(D,prototype,instance,box,node):
     for xi,(xl,xr) in enumerate(zip(xcuts,xcuts[1:])):
      mid=(xl+xr)/2
      if any(min(q[0] for q in h['polygon'])<mid<max(q[0] for q in h['polygon']) for h in active):continue
-     aa=max(la,xl);ab=min(ra,xr);ba=max(lb,xl);bb=min(rb,xr)
-     if min(ab-aa,bb-ba)<.001:continue
-     pts=[[x,yy,z] for z,l,r in[(za,aa,ab),(zb,ba,bb)] for x in(l,r) for yy in(y-.24,y)]
+     # Clip the entire trapezoid. A closing end still leaves a supported triangular prism;
+     # dropping it would punch a real hole into tapered outer decks.
+     plan=[[la,za],[ra,za],[rb,zb],[lb,zb]]
+     for boundary,sign in[(xl,1),(xr,-1)]:
+      clipped=[]
+      for a,b in zip(plan,plan[1:]+plan[:1]):
+       ina=(a[0]-boundary)*sign>=-1e-8;inb=(b[0]-boundary)*sign>=-1e-8
+       if ina:clipped.append(a)
+       if ina!=inb:
+        t=(boundary-a[0])/(b[0]-a[0]);clipped.append([boundary,a[1]+t*(b[1]-a[1])])
+      plan=clipped
+      if not plan:break
+     unique=[]
+     for a in plan:
+      if not any(math.dist(a,b)<1e-7 for b in unique):unique.append(a)
+     if len(unique)<3 or abs(sum(a[0]*b[1]-b[0]*a[1] for a,b in zip(unique,unique[1:]+unique[:1])))<1e-7:continue
+     pts=[[x,yy,z] for x,z in unique for yy in(y-.24,y)]
      q,o=world('deck','floor',hs=[pts],art={'kind':'floor','finish':'deck' if n>=7 else 'stone'},color=101 if n>=7 else 232)
      place(f'd{label}_floor_{oi}_{zi}_{xi}',q,o,label,section((za+zb)/2))
  # Continuous repeated doglegs with 1.8 m flights, 4.4×2.2 m clear turn landings and genuine upper floor holes.
