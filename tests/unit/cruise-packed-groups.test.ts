@@ -41,4 +41,6 @@ test("cruise packed ownership rejects stale source and pack hashes or incomplete
   expect(() => verifyCruiseGroups(incomplete, layout, bytes)).toThrow("incomplete ownership coverage");
   const invalidStage: CruisePackedGroups = { ...groups, meshes: [{ ...groups.meshes[0]!, levels: [{ ...groups.meshes[0]!.levels[0]!, authoredLevel: 2 }] }] };
   expect(() => verifyCruiseGroups(invalidStage, layout, bytes)).toThrow("invalid authored level mapping");
+  const omitted: CruisePackedGroups = { ...groups, meshes: [{ ...groups.meshes[0]!, levels: [] }] };
+  expect(() => verifyCruiseGroups(omitted, layout, bytes)).toThrow("omits or invents a native level");
 });

@@ -73,15 +73,19 @@ export function matchTriangleOwners(pack: Pack, mesh: PackMesh, level: number, r
 /** Stale sidecars must never attribute the current pack's vertices to an earlier layout. */
 export function verifyCruiseGroups(groups: CruisePackedGroups, layout: Uint8Array, pack: Uint8Array): void {
   if (groups.version !== 1 || groups.layoutSHA256 !== cruiseHash(layout) || groups.packSHA256 !== cruiseHash(pack)) throw new Error("Cruise packed ownership does not match this layout and pack");
+  const native = parsePack(pack);
   const ids = new Set<string>();
   for (const mesh of groups.meshes) {
     if (ids.has(mesh.id)) throw new Error(`Duplicate cruise audit mesh ${mesh.id}`);
     ids.add(mesh.id);
+    const header = native.header.meshes[native.meshIndex.get(mesh.id)!];
+    if (!header || header.lods.length !== mesh.levels.length) throw new Error(`${mesh.id}: ownership omits or invents a native level`);
     if (!mesh.levels.length || mesh.levels.length > 6) throw new Error(`${mesh.id}: invalid retained level count`);
     let previous = -1;
     for (const [level, lod] of mesh.levels.entries()) {
       if (lod.level !== level || !Number.isInteger(lod.authoredLevel) || lod.authoredLevel <= previous || lod.authoredLevel > 5 || (level === 0 && lod.authoredLevel !== 0)) throw new Error(`${mesh.id}: invalid authored level mapping`);
       previous = lod.authoredLevel;
+      if (lod.triangles !== header.lods[level]!.indexCount / 3) throw new Error(`${mesh.id} L${level}: ownership triangle count differs from native geometry`);
       let end = 0;
       for (const [first, count, owner] of lod.ranges) {
         if (first !== end || !Number.isInteger(count) || count < 1 || !Number.isInteger(owner) || owner < 0) throw new Error(`${mesh.id} L${lod.level}: invalid ownership coverage`);

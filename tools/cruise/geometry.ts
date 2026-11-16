@@ -37,6 +37,7 @@ export function cruiseGeometry(layout: CruiseLayout, bytes: Uint8Array, groups?:
   if (cells.size) {
     if (!groups || groups.packSHA256 !== cruiseHash(bytes)) throw new Error("Cruise cells require ownership evidence for this native pack");
     if (groups.meshes.length !== cells.size || new Set(groups.meshes.map(m => m.id)).size !== cells.size || groups.meshes.some(m => !cells.has(m.id))) throw new Error("Cruise ownership must cover every rendered cell exactly once");
+    for (const record of groups.meshes) if (record.levels.length !== byId.get(record.id)?.lods.length) throw new Error(`${record.id}: ownership must cover every native level`);
   }
   /** A ship-wide authored stage, resolving cells whose identical candidates share one native level. */
   function* sections(stage: number): Generator<CruiseGeometrySection> {
