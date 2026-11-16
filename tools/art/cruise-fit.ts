@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
+import { CRUISE_COLLISION_INSTANCES, CRUISE_COLLISION_PROTOTYPES, CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import { cruiseAccessRoutes, cruiseTuple } from "../../content/landmarks/cruise-layout.ts";
 import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
 import { SKIN } from "../../shared/world/collide.ts";
@@ -35,9 +35,9 @@ export function cruiseFitSources(): Record<string, string> {
 
 function geometry(): Map<string, FitSolid[]> {
   if (cells) return cells;
-  const grid = new Map<string, FitSolid[]>(), prototypes = CRUISE_LAYOUT.prototypes;
+  const grid = new Map<string, FitSolid[]>(), prototypes = CRUISE_COLLISION_PROTOTYPES;
   const byId = new Map(prototypes.map((p, i) => [p.id, i]));
-  const hulls = hullTable(prototypes.length, i => prototypes[i]!.hulls.map(h => ({ corners: h.points.map(cruiseTuple) })));
+  const hulls = hullTable(prototypes.length, i => (prototypes[i]!.hulls ?? []).map(h => ({ corners: h.points.map(cruiseTuple) })));
   const open = new Map(CRUISE_LAYOUT.doors.map(d => [d.instanceId, d.openPrototype]));
   const add = (id: string, solid: Solid, support: boolean) => {
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity], planes: number[][] = [];
@@ -54,18 +54,18 @@ function geometry(): Map<string, FitSolid[]> {
           const key = `${x},${y},${z}`, list = grid.get(key); if (list) list.push(entry); else grid.set(key, [entry]);
         }
   };
-  for (const instance of CRUISE_LAYOUT.instances) {
+  for (const instance of CRUISE_COLLISION_INSTANCES) {
     if (!instance.placed) continue;
     const index = byId.get(open.get(instance.id) ?? instance.prototype)!, p = prototypes[index]!;
     const yaw = Math.round(instance.yaw * YAW_UNITS / 360), origin = instance.at.map((v: number) => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
     frameOf(yaw); const c = frame.cos, s = frame.sin, stretch = frame.stretch;
-    p.boxes.forEach((b, part) => {
+    (p.boxes ?? []).forEach((b, part) => {
       const solid = new Solid(); boxSolid(origin[0]! + (c * b.at[0]! + s * b.at[2]!) * stretch, origin[1]! + b.at[1]!, origin[2]! + (-s * b.at[0]! + c * b.at[2]!) * stretch, c, s, b.half[0]! * stretch, b.half[1]!, b.half[2]! * stretch, solid);
-      add(`${instance.id}/box${part}`, solid, p.category === "floor" || (p.category === "stairs" && p.art.kind === "landing" && part === 0));
+      add(`${instance.id}/box${part}`, solid, p.sourceParts?.boxes[part]?.support ?? (p.category === "floor" || (p.category === "stairs" && p.art?.kind === "landing" && part === 0)));
     });
     for (let part = hulls.start[index]!; part < hulls.start[index + 1]!; part++) {
       const solid = new Solid(); partSolid(hulls, part, yaw, origin[0]!, origin[1]!, origin[2]!, solid);
-      add(`${instance.id}/hull${part - hulls.start[index]!}`, solid, p.category === "floor" || (p.category === "stairs" && part === hulls.start[index]!));
+      add(`${instance.id}/hull${part - hulls.start[index]!}`, solid, p.sourceParts?.hulls[part - hulls.start[index]!]!?.support ?? (p.category === "floor" || (p.category === "stairs" && part === hulls.start[index]!)));
     }
   }
   cells = grid; return grid;

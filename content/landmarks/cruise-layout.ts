@@ -23,12 +23,19 @@ export interface CruisePrototype extends CruiseParts {
   readonly id: string; readonly mesh: string; readonly category: string; readonly color: number;
   readonly visualBounds: CruiseBounds; readonly look?: CruiseParts; readonly opens?: string;
   readonly sourcePrototype?: string;
+  readonly art?: { readonly kind?: string };
+  readonly sourceParts?: { readonly boxes: readonly CruiseSourcePart[]; readonly hulls: readonly CruiseSourcePart[] };
+}
+export interface CruiseSourcePart {
+  readonly instance: string; readonly prototype: string; readonly kind: string; readonly part: number;
+  readonly floor: boolean; readonly support: boolean;
 }
 export interface CruiseInstance {
   readonly id: string; readonly prototype: string; readonly at: CruisePoint; readonly yaw: number;
   readonly deck: string; readonly section: string; readonly placed: boolean;
   /** A cell anchor changes only the drawn mesh; collision remains this original reusable prototype. */
   readonly sourcePrototype?: string;
+  readonly cell?: string; readonly sourceInstances?: readonly string[];
 }
 export interface CruiseCell {
   readonly id: string; readonly grid: CruisePoint; readonly bounds: CruiseBounds;
@@ -65,6 +72,9 @@ export interface CruiseLayout {
   readonly rooms: readonly CruiseRoom[];
   /** Visible 16 m cells are independent of the bounded native collision prototypes. */
   readonly cells?: readonly CruiseCell[];
+  readonly collisionPrototypes?: readonly CruisePrototype[];
+  readonly collisionInstances?: readonly CruiseInstance[];
+  readonly collisionCells?: readonly { readonly id: string; readonly grid: CruisePoint; readonly origin: CruisePoint; readonly instances: readonly string[] }[];
   readonly portals: readonly { readonly id: string; readonly from: string; readonly to: string; readonly at: CruisePoint; readonly normal: CruisePoint; readonly clearWidth: number; readonly clearHeight: number; readonly kind: string }[];
   readonly docking: { readonly shipLanding: CruisePoint; readonly shoreLanding: CruisePoint; readonly shoreApproach: CruisePoint; readonly arrival: CruisePoint; readonly clearWidth: number; readonly deck: string; readonly seaDatum: number };
   readonly views: readonly { readonly id: string; readonly at: CruisePoint; readonly target: CruisePoint; readonly deck: string; readonly section: string; readonly mode: string }[];
@@ -127,6 +137,8 @@ export function cruiseParts(source: CruiseParts): ShapeLook {
     hulls: (source.hulls ?? []).map(h => ({ corners: h.points.map(cruiseTuple) })) };
 }
 
+const geometryFaults = new WeakMap<CruisePrototype, readonly string[]>();
+
 /** Linear instance/graph validation; native bounds and convex-part checks run once per reusable prototype. */
 export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
   const faults: string[] = [];
@@ -173,7 +185,11 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
       polygon.forEach(p => point(p, `deck ${deck.id} polygon`, 2));
     }
   }
-  for (const p of layout.prototypes) {
+  for (const p of new Map([...layout.prototypes, ...(layout.collisionPrototypes ?? [])].map(p => [p.id, p])).values()) {
+    const cached = geometryFaults.get(p);
+    if (cached) faults.push(...cached);
+    else {
+      const firstFault = faults.length;
     if (!/^cruise:[a-z0-9_]+$/.test(p.id) || !p.mesh) bad(p.id, "prototype needs a stable cruise content id and mesh");
     if (!Number.isInteger(p.color) || p.color < 0 || p.color > 255) bad(p.id, "invalid palette index");
     bounds(p.visualBounds, `${p.id}.visualBounds`);
@@ -194,6 +210,8 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
     }
     const collision = cruiseParts(p), half = shapeHalf(collision.boxes ?? [], collision.hulls, p.look ? cruiseParts(p.look) : undefined);
     if (half.some((v, a) => Math.max(Math.abs(p.visualBounds.min[a]!), Math.abs(p.visualBounds.max[a]!)) > v + .003)) bad(p.id, "visual bounds exceed collision/look coverage");
+      geometryFaults.set(p, faults.slice(firstFault));
+    }
     if (p.opens && (p.opens === p.id || prototypes.get(p.opens)?.opens !== p.id || p.category !== "door" || prototypes.get(p.opens)?.category !== "door")) bad(p.id, "door prototypes must be reciprocal door states");
   }
   const placements = new Set<string>();
@@ -207,6 +225,53 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
       placements.add(key);
     }
   }
+  if (layout.collisionInstances || layout.collisionPrototypes || layout.collisionCells) {
+    const physical = index(layout.collisionPrototypes ?? [], "collisionPrototypes"), placed = index(layout.collisionInstances ?? [], "collisionInstances");
+    const cells = index(layout.collisionCells ?? [], "collisionCells"), visual = index(layout.cells ?? [], "cells"), assigned = new Set<string>();
+    for (const cell of cells.values()) {
+      point(cell.grid, `${cell.id}.grid`); point(cell.origin, `${cell.id}.origin`);
+      if (!cell.grid.every(Number.isInteger) || cell.origin.some((v,a) => v !== (cell.grid[a]! + .5) * 16)) bad(cell.id, "physical cells need exact snapped 16 m cell centers");
+      if (!cell.instances.length) bad(cell.id, "physical cell must contain real collision");
+      for (const id of cell.instances) {
+        const i = placed.get(id), p = i && physical.get(i.prototype);
+        if (assigned.has(id)) bad(id, "physical module appears in multiple cells"); assigned.add(id);
+        if (!i?.placed || i.cell !== cell.id || i.yaw !== 0 || i.at.some((v,a) => v !== cell.origin[a])) bad(id, "physical module and visible anchor must share exact origin/yaw");
+        if (!p || p.opens || p.category === "door") bad(id, "cell module must be static real geometry");
+        for (const kind of ["boxes", "hulls"] as const) {
+          const sources = p?.sourceParts?.[kind] ?? [], parts = p?.[kind] ?? [];
+          if (sources.length !== parts.length) bad(id, "every clipped part needs original source provenance");
+          for (const source of sources) {
+            const original = prototypes.get(source.prototype), instance = instances.get(source.instance);
+            const count = source.kind === "box" ? original?.boxes?.length : source.kind === "hull" ? original?.hulls?.length : undefined;
+            if (!instance?.placed || instance.prototype !== source.prototype || !Number.isInteger(source.part) || source.part < 0 || count === undefined || source.part >= count) bad(id, "invalid clipped source part");
+          }
+        }
+      }
+    }
+    for (const cell of visual.values()) {
+      const owner = cells.get(cell.id), anchor = placed.get(cell.anchor), p = anchor && physical.get(anchor.prototype);
+      bounds(cell.bounds, `${cell.id}.bounds`);
+      if (!owner || owner.origin.some((v,a) => v !== cell.origin[a]) || owner.grid.some((v,a) => v !== cell.grid[a]) || cell.yaw !== 0 || !owner.instances.includes(cell.anchor) || p?.mesh !== cell.id) bad(cell.id, "visible cell requires a real collision anchor with the same cell owner");
+      if (cell.bounds.min.some((v,a) => v !== cell.grid[a]! * 16) || cell.bounds.max.some((v,a) => v !== (cell.grid[a]! + 1) * 16)) bad(cell.id, "requires a 16 m render cube");
+      for (const member of cell.members) {
+        const i = instances.get(member.instance), original = prototypes.get(member.prototype);
+        if (!i?.placed || i.prototype !== member.prototype || original?.category !== member.category || original.opens || original.category === "door") bad(cell.id, "invalid or moving visual source member");
+      }
+    }
+    for (const i of placed.values()) {
+      const p = physical.get(i.prototype);
+      if (!p) bad(i.id, "unknown physical prototype");
+      if (i.cell && !assigned.has(i.id)) bad(i.id, "unowned physical cell module");
+      if (!i.cell) {
+        const original = instances.get(i.id);
+        if (!original || JSON.stringify(original) !== JSON.stringify(i) || (p?.category !== "door" && !(p?.category === "sign" && !i.placed))) bad(i.id, "standalone physical instances must preserve original doors/signs");
+      }
+    }
+    for (const p of physical.values()) if (p.opens || p.category === "sign") {
+      if (JSON.stringify(p) !== JSON.stringify(prototypes.get(p.id))) bad(p.id, "standalone door/sign geometry must remain unchanged");
+    }
+    for (const p of layout.prototypes) if (p.category !== "door" && p.category !== "sign" && p.mesh !== "none") bad(p.id, "logical geometry is provenance only, never another draw");
+  } else {
   const drawnCells = index(layout.cells ?? [], "cells"), anchors = new Set<string>(), grids = new Set<string>();
   for (const cell of layout.cells ?? []) {
     if (!/^cruise:cell_[0-9]+$/.test(cell.id)) bad(cell.id, "requires a cruise cell mesh id");
@@ -235,6 +300,7 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
     else if (["boxes", "hulls", "look", "visualBounds", "category", "color", "opens"].some(key => JSON.stringify(p[key as keyof CruisePrototype]) !== JSON.stringify(source[key as keyof CruisePrototype]))) bad(i.id, "render anchor must preserve its original collision, look and category");
   }
   for (const p of layout.prototypes) if (/^cruise:cell_[0-9]+$/.test(p.mesh) && (!drawnCells.has(p.mesh) || placementCounts.get(p.id) !== 1)) bad(p.id, "cell mesh requires exactly one placed anchor");
+  }
   const doorInstances = new Set<string>();
   for (const door of layout.doors) {
     const i = instances.get(door.instanceId);

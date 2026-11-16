@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
+import { CRUISE_COLLISION_PROTOTYPES, CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import type { CruiseRoom } from "../../content/landmarks/cruise-layout.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { Heightfield, TERRAIN_CELL } from "../../shared/world/heightfield.ts";
@@ -17,7 +17,7 @@ export function auditCruiseDeckFloors() {
   if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
   const map = cruiseCourse(), reg = withContent(compiled.registry, map.content?.defs ?? []); assertCruiseMap(map, reg);
   const floors = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
-  const kinds = new Set(CRUISE_LAYOUT.prototypes.filter(p => p.category === "floor" || p.art.kind === "floor").map(p => p.id));
+  const kinds = new Set(CRUISE_COLLISION_PROTOTYPES.filter(p => p.category === "floor" || p.art?.kind === "floor").map(p => p.id));
   let expected = 0;
   for (const s of map.statics) if (kinds.has(s.kind)) { floors.add(reg.index.get(s.kind)!, s.x, s.y, s.z, s.yaw, 0, 10000); expected++; }
   if (floors.count !== expected) throw new Error(`floor placement lost ${expected - floors.count} rows`);

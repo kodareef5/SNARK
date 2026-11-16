@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { RemoteSample } from "../../client/core/session.ts";
 import { loadConfig } from "../../server/settings/config.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { CRUISE_COLLISION_INSTANCES, CRUISE_COLLISION_PROTOTYPES, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { RESULT_OBSTRUCTED } from "../../shared/net/protocol.ts";
@@ -27,7 +27,7 @@ const core = compiled.registry, course = cruiseCourse(), reg = withContent(core,
 test("every advertised occupied room footprint has native floor support beyond its entry and target", () => {
   const h = new Harness({}, 79, 60, { dev: true, clips: NO_CLIPS, rigs: [], map }, core);
   try {
-    const kinds = new Set(CRUISE_LAYOUT.prototypes.filter(p => p.category === "floor" || p.art.kind === "floor").map(p => reg.index.get(p.id)!));
+    const kinds = new Set(CRUISE_COLLISION_PROTOTYPES.filter(p => p.category === "floor" || p.art?.kind === "floor").map(p => reg.index.get(p.id)!));
     const floors = new StructureStore(course.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
     for (const t of h.world.structs.chunks) if (t) for (let slot = 0; slot < t.high; slot++) {
       if (kinds.has(t.kind[slot]!)) floors.add(t.kind[slot]!, t.x[slot]!, t.y[slot]!, t.z[slot]!, t.yaw[slot]!, 0, 10000);
@@ -48,10 +48,10 @@ test("every advertised occupied room footprint has native floor support beyond i
 test("every authored cruise route retains its declared width, physical support and headroom with public door leaves open", () => {
   const h = new Harness({}, 72, 60, { dev: true, clips: NO_CLIPS, rigs: [], map }, core);
   try {
-    const refs = cruiseRefs(course, h.world.structs, reg, CRUISE_COURSE.vessel), instances = CRUISE_LAYOUT.instances.filter(i => i.placed);
-    const byRef = new Map(Array.from(refs, (ref, row) => [ref, instances[row]?.id ?? `port static ${row}`]));
+    const refs = cruiseRefs(course, h.world.structs, reg, CRUISE_COURSE.vessel);
+    const byRef = new Map(Array.from(refs, ([id, ref]) => [ref, id]));
     // Geometric coverage includes every repeated path. Native E behavior is exercised separately below.
-    for (const d of CRUISE_LAYOUT.doors) h.world.structs.swap(refs[instances.findIndex(i => i.id === d.instanceId)]!, reg.index.get(d.openPrototype)!);
+    for (const d of CRUISE_LAYOUT.doors) h.world.structs.swap(refs.get(d.instanceId)!, reg.index.get(d.openPrototype)!);
     const faults: string[] = []; let samples = 0;
     for (const route of CRUISE_LAYOUT.routes) for (let segment = 1; segment < route.anchors.length; segment++) {
       const a = route.anchors[segment - 1]!, b = route.anchors[segment]!;
@@ -92,7 +92,7 @@ test("a cruise visitor walks the real shore, quay and gangway in both directions
   try {
     const report = assertCruiseMap(course, reg), refs = cruiseRefs(course, h.world.structs, reg, CRUISE_COURSE.vessel);
     expect(assertCruisePlaced(course, h.world.structs, reg).length).toBe(report.statics);
-    expect(refs.length).toBe(CRUISE_LAYOUT.instances.filter(i => i.placed).length);
+    expect(refs.size).toBe(CRUISE_COLLISION_INSTANCES.filter(i => i.placed).length);
     const s = h.join("cruise visitor"); h.run(900);
     const before = s.stats.corrections, walk = cruiseWalker(h, reg, CRUISE_COURSE.vessel), approach = cruiseApproach(course);
     for (let i = 1; i < approach.length; i++) walk.world(approach[i]!, `shore to ship[${i}]`, i > 1);
@@ -120,7 +120,7 @@ test("a cruise at an arbitrary native yaw retains walkable stairs and independen
     nav.visit(route.id);
     const target = point(route.anchors.at(-1)!);
     expect(Math.hypot(s.own.x - target[0], s.own.y - target[1], s.own.z - target[2])).toBeLessThan(.15);
-    const row = CRUISE_LAYOUT.instances.filter(i => i.placed).findIndex(i => i.id === door.instanceId), ref = refs[row]!;
+    const ref = refs.get(door.instanceId)!;
     expect(h.world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 65535]).toBe(reg.index.get(door.openPrototype)!);
     nav.reach(CRUISE_LAYOUT.routes.find(r => r.kind === "docking")!.from);
     expect(s.stats.corrections - before).toBe(0);
@@ -166,10 +166,10 @@ test("cruise peers walk to upper decks and independently saved cabin doors survi
   const link = { latencyMs: 70, jitterMs: 12, loss: .02 }, names = ["cabin guest", "upper deck guest"];
   let h = new Harness({}, 76, 60, opts, core);
   try {
-    const refs = cruiseRefs(course, h.world.structs, reg, CRUISE_COURSE.vessel), instances = CRUISE_LAYOUT.instances.filter(i => i.placed);
+    const refs = cruiseRefs(course, h.world.structs, reg, CRUISE_COURSE.vessel);
     const first = CRUISE_LAYOUT.doors[0]!, second = CRUISE_LAYOUT.doors[1]!;
     expect(first.closedPrototype).toBe(second.closedPrototype);
-    const firstRef = refs[instances.findIndex(i => i.id === first.instanceId)]!, secondRef = refs[instances.findIndex(i => i.id === second.instanceId)]!;
+    const firstRef = refs.get(first.instanceId)!, secondRef = refs.get(second.instanceId)!;
     expect(firstRef).not.toBe(secondRef);
     const kindAt = (ref: number) => h.world.structs.chunks[Math.floor(ref / 65536)]!.kind[ref & 65535]!;
     const peers = names.map(name => h.join(name, link)); h.run(1300);
@@ -181,7 +181,7 @@ test("cruise peers walk to upper decks and independently saved cabin doors survi
     expect(kindAt(firstRef)).toBe(reg.index.get(first.openPrototype)!);
     expect(kindAt(secondRef)).toBe(reg.index.get(second.closedPrototype)!);
     // Standing in the closed leaf's sweep refuses E close, without affecting the identical neighboring door.
-    const firstInstance = instances.find(i => i.id === first.instanceId)!;
+    const firstInstance = CRUISE_LAYOUT.instances.find(i => i.id === first.instanceId)!;
     const closed = CRUISE_LAYOUT.prototypes.find(p => p.id === first.closedPrototype)!, open = CRUISE_LAYOUT.prototypes.find(p => p.id === first.openPrototype)!;
     const closedCenter = closed.boxes[0]!.at.map((v, axis) => v + firstInstance.at[axis]!);
     navs[0]!.local([[closedCenter[0]!, first.hinge[1]!, closedCenter[2]!]], "cabin doorway");

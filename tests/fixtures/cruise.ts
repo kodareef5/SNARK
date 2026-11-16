@@ -1,5 +1,5 @@
 // Feedback pilots use ordinary client movement and E; graph edges select destinations, never positions or server state.
-import { CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { CRUISE_COLLISION_INSTANCES, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import type { CruiseLayout, CruiseRoute } from "../../content/landmarks/cruise-layout.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { join } from "node:path";
@@ -34,13 +34,14 @@ export function cruisePack(names: readonly string[] = ["cruise", "koru"]): Pack 
 }
 
 /** Resolve authored instances independently of other map rows. Ordinary port statics precede landmarks in real maps. */
-export function cruiseRefs(map: Pick<MapData, "id" | "dims" | "statics">, structs: StructureStore, reg: Registry, placement: CruisePlacement): Uint32Array {
+export function cruiseRefs(map: Pick<MapData, "id" | "dims" | "statics">, structs: StructureStore, reg: Registry, placement: CruisePlacement): ReadonlyMap<string, number> {
   const all = assertCruisePlaced(map, structs, reg), byPlacement = new Map<string, number>();
   const key = (s: { kind: string; x: number; y: number; z: number; yaw: number }) => `${s.kind}|${[s.x, s.y, s.z].map(v => Math.round(v * STRUCT_UNITS)).join(",")}|${s.yaw}`;
   let row = 0; for (const s of map.statics) byPlacement.set(key(s), all[row++]!);
-  return Uint32Array.from(cruiseStatics(placement.x, placement.y, placement.z, placement.yaw), s => {
-    const ref = byPlacement.get(key(s)); if (ref === undefined) throw new Error(`missing authored cruise instance ${key(s)}`); return ref;
-  });
+  const instances = CRUISE_COLLISION_INSTANCES.filter(i => i.placed);
+  return new Map(cruiseStatics(placement.x, placement.y, placement.z, placement.yaw).map((s, row) => {
+    const ref = byPlacement.get(key(s)); if (ref === undefined) throw new Error(`missing authored cruise instance ${key(s)}`); return [instances[row]!.id, ref];
+  }));
 }
 
 export function cruiseWalker(h: Harness, reg: Registry, placement: CruisePlacement, index = 0) {
@@ -75,7 +76,7 @@ export function cruiseWalker(h: Harness, reg: Registry, placement: CruisePlaceme
 }
 
 /** Explicit adjacency is built once in O(nodes + routes); no geometric all-pairs connector search. */
-export function cruiseNavigator(h: Harness, reg: Registry, placement: CruisePlacement, refs: Uint32Array, index = 0) {
+export function cruiseNavigator(h: Harness, reg: Registry, placement: CruisePlacement, refs: ReadonlyMap<string, number>, index = 0) {
   const walk = cruiseWalker(h, reg, placement, index), instances = layout.instances.filter(i => i.placed);
   const doors = new Map(layout.doors.map(d => [d.instanceId, d])), byInstance = new Map(instances.map((i, n) => [i.id, n]));
   const routes = new Map(layout.routes.map(r => [r.id, r])), edges = new Map(layout.graph.nodes.map(n => [n.id, [] as { route: CruiseRoute; reverse: boolean; to: string }[]]));
@@ -84,7 +85,7 @@ export function cruiseNavigator(h: Harness, reg: Registry, placement: CruisePlac
   const open = (instanceId: string) => {
     const door = doors.get(instanceId), row = byInstance.get(instanceId);
     if (!door || row === undefined) throw new Error(`missing native door ${instanceId}`);
-    const ref = refs[row]!, t = h.world.structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535;
+    const ref = refs.get(instanceId)!, t = h.world.structs.chunks[Math.floor(ref / 65536)]!, slot = ref & 65535;
     const current = t.kind[slot]!, desired = reg.index.get(door.openPrototype)!;
     if (current === desired) return;
     if (current !== reg.index.get(door.closedPrototype)) throw new Error(`${instanceId}: unexpected leaf state ${current}`);

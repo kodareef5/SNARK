@@ -22,6 +22,9 @@ test("the cruise port launch is usable from its real dry berth and the independe
     expect(map.content?.landmarks).toEqual(["cruise", "koru"]);
     expect(h.reg.index.has(CRUISE_LAYOUT.doors[0]!.closedPrototype)).toBe(true);
     expect(assertCruisePlaced(map, h.world.structs, h.reg).length).toBe(map.statics.length);
+    const tenderOrigin = `${map.id}/koru/tender`;
+    const tender = [...h.host.records.byPid.values()].filter(r => new TextDecoder().decode(r.extra.get(VEHICLE_ORIGIN)) === tenderOrigin);
+    expect(tender).toHaveLength(1); const tenderPid = tender[0]!.pid;
     expect(seedCruisePreview(h.host)).toBe(1); expect(seedCruisePreview(h.host)).toBe(0);
     const s = h.join("marina-visitor"); h.run(400);
     const c = h.client(s)!, ents = h.world.ents, berth = CRUISE_COURSE.utility;
@@ -46,6 +49,9 @@ test("the cruise port launch is usable from its real dry berth and the independe
     expect(origin).toBe(`${CRUISE_COURSE.id}/cruise-utility-launch`); expect(h.host.items.audit()).toEqual([]);
     h.host.shutdown(); h = new Harness({}, 629, 60, options);
     expect(seedCruisePreview(h.host)).toBe(0);
+    const restoredTenders = [...h.host.records.byPid.values()].filter(r => new TextDecoder().decode(r.extra.get(VEHICLE_ORIGIN)) === tenderOrigin);
+    expect(restoredTenders).toHaveLength(1); expect(restoredTenders[0]!.pid).toBe(tenderPid);
+    expect(h.host.records.entOf.has(tenderPid)).toBe(true);
     const saved = h.host.records.byPid.get(pid)!, restored = h.host.records.entOf.get(pid)!;
     expect(saved.name).toBe("Cruise port utility launch"); expect(h.host.items.inv(saved).total(gas)).toBe(20);
     expect(h.world.ents.fuel[restored]).toBe(fuel);

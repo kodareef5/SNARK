@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { CRUISE, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { CRUISE, CRUISE_COLLISION_INSTANCES, CRUISE_COLLISION_PROTOTYPES, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
 import { cruiseLayoutFaults, cruiseRoomEntryFaults, type CruiseLayout, type CruisePrototype, type CruiseRoute } from "../../content/landmarks/cruise-layout.ts";
 import { compileContent, withContent } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
@@ -15,9 +15,9 @@ test("cruise prototypes belong to their map once and every transformed instance 
   const core = result.registry!, reg = withContent(core, CRUISE.defs);
   expect(core.defs.some(d => d?.id.startsWith("cruise:"))).toBe(false);
   expect(reg.defs.slice(0, core.defs.length)).toEqual([...core.defs]);
-  expect(CRUISE.defs.length).toBe(CRUISE_LAYOUT.prototypes.length * 2);
+  expect(CRUISE.defs.length).toBe(CRUISE_COLLISION_PROTOTYPES.length * 2);
   expect(cruiseLayoutFaults(CRUISE_LAYOUT)).toEqual([]);
-  for (const p of CRUISE_LAYOUT.prototypes) {
+  for (const p of CRUISE_COLLISION_PROTOTYPES) {
     expect(reg.index.has(p.id)).toBe(true);
     expect(reg.index.has(`${p.id}_shape`)).toBe(true);
   }
@@ -29,9 +29,9 @@ test("cruise prototypes belong to their map once and every transformed instance 
     const structs = new StructureStore(map.dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
     placeStatics(map, structs, reg);
     const refs = assertCruisePlaced(map, structs, reg);
-    expect(refs.length).toBe(CRUISE_LAYOUT.instances.filter(i => i.placed).length);
+    expect(refs.length).toBe(CRUISE_COLLISION_INSTANCES.filter(i => i.placed).length);
     expect(new Set(refs).size).toBe(refs.length);
-    const first = CRUISE_LAYOUT.instances.find(i => i.placed)!;
+    const first = CRUISE_COLLISION_INSTANCES.find(i => i.placed)!;
     const expected = cruisePoint(512, 7, 512, yaw, first.at).map(v => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
     expect([statics[0]!.x, statics[0]!.y, statics[0]!.z]).toEqual(expected);
   }
@@ -62,7 +62,8 @@ test("repeated native door prototypes require independently named placed closed 
   const open: CruisePrototype = { ...closed, id: "cruise:test_open", opens: closed.id };
   const instances = [0, 1].map(i => ({ id: `test_door_${i}`, prototype: closed.id, at: [i * 4, 14, -20], yaw: 0, deck: "5", section: "test", placed: true }));
   const doors = instances.map(i => ({ id: i.id, instanceId: i.id, closedPrototype: closed.id, openPrototype: open.id, hinge: i.at, clearWidth: 1.6, clearHeight: 2.6 }));
-  const layout: CruiseLayout = { ...CRUISE_LAYOUT, prototypes: [...CRUISE_LAYOUT.prototypes, closed, open], instances: [...CRUISE_LAYOUT.instances, ...instances], doors: [...CRUISE_LAYOUT.doors, ...doors] };
+  const layout: CruiseLayout = { ...CRUISE_LAYOUT, prototypes: [...CRUISE_LAYOUT.prototypes, closed, open], instances: [...CRUISE_LAYOUT.instances, ...instances], doors: [...CRUISE_LAYOUT.doors, ...doors],
+    collisionPrototypes: [...CRUISE_COLLISION_PROTOTYPES, closed, open], collisionInstances: [...CRUISE_COLLISION_INSTANCES, ...instances] };
   expect(cruiseLayoutFaults(layout)).toEqual([]);
   expect(cruiseLayoutFaults({ ...layout, doors: doors.slice(0, 1) }).join("\n")).toContain("lacks independent door record");
   expect(cruiseLayoutFaults({ ...layout, doors: [doors[0]!, { ...doors[1]!, instanceId: doors[0]!.instanceId }] }).join("\n")).toContain("appears more than once");
@@ -96,22 +97,14 @@ test("room entry associations reject arbitrary bound edges while accepting real 
   expect(cruiseRoomEntryFaults([{ ...room, entry: [3, 14, 5] }], [route, alias, other])).toHaveLength(1);
 });
 
-test("render cells use one physical anchor without baking interactive leaves or duplicating full-cell draws", () => {
-  const original: CruiseLayout = CRUISE_LAYOUT;
-  const instance = original.instances.find(i => i.placed && i.yaw === 0 && !i.sourcePrototype && !original.prototypes.find(p => p.id === i.prototype)!.opens)!;
-  const prototype = original.prototypes.find(p => p.id === instance.prototype)!;
-  const id = "cruise:cell_999999", anchor = { ...prototype, id: "cruise:anchor_test", sourcePrototype: prototype.id, mesh: id };
-  const cell = { id, grid: [900, 900, 900], bounds: { min: [14400, 14400, 14400], max: [14416, 14416, 14416] },
-    anchor: instance.id, origin: instance.at, yaw: 0, members: [{ instance: instance.id, prototype: prototype.id, category: prototype.category }] };
-  const layout: CruiseLayout = { ...original, prototypes: [...original.prototypes, anchor],
-    instances: original.instances.map(i => i.id === instance.id ? { ...i, prototype: anchor.id, sourcePrototype: prototype.id, yaw: 0 } : i),
-    cells: [...(original.cells ?? []), cell] };
+test("render cells share the exact native owner of every physical module and exclude interactive leaves", () => {
+  const layout: CruiseLayout = CRUISE_LAYOUT, cell = layout.cells![0]!;
+  const anchor = layout.collisionInstances!.find(i => i.id === cell.anchor)!;
   expect(cruiseLayoutFaults(layout)).toEqual([]);
   const check = (patch: Partial<CruiseLayout>) => cruiseLayoutFaults({ ...layout, ...patch }).join("\n");
-  const moved = { ...anchor, boxes: [{ at: [0, 0, 0], half: [.1, .1, .1] }] };
-  expect(check({ prototypes: layout.prototypes.map(p => p.id === anchor.id ? moved : p) })).toContain("preserve its original collision");
-  expect(check({ instances: [...layout.instances, { ...layout.instances.find(i => i.id === instance.id)!, id: "repeated-cell", at: [1, 2, 3] }] })).toContain("exactly one placed anchor");
-  const door = original.doors[0]!, leaf = original.instances.find(i => i.id === door.instanceId)!;
-  expect(check({ cells: [...(original.cells ?? []), { ...cell, members: [{ instance: leaf.id, prototype: leaf.prototype, category: "door" }] }] })).toContain("moving door leaves cannot be baked");
-  expect(check({ cells: [...(original.cells ?? []), { ...cell, bounds: { ...cell.bounds, max: [14417, 14416, 14416] } }] })).toContain("16 m render cube");
+  expect(check({ collisionInstances: layout.collisionInstances!.map(i => i.id === anchor.id ? { ...i, at: [i.at[0]! + .01, i.at[1]!, i.at[2]!] } : i) })).toContain("exact origin/yaw");
+  expect(check({ collisionInstances: layout.collisionInstances!.map(i => i.id === anchor.id ? { ...i, yaw: 90 } : i) })).toContain("exact origin/yaw");
+  const door = layout.doors[0]!, leaf = layout.instances.find(i => i.id === door.instanceId)!;
+  expect(check({ cells: layout.cells!.map(c => c.id === cell.id ? { ...c, members: [...c.members, { instance: leaf.id, prototype: leaf.prototype, category: "door" }] } : c) })).toContain("moving visual source member");
+  expect(check({ cells: layout.cells!.map(c => c.id === cell.id ? { ...c, bounds: { ...c.bounds, max: [c.bounds.max[0]! + 1, c.bounds.max[1]!, c.bounds.max[2]!] } } : c) })).toContain("16 m render cube");
 });
