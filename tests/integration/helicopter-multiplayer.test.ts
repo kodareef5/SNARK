@@ -22,7 +22,9 @@ test("four players stay grouped through real helicopter flight over delayed link
       expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1100);
       expect(ents.seatSlot[c.ent]).toBe(i + 1);
     }
+    h.pilots[0]!.yaw = .6; h.pilots[0]!.pitch = .3;
     h.run(500); const before = crew.map(c => c.stats.corrections);
+    expect(ents.yaw[pilot.ent]).toBe(pilot.heldYaw); expect(ents.pitch[pilot.ent]).toBe(pilot.heldPitch);
     h.pilots[0]!.buttons = BTN_JUMP; h.run(12000);
     expect(ents.y[e]!).toBeGreaterThan(35);
     expect(crew[0]!.driving).toBe(e);

@@ -9,6 +9,7 @@ import { Solved, solve } from '../shared/anim/skeleton.ts';
 import { CHUNK_SIZE, TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
 import { detAtan2, detCos, detSin, TAU } from '../shared/math/scalar.ts';
+import { quatRotate } from '../shared/math/quat.ts';
 import { RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_NOT_YOURS, RESULT_OBSTRUCTED, RESULT_OK, SESSION_ALIVE, TEXT_NOTICE } from '../shared/net/protocol.ts';
 import { BTN_JUMP, Body, STANCE_CROUCH, STANCE_PRONE, STANCE_STAND, stanceHeight } from '../shared/sim/character.ts';
 import { F_ALIVE, F_GROUNDED, F_PLAYER } from '../shared/sim/entities.ts';
@@ -783,7 +784,16 @@ export class Urban {
     mountOrigin(this.solved, seat, rotation, origin);
     ents.loadBody(actor, this.body);
     this.body.x = origin[0]!; this.body.y = origin[1]!; this.body.z = origin[2]!;
-    if (driver || !this.client(ents.pid[actor]!)) this.body.yaw = ents.yaw[vehicle]!;
+    const client = this.client(ents.pid[actor]!);
+    if (isRotorVehicle(def)) {
+      // The cabin owns the seated body's orientation; yaw/pitch carry the occupant's world gaze.
+      if (client) { this.body.yaw = client.heldYaw; ents.pitch[actor] = client.heldPitch; }
+      else {
+        quatRotate(rotation, 0, 0, 0, 1, seat, 0);
+        this.body.yaw = Math.round(detAtan2(seat[0]!, seat[2]!) * 65536 / TAU) & 65535;
+        ents.pitch[actor] = Math.round(detAtan2(seat[1]!, Math.sqrt(seat[0]! * seat[0]! + seat[2]! * seat[2]!)) * 65536 / TAU);
+      }
+    } else if (driver || !client) this.body.yaw = ents.yaw[vehicle]!;
     this.body.vx = state.vx; this.body.vy = state.vy; this.body.vz = state.vz;
     this.body.stance = STANCE_CROUCH;
     ents.storeBody(actor, this.body);
