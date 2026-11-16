@@ -27,7 +27,13 @@ def _arc(mesh,section,steps,tag,fit=False,edge_tags=None,start=-2.57,end=2.57):
     grow=(1+math.cos((end-start)/72))/(1+math.cos((end-start)/(steps*2))) if fit else 1
     rings=[[(rx*(1 if i in(0,steps) else grow)*math.sin(start+(end-start)*i/steps),y,-.12+rz*(1 if i in(0,steps) else grow)*math.cos(start+(end-start)*i/steps))
             for rx,rz,y in section] for i in range(steps+1)]
-    first=len(mesh.f);mesh.loft(rings,tag,caps=len(section)>2)
+    if len(section)==2:
+        # Each paired patch is its own zero-volume island. Sharing indexed
+        # hinge edges gives four incident faces, so the general solid winding
+        # walk cannot choose a unique neighbour and can flip a sheet side.
+        for a,b in zip(rings,rings[1:]):_sheet(mesh,[a[0],a[1],b[1],b[0]],tag)
+        return
+    first=len(mesh.f);mesh.loft(rings,tag)
     if edge_tags:
         for i in range(steps*len(section)):mesh.tags[first+i]=edge_tags[i%len(section)]
 
