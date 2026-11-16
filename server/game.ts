@@ -396,6 +396,8 @@ export class GameServer {
   onMountLand: ((e: number, speed: number) => void) | null = null;
   /** A driven flyer `e` took off, set down from flight or began a barrel roll this tick, as stepOut still says. */
   onMountFlight: ((e: number) => void) | null = null;
+  /** Vehicle report is still current; authoritative damage consumes it immediately after the body is stored. */
+  onVehicleStep: ((e: number) => void) | null = null;
   /** Without this hook nobody is sent to the creator. */
   needsLook: ((name: string) => boolean) | null = null;
   /** Null for a new survivor. `dead` means it joins with no body and chooses where to respawn. */
