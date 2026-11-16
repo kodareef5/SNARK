@@ -3,25 +3,25 @@
     "engine/idle": {
       "range": 40, "level": -22, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/idle/moss-pt-7391-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/idle/moss-pt-7391-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/low": {
       "range": 60, "level": -20, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/low/moss-pt-7400-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/low/moss-pt-7400-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/mid": {
       "range": 80, "level": -18, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/mid/moss-pt-7410-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/mid/moss-pt-7410-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/high": {
       "range": 100, "level": -16, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/high/moss-pt-7420-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/high/moss-pt-7420-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/start": {
@@ -59,37 +59,37 @@
     "tire/roll/asphalt": {
       "range": 30, "level": -26, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/tire/roll/asphalt/moss-pt-7480-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/tire/roll/asphalt/moss-pt-7480-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "tire/roll/gravel": {
       "range": 30, "level": -24, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/tire/roll/gravel/moss-pt-7490-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/tire/roll/gravel/moss-pt-7490-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "tire/roll/dirt": {
       "range": 30, "level": -25, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/tire/roll/dirt/moss-pt-7500-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/tire/roll/dirt/moss-pt-7500-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "tire/roll/grass": {
       "range": 25, "level": -27, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/tire/roll/grass/moss-pt-7510-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/tire/roll/grass/moss-pt-7510-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "tire/roll/mud": {
       "range": 25, "level": -24, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/tire/roll/mud/moss-pt-7520-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/tire/roll/mud/moss-pt-7520-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "tire/roll/sand": {
       "range": 25, "level": -25, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/tire/roll/sand/moss-pt-7530-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/tire/roll/sand/moss-pt-7530-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "tire/skid/asphalt": {

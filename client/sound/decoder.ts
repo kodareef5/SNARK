@@ -11,7 +11,8 @@ export class WorkerDecoder implements SoundDecoder {
   }
 
   decode(s: number, data: Uint8Array, takes: readonly { samples: number; bytes: number }[]): void {
-    this.worker.postMessage({ s, data, takes: takes.map((t) => ({ samples: t.samples, bytes: t.bytes })) });
+    // The bytes are the library's own from the asset port, and not read again once handed over.
+    this.worker.postMessage({ s, data, takes: takes.map((t) => ({ samples: t.samples, bytes: t.bytes })) }, [data.buffer as ArrayBuffer]);
   }
 
   take(out: Decoded[]): number {
