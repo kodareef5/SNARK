@@ -19,8 +19,11 @@ const ROOT = resolve(import.meta.dir, "..");
  * held to a budget: on a busy machine it times the neighbours.
  */
 const TEST_CPU_BUDGET = 440;
-/** Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's phases. */
-const SHELL_MAX_LINES = 1150;
+/**
+ * Non-blank, non-comment lines allowed in client/shell, which has no tests. D250 shares the last 250 among round 8's
+ * phases; the last 50 hold the executor's mirror of the card's state, which sends a frame's changes alone.
+ */
+const SHELL_MAX_LINES = 1200;
 /** And in client/voice, which also has no tests. */
 const VOICE_MAX_LINES = 600;
 /** And in client/sound: the world's sounds and the listening page, carrying out what client/core/sound decides. */
