@@ -1,4 +1,4 @@
-// The guide's search and map view, decided here so that they are tested without a page.
+// The wiki's search and map view, decided here so that they are tested without a page.
 
 /** A row of the search index: label, path, group, and the picture of its card or "". */
 export type SearchRow = readonly [label: string, path: string, group: string, picture: string];

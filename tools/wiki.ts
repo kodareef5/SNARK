@@ -1,6 +1,6 @@
-// The field guide: bun run pages, after bun run build. It reads the game's build in client/dist and the map files in
-// var/maps, and writes plain files to client/dist/guide, which the game's server serves at /guide/ as it serves the rest
-// of client/dist. Its pictures are kept under .cache/pages, so a second build draws only what changed.
+// The wiki: bun run wiki, after bun run build. It reads the game's build in client/dist and the map files in
+// var/maps, and writes plain files to client/dist/wiki, which the game's server serves at /wiki/ as it serves the rest
+// of client/dist. Its pictures are kept under .cache/wiki, so a second build draws only what changed.
 
 import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -12,21 +12,21 @@ import { compileContent } from "../shared/content/registry.ts";
 import { vehicleFamilies } from "../shared/sound/cues.ts";
 import { partHash } from "./pack/manifest.ts";
 import { assetFraming } from "./pack/icons.ts";
-import { buildAtlases } from "./pages/atlas.ts";
-import { readBuilt } from "./pages/built.ts";
-import { buildCatalogue, namesOf, sentence } from "./pages/catalogue.ts";
-import { entryCredit, fromAssets } from "./pages/credits.ts";
-import { checkLinks } from "./pages/links.ts";
-import { BASE } from "./pages/html.ts";
-import { drawPosters, type Subject } from "./pages/posters.ts";
-import { commands, consoleLine, publicSettings } from "./pages/reference.ts";
-import { entryPath, renderGuide, type Sound, type Track } from "./pages/render.ts";
-import { writeText } from "./pages/files.ts";
-import { weighGuide } from "./sizes.ts";
+import { buildAtlases } from "./wiki/atlas.ts";
+import { readBuilt } from "./wiki/built.ts";
+import { buildCatalogue, namesOf, sentence } from "./wiki/catalogue.ts";
+import { entryCredit, fromAssets } from "./wiki/credits.ts";
+import { checkLinks } from "./wiki/links.ts";
+import { BASE } from "./wiki/html.ts";
+import { drawPosters, type Subject } from "./wiki/posters.ts";
+import { commands, consoleLine, publicSettings } from "./wiki/reference.ts";
+import { entryPath, renderWiki, type Sound, type Track } from "./wiki/render.ts";
+import { writeText } from "./wiki/files.ts";
+import { weighWiki } from "./sizes.ts";
 
 const ROOT = resolve(import.meta.dir, "..");
 
-export interface GuideReport {
+export interface WikiReport {
   pages: number;
   files: number;
   bytes: number;
@@ -34,8 +34,8 @@ export interface GuideReport {
   counts: Record<string, number>;
 }
 
-export async function buildGuide(dist = join(ROOT, "client/dist"), maps = join(ROOT, "var/maps")): Promise<GuideReport> {
-  const out = join(dist, "guide");
+export async function buildWiki(dist = join(ROOT, "client/dist"), maps = join(ROOT, "var/maps")): Promise<WikiReport> {
+  const out = join(dist, "wiki");
   const media = join(out, "media");
   rmSync(out, { recursive: true, force: true });
   mkdirSync(media, { recursive: true });
@@ -85,7 +85,7 @@ export async function buildGuide(dist = join(ROOT, "client/dist"), maps = join(R
       : [];
 
     // The script and the stylesheet, named by their bytes: the chunks first, then what imports them.
-    const bundle = await Bun.build({ entrypoints: [join(ROOT, "client/pages/guide.ts")], target: "browser", format: "esm", splitting: true, minify: true });
+    const bundle = await Bun.build({ entrypoints: [join(ROOT, "client/wiki/wiki.ts")], target: "browser", format: "esm", splitting: true, minify: true });
     if (!bundle.success) throw new Error(bundle.logs.map(String).join("\n"));
     const named = new Map<string, string>();
     let js = "";
@@ -101,8 +101,8 @@ export async function buildGuide(dist = join(ROOT, "client/dist"), maps = join(R
     const font = `/assets/${built.asset(/^hud-font\.\w+\.ttf$/)}`;
     const sheet = `/assets/${built.asset(/^hud\.\w+\.png$/)}`;
     const glass = `${(GLASS_X / (SKIN_WIDTH - GLASS_SIZE)) * 100}% ${(GLASS_Y / (SKIN_HEIGHT - GLASS_SIZE)) * 100}% / ${(SKIN_WIDTH / GLASS_SIZE) * 100}% ${(SKIN_HEIGHT / GLASS_SIZE) * 100}%`;
-    const css = readFileSync(join(import.meta.dir, "pages/guide.css"), "utf8").replace('url("HUD_FONT")', `url("${font}")`).replace('url("HUD_SHEET") GLASS', `url("${sheet}") ${glass}`);
-    const cssName = `guide.${partHash(new TextEncoder().encode(css))}.css`;
+    const css = readFileSync(join(import.meta.dir, "wiki/wiki.css"), "utf8").replace('url("HUD_FONT")', `url("${font}")`).replace('url("HUD_SHEET") GLASS', `url("${sheet}") ${glass}`);
+    const cssName = `wiki.${partHash(new TextEncoder().encode(css))}.css`;
     writeText(join(out, cssName), css);
     const search = JSON.stringify([
       ...entries.map((e) => [e.label, entryPath(e), e.group, pictures.get(e.id)?.card.file ?? ""]),
@@ -114,7 +114,7 @@ export async function buildGuide(dist = join(ROOT, "client/dist"), maps = join(R
     const rev = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], { cwd: ROOT });
     const revision = rev.exitCode === 0 ? new TextDecoder().decode(rev.stdout).trim() : "";
     const engrams = CORE_CONTENT.filter((d): d is EngramDef => d.type === "engram").map((d) => ({ item: d.item, level: d.level, cost: d.cost }));
-    const pages = renderGuide({
+    const pages = renderWiki({
       assets: { css: `${BASE}${cssName}`, js, search: `${BASE}${searchName}`, font, revision },
       entries,
       pictures,
@@ -145,8 +145,8 @@ export async function buildGuide(dist = join(ROOT, "client/dist"), maps = join(R
 if (import.meta.main) {
   const dist = resolve(process.argv[2] ?? join(ROOT, "client/dist"));
   const t0 = performance.now();
-  const r = await buildGuide(dist);
+  const r = await buildWiki(dist);
   const kinds = Object.entries(r.counts).map(([k, n]) => `${n} ${k}`).join(", ");
-  console.log(`guide        ${r.pages} pages (${kinds}), ${r.files} files, ${(r.bytes / 1048576).toFixed(1)} MB, ${r.drawn} pictures drawn, ${(performance.now() - t0).toFixed(0)} ms`);
-  if (!weighGuide(dist)) process.exitCode = 1;
+  console.log(`wiki         ${r.pages} pages (${kinds}), ${r.files} files, ${(r.bytes / 1048576).toFixed(1)} MB, ${r.drawn} pictures drawn, ${(performance.now() - t0).toFixed(0)} ms`);
+  if (!weighWiki(dist)) process.exitCode = 1;
 }

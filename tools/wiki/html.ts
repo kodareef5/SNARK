@@ -1,6 +1,6 @@
-// The guide's markup: escaping, paths and the page every route is written into.
+// The wiki's markup: escaping, paths and the page every route is written into.
 
-export const BASE = "/guide/";
+export const BASE = "/wiki/";
 
 const ENTITIES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
 export const esc = (value: unknown): string => String(value).replace(/[&<>"']/g, (c) => ENTITIES[c]!);
@@ -9,7 +9,7 @@ export const esc = (value: unknown): string => String(value).replace(/[&<>"']/g,
 export function slug(id: string): string {
   const [pack, name] = id.includes(":") ? [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)] : ["core", id];
   const parts = pack === "core" ? name.split("/") : [pack, ...name.split("/")];
-  if (parts.some((p) => !/^[a-z0-9][a-z0-9_-]*$/i.test(p))) throw new Error(`the guide has no path for the id "${id}"`);
+  if (parts.some((p) => !/^[a-z0-9][a-z0-9_-]*$/i.test(p))) throw new Error(`the wiki has no path for the id "${id}"`);
   return parts.join("/");
 }
 
@@ -41,16 +41,16 @@ export function page(a: Assets, title: string, here: string, body: string): stri
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <link rel="icon" href="data:,">
-<title>${esc(title)} · Field guide</title>
+<title>${esc(title)} · Wiki</title>
 <link rel="preload" href="${a.font}" as="font" type="font/ttf" crossorigin>
 <link rel="stylesheet" href="${a.css}">
 <script type="module" src="${a.js}"></script>
 </head>
 <body>
 <header class="top">
-<a class="home" href="${BASE}">Field guide</a>
+<a class="home" href="${BASE}">Wiki</a>
 <nav>${nav}</nav>
-<form class="find" action="${BASE}search/" role="search"><input name="q" aria-label="Search the guide" placeholder="Search"></form>
+<form class="find" action="${BASE}search/" role="search"><input name="q" aria-label="Search the wiki" placeholder="Search"></form>
 </header>
 <main>
 ${body}

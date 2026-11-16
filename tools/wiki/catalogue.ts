@@ -1,4 +1,4 @@
-// What the guide says of each thing a player meets, from the compiled content alone: creatures, characters, vehicles,
+// What the wiki says of each thing a player meets, from the compiled content alone: creatures, characters, vehicles,
 // and the things a player makes or finds, each made thing one entry with its engram and the structure it places.
 // Everything is derived, so a definition added to the content has its entry, and its links both ways, with no edit here.
 
@@ -18,7 +18,7 @@ import type { Subject } from "./posters.ts";
 export type Kind = "creatures" | "characters" | "vehicles" | "items";
 export const KINDS: readonly Kind[] = ["creatures", "items", "vehicles", "characters"];
 
-/** Another entry by its id, shown as a link where the guide has it, with words after it. */
+/** Another entry by its id, shown as a link where the wiki has it, with words after it. */
 export interface Ref {
   id: string;
   note?: string;
@@ -161,7 +161,7 @@ export interface CatalogueInput {
   meshes?: ReadonlySet<string>;
 }
 
-/** The guide's entries, in label order within each kind. */
+/** The wiki's entries, in label order within each kind. */
 export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
   const defs = input.defs ?? CORE_CONTENT;
   const compiled = compileContent(defs);
@@ -176,7 +176,7 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
   const engramOf = new Map(of("engram").map((e: EngramDef) => [e.item, e]));
   const placer = new Map<string, ItemDef>();
   for (const d of items) for (const s of d.places ?? []) if (!placer.has(s)) placer.set(s, d);
-  // A station is named by the structure it is: the guide has the item that places it.
+  // A station is named by the structure it is: the wiki has the item that places it.
   const made = (id: string): string => placer.get(id)?.id ?? id;
   const icons = new Map(iconSubjects(reg.defs, has).map((s) => [s.owner, s]));
   const entries = new Map<string, Entry>();
@@ -195,7 +195,7 @@ export function buildCatalogue(input: CatalogueInput = {}): Entry[] {
       const body = `${d.mesh}_${SEX_IDS[look[LOOK_SEX]!]}`;
       picture = { meshes: [...SLOT_NAMES, `hair/${HAIR_STYLES[look[LOOK_HAIR]!]!.id}`].map((p) => `${body}/${p}`), colors: [...colors], body: true };
     } else picture = { meshes: [d.mesh], colors: d.regions?.map((r) => r?.colors[0]?.[0] ?? 0) ?? [], body: true };
-    // A species with no art of its own is a stand-in, and not in the guide.
+    // A species with no art of its own is a stand-in, and not in the wiki.
     if (!picture.meshes.every(has)) continue;
     const group = creature ? (d.fly ? "Flyer" : "Creature") : kind === "vehicles" ? sentence(d.vehicle?.movement ?? "car") : "Human";
     const e: Entry = { id: d.id, kind, label: labelOf(d), group, facts: [], tables: [], related: [], console: null, owners: [d.id], picture };

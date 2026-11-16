@@ -9,7 +9,7 @@ const HASHED = /\.[0-9a-f]{16}\./;
 
 export async function serveFile(dir: string, req: Request): Promise<Response> {
   const url = new URL(req.url);
-  // A folder's address is its index.html, as the field guide's pages are written (tools/pages.ts).
+  // A folder's address is its index.html, as the wiki's pages are written (tools/wiki.ts).
   const path = normalize(join(dir, url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname));
   if (!path.startsWith(dir)) return new Response("not found", { status: 404 });
   const file = Bun.file(path);

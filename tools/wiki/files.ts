@@ -1,4 +1,4 @@
-// Writing the guide's files: media linked in from the caches rather than copied, and a Brotli copy of each text file.
+// Writing the wiki's files: media linked in from the caches rather than copied, and a Brotli copy of each text file.
 
 import { copyFileSync, existsSync, linkSync, unlinkSync, writeFileSync } from "node:fs";
 import { brotli } from "../build-client.ts";

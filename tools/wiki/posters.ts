@@ -1,7 +1,7 @@
-// The guide's pictures, drawn by the software rasterizer from the game's built meshes and rgba textures, lit as
+// The wiki's pictures, drawn by the software rasterizer from the game's built meshes and rgba textures, lit as
 // tools/snap.ts's ModelView lights a model, on a clear ground. A body is drawn standing as its idle clip begins. An
 // item is drawn as the inventory picture is, larger. Each picture has a card-sized copy. A picture is kept under
-// .cache/pages/posters by the hashes of everything it is drawn from.
+// .cache/wiki/posters by the hashes of everything it is drawn from.
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
@@ -19,7 +19,7 @@ import { ModelView } from "../snap.ts";
 import { PICK_SKY } from "../snap/raster.ts";
 import { meshPack, type Built } from "./built.ts";
 
-const CACHE = resolve(import.meta.dir, "../../.cache/pages/posters");
+const CACHE = resolve(import.meta.dir, "../../.cache/wiki/posters");
 const DRAWN_BY = ["posters.ts", "built.ts", "quantize.ts", "../snap.ts", "../snap/raster.ts", "../pack/icons.ts"];
 /** A body's picture, in pixels, drawn at SUPER times that and shrunk. An item's is square. */
 const BODY = [640, 480] as const;

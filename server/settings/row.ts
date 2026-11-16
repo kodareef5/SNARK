@@ -80,7 +80,7 @@ export interface Row {
   readonly game: "" | "E" | "A";
   /** Quirks, and what the research could not verify. */
   readonly note: string;
-  /** A player may know its value: the field guide lists it (tools/pages). */
+  /** A player may know its value: the wiki lists it (tools/wiki). */
   readonly public: boolean;
 }
 

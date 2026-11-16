@@ -1,7 +1,7 @@
-// The guide's pages read whole without this. It plays a sound from the game's sound files, moves and layers a map,
+// The wiki's pages read whole without this. It plays a sound from the game's sound files, moves and layers a map,
 // copies a console line, and searches.
 
-import { findRows, mapTransform, type SearchRow } from "../core/pages/filter.ts";
+import { findRows, mapTransform, type SearchRow } from "../core/wiki/filter.ts";
 
 const all = <T extends Element>(selector: string, root: ParentNode = document): T[] => [...root.querySelectorAll<T>(selector)];
 
@@ -74,7 +74,7 @@ for (const list of all<HTMLOListElement>("[data-search]")) {
       li.appendChild(document.createElement("small")).textContent = group;
       return li;
     }));
-    if (input.value && found.length === 0) list.textContent = "Nothing in the guide is called that.";
+    if (input.value && found.length === 0) list.textContent = "Nothing in the wiki is called that.";
   };
   input.value = new URLSearchParams(location.search).get("q") ?? "";
   input.addEventListener("input", () => void show());

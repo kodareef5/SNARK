@@ -1,4 +1,4 @@
-// Every address a page of the guide names must be there: another page, or a file of the build.
+// Every address a page of the wiki names must be there: another page, or a file of the build.
 
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -16,5 +16,5 @@ export function checkLinks(pages: ReadonlyMap<string, string>, dist: string): vo
       else if (address.endsWith("/") ? !pages.has(address.slice(BASE.length)) : !existsSync(join(dist, address))) missing.add(`/${path} names ${address}`);
     }
   }
-  if (missing.size > 0) throw new Error(`the guide names what it does not have:\n${[...missing].slice(0, 20).join("\n")}`);
+  if (missing.size > 0) throw new Error(`the wiki names what it does not have:\n${[...missing].slice(0, 20).join("\n")}`);
 }

@@ -1,5 +1,5 @@
-// `bun run probe -- --pages`: the field guide in headless Chrome, served from client/dist by the server's own file
-// serving, after `bun run build` and `bun run pages`. Each page below is opened at a desktop's width and a phone's: it must
+// `bun run probe -- --wiki`: the wiki in headless Chrome, served from client/dist by the server's own file
+// serving, after `bun run build` and `bun run wiki`. Each page below is opened at a desktop's width and a phone's: it must
 // raise no error, fit the width and decode every picture it shows. A creature's sound must decode from the game's file
 // as the page plays it, the search must find a raptor, and a map's layer must load when its box is ticked. It prints
 // what each page fetched. With `--shots <folder>` it keeps a picture of each page there.
@@ -11,20 +11,20 @@ import { serveFile } from "../server/files.ts";
 
 const DIST = resolve(import.meta.dir, "../client/dist");
 const PAGES = [
-  "/guide/",
-  "/guide/creatures/raptor/",
-  "/guide/items/piece_foundation_wood/",
-  "/guide/items/pistol/",
-  "/guide/vehicles/compact/",
-  "/guide/maps/miami/",
-  "/guide/items/",
-  "/guide/search/?q=raptor",
-  "/guide/commands/",
+  "/wiki/",
+  "/wiki/creatures/raptor/",
+  "/wiki/items/piece_foundation_wood/",
+  "/wiki/items/pistol/",
+  "/wiki/vehicles/compact/",
+  "/wiki/maps/miami/",
+  "/wiki/items/",
+  "/wiki/search/?q=raptor",
+  "/wiki/commands/",
 ];
 const WIDTHS = [1280, 390];
 
-export async function pagesProbe(chrome: string): Promise<boolean> {
-  if (!existsSync(join(DIST, "guide/index.html"))) throw new Error("client/dist/guide is missing: run bun run build, then bun run pages");
+export async function wikiProbe(chrome: string): Promise<boolean> {
+  if (!existsSync(join(DIST, "wiki/index.html"))) throw new Error("client/dist/wiki is missing: run bun run build, then bun run wiki");
   const at = process.argv.indexOf("--shots");
   const shots = at > 0 ? resolve(process.argv[at + 1]!) : null;
   if (shots) mkdirSync(shots, { recursive: true });

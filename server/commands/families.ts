@@ -1,4 +1,4 @@
-// The server's own commands, by family: the host registers them all, and the field guide lists them under these names.
+// The server's own commands, by family: the host registers them all, and the wiki lists them under these names.
 
 import type { Console } from "../console.ts";
 import { addAdminCommands } from "./admin.ts";

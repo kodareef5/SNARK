@@ -1,4 +1,4 @@
-// The guide's reference pages from the server's own tables: every command as it is registered, and the settings rows
+// The wiki's reference pages from the server's own tables: every command as it is registered, and the settings rows
 // marked public. Nothing is run and no server is started.
 
 import { COMMAND_FAMILIES } from "../../server/commands/families.ts";
@@ -29,7 +29,7 @@ export function commands(): Command[] {
 /** The line that makes one of a thing with a command, which must be registered: a renamed command fails the build. */
 export function consoleLine(list: readonly Command[]): (name: string, id: string) => string {
   return (name, id) => {
-    if (!list.some((c) => c.name === name)) throw new Error(`the guide gives "${name}" lines, and the server registers no such command`);
+    if (!list.some((c) => c.name === name)) throw new Error(`the wiki gives "${name}" lines, and the server registers no such command`);
     return name === "give" ? `${name} ${id} 1` : `${name} ${id}`;
   };
 }

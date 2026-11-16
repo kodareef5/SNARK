@@ -1,4 +1,4 @@
-// Every page of the guide as complete HTML, by path under BASE. A page needs no script to be read; the script plays
+// Every page of the wiki as complete HTML, by path under BASE. A page needs no script to be read; the script plays
 // sounds, moves the map, copies a console line and searches.
 
 import type { Atlas, Mark } from "./atlas.ts";
@@ -62,10 +62,10 @@ export function entryPath(e: Pick<Entry, "kind" | "id">): string {
   return `${BASE}${e.kind}/${slug(e.id)}/`;
 }
 
-export function renderGuide(site: Site): Map<string, string> {
+export function renderWiki(site: Site): Map<string, string> {
   const pages = new Map<string, string>();
   const write = (path: string, title: string, here: string, body: string): void => {
-    if (pages.has(path)) throw new Error(`two pages of the guide are at ${path}`);
+    if (pages.has(path)) throw new Error(`two pages of the wiki are at ${path}`);
     pages.set(path, page(site.assets, title, here, body));
   };
   const v = views(site);
@@ -156,8 +156,8 @@ function views(site: Site) {
     // Every creature, and the first vehicle of each way of moving.
     const vehicles = groupBy(site.entries.filter((e) => e.kind === "vehicles"), (e) => e.group);
     const featured = [...site.entries.filter((e) => e.kind === "creatures"), ...[...vehicles.values()].map((g) => g[0]!)];
-    return `${heading("Field guide", "", "Creatures, items, maps and the console, read from the game itself.")}
-<form class="find big" action="${BASE}search/" role="search"><input name="q" aria-label="Search the guide" placeholder="Raptor, wooden foundation, pistol…"></form>
+    return `${heading("Wiki", "", "Creatures, items, maps and the console, read from the game itself.")}
+<form class="find big" action="${BASE}search/" role="search"><input name="q" aria-label="Search the wiki" placeholder="Raptor, wooden foundation, pistol…"></form>
 <nav class="shelves">${join(shelves, ([path, label, n]) => `<a href="${BASE}${path}"><b>${label}</b><small>${n}</small></a>`)}</nav>
 <section><h2>Creatures and vehicles</h2>${cards(featured)}</section>
 <section><h2>Maps</h2>${maps()}</section>`;
@@ -238,7 +238,7 @@ ${related ? `<section><h2>Related</h2><dl class="related">${related}</dl></secti
   };
 
   const search = (): string =>
-    `${heading("Search")}<form class="find big" action="${BASE}search/" role="search"><input name="q" aria-label="Search the guide" autofocus></form>
+    `${heading("Search")}<form class="find big" action="${BASE}search/" role="search"><input name="q" aria-label="Search the wiki" autofocus></form>
 <ol class="results" data-search="${site.assets.search}"></ol><noscript><p>Searching needs JavaScript. Every page is reached from the lists without it.</p></noscript>`;
 
   const credits = (): string => {

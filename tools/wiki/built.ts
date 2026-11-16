@@ -1,5 +1,5 @@
-// What the guide takes from the game's build, client/dist: its manifest and boot pack, its files read by range as a
-// client reads them, the loose sounds, and the names of the files the guide's pages share with the game's.
+// What the wiki takes from the game's build, client/dist: its manifest and boot pack, its files read by range as a
+// client reads them, the loose sounds, and the names of the files the wiki's pages share with the game's.
 
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync } from "node:fs";
 import { join } from "node:path";

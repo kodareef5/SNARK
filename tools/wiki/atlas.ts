@@ -1,4 +1,4 @@
-// The guide's map of each world, from the map file a server is started with (var/maps/<name>.snmap): the ground as the
+// The wiki's map of each world, from the map file a server is started with (var/maps/<name>.snmap): the ground as the
 // game colours it, where each kind of resource grows, the regions each creature is kept stocked in, where survivors
 // arrive and vehicles stand, and from the map's world.json its obelisks and districts. A map that has no file is left out.
 
@@ -16,7 +16,7 @@ import { indexedPng } from "./quantize.ts";
 import { scaled, type Picture } from "./posters.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
-const CACHE = join(ROOT, ".cache/pages/maps");
+const CACHE = join(ROOT, ".cache/wiki/maps");
 /** The ground's picture is the largest of these sides that PNG holds in GROUND_BYTES; a card's is CARD a side. */
 const SIDES = [768, 640, 512];
 const GROUND_BYTES = 240 * 1024;
@@ -81,7 +81,7 @@ function hsl(h: number, s: number, l: number): [number, number, number] {
 
 const hex = (palette: Uint8Array, k: number): string => `#${[0, 1, 2].map((c) => palette[k * 4 + c]!.toString(16).padStart(2, "0")).join("")}`;
 
-/** What the guide reads of a map's world.json. */
+/** What the wiki reads of a map's world.json. */
 interface WorldPlaces {
   obelisks?: { name: string; at: [number, number] }[];
   districts?: { name: string; ring: [number, number][] }[];
