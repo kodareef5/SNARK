@@ -155,7 +155,7 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
     writeFileSync(resolve(out, `${shot.name}.png`), encodePng(width, height, render.color));
     frameTimes.sort((a, b) => a - b);
     const percentile = (p: number) => frameTimes[Math.max(0, Math.ceil(frameTimes.length * p) - 1)]!;
-    return { ...shot, width, height, draws, submittedTriangles: p.triangles, drawCount: p.drawCount,
+    return { ...shot, width, height, registryHash: reg.hash.toString(16).padStart(8, "0"), mapHash: h.world.mapHash.toString(16).padStart(8, "0"), draws, submittedTriangles: p.triangles, drawCount: p.drawCount,
       cpu: recordCpu ? { samples: frameTimes.length, medianMs: percentile(.5), p95Ms: percentile(.95), p99Ms: percentile(.99), maxMs: percentile(1),
         scope: "Settled App.frame wall time only; excludes authoritative server stepping, network delivery, image encoding, software rasterization and browser GPU work." } : { samples: 0, scope: "Visual-only review; CPU timing deliberately omitted." },
       dropped: p.dropped, skipped: p.skipped, casterDropped: p.casterDropped,
