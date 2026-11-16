@@ -172,7 +172,12 @@ test("every authored stairway, room and circulation route is reachable on foot w
   const h = new Harness({}, 32, 60, { dev: true, clips: NO_CLIPS, rigs: [], map });
   try {
     const s = h.join("explorer"); h.run(700); board(h); const nav = navigator(h), before = s.stats.corrections;
-    for (const r of KORU_LAYOUT.routes) { nav.visit(r.id); if (r.kind === "stairs") nav.visit(r.id, true); }
+    // The stern steps out of the sea are swum up, not walked down into it (tests/unit/koru-walk.test.ts).
+    for (const r of KORU_LAYOUT.routes) {
+      if (r.kind === "boarding") continue;
+      nav.visit(r.id);
+      if (r.kind === "stairs") nav.visit(r.id, true);
+    }
     expect(s.stats.corrections - before).toBe(0);
   } finally { h.host.shutdown(); }
 });
