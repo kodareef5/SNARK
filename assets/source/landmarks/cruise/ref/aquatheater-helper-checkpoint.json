@@ -1,0 +1,689 @@
+{
+  "scope": "Original native source forms0/1 unchanged. Exact helper2..5, authored bounds, native bidirectional whole-object surfaceError plus0.5mm cell quantization reserve. Stage3 pod uses the separate finite exterior-visible certificate. Capacity is the complete affected16m cells with current ship surroundings; final normal export/artcheck and native visual review remain required.",
+  "sources": {
+    "layout": "40568816ce4a8c5b0b254ede2a92dd3c29e2b4a36ea69eb4c43b943894e64f61",
+    "helper": "264b08e3301dfeaa2a509512fea0145ccca94501da21628aa637a81c8423c82a",
+    "parts.py": "f829426cef80a4e006ef25fda566acef07b2beb574eb82aaaccd36554cdfc339",
+    "model_aquatheater.py": "1459f4265558271fa4637b8bb007263ed2edf6d165d8acb7a0851a2a0e82da56",
+    "model_interiors.py": "46aa7a191fa08d02bb7dcacc1e2a2f73fbe0a68bab38163463a8e22d67963d2e",
+    "model_cells.py": "c20c8982f09979acaf46c65728cc931afd5b08c985ad88fae89e4db771d7762a"
+  },
+  "geometryPass": true,
+  "capacityPass": false,
+  "rows": [
+    {
+      "fixture": "aquadome_pod_1_0",
+      "stage": 2,
+      "triangles": 1314,
+      "wholeObjectP95": 0.01956396411372546,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.025,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquadome_pod_1_0",
+      "stage": 3,
+      "triangles": 418,
+      "wholeObjectP95": 0.07333334287007648,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.06,
+      "test": "See placement-bound visible certificate",
+      "pass": true
+    },
+    {
+      "fixture": "aquadome_pod_1_0",
+      "stage": 4,
+      "triangles": 190,
+      "wholeObjectP95": 0.1283204748385059,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.13,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquadome_pod_1_0",
+      "stage": 5,
+      "triangles": 190,
+      "wholeObjectP95": 0.1283204748385059,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.25,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquatheater_seating_1_0",
+      "stage": 2,
+      "triangles": 292,
+      "wholeObjectP95": 0.023333330949147524,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.025,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquatheater_seating_1_0",
+      "stage": 3,
+      "triangles": 124,
+      "wholeObjectP95": 0.030516394117696195,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.06,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquatheater_seating_1_0",
+      "stage": 4,
+      "triangles": 20,
+      "wholeObjectP95": 0.1289999932050705,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.13,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquatheater_seating_1_0",
+      "stage": 5,
+      "triangles": 20,
+      "wholeObjectP95": 0.1289999932050705,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.25,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquatheater_stage",
+      "stage": 2,
+      "triangles": 12,
+      "wholeObjectP95": 8.43769498715119e-15,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.025,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquatheater_stage",
+      "stage": 3,
+      "triangles": 12,
+      "wholeObjectP95": 8.43769498715119e-15,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.06,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquatheater_stage",
+      "stage": 4,
+      "triangles": 12,
+      "wholeObjectP95": 8.43769498715119e-15,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.13,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    },
+    {
+      "fixture": "aquatheater_stage",
+      "stage": 5,
+      "triangles": 12,
+      "wholeObjectP95": 8.43769498715119e-15,
+      "quantizationReserve": 0.0005,
+      "threshold": 0.25,
+      "test": "Native whole-object P95 plus0.5mm reserve",
+      "pass": true
+    }
+  ],
+  "capacity": [
+    {
+      "cell": "cruise:cell_0204",
+      "triangles": [
+        3038,
+        1008,
+        378,
+        378
+      ],
+      "pass": false
+    },
+    {
+      "cell": "cruise:cell_0205",
+      "triangles": [
+        3850,
+        1230,
+        406,
+        406
+      ],
+      "pass": false
+    },
+    {
+      "cell": "cruise:cell_0206",
+      "triangles": [
+        886,
+        236,
+        160,
+        152
+      ],
+      "pass": true
+    },
+    {
+      "cell": "cruise:cell_0324",
+      "triangles": [
+        3038,
+        1058,
+        402,
+        402
+      ],
+      "pass": false
+    },
+    {
+      "cell": "cruise:cell_0325",
+      "triangles": [
+        3678,
+        1228,
+        406,
+        406
+      ],
+      "pass": false
+    },
+    {
+      "cell": "cruise:cell_0326",
+      "triangles": [
+        898,
+        236,
+        160,
+        152
+      ],
+      "pass": true
+    }
+  ],
+  "visibility": {
+    "scope": "Bidirectional sampled exterior-visible P95 for stage3 pods only. All over-.0595m points are surveyed against opaque front faces of the entire source/target ship, with clear atlas faces skipped. Positive visible in-tolerance samples establish a lower bound of19 good per bad plus1. The .0005m reserve covers two native16m-cell quantization displacements. The recorded maximum is not bounded by .06m. This finite camera survey is not an exhaustive visibility theorem and must be repeated when layout/occluders change.",
+    "layoutSHA256": "40568816ce4a8c5b0b254ede2a92dd3c29e2b4a36ea69eb4c43b943894e64f61",
+    "rawIndexSHA256": "c332c366040acaf7795a573edcbc46dadd32826d42e82feeaa9f977a16e0e6e9",
+    "candidateIndexSHA256": "91b54f76d77ecf27133ce2a88c0a035004c203d16480d2fe948d6d4a6aa876bf",
+    "rays": 4780735,
+    "seconds": 27.872607946395874,
+    "rows": [
+      {
+        "owner": "aquadome_pod_-1_0",
+        "stage": 3,
+        "directions": {
+          "fineToCoarse": {
+            "samples": 4078,
+            "allBadSamples": 381,
+            "badVisible": 53,
+            "goodVisibleLowerBound": 1008,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.11333465576171875,
+            "witnesses": [
+              {
+                "error": 0.11333465576171875,
+                "point": [
+                  -12.220576286315918,
+                  45.85627365112305,
+                  101.56085205078125
+                ],
+                "eye": [
+                  165.8193359375,
+                  49.04021453857422,
+                  -114.85250091552734
+                ]
+              },
+              {
+                "error": 0.11333465576171875,
+                "point": [
+                  -12.095416069030762,
+                  45.85627365112305,
+                  101.38694763183594
+                ],
+                "eye": [
+                  124.9238510131836,
+                  55.524871826171875,
+                  -104.37446594238281
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          },
+          "coarseToFine": {
+            "samples": 670,
+            "allBadSamples": 10,
+            "badVisible": 6,
+            "goodVisibleLowerBound": 115,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.0661722719669342,
+            "witnesses": [
+              {
+                "error": 0.0661722719669342,
+                "point": [
+                  -11.792011260986328,
+                  46.436279296875,
+                  98.37972259521484
+                ],
+                "eye": [
+                  64.70475769042969,
+                  46.79999923706055,
+                  -129.48146057128906
+                ]
+              },
+              {
+                "error": 0.06616910547018051,
+                "point": [
+                  -11.792011260986328,
+                  46.19294357299805,
+                  101.62028503417969
+                ],
+                "eye": [
+                  163.4470672607422,
+                  46.25875473022461,
+                  -116.80062103271484
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          }
+        }
+      },
+      {
+        "owner": "aquadome_pod_-1_1",
+        "stage": 3,
+        "directions": {
+          "fineToCoarse": {
+            "samples": 4144,
+            "allBadSamples": 373,
+            "badVisible": 34,
+            "goodVisibleLowerBound": 647,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.11333465576171875,
+            "witnesses": [
+              {
+                "error": 0.11333465576171875,
+                "point": [
+                  -11.986220359802246,
+                  45.85627365112305,
+                  113.18480682373047
+                ],
+                "eye": [
+                  106.37004089355469,
+                  55.80474853515625,
+                  -150.32440185546875
+                ]
+              },
+              {
+                "error": 0.09399767965078354,
+                "point": [
+                  -12.057467460632324,
+                  45.8929443359375,
+                  113.65745544433594
+                ],
+                "eye": [
+                  78.34282684326172,
+                  48.19508361816406,
+                  -160.27911376953125
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          },
+          "coarseToFine": {
+            "samples": 724,
+            "allBadSamples": 10,
+            "badVisible": 3,
+            "goodVisibleLowerBound": 58,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.0661722719669342,
+            "witnesses": [
+              {
+                "error": 0.0661722719669342,
+                "point": [
+                  -11.792011260986328,
+                  46.436279296875,
+                  110.37972259521484
+                ],
+                "eye": [
+                  64.70475769042969,
+                  46.79999923706055,
+                  -129.48146057128906
+                ]
+              },
+              {
+                "error": 0.061069149523973465,
+                "point": [
+                  -12.307364463806152,
+                  45.949607849121094,
+                  109.71418762207031
+                ],
+                "eye": [
+                  64.70475769042969,
+                  46.79999923706055,
+                  -129.48146057128906
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          }
+        }
+      },
+      {
+        "owner": "aquadome_pod_-1_2",
+        "stage": 3,
+        "directions": {
+          "fineToCoarse": {
+            "samples": 4078,
+            "allBadSamples": 381,
+            "badVisible": 18,
+            "goodVisibleLowerBound": 343,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.08866520971059799,
+            "witnesses": [
+              {
+                "error": 0.08866520971059799,
+                "point": [
+                  -11.823809623718262,
+                  45.8062744140625,
+                  125.31182861328125
+                ],
+                "eye": [
+                  18.46236228942871,
+                  48.27827453613281,
+                  -170.49365234375
+                ]
+              },
+              {
+                "error": 0.08799749612808228,
+                "point": [
+                  -11.95273208618164,
+                  45.8062744140625,
+                  125.5357894897461
+                ],
+                "eye": [
+                  25,
+                  47.29999923706055,
+                  -158
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          },
+          "coarseToFine": {
+            "samples": 670,
+            "allBadSamples": 10,
+            "badVisible": 3,
+            "goodVisibleLowerBound": 58,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.0661722719669342,
+            "witnesses": [
+              {
+                "error": 0.0661722719669342,
+                "point": [
+                  -11.792011260986328,
+                  46.436279296875,
+                  122.37972259521484
+                ],
+                "eye": [
+                  25,
+                  47.29999923706055,
+                  -158
+                ]
+              },
+              {
+                "error": 0.061069149523973465,
+                "point": [
+                  -12.307364463806152,
+                  45.949607849121094,
+                  121.71418762207031
+                ],
+                "eye": [
+                  23.265708923339844,
+                  47.62788772583008,
+                  -169.95947265625
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          }
+        }
+      },
+      {
+        "owner": "aquadome_pod_1_0",
+        "stage": 3,
+        "directions": {
+          "fineToCoarse": {
+            "samples": 4078,
+            "allBadSamples": 381,
+            "badVisible": 54,
+            "goodVisibleLowerBound": 1027,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.11333465576171875,
+            "witnesses": [
+              {
+                "error": 0.11333465576171875,
+                "point": [
+                  12.057069778442383,
+                  45.85627365112305,
+                  101.3224105834961
+                ],
+                "eye": [
+                  -124.9238510131836,
+                  55.524871826171875,
+                  -104.37446594238281
+                ]
+              },
+              {
+                "error": 0.11333465576171875,
+                "point": [
+                  12.177168846130371,
+                  45.85627365112305,
+                  101.50616455078125
+                ],
+                "eye": [
+                  -165.82711791992188,
+                  49.04677963256836,
+                  -114.84603118896484
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          },
+          "coarseToFine": {
+            "samples": 670,
+            "allBadSamples": 10,
+            "badVisible": 6,
+            "goodVisibleLowerBound": 115,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.0661722719669342,
+            "witnesses": [
+              {
+                "error": 0.0661722719669342,
+                "point": [
+                  11.792011260986328,
+                  46.19294357299805,
+                  98.37972259521484
+                ],
+                "eye": [
+                  -124.9238510131836,
+                  55.524871826171875,
+                  -104.37446594238281
+                ]
+              },
+              {
+                "error": 0.06616910547018051,
+                "point": [
+                  11.792011260986328,
+                  46.436279296875,
+                  101.62028503417969
+                ],
+                "eye": [
+                  -163.44223022460938,
+                  44.23299789428711,
+                  -116.79459381103516
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          }
+        }
+      },
+      {
+        "owner": "aquadome_pod_1_1",
+        "stage": 3,
+        "directions": {
+          "fineToCoarse": {
+            "samples": 4144,
+            "allBadSamples": 373,
+            "badVisible": 36,
+            "goodVisibleLowerBound": 685,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.09399767965078354,
+            "witnesses": [
+              {
+                "error": 0.09399767965078354,
+                "point": [
+                  12.057467460632324,
+                  45.8929443359375,
+                  113.65745544433594
+                ],
+                "eye": [
+                  -105.39126586914062,
+                  48.13883972167969,
+                  -151.04002380371094
+                ]
+              },
+              {
+                "error": 0.09088504314422607,
+                "point": [
+                  11.917059898376465,
+                  45.8929443359375,
+                  113.45512390136719
+                ],
+                "eye": [
+                  -105.12239074707031,
+                  48.1507568359375,
+                  -151.1590118408203
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          },
+          "coarseToFine": {
+            "samples": 724,
+            "allBadSamples": 10,
+            "badVisible": 3,
+            "goodVisibleLowerBound": 58,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.0661722719669342,
+            "witnesses": [
+              {
+                "error": 0.0661722719669342,
+                "point": [
+                  11.792011260986328,
+                  46.19294357299805,
+                  110.37972259521484
+                ],
+                "eye": [
+                  -64.70475769042969,
+                  46.79999923706055,
+                  -129.48146057128906
+                ]
+              },
+              {
+                "error": 0.061069149523973465,
+                "point": [
+                  12.307364463806152,
+                  45.949607849121094,
+                  109.71418762207031
+                ],
+                "eye": [
+                  -125,
+                  46.79999923706055,
+                  -104.50634765625
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          }
+        }
+      },
+      {
+        "owner": "aquadome_pod_1_2",
+        "stage": 3,
+        "directions": {
+          "fineToCoarse": {
+            "samples": 4078,
+            "allBadSamples": 381,
+            "badVisible": 14,
+            "goodVisibleLowerBound": 267,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.09088504314422607,
+            "witnesses": [
+              {
+                "error": 0.09088504314422607,
+                "point": [
+                  11.917059898376465,
+                  45.8929443359375,
+                  125.45512390136719
+                ],
+                "eye": [
+                  -36.695045471191406,
+                  47.778324127197266,
+                  -169.1922607421875
+                ]
+              },
+              {
+                "error": 0.08866520971059799,
+                "point": [
+                  11.823809623718262,
+                  45.8062744140625,
+                  125.31182861328125
+                ],
+                "eye": [
+                  -18.46236228942871,
+                  48.27827453613281,
+                  -170.49365234375
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          },
+          "coarseToFine": {
+            "samples": 670,
+            "allBadSamples": 10,
+            "badVisible": 3,
+            "goodVisibleLowerBound": 58,
+            "unresolvedRays": 0,
+            "maximumVisibleBad": 0.0661722719669342,
+            "witnesses": [
+              {
+                "error": 0.0661722719669342,
+                "point": [
+                  11.792011260986328,
+                  46.19294357299805,
+                  122.37972259521484
+                ],
+                "eye": [
+                  -38.73588562011719,
+                  46.238704681396484,
+                  -168.85189819335938
+                ]
+              },
+              {
+                "error": 0.061069149523973465,
+                "point": [
+                  12.307364463806152,
+                  45.949607849121094,
+                  121.71418762207031
+                ],
+                "eye": [
+                  -42.13181686401367,
+                  47.59046173095703,
+                  -168.234619140625
+                ]
+              }
+            ],
+            "sampledVisibleP95Pass": true
+          }
+        }
+      }
+    ]
+  },
+  "status": "Geometry checkpoint only: original lounge placement exceeds distant cell budgets. Art is redistributing the same six pods; rerun this placement-bound visibility certificate and full capacity after authoritative regeneration.",
+  "replay": "bun tools/cruise/aquatheater.ts <art-source-directory> <private-output-directory> [--capacity]"
+}
