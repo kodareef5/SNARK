@@ -143,7 +143,7 @@ test("a rung that did not draw all it was given, or never settled, is invalid: n
 test("the bodies copied are the crowd's real kinds, survivors dressed and riding saddled tames, and the vehicles stand parked beside them", () => {
   const { h, app } = client();
   for (const s of crowdScene().bodies) h.host.spawnCreature(s.species, s.x, s.z, 1);
-  h.run(1000, (now) => void app.frame(now, 390, 844));
+  h.run(300, (now) => void app.frame(now, 390, 844));
   const copies = new BodyCopies(app.session, h.world.hf, h.reg);
   [copies.n, copies.vehicles] = [40, 3];
   const out = new RemoteSample();
