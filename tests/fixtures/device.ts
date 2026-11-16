@@ -12,8 +12,8 @@ export const TOKEN = "0123456789abcdef0123456789abcdef";
 export const TIMING: Timing = { measureMs: 300, rungMs: 100, settleMs: 3000, loadMs: 20000, soakMs: 2000, holdMs: 100, flightMs: 2000, teleportMs: 500, turnMs: 200 };
 const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 27_2_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/157.0.8103.37 Mobile/15E148 Safari/604.1";
 
-/** A browser made of numbers. Its timers never fire, so nothing is waited out. `frameMs` is the display's interval. */
-export function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; tests?: string; frameMs?: number; stand?: (k: number) => number[] | null; layers?: (path: string) => unknown } = {}) {
+/** A browser made of numbers. Its timers never fire, so nothing is waited out. `frameMs` is the display's interval, and `bases` stands what a page asks the server for. */
+export function browser(opts: { saved?: string; clock?: () => number; expected?: Record<string, string>; mode?: string; tests?: string; frameMs?: number; stand?: (k: number) => number[] | null; layers?: (path: string) => unknown; bases?: (n: number, box: boolean) => number } = {}) {
   const posts: DeviceReport[] = [];
   const asked: number[] = [];
   const boxed: number[] = [];
@@ -31,7 +31,7 @@ export function browser(opts: { saved?: string; clock?: () => number; expected?:
       if (path === "report") posts.push(JSON.parse(body!) as DeviceReport);
       if (path.startsWith("base/")) asked.push(Number(path.slice(5)));
       if (path.startsWith("box/")) boxed.push(Number(path.slice(4)));
-      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : path === "report" ? { skipped: 3 + posts.length, overflows: 1 } : path.startsWith("stand/") ? (opts.stand?.(Number(path.slice(6))) ?? null) : path.startsWith("layers/") ? (opts.layers?.(path) ?? null) : { pieces: Number(path.split("/")[1]) };
+      const value = path === "ping" ? true : path === "hashes" ? (opts.expected ?? null) : path === "report" ? { skipped: 3 + posts.length, overflows: 1 } : path.startsWith("stand/") ? (opts.stand?.(Number(path.slice(6))) ?? null) : path.startsWith("layers/") ? (opts.layers?.(path) ?? null) : { pieces: opts.bases?.(Number(path.split("/")[1]), path.startsWith("box/")) ?? Number(path.split("/")[1]) };
       return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(value) });
     },
     load: () => page.saved,

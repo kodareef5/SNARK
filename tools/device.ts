@@ -40,6 +40,7 @@ import { parsePack } from "../shared/pack/pack.ts";
 import { writeMap } from "../shared/world/mapfile.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { placeFree } from "../server/place.ts";
+import type { ServerWorld } from "../server/world.ts";
 import { flock } from "./bench/gpu.ts";
 import { benchHills } from "./bench/terrain.ts";
 import { buildClient } from "./build-client.ts";
@@ -220,6 +221,29 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
   return { routes, unfinished: () => [...runs.values()].filter((r) => !r.told) };
 }
 
+/**
+ * Stands the first `n` pieces of the houses (devicescene.ts basePieces) in `world`, or with `box` of the compact base
+ * (boxBase), and says how many stand: each base grows from where it stood and shrinks from its far end or its top.
+ */
+export function bases(world: ServerWorld): (n: number, box: boolean) => number {
+  const built: [number[], number[]] = [[], []];
+  return (n, box) => {
+    const mine = built[box ? 1 : 0];
+    while (mine.length > n) world.structs.remove(mine.pop()!);
+    const plan = box ? boxBase().slice(0, n) : basePieces(n);
+    for (let i = mine.length; i < plan.length; i++) {
+      const p = plan[i]!;
+      const kind = world.reg.index.get(p.id) ?? 0;
+      const def = world.reg.defs[kind];
+      const ref = def?.type === "structure" ? world.structs.add(kind, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw, 0, def.hp) : -1;
+      // A piece the store will not take is left out, and the base is smaller than asked.
+      if (ref < 0) break;
+      mine.push(ref);
+    }
+    return mine.length;
+  };
+}
+
 /** What a report of `mode` lacks of a whole run on a desktop, which can run every tier and hold the screen on. Empty if nothing. */
 export function lacking(r: DeviceReport, mode: Mode = "quick"): string[] {
   const out: string[] = [];
@@ -362,25 +386,9 @@ if (import.meta.main) {
     }
     console.log(`\n${table.join("\n")}\n\nkept in ${file}\n`);
   };
-  /** Each base's pieces as they stand, in the order its plan gives them, so that it shrinks from the far end or the top. */
-  const built: [number[], number[]] = [[], []];
   let server: ReturnType<typeof startServer> | null = null;
-  const base = (n: number, box: boolean): number => {
-    const world = server!.host.world;
-    const mine = built[box ? 1 : 0];
-    while (mine.length > n) world.structs.remove(mine.pop()!);
-    const plan = box ? boxBase().slice(0, n) : basePieces(n);
-    for (let i = mine.length; i < plan.length; i++) {
-      const p = plan[i]!;
-      const kind = world.reg.index.get(p.id) ?? 0;
-      const def = world.reg.defs[kind];
-      const ref = def?.type === "structure" ? world.structs.add(kind, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw, 0, def.hp) : -1;
-      // A piece the store will not take is left out, and the base is smaller than asked.
-      if (ref < 0) break;
-      mine.push(ref);
-    }
-    return mine.length;
-  };
+  let stood: ((n: number, box: boolean) => number) | null = null;
+  const base = (n: number, box: boolean): number => (stood ??= bases(server!.host.world))(n, box);
   /** Where the tree order stands the body for each wood (WOODS), x, y and z: open ground nearest the map's middle and the elders' stand's. */
   let spots: number[][] = [];
   const stand = (k: number): number[] | null => {

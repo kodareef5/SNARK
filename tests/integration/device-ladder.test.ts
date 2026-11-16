@@ -6,7 +6,7 @@ import { expect, test } from "bun:test";
 import { JOIN_MS } from "../../client/core/governor.ts";
 import { DeviceProbe, MEMORY_MB, RUNGS, type RungReport } from "../../client/core/device.ts";
 import { deviceTable } from "../../client/core/devicetext.ts";
-import { lacking } from "../../tools/device.ts";
+import { bases, lacking } from "../../tools/device.ts";
 import { BodyCopies, boxBase, crowdScene } from "../../client/core/devicescene.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
@@ -16,7 +16,7 @@ import { coreRegistry } from "../fixtures/world.ts";
 test("the ladder climbs until a rung breaks, asks the server for the base, and ends taking texture memory until the device refuses it", async () => {
   const { h, pack, app, expected } = client();
   // A display twice as fast as the harness draws: no rung holds its rate, so each axis stops at its first.
-  const { b, asked, boxed } = browser({ clock: () => h.now, expected, mode: "ladder", frameMs: 8.3 });
+  const { b, asked, boxed } = browser({ clock: () => h.now, expected, mode: "ladder", frameMs: 8.3, bases: bases(h.world) });
   const probe = new DeviceProbe(TOKEN, b, TIMING);
   expect(await probe.before()).toBe(true);
   const card = renderer(300);
@@ -27,11 +27,16 @@ test("the ladder climbs until a rung breaks, asks the server for the base, and e
   const l = r.ladder!;
   expect(l.display).toBe(8.3);
   expect(l.rungs.map((g) => `${g.tier} ${g.axis} ${g.n} ${g.held}`)).toEqual(["lowpoly", "medium", "high"].flatMap((t) => [`${t} bodies 25 false`, `${t} triangles 8 false`, `${t} draws 256 false`, `${t} pieces 64 false`, `${t} base 409 false`, `${t} vehicles 3 false`]));
-  // Three parked vehicles add their triangles to the view of the bodies rung, which has no body here to copy; the tiers
-  // that cast count their shadow maps' draws.
+  // The server stood the compact base's ground storey 10 m off, of real thatch, wood and stone, which draws more than
+  // twice the triangles of the houses' first 64 pieces; three parked vehicles add theirs to the view of the bodies rung,
+  // which has no body here to copy; and the tiers that cast count their shadow maps' draws and triangles.
   const at = (tier: string, axis: string): RungReport => l.rungs.find((g) => g.tier === tier && g.axis === axis)!;
-  for (const t of ["lowpoly", "medium", "high"]) expect(at(t, "vehicles").tris - at(t, "bodies").tris).toBeGreaterThan(30000);
+  for (const t of ["lowpoly", "medium", "high"]) {
+    expect(at(t, "base").tris).toBeGreaterThan(2 * at(t, "pieces").tris);
+    expect(at(t, "vehicles").tris - at(t, "bodies").tris).toBeGreaterThan(30000);
+  }
   expect(l.rungs.filter((g) => g.casterDraws > 0).length).toBe(12);
+  expect(at("medium", "base").casterTris).toBeGreaterThan(2 * at("medium", "pieces").casterTris);
   // The harness frames take its 16.7 ms while our code takes 1.5, so the GPU is said to have taken the frame.
   expect(l.rungs.every((g) => g.limit === "the GPU")).toBe(true);
   // The houses were asked for on each tier's pieces rung and the compact base's ground floor on its base rung, each let go after.

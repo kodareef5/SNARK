@@ -64,7 +64,7 @@ test("a page shows which device it is on and the tests, starts nothing until one
   expect(["lit", "lit world near", "lit world fade"].map((n) => q.passes.find((p) => p.name === n)?.slope)).toEqual([0.135, 0.135, 0.135]);
   // The executor took 0.1 ms a draw, a caster each: 100 µs, through packets of the frame's own draws of each kind.
   expect(q.passes.filter((p) => p.per === "draw" && p.note === "").map((p) => [p.name, p.slope, p.k])).toEqual([["draw far", 100, 128], ["draw flat", 100, 128], ["draw caster", 100, 128]]);
-  expect([...card.kinds].sort((a, b) => a - b)).toEqual([0, DRAW_SIZED, DRAW_PULLED]);
+  expect([...card.kinds].sort((a, b) => a - b)).toEqual([DRAW_SIZED, DRAW_PULLED]);
   expect([r.again?.tier, r.again?.scene]).toEqual(["lowpoly", "plain"]);
   expect(r.hashes!.every((x) => x.got === x.want)).toBe(true);
   expect([r.load!.pageBytes, r.link.httpMs!.median, r.idleFrameMs, r.wakeLock, r.gpu!.maxTexture, r.gpu!.variant, r.device!.touch]).toEqual([500000, 0, 16.6, "held", 2048, "astc", 5]);

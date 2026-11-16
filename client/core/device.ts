@@ -1194,14 +1194,15 @@ export class DeviceRun {
   }
 
   /**
-   * The quick look asks the GPU questions first, where the renderer gives them, and the tree order the SURFACE pass's
-   * cost alone. The other tests begin at once.
+   * The quick look asks the GPU questions first, where the renderer gives them, facing the crowd, whose thatch and bodies
+   * give the executor draws of every kind to copy; the tree order the SURFACE pass's cost alone. The other tests begin
+   * at once.
    */
   private ask(): void {
     const make = this.side.questions;
     if ((this.mode !== "quick" && this.mode !== "trees") || !make) return this.begin();
     this.questions = make(this.mode === "trees" ? ["surface"] : undefined);
-    if (this.mode === "quick") this.report.gpuTests = this.questions.report;
+    if (this.mode === "quick") [this.report.gpuTests, this.side.app.controls.yaw] = [this.questions.report, LOOK.crowd];
     this.stage = "gpu";
     this.report.stage = "gpu questions";
   }
