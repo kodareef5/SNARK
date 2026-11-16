@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { HELICOPTER as spec, HELICOPTER_VEHICLE as def } from "../../content/vehicles/helicopter.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { createHelicopter, stepHelicopter, type HelicopterInput, type HelicopterState, type HelicopterWorld } from "../../shared/sim/helicopter.ts";
+import { helicopterImmersion } from "../../shared/sim/helicopter-immersion.ts";
 import { validateVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { vehiclePoint, rayVehicle } from "../../shared/sim/vehicle-frame.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
@@ -142,6 +143,39 @@ test("high-speed diagonal map-edge contact keeps the entire aircraft inside and 
   expect(world.blocked(s, s, def)).toBeNull();
   expect(s.x).toBeLessThan(hf.sizeX - 4); expect(s.z).toBeLessThan(hf.sizeZ - 4);
   expect(Math.abs(s.vx)).toBeLessThan(1); expect(Math.abs(s.vz)).toBeLessThan(1);
+});
+
+test("a fast flat touchdown removes contact energy but keeps momentum until finite skid friction stops the slide", () => {
+  const { world } = native(), s = flight(.04); s.vx = 30; s.vy = -1;
+  const contact = run(s, 1, command({ climb: -1 }), world);
+  expect(s.grounded).toBe(true); expect(s.vx).toBeGreaterThan(27); expect(contact.impact).toBeGreaterThan(5);
+  const touched = s.x, speed = s.vx;
+  run(s, 1, command(), world); expect(s.vx).toBeGreaterThan(speed - .4);
+  run(s, 30, command(), world); expect(s.vx).toBeGreaterThan(16); expect(s.vx).toBeLessThan(20);
+  run(s, 90, command(), world); expect(s.vx).toBe(0);
+  expect(Math.abs(s.x - touched - speed * speed / (2 * spec.brake))).toBeLessThan(.3);
+});
+
+test("a sliding aircraft still meets walls and continues falling after its skids leave a rooftop", () => {
+  const pad = native(); pad.structs.add(2, 96, 10, 96, 0, 0, 100);
+  const s = createHelicopter(spec, 100, 10.15, 96, 0, 0); s.vx = 20;
+  run(s, 25, command(), pad.world);
+  expect(s.x).toBeGreaterThan(110); expect(s.y).toBeLessThan(10); expect(s.grounded).toBe(false); expect(s.vy).toBeLessThan(-1);
+  const wall = native(); wall.structs.add(1, 105, 15, 96, 16384, 0, 100);
+  const sliding = createHelicopter(spec, 96, 0, 96, 0, 0); sliding.vx = 30;
+  const hit = run(sliding, 30, command(), wall.world);
+  expect(hit.blocked).toContain("structure:"); expect(sliding.x).toBeLessThan(101); expect(hit.impact).toBeGreaterThan(20);
+});
+
+test("water contact follows the complete cabin orientation through banks, dives and inversion", () => {
+  const world: HelicopterWorld = { ...sky, waterAt: () => 10 }, dry = flight(11);
+  expect(helicopterImmersion(dry, spec, 10)).toBe(0);
+  expect(stepHelicopter(dry, command({ direct: true }), def, world).water).toBe(false);
+  for (const [qx, qz, qw] of [[1, 0, 0], [Math.SQRT1_2, 0, Math.SQRT1_2], [0, Math.SQRT1_2, Math.SQRT1_2]]) {
+    const s = flight(11); s.qx = qx!; s.qz = qz!; s.qw = qw!;
+    expect(helicopterImmersion(s, spec, 10)).toBeGreaterThan(0);
+    expect(stepHelicopter(s, command({ direct: true }), def, world).water).toBe(true); expect(s.engineOn).toBe(false);
+  }
 });
 
 test("seeded direct and assisted sequences replay to identical state with finite normalized orientation", () => {

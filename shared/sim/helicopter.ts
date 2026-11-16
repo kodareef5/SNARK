@@ -4,6 +4,7 @@ import { TICK_DT, WORLD_MAX_Y } from "../coords.ts";
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
 import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
 import { validateHelicopterSpec, type HelicopterSpec, type RotorVehicleDefinition, type VehicleState } from "./vehicle.ts";
+import { helicopterImmersion } from "./helicopter-immersion.ts";
 
 export interface HelicopterState extends VehicleState {
   qx: number; qy: number; qz: number; qw: number;
@@ -117,7 +118,7 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
     s.engineOn = true; s.collective = clamp(mass / (p.liftMass * Math.max(0.2, efficiency)), 0, 1);
   }
   if (!usable || (!input.pilot && s.grounded)) s.engineOn = false;
-  const sea = world.waterAt(s.x, s.z), wet = Number.isFinite(sea) && s.y + p.clearance < sea;
+  const wet = helicopterImmersion(s, p, world.waterAt(s.x, s.z)) > 0;
   if (wet) { s.engineOn = false; result.water = true; result.surface = "water"; }
   const autorotation = !s.engineOn && !s.grounded && !wet ? clamp(-s.vy / 10, 0, 0.6) * s.rotorCondition : 0;
   const targetRpm = p.rotorRpm * (s.engineOn ? 0.76 + 0.24 * s.engineCondition : autorotation);
@@ -168,7 +169,7 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
   s.pitchRate = approach(s.pitchRate, wantedPitchRate * control, acceleration * TICK_DT);
   s.rollRate = approach(s.rollRate, wantedRollRate * control, acceleration * TICK_DT);
   s.yawRate = approach(s.yawRate, wantedYawRate * control, acceleration * TICK_DT);
-  if (s.grounded) { s.vx = s.vy = s.vz = 0; s.yawRate = s.pitchRate = s.rollRate = 0; result.surface = wet ? "water" : "ground"; }
+  if (s.grounded) { s.vy = 0; s.yawRate = s.pitchRate = s.rollRate = 0; result.surface = wet ? "water" : "ground"; }
   if (s.engineOn) s.fuel = Math.max(0, s.fuel - p.fuelPerSecond * (0.4 + 0.6 * s.collective) * TICK_DT);
   // Angular substeps also keep a sweeping rotor/tail from crossing an obstacle during a stationary roll.
   const span = Math.max(6, ...def.rotors.map(r => r.radius + len3(r.at[0], r.at[1], r.at[2])));
@@ -183,23 +184,40 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
       quatAxis(turn, 0, -s.pitchRate / rate, s.yawRate / rate, s.rollRate / rate, rate * dt);
       quatMul(q, 0, q, 0, turn, 0); quatNormalize(q, 0); writeRotation(s);
     }
-    if (s.grounded) continue;
-    // Anisotropic body drag, with no desired-speed servo: flares, dives and inverted momentum remain available.
-    bodyDrag(s, p);
-    const thrust = liftMax * s.collective;
-    const ax = upright[0]! * thrust + drag[0]!, az = upright[2]! * thrust + drag[2]!;
-    let ay = upright[1]! * thrust - p.gravity + drag[1]!;
-    // Unpowered rotor drag dissipates fall energy; broken blades lose that benefit. It never reverses gravity.
-    if (!powered && s.vy < 0 && upright[1]! > 0) ay += Math.min(p.gravity * 0.92, s.vy * s.vy * 0.22 * efficiency * upright[1]!);
-    if (wet) { ay += -s.vy * 3; }
-    s.vx = clamp(s.vx + ax * dt, -120, 120); s.vy = clamp(s.vy + ay * dt, -100, 100); s.vz = clamp(s.vz + az * dt, -120, 120);
-    if (wet) { s.vx *= 1 - 2 * dt; s.vz *= 1 - 2 * dt; }
-    s.x += s.vx * dt; s.z += s.vz * dt; s.y += s.vy * dt;
-    if (s.y > WORLD_MAX_Y - p.height) { s.y = WORLD_MAX_Y - p.height; s.vy = Math.min(0, s.vy); }
-    const support = upright[1]! > 0.9 ? world.support(s.x, previous.y + 0.04, s.z, s.yaw, Math.max(0.12, previous.y - s.y + 0.06), p) : null;
-    if (support && s.vy <= 0 && s.y <= support.y + 0.012 && previous.y >= support.y - 0.012) {
-      result.landSpeed = Math.max(result.landSpeed, -s.vy); result.impactSpeed = Math.max(result.impactSpeed, -s.vy);
-      s.y = support.y; s.vy = 0; s.grounded = true; s.groundPitch = support.pitch; s.groundRoll = support.roll;
+    if (s.grounded) {
+      // A skid touchdown does not cancel horizontal momentum. Dry friction removes a bounded amount of speed,
+      // and the same swept hull still meets walls and pad edges while the aircraft slides.
+      const speed = Math.sqrt(s.vx * s.vx + s.vz * s.vz), keep = speed > 0 ? Math.max(0, 1 - p.brake * dt / speed) : 0;
+      s.vx *= keep; s.vz *= keep; s.x += s.vx * dt; s.z += s.vz * dt;
+      const support = world.support(s.x, previous.y + .08, s.z, s.yaw, .16, p);
+      if (support) {
+        s.y = support.y; s.groundPitch = support.pitch; s.groundRoll = support.roll;
+        targetRotation(s.yaw, support.pitch, support.roll); q.set(wanted); writeRotation(s);
+      } else { s.grounded = false; s.vy -= p.gravity * dt; s.y += s.vy * dt; }
+    } else {
+      // Anisotropic body drag, with no desired-speed servo: flares, dives and inverted momentum remain available.
+      bodyDrag(s, p);
+      const thrust = liftMax * s.collective;
+      const ax = upright[0]! * thrust + drag[0]!, az = upright[2]! * thrust + drag[2]!;
+      let ay = upright[1]! * thrust - p.gravity + drag[1]!;
+      // Unpowered rotor drag dissipates fall energy; broken blades lose that benefit. It never reverses gravity.
+      if (!powered && s.vy < 0 && upright[1]! > 0) ay += Math.min(p.gravity * 0.92, s.vy * s.vy * 0.22 * efficiency * upright[1]!);
+      if (wet) { ay += -s.vy * 3; }
+      s.vx = clamp(s.vx + ax * dt, -120, 120); s.vy = clamp(s.vy + ay * dt, -100, 100); s.vz = clamp(s.vz + az * dt, -120, 120);
+      if (wet) { s.vx *= 1 - 2 * dt; s.vz *= 1 - 2 * dt; }
+      s.x += s.vx * dt; s.z += s.vz * dt; s.y += s.vy * dt;
+      if (s.y > WORLD_MAX_Y - p.height) { s.y = WORLD_MAX_Y - p.height; s.vy = Math.min(0, s.vy); }
+      const support = upright[1]! > 0.9 ? world.support(s.x, previous.y + 0.04, s.z, s.yaw, Math.max(0.12, previous.y - s.y + 0.06), p) : null;
+      if (support && s.vy <= 0 && s.y <= support.y + 0.012 && previous.y >= support.y - 0.012) {
+        const normal = -s.vy, speed = Math.sqrt(s.vx * s.vx + s.vz * s.vz);
+        // The stopping normal impulse permits only Coulomb-bounded tangential loss. Report energy actually removed
+        // at contact; the remaining motion must slide, rather than disappearing into a nominal ground state.
+        const after = Math.max(0, speed - normal * p.brake / p.gravity), keep = speed > 0 ? after / speed : 0;
+        s.vx *= keep; s.vz *= keep;
+        result.landSpeed = Math.max(result.landSpeed, normal);
+        result.impactSpeed = Math.max(result.impactSpeed, Math.sqrt(normal * normal + speed * speed - after * after));
+        s.y = support.y; s.vy = 0; s.grounded = true; s.groundPitch = support.pitch; s.groundRoll = support.roll;
+      }
     }
     const hit = world.blocked(previous, s, def);
     if (hit) {
@@ -219,8 +237,7 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
       }
     }
     if (s.grounded) {
-      s.vx *= Math.max(0, 1 - 8 * dt); s.vz *= Math.max(0, 1 - 8 * dt);
-      result.surface = "ground"; break;
+      result.surface = wet ? "water" : "ground";
     }
   }
   if (s.grounded && !input.pilot) s.engineOn = false;

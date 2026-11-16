@@ -42,6 +42,15 @@ test("airborne wrecks retain crash spin and sink in water without powered lift",
   expect(s.vy).toBeLessThan(-.3); expect(s.vy).toBeGreaterThan(-1); expect(Math.abs(s.vz)).toBeLessThan(.01);
 });
 
+test("an inverted wreck's submerged cabin receives water drag while its skid origin is still above the waterline", () => {
+  const { world, hf } = scene(); hf.seaLevel = 10;
+  const inverted = createHelicopter(spec, 64, 11, 64), upright = { ...inverted };
+  inverted.qx = 1; inverted.qw = 0; inverted.vy = upright.vy = -8;
+  stepHelicopterWreck(inverted, def, world); stepHelicopterWreck(upright, def, world);
+  expect(inverted.y).toBeGreaterThan(10); expect(inverted.vy).toBeGreaterThan(-8);
+  expect(upright.vy).toBeLessThan(-8); expect(inverted.vy - upright.vy).toBeGreaterThan(1);
+});
+
 test("a remotely observed rigid wreck keeps replicated attitude and a rest rig instead of a creature death pose", () => {
   const { hf, structs } = scene();
   const rig = buildRig({ id: "test:helicopter", skeleton: "test:heli", names: ["root", "rotor"], parent: [-1, 0], rest: [0, 0, 0, 0, 3.15, -.3] }, NO_CLIPS)!;

@@ -6,6 +6,7 @@ import { quatAxis, quatMul, quatNlerp, quatNormalize } from "../math/quat.ts";
 import { len3 } from "../math/scalar.ts";
 import type { HelicopterState, HelicopterWorld } from "./helicopter.ts";
 import type { RotorVehicleDefinition } from "./vehicle.ts";
+import { helicopterImmersion } from "./helicopter-immersion.ts";
 
 const q = new Float64Array(4), turn = new Float64Array(4), fromQ = new Float64Array(4), toQ = new Float64Array(4);
 const definitions = new WeakMap<RotorVehicleDefinition, RotorVehicleDefinition>();
@@ -20,7 +21,7 @@ export function helicopterWreckDefinition(def: RotorVehicleDefinition): RotorVeh
 export function stepHelicopterWreck(s: HelicopterState, def: RotorVehicleDefinition, world: HelicopterWorld): boolean {
   const wreck = helicopterWreckDefinition(def);
   s.engineOn = false; s.rotorRpm = s.engineRpm = s.collective = 0; s.grounded = false;
-  const wet = s.y + def.spec.height / 2 < world.waterAt(s.x, s.z);
+  const wet = helicopterImmersion(s, def.spec, world.waterAt(s.x, s.z)) > .5;
   const angular = len3(s.pitchRate, s.yawRate, s.rollRate);
   const count = Math.max(2, Math.min(32, Math.ceil((len3(s.vx, s.vy, s.vz) + angular * 7) * TICK_DT / .12)));
   const dt = TICK_DT / count;
