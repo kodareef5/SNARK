@@ -1,7 +1,7 @@
 /** Measure reused rails with the exact native placement frame, independently of the Python author. */
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
-import { frameAxes, HALF_SIDE } from "../../../../../shared/world/frame.ts";
+import { frameAxes, HALF_SIDE } from "../../../../shared/world/frame.ts";
 
 type Point = readonly number[];
 interface Layout {
@@ -9,7 +9,7 @@ interface Layout {
   instances: { id: string; prototype: string; at: Point; yaw: number }[];
   guardRuns: { id: string; a: Point; b: Point; instances: string[]; reused: boolean }[];
 }
-const source = readFileSync(new URL("../../../../../content/landmarks/cruise-layout.json", import.meta.url));
+const source = readFileSync(new URL("../../../../content/landmarks/cruise-layout.json", import.meta.url));
 const layout = JSON.parse(source.toString()) as Layout;
 const prototypes = new Map(layout.prototypes.map(p => [p.id, p]));
 const instances = new Map(layout.instances.map(i => [i.id, i]));

@@ -7,7 +7,7 @@ import json,math
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[4]
+ROOT = HERE.parents[3]
 OUT = ROOT / 'content/landmarks/cruise-layout.json'
 DECKS = [('2',3.0),('3',6.2),('4',9.8),('5',14.0),('6',18.4),('7',22.6),('8',26.0),
          ('9',29.2),('10',32.4),('11',35.6),('12',38.8),('14',42.0),('15',45.6),
@@ -15,7 +15,7 @@ DECKS = [('2',3.0),('3',6.2),('4',9.8),('5',14.0),('6',18.4),('7',22.6),('8',26.
 BUILDER = 'https://www.meyerturku.fi/en/news-publications/news/meyer-turku-shipyard-delivered-the-worlds-most-advanced-cruise-ship-icon-of-the-seas/'
 PLAN = 'https://www.royalcaribbean.com/content/dam/royal/ships/deckplans-hub/Icon_2250_v2023.pdf'
 D = {
- 'schema':1, 'id':'core:cruise', 'subject':'Icon of the Seas', 'phase':'contract-prototype',
+ 'schema':1, 'id':'cruise', 'subject':'Icon of the Seas', 'phase':'contract-prototype',
  'frame':{'units':'metres','up':'+Y','forward':'+Z','port':'+X','waterline':0,'yawUnits':'degrees'},
  'sources':[{'id':'builder-delivery','url':BUILDER,'kind':'published-dimensions-and-photograph','date':'2023-11-26'},
             {'id':'operator-plan-2250','url':PLAN,'kind':'public-visitor-plan','profile':'2250','pdfCreated':'2022-10-20'}],
@@ -55,7 +55,7 @@ def prototype(name,category,boxes,*,hulls=None,look=None,art=None,color=232):
  assert len(boxes)+len(hulls or []) <= 16, name
  assert all(abs(v)<=16 for side in bounds.values() for v in side), (name,bounds)
  assert max(math.hypot(q[0],q[2]) for q in points)<=14.5+.000001, (name,'native route radius')
- ident='core:cruise_'+name
+ ident='cruise:'+name
  p={'id':ident,'mesh':ident,'category':category,'color':color,'boxes':boxes,'hulls':hulls or [],
     'visualBounds':bounds,'art':art or {'kind':'solids','finish':'enamel'}}
  if look: p['look']=look
@@ -78,5 +78,7 @@ D['docking']={'shipLanding':[28.9,14,-24],'shoreLanding':[58,14,-24],'shoreAppro
               'pierConnection':{'xMinimum':58,'zMinimum':-25.6,'zMaximum':-22.4}}
 from layout_geometry import populate
 populate(D,prototype,instance,box,node)
+from layout_cells import finish as cells
+cells(D)
 OUT.write_text(json.dumps(clean(D),indent=2)+'\n')
 print(f'Cruise layout: {len(D["prototypes"])} prototypes, {len(D["instances"])} instances, {len(D["routes"])} routes')

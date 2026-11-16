@@ -1,0 +1,45 @@
+[
+  {
+    "file": "lifeboat-concord-01.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Icon_of_the_Seas_Palfinger_01.jpg",
+    "originalSource": "https://upload.wikimedia.org/wikipedia/commons/2/21/Icon_of_the_Seas_Palfinger_01.jpg?utm_campaign=index&utm_content=original&utm_source=commons.wikimedia.org",
+    "credit": "Concord",
+    "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "kind": "Own-work photograph of Icon of the Seas Palfinger lifeboat, 2025-02-11",
+    "changes": "Unmodified reference copy; production geometry/materials do not use photo pixels.",
+    "accessed": "2026-11-16",
+    "dimensions": [
+      4080,
+      3072
+    ],
+    "bytes": 3212064,
+    "sha256": "dd2a8711fd8bfe7a23dd68afdfcd641ede4d86370beb3d40b8209f30ab91a390"
+  },
+  {
+    "file": "lifeboat-concord-03.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Icon_of_the_Seas_Palfinger_03.jpg",
+    "originalSource": "https://upload.wikimedia.org/wikipedia/commons/7/73/Icon_of_the_Seas_Palfinger_03.jpg?utm_campaign=index&utm_content=original&utm_source=commons.wikimedia.org",
+    "credit": "Concord",
+    "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "kind": "Own-work photograph of Icon of the Seas Palfinger lifeboat, 2025-02-11",
+    "changes": "Unmodified reference copy; production geometry/materials do not use photo pixels.",
+    "accessed": "2026-11-16",
+    "dimensions": [
+      4080,
+      3072
+    ],
+    "bytes": 4566166,
+    "sha256": "687be706c383d88d6b3cfc1ceb039c4b807b0d2231b1f54171e43005262b43e8"
+  },
+  {
+    "file": "palfinger-boats-davits.pdf",
+    "url": "https://assets.palfinger.com/cache-buster-1574941498/importdata/marine/events/marintec/palfinger-marine-boats-and-davits-brochure.pdf",
+    "credit": "PALFINGER MARINE",
+    "license": "Copyright PALFINGER; reference only",
+    "kind": "Manufacturer Boats and Davits catalogue, printed pages 16\u201317 (PDF page 9)",
+    "changes": "Unmodified reference copy; production geometry/materials do not use document pixels.",
+    "accessed": "2026-11-16",
+    "bytes": 1574430,
+    "sha256": "63cc26598855ee19a30800f3199f699faefad0c6bba49fcc69a0c08e87967713"
+  }
+]

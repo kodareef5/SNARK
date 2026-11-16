@@ -1,0 +1,5956 @@
+{
+  "prototypes": [
+    {
+      "id": "core:cruise_transom_518854372b",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_transom_3e42e4f62e",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_transom_65b901754c",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_stem_0120594453",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_09fb5965c5",
+      "triangles": [
+        24,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_dfafd2f609",
+      "triangles": [
+        120,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_1fd2b937ed",
+      "triangles": [
+        168,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_d26f71c5a7",
+      "triangles": [
+        120,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_b51157bdff",
+      "triangles": [
+        144,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_8797467c1d",
+      "triangles": [
+        48,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_9dee84c72f",
+      "triangles": [
+        240,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_0a2548673f",
+      "triangles": [
+        108,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_44c23608bb",
+      "triangles": [
+        180,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_6111bf0531",
+      "triangles": [
+        216,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_d5fce258a6",
+      "triangles": [
+        168,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_14b3ce841a",
+      "triangles": [
+        144,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_146bd6b7de",
+      "triangles": [
+        680,
+        400,
+        320,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_ea25fb94eb",
+      "triangles": [
+        680,
+        400,
+        320,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_landing_88271ae938",
+      "triangles": [
+        460,
+        332,
+        272,
+        132,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_0529047302",
+      "triangles": [
+        728,
+        424,
+        344,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_cc7aa5eb67",
+      "triangles": [
+        728,
+        424,
+        344,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_landing_b74c6a219a",
+      "triangles": [
+        460,
+        332,
+        272,
+        132,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_f0829b5602",
+      "triangles": [
+        776,
+        448,
+        368,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_6bda9312ab",
+      "triangles": [
+        776,
+        448,
+        368,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_landing_88089a2c81",
+      "triangles": [
+        460,
+        332,
+        272,
+        132,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_7a67720ae2",
+      "triangles": [
+        776,
+        448,
+        368,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_bb80617cb1",
+      "triangles": [
+        776,
+        448,
+        368,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_landing_2a11ccf9b7",
+      "triangles": [
+        460,
+        332,
+        272,
+        132,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_e1a93687ee",
+      "triangles": [
+        704,
+        412,
+        332,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_f47fbc7af6",
+      "triangles": [
+        704,
+        412,
+        332,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_landing_fe8c0cfd15",
+      "triangles": [
+        460,
+        332,
+        272,
+        132,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_f4000ec355",
+      "triangles": [
+        704,
+        412,
+        332,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_4b8b37dd0c",
+      "triangles": [
+        704,
+        412,
+        332,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_325ad566af",
+      "triangles": [
+        752,
+        436,
+        356,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_flight_3fe196b55b",
+      "triangles": [
+        752,
+        436,
+        356,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_stair_landing_eb2c404d73",
+      "triangles": [
+        460,
+        332,
+        272,
+        132,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_gangway_961344131f",
+      "triangles": [
+        740,
+        452,
+        332,
+        156,
+        132,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_cabin_balcony_250a8f026e",
+      "triangles": [
+        1728,
+        1728,
+        432,
+        360,
+        312,
+        312
+      ]
+    },
+    {
+      "id": "core:cruise_door_cabin_closed_1c0bcd020d",
+      "triangles": [
+        60,
+        60,
+        60,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_door_cabin_open_6444c5d076",
+      "triangles": [
+        60,
+        60,
+        60,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_balcony_3_2_b45985e625",
+      "triangles": [
+        204,
+        136,
+        136,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_wing_5a3c87bb03",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_wing_d5bf357cf0",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_34b01c906d",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_8a4cb79702",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_042fe2abc2",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_8e4dc1bdbb",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_d3b08d34c5",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_7c559d6028",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_dbeb14701d",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_b1438ad722",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_574cc39601",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_fcc892dcae",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_b5a5932131",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_8a8761b013",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_89a0a1fa3e",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_fbde155c53",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_c8b0e02b7a",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_8905713333",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_191363ffef",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_a825ce36b6",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_956f31cce3",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_109e09009b",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_c75d067daa",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_08e65c2a76",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_0a6cf460bd",
+      "triangles": [
+        1092,
+        780,
+        780,
+        468,
+        468,
+        468
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_a88ff753c6",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_350242273d",
+      "triangles": [
+        1092,
+        780,
+        780,
+        468,
+        468,
+        468
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_9c589641a7",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_366455af51",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_b98191f909",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_a0340e5ffd",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_ec773b4cc8",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_3fcb5e8c42",
+      "triangles": [
+        1344,
+        960,
+        960,
+        576,
+        576,
+        576
+      ]
+    },
+    {
+      "id": "core:cruise_dome_sector_fba7396597",
+      "triangles": [
+        1520,
+        1136,
+        1136,
+        752,
+        752,
+        752
+      ]
+    },
+    {
+      "id": "core:cruise_funnel_band_2361067f9e",
+      "triangles": [
+        124,
+        92,
+        60,
+        44,
+        28,
+        28
+      ]
+    },
+    {
+      "id": "core:cruise_funnel_band_fb4ec1853b",
+      "triangles": [
+        124,
+        92,
+        60,
+        44,
+        28,
+        28
+      ]
+    },
+    {
+      "id": "core:cruise_funnel_band_a9b8effe85",
+      "triangles": [
+        124,
+        92,
+        60,
+        44,
+        28,
+        28
+      ]
+    },
+    {
+      "id": "core:cruise_funnel_band_cc6bd7c038",
+      "triangles": [
+        124,
+        92,
+        60,
+        44,
+        28,
+        28
+      ]
+    },
+    {
+      "id": "core:cruise_funnel_band_f7f8418ae3",
+      "triangles": [
+        124,
+        92,
+        60,
+        44,
+        28,
+        28
+      ]
+    },
+    {
+      "id": "core:cruise_funnel_band_2fcb339617",
+      "triangles": [
+        124,
+        92,
+        60,
+        44,
+        28,
+        28
+      ]
+    },
+    {
+      "id": "core:cruise_funnel_pipes_da43cd6dd5",
+      "triangles": [
+        176,
+        112,
+        80,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_signal_mast_17c9286cc7",
+      "triangles": [
+        132,
+        84,
+        60,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_pool_basin_b13b7c48d2",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_accommodation_cell_f4ec1b7cc9",
+      "triangles": [
+        84,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_cabin_interior_14b9f2196c",
+      "triangles": [
+        1692,
+        1692,
+        396,
+        324,
+        276,
+        276
+      ]
+    },
+    {
+      "id": "core:cruise_cabin_ocean_4861701dce",
+      "triangles": [
+        1728,
+        1728,
+        432,
+        360,
+        312,
+        312
+      ]
+    },
+    {
+      "id": "core:cruise_cabin_suite_8690d3434d",
+      "triangles": [
+        1728,
+        1728,
+        432,
+        360,
+        312,
+        312
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_0b7cfe6d7a",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_bff01eaa68",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_22de80fefe",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_6391ce83e7",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_655bd7e8ab",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_00972cda86",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_5d6f3854f6",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_7c191479fe",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_525ff5f4ef",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_01945b66db",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_71b26b0d1e",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_9621f68872",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_55a3ced1de",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_299707ac56",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_b9dc30dcfd",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_shell_1b3b9b776f",
+      "triangles": [
+        336,
+        268,
+        200,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_stairs_63bdfc6872",
+      "triangles": [
+        672,
+        336,
+        336,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_bridge_c471e4832b",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_counter_cdbececbff",
+      "triangles": [
+        300,
+        300,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_chair_d1b18ad9ce",
+      "triangles": [
+        480,
+        480,
+        96,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_sofa_c2f85c4276",
+      "triangles": [
+        360,
+        360,
+        72,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_table_ec903c65ed",
+      "triangles": [
+        300,
+        300,
+        60,
+        60,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_table_663fef64a2",
+      "triangles": [
+        300,
+        300,
+        60,
+        60,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_chair_e3fc2183c4",
+      "triangles": [
+        480,
+        480,
+        96,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_gaming_table_9539dd0e67",
+      "triangles": [
+        180,
+        180,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_slots_e2f85d0d38",
+      "triangles": [
+        720,
+        720,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_44c11bd74c",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_table_35046a5273",
+      "triangles": [
+        300,
+        300,
+        60,
+        60,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_chair_d00b4180cc",
+      "triangles": [
+        480,
+        480,
+        96,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_794d7b8d01",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_26587a6581",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_88f18243e5",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_d290e43d23",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_seating_row_4282f159b0",
+      "triangles": [
+        3120,
+        3120,
+        420,
+        420,
+        156,
+        156
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_stage_2b8893703a",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_screen_1c887a9964",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_0174ba460b",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_a25c8d0824",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_stage_fdea2b937f",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_seating_row_8e057edd79",
+      "triangles": [
+        1140,
+        1140,
+        156,
+        156,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_3b99a731cd",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_902e112eae",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_gym_d2c0ea23d5",
+      "triangles": [
+        300,
+        300,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_2e163d62c6",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_e049ac3a97",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_lounger_86cad2b94a",
+      "triangles": [
+        360,
+        360,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_room_wall_7a5f6b6541",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_glazing_d17a1c8e25",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_glazing_4013fe6c4d",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_glazing_90995a8f84",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_glazing_ccaf084a57",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_glazing_ed91da6fa2",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_console_ad4980d915",
+      "triangles": [
+        300,
+        300,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_table_6cbbbafe51",
+      "triangles": [
+        300,
+        300,
+        60,
+        60,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_medical_67866cc609",
+      "triangles": [
+        360,
+        360,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_table_8d8aa77a5c",
+      "triangles": [
+        300,
+        300,
+        60,
+        60,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_laundry_46dff56cdf",
+      "triangles": [
+        1448,
+        1000,
+        488,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_counter_f46b8dc294",
+      "triangles": [
+        300,
+        300,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_engine_aabd73c8d8",
+      "triangles": [
+        360,
+        360,
+        72,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_workbench_17369e44f5",
+      "triangles": [
+        420,
+        420,
+        84,
+        84,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_planter_tree_ab1f91c798",
+      "triangles": [
+        224,
+        200,
+        88,
+        72,
+        64,
+        64
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_sofa_afd350ee4b",
+      "triangles": [
+        360,
+        360,
+        72,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_play_structure_eaa9c18f68",
+      "triangles": [
+        596,
+        532,
+        164,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_lounger_7b5cf9f4ca",
+      "triangles": [
+        360,
+        360,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_furniture_counter_8a10faae5e",
+      "triangles": [
+        300,
+        300,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_decorative_pool_4204eb3f9d",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_decorative_pool_0299933b8c",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_decorative_pool_6712f89a59",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_lifeboat_a8f364f42f",
+      "triangles": [
+        3688,
+        2872,
+        1480,
+        592,
+        448,
+        240
+      ]
+    },
+    {
+      "id": "core:cruise_davit_48a50473b3",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_davit_e2255f9423",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_slide_support_a9b40705ba",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_slide_support_69bf1f8b31",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_slide_support_72e4472dac",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_slide_coral_bb2327c5e5",
+      "triangles": [
+        240,
+        176,
+        144,
+        112,
+        80,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_slide_coral_abd211e0c5",
+      "triangles": [
+        240,
+        176,
+        144,
+        112,
+        80,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_slide_coral_f2bfe9813d",
+      "triangles": [
+        480,
+        352,
+        288,
+        224,
+        160,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_slide_leaf_3ae7416cc0",
+      "triangles": [
+        180,
+        132,
+        108,
+        84,
+        60,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_slide_leaf_dfe0f4bce5",
+      "triangles": [
+        300,
+        220,
+        180,
+        140,
+        100,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_slide_leaf_e882f8c968",
+      "triangles": [
+        360,
+        264,
+        216,
+        168,
+        120,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_slide_leaf_1c79dfcdcd",
+      "triangles": [
+        120,
+        88,
+        72,
+        56,
+        40,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_slide_blue_82d30aa10b",
+      "triangles": [
+        120,
+        88,
+        72,
+        56,
+        40,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_slide_blue_54636ea2a5",
+      "triangles": [
+        360,
+        264,
+        216,
+        168,
+        120,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_slide_blue_f1e5d17562",
+      "triangles": [
+        300,
+        220,
+        180,
+        140,
+        100,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_slide_blue_94e755cd59",
+      "triangles": [
+        180,
+        132,
+        108,
+        84,
+        60,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_slide_yellow_00d77e7270",
+      "triangles": [
+        180,
+        132,
+        108,
+        84,
+        60,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_slide_yellow_9a95f869a6",
+      "triangles": [
+        300,
+        220,
+        180,
+        140,
+        100,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_slide_yellow_4847821b37",
+      "triangles": [
+        480,
+        352,
+        288,
+        224,
+        160,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_slide_purple_18db6c2515",
+      "triangles": [
+        300,
+        220,
+        180,
+        140,
+        100,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_slide_purple_0883206f2c",
+      "triangles": [
+        180,
+        132,
+        108,
+        84,
+        60,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_slide_purple_01722ef4f4",
+      "triangles": [
+        480,
+        352,
+        288,
+        224,
+        160,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_slide_orange_75bd67dbcb",
+      "triangles": [
+        240,
+        176,
+        144,
+        112,
+        80,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_slide_orange_5456720ece",
+      "triangles": [
+        240,
+        176,
+        144,
+        112,
+        80,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_slide_orange_f8ac94bf92",
+      "triangles": [
+        480,
+        352,
+        288,
+        224,
+        160,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_stern_arch_09eedd29e5",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_stern_arch_03681a003c",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_stern_arch_e77496e72f",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_stern_arch_d5c08dcd41",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_port_arrival",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_port_boarding",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_port_lower_berths",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_e90a707d82",
+      "triangles": [
+        252,
+        140,
+        120,
+        48,
+        48,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_5538d48824",
+      "triangles": [
+        140,
+        80,
+        80,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_89c89fd082",
+      "triangles": [
+        112,
+        80,
+        80,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_a180977d2c",
+      "triangles": [
+        168,
+        100,
+        100,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_c0cf7cff3c",
+      "triangles": [
+        112,
+        80,
+        80,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_promenade_frame_86a9aadd2d",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_promenade_frame_f04d243a4e",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_suite_ceiling_42242ab20e",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_root_30f6d8affd",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_roof_6725676390",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_bridge_roof_3c0e48948c",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_wing_roof_9bde64a0ae",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_e67ce4ad18",
+      "triangles": [
+        252,
+        140,
+        120,
+        48,
+        48,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_96fb9ebb66",
+      "triangles": [
+        112,
+        80,
+        80,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_b9f78c5a51",
+      "triangles": [
+        168,
+        100,
+        100,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_cardinal_guard_f16554d039",
+      "triangles": [
+        140,
+        80,
+        80,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_wing_roof_42f0ca9007",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_funnel_support_6a51db258f",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquadome_pod_66cc498dbb",
+      "triangles": [
+        2804,
+        2316,
+        1668,
+        1132,
+        846,
+        618
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_seating_c2e6b589de",
+      "triangles": [
+        1860,
+        1860,
+        252,
+        252,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_stage_07a56e9ae7",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_arch_cb0d3bb162",
+      "triangles": [
+        60,
+        44,
+        36,
+        28,
+        20,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_arch_addc30d5a9",
+      "triangles": [
+        60,
+        44,
+        36,
+        28,
+        20,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_arch_dd33cf7efc",
+      "triangles": [
+        60,
+        44,
+        36,
+        28,
+        20,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_arch_16f59d0495",
+      "triangles": [
+        60,
+        44,
+        36,
+        28,
+        20,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_arch_8eb5e0011f",
+      "triangles": [
+        60,
+        44,
+        36,
+        28,
+        20,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_arch_f54d2d2eb2",
+      "triangles": [
+        60,
+        44,
+        36,
+        28,
+        20,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_arch_83e1a32c48",
+      "triangles": [
+        60,
+        44,
+        36,
+        28,
+        20,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_aquatheater_arch_f1fbd23f11",
+      "triangles": [
+        60,
+        44,
+        36,
+        28,
+        20,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_pool_lounge_sofa_8cb894505a",
+      "triangles": [
+        360,
+        360,
+        72,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_pool_lounge_table_69d4444c16",
+      "triangles": [
+        300,
+        300,
+        60,
+        60,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_ce66864405",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_c4e06e440a",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_5648c3b105",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_6cd6b2682b",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_421ffbe95e",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_1e81dec691",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_63ef684245",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_61b6465042",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_f64619559a",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_675b7d51c5",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_e874f86842",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_f1b4092450",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_04807fb456",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_049004e46e",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_3ef672540f",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_b693f0d83f",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_wayfinding_8a8353eba3",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_ship_name_a018fb138b",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_guard_f488a7e27b",
+      "triangles": [
+        364,
+        220,
+        160,
+        72,
+        60,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_pearl_guard_7ef5c9936b",
+      "triangles": [
+        280,
+        160,
+        140,
+        60,
+        48,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_62906a8f6b",
+      "triangles": [
+        108,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_20a8a0004c",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_6c70a3bb65",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_77080a80b2",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_e5d58998fc",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_c986a72e0b",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_cd4f2000bc",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_852c111a26",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_53263a2d43",
+      "triangles": [
+        108,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_ee687bd15d",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_c53d6225cd",
+      "triangles": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_a33ee49cf9",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_89a2582bc9",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_a5ef99fb98",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_fcd9dd6369",
+      "triangles": [
+        108,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_e86a06608d",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_c0fd6ef756",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_bae3a89d37",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_2269918859",
+      "triangles": [
+        84,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_e521cb8fa8",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_401fdce3af",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_74df5abded",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_2119259faf",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_29aac07140",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_89b9764bff",
+      "triangles": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_04878128cd",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_576b1b0273",
+      "triangles": [
+        108,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_37dfd141cb",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_e7f22af27b",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_5fa6c099d1",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_f413c57b2c",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_98627f6650",
+      "triangles": [
+        192,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_dd326f3071",
+      "triangles": [
+        192,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_panels_5e2d4a362d",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_7251c2e6a6",
+      "triangles": [
+        156,
+        156,
+        156,
+        156,
+        156,
+        156
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_panels_ec4a5fe055",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_5c3d7d9c69",
+      "triangles": [
+        168,
+        168,
+        168,
+        168,
+        168,
+        168
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_panels_f7021c221d",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_528b73d927",
+      "triangles": [
+        192,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_panels_cd238980b1",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_9f4b7254d0",
+      "triangles": [
+        84,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_panels_82eaaa1d1b",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_9c91855db5",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_panels_bc2c677e69",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_dba3cf2dd9",
+      "triangles": [
+        168,
+        168,
+        168,
+        168,
+        168,
+        168
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_panels_ae22696f48",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_bf0e016904",
+      "triangles": [
+        180,
+        180,
+        180,
+        180,
+        180,
+        180
+      ]
+    },
+    {
+      "id": "core:cruise_canyon_cabin_frame_72b9e6cb49",
+      "triangles": [
+        180,
+        180,
+        180,
+        180,
+        180,
+        180
+      ]
+    },
+    {
+      "id": "core:cruise_outer_cabin_panels_5b09b23284",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_outer_cabin_panels_3c8c14b4a5",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_outer_cabin_panels_f90c0880d1",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_outer_cabin_panels_f302910a26",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_outer_cabin_panels_fe99a62414",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_c884d22e0a",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_c8061f000b",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_f048481697",
+      "triangles": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_24a069af1b",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_5d5a38f821",
+      "triangles": [
+        108,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_5deb04aae6",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_tier_window_frame_1eb677a018",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_tier_clear_pane_6c6f7d9ead",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_a637c1692e",
+      "triangles": [
+        504,
+        504,
+        504,
+        504,
+        504,
+        504
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_bea8bb6371",
+      "triangles": [
+        336,
+        336,
+        336,
+        336,
+        336,
+        336
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_49e773c1ba",
+      "triangles": [
+        264,
+        264,
+        264,
+        264,
+        264,
+        264
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_504d6afba0",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_19c25c58ae",
+      "triangles": [
+        252,
+        252,
+        252,
+        252,
+        252,
+        252
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_1d9fdc8b60",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_80241ba43d",
+      "triangles": [
+        768,
+        768,
+        768,
+        768,
+        768,
+        768
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_3ba0cf4bfc",
+      "triangles": [
+        384,
+        384,
+        384,
+        384,
+        384,
+        384
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_bbe4d2be86",
+      "triangles": [
+        396,
+        396,
+        396,
+        396,
+        396,
+        396
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_fe6827d071",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_c2e6f6abae",
+      "triangles": [
+        432,
+        432,
+        432,
+        432,
+        432,
+        432
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_606f458ea6",
+      "triangles": [
+        288,
+        288,
+        288,
+        288,
+        288,
+        288
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_8303016dd6",
+      "triangles": [
+        660,
+        660,
+        660,
+        660,
+        660,
+        660
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_d379c9f4a0",
+      "triangles": [
+        288,
+        288,
+        288,
+        288,
+        288,
+        288
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_8ee9704b2f",
+      "triangles": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_a6e2ad2d27",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_7751e795d9",
+      "triangles": [
+        216,
+        216,
+        216,
+        216,
+        216,
+        216
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_a1c00543e6",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_7bf82ebc2b",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_fa06adba92",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_c552b746bf",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_enclosure_vertical_7dc870df9c",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_1b15d4d822",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_457c20dd76",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_e1f97768c0",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_2d6911fe31",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_721b000e8c",
+      "triangles": [
+        108,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_d9aabcc8d6",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_854b866c64",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_229ed97db4",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_40b0540279",
+      "triangles": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_92805eccd5",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_49ab7e97f1",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_004cd04069",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_36f18b6c58",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_3875c18a83",
+      "triangles": [
+        108,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_9a556a0569",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_1107553105",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_ea596f0d0f",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_hull_glazing_3e53ea19db",
+      "triangles": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_7fe844fb6c",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_365b9ff6cb",
+      "triangles": [
+        108,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_63a3d38307",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_06e2ecf012",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_4cf31c02af",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_5657edaf86",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_ba04ef38a2",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_30d4273ffc",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_510a246a85",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_edad0b9c35",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_f63190a9dd",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_ba44beb844",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_7e13bb96a4",
+      "triangles": [
+        192,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_d4f8b99c0d",
+      "triangles": [
+        12,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_300fc344b8",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_ef979a059e",
+      "triangles": [
+        84,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_347d9223c9",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_b95423d468",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_6aed4eb1c5",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_8ff2cc7444",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_2c9a90d4f2",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_4f423cd012",
+      "triangles": [
+        36,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_5fe104a572",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_6d64276f4c",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_9b6add8463",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_a21ab6c53f",
+      "triangles": [
+        60,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_hull_letter_7d3ec54482",
+      "triangles": [
+        132,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_922d382f75",
+      "triangles": [
+        1116,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_589136c1dc",
+      "triangles": [
+        392,
+        68,
+        68,
+        68,
+        68,
+        68
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_b1cf1c2f20",
+      "triangles": [
+        1656,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_03bec927aa",
+      "triangles": [
+        560,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_08352a07d6",
+      "triangles": [
+        1620,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_5f3036dd50",
+      "triangles": [
+        540,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_1da97d62f2",
+      "triangles": [
+        1620,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_5a5f87dec8",
+      "triangles": [
+        1632,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_cd83aef878",
+      "triangles": [
+        228,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_8a6e3c039f",
+      "triangles": [
+        1656,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_617c24e85f",
+      "triangles": [
+        288,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_154ba7b5a6",
+      "triangles": [
+        560,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_bfbcac1793",
+      "triangles": [
+        1472,
+        128,
+        128,
+        128,
+        128,
+        128
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_b28b5d19f8",
+      "triangles": [
+        560,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_595f9f1f39",
+      "triangles": [
+        1428,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_93581dba13",
+      "triangles": [
+        560,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_161c6fb189",
+      "triangles": [
+        636,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_840c31c1e6",
+      "triangles": [
+        336,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_7e6fa0c03f",
+      "triangles": [
+        64,
+        28,
+        28,
+        28,
+        28,
+        28
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_82a884f89b",
+      "triangles": [
+        72,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_4312ea32bd",
+      "triangles": [
+        1200,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_cb06407b6f",
+      "triangles": [
+        1032,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_a8b8aa5795",
+      "triangles": [
+        1152,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_32a8dcc976",
+      "triangles": [
+        2124,
+        156,
+        156,
+        156,
+        156,
+        156
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_7cac2e2fed",
+      "triangles": [
+        1512,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_5914a42685",
+      "triangles": [
+        1860,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_83bcf151b6",
+      "triangles": [
+        1500,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_64a81adcbb",
+      "triangles": [
+        1620,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_2ef6d8d917",
+      "triangles": [
+        1224,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_bed15ef56e",
+      "triangles": [
+        1692,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_053ac7c7e8",
+      "triangles": [
+        1356,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_67838de04b",
+      "triangles": [
+        1116,
+        156,
+        156,
+        156,
+        156,
+        156
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_a7d16f38aa",
+      "triangles": [
+        2040,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_071802197a",
+      "triangles": [
+        180,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_ad0aba187f",
+      "triangles": [
+        1860,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_69cd4a4c0b",
+      "triangles": [
+        1788,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_8725b94b15",
+      "triangles": [
+        1848,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_9b8fcc7bf3",
+      "triangles": [
+        1740,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_f9f1edb75a",
+      "triangles": [
+        1140,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_55cc82ca34",
+      "triangles": [
+        1680,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_125ad72b9f",
+      "triangles": [
+        1680,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_057a470976",
+      "triangles": [
+        1440,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_f0e1387ebf",
+      "triangles": [
+        1800,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_f13ffc4861",
+      "triangles": [
+        180,
+        12,
+        12,
+        12,
+        12,
+        12
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_c288c88069",
+      "triangles": [
+        2400,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_7a8d909da3",
+      "triangles": [
+        2280,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_77bdbe7e9b",
+      "triangles": [
+        1020,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_a249153a35",
+      "triangles": [
+        1624,
+        88,
+        88,
+        88,
+        88,
+        88
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_49e76e498d",
+      "triangles": [
+        1032,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_227034e086",
+      "triangles": [
+        416,
+        44,
+        44,
+        44,
+        44,
+        44
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_8bf644d71c",
+      "triangles": [
+        1448,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_7cb95f2fdd",
+      "triangles": [
+        396,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_34aa442f09",
+      "triangles": [
+        1200,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_990f2ae5af",
+      "triangles": [
+        1032,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_fe84526bfd",
+      "triangles": [
+        1152,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_a062f5b9e6",
+      "triangles": [
+        2124,
+        156,
+        156,
+        156,
+        156,
+        156
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_b119a6b373",
+      "triangles": [
+        84,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_166fc0c70c",
+      "triangles": [
+        1512,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_8d72cf88ec",
+      "triangles": [
+        1860,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_309140e14c",
+      "triangles": [
+        852,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_2f2bcb2e34",
+      "triangles": [
+        276,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_4ee6b886ef",
+      "triangles": [
+        1620,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_d5503148be",
+      "triangles": [
+        1224,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_ec1a37ff81",
+      "triangles": [
+        1692,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_3037968f91",
+      "triangles": [
+        1356,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_81ca752f80",
+      "triangles": [
+        1260,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_6d580e5730",
+      "triangles": [
+        2040,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_d40a84e475",
+      "triangles": [
+        1860,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_fcea9a2e3a",
+      "triangles": [
+        1908,
+        156,
+        156,
+        156,
+        156,
+        156
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_fd347ff765",
+      "triangles": [
+        1524,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_8355154d45",
+      "triangles": [
+        1524,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_9251486c89",
+      "triangles": [
+        1320,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_0266920927",
+      "triangles": [
+        1860,
+        156,
+        156,
+        156,
+        156,
+        156
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_42e860a7d5",
+      "triangles": [
+        1488,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_1230f15e45",
+      "triangles": [
+        1740,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_92396a7a46",
+      "triangles": [
+        1140,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_78623d4b5d",
+      "triangles": [
+        1680,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_66cff5bd1e",
+      "triangles": [
+        1680,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_cfeb3760ee",
+      "triangles": [
+        1440,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_f2fbe544f5",
+      "triangles": [
+        1800,
+        192,
+        192,
+        192,
+        192,
+        192
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_c96dbce8ed",
+      "triangles": [
+        1020,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_9e369baac1",
+      "triangles": [
+        1624,
+        88,
+        88,
+        88,
+        88,
+        88
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_6c439a256d",
+      "triangles": [
+        1032,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_3949053719",
+      "triangles": [
+        416,
+        44,
+        44,
+        44,
+        44,
+        44
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_ac8089939d",
+      "triangles": [
+        1448,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_e93b066555",
+      "triangles": [
+        396,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_6ffedcbb45",
+      "triangles": [
+        1116,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_cf0efc01be",
+      "triangles": [
+        392,
+        68,
+        68,
+        68,
+        68,
+        68
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_7981e547e8",
+      "triangles": [
+        1656,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_e9bfe10693",
+      "triangles": [
+        48,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_6ef2e49f44",
+      "triangles": [
+        560,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_89bf8eefd1",
+      "triangles": [
+        1620,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_74b9f27f4a",
+      "triangles": [
+        336,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_519cd65df8",
+      "triangles": [
+        540,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_49b1a46e2d",
+      "triangles": [
+        144,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_63610e9c1e",
+      "triangles": [
+        1620,
+        108,
+        108,
+        108,
+        108,
+        108
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_cc249da92b",
+      "triangles": [
+        540,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_f514604b8b",
+      "triangles": [
+        1404,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_528bc5f27e",
+      "triangles": [
+        360,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_ad02e15b53",
+      "triangles": [
+        1572,
+        132,
+        132,
+        132,
+        132,
+        132
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_861d71833d",
+      "triangles": [
+        504,
+        60,
+        60,
+        60,
+        60,
+        60
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_3d9af64cc6",
+      "triangles": [
+        228,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_714f99db71",
+      "triangles": [
+        1656,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_a679e44875",
+      "triangles": [
+        288,
+        36,
+        36,
+        36,
+        36,
+        36
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_00eadae714",
+      "triangles": [
+        560,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_c41c080518",
+      "triangles": [
+        1472,
+        128,
+        128,
+        128,
+        128,
+        128
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_fd03b5fdc1",
+      "triangles": [
+        560,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_8e188fcf03",
+      "triangles": [
+        1428,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_c6b85707da",
+      "triangles": [
+        560,
+        80,
+        80,
+        80,
+        80,
+        80
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_7dcadbbd38",
+      "triangles": [
+        636,
+        84,
+        84,
+        84,
+        84,
+        84
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_6b75732adf",
+      "triangles": [
+        336,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_1738542cae",
+      "triangles": [
+        64,
+        28,
+        28,
+        28,
+        28,
+        28
+      ]
+    },
+    {
+      "id": "core:cruise_deck_stack_d2f1101a03",
+      "triangles": [
+        72,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_8db87527c5",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_c1d0c3c7d2",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_43cf71d3d8",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_63f5916dd6",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_e24b744fb6",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_1bde37fb1b",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_090dc938a1",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_eb488fceb4",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_442c16f5fe",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_31e1c019bf",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_d8b73b58bf",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_7ed0f1d421",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_c74ba30c12",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_b8ca18dea7",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_eb3719ed94",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_9ec273fa3c",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_15d8f63d06",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_ebd6c3cb35",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_8cd04b082e",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_2fe9c70434",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_50c6d78161",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_08d715b276",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_68859b4093",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_9d604d0f87",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_695cdd763e",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_91b7b94be3",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_46a79b577b",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_27aaa383d9",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_5d8afc9e79",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_502e7c5659",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_dac565392a",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_80ef7e4749",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_eac6be7f23",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_6ec90288df",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_c9294f4a10",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_87068f4c3e",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_780456b276",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_0f60ee98a0",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_488944ffd8",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_hull_shell_4ab6af3a8e",
+      "triangles": [
+        24,
+        24,
+        24,
+        24,
+        24,
+        24
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_1406b47f5f",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_628d00f37d",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_24a243d295",
+      "triangles": [
+        216,
+        216,
+        216,
+        216,
+        216,
+        216
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_a442768a27",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_222666b12a",
+      "triangles": [
+        144,
+        144,
+        144,
+        144,
+        144,
+        144
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_cd433dc7e4",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_d78b59ae21",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_3d572fb59c",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_db4bd5a39b",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_d05af72dc8",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_726a1328c2",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_a82a444a67",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_f8593c6aa7",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_942b262975",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_19c07345ac",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_8aab56367a",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_c286292599",
+      "triangles": [
+        48,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_1de6c2cb00",
+      "triangles": [
+        72,
+        72,
+        72,
+        72,
+        72,
+        72
+      ]
+    },
+    {
+      "id": "core:cruise_wall_batch_2d816d409e",
+      "triangles": [
+        96,
+        96,
+        96,
+        96,
+        96,
+        96
+      ]
+    }
+  ],
+  "totals": [
+    255688,
+    114156,
+    89824,
+    67428,
+    64994,
+    63654
+  ],
+  "notes": [
+    "Six authored native levels of the production reconstruction.",
+    "Original materials; reference pixels are not sampled."
+  ]
+}

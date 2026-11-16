@@ -1,0 +1,20 @@
+{
+  "layoutSha256": "e0f08da9216c138754b343d886925ae0b83122e07cb4636172739a5c005459bf",
+  "scope": "XZ rail endpoints under real native frameAxes and 1/512 origins; packed vertex quantization is reserved separately. This does not replace native route-width, body or rendered-join review.",
+  "logicalRuns": 630,
+  "reusedPanels": 2215,
+  "maxLateralMetres": 0.0029834731909779144,
+  "maxEndpointDistanceMetres": 0.005476495011665644,
+  "maxAlongGapMetres": 0.005010906615847688,
+  "maxAlongExtensionMetres": 0.000950249999988273,
+  "packedVertexReserveMetres": 0.003,
+  "tubeRadiusMetres": 0.025,
+  "witness": {
+    "run": "guard_12_17_16",
+    "instance": "guard_12_17_16_0",
+    "point": [
+      27.040364583333332,
+      118.60091145833333
+    ]
+  }
+}

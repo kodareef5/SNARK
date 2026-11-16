@@ -42,7 +42,7 @@ normal=np.stack([-dx*2,dy*2,np.ones_like(height)],axis=-1);normal/=np.linalg.nor
 Image.fromarray(np.clip((normal*.5+.5)*255,0,255).astype('uint8')).save(HERE/'surfaces_normal.png')
 Image.fromarray(np.clip(np.stack([np.ones_like(rough)*.97,rough,metal],axis=-1)*255,0,255).astype('uint8')).save(HERE/'surfaces_packed.png')
 print('Painted original cruise enamel, deck, textile, tile, metal and glass-edge atlas')
-layout=json.loads((HERE.parent.parents[4]/'content/landmarks/cruise-layout.json').read_text())
+layout=json.loads((HERE.parent.parents[3]/'content/landmarks/cruise-layout.json').read_text())
 labels=sorted(set(r['label'] for r in layout['rooms'])|{'ICON OF THE SEAS','CRUISE PORT','BOARDING - DECK 5','KORU + UTILITY LAUNCH'}|{f'DECK {d["id"]}' for d in layout['decks']})
 assert len(labels)<=64,len(labels)
 signs={label:i for i,label in enumerate(labels)};(HERE.parent/'signs.json').write_text(json.dumps(signs,indent=2)+'\n')

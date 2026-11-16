@@ -12,7 +12,7 @@ from model_exterior import lifeboat
 from model_aquatheater import aquadome_pod
 
 HERE=Path(__file__).resolve().parent
-D=json.loads((HERE.parents[4]/'content/landmarks/cruise-layout.json').read_text())
+D=json.loads((HERE.parents[3]/'content/landmarks/cruise-layout.json').read_text())
 
 def extents(b):return ([b['at'][k]-b['half'][k] for k in range(3)],[b['at'][k]+b['half'][k] for k in range(3)])
 def drawbox(m,b,tag,bevel=0):m.box(*extents(b),tag,bevel)
@@ -235,7 +235,7 @@ report={'prototypes':[],'totals':[0]*6,'notes':['Six authored native levels of t
 for i,p in enumerate(D['prototypes']):
  counts=[]
  for level in range(6):
-  m=Mesh(level);build(m,p);obj=m.object(p['mesh'][5:]+('' if level==0 else '_LOD'+str(level)),[0,0,0])
+  m=Mesh(level);build(m,p);obj=m.object(p['mesh'][7:]+('' if level==0 else '_LOD'+str(level)),[0,0,0])
   counts.append(len(obj.data.polygons));report['totals'][level]+=counts[-1]
  report['prototypes'].append({'id':p['id'],'triangles':counts})
  if i%50==0:print('cruise authored',i+1,'/',len(D['prototypes']),flush=True)

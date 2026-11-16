@@ -1,0 +1,7483 @@
+{
+  "source": "/home/user/Desktop/SNARK-cruise-preview/assets/source",
+  "generated": "2026-11-16T16:46:10.229Z",
+  "pipeline": "native map → authoritative Harness → App → streamed production packs → native frame packet → optional Rasterizer",
+  "layout": {
+    "phase": "contract-prototype",
+    "prototypes": 416,
+    "placedInstances": 4962,
+    "deckLabels": [
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+      "11",
+      "12",
+      "14",
+      "15",
+      "16",
+      "17",
+      "18",
+      "19",
+      "20"
+    ]
+  },
+  "shots": [
+    {
+      "name": "01-authentic-arrival",
+      "feet": [
+        2448,
+        49.34375,
+        2024
+      ],
+      "target": [
+        2048,
+        32,
+        2048
+      ],
+      "mode": "walk",
+      "tier": "high",
+      "arrival": true,
+      "framePoints": [
+        [
+          2023.75,
+          0,
+          1865.5
+        ],
+        [
+          2072.25,
+          0,
+          2230.5
+        ],
+        [
+          2015.1,
+          75,
+          2048
+        ],
+        [
+          2080.9,
+          75,
+          2048
+        ]
+      ],
+      "width": 1200,
+      "height": 800,
+      "registryHash": "1eccfcee",
+      "mapHash": "8091cc76",
+      "draws": [
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 1014
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 466
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 5884
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 190
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 1924
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 2492
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 5226
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 2670
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 2188
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 226
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 15556
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 74
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 1750
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 1924
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 3106
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 5226
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 2460
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 2670
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 2162
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 2188
+        },
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 15556
+        }
+      ],
+      "submittedTriangles": 304234,
+      "drawCount": 31,
+      "cpu": {
+        "samples": 0,
+        "scope": "Visual-only review; CPU timing deliberately omitted."
+      },
+      "dropped": 0,
+      "skipped": 0,
+      "casterDropped": 0,
+      "faults": [],
+      "placement": {
+        "statics": 5954,
+        "kinds": 871,
+        "occupiedChunks": 30,
+        "mostInChunk": 675,
+        "faults": [],
+        "actualPlaced": 5954,
+        "cruiseInstances": 4962
+      },
+      "budget": {
+        "tier": "high",
+        "triangles": 4000000,
+        "draws": 2048,
+        "gpuBytes": 1610612736,
+        "uploadBytes": 2097152
+      },
+      "cold": {
+        "frames": 343,
+        "maxDraws": 31,
+        "maxTriangles": 304234,
+        "maxCasters": 10,
+        "maxCityMakeMs": 9.873606999999538,
+        "maxCityMissing": 8,
+        "maxCityBehind": 7,
+        "maxResidentBytes": 48282413,
+        "maxUploadBytes": 2097152,
+        "dropped": 0,
+        "skipped": 0,
+        "casterDropped": 0,
+        "assetTransport": "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.",
+        "medianMs": 0.30921699999998964,
+        "p95Ms": 1.413840999999593,
+        "maxMs": 49.75190999999995,
+        "scope": "App.frame from cold client arrival through placement and streaming; excludes server/network/raster/GPU work."
+      },
+      "shipTarget": {
+        "triangles": 0,
+        "draws": 0,
+        "targetTriangles": 1000000,
+        "targetDraws": 600,
+        "note": "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry."
+      },
+      "residency": {
+        "requests": 24,
+        "cancelled": 0,
+        "failed": 0,
+        "dead": 0,
+        "failNet": 0,
+        "failHash": 0,
+        "failRange": 0,
+        "lastStatus": 0,
+        "refused": 0,
+        "evicted": 0,
+        "wasted": 0,
+        "fetched": 13320024,
+        "cached": 4390892,
+        "uploaded": 17797068,
+        "used": 13320024,
+        "skipped": 0,
+        "shrunk": 0
+      },
+      "casterCount": 10,
+      "city": {
+        "makeMs": 0,
+        "made": 0,
+        "missing": 0,
+        "behind": 0,
+        "unseen": 0,
+        "unseenAt": null,
+        "unseenFrames": 0,
+        "coarse": 0
+      },
+      "handover": [
+        {
+          "chunk": 1887,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 1888,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 1951,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 1952,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2015,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2016,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2079,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2080,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2143,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2144,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2207,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2208,
+          "complete": false,
+          "far": true
+        }
+      ],
+      "assets": "assets: 12.8 MB on the card, 12.7 of it textures and 33.3 reserved, 0 coming, 0.0 MB waiting, 12.7 MB fetched, 4.2 MB from the cache, 0 failed, 0 given up, 0 left out, x1.00",
+      "camera": {
+        "x": 2448,
+        "y": 50.96375,
+        "z": 2024,
+        "yaw": 4.71238898038469,
+        "pitch": 0,
+        "thirdPerson": false
+      },
+      "state": {
+        "x": 2448,
+        "y": 49.34375,
+        "z": 2024,
+        "mode": 1,
+        "grounded": true
+      },
+      "framing": [
+        {
+          "point": [
+            2023.75,
+            0,
+            1865.5
+          ],
+          "screen": [
+            0.6778522729873657,
+            0.5857793688774109,
+            424.25
+          ],
+          "shoreSightlineClear": true
+        },
+        {
+          "point": [
+            2072.25,
+            0,
+            2230.5
+          ],
+          "screen": [
+            0.23837874829769135,
+            0.5968513488769531,
+            375.75
+          ],
+          "shoreSightlineClear": true
+        },
+        {
+          "point": [
+            2015.1,
+            75,
+            2048
+          ],
+          "screen": [
+            0.4736078083515167,
+            0.4603519141674042,
+            432.8999938964844
+          ],
+          "shoreSightlineClear": true
+        },
+        {
+          "point": [
+            2080.9,
+            75,
+            2048
+          ],
+          "screen": [
+            0.4688771963119507,
+            0.45324528217315674,
+            367.1000061035156
+          ],
+          "shoreSightlineClear": true
+        }
+      ],
+      "settledCorrections": 0,
+      "fixture": "Genuine map arrival, authored spawn facing and ordinary first-person camera; no setup placement or look adjustment.",
+      "packHash": "7829a30e",
+      "assetStage": "contract-prototype"
+    },
+    {
+      "name": "interior-cabin_9-medium",
+      "feet": [
+        2070,
+        29.2,
+        2141.9
+      ],
+      "target": [
+        2073,
+        30.4,
+        2144
+      ],
+      "mode": "walk",
+      "tier": "medium",
+      "width": 1200,
+      "height": 800,
+      "registryHash": "1eccfcee",
+      "mapHash": "8091cc76",
+      "draws": [
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 56,
+          "triangles": 19264
+        },
+        {
+          "mesh": "core:cruise_bridge_wing_df3d74b697",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_cabin_balcony_b0f13bbdaf",
+          "lod": 0,
+          "instances": 27,
+          "triangles": 43416
+        },
+        {
+          "mesh": "core:cruise_deck_032226c81a",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_06a2b9c6cf",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_09896ea6b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_0a488f52ae",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_0b3474b1ef",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_0ddba5d0f1",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_124977e52e",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 522
+        },
+        {
+          "mesh": "core:cruise_deck_216013f2b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 224
+        },
+        {
+          "mesh": "core:cruise_deck_264c6dffd5",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_296918f82e",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_2979dfba6a",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_2b55730564",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_2d5d6d082f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 66
+        },
+        {
+          "mesh": "core:cruise_deck_343e36b581",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_37d2c37487",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_3ab446ed7b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_41a2ac75d8",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_4418cf9504",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_50aedd593e",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_50c435b2d1",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_5d19eb0b96",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_5d5bf1c9ef",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 504
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 18,
+          "triangles": 1512
+        },
+        {
+          "mesh": "core:cruise_deck_6346db52dc",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 1260
+        },
+        {
+          "mesh": "core:cruise_deck_6b3c3d39f5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_6b8b110926",
+          "lod": 0,
+          "instances": 16,
+          "triangles": 512
+        },
+        {
+          "mesh": "core:cruise_deck_6bfabaf6d9",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_73c507cc58",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_77afb8057a",
+          "lod": 0,
+          "instances": 11,
+          "triangles": 352
+        },
+        {
+          "mesh": "core:cruise_deck_78ada0967f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_7a9c1e0304",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_83dc4b0b98",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_86dfe37447",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_87264c4696",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8907db884f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_8ad5646e64",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_8b725a87ec",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_8dacf152da",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_9681e2ec97",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_97e3e22e18",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_982a01e9b7",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 40,
+          "triangles": 3360
+        },
+        {
+          "mesh": "core:cruise_deck_a264eed04b",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_a44f99f0f8",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 2352
+        },
+        {
+          "mesh": "core:cruise_deck_abb7ffbf12",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_adb664d565",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_ae1e41009b",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b111687626",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b2be18cd8f",
+          "lod": 0,
+          "instances": 23,
+          "triangles": 1932
+        },
+        {
+          "mesh": "core:cruise_deck_b7f92c2df3",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 696
+        },
+        {
+          "mesh": "core:cruise_deck_b9e006b1cc",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 384
+        },
+        {
+          "mesh": "core:cruise_deck_bd1dc0ee09",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_c2bc17132c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_c7af4b064d",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_cb09f5f70d",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 256
+        },
+        {
+          "mesh": "core:cruise_deck_d2e1b31cec",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_d319f4ea69",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_d4e1d922b5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d779331206",
+          "lod": 0,
+          "instances": 11,
+          "triangles": 638
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_da5dcf5d69",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_dbc81cdd67",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_df3843b4c0",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_e0ae85a027",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_e5108d703a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 57,
+          "triangles": 1824
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_ed6bfc09d7",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 128
+        },
+        {
+          "mesh": "core:cruise_deck_efbcc86204",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_f20a3efcef",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f594e5daaa",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fc4b4e70b2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 21,
+          "triangles": 672
+        },
+        {
+          "mesh": "core:cruise_deck_fd8b11cbc1",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 128
+        },
+        {
+          "mesh": "core:cruise_deck_fe03357055",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_fe84deecc2",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_17593f1254",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_24d9b071f0",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_3f533666bd",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_3ff45b1f8f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_46d2a504e8",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_4cc9934ecc",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_808be88a8a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_891a70e3b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a748137e5a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c0034a38d2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_dc2d04f9a2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_e6d27f5a99",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_door_cabin_closed_18fccee2fd",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 120
+        },
+        {
+          "mesh": "core:cruise_hull_side_1aec6a368a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_5ba0957bec",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_60041739b5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_629adf42db",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_signal_mast_17c9286cc7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 132
+        },
+        {
+          "mesh": "core:cruise_stair_flight_0529047302",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2912
+        },
+        {
+          "mesh": "core:cruise_stair_flight_146bd6b7de",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2720
+        },
+        {
+          "mesh": "core:cruise_stair_flight_325ad566af",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 752
+        },
+        {
+          "mesh": "core:cruise_stair_flight_3fe196b55b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 752
+        },
+        {
+          "mesh": "core:cruise_stair_flight_4b8b37dd0c",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 2112
+        },
+        {
+          "mesh": "core:cruise_stair_flight_6bda9312ab",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 1552
+        },
+        {
+          "mesh": "core:cruise_stair_flight_7a67720ae2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 776
+        },
+        {
+          "mesh": "core:cruise_stair_flight_bb80617cb1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 776
+        },
+        {
+          "mesh": "core:cruise_stair_flight_cc7aa5eb67",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2912
+        },
+        {
+          "mesh": "core:cruise_stair_flight_e1a93687ee",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 704
+        },
+        {
+          "mesh": "core:cruise_stair_flight_ea25fb94eb",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2720
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f0829b5602",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 1552
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f4000ec355",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 2112
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f47fbc7af6",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 704
+        },
+        {
+          "mesh": "core:cruise_stair_landing_2a11ccf9b7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 716
+        },
+        {
+          "mesh": "core:cruise_stair_landing_88089a2c81",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 1432
+        },
+        {
+          "mesh": "core:cruise_stair_landing_88271ae938",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 5012
+        },
+        {
+          "mesh": "core:cruise_stair_landing_b74c6a219a",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2864
+        },
+        {
+          "mesh": "core:cruise_stair_landing_eb2c404d73",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 716
+        },
+        {
+          "mesh": "core:cruise_stair_landing_fe8c0cfd15",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 716
+        },
+        {
+          "mesh": "core:cruise_deck_013b98d3cb",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_08e44d24f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_1ad5e35025",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_1b8c5d2eec",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_1ea6399205",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_400687f3d1",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_deck_44034c8cd0",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_4d5f383654",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_532c9c2ab3",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_548669bdcd",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_576d0b472c",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_59cd66b804",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_5b09a5a430",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_7172bed953",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8ccfc522f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_902863668a",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_9a1a4f344b",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 588
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 756
+        },
+        {
+          "mesh": "core:cruise_deck_b9ba12c8f4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_bd8aa0f01a",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_c44cb8b865",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_d4207a9dbe",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_d42fe4e93a",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_d4e1d922b5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 384
+        },
+        {
+          "mesh": "core:cruise_deck_e58274738b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e59085bb5a",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_e72fa74cdb",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_f2f16d276a",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_dome_cell_01bf611528",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_2fcafa284c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_464bb09c4f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_48d80b68a6",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_4bd30f75c3",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_5d0a6884ed",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_673b52cdd2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_7877be8bbd",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_8adee440d2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_8b76330f5a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a696b639f6",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b5710f7135",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b971e00cf1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c416b27f5b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c890b59969",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c97b653f3c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_cc6b9e0c22",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d39322d55c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_da78dec6be",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_ddb68d0252",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_f69d62e343",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fc5e0e72e8",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fe0e27a34b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fe290c413c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_hull_side_6f4b8679ee",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_a85995efb2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_b4fa659232",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_c8af7ab563",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_205a82b7ac",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_228e753027",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_426679e45a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_bcd5d109d7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        }
+      ],
+      "submittedTriangles": 336042,
+      "drawCount": 221,
+      "cpu": {
+        "samples": 0,
+        "scope": "Visual-only review; CPU timing deliberately omitted."
+      },
+      "dropped": 0,
+      "skipped": 0,
+      "casterDropped": 0,
+      "faults": [],
+      "placement": {
+        "statics": 5954,
+        "kinds": 871,
+        "occupiedChunks": 30,
+        "mostInChunk": 675,
+        "faults": [],
+        "actualPlaced": 5954,
+        "cruiseInstances": 4962
+      },
+      "budget": {
+        "tier": "medium",
+        "triangles": 2000000,
+        "draws": 1024,
+        "gpuBytes": 536870912,
+        "uploadBytes": 1048576
+      },
+      "cold": {
+        "frames": 343,
+        "maxDraws": 221,
+        "maxTriangles": 336042,
+        "maxCasters": 528,
+        "maxCityMakeMs": 8.580254000000423,
+        "maxCityMissing": 8,
+        "maxCityBehind": 5,
+        "maxResidentBytes": 49477851,
+        "maxUploadBytes": 1096896,
+        "dropped": 0,
+        "skipped": 0,
+        "casterDropped": 0,
+        "assetTransport": "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.",
+        "medianMs": 0.3211510000000999,
+        "p95Ms": 1.2456349999993108,
+        "maxMs": 28.814572999999655,
+        "scope": "App.frame from cold client arrival through placement and streaming; excludes server/network/raster/GPU work."
+      },
+      "shipTarget": {
+        "triangles": 126740,
+        "draws": 206,
+        "targetTriangles": 1000000,
+        "targetDraws": 600,
+        "note": "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry."
+      },
+      "residency": {
+        "requests": 226,
+        "cancelled": 0,
+        "failed": 0,
+        "dead": 0,
+        "failNet": 0,
+        "failHash": 0,
+        "failRange": 0,
+        "lastStatus": 0,
+        "refused": 0,
+        "evicted": 0,
+        "wasted": 0,
+        "fetched": 22922066,
+        "cached": 7285388,
+        "uploaded": 30666894,
+        "used": 22922066,
+        "skipped": 0,
+        "shrunk": 0
+      },
+      "casterCount": 528,
+      "city": {
+        "makeMs": 0,
+        "made": 0,
+        "missing": 0,
+        "behind": 0,
+        "unseen": 0,
+        "unseenAt": null,
+        "unseenFrames": 0,
+        "coarse": 0
+      },
+      "handover": [
+        {
+          "chunk": 1887,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 1888,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 1951,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 1952,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2015,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2016,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2079,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2080,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2143,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2144,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2207,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2208,
+          "complete": true,
+          "far": false
+        }
+      ],
+      "assets": "assets: 22.3 MB on the card, 21.0 of it textures and 25.3 reserved, 0 coming, 0.0 MB waiting, 21.9 MB fetched, 6.9 MB from the cache, 0 failed, 0 given up, 0 left out, x1.00",
+      "camera": {
+        "x": 2070,
+        "y": 30.8200789642334,
+        "z": 2141.89990234375,
+        "yaw": 0.9600703624057083,
+        "pitch": -0.11419349906879209,
+        "thirdPerson": false
+      },
+      "state": {
+        "x": 2070,
+        "y": 29.2000789642334,
+        "z": 2141.89990234375,
+        "mode": 1,
+        "grounded": true
+      },
+      "framing": [],
+      "settledCorrections": 0,
+      "fixture": "One authoritative setup placement before settling; walking views then use ordinary player movement and camera collision. Exterior views use an identified spectator.",
+      "packHash": "7829a30e",
+      "assetStage": "contract-prototype"
+    },
+    {
+      "name": "interior-dome_inside-high",
+      "feet": [
+        2048,
+        45.6,
+        2178
+      ],
+      "target": [
+        2048,
+        60,
+        2212
+      ],
+      "mode": "walk",
+      "tier": "high",
+      "width": 1200,
+      "height": 800,
+      "registryHash": "1eccfcee",
+      "mapHash": "8091cc76",
+      "draws": [
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 56,
+          "triangles": 19264
+        },
+        {
+          "mesh": "core:cruise_bridge_wing_df3d74b697",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_005898c762",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_01aeddd9fd",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_07b375eb94",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_09896ea6b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_0dba193a3b",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_0ddba5d0f1",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_111407aa8a",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_114e578456",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_124977e52e",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 522
+        },
+        {
+          "mesh": "core:cruise_deck_216013f2b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 224
+        },
+        {
+          "mesh": "core:cruise_deck_26206612a7",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_2cbcac38b5",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_2d5d6d082f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_2dd9434f2a",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 66
+        },
+        {
+          "mesh": "core:cruise_deck_343e36b581",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_36ff8dddf6",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_3ab446ed7b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_416027946c",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_42864ac9a0",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_43c96fe9d4",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_4418cf9504",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_4464f63e3d",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_4969154854",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_50aedd593e",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_5319ae412b",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_5863b8c9a0",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_5d19eb0b96",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_5d5bf1c9ef",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 504
+        },
+        {
+          "mesh": "core:cruise_deck_5e4cd757cf",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_622b830f20",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_624cbd0c87",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 18,
+          "triangles": 1512
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 1260
+        },
+        {
+          "mesh": "core:cruise_deck_6b3c3d39f5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_6b8b110926",
+          "lod": 0,
+          "instances": 16,
+          "triangles": 512
+        },
+        {
+          "mesh": "core:cruise_deck_706669584e",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_73c507cc58",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_77afb8057a",
+          "lod": 0,
+          "instances": 11,
+          "triangles": 352
+        },
+        {
+          "mesh": "core:cruise_deck_78ada0967f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_7aa2827543",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_8296110e9c",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_82d48e36d5",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_83dc4b0b98",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_86dfe37447",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_887a9255c7",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_8aa417d9f9",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8ad5646e64",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_8dacf152da",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_906f8415cf",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_9681e2ec97",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 39,
+          "triangles": 3276
+        },
+        {
+          "mesh": "core:cruise_deck_a3f2cfbf23",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 2352
+        },
+        {
+          "mesh": "core:cruise_deck_abb7ffbf12",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_af4cd7b78b",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_af961f86fc",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b2be18cd8f",
+          "lod": 0,
+          "instances": 23,
+          "triangles": 1932
+        },
+        {
+          "mesh": "core:cruise_deck_b3696260a7",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_b7f92c2df3",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 696
+        },
+        {
+          "mesh": "core:cruise_deck_b8083845b3",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b9e006b1cc",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 384
+        },
+        {
+          "mesh": "core:cruise_deck_bd1dc0ee09",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_c5019be7f8",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_cb09f5f70d",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 224
+        },
+        {
+          "mesh": "core:cruise_deck_d06ec758df",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d6a4634555",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d779331206",
+          "lod": 0,
+          "instances": 11,
+          "triangles": 638
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_da5dcf5d69",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_dbc81cdd67",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_e5108d703a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 57,
+          "triangles": 1824
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_e93f1233c9",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_ecdd220e75",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_f253f6a055",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fc4b4e70b2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 21,
+          "triangles": 672
+        },
+        {
+          "mesh": "core:cruise_deck_fd8b11cbc1",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 128
+        },
+        {
+          "mesh": "core:cruise_dome_cell_0ebe9b5c89",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_328374f8a1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_4565890334",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_5936266d07",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_6d678f6488",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_7361cec457",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a93f793fd9",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c43634ae8b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d083fefdec",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d231224361",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_efdada6c97",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_f46195d954",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_hull_side_0f5a7b02da",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_2bf71f4ada",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_5135b78627",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_b410728d06",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 56,
+          "triangles": 19264
+        },
+        {
+          "mesh": "core:cruise_bridge_wing_df3d74b697",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_cabin_balcony_b0f13bbdaf",
+          "lod": 0,
+          "instances": 27,
+          "triangles": 43416
+        },
+        {
+          "mesh": "core:cruise_deck_032226c81a",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_06a2b9c6cf",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_09896ea6b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_0a488f52ae",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_0b3474b1ef",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_0ddba5d0f1",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_124977e52e",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 522
+        },
+        {
+          "mesh": "core:cruise_deck_216013f2b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 224
+        },
+        {
+          "mesh": "core:cruise_deck_264c6dffd5",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_296918f82e",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_2979dfba6a",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_2b55730564",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_2d5d6d082f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 66
+        },
+        {
+          "mesh": "core:cruise_deck_343e36b581",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_37d2c37487",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_3ab446ed7b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_41a2ac75d8",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_4418cf9504",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_50aedd593e",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_50c435b2d1",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_5d19eb0b96",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_5d5bf1c9ef",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 504
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 18,
+          "triangles": 1512
+        },
+        {
+          "mesh": "core:cruise_deck_6346db52dc",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 1260
+        },
+        {
+          "mesh": "core:cruise_deck_6b3c3d39f5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_6b8b110926",
+          "lod": 0,
+          "instances": 16,
+          "triangles": 512
+        },
+        {
+          "mesh": "core:cruise_deck_6bfabaf6d9",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_73c507cc58",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_77afb8057a",
+          "lod": 0,
+          "instances": 11,
+          "triangles": 352
+        },
+        {
+          "mesh": "core:cruise_deck_78ada0967f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_7a9c1e0304",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_83dc4b0b98",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_86dfe37447",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_87264c4696",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8907db884f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_8ad5646e64",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_8b725a87ec",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_8dacf152da",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_9681e2ec97",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_97e3e22e18",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_982a01e9b7",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 40,
+          "triangles": 3360
+        },
+        {
+          "mesh": "core:cruise_deck_a264eed04b",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_a44f99f0f8",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 2352
+        },
+        {
+          "mesh": "core:cruise_deck_abb7ffbf12",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_adb664d565",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_ae1e41009b",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b111687626",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b2be18cd8f",
+          "lod": 0,
+          "instances": 23,
+          "triangles": 1932
+        },
+        {
+          "mesh": "core:cruise_deck_b7f92c2df3",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 696
+        },
+        {
+          "mesh": "core:cruise_deck_b9e006b1cc",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 384
+        },
+        {
+          "mesh": "core:cruise_deck_bd1dc0ee09",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_c2bc17132c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_c7af4b064d",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_cb09f5f70d",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 256
+        },
+        {
+          "mesh": "core:cruise_deck_d2e1b31cec",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_d319f4ea69",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_d4e1d922b5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d779331206",
+          "lod": 0,
+          "instances": 11,
+          "triangles": 638
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_da5dcf5d69",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_dbc81cdd67",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_df3843b4c0",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_e0ae85a027",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_e5108d703a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 57,
+          "triangles": 1824
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_ed6bfc09d7",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 128
+        },
+        {
+          "mesh": "core:cruise_deck_efbcc86204",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_f20a3efcef",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f594e5daaa",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fc4b4e70b2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 21,
+          "triangles": 672
+        },
+        {
+          "mesh": "core:cruise_deck_fd8b11cbc1",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 128
+        },
+        {
+          "mesh": "core:cruise_deck_fe03357055",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_fe84deecc2",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_17593f1254",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_24d9b071f0",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_3f533666bd",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_3ff45b1f8f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_46d2a504e8",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_4cc9934ecc",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_808be88a8a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_891a70e3b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a748137e5a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c0034a38d2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_dc2d04f9a2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_e6d27f5a99",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_door_cabin_closed_18fccee2fd",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 120
+        },
+        {
+          "mesh": "core:cruise_hull_side_1aec6a368a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_5ba0957bec",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_60041739b5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_629adf42db",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_signal_mast_17c9286cc7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 132
+        },
+        {
+          "mesh": "core:cruise_stair_flight_0529047302",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2912
+        },
+        {
+          "mesh": "core:cruise_stair_flight_146bd6b7de",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2720
+        },
+        {
+          "mesh": "core:cruise_stair_flight_325ad566af",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 752
+        },
+        {
+          "mesh": "core:cruise_stair_flight_3fe196b55b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 752
+        },
+        {
+          "mesh": "core:cruise_stair_flight_4b8b37dd0c",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 2112
+        },
+        {
+          "mesh": "core:cruise_stair_flight_6bda9312ab",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 1552
+        },
+        {
+          "mesh": "core:cruise_stair_flight_7a67720ae2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 776
+        },
+        {
+          "mesh": "core:cruise_stair_flight_bb80617cb1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 776
+        },
+        {
+          "mesh": "core:cruise_stair_flight_cc7aa5eb67",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2912
+        },
+        {
+          "mesh": "core:cruise_stair_flight_e1a93687ee",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 704
+        },
+        {
+          "mesh": "core:cruise_stair_flight_ea25fb94eb",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2720
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f0829b5602",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 1552
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f4000ec355",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 2112
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f47fbc7af6",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 704
+        },
+        {
+          "mesh": "core:cruise_stair_landing_2a11ccf9b7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 716
+        },
+        {
+          "mesh": "core:cruise_stair_landing_88089a2c81",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 1432
+        },
+        {
+          "mesh": "core:cruise_stair_landing_88271ae938",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 5012
+        },
+        {
+          "mesh": "core:cruise_stair_landing_b74c6a219a",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 2864
+        },
+        {
+          "mesh": "core:cruise_stair_landing_eb2c404d73",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 716
+        },
+        {
+          "mesh": "core:cruise_stair_landing_fe8c0cfd15",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 716
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_13429f5e1b",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_1c8e7b0846",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_1ea6399205",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_30d9b042a7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_32cee03714",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_3b646f4230",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_deck_44034c8cd0",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_4404c85d0a",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_514539aa56",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_548669bdcd",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_5924c69996",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_6a7517f9e9",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_7172bed953",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_894c44eb8e",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8ac84a9fd2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 588
+        },
+        {
+          "mesh": "core:cruise_deck_a625149cca",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 756
+        },
+        {
+          "mesh": "core:cruise_deck_ae0eec69e7",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_b57a0a494e",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_b9ba12c8f4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_bff7ce0509",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_c0bb1bc4ef",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_ca1e4b0c14",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_d4e1d922b5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d6a71ad131",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 384
+        },
+        {
+          "mesh": "core:cruise_deck_e693493015",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_feae513dd1",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_ff61075022",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_2c623b08d9",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_35ab84a8a7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_3e35b524ab",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_59fe9a1d2b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_5a7a131d58",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_6c950e34ee",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_7a1926b0f4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_84b9296d92",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_881d93006b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_8f39f5a88d",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_9b155a5f2e",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a4f6c5270b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a92918a0b0",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_af617d582c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b276c2c436",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b97884543c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_bca056f743",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c0b66628b4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c133c9d322",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c9cd06666d",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d4dc421626",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_df903262d9",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_e66020d215",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fd3ad22301",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_hull_side_10410c0bf4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_37d3d41221",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_bacf3b6ea4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_e5ef67a6d9",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_3d349c4f1e",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_a51a5e03f5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_e0c113d0b7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_f975fa4d29",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_013b98d3cb",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_08e44d24f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_1ad5e35025",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_1b8c5d2eec",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_1ea6399205",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_400687f3d1",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_deck_44034c8cd0",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_4d5f383654",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_532c9c2ab3",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_548669bdcd",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_576d0b472c",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_59cd66b804",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_5b09a5a430",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_7172bed953",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8ccfc522f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_902863668a",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_9a1a4f344b",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 588
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 756
+        },
+        {
+          "mesh": "core:cruise_deck_b9ba12c8f4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_bd8aa0f01a",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_c44cb8b865",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_d4207a9dbe",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_d42fe4e93a",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_d4e1d922b5",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 384
+        },
+        {
+          "mesh": "core:cruise_deck_e58274738b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e59085bb5a",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_e72fa74cdb",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 32
+        },
+        {
+          "mesh": "core:cruise_deck_f2f16d276a",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_dome_cell_01bf611528",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_2fcafa284c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_464bb09c4f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_48d80b68a6",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_4bd30f75c3",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_5d0a6884ed",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_673b52cdd2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_7877be8bbd",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_8adee440d2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_8b76330f5a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a696b639f6",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b5710f7135",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b971e00cf1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c416b27f5b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c890b59969",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c97b653f3c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_cc6b9e0c22",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d39322d55c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_da78dec6be",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_ddb68d0252",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_f69d62e343",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fc5e0e72e8",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fe0e27a34b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fe290c413c",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_hull_side_6f4b8679ee",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_a85995efb2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_b4fa659232",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_c8af7ab563",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_205a82b7ac",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_228e753027",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_426679e45a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_bcd5d109d7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        }
+      ],
+      "submittedTriangles": 342394,
+      "drawCount": 396,
+      "cpu": {
+        "samples": 0,
+        "scope": "Visual-only review; CPU timing deliberately omitted."
+      },
+      "dropped": 0,
+      "skipped": 0,
+      "casterDropped": 0,
+      "faults": [],
+      "placement": {
+        "statics": 5954,
+        "kinds": 871,
+        "occupiedChunks": 30,
+        "mostInChunk": 675,
+        "faults": [],
+        "actualPlaced": 5954,
+        "cruiseInstances": 4962
+      },
+      "budget": {
+        "tier": "high",
+        "triangles": 4000000,
+        "draws": 2048,
+        "gpuBytes": 1610612736,
+        "uploadBytes": 2097152
+      },
+      "cold": {
+        "frames": 343,
+        "maxDraws": 396,
+        "maxTriangles": 342394,
+        "maxCasters": 546,
+        "maxCityMakeMs": 8.36515099999815,
+        "maxCityMissing": 8,
+        "maxCityBehind": 5,
+        "maxResidentBytes": 63222363,
+        "maxUploadBytes": 2161776,
+        "dropped": 0,
+        "skipped": 0,
+        "casterDropped": 0,
+        "assetTransport": "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.",
+        "medianMs": 0.31687000000238186,
+        "p95Ms": 1.1657220000015514,
+        "maxMs": 26.84309099999882,
+        "scope": "App.frame from cold client arrival through placement and streaming; excludes server/network/raster/GPU work."
+      },
+      "shipTarget": {
+        "triangles": 175184,
+        "draws": 390,
+        "targetTriangles": 1000000,
+        "targetDraws": 600,
+        "note": "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry."
+      },
+      "residency": {
+        "requests": 335,
+        "cancelled": 0,
+        "failed": 0,
+        "dead": 0,
+        "failNet": 0,
+        "failHash": 0,
+        "failRange": 0,
+        "lastStatus": 0,
+        "refused": 0,
+        "evicted": 0,
+        "wasted": 0,
+        "fetched": 28259974,
+        "cached": 9033012,
+        "uploaded": 37868482,
+        "used": 28259974,
+        "skipped": 0,
+        "shrunk": 0
+      },
+      "casterCount": 546,
+      "city": {
+        "makeMs": 0,
+        "made": 0,
+        "missing": 0,
+        "behind": 0,
+        "unseen": 0,
+        "unseenAt": null,
+        "unseenFrames": 0,
+        "coarse": 0
+      },
+      "handover": [
+        {
+          "chunk": 1887,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 1888,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 1951,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 1952,
+          "complete": false,
+          "far": true
+        },
+        {
+          "chunk": 2015,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2016,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2079,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2080,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2143,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2144,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2207,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2208,
+          "complete": true,
+          "far": false
+        }
+      ],
+      "assets": "assets: 27.5 MB on the card, 26.0 of it textures and 33.3 reserved, 0 coming, 0.0 MB waiting, 27.0 MB fetched, 8.6 MB from the cache, 0 failed, 0 given up, 0 left out, x1.00",
+      "camera": {
+        "x": 2048,
+        "y": 47.22046768188476,
+        "z": 2178,
+        "yaw": 0,
+        "pitch": 0.3595440154795526,
+        "thirdPerson": false
+      },
+      "state": {
+        "x": 2048,
+        "y": 45.600467681884766,
+        "z": 2178,
+        "mode": 1,
+        "grounded": true
+      },
+      "framing": [],
+      "settledCorrections": 0,
+      "fixture": "One authoritative setup placement before settling; walking views then use ordinary player movement and camera collision. Exterior views use an identified spectator.",
+      "packHash": "7829a30e",
+      "assetStage": "contract-prototype"
+    },
+    {
+      "name": "interior-pool_under-high",
+      "feet": [
+        2066,
+        42,
+        2042
+      ],
+      "target": [
+        2066,
+        44,
+        2047
+      ],
+      "mode": "walk",
+      "tier": "high",
+      "width": 1200,
+      "height": 800,
+      "registryHash": "1eccfcee",
+      "mapHash": "8091cc76",
+      "draws": [
+        {
+          "mesh": "core:far",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 77,
+          "triangles": 26488
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 1624
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 0,
+          "instances": 22,
+          "triangles": 704
+        },
+        {
+          "mesh": "core:cruise_deck_3b2d30cb41",
+          "lod": 0,
+          "instances": 17,
+          "triangles": 986
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 0,
+          "instances": 22,
+          "triangles": 264
+        },
+        {
+          "mesh": "core:cruise_deck_4d1ee5b355",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 154
+        },
+        {
+          "mesh": "core:cruise_deck_5e4cd757cf",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 30,
+          "triangles": 2520
+        },
+        {
+          "mesh": "core:cruise_deck_639d5ed15e",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 280
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 20,
+          "triangles": 1680
+        },
+        {
+          "mesh": "core:cruise_deck_71fb6cc104",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 132
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 21,
+          "triangles": 1764
+        },
+        {
+          "mesh": "core:cruise_deck_ab11c043d5",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 616
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 34,
+          "triangles": 2856
+        },
+        {
+          "mesh": "core:cruise_deck_ac43ec3a0f",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_b95656c7e2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_c94433364d",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 406
+        },
+        {
+          "mesh": "core:cruise_deck_cb9a71da09",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 34,
+          "triangles": 1088
+        },
+        {
+          "mesh": "core:cruise_deck_e8bdc868d2",
+          "lod": 0,
+          "instances": 13,
+          "triangles": 416
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 30,
+          "triangles": 960
+        },
+        {
+          "mesh": "core:cruise_hull_side_777d75f409",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_hull_under_02a9de4b20",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 77,
+          "triangles": 26488
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 1624
+        },
+        {
+          "mesh": "core:cruise_deck_19e72d244e",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 0,
+          "instances": 22,
+          "triangles": 704
+        },
+        {
+          "mesh": "core:cruise_deck_3b2d30cb41",
+          "lod": 0,
+          "instances": 17,
+          "triangles": 986
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 0,
+          "instances": 22,
+          "triangles": 264
+        },
+        {
+          "mesh": "core:cruise_deck_4d1ee5b355",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 154
+        },
+        {
+          "mesh": "core:cruise_deck_548669bdcd",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 64
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 30,
+          "triangles": 2520
+        },
+        {
+          "mesh": "core:cruise_deck_639d5ed15e",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 280
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 20,
+          "triangles": 1680
+        },
+        {
+          "mesh": "core:cruise_deck_71fb6cc104",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 132
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 26,
+          "triangles": 2184
+        },
+        {
+          "mesh": "core:cruise_deck_ab11c043d5",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 616
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 33,
+          "triangles": 2772
+        },
+        {
+          "mesh": "core:cruise_deck_ac43ec3a0f",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_c94433364d",
+          "lod": 0,
+          "instances": 8,
+          "triangles": 464
+        },
+        {
+          "mesh": "core:cruise_deck_cb9a71da09",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 22
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 32,
+          "triangles": 1024
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_deck_e8bdc868d2",
+          "lod": 0,
+          "instances": 13,
+          "triangles": 416
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 30,
+          "triangles": 960
+        },
+        {
+          "mesh": "core:cruise_gangway_a4ad92384a",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 2036
+        },
+        {
+          "mesh": "core:cruise_hull_side_6c175b2104",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_hull_under_3925e631f2",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_pool_basin_b13b7c48d2",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 132
+        },
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 77,
+          "triangles": 26488
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 19,
+          "triangles": 1102
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 480
+        },
+        {
+          "mesh": "core:cruise_deck_3b2d30cb41",
+          "lod": 0,
+          "instances": 26,
+          "triangles": 1508
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 180
+        },
+        {
+          "mesh": "core:cruise_deck_5e4cd757cf",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 20,
+          "triangles": 1680
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 30,
+          "triangles": 2520
+        },
+        {
+          "mesh": "core:cruise_deck_71fb6cc104",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 32,
+          "triangles": 2688
+        },
+        {
+          "mesh": "core:cruise_deck_ab11c043d5",
+          "lod": 0,
+          "instances": 19,
+          "triangles": 418
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 23,
+          "triangles": 1932
+        },
+        {
+          "mesh": "core:cruise_deck_ac43ec3a0f",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 23,
+          "triangles": 736
+        },
+        {
+          "mesh": "core:cruise_deck_e8bdc868d2",
+          "lod": 0,
+          "instances": 20,
+          "triangles": 640
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 20,
+          "triangles": 640
+        },
+        {
+          "mesh": "core:cruise_hull_side_777d75f409",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_hull_under_02a9de4b20",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_hull_under_29b8b549e7",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 77,
+          "triangles": 26488
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 19,
+          "triangles": 1102
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 480
+        },
+        {
+          "mesh": "core:cruise_deck_3b2d30cb41",
+          "lod": 0,
+          "instances": 26,
+          "triangles": 1508
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 180
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 20,
+          "triangles": 1680
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 30,
+          "triangles": 2520
+        },
+        {
+          "mesh": "core:cruise_deck_71fb6cc104",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 88
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 37,
+          "triangles": 3108
+        },
+        {
+          "mesh": "core:cruise_deck_ab11c043d5",
+          "lod": 0,
+          "instances": 19,
+          "triangles": 418
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 23,
+          "triangles": 1932
+        },
+        {
+          "mesh": "core:cruise_deck_ac43ec3a0f",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 0,
+          "instances": 22,
+          "triangles": 704
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_e8bdc868d2",
+          "lod": 0,
+          "instances": 20,
+          "triangles": 640
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 160
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 0,
+          "instances": 20,
+          "triangles": 640
+        },
+        {
+          "mesh": "core:cruise_hull_side_6c175b2104",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_hull_under_3925e631f2",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_hull_under_9651c096a6",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 56,
+          "triangles": 19264
+        },
+        {
+          "mesh": "core:cruise_bridge_wing_df3d74b697",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_005898c762",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_01aeddd9fd",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_07b375eb94",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_09896ea6b1",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_0dba193a3b",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_0ddba5d0f1",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_111407aa8a",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_114e578456",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_124977e52e",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 522
+        },
+        {
+          "mesh": "core:cruise_deck_216013f2b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_26206612a7",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_2cbcac38b5",
+          "lod": 5,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_2d5d6d082f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_2dd9434f2a",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_343e36b581",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_36ff8dddf6",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_3ab446ed7b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_416027946c",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_42864ac9a0",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_43c96fe9d4",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_4418cf9504",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_4464f63e3d",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_4969154854",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_50aedd593e",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_5319ae412b",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_5863b8c9a0",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_5d19eb0b96",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_5d5bf1c9ef",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 504
+        },
+        {
+          "mesh": "core:cruise_deck_5e4cd757cf",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_622b830f20",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_624cbd0c87",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 18,
+          "triangles": 1512
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 1260
+        },
+        {
+          "mesh": "core:cruise_deck_6b3c3d39f5",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_6b8b110926",
+          "lod": 5,
+          "instances": 16,
+          "triangles": 192
+        },
+        {
+          "mesh": "core:cruise_deck_706669584e",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_73c507cc58",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_77afb8057a",
+          "lod": 5,
+          "instances": 11,
+          "triangles": 132
+        },
+        {
+          "mesh": "core:cruise_deck_78ada0967f",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_7aa2827543",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_8296110e9c",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_82d48e36d5",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_83dc4b0b98",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_86dfe37447",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_887a9255c7",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_8aa417d9f9",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8ad5646e64",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_8dacf152da",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_906f8415cf",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_9681e2ec97",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 39,
+          "triangles": 3276
+        },
+        {
+          "mesh": "core:cruise_deck_a3f2cfbf23",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 2352
+        },
+        {
+          "mesh": "core:cruise_deck_abb7ffbf12",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_af4cd7b78b",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_af961f86fc",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b2be18cd8f",
+          "lod": 0,
+          "instances": 23,
+          "triangles": 1932
+        },
+        {
+          "mesh": "core:cruise_deck_b3696260a7",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_b7f92c2df3",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 696
+        },
+        {
+          "mesh": "core:cruise_deck_b8083845b3",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b9e006b1cc",
+          "lod": 5,
+          "instances": 12,
+          "triangles": 144
+        },
+        {
+          "mesh": "core:cruise_deck_bd1dc0ee09",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_c5019be7f8",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_cb09f5f70d",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_d06ec758df",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d6a4634555",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d779331206",
+          "lod": 0,
+          "instances": 11,
+          "triangles": 638
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_da5dcf5d69",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_dbc81cdd67",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e5108d703a",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 5,
+          "instances": 57,
+          "triangles": 684
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_e93f1233c9",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_ecdd220e75",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f253f6a055",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fc4b4e70b2",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 5,
+          "instances": 21,
+          "triangles": 252
+        },
+        {
+          "mesh": "core:cruise_deck_fd8b11cbc1",
+          "lod": 5,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_dome_cell_0ebe9b5c89",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_328374f8a1",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_4565890334",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_5936266d07",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_6d678f6488",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_7361cec457",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a93f793fd9",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c43634ae8b",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d083fefdec",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d231224361",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_efdada6c97",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_f46195d954",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_hull_side_0f5a7b02da",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_2bf71f4ada",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_5135b78627",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_b410728d06",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_balcony_6_5b28b72e12",
+          "lod": 0,
+          "instances": 56,
+          "triangles": 19264
+        },
+        {
+          "mesh": "core:cruise_bridge_wing_df3d74b697",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_cabin_balcony_b0f13bbdaf",
+          "lod": 1,
+          "instances": 27,
+          "triangles": 43416
+        },
+        {
+          "mesh": "core:cruise_deck_032226c81a",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_06a2b9c6cf",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_09896ea6b1",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_0a488f52ae",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_0b3474b1ef",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_0ddba5d0f1",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_124977e52e",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_141c3d4371",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 522
+        },
+        {
+          "mesh": "core:cruise_deck_216013f2b1",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_2491a93a70",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_264c6dffd5",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_296918f82e",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_2979dfba6a",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_2b55730564",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_2d5d6d082f",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_343e36b581",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_37d2c37487",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_3ab446ed7b",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_41a2ac75d8",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_41cc49309b",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_4418cf9504",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_50aedd593e",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_50c435b2d1",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_5d19eb0b96",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_5d5bf1c9ef",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 504
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 18,
+          "triangles": 1512
+        },
+        {
+          "mesh": "core:cruise_deck_6346db52dc",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 15,
+          "triangles": 1260
+        },
+        {
+          "mesh": "core:cruise_deck_6b3c3d39f5",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_6b8b110926",
+          "lod": 5,
+          "instances": 16,
+          "triangles": 192
+        },
+        {
+          "mesh": "core:cruise_deck_6bfabaf6d9",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_73c507cc58",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_77afb8057a",
+          "lod": 5,
+          "instances": 11,
+          "triangles": 132
+        },
+        {
+          "mesh": "core:cruise_deck_78ada0967f",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_7a9c1e0304",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_83dc4b0b98",
+          "lod": 0,
+          "instances": 4,
+          "triangles": 232
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_86dfe37447",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_87264c4696",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8907db884f",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_8ad5646e64",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_8b725a87ec",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_8dacf152da",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_9681e2ec97",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_97e3e22e18",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_982a01e9b7",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 40,
+          "triangles": 3360
+        },
+        {
+          "mesh": "core:cruise_deck_a264eed04b",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_a44f99f0f8",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 28,
+          "triangles": 2352
+        },
+        {
+          "mesh": "core:cruise_deck_abb7ffbf12",
+          "lod": 0,
+          "instances": 6,
+          "triangles": 348
+        },
+        {
+          "mesh": "core:cruise_deck_adb664d565",
+          "lod": 5,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_ae1e41009b",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b111687626",
+          "lod": 5,
+          "instances": 9,
+          "triangles": 108
+        },
+        {
+          "mesh": "core:cruise_deck_b2be18cd8f",
+          "lod": 0,
+          "instances": 23,
+          "triangles": 1932
+        },
+        {
+          "mesh": "core:cruise_deck_b7f92c2df3",
+          "lod": 0,
+          "instances": 12,
+          "triangles": 696
+        },
+        {
+          "mesh": "core:cruise_deck_b9e006b1cc",
+          "lod": 5,
+          "instances": 12,
+          "triangles": 144
+        },
+        {
+          "mesh": "core:cruise_deck_bd1dc0ee09",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_c2bc17132c",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_c7af4b064d",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_cb09f5f70d",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 1,
+          "triangles": 58
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 5,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_d2e1b31cec",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_d319f4ea69",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_d4e1d922b5",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d779331206",
+          "lod": 0,
+          "instances": 11,
+          "triangles": 638
+        },
+        {
+          "mesh": "core:cruise_deck_d903b06130",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_da5dcf5d69",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_dbc81cdd67",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_df3843b4c0",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_e0ae85a027",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_e5108d703a",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 5,
+          "instances": 57,
+          "triangles": 684
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_ed6bfc09d7",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 5,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_deck_efbcc86204",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_f20a3efcef",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f594e5daaa",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fc4b4e70b2",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 5,
+          "instances": 21,
+          "triangles": 252
+        },
+        {
+          "mesh": "core:cruise_deck_fd8b11cbc1",
+          "lod": 5,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_deck_fe03357055",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_fe84deecc2",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_17593f1254",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_24d9b071f0",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_3f533666bd",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_3ff45b1f8f",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_46d2a504e8",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_4cc9934ecc",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_808be88a8a",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_891a70e3b1",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a748137e5a",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c0034a38d2",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_dc2d04f9a2",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_dome_cell_e6d27f5a99",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 40
+        },
+        {
+          "mesh": "core:cruise_door_cabin_closed_18fccee2fd",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_hull_side_1aec6a368a",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_5ba0957bec",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_60041739b5",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_629adf42db",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_signal_mast_17c9286cc7",
+          "lod": 1,
+          "instances": 1,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_stair_flight_0529047302",
+          "lod": 2,
+          "instances": 4,
+          "triangles": 1376
+        },
+        {
+          "mesh": "core:cruise_stair_flight_146bd6b7de",
+          "lod": 2,
+          "instances": 4,
+          "triangles": 1280
+        },
+        {
+          "mesh": "core:cruise_stair_flight_325ad566af",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 356
+        },
+        {
+          "mesh": "core:cruise_stair_flight_3fe196b55b",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 356
+        },
+        {
+          "mesh": "core:cruise_stair_flight_4b8b37dd0c",
+          "lod": 2,
+          "instances": 3,
+          "triangles": 996
+        },
+        {
+          "mesh": "core:cruise_stair_flight_6bda9312ab",
+          "lod": 2,
+          "instances": 2,
+          "triangles": 736
+        },
+        {
+          "mesh": "core:cruise_stair_flight_7a67720ae2",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 368
+        },
+        {
+          "mesh": "core:cruise_stair_flight_bb80617cb1",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 368
+        },
+        {
+          "mesh": "core:cruise_stair_flight_cc7aa5eb67",
+          "lod": 2,
+          "instances": 4,
+          "triangles": 1376
+        },
+        {
+          "mesh": "core:cruise_stair_flight_e1a93687ee",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 332
+        },
+        {
+          "mesh": "core:cruise_stair_flight_ea25fb94eb",
+          "lod": 2,
+          "instances": 4,
+          "triangles": 1280
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f0829b5602",
+          "lod": 2,
+          "instances": 2,
+          "triangles": 736
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f4000ec355",
+          "lod": 2,
+          "instances": 3,
+          "triangles": 996
+        },
+        {
+          "mesh": "core:cruise_stair_flight_f47fbc7af6",
+          "lod": 2,
+          "instances": 1,
+          "triangles": 332
+        },
+        {
+          "mesh": "core:cruise_stair_landing_2a11ccf9b7",
+          "lod": 1,
+          "instances": 1,
+          "triangles": 460
+        },
+        {
+          "mesh": "core:cruise_stair_landing_88089a2c81",
+          "lod": 1,
+          "instances": 2,
+          "triangles": 920
+        },
+        {
+          "mesh": "core:cruise_stair_landing_88271ae938",
+          "lod": 1,
+          "instances": 7,
+          "triangles": 3220
+        },
+        {
+          "mesh": "core:cruise_stair_landing_b74c6a219a",
+          "lod": 1,
+          "instances": 4,
+          "triangles": 1840
+        },
+        {
+          "mesh": "core:cruise_stair_landing_eb2c404d73",
+          "lod": 1,
+          "instances": 1,
+          "triangles": 460
+        },
+        {
+          "mesh": "core:cruise_stair_landing_fe8c0cfd15",
+          "lod": 1,
+          "instances": 1,
+          "triangles": 460
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_13429f5e1b",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_1c8e7b0846",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_1ea6399205",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_30d9b042a7",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_32cee03714",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_3b646f4230",
+          "lod": 5,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_deck_44034c8cd0",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_4404c85d0a",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_514539aa56",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_548669bdcd",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_5924c69996",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_6a7517f9e9",
+          "lod": 5,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_7172bed953",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_894c44eb8e",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8ac84a9fd2",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 588
+        },
+        {
+          "mesh": "core:cruise_deck_a625149cca",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 756
+        },
+        {
+          "mesh": "core:cruise_deck_ae0eec69e7",
+          "lod": 5,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_b57a0a494e",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_b9ba12c8f4",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_bff7ce0509",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_c0bb1bc4ef",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_ca1e4b0c14",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_d4e1d922b5",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_d6a71ad131",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 5,
+          "instances": 12,
+          "triangles": 144
+        },
+        {
+          "mesh": "core:cruise_deck_e693493015",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 5,
+          "instances": 5,
+          "triangles": 60
+        },
+        {
+          "mesh": "core:cruise_deck_feae513dd1",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_ff61075022",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_2c623b08d9",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_35ab84a8a7",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_3e35b524ab",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_59fe9a1d2b",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_5a7a131d58",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_6c950e34ee",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_7a1926b0f4",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_84b9296d92",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_881d93006b",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_8f39f5a88d",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_9b155a5f2e",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a4f6c5270b",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a92918a0b0",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_af617d582c",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b276c2c436",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b97884543c",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_bca056f743",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c0b66628b4",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c133c9d322",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c9cd06666d",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d4dc421626",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_df903262d9",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_e66020d215",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fd3ad22301",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_hull_side_10410c0bf4",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_37d3d41221",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_bacf3b6ea4",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_e5ef67a6d9",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_3d349c4f1e",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_a51a5e03f5",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_e0c113d0b7",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_f975fa4d29",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_013b98d3cb",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_08e44d24f2",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_1267554b2f",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_1ad5e35025",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_1b8c5d2eec",
+          "lod": 5,
+          "instances": 7,
+          "triangles": 84
+        },
+        {
+          "mesh": "core:cruise_deck_1ea6399205",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_31fdc8b4dc",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_400687f3d1",
+          "lod": 5,
+          "instances": 4,
+          "triangles": 48
+        },
+        {
+          "mesh": "core:cruise_deck_44034c8cd0",
+          "lod": 0,
+          "instances": 2,
+          "triangles": 116
+        },
+        {
+          "mesh": "core:cruise_deck_4d5f383654",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_532c9c2ab3",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_548669bdcd",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_576d0b472c",
+          "lod": 5,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_59cd66b804",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_5b09a5a430",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_628455335e",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_65d5577157",
+          "lod": 0,
+          "instances": 5,
+          "triangles": 420
+        },
+        {
+          "mesh": "core:cruise_deck_7172bed953",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_7448776d7f",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_84e156d6f2",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_8ccfc522f2",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_902863668a",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_9a1a4f344b",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_a1cf1e7cbb",
+          "lod": 0,
+          "instances": 7,
+          "triangles": 588
+        },
+        {
+          "mesh": "core:cruise_deck_ab9073e7cd",
+          "lod": 0,
+          "instances": 9,
+          "triangles": 756
+        },
+        {
+          "mesh": "core:cruise_deck_b9ba12c8f4",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_bd8aa0f01a",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_c44cb8b865",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_cc73565773",
+          "lod": 0,
+          "instances": 3,
+          "triangles": 174
+        },
+        {
+          "mesh": "core:cruise_deck_d02ededef4",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_d4207a9dbe",
+          "lod": 5,
+          "instances": 8,
+          "triangles": 96
+        },
+        {
+          "mesh": "core:cruise_deck_d42fe4e93a",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_d4e1d922b5",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e55f77ecf8",
+          "lod": 5,
+          "instances": 12,
+          "triangles": 144
+        },
+        {
+          "mesh": "core:cruise_deck_e58274738b",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e59085bb5a",
+          "lod": 5,
+          "instances": 2,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_deck_e72fa74cdb",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_e761b87ae4",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_edcd85ccf4",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_efa87662ae",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_f2f16d276a",
+          "lod": 5,
+          "instances": 3,
+          "triangles": 36
+        },
+        {
+          "mesh": "core:cruise_deck_f84c91b232",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_deck_fd7c2bcbc1",
+          "lod": 5,
+          "instances": 5,
+          "triangles": 60
+        },
+        {
+          "mesh": "core:cruise_dome_cell_01bf611528",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_2fcafa284c",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_464bb09c4f",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_48d80b68a6",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_4bd30f75c3",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_5d0a6884ed",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_673b52cdd2",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_7877be8bbd",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_8adee440d2",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_8b76330f5a",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_a696b639f6",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b5710f7135",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_b971e00cf1",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c416b27f5b",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c890b59969",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_c97b653f3c",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_cc6b9e0c22",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_d39322d55c",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_da78dec6be",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_ddb68d0252",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_f69d62e343",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fc5e0e72e8",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fe0e27a34b",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_dome_cell_fe290c413c",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 24
+        },
+        {
+          "mesh": "core:cruise_hull_side_6f4b8679ee",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_a85995efb2",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_b4fa659232",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_side_c8af7ab563",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_205a82b7ac",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_228e753027",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_426679e45a",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        },
+        {
+          "mesh": "core:cruise_hull_under_bcd5d109d7",
+          "lod": 5,
+          "instances": 1,
+          "triangles": 12
+        }
+      ],
+      "submittedTriangles": 551412,
+      "drawCount": 504,
+      "cpu": {
+        "samples": 0,
+        "scope": "Visual-only review; CPU timing deliberately omitted."
+      },
+      "dropped": 0,
+      "skipped": 0,
+      "casterDropped": 0,
+      "faults": [],
+      "placement": {
+        "statics": 5954,
+        "kinds": 871,
+        "occupiedChunks": 30,
+        "mostInChunk": 675,
+        "faults": [],
+        "actualPlaced": 5954,
+        "cruiseInstances": 4962
+      },
+      "budget": {
+        "tier": "high",
+        "triangles": 4000000,
+        "draws": 2048,
+        "gpuBytes": 1610612736,
+        "uploadBytes": 2097152
+      },
+      "cold": {
+        "frames": 343,
+        "maxDraws": 504,
+        "maxTriangles": 551412,
+        "maxCasters": 607,
+        "maxCityMakeMs": 8.536690000000817,
+        "maxCityMissing": 8,
+        "maxCityBehind": 5,
+        "maxResidentBytes": 104598121,
+        "maxUploadBytes": 2123736,
+        "dropped": 0,
+        "skipped": 0,
+        "casterDropped": 0,
+        "assetTransport": "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.",
+        "medianMs": 0.32097800000337884,
+        "p95Ms": 0.9808400000038091,
+        "maxMs": 31.94041599999764,
+        "scope": "App.frame from cold client arrival through placement and streaming; excludes server/network/raster/GPU work."
+      },
+      "shipTarget": {
+        "triangles": 322166,
+        "draws": 487,
+        "targetTriangles": 1000000,
+        "targetDraws": 600,
+        "note": "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry."
+      },
+      "residency": {
+        "requests": 158,
+        "cancelled": 0,
+        "failed": 0,
+        "dead": 0,
+        "failNet": 0,
+        "failHash": 0,
+        "failRange": 0,
+        "lastStatus": 0,
+        "refused": 0,
+        "evicted": 0,
+        "wasted": 0,
+        "fetched": 69635732,
+        "cached": 22959372,
+        "uploaded": 92943436,
+        "used": 69635732,
+        "skipped": 0,
+        "shrunk": 0
+      },
+      "casterCount": 607,
+      "city": {
+        "makeMs": 0,
+        "made": 0,
+        "missing": 0,
+        "behind": 0,
+        "unseen": 0,
+        "unseenAt": null,
+        "unseenFrames": 0,
+        "coarse": 0
+      },
+      "handover": [
+        {
+          "chunk": 1887,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 1888,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 1951,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 1952,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2015,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2016,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2079,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2080,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2143,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2144,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2207,
+          "complete": true,
+          "far": false
+        },
+        {
+          "chunk": 2208,
+          "complete": true,
+          "far": false
+        }
+      ],
+      "assets": "assets: 66.7 MB on the card, 66.0 of it textures and 33.3 reserved, 0 coming, 0.0 MB waiting, 66.4 MB fetched, 21.9 MB from the cache, 0 failed, 0 given up, 0 left out, x1.00",
+      "camera": {
+        "x": 2066,
+        "y": 43.62085830688476,
+        "z": 2042,
+        "yaw": 0,
+        "pitch": 0.07585417968892648,
+        "thirdPerson": false
+      },
+      "state": {
+        "x": 2066,
+        "y": 42.000858306884766,
+        "z": 2042,
+        "mode": 1,
+        "grounded": true
+      },
+      "framing": [],
+      "settledCorrections": 0,
+      "fixture": "One authoritative setup placement before settling; walking views then use ordinary player movement and camera collision. Exterior views use an identified spectator.",
+      "packHash": "7829a30e",
+      "assetStage": "contract-prototype"
+    }
+  ],
+  "limits": "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading."
+}

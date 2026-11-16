@@ -1,0 +1,74 @@
+[
+  {
+    "file": "meyer-sea-trials.png",
+    "url": "https://cdn.uc.assets.prezly.com/db8dca88-daa2-48da-95aa-14c1ccf5bde3/meyer-turku-shipyard-delivered-the-worlds-most-advanced-cruise-ship-icon-of-the-seas-header-image",
+    "credit": "Meyer Turku / Lavea Media",
+    "kind": "Photograph, actual sea trials; builder delivery release",
+    "accessed": "2026-11-16",
+    "bytes": 13459836,
+    "sha256": "f6e5370473165d4b04edbccc08b84667508cf1b39b92ff6db414fb807e07b200"
+  },
+  {
+    "file": "deck-plan-2250.pdf",
+    "url": "https://www.royalcaribbean.com/content/dam/royal/ships/deckplans-hub/Icon_2250_v2023.pdf",
+    "credit": "Royal Caribbean International",
+    "kind": "Public deck plan, Profile 2250; filename v2023, PDF creation metadata 2022-10-20",
+    "accessed": "2026-11-16",
+    "bytes": 1220641,
+    "sha256": "482d74b2044ec88fb887c42d52fb8868fd3fa2c15e1629994af12e3fab50be31"
+  },
+  {
+    "file": "lower-aft-larry-moore-2024.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Lower_Aft_Icon_of_the_Seas_2024.jpg",
+    "originalSource": "https://upload.wikimedia.org/wikipedia/commons/3/3b/Lower_Aft_Icon_of_the_Seas_2024.jpg",
+    "credit": "Larry D. Moore",
+    "kind": "Actual photograph, own work, Cozumel, 2024-05-15",
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "changes": "None; reference only, pixels are not production texture inputs.",
+    "accessed": "2026-11-16",
+    "bytes": 3691350,
+    "sha256": "dddba220ba9e21f103b6d3f04f0e663e7bf0a8618a1056ffe1c6e0ca8b69de5b"
+  },
+  {
+    "file": "profile-corey-seeman-2025.jpg",
+    "url": "https://commons.wikimedia.org/wiki/File:Icon_of_the_Seas_Puerto_Rico_2025.jpg",
+    "originalSource": "https://www.flickr.com/photos/cseeman/54277171793/",
+    "credit": "Corey Seeman",
+    "kind": "Actual photograph from Celebrity Apex north of Puerto Rico, 2025-01-13",
+    "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+    "changes": "None; reference only, pixels are not production texture inputs.",
+    "accessed": "2026-11-16",
+    "bytes": 10045064,
+    "sha256": "f1a84ad964c413624522fd712d4b7527a7b025e3aa8364f9a02fd7859069d333"
+  },
+  {
+    "file": "pearl-award.pdf",
+    "url": "https://cruiseshipinteriors-awards.com/wp-content/uploads/2024/08/Pearl-CSI-Submission_Compressed.pdf",
+    "credit": "Royal Caribbean International; lead designers Anna Drescher / Wilson Butler Architects / Breakfast Studio",
+    "kind": "Operator award submission with photographs of the completed Pearl and Royal Promenade, 7 pages",
+    "changes": "None; reference only, pixels are not production texture inputs.",
+    "accessed": "2026-11-16",
+    "bytes": 1896930,
+    "sha256": "cd8fb407058b4e8b7cbc5647591affc8e7a99189cda8add43e4bcc53f34e44ca"
+  },
+  {
+    "file": "aquadome-award.pdf",
+    "url": "https://cruiseshipinteriors-awards.com/wp-content/uploads/2024/08/CSI-Award-Submission_AquaDome_Compressed.pdf",
+    "credit": "Royal Caribbean International; AquaDome award submission",
+    "kind": "Operator award submission with photographs of AquaDome and Overlook; PDF creation 2024-08-23, 6 pages",
+    "changes": "None; reference only, pixels are not production texture inputs.",
+    "accessed": "2026-11-16",
+    "bytes": 1904179,
+    "sha256": "8dbf2b99ddee9d1bf529e1c932722460a5710f7d85c66cf9adfcc785bedaf43f"
+  },
+  {
+    "file": "saladino-cafe-1.jpg",
+    "url": "https://tepdghracqewvvuswppr.supabase.co/storage/v1/object/public/MediaBucket/uploads/1766008124395_1.jpg",
+    "credit": "Saladino Design Studio project gallery; individual photographer not stated",
+    "kind": "Actual Pearl Cafe photograph linked by its interior designer, gallery image 1; full size 6920 by 4560",
+    "changes": "None; reference only, pixels are not production texture inputs.",
+    "accessed": "2026-11-16",
+    "bytes": 12101493,
+    "sha256": "d0aa26e4f86fa831559602a02c9dd970360026ec9201e6756ee039deb3d928d1"
+  }
+]
