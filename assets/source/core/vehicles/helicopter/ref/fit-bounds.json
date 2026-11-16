@@ -25,15 +25,15 @@
     ]
   },
   "controlsWorst": {
-    "margin": 0.30152030624078957,
-    "mesh": "core:human_m/armor/hide/hands",
+    "margin": 0.31089868254971853,
+    "mesh": "core:human_m/armor/cloth/torso",
     "sex": "m",
     "seat": "seat_driver",
-    "profile": "controls_4095",
+    "profile": "controls_3551",
     "at": [
-      0.8583030540104062,
-      1.233756884625116,
-      0.8715888435992213
+      0.8609683999423676,
+      1.38668386576998,
+      0.6386973807021423
     ]
   },
   "headMotionAllowance": 0.26758318992265934,

@@ -94,7 +94,7 @@ export function fitPilotControls(pose: Pose, solved: Solved, rest: Float32Array,
     if (!usable[side]) continue;
     const [, lower, wrist, , fingers, thumb, sign] = ARMS[side]!;
     quatMulConj(pose.rot, wrist * 4, solved.rot, lower * 4, hands, side * 4);
-    quatAxis(pose.rot, fingers * 4, 0, 0, 1, -sign * 1.05);
+    quatAxis(pose.rot, fingers * 4, 0, 0, 1, -sign * 1.8);
     quatAxis(pose.rot, thumb * 4, 0, 0, 1, -sign * .35);
   }
   solve(HUMAN, pose, solved, rest, scale);
