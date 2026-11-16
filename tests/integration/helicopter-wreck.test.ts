@@ -33,7 +33,7 @@ test("an inverted crash keeps its attitude, momentum and cargo through falling s
     expect([loaded.wreck!.qx, loaded.wreck!.qw, loaded.wreck!.vx, loaded.wreck!.vy]).toEqual([1, 0, vx, vy]);
     expect(h.world.ents.vehicleQx[loaded.e]).toBe(1);
     h.run(6000);
-    expect(loaded.drop).toBeNull(); expect(loaded.y).toBeGreaterThan(2.85); expect(loaded.y).toBeLessThan(3.15);
+    expect(loaded.drop).toBeNull(); expect(loaded.y).toBeGreaterThan(3.30); expect(loaded.y).toBeLessThan(3.34);
     expect([loaded.wreck!.qx, loaded.wreck!.qw]).toEqual([1, 0]);
     expect(h.host.items.inv(loaded.rec).total(cargo)).toBe(11); expect(h.host.items.audit()).toEqual([]);
     const middle = h.host.corpses.middle(loaded);
@@ -52,10 +52,10 @@ test("rigid salvage rests on a roof and falls again when its actual support is d
     ents.vehicleQx[e] = 1; ents.vehicleQy[e] = ents.vehicleQz[e] = ents.vehicleQw[e] = 0;
     h.host.urban.changed(e); h.host.survival.hurt(rec, 1e6, 0); h.run(4000);
     const b = [...h.host.corpses.bodies.values()].find(b => b.wreck)!;
-    expect(b.drop).toBeNull(); expect(b.y).toBeGreaterThan(12.8); expect(b.y).toBeLessThan(13.3);
+    expect(b.drop).toBeNull(); expect(b.y).toBeGreaterThan(13.40); expect(b.y).toBeLessThan(13.45);
     for (const ref of refs) expect(h.world.structs.remove(ref)).toBe(true);
     h.run(5000);
-    expect(b.drop).toBeNull(); expect(b.y).toBeGreaterThan(2.85); expect(b.y).toBeLessThan(3.15);
+    expect(b.drop).toBeNull(); expect(b.y).toBeGreaterThan(3.30); expect(b.y).toBeLessThan(3.34);
     expect([b.wreck!.qx, b.wreck!.qw]).toEqual([1, 0]);
   } finally { h.host.shutdown(); }
 });

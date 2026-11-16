@@ -27,7 +27,7 @@ test("inverted rigid salvage falls on its actual hull and never rights itself or
   expect([s.qx, s.qy, s.qz, s.qw]).toEqual([1, 0, 0, 0]); expect(s.engineOn).toBe(false); expect(s.rotorRpm).toBe(0);
   let stopped = false;
   for (let i = 0; i < 200 && !stopped; i++) stopped = stepHelicopterWreck(s, def, world);
-  expect(stopped).toBe(true); expect(s.y).toBeGreaterThan(2.9); expect(s.y).toBeLessThan(3.1);
+  expect(stopped).toBe(true); expect(s.y).toBeGreaterThan(3.30); expect(s.y).toBeLessThan(3.34);
   expect([s.qx, s.qy, s.qz, s.qw]).toEqual([1, 0, 0, 0]);
   expect(world.blocked(s, s, helicopterWreckDefinition(def))).toBeNull();
 });
@@ -40,6 +40,14 @@ test("airborne wrecks retain crash spin and sink in water without powered lift",
   hf.seaLevel = 40;
   for (let i = 0; i < 120; i++) stepHelicopterWreck(s, def, world);
   expect(s.vy).toBeLessThan(-.3); expect(s.vy).toBeGreaterThan(-1); expect(Math.abs(s.vz)).toBeLessThan(.01);
+});
+
+test("terrain cell sides do not turn an inverted mast's support into a sideways collision", () => {
+  const { world } = scene(), s = createHelicopter(spec, 70.27734375, 3.322, 64);
+  s.qx = 1; s.qw = 0;
+  const hit = world.blocked(s, { ...s, y: s.y - .035 }, helicopterWreckDefinition(def));
+  expect(hit?.reason).toBe("terrain"); expect(hit?.ny).toBeGreaterThan(.9999);
+  expect(Math.hypot(hit!.nx!, hit!.nz!)).toBeLessThan(1e-8);
 });
 
 test("an inverted wreck's submerged cabin receives water drag while its skid origin is still above the waterline", () => {

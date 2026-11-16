@@ -4,7 +4,7 @@ import { TICK_DT, WORLD_MAX_Y } from "../coords.ts";
 import { quatAxis, quatMul, quatNormalize, quatRotate, quatUnrotate } from "../math/quat.ts";
 import { clamp, detAtan2, detCos, detSin, len3, TAU } from "../math/scalar.ts";
 import { validateHelicopterSpec, type HelicopterSpec, type RotorVehicleDefinition, type VehicleState } from "./vehicle.ts";
-import { helicopterImmersion } from "./helicopter-immersion.ts";
+import { helicopterEngineImmersion, helicopterImmersion } from "./helicopter-immersion.ts";
 
 export interface HelicopterState extends VehicleState {
   qx: number; qy: number; qz: number; qw: number;
@@ -118,7 +118,8 @@ export function stepHelicopter(s: HelicopterState, input: Readonly<HelicopterInp
     s.engineOn = true; s.collective = clamp(mass / (p.liftMass * Math.max(0.2, efficiency)), 0, 1);
   }
   if (!usable || (!input.pilot && s.grounded)) s.engineOn = false;
-  const wet = helicopterImmersion(s, p, world.waterAt(s.x, s.z)) > 0;
+  const water = world.waterAt(s.x, s.z);
+  const wet = helicopterImmersion(s, p, water) > 0 || helicopterEngineImmersion(s, p, water) > 0;
   if (wet) { s.engineOn = false; result.water = true; result.surface = "water"; }
   const autorotation = !s.engineOn && !s.grounded && !wet ? clamp(-s.vy / 10, 0, 0.6) * s.rotorCondition : 0;
   const targetRpm = p.rotorRpm * (s.engineOn ? 0.76 + 0.24 * s.engineCondition : autorotation);

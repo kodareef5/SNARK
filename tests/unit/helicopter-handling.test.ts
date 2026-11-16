@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { HELICOPTER as spec, HELICOPTER_VEHICLE as def } from "../../content/vehicles/helicopter.ts";
 import { TICK_DT } from "../../shared/coords.ts";
 import { createHelicopter, stepHelicopter, type HelicopterInput, type HelicopterState, type HelicopterWorld } from "../../shared/sim/helicopter.ts";
-import { helicopterImmersion } from "../../shared/sim/helicopter-immersion.ts";
+import { helicopterEngineImmersion, helicopterImmersion } from "../../shared/sim/helicopter-immersion.ts";
+import { helicopterWreckDefinition } from "../../shared/sim/helicopter-wreck.ts";
 import { validateVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { vehiclePoint, rayVehicle } from "../../shared/sim/vehicle-frame.ts";
 import { Heightfield } from "../../shared/world/heightfield.ts";
@@ -15,7 +16,7 @@ const up = (s: HelicopterState) => 1 - 2 * (s.qx * s.qx + s.qz * s.qz);
 function native() {
   const dims = { chunksX: 4, chunksZ: 4 }, hf = new Heightfield(dims, 2, -16, 1 / 256); hf.heights.fill(4096);
   // 1 thin wall, 2 rooftop, 3 narrow post; all use the real structure broadphase and collision parts.
-  const structs = new StructureStore(dims, new Float32Array([0, 12, 8, .12]), new Float32Array([0, 15, .15, 1]), new Float32Array([0, .02, 8, .12]));
+  const structs = new StructureStore(dims, new Float32Array([0, 12, 8, .12, .08]), new Float32Array([0, 15, .15, 1, .03]), new Float32Array([0, .02, 8, .12, .08]));
   const raw = { hf, structs }; return { raw, hf, structs, world: new StaticHelicopterWorld(raw) };
 }
 function flight(y = 120): HelicopterState {
@@ -176,6 +177,27 @@ test("water contact follows the complete cabin orientation through banks, dives 
     expect(helicopterImmersion(s, spec, 10)).toBeGreaterThan(0);
     expect(stepHelicopter(s, command({ direct: true }), def, world).water).toBe(true); expect(s.engineOn).toBe(false);
   }
+});
+
+test("the narrow mast and engine cowling meet overhead beams without enlarging the blade disc or cabin", () => {
+  for (const [x, y, z] of [[0, 3.29, -.3], [.52, 2.8, -1.4]]) {
+    const { world, raw, structs } = native(), s = createHelicopter(spec, 96, 0, 96);
+    structs.add(4, 96 + x!, y!, 96 + z!, 0, 0, 100);
+    const withoutUpperParts = { ...def, spec: { ...spec, bodyBoxes: [], engineBox: undefined } };
+    expect(world.blocked(s, s, withoutUpperParts)).toBeNull();
+    expect(world.blocked(s, s, def)?.rotor).toBe(false);
+    expect(world.blocked(s, s, helicopterWreckDefinition(def))?.rotor).toBe(false);
+    expect(helicopterPlacement(raw, s.x, s.y, s.z, 0, def)).toBe(false);
+  }
+});
+
+test("an inverted engine shuts down on first water ingress while the cabin can still be dry", () => {
+  const s = flight(12.75), world: HelicopterWorld = { ...sky, waterAt: () => 10 };
+  s.qx = 1; s.qw = 0;
+  expect(helicopterImmersion(s, spec, 10)).toBe(0);
+  expect(helicopterEngineImmersion(s, spec, 10)).toBeGreaterThan(0);
+  expect(stepHelicopter(s, command({ direct: true }), def, world).water).toBe(true);
+  expect(s.engineOn).toBe(false);
 });
 
 test("seeded direct and assisted sequences replay to identical state with finite normalized orientation", () => {

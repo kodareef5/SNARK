@@ -115,6 +115,9 @@ export interface VehicleRotor {
   readonly blur?: { readonly blades: number; readonly chord: number };
 }
 
+/** A rigid part in the vehicle's local frame. */
+export interface VehicleCollisionBox { readonly at: readonly [number, number, number]; readonly half: readonly [number, number, number] }
+
 /** Stabilized rotorcraft tuning, in metres, seconds, kilograms and radians. */
 export interface HelicopterSpec extends VehicleHullSpec {
   readonly mass: number;
@@ -140,6 +143,10 @@ export interface HelicopterSpec extends VehicleHullSpec {
   readonly skidHalfWidth: number;
   readonly skidHalfLength: number;
   readonly minGroundNormal: number;
+  /** Engine cowling outside the cabin; also determines water ingress when tilted or inverted. */
+  readonly engineBox?: VehicleCollisionBox;
+  /** Other rigid body parts, such as the mast and hub, without widening the cabin or rotor disc. */
+  readonly bodyBoxes?: readonly VehicleCollisionBox[];
   /** Tail boom is a separate capsule: rotor radius never expands the cabin's interaction hull. */
   readonly tail: { readonly from: readonly [number, number, number]; readonly to: readonly [number, number, number]; readonly radius: number; readonly tipRadius?: number; readonly boxes?: readonly { readonly at: readonly [number, number, number]; readonly half: readonly [number, number, number] }[] };
 }
@@ -159,6 +166,9 @@ export function validateHelicopterSpec(s: HelicopterSpec): void {
     if (!Number.isFinite(s[key]) || s[key] <= 0) throw new Error(`missing or invalid helicopter ${key}`);
   }
   const vec = (v: unknown): boolean => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  const box = (b: VehicleCollisionBox): boolean => !!b && vec(b.at) && vec(b.half) && b.half.every(n => n > 0 && n <= 8);
+  if (s.engineBox !== undefined && !box(s.engineBox)) throw new Error("invalid helicopter engine box");
+  if (s.bodyBoxes !== undefined && (!Array.isArray(s.bodyBoxes) || s.bodyBoxes.length > 8 || !s.bodyBoxes.every(box))) throw new Error("invalid helicopter body boxes");
   if (s.tail?.tipRadius !== undefined && (!Number.isFinite(s.tail.tipRadius) || s.tail.tipRadius <= 0 || s.tail.tipRadius > 2)) throw new Error("invalid helicopter tail");
   if (s.tail?.boxes !== undefined && (!Array.isArray(s.tail.boxes) || s.tail.boxes.length > 8 ||
     !s.tail.boxes.every(b => vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 8)))) throw new Error("invalid helicopter tail boxes");

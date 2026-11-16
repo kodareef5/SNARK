@@ -11,6 +11,8 @@ export const HELICOPTER: HelicopterSpec = {
   turnRate: 1.75, turnAcceleration: 4.5, pitchRate: 1.8, rollRate: 2.5, bankAngle: 0.48, pitchAngle: 0.34, attitudeResponse: 5,
   gravity: 18, rotorRpm: 410, spoolUp: 105, spoolDown: 70,
   skidHalfWidth: ART.skids.halfWidth, skidHalfLength: 1.75, minGroundNormal: 0.94,
+  engineBox: { at: [0, 2.65, -.55], half: [.58, .22, 1.03] },
+  bodyBoxes: [{ at: [0, 3, -.30], half: [.28, .32, .28] }],
   tail: { from: [0, 1.65, -1.65], to: [0, 1.91, -5.65], radius: 0.48, tipRadius: 0.09,
     boxes: [{ at: [0, 2.11, -5.475], half: [0.065, 0.84, 0.375] }, { at: [0, 1.775, -4.635], half: [0.70, 0.045, 0.185] }] },
 };

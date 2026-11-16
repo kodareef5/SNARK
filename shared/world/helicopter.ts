@@ -69,6 +69,8 @@ function localShapes(def: RotorVehicleDefinition): Shape[] {
     parts.push(shape(tube(r.at.map((c, i) => c - n[i]! * 0.035), r.at.map((c, i) => c + n[i]! * 0.035), u, v, r.radius, r.radius, 24), true));
   }
   parts.push(box([0, (p.clearance + p.height) / 2, 0], [p.halfWidth, (p.height - p.clearance) / 2, p.halfLength]));
+  if (p.engineBox) parts.push(box(p.engineBox.at, p.engineBox.half));
+  for (const part of p.bodyBoxes ?? []) parts.push(box(part.at, part.half));
   for (const side of [-1, 1]) parts.push(box([side * p.skidHalfWidth, 0.1, 0.05], [0.075, 0.075, p.skidHalfLength + 0.2]));
   parts.push(shape(tube(p.tail.from, p.tail.to, [1, 0, 0], [0, 1, 0], p.tail.radius, p.tail.tipRadius ?? p.tail.radius, 8)));
   for (const part of p.tail.boxes ?? []) parts.push(box(part.at, part.half));
@@ -172,7 +174,16 @@ export class StaticHelicopterWorld implements HelicopterWorld {
           const bottom = Math.min(b.minY, h00, h10, h01, h11) - 2;
           for (const middle of [[(x + 1) * hf.cell, h10, z * hf.cell], [x * hf.cell, h01, (z + 1) * hf.cell]]) {
             triangle(a, middle, d, bottom, this.obstacle);
-            if (this.meets(out, this.obstacle)) { this.hit.reason = "terrain"; return this.hit; }
+            if (this.meets(out, this.obstacle)) {
+              // The extrusion's sides are internal terrain seams, not physical walls. SAT still needs them to find
+              // overlap, but response/support must use the actual sloping top face, even beside a cell diagonal.
+              const ax = middle[0]! - a[0]!, ay = middle[1]! - a[1]!, az = middle[2]! - a[2]!;
+              const bx = d[0]! - a[0]!, by = d[1]! - a[1]!, bz = d[2]! - a[2]!;
+              const nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+              const scale = (ny < 0 ? -1 : 1) / len3(nx, ny, nz);
+              this.hit.nx = nx * scale; this.hit.ny = ny * scale; this.hit.nz = nz * scale;
+              this.hit.reason = "terrain"; return this.hit;
+            }
           }
         }
       }
