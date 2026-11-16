@@ -7,6 +7,7 @@ import { CORE_CONTENT } from "../../content/core.ts";
 import { KORU_LAYOUT } from "../../content/landmarks/koru.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
+import { chunkAt } from "../../shared/coords.ts";
 import { hashBytes } from "../../shared/hash.ts";
 import { parsePack, type Pack } from "../../shared/pack/pack.ts";
 import { MODE_GHOST, MODE_WALK, stanceEye } from "../../shared/sim/character.ts";
@@ -79,7 +80,7 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
   const built = compileContent(CORE_CONTENT); if (!built.registry) throw new Error(built.errors.join("\n"));
   const reg = built.registry, h = new Harness({}, 629, 60, { dev: true, map: writeMap(map), clips: pack.clips, rigs: pack.header.rigs }, reg);
   const boot = parsePack(files.files[0]!), port = new FakeNet(files.files, { keep: true });
-  const session = h.join("Koru visitor", {}, { manual: true, look: defaultLook() });
+  const session = h.join("Koru visitor", {}, { manual: true, city: true, look: defaultLook() });
   const app = new App(session, reg, boot, { manifest: files.manifest, port });
   app.ui.settings.tier = shot.tier; app.ui.settings.steady = false;
   let raster: Rasterizer | null = null, packet: FramePacket | null = null;
@@ -112,16 +113,17 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
       if (p.camY < h.world.hf.waterAt(p.camX, p.camZ)) throw new Error(`${shot.name}: interior camera is incorrectly underwater`);
     }
     const draws: { mesh: string; lod: number; instances: number; triangles: number }[] = [];
-    let submittedTriangles = 0;
     for (let i = 0; i < p.drawCount; i++) {
       const mesh = files.manifest.meshes[p.drawMesh[i]!]!, lod = p.drawLod[i]!, count = p.drawInstances[i]!;
       const triangles = (p.drawIndexCount[i] ? p.drawIndexCount[i]! / 3 : mesh.levels[lod]?.tris ?? 0) * count;
-      submittedTriangles += triangles;
       if (mesh.id.startsWith("core:koru") || mesh.id === "core:far") draws.push({ mesh: mesh.id, lod, instances: count, triangles });
     }
     if (!draws.some(draw => draw.mesh.startsWith("core:koru")) && !shot.far) throw new Error(`${shot.name}: actual frame drew no authored Koru mesh`);
     if (shot.far && !draws.length) throw new Error(`${shot.name}: distant yacht has neither a native mesh nor a map proxy`);
     if (p.dropped || p.skipped || p.casterDropped) throw new Error(`${shot.name}: native rendering dropped draws or shadow casters`);
+    const yachtChunks = [...new Set(map.statics.filter(s => s.kind.startsWith("core:koru")).map(s => chunkAt(map.dims, s.x, s.z)))];
+    const handover = yachtChunks.map(chunk => ({ chunk, complete: session.world!.city?.complete(chunk) ?? false, far: app.scene!.city?.isFar(chunk) ?? false }));
+    if (shot.far && !handover.some(chunk => chunk.far)) throw new Error(`${shot.name}: requested distant review never exercised the native far handover`);
     const framing = (shot.framePoints ?? []).map(point => {
       const projected = new Float32Array(3);
       if (!app.cam.project(...point, projected) || projected[0]! < .02 || projected[0]! > .98 || projected[1]! < .02 || projected[1]! > .98) throw new Error(`${shot.name}: authored silhouette point ${point.join(",")} is clipped by the camera`);
@@ -130,9 +132,9 @@ function capture(shot: KoruShot, map: MapData, pack: Pack, files: GameFiles, wid
     render.render(p); const scene = render.color.slice(); drawUi(render.color, width, height, app.ui.frame);
     writeFileSync(resolve(out, `${shot.name}-scene.png`), encodePng(width, height, scene));
     writeFileSync(resolve(out, `${shot.name}.png`), encodePng(width, height, render.color));
-    return { ...shot, width, height, draws, submittedTriangles, drawCount: p.drawCount,
+    return { ...shot, width, height, draws, submittedTriangles: p.triangles, drawCount: p.drawCount,
       dropped: p.dropped, skipped: p.skipped, casterDropped: p.casterDropped,
-      city: app.scene.city?.stats, assets: app.scene.assets.line(),
+      city: app.scene.city?.stats, handover, assets: app.scene.assets.line(),
       camera: { x: p.camX, y: p.camY, z: p.camZ, yaw: app.cam.yaw, pitch: app.cam.pitch, thirdPerson: app.view.thirdPerson },
       state: { x: ents.x[me.ent], y: ents.y[me.ent], z: ents.z[me.ent], mode: ents.mode[me.ent], grounded: !!(ents.flags[me.ent]! & F_GROUNDED) },
       framing,
@@ -148,8 +150,8 @@ export async function reviewKoru(map: MapData, shots: readonly KoruShot[], args 
   const [width, height] = (value("--size") ?? "1200x800").split("x").map(Number) as [number, number];
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 320 || height < 240 || width > 1920 || height > 1080) throw new Error("--size must be 320x240 through 1920x1080");
   console.log(`Loading native production packs from ${source}`);
-  const bytes = corePack(source), pack = parsePack(bytes), native = pack.header.meshes.filter(m => m.id.startsWith("core:koru"));
-  if (!native.length || native.some(m => m.lods.length < 6)) throw new Error("Build the authored Koru production meshes with all six LODs before native review");
+  const bytes = corePack(source), pack = parsePack(bytes), native = pack.header.meshes.filter(m => m.id.startsWith("core:koru")), graybox = args.includes("--graybox");
+  if (!native.length || (!graybox && native.some(m => m.lods.length < 6))) throw new Error("Build the authored Koru production meshes with all six LODs before native review; --graybox is an explicitly preliminary collision-mesh audit");
   const named = await namedTextures(source);
   console.log("Preparing native mesh and texture streams");
   const files = splitWithTextures(bytes, t => { const texture = named.get(t.id); if (!texture) throw new Error(`Missing production texture ${t.id}`); return rgbaOf(texture.material, t.role, t.top); });
@@ -159,7 +161,7 @@ export async function reviewKoru(map: MapData, shots: readonly KoruShot[], args 
   if (only.length && existsSync(resolve(out, "report.json"))) report.push(...JSON.parse(readFileSync(resolve(out, "report.json"), "utf8")).shots.filter((s: { name: string }) => !selected.some(shot => shot.name === s.name)));
   for (const shot of selected) {
     console.log(`Native Koru review ${shot.name}`);
-    report.push({ ...capture(shot, map, pack, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out), packHash });
+    report.push({ ...capture(shot, map, pack, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out), packHash, assetStage: graybox ? "preliminary graybox" : "production" });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native map → authoritative Harness → App → streamed production packs → native frame packet → Rasterizer", shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));

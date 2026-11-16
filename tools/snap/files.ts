@@ -14,7 +14,7 @@ import { pictureBytes, topIn, type TextureRole } from "../../shared/pack/texture
 import { findAssets } from "../art/assets.ts";
 import { materialsOf, mipsOf, pictureFiles, type Material } from "../art/materials.ts";
 import { SOURCE, readPacks } from "../art/source.ts";
-import { buildCorePack, grayboxMeshes, withArt } from "../pack/build.ts";
+import { buildCorePack, farMesh, grayboxMeshes, withArt } from "../pack/build.ts";
 import { mannequinMeshes } from "../pack/mannequin.ts";
 import { splitPack } from "../pack/split.ts";
 import { rgbaTexture, writeTextureFile } from "../pack/texture.ts";
@@ -94,7 +94,7 @@ export async function namedTextures(source: string = SOURCE): Promise<Map<string
 export function corePack(source: string = SOURCE, extra: SourceMesh[] = []): Uint8Array {
   if (resolve(source) === resolve(SOURCE)) return buildCorePack(extra);
   const art = readPacks(source);
-  const made = [...grayboxMeshes(CORE_CONTENT), ...mannequinMeshes(), ...weaponMeshes()];
+  const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
   return buildPack([...withArt(made, art.meshes), ...extra], defaultPalette(), [...art.clips, ...authoredClips()], art.rigs, art.details);
 }
 
