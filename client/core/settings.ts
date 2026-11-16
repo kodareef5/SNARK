@@ -7,8 +7,9 @@ export class Settings {
   /** How much detail is drawn (client/core/assets/tiers.ts). */
   tier: Tier["name"] = DEFAULT_TIER;
   /**
-   * "Steady frame: automatic": under the tier chosen, the game may draw the far shadows every other frame, fewer pixels,
-   * shadows and far trees less far, and at the last no sun shadows, to keep 60 frames a second (client/core/governor.ts).
+   * "Steady frame: automatic": under the tier chosen, the game may draw coarser levels, thinner crowns, the far shadows
+   * every other frame, far trees less far, fewer pixels, and at the last no sun shadows, to keep 60 frames a second
+   * (client/core/governor.ts).
    * It never changes the tier. Off draws the tier exactly.
    */
   steady = true;

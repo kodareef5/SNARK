@@ -915,6 +915,8 @@ export interface DeviceSide {
   display: number;
   /** Whether the page's server is the terrain flight's, on its 8 km map, where the soak turns through the wood. */
   terrainMap: boolean;
+  /** The tier the page's link names for the soaks (`soaktier`), or null for high. */
+  soakTier?: string | null;
   /** Asks the server to stand the body at the tree order's spot `k` (WOODS). Resolves with where, x and z, or null if it would not. */
   stand(k: number): Promise<number[] | null>;
   /** Asks the server to count the view `w` by `h` CSS pixels, `fov` degrees high, or how its count goes. Null for no answer. */
@@ -1874,7 +1876,8 @@ export class DeviceRun {
     const taken = report.governed ? g.steps.slice(Math.max(0, g.steps.length - (g.moved - this.governedFrom))).map((x) => ({ ...x, at: Math.round(x.at - this.soakAt) })) : [];
     report.governed?.push(...taken);
     this.governedFrom = g.moved;
-    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured), ...(report.governed ? { level: g.level, most: Math.max(this.most, g.level), steps: taken.map((x) => `${x.level}: ${x.name} (${x.why})`) } : {}) });
+    const clock = (ms: number): string => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, "0")}`;
+    report.minutes.push({ minute: minute + 1, frames: s.frame.length, frameMs: spread(s.frame), long, buildMs: spread(s.build).median, drawMs: spread(s.draw).median, missed: this.missedSince(this.stepBase), mat: Math.max(0, ...s.textured), ...(report.governed ? { level: g.level, most: Math.max(this.most, g.level), steps: taken.map((x) => `at ${clock(x.at)} to ${x.level}: ${x.name} (${x.why})`) } : {}) });
     this.most = g.level;
     for (const list of Object.values(s)) list.length = 0;
     this.stepBase = { snapshots: this.side.app.session.stats.snapshots, latest: this.side.app.session.latestSnapshot };
@@ -1883,10 +1886,10 @@ export class DeviceRun {
     return true;
   }
 
-  /** The soak's tier: high, or the finest under it the device can take. */
+  /** The soak's tier: the one the link names, else high, or the finest under it the device can take. */
   private soakTier(): Tier {
     const can = takes(this.side.maxTexture);
-    return can.find((t) => t.name === "high") ?? can.at(-1) ?? tierOf(DEFAULT_TIER);
+    return can.find((t) => t.name === (this.side.soakTier ?? "high")) ?? can.at(-1) ?? tierOf(DEFAULT_TIER);
   }
 
   /** Device pixels the page draws for one CSS pixel, as client/shell/main.ts works it out from the tier in use. */
@@ -2165,6 +2168,7 @@ export class DeviceProbe {
       frames: new FrameTimer(gl),
       display: this.report.idleFrameMs ?? 16.7,
       terrainMap: this.offered.includes("terrain"),
+      soakTier: b.query("soaktier"),
       stand: (k) => this.within(() => b.fetch(`stand/${k}`, "").then((res) => (res.ok ? (res.json() as Promise<number[] | null>) : null)), 20000, null),
       layers: (w, h, fov) => this.within(() => b.fetch(`layers/${w}/${h}/${fov}`, "").then((res) => (res.ok ? (res.json() as Promise<LayerAnswer | null>) : null)), 10000, null),
     };
