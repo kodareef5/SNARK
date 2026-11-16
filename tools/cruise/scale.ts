@@ -3,10 +3,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { CruiseLayout, CruisePrototype } from "../../content/landmarks/cruise-layout.ts";
-import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
-import { frameAxes, HALF_SIDE } from "../../shared/world/frame.ts";
-import { unpackMeshes } from "../pack/write.ts";
+import { cruiseGeometry } from "./geometry.ts";
+import { verifyCruiseGroups, type CruisePackedGroups } from "./packed-groups.ts";
 
 type Point = [number, number, number];
 type Group = "hull" | "deckhouse" | "bridge";
@@ -28,50 +26,41 @@ function span(range: Span, axis: number, witness: Witness): void {
 }
 
 /** The canonical preview uses native yaw zero. Instance yaw and origins use the real lattice conversion. */
-export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array, features = false) {
-  const meshes = new Map(unpackMeshes(parsePack(bytes)).map(mesh => [mesh.id, mesh]));
-  const prototypes = new Map(layout.prototypes.map(p => [p.id, p as MeasuredPrototype]));
-  const levels = [], faults: string[] = [];
-  for (const p of prototypes.values()) {
-    const mesh = meshes.get(p.mesh);
-    if (!mesh) faults.push(`${p.id}: missing native mesh ${p.mesh}`);
-    else if (mesh.lods.length !== 6) faults.push(`${p.id}: requires six native levels, found ${mesh.lods.length}`);
+export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array, features = false, groups?: CruisePackedGroups) {
+  const geometry = cruiseGeometry(layout, bytes, groups), levels = [], faults: string[] = [];
+  const ids = layout.cells?.length ? layout.cells.map(c => c.id) : layout.prototypes.map(p => p.mesh);
+  for (const id of ids) {
+    const mesh = geometry.byId.get(id);
+    if (!mesh) faults.push(`missing native mesh ${id}`);
+    else if (mesh.lods.length !== 6) faults.push(`${id}: requires six native levels, found ${mesh.lods.length}`);
   }
   if (faults.length) throw new Error(faults.join("; "));
   for (let level = 0; level < 6; level++) {
     const bounds = EMPTY(), length = SPAN(), waterline = SPAN(), deckhouse = SPAN(), bridge = SPAN(), domeWidth = SPAN(), domeHeight = SPAN();
     const coverage = { hull: 0, deckhouse: 0, bridge: 0, dome: 0 };
     let vertices = 0, triangles = 0, waterlineTriangles = 0;
-    const axes = new Int32Array(4);
-    for (const instance of layout.instances) {
-      if (!instance.placed) continue;
-      const p = prototypes.get(instance.prototype);
-      if (!p) throw new Error(`${instance.id}: unknown prototype ${instance.prototype}`);
+    for (const section of geometry.sections(level)) {
+      const { instance, positions: posed, indices } = section, p = section.prototype as MeasuredPrototype;
       if (p.category === "gangway") continue;
-      const lod = meshes.get(p.mesh)!.lods[level]!, group = p.art?.measurement;
+      const group = p.art?.measurement;
       if (group) coverage[group]++;
       if (p.category === "dome") coverage.dome++;
-      const origin = instance.at.map(v => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
-      frameAxes(Math.round(instance.yaw * YAW_UNITS / 360) & (YAW_UNITS - 1), axes);
-      const posed = new Float64Array(lod.positions.length);
       let lowY = Infinity, highY = -Infinity;
-      for (let v = 0; v < lod.positions.length / 3; v++) {
-        const x = lod.positions[v * 3]!, y = lod.positions[v * 3 + 1]!, z = lod.positions[v * 3 + 2]!;
-        const at: Point = [origin[0]! + (x * axes[0]! + z * axes[2]!) / HALF_SIDE, origin[1]! + y,
-          origin[2]! + (x * axes[1]! + z * axes[3]!) / HALF_SIDE];
+      for (const v of new Set(indices)) {
+        const at: Point = [posed[v * 3]!, posed[v * 3 + 1]!, posed[v * 3 + 2]!];
         if (!at.every(Number.isFinite)) throw new Error(`${instance.id}: non-finite packed vertex`);
-        posed.set(at, v * 3); include(bounds, at); lowY = Math.min(lowY, at[1]); highY = Math.max(highY, at[1]);
+        include(bounds, at); lowY = Math.min(lowY, at[1]); highY = Math.max(highY, at[1]); vertices++;
         const witness: Witness = { instance: instance.id, prototype: p.id, vertex: v, at };
         span(length, 2, witness);
         if (group === "deckhouse") span(deckhouse, 0, witness);
         if (group === "bridge") span(bridge, 0, witness);
         if (p.category === "dome") { span(domeWidth, 0, witness); span(domeHeight, 1, witness); }
       }
-      vertices += lod.positions.length / 3; triangles += lod.indices.length / 3;
+      triangles += indices.length / 3;
       if (group !== "hull" || lowY > 0 || highY < 0) continue;
-      for (let tri = 0; tri < lod.indices.length; tri += 3) {
+      for (let tri = 0; tri < indices.length; tri += 3) {
         const points = [0, 1, 2].map(k => {
-          const v = lod.indices[tri + k]! * 3; return [posed[v]!, posed[v + 1]!, posed[v + 2]!] as Point;
+          const v = indices[tri + k]! * 3; return [posed[v]!, posed[v + 1]!, posed[v + 2]!] as Point;
         });
         if (points.every(p => p[1] > 0) || points.every(p => p[1] < 0)) continue;
         waterlineTriangles++;
@@ -105,7 +94,7 @@ export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array, features = 
     levels.push({ level, vertices, triangles, waterlineTriangles, coverage, bounds, metrics });
   }
   return { pass: faults.length === 0, phase: layout.phase, toleranceMetres: TOLERANCE, features,
-    scope: "All placed ship geometry in all six delivered native LODs, excluding the gangway. Native origin/yaw quantization in the canonical yaw-zero ship frame. Hull beam is measured by clipping actual triangles at waterline Y0; deckhouse and bridge use explicit semantic groups. Height and draft are reported as geometry bounds, not certified published measurements. This does not certify visual resemblance, interior accuracy, collision or frame cost.",
+    scope: "All placed ship geometry in all six delivered native LODs, excluding the gangway. Native origin/yaw quantization in the canonical yaw-zero ship frame. Hull beam is measured by clipping actual triangles at waterline Y0; deckhouse and bridge use explicit semantic groups matched to actual packed triangles. Cell geometry is counted once, independently of collision-only modules. Height and draft are reported as geometry bounds, not certified published measurements. This does not certify visual resemblance, interior accuracy, collision or frame cost.",
     featureScope: features ? "Outer AquaDome category measures the architect's 57 m width and 17 m height; separate inner theater, furniture and decks are excluded. The unverified overall ship height/draft and discrepant Pearl figures are not certified." : "Outer dome dimensions are not included in this prototype envelope run; final acceptance requires --features.",
     faults, levels };
 }
@@ -115,13 +104,16 @@ if (import.meta.main) {
   const value = (flag: string, fallback: string) => { const at = args.indexOf(flag); if (at < 0) return fallback; if (!args[at + 1] || args[at + 1]!.startsWith("--")) throw new Error(`${flag} needs a path`); return args[at + 1]!; };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--features") continue;
-    if (["--pack", "--layout", "--out"].includes(args[i]!) && args[i + 1] && !args[i + 1]!.startsWith("--")) { i++; continue; }
-    throw new Error("usage: bun tools/cruise/scale.ts [--features] [--pack path] [--layout path] [--out path]");
+    if (["--pack", "--layout", "--out", "--groups"].includes(args[i]!) && args[i + 1] && !args[i + 1]!.startsWith("--")) { i++; continue; }
+    throw new Error("usage: bun tools/cruise/scale.ts [--features] [--pack path] [--layout path] [--out path] [--groups path]");
   }
-  const packPath = resolve(value("--pack", resolve(root, "assets/source/core/landmarks/cruise/cruise.snpk")));
+  const packPath = resolve(value("--pack", resolve(root, "assets/source/landmarks/cruise/cruise.snpk")));
   const layoutPath = resolve(value("--layout", resolve(root, "content/landmarks/cruise-layout.json")));
   const output = resolve(value("--out", resolve(root, "var/cruise-preview/scale.json")));
-  const bytes = readFileSync(packPath), source = readFileSync(layoutPath), result = cruiseScale(JSON.parse(source.toString()) as CruiseLayout, bytes, args.includes("--features"));
+  const bytes = readFileSync(packPath), source = readFileSync(layoutPath), layout = JSON.parse(source.toString()) as CruiseLayout;
+  const groups: CruisePackedGroups | undefined = layout.cells?.length ? JSON.parse(readFileSync(resolve(value("--groups", resolve(root, "assets/source/landmarks/cruise/ref/packed-groups.json"))), "utf8")) : undefined;
+  if (groups) verifyCruiseGroups(groups, source, bytes);
+  const result = cruiseScale(layout, bytes, args.includes("--features"), groups);
   const report = { ...result, packSHA256: createHash("sha256").update(bytes).digest("hex"), layoutSHA256: createHash("sha256").update(source).digest("hex") };
   mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify({ pass: result.pass, output, faults: result.faults, levels: result.levels.map(l => ({ level: l.level, metrics: l.metrics.map(m => ({ name: m.name, metres: m.actual, pass: m.pass })) })) }, null, 2));

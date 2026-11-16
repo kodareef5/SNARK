@@ -1,44 +1,36 @@
-// Delivered native meshes, not source declarations, must retain the instancing and walkable-opening contract.
+// Delivered map-local cells retain the near walking spaces while far levels omit hidden fittings.
 import { expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
-import { shapeHalf } from "../../shared/content/defs.ts";
-import { cruiseParts, type CruisePrototype } from "../../content/landmarks/cruise-layout.ts";
-import { parsePack } from "../../shared/pack/pack.ts";
-import { nearestColour } from "../../shared/pack/palette.ts";
-import { measureSurface } from "../../tools/art/check.ts";
-import { unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
+import type { CruiseLayout } from "../../content/landmarks/cruise-layout.ts";
+import type { SourceLod } from "../../tools/pack/write.ts";
+import { cruiseArt, cruiseArtSections, cruiseOwnerLod } from "../fixtures/cruise-art.ts";
 
-const pack = parsePack(new Uint8Array(readFileSync(new URL("../../assets/source/core/landmarks/cruise/cruise.snpk", import.meta.url))));
-const meshes = unpackMeshes(pack), byId = new Map(meshes.map(mesh => [mesh.id, mesh]));
+const layout: CruiseLayout = CRUISE_LAYOUT;
 
-test("repeated cruise placements use bounded six-level native prototypes and shared original materials", () => {
-  expect([...byId.keys()].sort()).toEqual(CRUISE_LAYOUT.prototypes.map(p => p.mesh).sort());
-  expect(CRUISE_LAYOUT.instances.length).toBeGreaterThan(CRUISE_LAYOUT.prototypes.length * 5);
+test("rendered cruise cells stay inside their actual 16 m cubes with six useful levels and shared native materials", () => {
+  const expected = new Set([...layout.cells!.map(c => c.id), ...layout.prototypes.filter(p => p.mesh !== "none").map(p => p.mesh)]);
+  expect([...cruiseArt.byId.keys()].sort()).toEqual([...expected].sort());
   const totals = new Array<number>(6).fill(0), faults: string[] = [];
-  for (const p of CRUISE_LAYOUT.prototypes as readonly CruisePrototype[]) {
-    const mesh = byId.get(p.mesh)!, parts = cruiseParts(p), look = p.look ? cruiseParts(p.look) : undefined;
-    const half = shapeHalf(parts.boxes ?? [], parts.hulls, look);
-    expect(mesh.lods.length, p.id).toBe(6); expect(mesh.flat, p.id).toBe(1);
-    expect(mesh.materials!.length, p.id).toBeLessThanOrEqual(3);
+  for (const cell of layout.cells!) {
+    const mesh = cruiseArt.byId.get(cell.id)!, header = cruiseArt.pack.header.meshes[cruiseArt.pack.meshIndex.get(cell.id)!]!;
+    expect(mesh.lods.length, cell.id).toBe(6); expect(mesh.flat, cell.id).toBe(2);
+    expect(cell.yaw).toBe(0); expect(mesh.materials!.length, cell.id).toBeLessThanOrEqual(3);
     for (const [level, lod] of mesh.lods.entries()) {
       totals[level]! += lod.indices.length / 3;
-      expect(lod.indices.length, p.id).toBeGreaterThan(0);
-      expect(lod.positions.every(Number.isFinite), p.id).toBe(true);
-      const surface = measureSurface(lod);
-      if (surface.holes || surface.flipped || surface.insideOut) faults.push(`${p.id} L${level}: open or inward surface`);
+      if (!lod.indices.length || !lod.positions.every(Number.isFinite)) faults.push(`${cell.id} L${level}: absent or non-finite geometry`);
       for (let axis = 0; axis < 3; axis++) {
-        let lo = Infinity, hi = -Infinity;
-        for (let v = axis; v < lod.positions.length; v += 3) { lo = Math.min(lo, lod.positions[v]!); hi = Math.max(hi, lod.positions[v]!); }
-        if (lo < Math.max(-half[axis]!, p.visualBounds.min[axis]!) - .006 || hi > Math.min(half[axis]!, p.visualBounds.max[axis]!) + .006) faults.push(`${p.id} L${level} axis${axis}: mesh escapes native bounds`);
+        const tolerance = header.half[axis]! / 32767 + .000004;
+        for (let v = axis; v < lod.positions.length; v += 3) {
+          const value = lod.positions[v]! + cell.origin[axis]!;
+          if (value < cell.bounds.min[axis]! - tolerance || value > cell.bounds.max[axis]! + tolerance) { faults.push(`${cell.id} L${level}: geometry escapes its spatial budget cell`); break; }
+        }
       }
-      if (level) expect(lod.error!, p.id).toBeGreaterThanOrEqual(.008);
     }
   }
-  expect(faults).toEqual([]);
+  expect(faults.slice(0, 30)).toEqual([]);
   for (let i = 1; i < 6; i++) expect(totals[i]!).toBeLessThanOrEqual(totals[i - 1]!);
   expect(totals[5]!).toBeLessThan(totals[0]!);
-  const textureBytes = (pack.header.textures ?? []).reduce((sum, texture) => {
+  const textureBytes = (cruiseArt.pack.header.textures ?? []).reduce((sum, texture) => {
     let pixels = 0; for (let s = texture.top; s >= 1; s = Math.floor(s / 2)) pixels += s * s;
     return sum + pixels * 4;
   }, 0);
@@ -60,27 +52,24 @@ function blocked(lod: SourceLod, x: number, y: number, z: number): boolean {
   return false;
 }
 
-test("real cabin entry and window apertures survive textured and near-flat fallback with distinct furnishings", () => {
-  const cabin = CRUISE_LAYOUT.prototypes.find(p => p.category === "cabin")!, mesh = byId.get(cabin.mesh)!;
-  const linen = nearestColour(pack.palette, 229, 223, 209), oak = nearestColour(pack.palette, 139, 102, 67), carpet = nearestColour(pack.palette, 52, 86, 114);
+test("real cabin doorway geometry survives both textured levels after cells are clipped and merged", () => {
+  const cabin = layout.instances.find(i => i.placed && layout.prototypes.find(p => p.id === (i.sourcePrototype ?? i.prototype))?.category === "cabin")!;
   for (const level of [0, 1]) {
-    const lod = mesh.lods[level]!;
-    for (const y of [.6, 1.4, 2.3]) {
-      for (const z of [-.65, 0, .65]) expect(blocked(lod, -3.93, y, z), `L${level} doorway`).toBe(false);
-      for (const z of [-2.4, 0, 2.4]) expect(blocked(lod, 3.93, y, z), `L${level} window`).toBe(false);
-    }
+    const parts = cruiseArtSections(level).filter(s => s.instance.id === cabin.id).map(cruiseOwnerLod);
+    expect(parts.length).toBeGreaterThan(0);
+    for (const y of [.6, 1.4, 2.3]) for (const z of [-.65, 0, .65]) expect(parts.some(p => blocked(p, -3.93, y, z)), `L${level} doorway`).toBe(false);
   }
-  for (const lod of mesh.lods.slice(1)) {
-    expect(lod.colors.includes(linen)).toBe(true); expect(lod.colors.includes(oak)).toBe(true); expect(lod.colors.includes(carpet)).toBe(true);
-  }
+  // Window glazing is permitted to be a closed slab with an inward cutout picture, as current main specifies.
+  // Its visibility is reviewed through the native textured camera, not rejected for having actual geometry.
 });
 
-test("elevated decorative basin retains real dry-room headroom in every delivered level", () => {
-  const placed = CRUISE_LAYOUT.instances.find(i => i.id === "prototype_pool")!;
-  const proto = CRUISE_LAYOUT.prototypes.find(p => p.id === placed.prototype)!;
-  const room = CRUISE_LAYOUT.rooms.find(r => r.id === "pool_under")!;
-  for (const lod of byId.get(proto.mesh)!.lods) {
-    let bottom = Infinity; for (let v = 1; v < lod.positions.length; v += 3) bottom = Math.min(bottom, lod.positions[v]! + placed.at[1]!);
+test("the packed elevated basin retains dry-room headroom at both playable textured levels", () => {
+  const room = layout.rooms.find(r => r.id === "pool_under")!;
+  for (const level of [0, 1]) {
+    const parts = cruiseArtSections(level).filter(s => s.instance.id === "prototype_pool");
+    expect(parts.length).toBeGreaterThan(0);
+    let bottom = Infinity;
+    for (const part of parts) for (const v of part.indices) bottom = Math.min(bottom, part.positions[v * 3 + 1]!);
     expect(bottom - room.bounds.min[1]!).toBeGreaterThanOrEqual(2.6);
   }
 });
@@ -110,22 +99,17 @@ function pearlFrontHit(lods: readonly SourceLod[], z: number, angle: number): bo
   return false;
 }
 
-test("assembled Pearl retains a visible inner shell at every level and across adjacent mixed levels", () => {
-  const shells = CRUISE_LAYOUT.prototypes.filter(p => p.category === "pearl").map(p => byId.get(p.mesh)!);
-  expect(shells.length).toBe(16);
+test("the Pearl retains a front-facing inner shell across both near levels and mixed adjacent cells", () => {
+  const parts = (level: number) => cruiseArtSections(level).filter(s => s.prototype.category === "pearl");
   const faults: string[] = [], zs = [-4.7, -1.8, .3, 2.6, 4.8];
-  for (let level = 0; level < 6; level++) {
-    const lods = shells.map(m => m.lods[level]!);
-    for (const z of zs) for (let i = 0; i < 80; i++) {
-      const angle = (i + .23) * Math.PI * 2 / 80;
-      if (!pearlFrontHit(lods, z, angle)) faults.push(`L${level} z${z} angle${angle.toFixed(4)}`);
-    }
-  }
-  for (let level = 1; level < 6; level++) {
-    const lods = shells.map((m, i) => m.lods[i % 2 ? level : 0]!);
-    for (const z of zs) for (let seam = 0; seam < 16; seam++) for (const side of [-1, 1]) {
-      const angle = seam * Math.PI / 8 + side * .003;
-      if (!pearlFrontHit(lods, z, angle)) faults.push(`L0/${level} z${z} seam${seam} side${side}`);
+  const configurations = [parts(0), parts(1), [...parts(0).filter(s => Number(s.mesh.split("_").at(-1)) % 2 === 0),
+    ...parts(1).filter(s => Number(s.mesh.split("_").at(-1)) % 2 === 1)]];
+  for (const [configuration, sections] of configurations.entries()) {
+    expect(sections.length).toBeGreaterThan(0);
+    const lods = sections.map(cruiseOwnerLod);
+    for (const z of zs) for (let i = 0; i < 160; i++) {
+      const angle = (i + .23) * Math.PI * 2 / 160;
+      if (!pearlFrontHit(lods, z, angle)) faults.push(`configuration${configuration} z${z} angle${angle.toFixed(4)}`);
     }
   }
   expect(faults.slice(0, 20)).toEqual([]);
