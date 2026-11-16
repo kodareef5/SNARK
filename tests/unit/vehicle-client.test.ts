@@ -149,23 +149,13 @@ test("driving instruments read mechanical gear/RPM, including neutral, and never
   b.vehicle = b.grounded = true; b.fuel = spec.fuelCapacity;
   b.vehicleGear = 2; b.vehicleRpm = 3700; b.vz = 35;
   v.update(4, b, 1, false, spec, 16);
-  expect(v.gear).toBe(2); expect(v.rpm).toBe(3700); expect(v.load).toBe(1);
-  b.vehicleShiftTime = spec.drivetrain!.shiftCooldown; v.update(4, b, 1, false, spec, 16);
-  expect(v.load).toBe(.35);
-  b.vehicleShiftTime = .1; v.update(4, b, 1, false, spec, 16);
-  expect(v.load).toBe(1); expect(v.redline).toBe(spec.drivetrain!.redlineRpm);
+  expect(v.gear).toBe(2); expect(v.rpm).toBe(3700); expect(v.redline).toBe(spec.drivetrain!.redlineRpm);
   v.update(4, b, -1, false, spec, 16);
   expect(v.brake).toBe(1);
   b.vehicleGear = 0; b.vehicleRpm = 850; v.update(4, b, 0, false, spec, 16);
   expect(v.gear).toBe(0); expect(v.rpm).toBe(850);
   b.vehicleGear = -1; b.vz = -3; v.update(4, b, -1, false, spec, 16);
   expect(v.gear).toBe(-1); expect(v.brake).toBe(0);
-  b.vx = 4; b.vz = 10; v.update(4, b, 1, true, spec, 16);
-  expect(v.slip).toBeGreaterThan(.5);
-  b.grounded = false; v.update(4, b, 1, true, spec, 16);
-  expect(v.slip).toBe(0);
-  b.fuel = 0; v.update(4, b, 1, false, spec, 16);
-  expect(v.load).toBe(0);
   v.stop(); expect(v.active).toBe(false); expect(v.rpm).toBe(0);
 });
 

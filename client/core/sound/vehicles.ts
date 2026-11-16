@@ -1,13 +1,14 @@
-// Rotorcraft and boats as they are heard, from the state each snapshot carries: the engine's four layers faded across by
-// rotor or engine speed, its start and stop, a rotor's downwash over ground or water and its cabin for whoever is inside,
-// and the water at a hull. Each is asked of the vehicle's own id, which falls back to its family (core:helicopter,
-// core:boat, by vehicleFamilies) before the shared car's, so a livery is heard as its vehicle is. Each loop is wanted only
-// within its own range (Sounds.loop).
+// Vehicles as they are heard, from the state each snapshot carries: the engine's four layers faded across by rotor or
+// engine speed, its start and stop, a rotor's downwash over ground or water and its cabin for whoever is inside, and the
+// water at a hull. Each is asked of the vehicle's own id, which falls back to its family (core:helicopter, core:boat, by
+// vehicleFamilies) before the shared car's, so a livery is heard as its vehicle is. Each loop is wanted only within its
+// own range (Sounds.loop).
 
 import { CUE_DEAD } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
 import { cueKey } from "../../../shared/sound/cues.ts";
 import { isBoatVehicle, isRotorVehicle } from "../../../shared/sim/vehicle.ts";
+import { DEFAULT_DRIVETRAIN } from "../../../shared/sim/vehicle-drivetrain.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { RemoteSample } from "../session.ts";
 import type { Hear } from "./bodies.ts";
@@ -42,6 +43,7 @@ const INSIDE = 0.35;
 export const VEHICLE_LOOPS = 1_000_000;
 const ROTOR = 1;
 const BOAT = 2;
+const CAR = 3;
 
 /** The level of each engine layer at engine speed `share` (0 at rest, 1 at full). */
 export function engineLayers(share: number, out: number[] = [0, 0, 0, 0]): number[] {
@@ -54,13 +56,16 @@ export function engineLayers(share: number, out: number[] = [0, 0, 0, 0]): numbe
 }
 
 export class VehicleSounds {
-  /** By content index: the owner a vehicle is heard as (-1 for a kind this does not hear), how, and its full speed. */
+  /** By content index: the owner a vehicle is heard as (-1 for none), how, its full speed, and its driver's seat slot. */
   private readonly owner: Int32Array;
   private readonly how: Uint8Array;
   private readonly full: Float32Array;
+  private readonly driver: Uint8Array;
   /** By entity: whether its engine ran when last heard, so a start or a stop is heard once. */
   private readonly running = new Map<number, boolean>();
   private readonly seen = new Set<number>();
+  /** Seats taken this frame, as host entity * 256 + seat slot. */
+  private readonly taken = new Set<number>();
   private readonly levels = [0, 0, 0, 0];
 
   constructor(reg: Registry, ownerOf: (id: string) => number) {
@@ -68,18 +73,22 @@ export class VehicleSounds {
     this.owner = new Int32Array(n).fill(-1);
     this.how = new Uint8Array(n);
     this.full = new Float32Array(n);
+    this.driver = new Uint8Array(n);
     for (let kind = 0; kind < n; kind++) {
       const v = reg.vehicle[kind];
-      if (!v || !(isRotorVehicle(v) || isBoatVehicle(v))) continue;
+      if (!v) continue;
       this.owner[kind] = ownerOf(reg.ids[kind]!);
-      this.how[kind] = isRotorVehicle(v) ? ROTOR : BOAT;
-      this.full[kind] = isRotorVehicle(v) ? v.spec.rotorRpm : v.spec.maxRpm;
+      this.how[kind] = isRotorVehicle(v) ? ROTOR : isBoatVehicle(v) ? BOAT : CAR;
+      this.full[kind] = isRotorVehicle(v) ? v.spec.rotorRpm : isBoatVehicle(v) ? v.spec.maxRpm : (v.spec.drivetrain ?? DEFAULT_DRIVETRAIN).redlineRpm;
+      this.driver[kind] = v.seats.findIndex((s) => s.driver) + 1;
     }
   }
 
   /** `inside` is the entity the ear sits in, or -1. `want` is told of what may be heard soon, and how far off it is. */
   update(remote: RemoteSample, hf: Heightfield, ex: number, ey: number, ez: number, inside: number, hear: Hear, place: Place, want: (owner: number, key: number, metres: number) => void): void {
     this.seen.clear();
+    this.taken.clear();
+    for (let i = 0; i < remote.count; i++) if (remote.seat[i]! > 0) this.taken.add((remote.seat[i]! - 1) * 256 + remote.seatSlot[i]!);
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!, owner = this.owner[kind] ?? -1;
       if (owner < 0 || (remote.flags[i]! & 8) !== 0 || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
@@ -91,8 +100,10 @@ export class VehicleSounds {
         want(owner, K_STOP, d);
       }
       this.seen.add(id);
-      const on = remote.vehicleEngineOn[i] !== 0, base = VEHICLE_LOOPS + id * 8;
-      // A rotor turns on after its engine stops; a boat's engine is still once it is off.
+      // A car has no switch: its engine runs while it has fuel and its driver's seat is taken.
+      const car = this.how[kind] === CAR, base = VEHICLE_LOOPS + id * 8;
+      const on = car ? remote.vehicleFuel[i]! > 0 && this.taken.has(id * 256 + this.driver[kind]!) : remote.vehicleEngineOn[i] !== 0;
+      // A rotor turns on after its engine stops; a boat's or a car's engine is still once it is off.
       const share = (rotor ? remote.vehicleRotorRpm[i]! : on ? remote.vehicleRpm[i]! : 0) / Math.max(1, this.full[kind]!);
       const was = this.running.get(id);
       if (was !== undefined && was !== on) hear(owner, on ? K_START : K_STOP, id, x, y, z, 1, 1, id === inside);
@@ -107,7 +118,7 @@ export class VehicleSounds {
         const under = wet ? water : ground, wash = share >= WASH_SPIN ? Math.max(0, 1 - (y - under) / WASH_HEIGHT) : 0;
         place(base + 5, owner, K_WASH, x, under, z, wash, wash > 0.01 && !wet, false);
         place(base + 6, owner, K_WASH_WATER, x, under, z, wash, wash > 0.01 && wet, false);
-      } else {
+      } else if (!car) {
         const afloat = wet && Math.abs(y - water) < AFLOAT, fast = share >= HULL_FAST;
         place(base + 5, owner, K_HULL_SLOW, x, water, z, 1, afloat && !fast, false);
         place(base + 6, owner, K_HULL_FAST, x, water, z, Math.min(1, share), afloat && fast, false);
