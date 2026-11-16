@@ -5,6 +5,7 @@ import { Camera } from "../../client/core/render/camera.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { NO_CLIPS } from "../../shared/anim/clip.ts";
+import { AnimState, LAYER_FLINCH } from "../../shared/anim/pose.ts";
 import { CreatureAnim } from "../../shared/anim/creature.ts";
 import { buildRig } from "../../shared/anim/rigs.ts";
 import { effectOf, type PackDetails } from "../../shared/pack/details.ts";
@@ -29,9 +30,9 @@ const art: PackDetails = {
     engine_smoke: { effects: [{ effect: 2, from: "engine", at: "now" }] },
   } }],
 };
-function fixture() {
+function fixture(sheet = art) {
   const world = createMapWorld(reg, parseMap(writeMap(flatMap(2, { seaLevel: 3 }))));
-  const details = new Details(reg, art, defaultPalette(), kind => kind === boat ? new CreatureAnim(rig, .01, 0) : null), remote = new RemoteSample();
+  const details = new Details(reg, sheet, defaultPalette(), kind => kind === boat ? new CreatureAnim(rig, .01, 0) : null), remote = new RemoteSample();
   remote.count = 1; remote.id[0] = 9; remote.gen[0] = 1; remote.kind[0] = boat;
   remote.x[0] = remote.z[0] = 64; remote.y[0] = 2.65; remote.vehicleQw[0] = 1; remote.vehicleEngineCondition[0] = 1;
   const cam = new Camera(); cam.x = 64; cam.y = 6; cam.z = 54; cam.aspect = 16 / 9; cam.update();
@@ -75,4 +76,13 @@ test("damaged outboard smoke follows its steering joint, stops underwater, and b
   const before = details.pool.count; remote.z[0] = 127; frame(600); expect(details.pool.count).toBeLessThanOrEqual(before);
   for (let tick = 601; tick < 645; tick++) frame(tick); expect(details.pool.count).toBe(0);
   remote.y[0] = 0; remote.vehicleEngineOn[0] = 1; frame(650); expect(details.pool.count).toBe(0);
+});
+
+
+test("a floating hull surface cue starts on visible water rather than its submerged keel", () => {
+  const sheet: PackDetails = { ...art, sheets: [{ owner: "core:boat", cues: { struck: { effects: [{ effect: 0, from: "ground", at: "now", on: [3] }] } } }] };
+  const { details, remote, frame } = fixture(sheet); frame(0);
+  const state = new AnimState(); state.layer = LAYER_FLINCH; state.layerStart = 1;
+  remote.anim[0] = state.pack(); remote.cue[0] = state.packCue(); frame(1);
+  expect(details.pool.count).toBe(1); expect(details.pool.y[0]).toBeCloseTo(3.025, 4);
 });

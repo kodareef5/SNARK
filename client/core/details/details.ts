@@ -281,7 +281,7 @@ export class Details {
     let x = h.x;
     let y = h.y;
     let z = h.z;
-    let yaw = h.yaw;
+    let yaw = h.yaw, steering = 0;
     const from = answer.entry.from;
     let [ox, oy, oz] = [0, 0, 0];
     if (w.origin) { at[0] = w.origin.x; at[1] = w.origin.y; at[2] = w.origin.z; }
@@ -303,7 +303,7 @@ export class Details {
       const st = this.st;
       if (i !== undefined) {
         const r = remote!;
-        [x, y, z, yaw] = [r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!];
+        [x, y, z, yaw] = [r.x[i]!, r.y[i]!, r.z[i]!, r.yaw[i]!]; steering = r.steering[i]!;
         if (this.rotorKinds[h.kind] || this.boatKinds[h.kind]) {
           vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, qx: r.vehicleQx[i]!, qy: r.vehicleQy[i]!, qz: r.vehicleQz[i]!, qw: r.vehicleQw[i]! }, this.rotation);
           rotated = true;
@@ -344,7 +344,7 @@ export class Details {
         }
         const dx = cx - sx, dy = at[1]! - sy, dz = cz - sz, len = Math.hypot(dx, dy, dz) || 1;
         [ox, oy, oz] = [dx / len, dy / len, dz / len];
-        const t = rayVehicle(book.vehicle, x, y, z, yaw, sx, sy, sz, ox, oy, oz, book.height, { pitch: 0, roll: 0, qx: this.rotation[0]!, qy: this.rotation[1]!, qz: this.rotation[2]!, qw: this.rotation[3]! });
+        const t = rayVehicle(book.vehicle, x, y, z, yaw, sx, sy, sz, ox, oy, oz, book.height, { pitch: 0, roll: 0, steering, qx: this.rotation[0]!, qy: this.rotation[1]!, qz: this.rotation[2]!, qw: this.rotation[3]! });
         if (Number.isFinite(t)) [at[0], at[1], at[2]] = [sx + ox * t, sy + oy * t, sz + oz * t];
       } else if (h.fromX === h.fromX) {
         // The side of the body that faces whoever struck it, and away from them.
@@ -372,11 +372,15 @@ export class Details {
     }
     if (from === "ground" || from === "foot") at[1] = y;
     }
+    // A floating hull's origin is its submerged keel. Surface splashes belong on the visible water, not below it.
+    const surface = hf.waterAt(at[0]!, at[2]!);
+    const marineWater = this.boatKinds[h.kind] && from === "ground" && Number.isFinite(surface) && surface > hf.heightAt(at[0]!, at[2]!) + .1 && Math.abs(y - surface) < 1.2;
+    if (marineWater) at[1] = surface + .025;
     const [px, py, pz] = [at[0]!, at[1]!, at[2]!];
     const d = Math.hypot(px - cam.x, py - cam.y, pz - cam.z);
     if (d > e.reach * tier.details.reach) return 0;
     // What the ground is, for the dust's colour and whether there is any.
-    const wet = w.origin && Number.isFinite(w.origin.floor) && w.origin.floor <= hf.waterAt(px, pz) + .08 && hf.waterAt(px, pz) > hf.heightAt(px, pz) + .1;
+    const wet = marineWater || w.origin && Number.isFinite(w.origin.floor) && w.origin.floor <= hf.waterAt(px, pz) + .08 && hf.waterAt(px, pz) > hf.heightAt(px, pz) + .1;
     const kind = wet ? GROUND_WATER : groundAt(hf, px, w.origin?.floor ?? y, pz);
     if (answer.entry.on && !answer.entry.on.includes(kind)) return 0;
     const colour = this.colour;

@@ -83,3 +83,20 @@ test("boat assembly preview targets actual water, rotates, cancels and submits o
     expect(c.drive).toBe(-1); expect(h.host.items.audit()).toEqual([]);
   } finally { h.host.shutdown(); }
 });
+
+test("authoritative water-depth refusal keeps the assembly and shows a marine placement reason", () => {
+  const { h, session, c, actor } = setup();
+  try {
+    h.world.ents.setPosition(c.ent, 64, 1.65, 64); c.ownDirty = true;
+    const kit = h.reg.index.get("core:boat_assembly")!; h.host.items.mint(actor, kit, 1); h.run(100);
+    const preview = new VehiclePlacement(); preview.begin(session.inventory!.item.indexOf(kit));
+    const length = Math.hypot(8, 1), update = () => preview.update(session, session.world!, h.reg, 64, 4, 64, 8 / length, -1 / length, 0, 0, h.now);
+    update(); expect(preview.problem).toBe(RESULT_OK);
+    session.onResult = (seq, code) => preview.result(seq, code, h.now);
+    // The server rejects changed support even when the client's preview had been valid.
+    h.world.hf.seaLevel = .2;
+    expect(preview.place(session)).toBeGreaterThan(0); h.run(200); update();
+    expect(preview.notice).toContain("open water"); expect(preview.notice).not.toContain("rotors");
+    expect(h.host.items.inv(actor).total(kit)).toBe(1);
+  } finally { h.host.shutdown(); }
+});

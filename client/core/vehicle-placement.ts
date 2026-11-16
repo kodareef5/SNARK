@@ -37,6 +37,7 @@ export class VehiclePlacement {
   private asked = 0;
   private refusal = "";
   private refusalUntil = 0;
+  private marineRequest = false;
   private readonly remote = new RemoteSample();
 
   /** An inventory button can start placement directly from any bag slot. */
@@ -99,6 +100,7 @@ export class VehiclePlacement {
   place(session: ClientSession): number {
     if (!this.active || this.problem !== RESULT_OK || this.asked) return 0;
     const p = this.pose;
+    this.marineRequest = session.registry.vehicle[this.kind]?.movement === "boat";
     this.asked = session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_DEPLOY); w.u8(this.slot); w.f32(p.x); w.f32(p.y); w.f32(p.z); w.u16(p.yaw); });
     return this.asked;
   }
@@ -106,7 +108,7 @@ export class VehiclePlacement {
     if (seq === 0 || seq !== this.asked) return;
     this.asked = 0;
     if (code === RESULT_OK) { this.cancel(); return; }
-    this.refusal = VEHICLE_PLACEMENT_REASONS[code] ?? "The vehicle cannot be assembled here";
+    this.refusal = (this.marineRequest && code === RESULT_NO_SUPPORT ? "Needs open water with room for the hull and outboard" : VEHICLE_PLACEMENT_REASONS[code]) ?? "The vehicle cannot be assembled here";
     this.refusalUntil = nowMs + 2500;
   }
 }
