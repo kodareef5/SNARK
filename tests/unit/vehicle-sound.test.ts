@@ -25,22 +25,25 @@ test("every livery and wreck is heard by its vehicle's family before the shared 
 function hearing(id: string, hf = flatWorld().hf) {
   const w = flatWorld(), r = new RemoteSample(), v = new VehicleSounds(w.reg, (o) => (o === id ? 5 : -1));
   r.count = 1; r.id[0] = 7; r.kind[0] = w.kind(id); r.x[0] = 30; r.y[0] = 4; r.z[0] = 30;
-  const heard: string[] = [], looped: string[] = [];
-  const frame = (): void => {
+  const heard: string[] = [], looped: string[] = [], wanted: string[] = [];
+  const frame = (ez = 40): void => {
     looped.length = 0;
-    v.update(r, hf, 30, 2, 40, -1, (owner, key) => heard.push(`${owner} ${KEYS[key]!.key}`), (slot, owner, key, _x, _y, _z, _level, on) => { if (on) looped.push(`${slot - VEHICLE_LOOPS - 7 * 8} ${owner} ${KEYS[key]!.key}`); });
+    wanted.length = 0;
+    v.update(r, hf, 30, 2, ez, -1, (owner, key) => heard.push(`${owner} ${KEYS[key]!.key}`), (slot, owner, key, _x, _y, _z, _level, on) => { if (on) looped.push(`${slot - VEHICLE_LOOPS - 7 * 8} ${owner} ${KEYS[key]!.key}`); }, (owner, key) => wanted.push(`${owner} ${KEYS[key]!.key}`));
   };
-  return { r, heard, looped, frame };
+  return { r, heard, looped, wanted, frame };
 }
 
-test("a rotorcraft's engine layers follow its rotor, its start is heard once, and its wash only near what is under it", () => {
+test("a rotorcraft's engine layers follow its rotor, its start is heard once and held before while it is near, and its wash only near what is under it", () => {
   const layers = (share: number): number[] => engineLayers(share).map((l) => Math.round(l * 100) / 100);
   expect(layers(0)).toEqual([0, 0, 0, 0]);
   expect(layers(0.4)).toEqual([0.07, 1, 0, 0]);
   expect(layers(1)).toEqual([0, 0, 0, 1]);
-  const { r, heard, looped, frame } = hearing("core:helicopter_police");
+  const { r, heard, looped, wanted, frame } = hearing("core:helicopter_police");
+  frame(100);
+  expect(wanted).toEqual([]);
   frame();
-  expect([heard, looped]).toEqual([[], []]);
+  expect([heard, looped, wanted]).toEqual([[], [], ["5 engine/start", "5 engine/stop"]]);
   r.vehicleEngineOn[0] = 1; r.vehicleRotorRpm[0] = 410;
   frame(); frame();
   expect(heard).toEqual(["5 engine/start"]);

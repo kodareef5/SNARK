@@ -1,8 +1,8 @@
 // Rotorcraft and boats as they are heard, from the state each snapshot carries: the engine's four layers faded across by
 // rotor or engine speed, its start and stop, a rotor's downwash over ground or water and its cabin for whoever is inside,
 // and the water at a hull. Each is asked of the vehicle's own id, which falls back to its family (core:helicopter,
-// core:boat, by vehicleFamilies) before the shared car's, so a livery is heard as its vehicle is. The car's engine stays
-// the shell's own (client/core/audio/vehicle.ts), which is silent for these.
+// core:boat, by vehicleFamilies) before the shared car's, so a livery is heard as its vehicle is. Each loop is wanted only
+// within its own range (Sounds.loop).
 
 import { CUE_DEAD } from "../../../shared/anim/pose.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
@@ -34,6 +34,8 @@ const AFLOAT = 2;
 const HULL_FAST = 0.6;
 /** Farther than this a vehicle is not followed: its loudest layer's reach. */
 const REACH = 400;
+/** Within this, or from inside, an engine's start and stop are held before they are heard. */
+const NEAR = 40;
 /** Inside, the engine is heard through the cabin and the outside layers this much quieter. */
 const INSIDE = 0.35;
 /** Loop ids from here: eight for each entity. */
@@ -75,14 +77,19 @@ export class VehicleSounds {
     }
   }
 
-  /** `inside` is the entity the ear sits in, or -1. */
-  update(remote: RemoteSample, hf: Heightfield, ex: number, ey: number, ez: number, inside: number, hear: Hear, place: Place): void {
+  /** `inside` is the entity the ear sits in, or -1. `want` is told of what may be heard soon, and how far off it is. */
+  update(remote: RemoteSample, hf: Heightfield, ex: number, ey: number, ez: number, inside: number, hear: Hear, place: Place, want: (owner: number, key: number, metres: number) => void): void {
     this.seen.clear();
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!, owner = this.owner[kind] ?? -1;
       if (owner < 0 || (remote.flags[i]! & 8) !== 0 || (remote.cue[i]! & CUE_DEAD) !== 0) continue;
       const id = remote.id[i]!, x = remote.x[i]!, y = remote.y[i]!, z = remote.z[i]!, rotor = this.how[kind] === ROTOR;
-      if (id !== inside && Math.hypot(x - ex, y - ey, z - ez) >= REACH) continue;
+      const d = id === inside ? 0 : Math.hypot(x - ex, y - ey, z - ez);
+      if (d >= REACH) continue;
+      if (d < NEAR) {
+        want(owner, K_START, d);
+        want(owner, K_STOP, d);
+      }
       this.seen.add(id);
       const on = remote.vehicleEngineOn[i] !== 0, base = VEHICLE_LOOPS + id * 8;
       // A rotor turns on after its engine stops; a boat's engine is still once it is off.

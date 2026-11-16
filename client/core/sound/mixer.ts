@@ -48,6 +48,10 @@ export const LOOP = 2;
 const INAUDIBLE = 0.004;
 /** Milliseconds a stopped voice takes to fade, as the device does it. */
 const STOP_MS = 40;
+/** A voice is moved on the device when its gain changes by more than 0.5 dB, its direction by 2 degrees or its low-pass by 5%. */
+const MOVE_GAIN = 10 ** (0.5 / 20) - 1;
+const MOVE_COS = Math.cos((2 * Math.PI) / 180);
+const MOVE_LOW = 0.05;
 
 export interface Ear {
   x: number;
@@ -78,6 +82,8 @@ export class Mixer {
   readonly heard = new Float32Array(VOICES);
   readonly endMs = new Float64Array(VOICES);
   readonly flags = new Uint8Array(VOICES);
+  /** What the device was last told of each voice: gain, place from the ear, and low-pass. */
+  private readonly sent = new Float64Array(VOICES * 5);
   /** Counted since the start: voices started, sounds dropped for want of a voice or too quiet to hear, and voices taken over. */
   readonly stats = { started: 0, dropped: 0, quiet: 0, stolen: 0 };
   private next = 1;
@@ -185,10 +191,31 @@ export class Mixer {
     this.heard[v] = heard;
     this.flags[v] = flags;
     this.endMs[v] = (flags & LOOP) !== 0 ? Infinity : nowMs + (delay + seconds / rate) * 1000 + STOP_MS;
-    if (flat) p.starts.push(serial, buffer, delay, rate, heard, 0, 0, 0, TOP_HZ, KIND_BUS[kind]!, flags);
-    else p.starts.push(serial, buffer, delay, rate, heard, x - ear.x, y + lift - ear.y, z - ear.z, lowpassAt(d, range), KIND_BUS[kind]!, flags);
+    if (flat) this.send(v, this.heard[v]!, 0, 0, 0, TOP_HZ);
+    else this.send(v, this.heard[v]!, x - ear.x, y + lift - ear.y, z - ear.z, lowpassAt(d, range));
+    const s = this.sent;
+    p.starts.push(serial, buffer, delay, rate, heard, s[v * 5 + 1]!, s[v * 5 + 2]!, s[v * 5 + 3]!, s[v * 5 + 4]!, KIND_BUS[kind]!, flags);
     this.stats.started++;
     return serial;
+  }
+
+  private send(v: number, gain: number, x: number, y: number, z: number, low: number): void {
+    const s = this.sent;
+    s[v * 5] = gain;
+    s[v * 5 + 1] = x;
+    s[v * 5 + 2] = y;
+    s[v * 5 + 3] = z;
+    s[v * 5 + 4] = low;
+  }
+
+  /** Whether the device should hear of voice `v`'s new gain, place or low-pass: a change past MOVE_*, or a gain come to rest. */
+  private moved(v: number, was: number, gain: number, x: number, y: number, z: number, low: number): boolean {
+    const s = this.sent;
+    const g = s[v * 5]!;
+    if (Math.abs(gain - g) > g * MOVE_GAIN || (gain === was && gain !== g)) return true;
+    if (Math.abs(low - s[v * 5 + 4]!) > s[v * 5 + 4]! * MOVE_LOW) return true;
+    const sx = s[v * 5 + 1]!, sy = s[v * 5 + 2]!, sz = s[v * 5 + 3]!;
+    return x * sx + y * sy + z * sz < MOVE_COS * Math.sqrt((x * x + y * y + z * z) * (sx * sx + sy * sy + sz * sz));
   }
 
   /** Changes a playing voice's gain before distance, as a bed fades in or out. False if the voice is gone. */
@@ -216,21 +243,27 @@ export class Mixer {
         this.y[v] = at[1]!;
         this.z[v] = at[2]!;
       }
-      if ((this.flags[v]! & FLAT) !== 0) {
-        this.heard[v] = this.level[v]!;
-        p.moves.push(this.serial[v]!, this.heard[v]!, 0, 0, 0, TOP_HZ);
-        continue;
+      const was = this.heard[v]!;
+      let dx = 0;
+      let dy = 0;
+      let dz = 0;
+      let low = TOP_HZ;
+      if ((this.flags[v]! & FLAT) !== 0) this.heard[v] = this.level[v]!;
+      else {
+        dx = this.x[v]! - ear.x;
+        dy = this.y[v]! + this.lift[v]! - ear.y;
+        dz = this.z[v]! - ear.z;
+        const d = Math.hypot(dx, dy, dz);
+        this.heard[v] = distanceGain(d, this.range[v]!) * this.level[v]!;
+        if (this.heard[v] === 0) {
+          this.stop(v, p);
+          continue;
+        }
+        low = lowpassAt(d, this.range[v]!);
       }
-      const dx = this.x[v]! - ear.x;
-      const dy = this.y[v]! + this.lift[v]! - ear.y;
-      const dz = this.z[v]! - ear.z;
-      const d = Math.hypot(dx, dy, dz);
-      this.heard[v] = distanceGain(d, this.range[v]!) * this.level[v]!;
-      if (this.heard[v] === 0) {
-        this.stop(v, p);
-        continue;
-      }
-      p.moves.push(this.serial[v]!, this.heard[v]!, dx, dy, dz, lowpassAt(d, this.range[v]!));
+      if (!this.moved(v, was, this.heard[v]!, dx, dy, dz, low)) continue;
+      this.send(v, this.heard[v]!, dx, dy, dz, low);
+      p.moves.push(this.serial[v]!, this.heard[v]!, dx, dy, dz, low);
     }
   }
 

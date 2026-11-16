@@ -255,6 +255,10 @@ test("a looping bed fades in when it is wanted and out when it is not, and the i
     expect(bed[4]!).toBeLessThan(0.1);
     for (let k = 0; k < 60; k++) frame();
     expect(gains.at(-1)!).toBeCloseTo(1, 5);
+    // Once it is up, a scene standing still asks nothing more of the device.
+    const sent = gains.length;
+    for (let k = 0; k < 10; k++) frame();
+    expect([gains.length - sent, sounds.packet.turned, sounds.packet.mixed]).toEqual([0, false, false]);
     sounds.hearUi(cueKey("click"));
     frame();
     const click = starts.find((s) => s[9] === 3)!;

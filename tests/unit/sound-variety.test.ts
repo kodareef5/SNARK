@@ -54,7 +54,15 @@ test("six of a pack calling at once are at most three voices, each a different t
   const call = (): void => {
     for (let id = 1; id <= 6; id++) sounds.hear(owner, key, id, 380 + id, 3, 383, 1, 1, false);
   };
-  // Until it is held.
+  // Its first two takes come first: two voices, and no take twice at once while there are more to hold.
+  let first: number[][] = [];
+  while (first.length === 0) {
+    call();
+    first = frame();
+  }
+  expect(new Set(first.map((s) => s[1])).size).toBe(first.length);
+  expect(first.length).toBe(2);
+  // Until the rest are held.
   for (let k = 0; k < 60; k++) {
     call();
     frame();
