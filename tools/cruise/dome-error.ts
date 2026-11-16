@@ -31,10 +31,23 @@ if (rawIndex.layoutSHA256 !== layoutHash || index.layoutSHA256 !== layoutHash) t
 // --cells remains available for a bounded investigation, and is labelled as such.
 const censusFile = path("census", "var/cruise-preview/dome-census.json");
 const censusBytes = options.has("cells") ? null : readFileSync(censusFile);
-const census = censusBytes ? JSON.parse(censusBytes.toString()) as { layoutSHA256: string; rawIndexSHA256: string; threshold: number; declaredCells: number; selectedCells: string[]; rows: { cell: string; requiresVisibleCertificate: boolean }[] } : null;
+const census = censusBytes ? JSON.parse(censusBytes.toString()) as { layoutSHA256: string; rawIndexSHA256: string; measuredRawAndClearSHA256: string; threshold: number; declaredCells: number; selectedCells: string[]; rows: { cell: string; requiresVisibleCertificate: boolean }[] } : null;
 if (census && (candidate !== raw || census.layoutSHA256 !== layoutHash || census.rawIndexSHA256 !== hash(rawBytes) || census.threshold !== .06 ||
     census.declaredCells !== census.rows.length || JSON.stringify(census.selectedCells) !== JSON.stringify(census.rows.filter(r => r.requiresVisibleCertificate).map(r => r.cell))))
   throw new Error("Dome census does not select the complete measured set for this raw snapshot");
+if (census) {
+  const measured = createHash("sha256"), seen = new Set<string>();
+  for (const row of census.rows) {
+    const cell = rawIndex.meshes.find(c => c.id === row.cell);
+    if (!cell || seen.has(cell.id)) throw new Error("Dome census contains missing or repeated raw cells");
+    seen.add(cell.id);
+    for (const level of cell.levels)
+      measured.update(level.file).update(readFileSync(join(raw, level.file)))
+        .update(level.clearFile).update(readFileSync(join(raw, level.clearFile)));
+  }
+  if (measured.digest("hex") !== census.measuredRawAndClearSHA256)
+    throw new Error("Dome census measured different geometry or clear faces; rerun the native census");
+}
 const cells = census ? census.selectedCells : options.get("cells")!.split(",");
 const selection = census ? { scope: "Complete native dome-cell census", file: censusFile, sha256: hash(censusBytes!), scannedCells: census.declaredCells, selectedCells: cells } :
   { scope: "Explicit bounded diagnostic subset; not complete dome coverage", selectedCells: cells };
