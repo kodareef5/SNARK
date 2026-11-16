@@ -2,7 +2,7 @@
 // only one of them has.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Clip } from "../../shared/anim/clip.ts";
 import { detailsAtlas, parsePack, type PackRig } from "../../shared/pack/pack.ts";
@@ -45,7 +45,7 @@ export function readPacks(dir: string = SOURCE): SourceArt {
     from.set(key, file);
   };
   for (const file of filesUnder(dir, ".snpk")) {
-    if (dir === SOURCE && file.startsWith(LANDMARKS + "/")) continue;
+    if (dir === SOURCE && file.startsWith(LANDMARKS + sep)) continue;
     const pack = parsePack(new Uint8Array(readFileSync(file)));
     for (const m of pack.header.meshes) claim("mesh", m.id, file);
     for (const r of pack.header.rigs) claim("rig", r.id, file);
