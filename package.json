@@ -23,6 +23,7 @@
     "catalogue": "bun tools/catalogue.ts",
     "cluster-trip": "bun tools/cluster-trip.ts",
     "bed-trip": "bun tools/bed-trip.ts",
+    "agent-trip": "bun tools/agent-trip.ts",
     "events": "bun tools/events.ts",
     "sounds": "bun tools/sounds.ts"
   },

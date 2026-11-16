@@ -9,18 +9,32 @@ import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
 import type { ToolDef } from "./mcp.ts";
 
 export const TRAVEL_DEFS: ToolDef[] = [
-  { name: "servers", description: "The servers of this one's cluster: where you are, and each other server with its map, its players and whether you may go there now.", inputSchema: { type: "object", properties: {} } },
   {
     name: "travel",
-    description: "Walk to the nearest obelisk's terminal in sight and leave there for another server of the cluster with all you carry. Your base and your tames stay behind. On the other server you rise where you choose, at a spawn point or a bed of your tribe's, and it answers once you stand there, where every tool then acts; status says where you are.",
+    title: "Travel to another server",
+    description:
+      "With no `to`: the servers of this one's cluster, where you are, and each other with its map, its players and whether you may go there now. With `to`: walk to the nearest obelisk's terminal in sight and leave there for that server with all you carry; your base and your tames stay behind. There you rise where you choose, at a spawn point or a bed of your tribe's, and it answers once you stand there, where every tool then acts.",
     inputSchema: {
       type: "object",
       properties: {
-        to: { type: "string", description: "The server's name or its map's, as servers lists it." },
+        to: { type: "string", description: "The server's name, its map's or its world's number, as the list gives them. Left out: list the servers." },
         rise_at: { type: "string", description: "Where to rise there: a spawn point's or a bed's name. Left out: the first of your tribe's beds that is ready, else the first spawn point." },
       },
-      required: ["to"],
+      additionalProperties: false,
     },
+    outputSchema: {
+      type: "object",
+      properties: {
+        state: { type: "string", enum: ["done", "running", "blocked", "danger", "refused"] },
+        reason: { type: "string" },
+        here: { type: "string", description: "This server's name, when listing." },
+        servers: { type: "array", items: { type: "object" }, description: "When listing: name, world, map, players, max, and cannot_go where you may not go." },
+        arrived: { type: "string", description: "The server arrived at." },
+        rose_at: { type: "string" },
+      },
+      required: ["state"],
+    },
+    annotations: { title: "Travel to another server", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
 ];
 

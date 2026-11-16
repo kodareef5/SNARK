@@ -1,7 +1,8 @@
-// Rows for the agent that plays: the path finder, what observe costs, and a tick of the agent while it walks.
+// Rows for the agent that plays: the way finders, what observe costs, and a tick of the agent while it walks.
 // `bun tools/bench/agent.ts` runs these alone.
 
 import { observe } from "../../agent/observe.ts";
+import { LayeredFinder } from "../../shared/world/layers.ts";
 import { PATH_BUDGET, PathFinder } from "../../shared/world/path.ts";
 import { play } from "../../tests/fixtures/agent.ts";
 import { flatWorld, provingWorld, sealedRoom } from "../../tests/fixtures/world.ts";
@@ -34,6 +35,11 @@ export function benchAgent(section: Section, record: Row): void {
   sealedRoom(wide, 128, 128);
   const g = new PathFinder(wide, f.body);
   record(`a search to its budget of ${PATH_BUDGET} cells`, median(20, () => g.find(100.5, 128.5, 128.5, 128.5)), "ms", 25);
+  // The search that climbs and swims, which the agent runs a slice a tick.
+  const l = new LayeredFinder(w, w.reg.move[w.kind("core:survivor")]!);
+  record("a climb from the plaza up the stairs to the slab", median(20, () => l.find(256, 0, 240, 263, 3.6, 292.5)), "ms", 20);
+  record("a swim across the pool", median(10, () => l.find(200, 0, 256, 148, NaN, 256)), "ms", 60);
+  record("nodes that swim expanded", l.expanded, "");
 
   const p = play();
   p.run(1000);
@@ -42,7 +48,7 @@ export function benchAgent(section: Section, record: Row): void {
   record("the answer", bytes / 1024, "KB", 2);
   record("observe, 96 m at 4 m a letter", median(20, () => observe(p.s, p.agent.remote, 96, 4)), "ms", 40);
   // Ten seconds of walking north from the spawn point, the agent's own tick timed apart from the server's.
-  void p.agent.call("walk_to", { x: 256, z: 500, wait_s: 0 });
+  void p.agent.call("go_to", { x: 256, z: 500, wait_s: 0 });
   const ticks: number[] = [];
   p.h.run(10000, (now) => {
     const t = performance.now();
