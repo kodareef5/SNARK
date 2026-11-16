@@ -13,9 +13,17 @@ function element<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text =
 async function bytes(url: string, most: number, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
   const response = await fetch(url, { signal, credentials: "omit" });
   if (!response.ok || Number(response.headers.get("content-length") ?? 0) > most) throw new Error("The model file could not be loaded");
-  const buffer = await response.arrayBuffer();
-  if (buffer.byteLength > most) throw new Error("The model file exceeds its declared size");
-  return new Uint8Array(buffer);
+  if (!response.body) throw new Error("The model file was empty");
+  const reader = response.body.getReader(), chunks: Uint8Array[] = []; let length = 0;
+  for (;;) {
+    const { value, done } = await reader.read(); if (done) break;
+    length += value.byteLength;
+    if (length > most) { await reader.cancel(); throw new Error("The model file exceeds its declared size"); }
+    chunks.push(value);
+  }
+  const data = new Uint8Array(length); let offset = 0;
+  for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
+  return data;
 }
 /** Mount a model and its controls; callers dispose when replacing the host or closing its panel. */
 export async function mountViewer(host: HTMLElement, url: string): Promise<() => void> {
@@ -36,10 +44,12 @@ export async function mountViewer(host: HTMLElement, url: string): Promise<() =>
     const doc = modelDocument(JSON.parse(new TextDecoder().decode(await bytes(url, 160000, signal))));
     const pack = parsePack(await bytes(doc.pack, doc.packBytes, signal));
     if (pack.header.meshes.length > 16 || pack.header.rigs.length > 1) throw new Error("Unsupported model package");
+    if (pack.header.meshes.reduce((sum, m) => sum + m.lods[0]!.vertexCount, 0) > 100000 || pack.header.meshes.reduce((sum, m) => sum + m.lods[0]!.indexCount, 0) > 300000) throw new Error("Model geometry exceeds preview memory budget");
+    const pose = new ModelPose(pack);
     const canvas = element("canvas", "model-canvas"); canvas.tabIndex = 0; canvas.setAttribute("aria-label", `${doc.label} 3D model. Arrow keys rotate, plus and minus zoom, R resets.`);
     canvas.style.width = "100%"; canvas.style.height = "400px"; canvas.style.display = "block"; canvas.style.touchAction = "none";
     wrapper.prepend(canvas); renderer = new ModelGl(canvas, pack, doc);
-    const pose = new ModelPose(pack), controls = element("div", "model-toolbar"), animation = element("div", "model-animation");
+    const controls = element("div", "model-toolbar"), animation = element("div", "model-animation");
     let yaw = 0.61, pitch = 0.20, zoom = 1.06, current: Clip | null = null, currentMeta: ModelClip | null = null, frame = 0, playing = false, visible = true, last = 0, bounds = doc.bounds;
     const play = element("button", "model-button", "Play"), select = element("select", "model-select"), range = element("input", "model-timeline"), speed = element("select", "model-speed"), time = element("output", "model-time", "0:00");
     select.setAttribute("aria-label", "Animation"); speed.setAttribute("aria-label", "Playback speed"); range.setAttribute("aria-label", "Animation position");
@@ -58,7 +68,7 @@ export async function mountViewer(host: HTMLElement, url: string): Promise<() =>
       draw(); if (playing) raf = requestAnimationFrame(tick);
     };
     const schedule = () => { if (!raf && playing && visible && !document.hidden && !disposed) { last = 0; raf = requestAnimationFrame(tick); } };
-    const button = (text: string, act: () => void) => { const b = element("button", "model-button", text); b.type = "button"; b.addEventListener("click", act, { signal }); controls.append(b); return b; };
+    const button = (text: string, act: () => void, parent: HTMLElement = controls, label = text) => { const b = element("button", "model-button", text); b.type = "button"; b.setAttribute("aria-label", label); b.title = label; b.addEventListener("click", act, { signal }); parent.append(b); return b; };
     const reset = () => { yaw = 0.61; pitch = 0.20; zoom = 1.06; draw(); };
     button("Reset", reset); button("Front", () => { yaw = 0; pitch = 0.12; draw(); }); button("Side", () => { yaw = Math.PI / 2; pitch = 0.12; draw(); }); button("Back", () => { yaw = Math.PI; pitch = 0.12; draw(); });
     button("−", () => { zoom = Math.min(3, zoom * 1.15); draw(); }).setAttribute("aria-label", "Zoom out"); button("+", () => { zoom = Math.max(0.45, zoom / 1.15); draw(); }).setAttribute("aria-label", "Zoom in");
@@ -84,9 +94,15 @@ export async function mountViewer(host: HTMLElement, url: string): Promise<() =>
       } catch (error) { if (request === choosing && !disposed && !(error instanceof DOMException && error.name === "AbortError")) { status.textContent = "Animation could not load. Choose it again to retry."; playing = false; draw(); } }
     };
     select.addEventListener("change", () => void choose(select.value, true), { signal });
+    const adjacent = (step: number) => { const index = doc.clips.findIndex((c) => c.id === select.value); const c = doc.clips[(Math.max(0, index) + step + doc.clips.length) % doc.clips.length]; if (c) void choose(c.id, true); };
+    if (doc.clips.length) {
+      const previous = button("‹", () => adjacent(-1), animation, "Previous animation"), next = button("›", () => adjacent(1), animation, "Next animation");
+      animation.prepend(previous); select.after(next);
+      button("−1f", () => { playing = false; frame = Math.max(0, frame - 1); draw(); }, animation, "Previous animation frame");
+      button("+1f", () => { playing = false; frame = Math.min(current ? current.frames - 1 : 0, frame + 1); draw(); }, animation, "Next animation frame");
+    }
     play.addEventListener("click", () => { if (!current) return; if (!playing && frame >= current.frames - 1) frame = 0; playing = !playing; if (playing) schedule(); else { cancelAnimationFrame(raf); raf = 0; } draw(); }, { signal });
     range.addEventListener("input", () => { playing = false; cancelAnimationFrame(raf); raf = 0; frame = Math.min(current ? current.frames - 1 : 0, Number(range.value)); draw(); }, { signal });
-    button("Previous frame", () => { playing = false; frame = Math.max(0, frame - 1); draw(); }); button("Next frame", () => { playing = false; frame = Math.min(current ? current.frames - 1 : 0, frame + 1); draw(); });
     host.addEventListener("guide:clip", (event) => { const id = (event as CustomEvent<{ id?: unknown }>).detail?.id; if (typeof id === "string") void choose(id, true); }, { signal });
     host.addEventListener("guide:pause", () => { playing = false; cancelAnimationFrame(raf); raf = 0; draw(); }, { signal });
     const pointers = new Map<number, { x: number; y: number }>();

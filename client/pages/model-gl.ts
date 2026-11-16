@@ -146,5 +146,6 @@ export class ModelGl {
     for (const d of this.draws) { this.gl.deleteBuffer(d.vertex); this.gl.deleteBuffer(d.index); this.gl.deleteVertexArray(d.vao); }
     for (const t of this.textures.values()) this.gl.deleteTexture(t);
     this.gl.deleteTexture(this.blank); this.gl.deleteProgram(this.program);
+    if (!this.gl.isContextLost()) this.gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 }
