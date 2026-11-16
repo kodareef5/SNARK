@@ -122,7 +122,7 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
         (room.footprint && !cruiseFootprintContains(room.footprint, view.at[0]!, view.at[2]!)))
       throw new Error(`Cruise review feet are outside the occupied room: ${view.id}`);
   }
-  const medium = new Set(["cabin_9", "dome_inside", "promenade", "central_park", "thrill", "bridge", "engine", "chill"]);
+  const medium = new Set(["cabin_9", "dome_inside", "aquadome_lounge", "aquatheater", "promenade", "central_park", "thrill", "bridge", "engine", "chill"]);
   for (const view of localViews) for (const tier of medium.has(view.id) ? ["medium", "high"] as const : ["high"] as const)
     shots.push({ name: `interior-${view.id}-${tier}`, feet: p(view.at), target: p(view.target), mode: view.mode as "walk" | "spectator", tier,
       coldFallback: ["aquatheater", "promenade", "cabin_9"].includes(view.id) });
