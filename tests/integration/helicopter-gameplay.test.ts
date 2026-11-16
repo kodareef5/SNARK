@@ -95,7 +95,7 @@ test("found condition and full inverted attitude survive SQLite reload without r
     expect(new TextDecoder().decode(record.extra.get(VEHICLE_ORIGIN))).toBe("test:flat/police-yard");
     ents.setPosition(e, 42, 25, 42); ents.flags[e] = ents.flags[e]! & ~F_GROUNDED;
     ents.vehicleQx[e] = 1; ents.vehicleQy[e] = ents.vehicleQz[e] = ents.vehicleQw[e] = 0;
-    ents.vehiclePitch[e] = Math.PI; ents.vx[e] = 4; ents.vy[e] = -5; ents.vz[e] = 6;
+    ents.vehiclePitch[e] = Math.PI; ents.vx[e] = 75; ents.vy[e] = -85; ents.vz[e] = 64;
     ents.vehicleRotorRpm[e] = 250; ents.vehicleRotorPhase[e] = .8; ents.vehicleCollective[e] = .7;
     h.host.urban.changed(e);
     const fuel = ents.fuel[e]!, engine = ents.vehicleEngineCondition[e]!;
@@ -105,7 +105,7 @@ test("found condition and full inverted attitude survive SQLite reload without r
     expect([...h.host.records.byPid.values()].filter(r => h!.reg.ids[r.kind] === placement.kind)).toHaveLength(1);
     expect(out.vehicleQx[restored]).toBe(1); expect(out.vehicleQw[restored]).toBe(0);
     expect(Math.abs(out.vehiclePitch[restored]!)).toBeCloseTo(Math.PI, 6);
-    expect([out.vx[restored], out.vy[restored], out.vz[restored]]).toEqual([4, -5, 6]);
+    expect([out.vx[restored], out.vy[restored], out.vz[restored]]).toEqual([75, -85, 64]);
     expect(out.vehicleCollective[restored]).toBeCloseTo(.7, 6);
     expect(out.vehicleEngineCondition[restored]).toBe(engine); expect(out.fuel[restored]).toBe(fuel);
   } finally { h?.host.shutdown(); rmSync(dir, { recursive: true, force: true }); }

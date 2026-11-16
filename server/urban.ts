@@ -198,9 +198,14 @@ export class Urban {
     b.vehicleRollRate = clampTo(b.vehicleRollRate, -12, 12);
     b.vehicleRideOffset = clampTo(b.vehicleRideOffset, -Math.min(travel * 0.65, spec.clearance * 0.65), travel);
     b.vehicleRideVelocity = clampTo(b.vehicleRideVelocity, -60, 60);
-    const speed = Math.sqrt(b.vx * b.vx + b.vz * b.vz), limit = Math.max(spec.maxForward, spec.maxReverse) * (isRotorVehicle(definition) ? definition.spec.cruiseMultiplier : 1);
-    if (speed > limit) { b.vx = Math.fround(b.vx * limit / speed); b.vz = Math.fround(b.vz * limit / speed); }
-    b.vy = clampTo(b.vy, -60, 60);
+    if (isRotorVehicle(definition)) {
+      // Cruise speed is an assisted target, not a limit on momentum through a manual dive.
+      b.vx = clampTo(b.vx, -120, 120); b.vy = clampTo(b.vy, -100, 100); b.vz = clampTo(b.vz, -120, 120);
+    } else {
+      const speed = Math.hypot(b.vx, b.vz), limit = Math.max(spec.maxForward, spec.maxReverse);
+      if (speed > limit) { b.vx = Math.fround(b.vx * limit / speed); b.vz = Math.fround(b.vz * limit / speed); }
+      b.vy = clampTo(b.vy, -60, 60);
+    }
     b.fuel = clampTo(b.fuel, 0, definition.spec.fuelCapacity);
     if (version >= 4) {
       b.vehicleGear = Math.round(clampTo(b.vehicleGear, -1, train?.forwardRatios.length ?? 12));
