@@ -7,14 +7,14 @@ import { compilePacks, type DefPatch } from "../../shared/content/packs.ts";
 import { CORE_PACK } from "../../content/core.ts";
 import type { SpeciesDef } from "../../shared/content/defs.ts";
 import { EntityStore } from "../../shared/sim/entities.ts";
-import { MAX_VEHICLE_DOORS, validateVehicleDefinition, type VehicleDefinition } from "../../shared/sim/vehicle.ts";
+import { MAX_VEHICLE_DOORS, validateVehicleDefinition, type WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { packVehiclePose, vehicleDoor, withVehicleDoor } from "../../shared/sim/vehicle-body.ts";
 import { COMPACT, COMPACT_SPECIES } from "../../content/vehicles/compact.ts";
 import { validateSeats, type Seat } from "../../shared/sim/seats.ts";
 import { Occupancy } from "../../server/occupancy.ts";
 
 /** A pickup with a bench of three and a tailgate: four doors, three seats, a wheel bone named its own way. */
-export const PICKUP: VehicleDefinition = {
+export const PICKUP: WheelVehicleDefinition = {
   id: "t:pickup",
   spec: { ...COMPACT, halfWidth: 1, halfLength: 2.7, height: 1.9, wheelbase: 3.4, track: 1.7, wheelRadius: 0.38, mass: 1900 },
   seats: [
@@ -45,7 +45,7 @@ test("a second kind compiles beside the compact as content, with its own seats, 
 });
 
 test("a vehicle that would not register or draw is refused when it compiles, with what is wrong", () => {
-  const bad = (change: Partial<VehicleDefinition>): string => {
+  const bad = (change: Partial<WheelVehicleDefinition>): string => {
     try { validateVehicleDefinition({ ...PICKUP, ...change }); return ""; } catch (e) { return (e as Error).message; }
   };
   expect(bad({})).toBe("");
