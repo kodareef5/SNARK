@@ -170,7 +170,7 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.text(KEY_VEHICLE + 7, x + 10, y + 99, width - 20, S_LABEL, "W/S ahead/reverse | A/D steer");
     f.text(KEY_VEHICLE + 8, x + 10, y + 122, width - 20, S_LABEL, "Space neutral | Shift precision");
     f.text(KEY_VEHICLE + 9, x + 10, y + 144, width - 20, S_LABEL, "V helm/chase | Mouse look");
-    f.text(KEY_VEHICLE + 10, x + 10, y + 166, width - 20, S_LABEL, "E leave helm | I cargo/service");
+    f.text(KEY_VEHICLE + 10, x + 10, y + 166, width - 20, S_LABEL, "E leave helm | F cargo/service");
   }
 
   if (m.vehicle?.active && m.vehicle.rotor) {
