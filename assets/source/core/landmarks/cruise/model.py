@@ -135,12 +135,14 @@ def build(m,p):
   for b in p['boxes']:rail(m,*extents(b))
  elif kind=='guard':
   sides=[8,6,6,4,4,4][m.level]
-  a,b=p['art']['ends'];dx=b[0]-a[0];dz=b[2]-a[2];ln=math.hypot(dx,dz);inset=min(.03,ln/4)
+  a,b=p['art']['ends'];dx=b[0]-a[0];dz=b[2]-a[2];ln=math.hypot(dx,dz);inset=0 if p['art'].get('fullRail') else min(.03,ln/4)
   aa=[a[0]+dx/ln*inset,a[1]+1.12,a[2]+dz/ln*inset];bb=[b[0]-dx/ln*inset,b[1]+1.12,b[2]-dz/ln*inset]
   m.tube([aa,bb],.025,'steel',n=sides)
   n=max(1,math.ceil(ln/[1.5,2,3,4,6,12][m.level]))
   for i in range(n+1):
-   t=i/n;top=[aa[k]+(bb[k]-aa[k])*t for k in range(3)];bot=top[:];bot[1]=a[1]+(b[1]-a[1])*t+.025;m.tube([bot,top],.022,'steel',n=sides)
+   t=i/n;postInset=min(.03,ln/4);distance=postInset+(ln-2*postInset)*t
+   top=[a[0]+dx/ln*distance,a[1]+(b[1]-a[1])*t+1.12,a[2]+dz/ln*distance]
+   bot=top[:];bot[1]=a[1]+(b[1]-a[1])*t+.025;m.tube([bot,top],.022,'steel',n=sides)
   if m.level<3:
    aa[1]=a[1]+.54;bb[1]=b[1]+.54;m.tube([aa,bb],.012,'glass',n=sides)
  elif kind=='window_wall':

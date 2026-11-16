@@ -16,10 +16,10 @@ def dome(D,p,place,beam):
   v=[math.cos(t)*math.cos(a)/28.395,math.sin(t)/16.79,math.cos(t)*math.sin(a)/34.895]
   l=math.sqrt(sum(x*x for x in v));return [x/l for x in v]
  for sector in range(16):
-  for band in range(4):
+  for band in(0,2):
    cells=[];frames=[];collision=[];proxy=[]
    for ai in range(sector*4,sector*4+4):
-    for ti in range(band*2,band*2+2):
+    for ti in range(band*2,band*2+4):
      if ti==0 and 45<=ai<=50:continue
      a0=ai*math.tau/64;a1=(ai+1)*math.tau/64;t0=ti*math.pi/16;t1=(ti+1)*math.pi/16
      corners=[point(t,a) for t,a in[(t0,a0),(t0,a1),(t1,a1),(t1,a0)]]

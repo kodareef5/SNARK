@@ -32,12 +32,34 @@ def finish(D,p,world,place,box,ys,beam):
      length=next(s for s in(8,4,2,1) if s<=end-cursor+1e-7)
      spans.append((cursor,cursor+length));cursor+=length
     if end-cursor>1e-7:spans.append((end-1,end))
+   names=[]
    for i,(lo,hi) in enumerate(spans):
-    length=hi-lo;art={'kind':'guard','finish':'steel','ends':[[-length/2,-.575,0],[length/2,-.575,0]]}
+    length=hi-lo;art={'kind':'guard','finish':'steel','fullRail':True,'ends':[[-length/2,-.575,0],[length/2,-.575,0]]}
     if name.startswith('bridge_'):art['measurement']='bridge'
     q=p('cardinal_guard','guard',[box([-length/2,-.575,-.04],[length/2,.575,.04])],art=art,color=91)
     at=[(lo+hi)/2,y+.575,fixed] if axis==0 else [fixed,y+.575,(lo+hi)/2]
-    place(name+'_'+str(i),q,at,deck,'edge-protection',0 if axis==0 else 90)
+    names.append(place(name+'_'+str(i),q,at,deck,'edge-protection',0 if axis==0 else 90))
+   D.setdefault('guardRuns',[]).append({'id':name,'a':[a[0],y,a[1]],'b':[b[0],y,b[1]],'instances':names,'reused':True})
+   return
+  # Native frameAxes uses 1/768-metre axis coefficients, not an ideal rotation.
+  # Fit fixed modules by their actual projection and reserve four millimetres
+  # at protected endpoints for native origin rounding; joints remain within the tube radius.
+  units=math.floor((math.atan2(-dz,dx)%math.tau)*65536/math.tau+.5)%65536
+  theta=units*math.tau/65536;c=math.floor(math.cos(theta)*768+.5)/768;s=-math.floor(math.sin(theta)*768+.5)/768
+  along=(c*dx+s*dz)/ln;start=.004;end=ln-.004
+  if end-start>=along:
+   spans=[];cursor=start
+   while end-cursor>=along-1e-7:
+    length=next(size for size in(8,4,2,1) if size*along<=end-cursor+1e-7)
+    spans.append((cursor,cursor+length*along,length));cursor+=length*along
+   if end-cursor>1e-7:spans.append((end-along,end,1))
+   names=[]
+   for i,(lo,hi,length) in enumerate(spans):
+    art={'kind':'guard','finish':'steel','fullRail':True,'ends':[[-length/2,-.575,0],[length/2,-.575,0]]}
+    q=p('cardinal_guard','guard',[box([-length/2,-.575,-.04],[length/2,.575,.04])],art=art,color=91)
+    at=[a[0]+dx/ln*(lo+hi)/2,y+.575,a[1]+dz/ln*(lo+hi)/2]
+    names.append(place(name+'_'+str(i),q,at,deck,'edge-protection',units*360/65536))
+   D.setdefault('guardRuns',[]).append({'id':name,'a':[a[0],y,a[1]],'b':[b[0],y,b[1]],'instances':names,'reused':True})
    return
   nx=-dz/ln*.04;nz=dx/ln*.04
   pts=[[x+sign*nx,yy,z+sign*nz] for x,z in(a,b) for sign in(-1,1) for yy in(y,y+1.15)]
@@ -47,6 +69,7 @@ def finish(D,p,world,place,box,ys,beam):
   pr=next(t for t in D['prototypes'] if t['id']==q)
   pr['art']['ends']=[[a[0]-o[0],y-o[1],a[1]-o[2]],[b[0]-o[0],y-o[1],b[1]-o[2]]]
   place(name,q,o,deck,'edge-protection')
+  D.setdefault('guardRuns',[]).append({'id':name,'a':[a[0],y,a[1]],'b':[b[0],y,b[1]],'instances':[name],'reused':False})
  # All open upper edges get collision, not decorative rails alone. Boundary tests remove internal outline seams.
  for d in D['decks']:
   if int(d['id'])<5:continue

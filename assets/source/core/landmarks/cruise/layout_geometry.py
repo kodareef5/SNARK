@@ -7,6 +7,7 @@ import hashlib,json,math
 def populate(D,prototype,instance,box,node):
  D['prototypes'].clear();D['instances'].clear();D['rooms'].clear();D['portals'].clear()
  D['routes'].clear();D['graph']['nodes'].clear();D['views'].clear()
+ D['guardRuns']=[]
  cache={};bydeck={d['id']:d for d in D['decks']};ys={k:d['floorY'] for k,d in bydeck.items()}
  def canonical(v):
   if isinstance(v,float):return round(v,6)
@@ -30,7 +31,7 @@ def populate(D,prototype,instance,box,node):
   if art and art.get('kind')=='floor':
    # Native placements live on this lattice. Derive local corners AFTER snapping,
    # so adjoining world floor edges remain identical instead of drifting by a millimetre.
-   for k in(0,2):o[k]=round(o[k]*512)/512
+   for k in range(3):o[k]=round(o[k]*512)/512
   localbs=[{'at':[b['at'][k]-o[k] for k in range(3)],'half':b['half']} for b in bs]
   localhs=[{'points':[[q[k]-o[k] for k in range(3)] for q in h]} for h in hs]
   return p(name,cat,localbs,localhs,art,color),o
@@ -331,3 +332,5 @@ def populate(D,prototype,instance,box,node):
  finish_hull_details(D,p,world,place,box,ys)
  from layout_entries import finish as finish_entries
  finish_entries(D)
+ from layout_batches import finish as finish_batches
+ finish_batches(D,world,place)
