@@ -1,55 +1,71 @@
-// The authored JSON is shared with the mesh exporter; these are native structures, not a vehicle-sized collision box.
-import layout from "./koru-layout.json" with { type: "json" };
-import sailPlan from "./koru-sails.json" with { type: "json" };
-import type { SailVisualRig } from "../../shared/sim/sail-rig.ts";
-import { shapeHalf, type Def, type ShapeDef, type ShapeLook, type StructureDef } from "../../shared/content/defs.ts";
-import { STRUCT_UNITS, YAW_UNITS } from "../../shared/coords.ts";
-import { frameAxes, HALF_SIDE } from "../../shared/world/frame.ts";
-import type { MapStatic } from "../../shared/world/mapfile.ts";
+// Koru, a three-masted schooner of 125 m moored as a landmark (assets/source/landmarks/koru/). Its modules are walked as
+// statics drawn as nothing, each 16 m of its length is drawn by one module of it, its doors swap as a base's do, and its
+// sail control sets and strikes the sails. Its layout is the art's, written by author_layout.py.
 
-export const KORU_LAYOUT = layout;
-export const KORU_SAILS = sailPlan;
-const point = (p: readonly number[]): readonly [number, number, number] => [p[0]!, p[1]!, p[2]!];
-interface SourceParts {
+import layout from "./koru-layout.json" with { type: "json" };
+import { shapeHalf, type Def, type ShapeLook, type StructureDef, type TravelFacet } from "../../shared/content/defs.ts";
+import { YAW_UNITS } from "../../shared/coords.ts";
+import type { Landmark } from "../../shared/world/landmark.ts";
+
+type Vec3 = readonly [number, number, number];
+
+interface Parts {
   readonly boxes?: readonly { readonly at: readonly number[]; readonly half: readonly number[] }[];
   readonly hulls?: readonly { readonly points: readonly (readonly number[])[] }[];
 }
-interface SourceModule extends SourceParts {
-  readonly id: string; readonly mesh: string; readonly category: string; readonly color: number;
-  readonly origin: readonly number[]; readonly yaw: number; readonly placed: boolean;
-  readonly opens?: string; readonly look?: SourceParts;
+
+interface Module extends Parts {
+  readonly id: string;
+  readonly mesh: string;
+  readonly category: string;
+  readonly color: number;
+  readonly origin: readonly number[];
+  /** Degrees. */
+  readonly yaw: number;
+  readonly placed: boolean;
+  readonly opens?: string;
+  readonly look?: Parts;
 }
-const modules: readonly SourceModule[] = layout.modules;
-const parts = (source: SourceParts): ShapeLook => ({
-  boxes: source.boxes?.map(box => ({ at: point(box.at), half: point(box.half) })),
-  hulls: source.hulls?.map(hull => ({ corners: hull.points.map(point) })),
+
+export const KORU_LAYOUT = layout;
+const MODULES = layout.modules as readonly Module[];
+
+const v3 = (p: readonly number[]): Vec3 => [p[0]!, p[1]!, p[2]!];
+const partsOf = (p: Parts): ShapeLook => ({ boxes: (p.boxes ?? []).map((b) => ({ at: v3(b.at), half: v3(b.half) })), hulls: (p.hulls ?? []).map((h) => ({ corners: h.points.map(v3) })) });
+const yawOf = (degrees: number): number => Math.round((degrees * YAW_UNITS) / 360) & (YAW_UNITS - 1);
+
+const travel: TravelFacet = { seconds: layout.travel.seconds, parts: layout.travel.parts as unknown as TravelFacet["parts"], say: ["set the sails", "strike the sails"] };
+
+const defs: Def[] = MODULES.flatMap((m): Def[] => {
+  const walked = partsOf(m), look = m.look ? partsOf(m.look) : undefined;
+  const shape = `${m.id}_shape`;
+  const structure: StructureDef = {
+    type: "structure",
+    class: "static",
+    id: m.id,
+    mesh: m.mesh,
+    shape,
+    half: shapeHalf(walked.boxes!, walked.hulls, look),
+    color: m.color,
+    hp: 10000,
+    ...(m.opens ? { opens: m.opens } : {}),
+    ...(m.id === layout.travel.static ? { travel } : {}),
+  };
+  return [{ type: "shape", id: shape, role: m.category === "door" ? "door" : "thing", boxes: walked.boxes!, hulls: walked.hulls, ...(look ? { look } : {}) }, structure];
 });
 
-/** Public, indestructible map architecture; open cabin leaves are definitions but are not initially placed. */
-export const KORU_CONTENT: readonly Def[] = modules.flatMap(module => {
-  const collision = parts(module);
-  const shape: ShapeDef = { type: "shape", id: `${module.id}_shape`, role: module.category === "door" ? "door" : "thing",
-    boxes: collision.boxes ?? [], hulls: collision.hulls, ...(module.look ? { look: parts(module.look) } : {}) };
-  const structure: StructureDef = { type: "structure", class: "static", id: module.id, mesh: module.mesh, shape: shape.id,
-    half: shapeHalf(shape.boxes, shape.hulls, shape.look), color: module.color, hp: 10000,
-    ...(module.id === sailPlan.control.id ? { sails: { group: sailPlan.id, at: point(module.origin), yaw: Math.round(module.yaw * YAW_UNITS / 360), rig: sailPlan as unknown as SailVisualRig } } : {}),
-    ...(module.opens ? { opens: module.opens } : {}) };
-  return [shape, structure];
-});
+/** The ground of the bay under it and the quay its gangway lands on, which the map lays for it. */
+const BEAM = layout.dimensions.beam / 2;
+const LANDING = layout.docking.shoreLanding;
 
-/** Transform ship-local metres through the same lattice frame used by structure collision and placement. */
-export function koruPoint(x: number, y: number, z: number, yaw: number, local: readonly number[]): readonly [number, number, number] {
-  const axes = new Int32Array(4); frameAxes(yaw, axes);
-  return [x + (local[0]! * axes[0]! + local[2]! * axes[2]!) / HALF_SIDE,
-    y + local[1]!, z + (local[0]! * axes[1]! + local[2]! * axes[3]!) / HALF_SIDE];
-}
-
-/** `y` is the sea datum. Yaw uses the native 65536-unit turn; source module yaw is in degrees. */
-export function koruStatics(x: number, y: number, z: number, yaw = 0): MapStatic[] {
-  const quantize = (v: number) => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS;
-  return modules.filter(module => module.placed).map(module => {
-    const p = koruPoint(x, y, z, yaw, module.origin);
-    return { kind: module.id, x: quantize(p[0]), y: quantize(p[1]), z: quantize(p[2]),
-      yaw: (yaw + Math.round(module.yaw * YAW_UNITS / 360)) & (YAW_UNITS - 1) };
-  });
-}
+export const KORU: Landmark = {
+  name: "koru",
+  defs,
+  pieces: MODULES.filter((m) => m.placed).map((m) => ({ kind: m.id, at: v3(m.origin), yaw: yawOf(m.yaw) })),
+  // Its tender lies off the stern steps, bow to the yacht.
+  vehicles: [{ kind: "core:boat", id: "koru/tender", at: [0, 0, layout.dimensions.hullMinZ - 14], yaw: 0, condition: [0.85, 1], fuel: [0.6, 0.9] }],
+  ground: [
+    { from: [-BEAM - 6, layout.dimensions.hullMinZ - 26], to: [BEAM + 6, layout.dimensions.bowspritTip[2]! + 4], y: layout.dimensions.lowestKeel - 1.5, dig: true },
+    { from: [LANDING[0]! - 0.4, LANDING[2]! - 16], to: [LANDING[0]! + 24, LANDING[2]! + 16], y: LANDING[1]! },
+  ],
+};

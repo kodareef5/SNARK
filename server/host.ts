@@ -1,6 +1,6 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
-import type { Registry } from "../shared/content/registry.ts";
+import { withContent, type Registry } from "../shared/content/registry.ts";
 import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
@@ -12,7 +12,7 @@ import { addCreatureCommands } from "./commands/creatures.ts";
 import { addSettingsCommands } from "./commands/settings.ts";
 import { addClusterCommands } from "./commands/cluster.ts";
 import { Build } from "./build.ts";
-import { Sails } from "./sails.ts";
+import { Travel } from "./travel.ts";
 import { Fixtures } from "./fixtures.ts";
 import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
@@ -169,7 +169,7 @@ export interface Host {
   readonly voice: Voice;
   readonly build: Build;
   readonly fixtures: Fixtures;
-  readonly sails: Sails;
+  readonly travel: Travel;
   readonly stations: Stations;
   readonly taming: Taming;
   readonly riding: Riding;
@@ -287,7 +287,10 @@ export function clusterRoot(rules: Rules, dbPath: string, id: string): string {
   return join(typeof over === "string" && over !== "" ? resolve(over) : join(dirname(resolve(dbPath)), "clusters"), id);
 }
 
-function makeHost(content: Registry, opts: HostOptions, opened: { close(): void }[]): Host {
+function makeHost(core: Registry, opts: HostOptions, opened: { close(): void }[]): Host {
+  // A map's landmarks bring their own definitions, compiled after the core's.
+  const given = opts.world || !opts.map ? null : parseMap(opts.map);
+  const content = withContent(core, given?.content?.defs ?? []);
   // The config files are the truth at every start (D88). No rule is read from the save.
   const rules = opts.config ?? new Rules();
   const lists = new Lists(rules, content);
@@ -302,7 +305,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   if (store) opened.push(store);
   // A save supplies its own structures. Only a new world gets the map's.
   const mapFile = opts.world ? null : (opts.map ?? provingFile(reg));
-  const parsed = mapFile ? parseMap(mapFile) : null;
+  const parsed = given ?? (mapFile ? parseMap(mapFile) : null);
   const world = opts.world ?? createMapWorld(reg, parsed!, { populate: !store || store.fresh, entityMax: opts.entityMax ?? rules.num("MaxEntities"), entityStart: opts.entityStart });
   world.clock.cycle = rules.num("DayCycleSpeedScale");
   world.clock.day = rules.num("DayTimeSpeedScale");
@@ -576,7 +579,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   const fixtures = new Fixtures(world, records, items);
   fixtures.rules = rules;
   fixtures.index();
-  const sails = new Sails(world, records, fixtures, game);
+  const travel = new Travel(world, records, fixtures, game);
   const stations = new Stations(world, records, items, fixtures, deadlines);
   // A powered station (the fabricator) makes things only while it burns; why it refuses is told as a notice.
   wirePower(world, stations, progression);
@@ -605,7 +608,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   });
   if (persistence && !loaded!.fresh) beds.restore(persistence.store.meta("beds"));
   persistence?.sidecar("beds", beds.saved);
-  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, sails: (c, ref) => sails.use(c, ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
+  const build = new Build({ world, game, records, items, tribes, rules, fixtures, bus, travel: (ref) => travel.throw(ref), light: (ref) => stations.toggle(ref), bed: (c, ref, action, name) => beds.act(c, ref, action, name), spill: (x, y, z, name, owner) => death.spill(x, y, z, name, owner) });
   build.onPlaced = (by, ref) => beds.placed(by, ref);
   death.onUseBuilt = (c, ref) => build.use(c, ref);
   death.keepsBuilt = (c, ref) => build.keeps(c, ref);
@@ -992,7 +995,6 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     for (const e of urban.contacts!.step()) urban.syncAfterContact(e);
     spawner?.step(tick);
     build.step();
-    sails.step();
     taming.step();
     breeding.step(tick);
     feces.step(tick);
@@ -1093,7 +1095,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
   };
   const tactical = new Tactical(world, game, records, rules);
   game.onReplicate = (c) => {
-    sails.sync(c);
+    travel.sync(c);
     syncOwn(own, c);
     harvest?.sync(c);
     tactical.sync(c);
@@ -1231,7 +1233,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     voice,
     build,
     fixtures,
-    sails,
+    travel,
     stations,
     taming,
     riding,

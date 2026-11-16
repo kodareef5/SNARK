@@ -54,7 +54,8 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * mechanical state and seat after the flight counters, and a view entry's vehicle parts (view.ts).
  * 19: rotor state/condition, observer rotor and service parts, and vehicle maintenance/deployment commands.
  * 20: marine hull/flooding state and physical shoreline recovery. 21: compact chunk rows, rows in place, and chunks
- * taken from the map (HELLO_STATICS). 22: the map's statics told of after the hello (CMD_STATICS). 23: SAILS.
+ * taken from the map (HELLO_STATICS). 22: the map's statics told of after the hello (CMD_STATICS). 23: S_MOTION, a
+ * travelling static's state.
  */
 export const PROTOCOL_VERSION = 23;
 
@@ -198,8 +199,13 @@ export const S_FAR = 13;
  * world id u16. The page takes the ticket to the destination, whose HELLO carries it, and the server closes this connection.
  */
 export const S_TRAVEL = 14;
-/** Reliable full scene sail collection, independent of near chunk subscriptions; shared/sim/sails.ts owns its codec. */
-export const S_SAILS = 15;
+/**
+ * Protocol 23. Where every static that travels when used stands (StructureDef.travel), sent whole to a client when it joins and
+ * when one is thrown: count u8, then per static ref u32, where it left from and goes to u16 (the top bit set when it goes to
+ * its second state, the rest the progress it left from in 1/32,767), and the tick it left u32. Its kind and place are the
+ * client's map's (shared/sim/travel.ts).
+ */
+export const S_MOTION = 15;
 
 export const REJECT_VERSION = 1;
 export const REJECT_CONTENT = 2;

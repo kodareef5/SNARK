@@ -75,7 +75,7 @@ import {
   S_SNAPSHOT,
   S_TEXT,
   S_TRAVEL,
-  S_SAILS,
+  S_MOTION,
   S_WELCOME,
   REJECT_TRAVEL,
   TICKET_BYTES,
@@ -86,7 +86,8 @@ import {
   writeInputs,
 } from "../../shared/net/protocol.ts";
 import { LOOK_BYTES } from "../../shared/anim/look.ts";
-import { readSails, type SailSource, type SailState } from "../../shared/sim/sails.ts";
+import { readTravels, type TravelState } from "../../shared/sim/travel.ts";
+import type { TravelSource } from "./render/travel.ts";
 import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
@@ -357,9 +358,10 @@ export class ClientSession {
   /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
   travelled: { ticket: Uint8Array; world: number } | null = null;
 
-  private sailStates: readonly SailState[] = [];
-  readonly sails: SailSource = { states: () => this.sailStates, tick: () => this.tickClock };
-  world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; sails: SailSource }) | null = null;
+  /** Every travelling static's state as the server last told it (S_MOTION), by ref. */
+  travels: ReadonlyMap<number, TravelState> = new Map();
+  private readonly travelSource: TravelSource = { states: () => this.travels, tick: () => this.tickClock, statics: () => this.arrived ?? this.opts.statics ?? null };
+  world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource; travel?: TravelSource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
@@ -982,12 +984,9 @@ export class ClientSession {
       if (this.log.length > LOG_LINES) this.log.shift();
       this.logVersion++;
     } else if (type === S_OWN) this.ownState(r);
-    else if (type === S_SAILS && this.world) {
-      const { dims } = this.world;
-      const states = readSails(r, (kind, ref, x, y, z) => !!this.registry.sails[kind] &&
-        Math.floor(ref / 65536) < dims.chunksX * dims.chunksZ && (ref & 0xffff) < 65535 &&
-        x >= -128 && x <= dims.chunksX * CHUNK_SIZE + 128 && z >= -128 && z <= dims.chunksZ * CHUNK_SIZE + 128 && Math.abs(y) <= 32768);
-      if (states) this.sailStates = states;
+    else if (type === S_MOTION) {
+      const told = readTravels(r);
+      if (told) this.travels = told;
     }
     else if (type === S_REJECT) {
       this.state = "closed";
@@ -1309,7 +1308,7 @@ export class ClientSession {
   }
 
   private welcome(r: BitReader): void {
-    this.sailStates = [];
+    this.travels = new Map();
     const version = r.u16();
     const tick = r.u32();
     this.ownHandle = r.u32();
@@ -1357,7 +1356,7 @@ export class ClientSession {
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
-    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, sails: this.sails };
+    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...(reg.travel.some((t) => t !== null) ? { travel: this.travelSource } : {}) };
     this.startCity(this.arrived);
     this.recenterNodes();
     this.move = move;

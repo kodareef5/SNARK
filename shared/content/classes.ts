@@ -29,7 +29,7 @@ export interface Slot {
    * A slot with several values has one asset for each key: the keys listed, or every hair or beard style, or ("any")
    * whatever names the content gives.
    */
-  keys?: readonly string[] | "hair" | "beard" | "sails" | "any";
+  keys?: readonly string[] | "hair" | "beard" | "any";
   /** The slot applies only to a definition that declares this field. */
   when?: string;
   /**
@@ -172,7 +172,7 @@ const SPECIES = {
 } satisfies Fields<SpeciesDef>;
 
 const STRUCTURE = {
-  sails: f("facet", "public moored-landmark sail control and visual rig"),
+  travel: f("facet", "a door's swing, with a travel time"),
   vehicleSurface: f("facet"),
   mesh: f("text"),
   color: f("number"),
@@ -456,7 +456,7 @@ row("structure/piece", "structure", STRUCTURE, { parent: "structure", ark: "a st
 row("structure/container", "structure", STRUCTURE, { parent: "structure", ark: "an item container", shelf: "structures/containers", must: [...BUILT, "slots"], may: ["shape", "material", "decayDays", "locked", "falls", "keeps"], slots: STRUCTURE_SLOTS, doc: "Holds stacks: a box, a vault." });
 row("structure/station", "structure", STRUCTURE, { parent: "structure/container", ark: "a crafting inventory with its engrams and speed", status: "partial", waits: "stations", shelf: "structures/stations", must: BUILT, may: ["shape", "material", "decayDays", "locked", "falls", "slots", "lights", "lit", "burns", "cooks", "keeps", "powered", "dry"], slots: STRUCTURE_SLOTS, doc: "Things are made or changed at it. An item whose craft names it in `at` is made from what lies in it, for whoever queued it, and lands in it; a lit station and the same station out are one station to that. One that `lights` burns fuel while lit: every item's own `fuel`, or only what it names in `burns`, at its own times. A `powered` one (the fabricator) makes things only while it burns: it takes no job while out, and a unit under way when its fuel runs out waits with its ticks left until it is lit again. A fire makes its `fired` recipes by itself while it burns, and cooks what has `cooks` unless `cooks` is false. How fast it makes things waits: every station makes at the recipe's seconds." });
 row("structure/bed", "structure", STRUCTURE, { parent: "structure", ark: "a bed", shelf: "structures/beds", must: [...BUILT, "bed"], may: ["shape", "material", "decayDays", "falls", "wait", "once", "floor", "rise"], slots: STRUCTURE_SLOTS, doc: "Its tribe may come back to life at it, after its wait, and travel to it from another; a sleeping bag once, and only for whoever set it down." });
-row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "vehicleSurface", "opens", "sails"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape"), sails: { ...mesh("must", "{sail}", "none"), keys: "sails", when: "sails" } }, doc: "Part of a map: set there with the world and joined to nothing. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin. An opens pair is a public map door using the normal obstruction and persistence rules. A sails control raises or lowers its moored landmark's cloth assembly." });
+row("structure/static", "structure", STRUCTURE, { parent: "structure", ark: "level geometry, ours", shelf: "structures/static", must: BUILT, may: ["material", "shape", "vehicleSurface", "opens", "travel"], slots: { mesh: mesh("must", "{mesh}", "{id}", "box", "shape") }, doc: "Part of a map: set there with the world and joined to nothing. With a shape it may be sloped, or drawn as a mesh of the pack, a wreck's, at the shape's origin, or as nothing where a landmark's cells draw it. A pair that opens each other is a public door. One that travels moves its parts between two placements when used, as sails are set and struck." });
 row("structure/defence", "structure", STRUCTURE, { parent: "structure", ark: "turrets and spikes", status: "stub", waits: "defences", shelf: "structures/defences", must: BUILT, may: ["shape", "material", "decayDays", "falls", "slots"], slots: STRUCTURE_SLOTS, doc: "Harms what comes near it." });
 row("shape", "shape", SHAPE, { ark: "snap points and collision", shelf: "shapes", must: ["role", "boxes"], may: ["doorway", "hulls", "look"], doc: "The form of a piece, shared by every material: what bodies walk on and what joins what." });
 row("material", "material", MATERIAL, { ark: "StructureSettings and its tier", shelf: "materials", must: ["takes"], may: ["decayDays"], doc: "What each type of damage does to what is built of it, and how long it lasts unvisited." });

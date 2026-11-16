@@ -3,7 +3,7 @@ import { remoteVehiclePose } from "../vehicle-view.ts";
 // piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn. Resource nodes are drawn
 // the same way, each as the mesh of its form (shared/world/nodes.ts) at its size.
 
-import type { Registry } from "../../../shared/content/registry.ts";
+import { MAX_TRAVEL_REACH, type Registry } from "../../../shared/content/registry.ts";
 import { CHUNK_SIZE, chunkCx, chunkCz, type MapDims } from "../../../shared/coords.ts";
 import { Assets } from "../assets/assets.ts";
 import type { AssetPort } from "../assets/port.ts";
@@ -46,8 +46,8 @@ import { shadowBytes } from "./shadowtext.ts";
 import { SKY_SIZE, SKY_SLICES, flatLight, skyFrame, theSky, trueSun } from "./sky.ts";
 import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
-import type { SailSource } from "../../../shared/sim/sails.ts";
-import { SailVisuals } from "./sails.ts";
+import type { MapStatics } from "../../../shared/world/mapfile.ts";
+import { PART_FLOATS, poseTravelling, travellingOf, type TravelSource, type Travelling } from "./travel.ts";
 
 export interface RenderWorld {
   /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
@@ -63,8 +63,8 @@ export interface RenderWorld {
   readonly farNodes?: FarNodeSource;
   /** The map's own buildings past the near rows (farcity.ts). It may come after the first frame, and is drawn from then on. */
   readonly city?: CitySource;
-  /** Reliable landmark state stays available past near-row ownership; only the cloth is dynamic. */
-  readonly sails?: SailSource;
+  /** The map's statics that travel when used, where it has any (travel.ts). */
+  readonly travel?: TravelSource;
 }
 
 /** The viewer's own body, which is not among the remote entities. */
@@ -210,7 +210,10 @@ interface ChunkBatch {
 
 export class Scene {
   readonly packet = new FramePacket();
-  readonly sails: SailVisuals;
+  /** The registry where it has travelling statics, else null, and those of the map once its statics have come. */
+  private readonly travelReg: Registry | null;
+  private travelFrom: MapStatics | null = null;
+  private travelling: Travelling[] = [];
   readonly terrain: TerrainLod;
   /** Metres. Terrain beyond this is not drawn and fog reaches full strength here. */
   viewDistance = 4000;
@@ -437,7 +440,7 @@ export class Scene {
     // The renderer holds the sky table on every tier.
     this.assets.residency.reserve("sky table", SKY_SIZE * SKY_SIZE * SKY_SLICES * 4);
     const { table, bind } = this.assets;
-    this.sails = new SailVisuals(reg, table, pack);
+    this.travelReg = reg.travel.some((t) => t !== null) ? reg : null;
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
@@ -448,6 +451,11 @@ export class Scene {
     for (let k = 1; k < reg.defs.length; k++) {
       const d = reg.defs[k]!;
       if (!("mesh" in d)) continue;
+      // A landmark's collision is drawn by its cells, and is nothing itself.
+      if (d.type === "structure" && d.mesh === "none") {
+        this.meshOfKind[k] = HIDDEN;
+        continue;
+      }
       // A body drawn in parts has no one mesh. The characters draw it.
       const mesh = bind.mesh(d.id, d.type === "species" ? "body" : "mesh");
       this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
@@ -502,7 +510,7 @@ export class Scene {
 
     const far = (this.farMesh = table.find(FAR_MESH));
     this.farBounds = pack.header.meshes[far];
-    const shown = (k: number): number => (this.meshOfKind[k] === missing ? -1 : this.meshOfKind[k]!);
+    const shown = (k: number): number => (this.meshOfKind[k] === missing || this.meshOfKind[k] === HIDDEN ? -1 : this.meshOfKind[k]!);
     this.far = world.far && far >= 0 ? new FarBlocks(world.far, world.dims, world.hf, far, pack.header.meshes[far]!, farColours(reg, pack, shown)) : null;
     this.startCity();
     const last = (mesh: number): ReturnType<NodeLooks["last"]> => this.assets.residency.bootLevel(mesh, table.tris[mesh]!.length - 1);
@@ -592,6 +600,7 @@ export class Scene {
       this.groundCast();
     }
     this.structures(cam, this.world.structs, 0, this.meshOfKind, this.colorOfKind, null);
+    if (this.world.travel && this.travelReg) this.showTravel(cam, this.world.travel);
     if (this.world.nodes) this.structures(cam, this.world.nodes, NODE_BUFFERS, this.meshOfForm, this.colorOfForm, this.sizeOfForm);
     if (this.instanceBytes !== this.instancesReserved) this.assets.residency.reserve(INSTANCES, (this.instancesReserved = this.instanceBytes));
     if (remote) this.entities(cam, remote);
@@ -600,7 +609,6 @@ export class Scene {
     if (this.falling && this.falling.count > 0) this.showFalling(cam, this.falling);
     if (this.ghost.kind !== 0) this.showGhost(cam);
     if (this.things.length > 0) this.showThings(cam);
-    if (this.world.sails) this.showSails(cam, this.world.sails);
     // Water seen from above on a lit tier is drawn with its waves and its depth (water.ts), from the frame block's sea part.
     const lit = p.lit && !this.plainSky && !under;
     let waves = sea > -Infinity && this.waterMesh >= 0 && this.water(cam, sea, lit);
@@ -1313,42 +1321,56 @@ export class Scene {
     }
   }
 
-  /** Sails retain one owner through every city handover, after bodies have taken their normal frame priority. */
-  private showSails(cam: Camera, source: SailSource): void {
-    const p = this.packet, tier = this.assets.tier, reach = Math.min(this.viewDistance, tier.reach.city);
-    const groups = this.sails.prepare(source, cam, reach, this.casting ? this.castBox : null), stats = this.sails.stats;
-    p.skipped += stats.missing;
-    if (groups.length) p.frame[FRAME.fade] = tier.fade;
-    for (const group of groups) {
-      // Pose an assembly whole. At the raised endpoint every matrix is identical, so one bone per sail is exact.
-      const active = group.sails.filter(sail => sail.mesh >= 0 && (sail.seen || sail.casts));
-      let draws = 0;
-      for (const sail of active) if (sail.seen) {
-        const b = sail.box, sections = Math.max(1, ...this.assets.table.sections[sail.mesh]!.map(runs => runs.length / 3));
-        draws += sections * (cam.passes(b[0]!, b[1]!, b[2]!, b[3]!, b[4]!, b[5]!) === (NEAR | FAR) ? 2 : 1);
-      }
-      if (p.boneCount + group.bones > Math.min(tier.bones, MAX_BONES) || p.transientCount + active.length > p.transientIds.length || p.drawCount + this.doubled + draws > Math.min(MAX_DRAWS, tier.budget.draws)) {
-        stats.limited++; p.dropped++; continue;
-      }
-      stats.groups++;
-      for (const entry of active) {
-        const { mesh, box, visual } = entry, first = p.transientCount++, bone = p.boneCount, count = group.progress === 1 ? 1 : visual.bones.length;
-        p.bones.set(entry.pose.subarray(0, count * BONE_FLOATS), bone * BONE_FLOATS); p.boneCount += count;
-        this.transient.setSkinned(first, bone, 0); p.transientIds[first] = 0;
-        const flags = DRAW_SKINNED | (group.progress === 1 ? DRAW_ONE_BONE : 0);
-        entry.level = this.assets.choose(this.assets.table.error[mesh]!, entry.distance, entry.level);
-        this.assets.wantTextured(mesh, entry.level, entry.distance);
-        if (entry.seen) {
-          const start = p.drawCount;
-          this.draw(mesh, entry.level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, flags, cam.passes(box[0]!, box[1]!, box[2]!, box[3]!, box[4]!, box[5]!));
-          for (let d = start; d < p.drawCount; d++) p.drawFade[d] = reach;
+  /** The map's travelling statics' parts, to their own reach: posed while they move, and as they were while they rest. */
+  private showTravel(cam: Camera, source: TravelSource): void {
+    const p = this.packet, tier = this.assets.tier, table = this.assets.table;
+    const statics = source.statics();
+    if (statics !== this.travelFrom) {
+      this.travelFrom = statics;
+      this.travelling = statics ? travellingOf(this.travelReg!, statics) : [];
+    }
+    const reach = Math.min(this.viewDistance, tier.reach.parts), states = source.states(), tick = source.tick();
+    const bones = Math.min(tier.bones, MAX_BONES), draws = Math.min(MAX_DRAWS, tier.budget.draws);
+    for (const t of this.travelling) {
+      const x = t.x - cam.x, y = t.y - cam.y, z = t.z - cam.z;
+      if (Math.sqrt(x * x + y * y + z * z) > reach + MAX_TRAVEL_REACH) continue;
+      poseTravelling(t, states.get(t.ref), tick);
+      const parts = t.facet.parts, pose = t.pose;
+      for (let i = 0; i < parts.length; i++) {
+        const mesh = table.find(parts[i]!.mesh);
+        if (mesh < 0) {
+          p.skipped++;
+          continue;
         }
-        if (entry.casts) {
-          const radius = .5 * Math.hypot(box[3]! - box[0]!, box[4]! - box[1]!, box[5]! - box[2]!);
-          const mask = entry.casts & this.cascades.fits(radius);
-          if (mask) this.castBody(mesh, entry.level, first, 1, flags, mask, 0);
+        const at = i * PART_FLOATS, r = this.radiusOfMesh[mesh]! * pose[at + 12]!;
+        const cx = x + pose[at + 3]!, cy = y + pose[at + 7]!, cz = z + pose[at + 11]!;
+        const far = Math.max(0, Math.sqrt(cx * cx + cy * cy + cz * cz) - r);
+        if (far > reach) continue;
+        const seen = cam.boxVisible(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r);
+        const casts = this.casting ? this.castBox(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r) & this.cascades.fits(r) : 0;
+        if (!seen && casts === 0) continue;
+        if (p.boneCount >= bones || p.transientCount === p.transientIds.length || (seen && p.drawCount + this.doubled >= draws)) {
+          p.dropped++;
+          continue;
         }
-        stats.sails++; stats.bones += count;
+        const bone = p.boneCount++, b = bone * BONE_FLOATS;
+        for (let k = 0; k < BONE_FLOATS; k++) p.bones[b + k] = pose[at + k]!;
+        p.bones[b + 3] = cx;
+        p.bones[b + 7] = cy;
+        p.bones[b + 11] = cz;
+        const first = p.transientCount++;
+        this.transient.setSkinned(first, bone, t.color);
+        p.transientIds[first] = 0;
+        const level = this.assets.choose(table.error[mesh]!, far, t.level[i]!);
+        t.level[i] = level;
+        this.assets.wantTextured(mesh, level, far);
+        if (seen) {
+          const d = p.drawCount;
+          this.draw(mesh, level, TRANSIENT_BUFFER, first, 1, 0, 0, 0, DRAW_SKINNED, cam.passes(cx - r, cy - r, cz - r, cx + r, cy + r, cz + r));
+          for (let k = d; k < p.drawCount; k++) p.drawFade[k] = reach;
+          p.frame[FRAME.fade] = tier.fade;
+        }
+        if (casts !== 0) this.castBody(mesh, level, first, 1, DRAW_SKINNED, casts, 0);
       }
     }
   }
