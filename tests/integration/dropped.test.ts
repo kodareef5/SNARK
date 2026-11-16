@@ -53,7 +53,7 @@ test("a bag of one stack carries that stack's item as its gear, and everyone see
     bo.sampleRemote(seen);
     const k = [...seen.kind.subarray(0, seen.count)].indexOf(id("bag"));
     expect(k).toBeGreaterThanOrEqual(0);
-    return [h.world.ents.gear[e]?.[GEAR_HELD] ?? 0, seen.gear[k * GEAR_COUNT + GEAR_HELD]!];
+    return [h.world.ents.gears.get(e)?.[GEAR_HELD] ?? 0, seen.gear[k * GEAR_COUNT + GEAR_HELD]!];
   };
 
   // One stack dropped is a bag that shows it.
@@ -105,7 +105,7 @@ test("a bag of one stack carries that stack's item as its gear, and everyone see
   const cache = h.host.death.spill(rec.x, rec.y, rec.z, "spill");
   items.mint(cache, id("stone"), 1);
   h.run(100);
-  expect(h.world.ents.gear[h.host.records.entOf.get(cache.pid)!]).toBeNull();
+  expect(h.world.ents.gears.get(h.host.records.entOf.get(cache.pid)!)).toBeUndefined();
 });
 
 test("a client draws a bag of one stack as the item lying, where the pack has its #dropped mesh, and as the bag otherwise", () => {

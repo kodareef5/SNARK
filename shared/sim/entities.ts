@@ -10,7 +10,7 @@ import { MODE_WALK, STAMINA_UNITS, type Body } from "./character.ts";
 
 const posed = new AnimState();
 
-/** Indices into EntityStore.gear: the item in hand, then one per armor slot. */
+/** Indices into EntityStore.gears: the item in hand, then one per armor slot. */
 export const GEAR_HELD = 0;
 export const GEAR_WORN = 1;
 export const GEAR_COUNT = 6;
@@ -30,6 +30,8 @@ export const F_HELD = 32;
 
 /** The most slots a store can have: what a handle's index can name. */
 export const ENTITY_LIMIT = HANDLE_INDEX_MASK + 1;
+/** Vehicle rows a store starts with, row 0 among them. */
+const VEHICLE_START = 16;
 
 type Column = Uint8Array | Int8Array | Uint16Array | Int16Array | Uint32Array | Int32Array | Float32Array | Float64Array;
 
@@ -70,6 +72,14 @@ export class EntityStore {
   vz: Float32Array;
   /** Facing, 1/65536 turns. */
   yaw: Uint16Array;
+  /** The slot's row in the vehicle columns below, 0 for none. */
+  vrow: Uint32Array;
+  seatSlot: Uint8Array;
+  seatGen: Uint16Array;
+
+  // By vehicle row: a slot of a vehicle's kind is given one when it is made, and any other slot when a vehicle body is stored
+  // in it. Row 0 is what a slot with no vehicle reads, and is never written. These double as rows are taken, on a create or
+  // a storeBody, so none is kept across either.
   vehicle: Uint8Array;
   vehicleYaw: Float32Array;
   vehicleYawRate: Float32Array;
@@ -97,14 +107,17 @@ export class EntityStore {
   vehicleRideVelocity: Float32Array;
   /** Four doors, 8 bits each of how far open (shared/sim/vehicle-body.ts). */
   vehicleDoors: Uint32Array;
-
   vehiclePitch: Float32Array;
   vehicleRoll: Float32Array;
   steering: Float32Array;
   wheelAngle: Float32Array;
   fuel: Float32Array;
-  seatSlot: Uint8Array;
-  seatGen: Uint16Array;
+  /** Rows the vehicle columns have room for, and the rows used so far, row 0 among them. */
+  private vcap = VEHICLE_START;
+  private vused = 1;
+  private readonly vfree: number[] = [];
+  /** By kind, set for a vehicle's. */
+  private readonly vehicular: ArrayLike<unknown>;
 
   /** Persistent id, or 0 for entities that are never saved. */
   pid: Float64Array;
@@ -148,11 +161,11 @@ export class EntityStore {
   /** Also sent when it enters a view. `rev` changes whenever any of it does. */
   level: Uint16Array;
   colors: Uint8Array;
-  readonly name: string[];
-  /** A survivor's look (shared/anim/look.ts). */
-  readonly look: (Uint8Array | null)[];
+  /** Only for the slots that have one, as few do: a name, a survivor's look (shared/anim/look.ts), and gear. */
+  readonly names = new Map<number, string>();
+  readonly looks = new Map<number, Uint8Array>();
   /** Content indices: GEAR_HELD, then one per armor slot. Replaced, never changed in place. */
-  readonly gear: (Uint16Array | null)[];
+  readonly gears = new Map<number, Uint16Array>();
   /**
    * 1 while the laser on the item in hand is switched on: the create's gear "on" bit (protocol 13; weapons-plan.md, M10).
    * A flashlight's is kept on its owner's books and not sent, as nothing draws it until there are local lights (D436).
@@ -165,20 +178,25 @@ export class EntityStore {
   /** Per chunk: first entity index, or -1. */
   readonly chunkHead: Int32Array;
   next: Int32Array;
+  /** The previous in its chunk's list, or for a free slot the next free one, -1 for none. */
   prev: Int32Array;
 
-  /** Free slots, oldest first, so a slot rests as long as possible before reuse. */
-  private freeRing: Int32Array;
-  private freeRead = 0;
-  private freeCount: number;
+  /** Free slots are a list through `prev`, oldest first, so a slot rests as long as possible before reuse. */
+  private freeHead = -1;
+  private freeTail = -1;
+  private freeCount = 0;
 
-  /** It starts with room for `cap` and may grow to `max`. With no `max` it never grows. */
-  constructor(dims: MapDims, cap: number, max = cap) {
+  /**
+   * It starts with room for `cap` and may grow to `max`. With no `max` it never grows. `vehicular` is set for each kind that
+   * is a vehicle (Registry.vehicle).
+   */
+  constructor(dims: MapDims, cap: number, max = cap, vehicular: ArrayLike<unknown> = []) {
     if (max > ENTITY_LIMIT) throw new Error("entity capacity exceeds handle index range");
     if (cap < 1 || cap > max) throw new Error("an entity store starts with at least one slot and no more than its limit");
     this.dims = dims;
     this.cap = cap;
     this.max = max;
+    this.vehicular = vehicular;
     this.gen = new Uint16Array(cap).fill(1);
     this.died = new Uint16Array(cap);
     this.flags = new Uint8Array(cap);
@@ -190,41 +208,41 @@ export class EntityStore {
     this.vy = new Float32Array(cap);
     this.vz = new Float32Array(cap);
     this.yaw = new Uint16Array(cap);
-    this.vehicle = new Uint8Array(cap);
-    this.vehicleYaw = new Float32Array(cap);
-    this.vehicleYawRate = new Float32Array(cap);
-    this.vehicleGear = new Float32Array(cap);
-    this.vehicleRpm = new Float32Array(cap);
-    this.vehicleShiftTime = new Float32Array(cap);
-    this.vehiclePayloadMass = new Float32Array(cap);
-    this.vehicleRotorRpm = new Float32Array(cap);
-    this.vehicleRotorPhase = new Float32Array(cap);
-    this.vehicleEngineCondition = new Float32Array(cap);
-    this.vehicleFlooding = new Float32Array(cap);
-    this.vehicleHullCondition = new Float32Array(cap);
-    this.vehicleRotorCondition = new Float32Array(cap);
-    this.vehicleEngineOn = new Uint8Array(cap);
-    this.vehicleQx = new Float32Array(cap);
-    this.vehicleQy = new Float32Array(cap);
-    this.vehicleQz = new Float32Array(cap);
-    this.vehicleQw = new Float32Array(cap);
-    this.vehicleCollective = new Float32Array(cap);
-    this.vehiclePitchRate = new Float32Array(cap);
-    this.vehicleRollRate = new Float32Array(cap);
-    this.vehicleGroundPitch = new Float32Array(cap);
-    this.vehicleGroundRoll = new Float32Array(cap);
-    this.vehicleRideOffset = new Float32Array(cap);
-    this.vehicleRideVelocity = new Float32Array(cap);
-    this.vehicleDoors = new Uint32Array(cap);
-
-    this.vehiclePitch = new Float32Array(cap);
-    this.vehicleRoll = new Float32Array(cap);
-    this.steering = new Float32Array(cap);
-    this.wheelAngle = new Float32Array(cap);
-    this.fuel = new Float32Array(cap);
+    this.vrow = new Uint32Array(cap);
     this.seatSlot = new Uint8Array(cap);
     this.seatGen = new Uint16Array(cap);
-
+    this.vehicle = new Uint8Array(VEHICLE_START);
+    this.vehicleYaw = new Float32Array(VEHICLE_START);
+    this.vehicleYawRate = new Float32Array(VEHICLE_START);
+    this.vehicleGear = new Float32Array(VEHICLE_START);
+    this.vehicleRpm = new Float32Array(VEHICLE_START);
+    this.vehicleShiftTime = new Float32Array(VEHICLE_START);
+    this.vehiclePayloadMass = new Float32Array(VEHICLE_START);
+    this.vehicleRotorRpm = new Float32Array(VEHICLE_START);
+    this.vehicleRotorPhase = new Float32Array(VEHICLE_START);
+    this.vehicleEngineCondition = new Float32Array(VEHICLE_START);
+    this.vehicleFlooding = new Float32Array(VEHICLE_START);
+    this.vehicleHullCondition = new Float32Array(VEHICLE_START);
+    this.vehicleRotorCondition = new Float32Array(VEHICLE_START);
+    this.vehicleEngineOn = new Uint8Array(VEHICLE_START);
+    this.vehicleQx = new Float32Array(VEHICLE_START);
+    this.vehicleQy = new Float32Array(VEHICLE_START);
+    this.vehicleQz = new Float32Array(VEHICLE_START);
+    this.vehicleQw = new Float32Array(VEHICLE_START);
+    this.vehicleCollective = new Float32Array(VEHICLE_START);
+    this.vehiclePitchRate = new Float32Array(VEHICLE_START);
+    this.vehicleRollRate = new Float32Array(VEHICLE_START);
+    this.vehicleGroundPitch = new Float32Array(VEHICLE_START);
+    this.vehicleGroundRoll = new Float32Array(VEHICLE_START);
+    this.vehicleRideOffset = new Float32Array(VEHICLE_START);
+    this.vehicleRideVelocity = new Float32Array(VEHICLE_START);
+    this.vehicleDoors = new Uint32Array(VEHICLE_START);
+    this.vehiclePitch = new Float32Array(VEHICLE_START);
+    this.vehicleRoll = new Float32Array(VEHICLE_START);
+    this.steering = new Float32Array(VEHICLE_START);
+    this.wheelAngle = new Float32Array(VEHICLE_START);
+    this.fuel = new Float32Array(VEHICLE_START);
+    this.clearVehicle(0);
     this.pitch = new Int16Array(cap);
     this.anim = new Uint32Array(cap);
     this.cue = new Uint32Array(cap);
@@ -252,18 +270,22 @@ export class EntityStore {
     this.grown = new Uint32Array(cap);
     this.level = new Uint16Array(cap);
     this.colors = new Uint8Array(cap * 6);
-    this.name = new Array<string>(cap).fill("");
-    this.look = new Array<Uint8Array | null>(cap).fill(null);
-    this.gear = new Array<Uint16Array | null>(cap).fill(null);
     this.on = new Uint8Array(cap);
     this.rev = new Uint8Array(cap);
     this.chunk = new Int32Array(cap).fill(-1);
     this.chunkHead = new Int32Array(chunkCount(dims)).fill(-1);
     this.next = new Int32Array(cap).fill(-1);
-    this.prev = new Int32Array(cap).fill(-1);
-    this.freeRing = new Int32Array(cap);
-    for (let i = 0; i < cap; i++) this.freeRing[i] = i;
-    this.freeCount = cap;
+    this.prev = new Int32Array(cap);
+    this.freeFrom(0);
+  }
+
+  /** Lists the slots from `first` to the end as free, in order. The list was empty. */
+  private freeFrom(first: number): void {
+    for (let i = first; i < this.cap - 1; i++) this.prev[i] = i + 1;
+    this.prev[this.cap - 1] = -1;
+    this.freeHead = first;
+    this.freeTail = this.cap - 1;
+    this.freeCount = this.cap - first;
   }
 
   /** Slots left for anything but a player's body. */
@@ -278,8 +300,8 @@ export class EntityStore {
       this.refused++;
       return -1;
     }
-    const i = this.freeRing[this.freeRead]!;
-    this.freeRead = (this.freeRead + 1) % this.cap;
+    const i = this.freeHead;
+    this.freeHead = this.prev[i]!;
     this.freeCount--;
     this.count++;
     this.flags[i] = F_ALIVE | flags;
@@ -291,41 +313,9 @@ export class EntityStore {
     this.vy[i] = 0;
     this.vz[i] = 0;
     this.yaw[i] = 0;
-    this.vehicle[i] = 0;
-    this.vehicleYaw[i] = 0;
-    this.vehicleYawRate[i] = 0;
-    this.vehicleGear[i] = 0;
-    this.vehicleRpm[i] = 0;
-    this.vehicleShiftTime[i] = 0;
-    this.vehiclePayloadMass[i] = 0;
-    this.vehicleRotorRpm[i] = 0;
-    this.vehicleRotorPhase[i] = 0;
-    this.vehicleEngineCondition[i] = 1;
-    this.vehicleFlooding[i] = 0;
-    this.vehicleHullCondition[i] = 1;
-    this.vehicleRotorCondition[i] = 1;
-    this.vehicleEngineOn[i] = 0;
-    this.vehicleQx[i] = 0;
-    this.vehicleQy[i] = 0;
-    this.vehicleQz[i] = 0;
-    this.vehicleQw[i] = 1;
-    this.vehicleCollective[i] = 0;
-    this.vehiclePitchRate[i] = 0;
-    this.vehicleRollRate[i] = 0;
-    this.vehicleGroundPitch[i] = 0;
-    this.vehicleGroundRoll[i] = 0;
-    this.vehicleRideOffset[i] = 0;
-    this.vehicleRideVelocity[i] = 0;
-    this.vehicleDoors[i] = 0;
-
-    this.vehiclePitch[i] = 0;
-    this.vehicleRoll[i] = 0;
-    this.steering[i] = 0;
-    this.wheelAngle[i] = 0;
-    this.fuel[i] = 0;
+    this.vrow[i] = this.vehicular[kind] ? this.addVehicle() : 0;
     this.seatSlot[i] = 0;
     this.seatGen[i] = 0;
-
     this.pitch[i] = 0;
     this.anim[i] = 0;
     this.cue[i] = 0;
@@ -353,9 +343,9 @@ export class EntityStore {
     this.grown[i] = 0;
     this.level[i] = 0;
     this.colors.fill(0, i * 6, i * 6 + 6);
-    this.name[i] = "";
-    this.look[i] = null;
-    this.gear[i] = null;
+    this.names.delete(i);
+    this.looks.delete(i);
+    this.gears.delete(i);
     this.on[i] = 0;
     this.rev[i] = (this.rev[i]! + 1) & 15;
     this.link(i, chunkAt(this.dims, x, z));
@@ -378,41 +368,9 @@ export class EntityStore {
     this.vy = wider(this.vy, cap);
     this.vz = wider(this.vz, cap);
     this.yaw = wider(this.yaw, cap);
-    this.vehicle = wider(this.vehicle, cap);
-    this.vehicleYaw = wider(this.vehicleYaw, cap);
-    this.vehicleYawRate = wider(this.vehicleYawRate, cap);
-    this.vehicleGear = wider(this.vehicleGear, cap);
-    this.vehicleRpm = wider(this.vehicleRpm, cap);
-    this.vehicleShiftTime = wider(this.vehicleShiftTime, cap);
-    this.vehiclePayloadMass = wider(this.vehiclePayloadMass, cap);
-    this.vehicleRotorRpm = wider(this.vehicleRotorRpm, cap);
-    this.vehicleRotorPhase = wider(this.vehicleRotorPhase, cap);
-    this.vehicleEngineCondition = wider(this.vehicleEngineCondition, cap);
-    this.vehicleFlooding = wider(this.vehicleFlooding, cap);
-    this.vehicleHullCondition = wider(this.vehicleHullCondition, cap);
-    this.vehicleRotorCondition = wider(this.vehicleRotorCondition, cap);
-    this.vehicleEngineOn = wider(this.vehicleEngineOn, cap);
-    this.vehicleQx = wider(this.vehicleQx, cap);
-    this.vehicleQy = wider(this.vehicleQy, cap);
-    this.vehicleQz = wider(this.vehicleQz, cap);
-    this.vehicleQw = wider(this.vehicleQw, cap);
-    this.vehicleCollective = wider(this.vehicleCollective, cap);
-    this.vehiclePitchRate = wider(this.vehiclePitchRate, cap);
-    this.vehicleRollRate = wider(this.vehicleRollRate, cap);
-    this.vehicleGroundPitch = wider(this.vehicleGroundPitch, cap);
-    this.vehicleGroundRoll = wider(this.vehicleGroundRoll, cap);
-    this.vehicleRideOffset = wider(this.vehicleRideOffset, cap);
-    this.vehicleRideVelocity = wider(this.vehicleRideVelocity, cap);
-    this.vehicleDoors = wider(this.vehicleDoors, cap);
-
-    this.vehiclePitch = wider(this.vehiclePitch, cap);
-    this.vehicleRoll = wider(this.vehicleRoll, cap);
-    this.steering = wider(this.steering, cap);
-    this.wheelAngle = wider(this.wheelAngle, cap);
-    this.fuel = wider(this.fuel, cap);
+    this.vrow = wider(this.vrow, cap);
     this.seatSlot = wider(this.seatSlot, cap);
     this.seatGen = wider(this.seatGen, cap);
-
     this.pitch = wider(this.pitch, cap);
     this.anim = wider(this.anim, cap);
     this.cue = wider(this.cue, cap);
@@ -440,24 +398,97 @@ export class EntityStore {
     this.grown = wider(this.grown, cap);
     this.level = wider(this.level, cap);
     this.colors = wider(this.colors, cap * 6);
-    while (this.name.length < cap) {
-      this.name.push("");
-      this.look.push(null);
-      this.gear.push(null);
-    }
     this.on = wider(this.on, cap);
     this.rev = wider(this.rev, cap);
     this.chunk = wider(this.chunk, cap, -1);
     this.next = wider(this.next, cap, -1);
-    this.prev = wider(this.prev, cap, -1);
-    // Every old slot is taken, so the free slots are the new ones, in order.
-    this.freeRing = new Int32Array(cap);
-    for (let i = old; i < cap; i++) this.freeRing[i - old] = i;
-    this.freeRead = 0;
-    this.freeCount = cap - old;
+    this.prev = wider(this.prev, cap);
     this.cap = cap;
+    // Every old slot is taken, so the free slots are the new ones, in order.
+    this.freeFrom(old);
     for (const widen of this.onGrow) widen(cap);
     return true;
+  }
+
+  /** A vehicle row with nothing in it, the columns doubling when every row is taken. */
+  private addVehicle(): number {
+    let v = this.vfree.pop();
+    if (v === undefined) {
+      if (this.vused === this.vcap) this.growVehicles();
+      v = this.vused++;
+    }
+    this.clearVehicle(v);
+    return v;
+  }
+
+  private growVehicles(): void {
+    const cap = (this.vcap *= 2);
+    this.vehicle = wider(this.vehicle, cap);
+    this.vehicleYaw = wider(this.vehicleYaw, cap);
+    this.vehicleYawRate = wider(this.vehicleYawRate, cap);
+    this.vehicleGear = wider(this.vehicleGear, cap);
+    this.vehicleRpm = wider(this.vehicleRpm, cap);
+    this.vehicleShiftTime = wider(this.vehicleShiftTime, cap);
+    this.vehiclePayloadMass = wider(this.vehiclePayloadMass, cap);
+    this.vehicleRotorRpm = wider(this.vehicleRotorRpm, cap);
+    this.vehicleRotorPhase = wider(this.vehicleRotorPhase, cap);
+    this.vehicleEngineCondition = wider(this.vehicleEngineCondition, cap);
+    this.vehicleFlooding = wider(this.vehicleFlooding, cap);
+    this.vehicleHullCondition = wider(this.vehicleHullCondition, cap);
+    this.vehicleRotorCondition = wider(this.vehicleRotorCondition, cap);
+    this.vehicleEngineOn = wider(this.vehicleEngineOn, cap);
+    this.vehicleQx = wider(this.vehicleQx, cap);
+    this.vehicleQy = wider(this.vehicleQy, cap);
+    this.vehicleQz = wider(this.vehicleQz, cap);
+    this.vehicleQw = wider(this.vehicleQw, cap);
+    this.vehicleCollective = wider(this.vehicleCollective, cap);
+    this.vehiclePitchRate = wider(this.vehiclePitchRate, cap);
+    this.vehicleRollRate = wider(this.vehicleRollRate, cap);
+    this.vehicleGroundPitch = wider(this.vehicleGroundPitch, cap);
+    this.vehicleGroundRoll = wider(this.vehicleGroundRoll, cap);
+    this.vehicleRideOffset = wider(this.vehicleRideOffset, cap);
+    this.vehicleRideVelocity = wider(this.vehicleRideVelocity, cap);
+    this.vehicleDoors = wider(this.vehicleDoors, cap);
+    this.vehiclePitch = wider(this.vehiclePitch, cap);
+    this.vehicleRoll = wider(this.vehicleRoll, cap);
+    this.steering = wider(this.steering, cap);
+    this.wheelAngle = wider(this.wheelAngle, cap);
+    this.fuel = wider(this.fuel, cap);
+  }
+
+  /** What a slot's vehicle columns held when it was made: a parked, sound vehicle that is no vehicle yet. */
+  private clearVehicle(v: number): void {
+    this.vehicle[v] = 0;
+    this.vehicleYaw[v] = 0;
+    this.vehicleYawRate[v] = 0;
+    this.vehicleGear[v] = 0;
+    this.vehicleRpm[v] = 0;
+    this.vehicleShiftTime[v] = 0;
+    this.vehiclePayloadMass[v] = 0;
+    this.vehicleRotorRpm[v] = 0;
+    this.vehicleRotorPhase[v] = 0;
+    this.vehicleEngineCondition[v] = 1;
+    this.vehicleFlooding[v] = 0;
+    this.vehicleHullCondition[v] = 1;
+    this.vehicleRotorCondition[v] = 1;
+    this.vehicleEngineOn[v] = 0;
+    this.vehicleQx[v] = 0;
+    this.vehicleQy[v] = 0;
+    this.vehicleQz[v] = 0;
+    this.vehicleQw[v] = 1;
+    this.vehicleCollective[v] = 0;
+    this.vehiclePitchRate[v] = 0;
+    this.vehicleRollRate[v] = 0;
+    this.vehicleGroundPitch[v] = 0;
+    this.vehicleGroundRoll[v] = 0;
+    this.vehicleRideOffset[v] = 0;
+    this.vehicleRideVelocity[v] = 0;
+    this.vehicleDoors[v] = 0;
+    this.vehiclePitch[v] = 0;
+    this.vehicleRoll[v] = 0;
+    this.steering[v] = 0;
+    this.wheelAngle[v] = 0;
+    this.fuel[v] = 0;
   }
 
   /** The setters bump `rev` only on a change, and clients that already see the entity are then sent it again. */
@@ -465,12 +496,13 @@ export class EntityStore {
     if (level > 65535) level = 65535;
     // 24 characters is at most 72 bytes, which is what a snapshot will carry.
     if (name.length > 24) name = name.slice(0, 24);
-    let same = this.level[i] === level && this.name[i] === name;
+    let same = this.level[i] === level && (this.names.get(i) ?? "") === name;
     for (let k = 0; k < 6 && same; k++) same = this.colors[i * 6 + k] === (colors ? colors[k]! : 0);
     if (same) return;
     this.level[i] = level;
     for (let k = 0; k < 6; k++) this.colors[i * 6 + k] = colors ? colors[k]! : 0;
-    this.name[i] = name;
+    if (name === "") this.names.delete(i);
+    else this.names.set(i, name);
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
@@ -503,16 +535,17 @@ export class EntityStore {
   }
 
   setBodyLook(i: number, look: Uint8Array | null): void {
-    this.look[i] = look;
+    if (look) this.looks.set(i, look);
+    else this.looks.delete(i);
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
   setGear(i: number, gear: ArrayLike<number>): void {
-    const old = this.gear[i];
-    let same = old !== null && old !== undefined;
+    const old = this.gears.get(i);
+    let same = old !== undefined;
     for (let k = 0; k < GEAR_COUNT && same; k++) same = old![k] === gear[k];
     if (same) return;
-    this.gear[i] = Uint16Array.from({ length: GEAR_COUNT }, (_, k) => gear[k] ?? 0);
+    this.gears.set(i, Uint16Array.from({ length: GEAR_COUNT }, (_, k) => gear[k] ?? 0));
     this.rev[i] = (this.rev[i]! + 1) & 15;
   }
 
@@ -550,42 +583,41 @@ export class EntityStore {
     b.mflags = this.mflags[i]!;
     b.kind = this.kind[i]!;
     b.yaw = this.yaw[i]!;
-    b.vehicle = this.vehicle[i] !== 0;
-    b.vehicleYaw = this.vehicleYaw[i]!;
-    b.vehicleYawRate = this.vehicleYawRate[i]!;
-    b.vehicleGear = this.vehicleGear[i]!;
-    b.vehicleRpm = this.vehicleRpm[i]!;
-    b.vehicleShiftTime = this.vehicleShiftTime[i]!;
-    b.vehiclePayloadMass = this.vehiclePayloadMass[i]!;
-    b.vehicleRotorRpm = this.vehicleRotorRpm[i]!;
-    b.vehicleRotorPhase = this.vehicleRotorPhase[i]!;
-    b.vehicleEngineCondition = this.vehicleEngineCondition[i]!;
-    b.vehicleFlooding = this.vehicleFlooding[i]!;
-    b.vehicleHullCondition = this.vehicleHullCondition[i]!;
-    b.vehicleRotorCondition = this.vehicleRotorCondition[i]!;
-    b.vehicleEngineOn = this.vehicleEngineOn[i] !== 0;
-    b.vehicleQx = this.vehicleQx[i]!;
-    b.vehicleQy = this.vehicleQy[i]!;
-    b.vehicleQz = this.vehicleQz[i]!;
-    b.vehicleQw = this.vehicleQw[i]!;
-    b.vehicleCollective = this.vehicleCollective[i]!;
-    b.vehiclePitchRate = this.vehiclePitchRate[i]!;
-    b.vehicleRollRate = this.vehicleRollRate[i]!;
-    b.vehicleGroundPitch = this.vehicleGroundPitch[i]!;
-    b.vehicleGroundRoll = this.vehicleGroundRoll[i]!;
-    b.vehicleRideOffset = this.vehicleRideOffset[i]!;
-    b.vehicleRideVelocity = this.vehicleRideVelocity[i]!;
-
-    b.vehiclePitch = this.vehiclePitch[i]!;
-    b.vehicleRoll = this.vehicleRoll[i]!;
-    b.steering = this.steering[i]!;
-    b.wheelAngle = this.wheelAngle[i]!;
-    b.fuel = this.fuel[i]!;
+    const v = this.vrow[i]!;
+    b.vehicle = this.vehicle[v] !== 0;
+    b.vehicleYaw = this.vehicleYaw[v]!;
+    b.vehicleYawRate = this.vehicleYawRate[v]!;
+    b.vehicleGear = this.vehicleGear[v]!;
+    b.vehicleRpm = this.vehicleRpm[v]!;
+    b.vehicleShiftTime = this.vehicleShiftTime[v]!;
+    b.vehiclePayloadMass = this.vehiclePayloadMass[v]!;
+    b.vehicleRotorRpm = this.vehicleRotorRpm[v]!;
+    b.vehicleRotorPhase = this.vehicleRotorPhase[v]!;
+    b.vehicleEngineCondition = this.vehicleEngineCondition[v]!;
+    b.vehicleFlooding = this.vehicleFlooding[v]!;
+    b.vehicleHullCondition = this.vehicleHullCondition[v]!;
+    b.vehicleRotorCondition = this.vehicleRotorCondition[v]!;
+    b.vehicleEngineOn = this.vehicleEngineOn[v] !== 0;
+    b.vehicleQx = this.vehicleQx[v]!;
+    b.vehicleQy = this.vehicleQy[v]!;
+    b.vehicleQz = this.vehicleQz[v]!;
+    b.vehicleQw = this.vehicleQw[v]!;
+    b.vehicleCollective = this.vehicleCollective[v]!;
+    b.vehiclePitchRate = this.vehiclePitchRate[v]!;
+    b.vehicleRollRate = this.vehicleRollRate[v]!;
+    b.vehicleGroundPitch = this.vehicleGroundPitch[v]!;
+    b.vehicleGroundRoll = this.vehicleGroundRoll[v]!;
+    b.vehicleRideOffset = this.vehicleRideOffset[v]!;
+    b.vehicleRideVelocity = this.vehicleRideVelocity[v]!;
+    b.vehiclePitch = this.vehiclePitch[v]!;
+    b.vehicleRoll = this.vehicleRoll[v]!;
+    b.steering = this.steering[v]!;
+    b.wheelAngle = this.wheelAngle[v]!;
+    b.fuel = this.fuel[v]!;
     b.seat = this.seat[i]!;
     b.seatSlot = this.seatSlot[i]!;
     b.seatGen = this.seatGen[i]!;
-
-    b.held = this.gear[i]?.[GEAR_HELD] ?? 0;
+    b.held = this.gears.get(i)?.[GEAR_HELD] ?? 0;
     b.act = this.act[i]!;
     b.actTicks = this.actTicks[i]!;
     b.rounds = this.rounds[i]!;
@@ -607,38 +639,12 @@ export class EntityStore {
     this.stamina[i] = b.stamina;
     this.mflags[i] = b.mflags;
     this.yaw[i] = b.yaw;
-    this.vehicle[i] = b.vehicle ? 1 : 0;
-    this.vehicleYaw[i] = b.vehicleYaw;
-    this.vehicleYawRate[i] = b.vehicleYawRate;
-    this.vehicleGear[i] = b.vehicleGear;
-    this.vehicleRpm[i] = b.vehicleRpm;
-    this.vehicleShiftTime[i] = b.vehicleShiftTime;
-    this.vehiclePayloadMass[i] = b.vehiclePayloadMass;
-    this.vehicleRotorRpm[i] = b.vehicleRotorRpm;
-    this.vehicleRotorPhase[i] = b.vehicleRotorPhase;
-    this.vehicleEngineCondition[i] = b.vehicleEngineCondition;
-    this.vehicleFlooding[i] = b.vehicleFlooding;
-    this.vehicleHullCondition[i] = b.vehicleHullCondition;
-    this.vehicleRotorCondition[i] = b.vehicleRotorCondition;
-    this.vehicleEngineOn[i] = b.vehicleEngineOn ? 1 : 0;
-    this.vehicleQx[i] = b.vehicleQx;
-    this.vehicleQy[i] = b.vehicleQy;
-    this.vehicleQz[i] = b.vehicleQz;
-    this.vehicleQw[i] = b.vehicleQw;
-    this.vehicleCollective[i] = b.vehicleCollective;
-    this.vehiclePitchRate[i] = b.vehiclePitchRate;
-    this.vehicleRollRate[i] = b.vehicleRollRate;
-    this.vehicleGroundPitch[i] = b.vehicleGroundPitch;
-    this.vehicleGroundRoll[i] = b.vehicleGroundRoll;
-    this.vehicleRideOffset[i] = b.vehicleRideOffset;
-    this.vehicleRideVelocity[i] = b.vehicleRideVelocity;
-
-    this.vehiclePitch[i] = b.vehiclePitch;
-    this.vehicleRoll[i] = b.vehicleRoll;
-    this.steering[i] = b.steering;
-    this.wheelAngle[i] = b.wheelAngle;
-    this.fuel[i] = b.fuel;
-
+    let v = this.vrow[i]!;
+    if (v === 0 && b.vehicle) {
+      v = this.addVehicle();
+      this.vrow[i] = v;
+    }
+    if (v !== 0) this.storeVehicle(v, b);
     this.act[i] = b.act;
     this.actTicks[i] = b.actTicks;
     this.rounds[i] = b.rounds;
@@ -649,6 +655,39 @@ export class EntityStore {
     return this.setPosition(i, b.x, b.y, b.z);
   }
 
+  private storeVehicle(v: number, b: Body): void {
+    this.vehicle[v] = b.vehicle ? 1 : 0;
+    this.vehicleYaw[v] = b.vehicleYaw;
+    this.vehicleYawRate[v] = b.vehicleYawRate;
+    this.vehicleGear[v] = b.vehicleGear;
+    this.vehicleRpm[v] = b.vehicleRpm;
+    this.vehicleShiftTime[v] = b.vehicleShiftTime;
+    this.vehiclePayloadMass[v] = b.vehiclePayloadMass;
+    this.vehicleRotorRpm[v] = b.vehicleRotorRpm;
+    this.vehicleRotorPhase[v] = b.vehicleRotorPhase;
+    this.vehicleEngineCondition[v] = b.vehicleEngineCondition;
+    this.vehicleFlooding[v] = b.vehicleFlooding;
+    this.vehicleHullCondition[v] = b.vehicleHullCondition;
+    this.vehicleRotorCondition[v] = b.vehicleRotorCondition;
+    this.vehicleEngineOn[v] = b.vehicleEngineOn ? 1 : 0;
+    this.vehicleQx[v] = b.vehicleQx;
+    this.vehicleQy[v] = b.vehicleQy;
+    this.vehicleQz[v] = b.vehicleQz;
+    this.vehicleQw[v] = b.vehicleQw;
+    this.vehicleCollective[v] = b.vehicleCollective;
+    this.vehiclePitchRate[v] = b.vehiclePitchRate;
+    this.vehicleRollRate[v] = b.vehicleRollRate;
+    this.vehicleGroundPitch[v] = b.vehicleGroundPitch;
+    this.vehicleGroundRoll[v] = b.vehicleGroundRoll;
+    this.vehicleRideOffset[v] = b.vehicleRideOffset;
+    this.vehicleRideVelocity[v] = b.vehicleRideVelocity;
+    this.vehiclePitch[v] = b.vehiclePitch;
+    this.vehicleRoll[v] = b.vehicleRoll;
+    this.steering[v] = b.steering;
+    this.wheelAngle[v] = b.wheelAngle;
+    this.fuel[v] = b.fuel;
+  }
+
   destroy(i: number): void {
     if ((this.flags[i]! & F_ALIVE) === 0) return;
     this.unlink(i);
@@ -656,7 +695,15 @@ export class EntityStore {
     let g = (this.gen[i]! + 1) & HANDLE_GEN_MASK;
     if (g === 0) g = 1;
     this.gen[i] = g;
-    this.freeRing[(this.freeRead + this.freeCount) % this.cap] = i;
+    const v = this.vrow[i]!;
+    if (v !== 0) {
+      this.vfree.push(v);
+      this.vrow[i] = 0;
+    }
+    this.prev[i] = -1;
+    if (this.freeCount === 0) this.freeHead = i;
+    else this.prev[this.freeTail] = i;
+    this.freeTail = i;
     this.freeCount++;
     this.count--;
   }

@@ -111,15 +111,15 @@ test('a saved car from another build or a retuned definition loads clamped inste
     if (definition.movement === 'rotor' || definition.movement === 'boat') throw new Error('compact must keep its wheeled controller');
     const spec = definition.spec;
     const e = restored.host.records.entOf.get(pid)!, e2 = restored.host.records.entOf.get(pid2)!;
-    expect(restored.world.ents.fuel[e]).toBe(Math.fround(spec.fuelCapacity));
-    expect(restored.world.ents.vehicleGear[e]).toBe(spec.drivetrain!.forwardRatios.length);
-    expect(Math.abs(restored.world.ents.vehiclePitch[e]!)).toBeLessThan(1);
-    expect(restored.world.ents.steering[e]).toBe(Math.fround(spec.maxSteer));
-    expect(restored.world.ents.vehicleYawRate[e]).toBe(3);
-    expect(restored.world.ents.vehicleRideOffset[e]).toBe(Math.fround(spec.suspensionTravel!));
+    expect(restored.world.ents.fuel[restored.world.ents.vrow[e]!]).toBe(Math.fround(spec.fuelCapacity));
+    expect(restored.world.ents.vehicleGear[restored.world.ents.vrow[e]!]).toBe(spec.drivetrain!.forwardRatios.length);
+    expect(Math.abs(restored.world.ents.vehiclePitch[restored.world.ents.vrow[e]!]!)).toBeLessThan(1);
+    expect(restored.world.ents.steering[restored.world.ents.vrow[e]!]).toBe(Math.fround(spec.maxSteer));
+    expect(restored.world.ents.vehicleYawRate[restored.world.ents.vrow[e]!]).toBe(3);
+    expect(restored.world.ents.vehicleRideOffset[restored.world.ents.vrow[e]!]).toBe(Math.fround(spec.suspensionTravel!));
     expect(restored.world.ents.vx[e]).toBe(spec.maxForward);
     expect(restored.world.ents.vy[e]).toBe(60);
-    expect(restored.world.ents.fuel[e2]).toBe(Math.fround(spec.fuelCapacity));
+    expect(restored.world.ents.fuel[restored.world.ents.vrow[e2]!]).toBe(Math.fround(spec.fuelCapacity));
     expect(restored.host.records.byPid.get(pid2)!.extra.get(0x757263)).toEqual(future);
     // The unreadable future component survives the ordinary record codec too.
     restored.host.shutdown(); active = null;

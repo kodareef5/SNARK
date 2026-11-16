@@ -34,9 +34,9 @@ test("four players stay grouped through real helicopter flight over delayed link
     let inverted = false;
     for (let k = 0; k < 30; k++) {
       h.run(100);
-      const qx = ents.vehicleQx[e]!, qy = ents.vehicleQy[e]!, qz = ents.vehicleQz[e]!, qw = ents.vehicleQw[e]!;
+      const qx = ents.vehicleQx[ents.vrow[e]!]!, qy = ents.vehicleQy[ents.vrow[e]!]!, qz = ents.vehicleQz[ents.vrow[e]!]!, qw = ents.vehicleQw[ents.vrow[e]!]!;
       inverted ||= 1 - 2 * (qx * qx + qz * qz) < -.7;
-      const frame = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!, qx, qy, qz, qw };
+      const frame = { x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[ents.vrow[e]!]!, pitch: ents.vehiclePitch[ents.vrow[e]!]!, roll: ents.vehicleRoll[ents.vrow[e]!]!, qx, qy, qz, qw };
       for (let i = 0; i < crew.length; i++) {
         const c = h.client(crew[i]!)!, anchor = [0, 0, 0]; vehiclePoint(frame, def.seats[i]!.anchor, anchor);
         expect(ents.seat[c.ent]).toBe(e + 1);
