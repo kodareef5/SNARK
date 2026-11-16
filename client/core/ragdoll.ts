@@ -246,7 +246,7 @@ export class Corpses {
       from = k;
     }
     let alive: Pose | null = null;
-    const rigid = r.vehicleRotorcraft[i] !== 0;
+    const rigid = r.vehicleRotorcraft[i] !== 0 || r.vehicleBoat[i] !== 0;
     if (from >= 0 && !rigid) {
       const f = fallen[from]!;
       fallen.splice(from, 1);
