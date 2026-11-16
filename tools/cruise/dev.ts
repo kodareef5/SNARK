@@ -1,11 +1,12 @@
 // Isolated cruise preview; all earlier preview processes and saves remain independent.
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { Host } from "../../server/host.ts";
 import { DEV_CONFIG, liveFileOf, startServer } from "../../server/main.ts";
 import { formatReport, loadConfigFolder } from "../../server/settings/config.ts";
 import { stopOnSignals } from "../../server/signals.ts";
 import { VEHICLE_ORIGIN } from "../../server/vehicle-service.ts";
+import { parseMap } from "../../shared/world/mapfile.ts";
 import { buildClient } from "../build-client.ts";
 import { CRUISE_COURSE, writeCruiseCourse } from "./course.ts";
 
@@ -25,9 +26,12 @@ export function seedCruisePreview(host: Host): number {
 export async function startCruisePreview(map: string, args = process.argv.slice(2)): Promise<void> {
   const value = (key: string) => { const at = args.indexOf(key); return at < 0 ? undefined : args[at + 1]; };
   const root = resolve(import.meta.dir, "../..");
+  const content = parseMap(new Uint8Array(readFileSync(map))).content;
+  if (!content?.landmarks.includes("cruise") || !content.landmarks.includes("koru")) throw new Error("Cruise preview map must declare its Cruise and Koru landmark packs");
   if (args.includes("--built")) {
     if (!existsSync(resolve(root, "client/dist/assets/manifest.json")) || !existsSync(resolve(root, "client/dist/main.js"))) throw new Error("No prepared client build. Run without --built first.");
   } else console.log(JSON.stringify(await buildClient({ quick: true })));
+  for (const name of content.landmarks) if (!existsSync(resolve(root, "client/dist/assets/landmarks", `${name}.json`))) throw new Error(`Prepared client lacks map-local landmark ${name}; rebuild this checkout`);
   const folder = value("--config") ?? DEV_CONFIG, { rules, report } = loadConfigFolder(folder, args);
   for (const line of formatReport(report, rules)) console.log(line);
   const dbPath = resolve(value("--db") ?? resolve(root, "var/cruise-preview/world.db")); mkdirSync(dirname(dbPath), { recursive: true });
