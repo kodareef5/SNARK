@@ -1,0 +1,76 @@
+{
+  "scope": "Limiting feasible actual body/armor/hair profiles at centred authored paths; no combat/jump/wall-pressed claim",
+  "sources": {
+    "content/landmarks/cruise-layout.json": "b944391a336c7144560a7492c236134994ab6c57d2685206b67d617ff90aa7f7",
+    "assets/source/core/landmarks/cruise/cruise.snpk": "e3c115e4cd18de3ac058f0fb87d7d825b6bd0048e6f220fa85ef2810d89b198d",
+    "assets/source/core/humans/human-bodies/human-bodies.snpk": "f178fbc964ab8a86bf748abb76a6006a8ac9d6a459e74494c1dc5c1853eb84d9",
+    "assets/source/core/humans/human-clips/human-clips.snpk": "f348b2570f839227fae2188a799193e1074c21d2df312fe39706190e26db0e88",
+    "tools/art/koru-fit.evidence.json": "594d12db82bbc194c6da198f4e550728517ef1401b29f0e2daca557d1de493d4"
+  },
+  "cases": [
+    {
+      "pose": {
+        "value": 0,
+        "mesh": "",
+        "sex": "m",
+        "speed": 4.5,
+        "direction": 11,
+        "pitch": 25,
+        "phase": 0.96875
+      },
+      "profile": 34
+    },
+    {
+      "pose": {
+        "value": 0,
+        "mesh": "",
+        "sex": "m",
+        "speed": 4.5,
+        "direction": 11,
+        "pitch": 25,
+        "phase": 0.96875
+      },
+      "profile": 41
+    },
+    {
+      "pose": {
+        "value": 0,
+        "mesh": "",
+        "sex": "f",
+        "speed": 4.5,
+        "direction": 11,
+        "pitch": 25,
+        "phase": 0.96875
+      },
+      "profile": 2
+    },
+    {
+      "pose": {
+        "value": 0,
+        "mesh": "",
+        "sex": "m",
+        "speed": 7.2,
+        "direction": 4,
+        "pitch": -31,
+        "phase": 0.40625
+      },
+      "profile": 31
+    },
+    {
+      "pose": {
+        "value": 0,
+        "mesh": "",
+        "sex": "m",
+        "speed": 4.5,
+        "direction": 5,
+        "pitch": 23,
+        "phase": 0.625
+      },
+      "profile": 41
+    }
+  ],
+  "spots": 426,
+  "poses": 5,
+  "points": 28587156,
+  "collisions": []
+}
