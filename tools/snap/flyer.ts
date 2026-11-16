@@ -1,11 +1,12 @@
 // The pteranodon as a client on each graphics tier draws it, its asset files read from assets/source where a client
 // fetches them (planning/reference/flyers-plan.md, PA6): near on the ground, from below in flight at 20, 60, 150 and
-// 400 m on a 1080-row screen, banking and rolling, knocked out and dead, ridden with its saddle and a rider; and with
-// --levels each level of its mesh in turn on one tier.
+// 400 m on a 1080-row screen, banking and rolling, knocked out and dead, ridden with its saddle and a rider. --close draws
+// a few near at full size, --levels each level of its mesh in turn, and --clips frames through the clips whose folded
+// skin crosses itself, at the size a body is seen from about 12 m.
 //
-//   bun tools/snap/flyer.ts [--tier all|lowpoly|medium|high|ultra] [--levels] [--out DIR] [--source DIR]
+//   bun tools/snap/flyer.ts [--tier all|lowpoly|medium|high|ultra] [--close] [--levels] [--clips] [--out DIR] [--source DIR]
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { TIERS, tierOf } from "../../client/core/assets/tiers.ts";
 import { PTERANODON_DYES } from "../../content/creatures/pteranodon.ts";
@@ -13,9 +14,15 @@ import { FELL } from "../../shared/anim/corpse.ts";
 import { AnimState, CUE_DEAD, CUE_ROLL, CUE_TAKEOFF, bodySeed } from "../../shared/anim/pose.ts";
 import { MODE_FLYER, STANCE_CROUCH } from "../../shared/sim/character.ts";
 import { GEAR_COUNT, GEAR_WORN } from "../../shared/sim/entities.ts";
+import { buildRig } from "../../shared/anim/rigs.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
+import { findAssets } from "../art/assets.ts";
+import { repack } from "../art/build.ts";
+import { Poser } from "../art/check.ts";
+import { materialsOf } from "../art/materials.ts";
 import { SOURCE } from "../art/source.ts";
-import { provingView, settle, type ProvingView } from "../snap.ts";
-import { gameFiles } from "./files.ts";
+import { ModelView, provingView, settle, type ProvingView } from "../snap.ts";
+import { gameFiles, rgbaOf } from "./files.ts";
 import { GLYPH_HEIGHT, GLYPH_WIDTH, glyphPixel } from "./font.ts";
 import { encodePng } from "./png.ts";
 import { atLevel } from "./saddles.ts";
@@ -115,7 +122,7 @@ function label(pixels: Uint8Array, width: number, text: string, x: number, y: nu
 }
 
 /** A view's whole picture at a `by`th of its size, each pixel the mean of those it covers, into `sheet` at (ox, oy). */
-function shrink(view: ProvingView, vw: number, vh: number, sheet: Uint8Array, sw: number, ox: number, oy: number, by: number): void {
+function shrink(view: ProvingView, vw: number, vh: number, sheet: Uint8Array | Uint8ClampedArray, sw: number, ox: number, oy: number, by: number): void {
   const src = view.raster.color;
   for (let y = 0; y < vh / by; y++) {
     for (let x = 0; x < vw / by; x++) {
@@ -202,7 +209,7 @@ for (const name of tiers) {
   near.scene.viewHeight = 540;
   const shots = nearShots(near);
   const across = 4;
-  const rows = Math.ceil(shots.length / across) + 1;
+  const rows = Math.ceil(shots.length / across) + 2;
   const [SW, SH] = [across * TW, rows * TH + 24];
   const sheet = new Uint8Array(SW * SH * 4).fill(236);
   shots.forEach((s, i) => {
@@ -215,27 +222,48 @@ for (const name of tiers) {
     shrink(near, 960, 540, sheet, SW, ox, oy, 2);
     label(sheet, SW, s.label, ox + 6, oy + 6);
   });
-  // From below in flight on a 1920 by 1080 view at the game's 70 degrees, the camera on the ground: the middle at
-  // full size near, enlarged far, so the level and mips are what that screen draws.
-  const far = provingView(1920, 1080, {}, files);
-  far.scene.assets.tier = tier;
-  far.scene.viewHeight = 1080;
-  const g = ground(far);
-  [20, 60, 150, 400].forEach((d, i) => {
-    const up = (55 * Math.PI) / 180;
-    const eye: Shot["eye"] = [g.x, g.y + 1.7, g.z];
-    const at: Shot["at"] = [g.x, g.y + 1.7 + d * Math.sin(up), g.z + d * Math.cos(up)];
-    const shot: Shot = { label: "", bodies: [{ x: at[0], y: at[1] - 0.8, z: at[2], yaw: Math.PI / 2, flying: true, set: (s) => ((s.speed = 4), (s.pitch = -7)) }], eye, at, fov: 70 };
-    stage(far, shot.bodies);
-    aim(far, shot, 1920 / 1080);
-    settle(far);
-    const p = far.scene.packet;
-    const drawn = [...Array(p.drawCount).keys()].filter((k) => p.drawMesh[k] === mesh).map((k) => p.drawLod[k]!);
-    const scale = d <= 20 ? 1 : d <= 60 ? 2 : d <= 150 ? 4 : 8;
-    const [ox, oy] = [i * TW, (rows - 1) * TH];
-    paste(far, 1920, 1080, sheet, SW, ox, oy, TW, TH, scale);
-    label(sheet, SW, `from below, ${d} m${scale > 1 ? `, x${scale}` : ""}, level ${drawn[0] ?? "-"}`, ox + 6, oy + 6);
-  });
+  // From below in flight at the game's 70 degrees, the camera on the ground, with levels chosen for a 1080-row screen:
+  // the middle at full size near and enlarged far. The first row is drawn as the software rasterizer draws, a sample a
+  // pixel; the second with two by two samples a pixel averaged, as the browser's multisampled canvas covers one.
+  for (const [row, ss] of [[rows - 2, 1], [rows - 1, 2]] as const) {
+    const far = provingView(1920 * ss, 1080 * ss, {}, files);
+    far.scene.assets.tier = tier;
+    far.scene.viewHeight = 1080;
+    const g = ground(far);
+    const one = { raster: { color: new Uint8Array(1920 * 1080 * 4) } } as unknown as ProvingView;
+    [20, 60, 150, 400].forEach((d, i) => {
+      const up = (55 * Math.PI) / 180;
+      const eye: Shot["eye"] = [g.x, g.y + 1.7, g.z];
+      const at: Shot["at"] = [g.x, g.y + 1.7 + d * Math.sin(up), g.z + d * Math.cos(up)];
+      const shot: Shot = { label: "", bodies: [{ x: at[0], y: at[1] - 0.8, z: at[2], yaw: Math.PI / 2, flying: true, set: (s) => ((s.speed = 4), (s.pitch = -7)) }], eye, at, fov: 70 };
+      // The sky alone first, to tell the animal from.
+      stage(far, []);
+      aim(far, shot, 1920 / 1080);
+      settle(far);
+      const sky = new Uint8Array(1920 * 1080 * 4);
+      shrink(far, 1920 * ss, 1080 * ss, sky, 1920, 0, 0, ss);
+      stage(far, shot.bodies);
+      settle(far);
+      const p = far.scene.packet;
+      const drawn = [...Array(p.drawCount).keys()].filter((k) => p.drawMesh[k] === mesh).map((k) => p.drawLod[k]!);
+      shrink(far, 1920 * ss, 1080 * ss, one.raster.color, 1920, 0, 0, ss);
+      // How far across it shows: the rows where a pixel differs from the sky alone by more than about 3%.
+      const c = one.raster.color;
+      let [lo, hi] = [Infinity, -Infinity];
+      for (let y = 540 - 200; y < 540 + 200; y++) {
+        for (let x = 960 - 200; x < 960 + 200; x++) {
+          const k = (y * 1920 + x) * 4;
+          if (Math.abs(c[k]! - sky[k]!) + Math.abs(c[k + 1]! - sky[k + 1]!) + Math.abs(c[k + 2]! - sky[k + 2]!) > 24) [lo, hi] = [Math.min(lo, y), Math.max(hi, y)];
+        }
+      }
+      const expected = (6.96 * 1080) / (2 * d * Math.tan(35 * (Math.PI / 180)));
+      console.log(`${name.padEnd(8)} ${d} m, ${ss * ss} samples a pixel: level ${drawn[0] ?? "-"}, span ${expected.toFixed(1)} px, ${Math.max(0, hi - lo + 1)} px of it show`);
+      const scale = d <= 20 ? 1 : d <= 60 ? 2 : d <= 150 ? 4 : 8;
+      const [ox, oy] = [i * TW, row * TH];
+      paste(one, 1920, 1080, sheet, SW, ox, oy, TW, TH, scale);
+      label(sheet, SW, `${d} m${scale > 1 ? ` x${scale}` : ""}, level ${drawn[0] ?? "-"}, ${ss === 1 ? "1 sample" : "4 samples"} a pixel`, ox + 6, oy + 6);
+    });
+  }
   label(sheet, SW, `core:pteranodon on ${name}, as a client draws it`, 6, SH - 20);
   const file = join(out, `flyer-${name}.png`);
   writeFileSync(file, encodePng(SW, SH, sheet));
@@ -275,6 +303,78 @@ if (args.includes("--close")) {
   const file = join(out, `flyer-close-${name}.png`);
   writeFileSync(file, encodePng(1920, 1104, sheet));
   console.log(file);
+}
+
+if (args.includes("--clips")) {
+  // Ten frames through each clip whose membrane crossings ref/wing/clips.json counts, textured, at the size the animal
+  // stands from about 12 m on a 1080-row screen: ground clips from before and above, flight clips from beside and below.
+  const asset = (await findAssets(source)).find((a) => a.id === "core:pteranodon")!;
+  const pack = parsePack(repack(new Uint8Array(readFileSync(asset.file)), false, asset));
+  const rig = buildRig(pack.header.rigs.find((r) => r.id === "core:pteranodon")!, pack.clips)!;
+  const index = pack.meshIndex.get("core:pteranodon")!;
+  const materials = materialsOf(asset);
+  const view = new ModelView(pack, 640, 360, [0.74, 0.82, 0.92]);
+  (pack.header.textures ?? []).forEach((t, slot) => view.texture(slot, t.role, rgbaOf(materials.find((m) => t.id === `${m.id}/${t.role}`)!, t.role, t.top, null).pictures));
+  const poser = new Poser(rig);
+  const rows: [string, boolean][] = [["idle", true], ["walk", true], ["call", true], ["take_off", true], ["fly", false], ["fly_fast", false], ["dive", false], ["glide", false]];
+  const COLS = 10;
+  const [CW, CH] = [320, 180];
+  const sheet = new Uint8Array(COLS * CW * (rows.length * CH + 24) * 4).fill(236);
+  const SW = COLS * CW;
+  rows.forEach(([name, ground], j) => {
+    const clip = rig.clips.get(name)!;
+    for (let k = 0; k < COLS; k++) {
+      const frame = Math.round((k * (clip.frames - 1)) / (COLS - 1));
+      poser.set(clip, frame);
+      const root = rig.solved.pos;
+      view.draw({ mesh: index, level: 0, around: ground ? 40 : 70, above: ground ? 20 : -15, centre: [root[0]!, root[1]! + 0.3, root[2]! + 0.4], radius: ground ? 1.3 : 1.9, rig, colors: PTERANODON_DYES, textured: true });
+      shrink({ raster: view.raster } as unknown as ProvingView, 640, 360, sheet, SW, k * CW, j * CH, 2);
+      label(sheet, SW, `${name} ${frame}`, k * CW + 6, j * CH + 6);
+    }
+  });
+  label(sheet, SW, "core:pteranodon through the clips whose skin crosses, as the game's renderer draws it", 6, rows.length * CH + 4);
+  const file = join(out, "flyer-clips.png");
+  writeFileSync(file, encodePng(SW, rows.length * CH + 24, sheet));
+  console.log(file);
+  // The frame of each clip where ref/wing/clips.json counts the most crossings, at full size, from where they would show.
+  const worst: [string, number, number, number][] = [
+    ["idle", 99, 40, 20], ["walk", 12, 40, 20], ["call", 15, 40, 20], ["take_off", 6, 40, 20],
+    ["fly", 21, 70, -15], ["fly_fast", 12, 70, -15], ["dive", 18, 70, -15], ["dive", 18, 160, 35],
+    ["attack", 9, 40, 20], ["barrel_roll", 15, 70, -15], ["death", 18, 40, 30], ["torpor_out", 54, 40, 30],
+  ];
+  const [WW, WH] = [4 * 640, 3 * 360 + 24];
+  const near = new Uint8Array(WW * WH * 4).fill(236);
+  worst.forEach(([name, frame, around, above], i) => {
+    poser.set(rig.clips.get(name)!, frame);
+    const root = rig.solved.pos;
+    view.draw({ mesh: index, level: 0, around, above, centre: [root[0]!, root[1]! + 0.3, root[2]! + 0.4], radius: above > 0 && around < 90 ? 1.3 : 1.9, rig, colors: PTERANODON_DYES, textured: true });
+    const [ox, oy] = [(i % 4) * 640, Math.floor(i / 4) * 360];
+    for (let y = 0; y < 360; y++) near.set(view.raster.color.subarray(y * 640 * 4, (y + 1) * 640 * 4), ((oy + y) * WW + ox) * 4);
+    label(near, WW, `${name} ${frame}`, ox + 6, oy + 6);
+  });
+  label(near, WW, "core:pteranodon at the frame of each clip with the most crossings, as the game's renderer draws it", 6, 3 * 360 + 4);
+  const close = join(out, "flyer-clips-worst.png");
+  writeFileSync(close, encodePng(WW, WH, near));
+  console.log(close);
+  // Eight frames running about the worst of four clips, nearer, so what changes from one frame to the next is seen.
+  const runs: [string, number, number, number][] = [["dive", 14, 160, 35], ["fly_fast", 8, 70, -25], ["walk", 8, 40, 20], ["torpor_out", 50, 40, 30], ["take_off", 2, 40, 20], ["call", 11, 40, 20]];
+  const [RW, RH] = [8 * 320, runs.length * 180 + 24];
+  const strip = new Uint8Array(RW * RH * 4).fill(236);
+  runs.forEach(([name, from, around, above], j) => {
+    const clip = rig.clips.get(name)!;
+    for (let k = 0; k < 8; k++) {
+      const frame = (from + k) % clip.frames;
+      poser.set(clip, frame);
+      const root = rig.solved.pos;
+      view.draw({ mesh: index, level: 0, around, above, centre: [root[0]!, root[1]! + 0.2, root[2]! + 0.2], radius: 1.1, rig, colors: PTERANODON_DYES, textured: true });
+      shrink({ raster: view.raster } as unknown as ProvingView, 640, 360, strip, RW, k * 320, j * 180, 2);
+      label(strip, RW, `${name} ${frame}`, k * 320 + 6, j * 180 + 6);
+    }
+  });
+  label(strip, RW, "core:pteranodon frame by frame where its skin crosses most, as the game's renderer draws it", 6, runs.length * 180 + 4);
+  const motion = join(out, "flyer-clips-motion.png");
+  writeFileSync(motion, encodePng(RW, RH, strip));
+  console.log(motion);
 }
 
 if (args.includes("--levels")) {
