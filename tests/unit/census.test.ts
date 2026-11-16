@@ -121,8 +121,9 @@ test("Koru moored in its bay on medium at the iPhone's view: its eight cells, th
     });
     return [name, [most(frames, (f) => f.draws), most(frames, (f) => f.triangles), most(frames, (f) => f.cast), own]];
   }));
-  // The most a heading draws of the whole frame, its triangles, what it casts, and the most of the draws that are the yacht's.
-  expect(got).toEqual({});
+  // The most a heading draws of the whole frame, its triangles, what it casts, and the most of the draws that are the
+  // yacht's: its cells, doors and sails, where the modules one draw each made it 470.
+  expect(got).toEqual({ dock: [18, 85634, 69756, 16], deck: [21, 87938, 69932, 19], below: [19, 92034, 69968, 17], "200 m off": [21, 66496, 10240, 19] });
   expect(KORU_LAYOUT.cells.length).toBe(8);
 });
 

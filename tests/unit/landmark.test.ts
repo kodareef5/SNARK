@@ -94,7 +94,7 @@ test("Koru's levels stream from its own files joined after the core's: its coars
   const assets = new Assets(withContent(coreRegistry(), KORU.defs), boot, manifest, port);
   const cells = manifest.meshes.flatMap((m, i) => (m.id.startsWith("koru:cell_") ? [i] : []));
   expect(cells.length).toBe(8);
-  for (const mesh of cells) expect(assets.level(mesh, 0)).toBe(manifest.meshes[mesh]!.levels.length - 1);
+  for (const mesh of cells) expect(manifest.meshes[mesh]!.levels[assets.level(mesh, 0)]!.file).toBe(manifest.boot);
   const packet = new FramePacket();
   for (let f = 0, now = 0; f < 120; f++) {
     now += 1000 / 60;
