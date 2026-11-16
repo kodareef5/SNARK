@@ -28,7 +28,7 @@ function span(range: Span, axis: number, witness: Witness): void {
 }
 
 /** The canonical preview uses native yaw zero. Instance yaw and origins use the real lattice conversion. */
-export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array) {
+export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array, features = false) {
   const meshes = new Map(unpackMeshes(parsePack(bytes)).map(mesh => [mesh.id, mesh]));
   const prototypes = new Map(layout.prototypes.map(p => [p.id, p as MeasuredPrototype]));
   const levels = [], faults: string[] = [];
@@ -39,8 +39,8 @@ export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array) {
   }
   if (faults.length) throw new Error(faults.join("; "));
   for (let level = 0; level < 6; level++) {
-    const bounds = EMPTY(), length = SPAN(), waterline = SPAN(), deckhouse = SPAN(), bridge = SPAN();
-    const coverage = { hull: 0, deckhouse: 0, bridge: 0 };
+    const bounds = EMPTY(), length = SPAN(), waterline = SPAN(), deckhouse = SPAN(), bridge = SPAN(), domeWidth = SPAN(), domeHeight = SPAN();
+    const coverage = { hull: 0, deckhouse: 0, bridge: 0, dome: 0 };
     let vertices = 0, triangles = 0, waterlineTriangles = 0;
     const axes = new Int32Array(4);
     for (const instance of layout.instances) {
@@ -50,6 +50,7 @@ export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array) {
       if (p.category === "gangway") continue;
       const lod = meshes.get(p.mesh)!.lods[level]!, group = p.art?.measurement;
       if (group) coverage[group]++;
+      if (p.category === "dome") coverage.dome++;
       const origin = instance.at.map(v => Math.round(v * STRUCT_UNITS) / STRUCT_UNITS);
       frameAxes(Math.round(instance.yaw * YAW_UNITS / 360) & (YAW_UNITS - 1), axes);
       const posed = new Float64Array(lod.positions.length);
@@ -64,6 +65,7 @@ export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array) {
         span(length, 2, witness);
         if (group === "deckhouse") span(deckhouse, 0, witness);
         if (group === "bridge") span(bridge, 0, witness);
+        if (p.category === "dome") { span(domeWidth, 0, witness); span(domeHeight, 1, witness); }
       }
       vertices += lod.positions.length / 3; triangles += lod.indices.length / 3;
       if (group !== "hull" || lowY > 0 || highY < 0) continue;
@@ -88,6 +90,9 @@ export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array) {
       { name: "waterlineBeam", expected: layout.dimensions.waterlineBeam, range: waterline },
       { name: "deckhouseBeam", expected: layout.dimensions.deckhouseBeam, range: deckhouse },
       { name: "bridgeBeam", expected: layout.dimensions.bridgeBeam, range: bridge },
+      // Primary architect dimensions of the OUTER shell, independent of editable layout metadata.
+      // https://www.wilsonbutler.com/project/icon-of-the-seas/
+      ...(features ? [{ name: "outerDomeWidth", expected: 57, range: domeWidth }, { name: "outerDomeHeight", expected: 17, range: domeHeight }] : []),
     ].map(({ name, expected, range }) => {
       const actual = range.max - range.min, delta = actual - expected;
       const pass = Number.isFinite(actual) && Math.abs(delta) <= TOLERANCE;
@@ -96,21 +101,27 @@ export function cruiseScale(layout: CruiseLayout, bytes: Uint8Array) {
         tolerance: TOLERANCE, pass, low: range.low, high: range.high };
     });
     for (const group of ["hull", "deckhouse", "bridge"] as const) if (!coverage[group]) faults.push(`L${level}: no ${group} measurement instances`);
+    if (features && !coverage.dome) faults.push(`L${level}: no outer dome measurement instances`);
     levels.push({ level, vertices, triangles, waterlineTriangles, coverage, bounds, metrics });
   }
-  return { pass: faults.length === 0, phase: layout.phase, toleranceMetres: TOLERANCE,
+  return { pass: faults.length === 0, phase: layout.phase, toleranceMetres: TOLERANCE, features,
     scope: "All placed ship geometry in all six delivered native LODs, excluding the gangway. Native origin/yaw quantization in the canonical yaw-zero ship frame. Hull beam is measured by clipping actual triangles at waterline Y0; deckhouse and bridge use explicit semantic groups. Height and draft are reported as geometry bounds, not certified published measurements. This does not certify visual resemblance, interior accuracy, collision or frame cost.",
+    featureScope: features ? "Outer AquaDome category measures the architect's 57 m width and 17 m height; separate inner theater, furniture and decks are excluded. The unverified overall ship height/draft and discrepant Pearl figures are not certified." : "Outer dome dimensions are not included in this prototype envelope run; final acceptance requires --features.",
     faults, levels };
 }
 
 if (import.meta.main) {
   const root = resolve(import.meta.dir, "../.."), args = process.argv.slice(2);
   const value = (flag: string, fallback: string) => { const at = args.indexOf(flag); if (at < 0) return fallback; if (!args[at + 1] || args[at + 1]!.startsWith("--")) throw new Error(`${flag} needs a path`); return args[at + 1]!; };
-  if (args.some((a, i) => a.startsWith("--") ? !["--pack", "--layout", "--out"].includes(a) : i === 0 || !["--pack", "--layout", "--out"].includes(args[i - 1]!))) throw new Error("usage: bun tools/cruise/scale.ts [--pack path] [--layout path] [--out path]");
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === "--features") continue;
+    if (["--pack", "--layout", "--out"].includes(args[i]!) && args[i + 1] && !args[i + 1]!.startsWith("--")) { i++; continue; }
+    throw new Error("usage: bun tools/cruise/scale.ts [--features] [--pack path] [--layout path] [--out path]");
+  }
   const packPath = resolve(value("--pack", resolve(root, "assets/source/core/landmarks/cruise/cruise.snpk")));
   const layoutPath = resolve(value("--layout", resolve(root, "content/landmarks/cruise-layout.json")));
   const output = resolve(value("--out", resolve(root, "var/cruise-preview/scale.json")));
-  const bytes = readFileSync(packPath), source = readFileSync(layoutPath), result = cruiseScale(JSON.parse(source.toString()) as CruiseLayout, bytes);
+  const bytes = readFileSync(packPath), source = readFileSync(layoutPath), result = cruiseScale(JSON.parse(source.toString()) as CruiseLayout, bytes, args.includes("--features"));
   const report = { ...result, packSHA256: createHash("sha256").update(bytes).digest("hex"), layoutSHA256: createHash("sha256").update(source).digest("hex") };
   mkdirSync(dirname(output), { recursive: true }); writeFileSync(output, JSON.stringify(report, null, 2) + "\n");
   console.log(JSON.stringify({ pass: result.pass, output, faults: result.faults, levels: result.levels.map(l => ({ level: l.level, metrics: l.metrics.map(m => ({ name: m.name, metres: m.actual, pass: m.pass })) })) }, null, 2));

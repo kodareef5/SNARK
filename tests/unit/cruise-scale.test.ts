@@ -2,8 +2,9 @@ import { expect, test } from "bun:test";
 import source from "../../content/landmarks/cruise-layout.json" with { type: "json" };
 import type { CruiseLayout, CruisePrototype } from "../../content/landmarks/cruise-layout.ts";
 import { defaultPalette } from "../../shared/pack/palette.ts";
+import { parsePack } from "../../shared/pack/pack.ts";
 import { cruiseScale } from "../../tools/cruise/scale.ts";
-import { buildPack, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
+import { buildPack, unpackMeshes, type SourceLod, type SourceMesh } from "../../tools/pack/write.ts";
 
 /** Known physical spans assembled from small repeated modules; the hull has no vertices at waterline Y0. */
 function fixture(shrinkLastHullLevel = false): { layout: CruiseLayout; bytes: Uint8Array } {
@@ -51,4 +52,27 @@ test("cruise scale refuses a shortened coarse silhouette even when published met
   expect(report.levels.slice(0, 5).every(l => l.metrics.every(m => m.pass))).toBe(true);
   expect(report.faults).toHaveLength(1);
   expect(report.faults[0]).toContain("L5 lengthOverall");
+});
+
+test("final feature scale measures the actual outer dome independently of the enclosing ship and inner theater", () => {
+  const base = fixture(), id = "core:cruise_dome", meshes = unpackMeshes(parsePack(base.bytes));
+  const shell = { ...base.layout.prototypes[0]!, id, mesh: id, category: "dome", art: {} };
+  const inner = { ...shell, id: "core:cruise_inner_dome", mesh: "core:cruise_inner_dome", category: "inner_dome" };
+  meshes.push({ ...meshes[0]!, id }, { ...meshes[0]!, id: inner.mesh });
+  const layout: CruiseLayout = { ...base.layout, prototypes: [...base.layout.prototypes, shell, inner], instances: [
+    ...base.layout.instances,
+    ...[-1, 1].flatMap(side => [46.6, 61.6].map(y => ({ id: `dome_${side}_${y}`, prototype: id, at: [side * 26.5, y, 125],
+      yaw: 0, deck: "15", section: "dome", placed: true }))),
+    // Its name and much larger vertical envelope cannot substitute for the measured outer shell.
+    { id: "inner_theater", prototype: inner.id, at: [0, 80, 125], yaw: 0, deck: "15", section: "dome", placed: true },
+  ] };
+  const bytes = buildPack(meshes, defaultPalette()), report = cruiseScale(layout, bytes, true);
+  expect(report.pass).toBe(true);
+  for (const level of report.levels) expect(level.metrics.slice(-2).map(m => m.actual)).toEqual([57, 17]);
+  const shortened: CruiseLayout = { ...layout, instances: layout.instances.map(i => i.prototype === id && i.at[1] === 61.6 ? { ...i, at: [i.at[0]!, 61, i.at[2]!] } : i) };
+  const failed = cruiseScale(shortened, bytes, true);
+  expect(failed.pass).toBe(false);
+  expect(failed.faults).toHaveLength(6);
+  expect(failed.faults.every(f => f.includes("outerDomeHeight"))).toBe(true);
+  expect(cruiseScale(shortened, bytes).pass).toBe(true); // The original four spans alone cannot detect this mistake.
 });
