@@ -4,7 +4,8 @@ import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
 import { DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
-import { CRUISE_LAYOUT, cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
+import { cruiseFootprintContains, type CruiseRoom } from "../../content/landmarks/cruise-layout.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { chunkAt } from "../../shared/coords.ts";
@@ -62,16 +63,30 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
   for (const tier of ["medium", "high"] as const) shots.push({ name: `03-port-profile-${tier}`, feet: spectator([400, 60, 0]), target: focus, mode: "spectator", tier, framePoints });
   // Eye origins stay on the source's real route/floor anchors. Look directions are composed toward the
   // actual furniture or architectural feature, rather than blindly aiming seven metres down every aisle.
+  const instances = new Map(CRUISE_LAYOUT.instances.map(instance => [instance.id, instance]));
+  const prototypes = new Map(CRUISE_LAYOUT.prototypes.map(prototype => [prototype.id, prototype]));
+  const rooms = new Map<string, CruiseRoom>(CRUISE_LAYOUT.rooms.map(room => [room.id, room]));
+  const fitting = (id: string, local?: readonly number[]): readonly number[] => {
+    const instance = instances.get(id), prototype = instance && prototypes.get(instance.prototype);
+    if (!instance?.placed || !prototype) throw new Error(`Cruise review fitting is missing: ${id}`);
+    const bounds = prototype.visualBounds, point = local ?? bounds.min.map((value, axis) => (value + bounds.max[axis]!) / 2);
+    return cruisePoint(instance.at[0]!, instance.at[1]!, instance.at[2]!, Math.round(instance.yaw * 65536 / 360), point);
+  };
+  const pearl = CRUISE_LAYOUT.pearl.center;
   const targets: Readonly<Record<string, readonly number[]>> = {
-    promenade: [14, 17.8, -8], pearl_cafe: [23, 19.15, 26], central_park: [5.5, 28, 32], surfside: [7, 24, -143],
-    theater: [0, 13.5, 150], dining_5: [12, 15, -135], bridge: [6, 40, 139], grove: [20, 57.5, 53],
-    thrill: [3, 57, -148], hideaway: [0, 45.9, -171], medical: [-14, 7.2, 110],
-    sample_interior: [9, 11, 45.6], sample_suite: [17, 54.4, 44.6], sample_ocean: [24, 15.2, 88.6],
-    pearl: [14, 20, -8], main_bar: [-10, 15, -26], giovanni: [-10, 19.2, 23], casino: [10, 11.1, 11],
-    absolute_zero: [14.3, 11, -166], fitness: [7, 19.5, 164], spa: [9, 42.7, 96], crew: [10, 3.8, -16],
-    laundry: [-14, 4.2, 21], galley: [14, 7, -81], engine: [13, 4.2, 48], workshop: [14, 4, 21],
-    chill: [25, 46.3, 35], pool_edge: [18, 45.8, -7], cloud: [20, 54, -15],
-    grove_upper: [0, 60.8, 68], waterpark: [14, 64.3, -128], windjammer: [22, 46.5, -125],
+    promenade: [pearl[0]!, pearl[1]! - 1.8, pearl[2]!], pearl_cafe: fitting("cafe_sofa_1"),
+    central_park: fitting("plant_8_8_1"), surfside: fitting("surfside_play_1"),
+    theater: fitting("theater_screen"), dining_5: fitting("dining_table_5_1_14"), bridge: fitting("bridge_console_6"),
+    grove: fitting("lounger_18_2"), thrill: fitting("slide_0_8"), hideaway: fitting("hideaway_pool", [0, -.18, 0]),
+    medical: fitting("medical_fit_1_-14"), sample_interior: fitting("sample_interior", [2, 1.2, 1.6]),
+    sample_suite: fitting("sample_suite", [2, 1.2, 1.6]), sample_ocean: fitting("sample_ocean", [2, 1.2, 1.6]),
+    pearl, main_bar: fitting("main_bar_counter"), giovanni: fitting("giovanni_table_1"), casino: fitting("casino_table_5_1"),
+    absolute_zero: fitting("ice_bench_1_1"), fitness: fitting("fitness_1_1"), spa: fitting("spa_1_1"),
+    crew: fitting("crew_fit_1_13"), laundry: fitting("laundry_fit_1_-14"), galley: fitting("galley_fit_1_14"),
+    engine: fitting("engine_fit_1_13"), workshop: fitting("workshop_fit_1_12"),
+    chill: fitting("lounger_15_17"), pool_edge: fitting("prototype_pool", [0, -.18, 0]), cloud: fitting("lounger_17_2"),
+    grove_upper: [0, rooms.get("grove_upper")!.bounds.min[1]! + .8, 68],
+    waterpark: fitting("slide_0_0"), windjammer: fitting("windjammer_table_2"), pool_under: fitting("pool_lounge_sofa_1"),
   };
   const localViews = views.map(view => ({ ...view, target: targets[view.id] ?? view.target }));
   // One room per distinct public/service destination; repeated dining floors share the deck-five view.
@@ -79,6 +94,17 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     const room = CRUISE_LAYOUT.rooms.find(room => room.id === id);
     if (!room) throw new Error(`Cruise review destination is missing: ${id}`);
     localViews.push({ id, at: room.routeTarget, target: targets[id]!, deck: room.deck, section: room.section, mode: "walk" });
+  }
+  const dome = rooms.get("aquadome")!;
+  localViews.push({ id: "aquadome_lounge", at: [...dome.routeTarget], target: fitting("aquadome_pod_1_1"), deck: dome.deck, section: dome.section, mode: "walk" },
+    { id: "aquatheater", at: [...dome.routeTarget], target: fitting("aquatheater_stage"), deck: dome.deck, section: dome.section, mode: "walk" });
+  const roomAlias: Readonly<Record<string, string>> = { cabin_9: "cabin_9_0", dome_inside: "aquadome", aquadome_lounge: "aquadome", aquatheater: "aquadome" };
+  for (const view of localViews) {
+    const room = rooms.get(roomAlias[view.id] ?? view.id);
+    if (!room) throw new Error(`Cruise review view has no authored room: ${view.id}`);
+    if (view.at.some((value, axis) => value < room.bounds.min[axis]! - .02 || value > room.bounds.max[axis]! + .02) ||
+        (room.footprint && !cruiseFootprintContains(room.footprint, view.at[0]!, view.at[2]!)))
+      throw new Error(`Cruise review feet are outside the occupied room: ${view.id}`);
   }
   const medium = new Set(["cabin_9", "dome_inside", "promenade", "central_park", "thrill", "bridge", "engine"]);
   for (const view of localViews) for (const tier of medium.has(view.id) ? ["medium", "high"] as const : ["high"] as const)
@@ -93,6 +119,9 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     { name: "08-starboard-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", framePoints },
     { name: "09-bow-quarter", feet: spectator([-140, 68, 370]), target: p([0, 32, 30]), mode: "spectator", tier: "high", framePoints },
     { name: "10-stern-quarter", feet: spectator([-140, 68, -370]), target: p([0, 32, -30]), mode: "spectator", tier: "high", framePoints });
+  const lifeboat = fitting("lifeboat_1_6");
+  shots.push({ name: "11-lifeboat-berth", feet: spectator([lifeboat[0]! + 19, lifeboat[1]! + 2.5, lifeboat[2]! + 2]),
+    target: p(lifeboat), mode: "spectator", tier: "high" });
   shots.push({ name: "night-exterior", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", far: true, framePoints, hour: 21 });
   shots.push({ name: "06-flat-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "lowpoly", framePoints });
   for (const distance of [280, 650, 900, 1300, 2000]) shots.push({ name: `far-${distance}m`, feet: spectator([-distance, 42, 0]), target: focus, mode: "spectator", tier: "high", far: true, framePoints });
