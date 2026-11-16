@@ -70,5 +70,15 @@
     "accessed": "2026-11-16",
     "bytes": 12101493,
     "sha256": "d0aa26e4f86fa831559602a02c9dd970360026ec9201e6756ee039deb3d928d1"
+  },
+  {
+    "file": "category-six-award.pdf",
+    "url": "https://cruiseshipinteriors-awards.com/wp-content/uploads/2024/08/CSI_Onboard-Experience_Cat-6.pdf",
+    "credit": "Royal Caribbean International; award submission names lead designer Jordi Esteban and participating Wilson Butler Architects, Robert Soldo Studio and Wiegand Waterrides",
+    "kind": "Four-page operator award submission with actual onboard photographs; visually reviewed all four pages",
+    "accessed": "2026-11-16",
+    "bytes": 1762538,
+    "sha256": "35c1c2dbb3f6b6e0e53d877c61839aef92201ed662a244737ac93d8411866a16",
+    "changes": "None; reference only. No photograph pixels enter production textures."
   }
 ]
