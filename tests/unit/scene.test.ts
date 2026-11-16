@@ -373,7 +373,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
   // place of the palm's last level.
-  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7841, 108, 23, 0, []]);
+  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7554, 108, 23, 0, []]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -426,12 +426,15 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1425549560 until the street wrecks' kinds (content/vehicles/wrecks.ts) took mesh numbers; without them it is that again.
   // It was 3505982741 until the pteranodon was drawn on its own art in place of its grey box; with its mesh a box again it is that again.
   // It was 818617635 until clips were stored to 0.025 degrees (pack version 5): only the bone rows moved.
-  // It was 1504947198, with 7,900 draws of which 767 were on one bone, until bodies were thinned by distance: loose things
+  // It was 1504947198 (and 7,900 draws) until chunks were drawn by 16 m cell: a chunk's instances are uploaded in the
+  // order of their cells, and the pieces' and nodes' draws whose cells are out of view are left out. Each of the 300
+  // frames draws the picture it did.
+  // It was 3243977566, with 7,613 draws of which 767 were on one bone, until bodies were thinned by distance: loose things
   // and the dead take their bones before the living (the order of the rows); a body left on one bone stands in a pose,
   // whose bones the frame keeps for it and whose first bone its draw's offset names, in a draw after the rest (the order
   // of draws); and from frame 200 the frame has 66 bones, not 40, as few as leaves bones for those poses and drops
   // nothing. Every body here is near enough to be posed every frame: posing all of them every frame gives this hash too.
-  expect(hash).toBe(3570303807);
+  expect(hash).toBe(4216232697);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -450,9 +453,9 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1941699530 until the ruins' sloped parts, as above; without them it is that again.
   // It was 2182034391 until the street wrecks' kinds, as above; without them it is that again.
   // It was 1893532195 until the pteranodon was drawn on its own art, as above.
-  // It was 3121847286 until clips were stored to 0.025 degrees, as above.
-  // It was 359459847, with 97 more draws on one bone, until bodies without bones stood in a pose, as above.
-  expect(saddled.hash).toBe(3478371336);
+  // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
+  // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above.
+  expect(saddled.hash).toBe(2400700468);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

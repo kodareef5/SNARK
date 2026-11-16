@@ -4,7 +4,7 @@
 
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { Camera } from "../../client/core/render/camera.ts";
-import { NODE_CELLS, Scene } from "../../client/core/render/scene.ts";
+import { CHUNK_CELLS, Scene } from "../../client/core/render/scene.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import type { Def } from "../../shared/content/defs.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -176,7 +176,7 @@ function denseWood(sides: readonly number[]): { tris: number; draws: number }[] 
   const cam = new Camera();
   cam.aspect = 16 / 9;
   return sides.map((side) => {
-    scene.nodeCells = side;
+    scene.chunkCells = side;
     for (const t of field.store.chunks) if (t) t.shape++;
     let [tris, draws, frames] = [0, 0, 0];
     for (const [x, z] of [[160, 160], [130, 130]] as const) {
@@ -193,11 +193,11 @@ function denseWood(sides: readonly number[]): { tris: number; draws: number }[] 
   });
 }
 
-/** Rows for what a dense wood costs to draw, its levels chosen by the chunk and by cells of 16 and 8 m. */
+/** Rows for what a dense wood costs to draw, its drawn, levelled and culled by the chunk and by cells of 16 and 8 m. */
 export function benchDenseWood(section: Section, record: Row): void {
   section("A dense wood from inside it: every slot of 5 by 5 chunks filled, trees of 8,000 triangles and plants of 400");
-  const [chunk, cells, fine] = denseWood([1, NODE_CELLS, 8]);
-  for (const [name, at] of [["by the chunk", chunk!], [`by ${64 / NODE_CELLS} m cells`, cells!], ["by 8 m cells", fine!]] as const) {
+  const [chunk, cells, fine] = denseWood([1, CHUNK_CELLS, 8]);
+  for (const [name, at] of [["by the chunk", chunk!], [`by ${64 / CHUNK_CELLS} m cells`, cells!], ["by 8 m cells", fine!]] as const) {
     record(`triangles a frame, levels chosen ${name}`, at.tris / 1e6, "M");
     record(`draws a frame, levels chosen ${name}`, at.draws, "");
   }

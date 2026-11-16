@@ -28,15 +28,16 @@ test("the ladder climbs until a rung breaks, asks the server for the base, and e
   expect(l.display).toBe(8.3);
   expect(l.rungs.map((g) => `${g.tier} ${g.axis} ${g.n} ${g.held}`)).toEqual(["lowpoly", "medium", "high"].flatMap((t) => [`${t} bodies 25 false`, `${t} triangles 8 false`, `${t} draws 256 false`, `${t} pieces 64 false`, `${t} base 409 false`, `${t} vehicles 3 false`]));
   // The server stood the compact base's ground storey 10 m off, of real thatch, wood and stone, which draws more than
-  // twice the triangles of the houses' first 64 pieces; three parked vehicles add theirs to the view of the bodies rung,
-  // which has no body here to copy; and the tiers that cast count their shadow maps' draws and triangles.
+  // one and a half times the triangles of the houses' first 64 pieces (twice, until chunks were drawn by 16 m cell and
+  // the base's cells out of view were left out); three parked vehicles add theirs to the view of the bodies rung, which
+  // has no body here to copy; and the tiers that cast count their shadow maps' draws and triangles.
   const at = (tier: string, axis: string): RungReport => l.rungs.find((g) => g.tier === tier && g.axis === axis)!;
   for (const t of ["lowpoly", "medium", "high"]) {
-    expect(at(t, "base").tris).toBeGreaterThan(2 * at(t, "pieces").tris);
+    expect(at(t, "base").tris).toBeGreaterThan(1.5 * at(t, "pieces").tris);
     expect(at(t, "vehicles").tris - at(t, "bodies").tris).toBeGreaterThan(30000);
   }
   expect(l.rungs.filter((g) => g.casterDraws > 0).length).toBe(12);
-  expect(at("medium", "base").casterTris).toBeGreaterThan(2 * at("medium", "pieces").casterTris);
+  expect(at("medium", "base").casterTris).toBeGreaterThan(1.5 * at("medium", "pieces").casterTris);
   // The harness frames take its 16.7 ms while our code takes 1.5, so the GPU is said to have taken the frame.
   expect(l.rungs.every((g) => g.limit === "the GPU")).toBe(true);
   // The houses were asked for on each tier's pieces rung and the compact base's ground floor on its base rung, each let go after.

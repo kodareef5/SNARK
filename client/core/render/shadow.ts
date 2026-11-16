@@ -38,6 +38,8 @@ export interface ShadowSetup {
   readonly blend: number;
   /** The farthest cascade is drawn every other frame. */
   readonly everyOther: boolean;
+  /** Compared taps a lookup takes (shadowtext.ts): 1, 4 or 9. */
+  readonly taps: number;
 }
 
 /** View depths of `count` slices from `near` to `far`: out[0] is `near` and out[count] is `far`. */
@@ -106,15 +108,16 @@ export function reach(height: number, sunY: number): number {
 }
 
 /**
- * The level a caster is drawn at in a cascade whose texel is `texel` metres, for a mesh whose levels lie `errors` metres
- * from its finest: the coarsest the card holds whose error is within a texel, else the finest it holds, else -1. Bit l
- * of `held` says the card holds level l. It does not depend on distance, so a caster keeps its level as the camera moves.
+ * The level a caster is drawn at in a cascade where the shadow filter blurs `blur` metres either way, for a mesh whose
+ * levels lie `errors` metres from its finest: the coarsest the card holds whose error is within it, else the finest it
+ * holds, else -1. Bit l of `held` says the card holds level l. It does not depend on distance, so a caster keeps its
+ * level as the camera moves.
  */
-export function casterLevel(errors: readonly number[], texel: number, held: number): number {
+export function casterLevel(errors: readonly number[], blur: number, held: number): number {
   let finest = -1;
   for (let l = errors.length - 1; l >= 0; l--) {
     if (((held >>> l) & 1) === 0) continue;
-    if (errors[l]! <= texel) return l;
+    if (errors[l]! <= blur) return l;
     finest = l;
   }
   return finest;
@@ -132,6 +135,8 @@ export class Cascades {
   /** Per cascade: half its square's side, which is also half its depth range, and its texel, in metres. */
   readonly half = new Float64Array(MAX_CASCADES);
   readonly texel = new Float64Array(MAX_CASCADES);
+  /** Texels a lookup's filter reaches either way: a tap's along each axis (shadowtext.ts `shadowKernel`). */
+  blur = 1;
   /** Per cascade: the centre of its square and depth range in the light space, whole texels and depth steps from the world's origin. */
   readonly centre = new Float64Array(MAX_CASCADES * 3);
   /** Per cascade: the sphere round its slice, camera-relative x, y, z and radius. A pixel takes the finest cascade whose sphere holds it. */
@@ -164,6 +169,7 @@ export class Cascades {
       this.sun[2] = sz;
     }
     this.count = n;
+    this.blur = Math.max(1, Math.round(Math.sqrt(setup.taps)));
     splitDepths(view.near, setup.distance, n, setup.blend, this.splits);
     const cp = Math.cos(view.pitch);
     const fx = Math.sin(view.yaw) * cp;
@@ -275,16 +281,16 @@ export class Cascades {
   }
 
   /**
-   * The caster entries a mesh needs in the cascades of `mask`: one per level, at the level `casterLevel` gives for each
-   * cascade's texel, with the cascades that take it. Writes level and mask pairs to `out` and returns how many. `scale`
-   * is the most times its modelled size the mesh is drawn at, which scales its errors.
+   * The caster entries a mesh needs in the cascades of `mask`: one per level, at the level `casterLevel` gives for what
+   * each cascade's filter blurs, with the cascades that take it. Writes level and mask pairs to `out` and returns how
+   * many. `scale` is the most times its modelled size the mesh is drawn at, which scales its errors.
    */
   entries(mask: number, errors: readonly number[], held: number, out: Uint8Array, scale = 1): number {
     let n = 0;
     for (let i = 0; i < this.count; i++) {
       const bit = 1 << i;
       if ((mask & bit) === 0) continue;
-      const level = casterLevel(errors, this.texel[i]! / scale, held);
+      const level = casterLevel(errors, (this.texel[i]! * this.blur) / scale, held);
       if (level < 0) continue;
       let k = 0;
       while (k < n && out[k * 2] !== level) k++;
