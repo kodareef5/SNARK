@@ -94,7 +94,7 @@ export async function mountViewer(host: HTMLElement, url: string): Promise<() =>
       } catch (error) { if (request === choosing && !disposed && !(error instanceof DOMException && error.name === "AbortError")) { status.textContent = "Animation could not load. Choose it again to retry."; playing = false; draw(); } }
     };
     select.addEventListener("change", () => void choose(select.value, true), { signal });
-    const adjacent = (step: number) => { const index = doc.clips.findIndex((c) => c.id === select.value); const c = doc.clips[(Math.max(0, index) + step + doc.clips.length) % doc.clips.length]; if (c) void choose(c.id, true); };
+    const adjacent = (step: number) => { const index = doc.clips.findIndex((c) => c.id === select.value); const next = index < 0 ? (step > 0 ? 0 : doc.clips.length - 1) : (index + step + doc.clips.length) % doc.clips.length; const c = doc.clips[next]; if (c) void choose(c.id, true); };
     if (doc.clips.length) {
       const previous = button("‹", () => adjacent(-1), animation, "Previous animation"), next = button("›", () => adjacent(1), animation, "Next animation");
       animation.prepend(previous); select.after(next);
