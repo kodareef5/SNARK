@@ -109,13 +109,14 @@ export function worldSurface(albedo: Out, orm: Out, normal: Out, palette: Number
 
 const fl = (n: number): string => Number.isInteger(n) ? n.toFixed(1) : String(n);
 const vectors = (name: string, rows: readonly (readonly number[])[]): string => `const vec4 ${name}[16] = vec4[16](${rows.map((a) => `vec4(${a.map(fl).join(",")})`).join(",")});\n`;
-/** Adds a material index to FLAT's vertex texts, keeping the low-poly texts byte-for-byte. */
+/** Adds a material index to FLAT's vertex texts, and gives the colour as light, keeping the low-poly texts byte-for-byte. */
 export function worldVertex(vertex: string, ground: boolean): string {
   const table = Array.from({ length: 256 }, (_, i) => surfaceIndex(i, ground));
   const lookup = `flat out int vSurface;\n${ground ? "uniform vec4 uSurfaceCity[3];\n" : ""}const int SURFACE_IDS[256] = int[256](${table.join(",")});\n`;
   const colour = ground ? "int(texelFetch(uTint, at, 0).r)" : "int(i)";
   const desert = ground ? `  if (uSurfaceCity[1].w > 0.5 && (${[100, 101, 122, 123, 124, 158, 167].map((c) => `${colour} == ${c}`).join(" || ")})) vSurface = 5;\n` : "";
-  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `  vSurface = SURFACE_IDS[${colour}];\n${desert}  vRel = p;`);
+  const light = "  vColor = mix(vColor / 12.92, pow((vColor + 0.055) / 1.055, vec3(2.4)), step(0.04045, vColor));\n";
+  return vertex.replace("out vec3 vRel;", lookup + "out vec3 vRel;").replace("  vRel = p;", `  vSurface = SURFACE_IDS[${colour}];\n${desert}${light}  vRel = p;`);
 }
 
 /** Same operations as worldSurface. All texture reads use explicit derivatives taken before wrapping or random rotation. */

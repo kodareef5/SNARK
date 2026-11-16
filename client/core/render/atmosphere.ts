@@ -12,7 +12,7 @@
 // a bright rim toward the sun, the sky's light round it, and haze in front of it.
 
 import { FRAME, FRAME_BLOCK, FRAME_FLOATS } from "./packet.ts";
-import { MOON_RADIUS, SKY_GLSL, SUN_RADIUS, domeLight, hazeColor, hourOfSun, luminance, skyFrame, sunHeight, trueSun, type Sky } from "./sky.ts";
+import { MOON_RADIUS, SKY_GLSL, SUN_RADIUS, domeLight, hazeColor, hourOfSun, luminance, skyFrame, sunHeight, trueSun, upCoord, type Sky } from "./sky.ts";
 import { LIGHT, skyFromGlsl } from "./surface.ts";
 
 /** The haze's density at sea level, per metre, and the height over which it thins by e: 3% at 200 m, 15% at 1 km and 47% at 4 km along the sea, tuned to the keys from the plan's 2.5e-4. */
@@ -150,7 +150,7 @@ vec3 hazed(vec3 light, vec3 rel) {
   // The table is read only where it adds a step's worth or more. It has no smaller pictures, so a read in a branch
   // that differs between neighbouring pixels samples it as anywhere else.
   float a = hazeAmount(dist, d.y);
-  if (a > ${g(1 / 512)}) light = mix(light, skyFrom(vec3(d.x, 0.0, d.z) * (${g(Math.cos(HAZE_UP * DEG))} / max(length(d.xz), 1e-6)) + vec3(0.0, ${g(Math.sin(HAZE_UP * DEG))}, 0.0)), a);
+  if (a > ${g(1 / 512)}) light = mix(light, skyAt(uSkyTable, d.xz, ${g(upCoord(HAZE_UP))}) * fSkyScale, a);
   float end = fView.y > fView.x ? smoothstep(fView.x, fView.y, dist) : 0.0;
   if (end > 0.0) light = mix(light, skyFrom(d), end);
   return light;
@@ -173,6 +173,10 @@ const MOON_TINT = [1, 0.93, 0.78];
 /** The moon's silver halo, as the night key has it: a core about 6 degrees across and a skirt about 12, and its tint. */
 const MOON_GLOW = [0.1, 0.6, 0.2, 3.2];
 const HALO_TINT = [0.82, 0.88, 1];
+/** A glow is not drawn where it is under this, light after exposure: far under a display step even over the night sky. */
+const GLOW_LEAST = 1e-4;
+/** Degrees from the middle of a disc of `radius` past which its glow `g` (GLSL `glow`) is under GLOW_LEAST. */
+const glowReach = (radius: number, g: readonly number[]): number => radius + Math.max(g[1]! * Math.log((2 * g[0]!) / GLOW_LEAST), g[3]! * Math.log((2 * g[2]!) / GLOW_LEAST));
 /** Stars: cells a side of each face of a cube of directions, the share of cells with a star, and the brightest. */
 export const STAR_CELLS = 128;
 export const STAR_SHARE = 0.025;
@@ -415,23 +419,30 @@ float glow(float a, float r, vec4 g) {
   float out_ = max(a - r, 0.0) * ${g(1 / DEG)};
   return g.x * exp(-out_ / g.y) + g.z * exp(-out_ / g.w);
 }
-// The sun's disc, darker at its limb, and the moon's face, each with its glow and cut by the horizon.
-vec3 discs(vec3 d, float px) {
+// The sun's disc, darker at its limb, and the moon's face, each with its glow and cut by the horizon. Past glowReach
+// of each its glow is under GLOW_LEAST, and none of it is worked out. 'dx' and 'dy' are the ray's derivatives.
+vec3 discs(vec3 d, float px, vec3 dx, vec3 dy) {
   float above = smoothstep(-px, px, d.y);
   vec3 s = fTrueSun;
-  float a = atan(length(cross(d, s)), dot(d, s));
-  float r = ${g(SUN_RADIUS * DEG)};
-  float x = min(a / r, 1.0);
-  vec3 c = vSunDisc * ${g(SUN_BRIGHT)} * (1.0 - ${g(LIMB)} * (1.0 - sqrt(1.0 - x * x))) * smoothstep(r + px, r - px, a) + mix(vSunDisc, vec3(1.0), 0.6) * glow(a, r, vec4(${SUN_GLOW.map(g).join(", ")}));
+  vec3 c = vec3(0.0);
+  if (dot(d, s) > ${g(Math.cos(glowReach(SUN_RADIUS, SUN_GLOW) * DEG))}) {
+    float a = atan(length(cross(d, s)), dot(d, s));
+    float r = ${g(SUN_RADIUS * DEG)};
+    float x = min(a / r, 1.0);
+    c = vSunDisc * ${g(SUN_BRIGHT)} * (1.0 - ${g(LIMB)} * (1.0 - sqrt(1.0 - x * x))) * smoothstep(r + px, r - px, a) + mix(vSunDisc, vec3(1.0), 0.6) * glow(a, r, vec4(${SUN_GLOW.map(g).join(", ")}));
+  }
   vec3 m = fMoon.xyz;
-  float b = atan(length(cross(d, m)), dot(d, m));
-  vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), m));
-  vec3 up = cross(m, right);
-  vec2 uv = vec2(dot(d, right), dot(d, up)) / ${g(Math.sin(MOON_RADIUS * DEG))};
-  float pxUv = px / ${g(Math.sin(MOON_RADIUS * DEG))};
-  float on = smoothstep(1.0 + pxUv, 1.0 - pxUv, length(uv)) * step(0.0, dot(d, m));
-  vec3 face = textureGrad(uMoon, uv * vec2(0.5, -0.5) + 0.5, dFdx(uv) * 0.5, dFdy(uv) * 0.5).rgb;
-  c += face * vec3(${MOON_TINT.map(g).join(", ")}) * ${g(MOON_BRIGHT)} * on + vec3(${HALO_TINT.map(g).join(", ")}) * glow(b, ${g(MOON_RADIUS * DEG)}, vec4(${MOON_GLOW.map(g).join(", ")})) * (1.0 - on);
+  if (dot(d, m) > ${g(Math.cos(glowReach(MOON_RADIUS, MOON_GLOW) * DEG))}) {
+    float b = atan(length(cross(d, m)), dot(d, m));
+    vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), m));
+    vec3 up = cross(m, right);
+    vec2 uv = vec2(dot(d, right), dot(d, up)) / ${g(Math.sin(MOON_RADIUS * DEG))};
+    float pxUv = px / ${g(Math.sin(MOON_RADIUS * DEG))};
+    float on = smoothstep(1.0 + pxUv, 1.0 - pxUv, length(uv)) * step(0.0, dot(d, m));
+    vec2 du = vec2(dot(dx, right), dot(dx, up)) * ${g(0.5 / Math.sin(MOON_RADIUS * DEG))}, dv = vec2(dot(dy, right), dot(dy, up)) * ${g(0.5 / Math.sin(MOON_RADIUS * DEG))};
+    vec3 face = textureGrad(uMoon, uv * vec2(0.5, -0.5) + 0.5, du, dv).rgb;
+    c += face * vec3(${MOON_TINT.map(g).join(", ")}) * ${g(MOON_BRIGHT)} * on + vec3(${HALO_TINT.map(g).join(", ")}) * glow(b, ${g(MOON_RADIUS * DEG)}, vec4(${MOON_GLOW.map(g).join(", ")})) * (1.0 - on);
+  }
   return c * above;
 }
 // The twin of cloudLit in atmosphere.ts.
@@ -546,8 +557,10 @@ void main() {
   vec3 behind = skyFrom(d) * fSunColor.w;
   vec3 c = behind;
   if (fHaze.w > 0.0) {
-    float px = length(dFdx(d)) + length(dFdy(d));
-    c += stars(d, px * 0.7) + discs(d, px * 0.7);
+    vec3 dx = dFdx(d), dy = dFdy(d);
+    float px = length(dx) + length(dy);
+    if (vStars > 0.0) c += stars(d, px * 0.7);
+    c += discs(d, px * 0.7, dx, dy);
     if (fHaze.w > 2.5 && textureSize(uHigh, 0).x >= ${LAYER_SMALLEST}) {
       vec4 high = layer(uHigh, d, behind, vec4(${g(HIGH.height)}, ${g(HIGH.span)}, ${g(HIGH.depth)}, ${g(HIGH.step)}), fClouds.zw, false);
       c = mix(c, high.rgb, high.a);

@@ -283,6 +283,8 @@ function stopHung(dir: string, workers: number, most: Map<string, number>, stopp
       continue;
     }
     const [file, n, since, limit] = line.split("\t");
+    // Read while its worker was rewriting it.
+    if (!since) continue;
     const ran = Date.now() - Number(since);
     const allowed = Math.max(most.get(line) ?? Number(limit), hungAfter(file!, workers));
     most.set(line, allowed);

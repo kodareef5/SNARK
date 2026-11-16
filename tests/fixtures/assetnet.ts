@@ -19,6 +19,8 @@ export interface NetOptions {
   seed?: number;
   /** Keeps every part delivered. Asked for again, a kept part comes with the next answer and costs the link nothing. */
   keep?: boolean;
+  /** How the files come, as a browser names it. */
+  protocol?: string;
 }
 
 interface Transfer {
@@ -44,6 +46,7 @@ function opened(got: Uint8Array, part: AssetPart): Uint8Array | null {
 
 export class FakeNet implements AssetPort {
   readonly cache = { used: 0, limit: 0, mode: "none" as const, filling: 0 };
+  readonly protocol: string;
   /** Parts asked for with `fill`. */
   readonly filled: number[] = [];
   /** Every request and cancellation, in order, for comparing two runs. A request for several parts says how many. */
@@ -70,6 +73,7 @@ export class FakeNet implements AssetPort {
     this.loss = opts.loss ?? 0;
     this.rng = new Rng(opts.seed ?? 1);
     this.kept = opts.keep ? new Set() : null;
+    this.protocol = opts.protocol ?? "";
   }
 
   request(r: AssetRequest): void {

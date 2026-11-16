@@ -27,14 +27,13 @@
 //                       u16 yaw       1/65536 turns
 //                       u8 x 6        palette index for each colour region
 //
-//   clip      per frame, per bone: i16 x, y, z of the rotation quaternion,
-//             signed-normalized, w >= 0 implied; then per frame f32 x, y, z of
-//             the root bone's offset from rest
+//   clip      rot: each rotation as x, y, z of its axis times the tangent of a quarter of its angle, w >= 0, in
+//             1/CLIP_ROT_STEPS; by bone, by parameter, by frame, each less what the two frames before foretell (twice
+//             the last less the one before), zigzagged as i16, every low byte and then every high byte
+//             root: the root bone's offset from rest in 1/CLIP_ROOT_STEPS m, by axis, by frame, foretold alike,
+//             zigzagged as i32, in four planes of bytes
 //
 // A flat level stores no normals. The renderer derives the face normal for flat shading.
-//
-// Versions 2 and 3 are still read. Version 3 had no surface, skin, sections or materials. Version 2 also had 16-bit
-// indices only, did not say how far a level lies from the finest, and kept a level's vertices before its indices.
 
 import type { Clip, ClipSet } from "../anim/clip.ts";
 import { hashBytes, hashString } from "../hash.ts";
@@ -42,7 +41,7 @@ import { ATLAS_MOST, CELL, atlasBytes, type PackDetails } from "./details.ts";
 import { stepOf, type TextureRole } from "./texture.ts";
 
 export const PACK_MAGIC = 0x4b504e53; // "SNPK" little-endian
-export const PACK_VERSION = 4;
+export const PACK_VERSION = 5;
 export const VERTEX_BYTES = 8;
 export const SURFACE_BYTES = 12;
 export const SKIN_BYTES = 8;
@@ -59,12 +58,12 @@ export interface PackLod {
   indexBytes: 2 | 4;
   /**
    * How far, in metres, this level's surface lies from the finest level's: 95 points in 100 of either are within this of
-   * the other (tools/pack/error.ts). 0 for the finest. NaN from a version 2 file, which did not say.
+   * the other (tools/pack/error.ts). 0 for the finest.
    */
   error: number;
   /** Where the surface entries are, one per vertex, right after the vertices. Absent in a flat level. */
   surfaceOffset?: number;
-  /** Where the skin entries are, right after the surface. Absent in a flat level and in a mesh that follows one bone. */
+  /** Where the skin entries are, right after the surface. Absent in a flat level, in a mesh that follows one bone, and where every vertex is wholly on its own. */
   skinOffset?: number;
   /**
    * The runs of indices drawn with each material, three numbers a run: index into the header's `materials`, first
@@ -200,6 +199,9 @@ export function clipRotBytes(bones: number): number {
   return bones * 6;
 }
 export const CLIP_ROOT_BYTES = 12;
+/** Steps a rotation parameter and a metre of the root's offset are counted in. Rounded to them, a bone turns at most 0.025 degrees from its clip. */
+export const CLIP_ROT_STEPS = 8192;
+export const CLIP_ROOT_STEPS = 4096;
 
 /** Throws with a reason if the file is not a readable pack of this version. */
 export function parsePack(file: Uint8Array): Pack {
@@ -207,7 +209,7 @@ export function parsePack(file: Uint8Array): Pack {
   const view = new DataView(file.buffer, file.byteOffset, file.byteLength);
   if (view.getUint32(0, true) !== PACK_MAGIC) throw new Error("pack: bad magic");
   const version = view.getUint16(4, true);
-  if (version < 2 || version > PACK_VERSION) throw new Error(`pack: version ${version} is not supported`);
+  if (version !== PACK_VERSION) throw new Error(`pack: version ${version} is not supported`);
   const jsonLength = view.getUint32(8, true);
   if (12 + jsonLength > file.length) throw new Error("pack: truncated header");
   const header = JSON.parse(decodeUtf8(file.subarray(12, 12 + jsonLength))) as PackHeader;
@@ -226,8 +228,6 @@ export function parsePack(file: Uint8Array): Pack {
       if ((lod.surfaceOffset !== undefined) !== level < (m.flat ?? 0)) throw new Error(`pack: mesh ${m.id} does not turn flat where it says`);
     });
     for (const lod of m.lods) {
-      lod.indexBytes ??= 2;
-      lod.error ??= NaN;
       if (lod.vertexOffset + lod.vertexCount * VERTEX_BYTES > blob.length || lod.indexOffset + lod.indexCount * lod.indexBytes > blob.length) {
         throw new Error(`pack: mesh ${m.id} points outside the file`);
       }
@@ -256,26 +256,46 @@ export function parsePack(file: Uint8Array): Pack {
   return { header, blob, blobAt: 12 + jsonLength, palette: blob.subarray(header.paletteOffset, header.paletteOffset + 1024), meshIndex, clips: decodeClips(header.clips, blob) };
 }
 
+const unzig = (z: number): number => (z >>> 1) ^ -(z & 1);
+
 function decodeClips(list: readonly PackClip[], blob: Uint8Array): ClipSet {
-  const view = new DataView(blob.buffer, blob.byteOffset, blob.byteLength);
   const index = new Map<string, number>();
   let hash = hashString("snark-clips-1");
   const clips: Clip[] = list.map((c, i) => {
     const rotBytes = c.frames * clipRotBytes(c.bones);
     if (!(c.frames > 0 && c.bones > 0) || c.rotOffset + rotBytes > blob.length || c.rootOffset + c.frames * CLIP_ROOT_BYTES > blob.length) throw new Error(`pack: clip ${c.id} points outside the file`);
     const rot = new Float32Array(c.frames * c.bones * 4);
-    for (let k = 0; k < c.frames * c.bones; k++) {
-      const x = view.getInt16(c.rotOffset + k * 6, true) / 32767;
-      const y = view.getInt16(c.rotOffset + k * 6 + 2, true) / 32767;
-      const z = view.getInt16(c.rotOffset + k * 6 + 4, true) / 32767;
-      const ww = 1 - x * x - y * y - z * z;
-      rot[k * 4] = x;
-      rot[k * 4 + 1] = y;
-      rot[k * 4 + 2] = z;
-      rot[k * 4 + 3] = ww > 0 ? Math.sqrt(ww) : 0;
+    const n = c.frames * c.bones * 3;
+    for (let b = 0, at = c.rotOffset; b < c.bones; b++) {
+      for (let a = 0; a < 3; a++) {
+        for (let f = 0, last = 0, before = 0; f < c.frames; f++, at++) {
+          const x = ((2 * last - before + unzig(blob[at]! | (blob[at + n]! << 8))) << 16) >> 16;
+          rot[(f * c.bones + b) * 4 + a] = x;
+          before = f === 0 ? x : last;
+          last = x;
+        }
+      }
+    }
+    for (let k = 0; k < rot.length; k += 4) {
+      const x = rot[k]! / CLIP_ROT_STEPS;
+      const y = rot[k + 1]! / CLIP_ROT_STEPS;
+      const z = rot[k + 2]! / CLIP_ROT_STEPS;
+      const s = x * x + y * y + z * z;
+      rot[k] = (2 * x) / (1 + s);
+      rot[k + 1] = (2 * y) / (1 + s);
+      rot[k + 2] = (2 * z) / (1 + s);
+      rot[k + 3] = (1 - s) / (1 + s);
     }
     const root = new Float32Array(c.frames * 3);
-    for (let k = 0; k < root.length; k++) root[k] = view.getFloat32(c.rootOffset + k * 4, true);
+    const m = root.length;
+    for (let a = 0, at = c.rootOffset; a < 3; a++) {
+      for (let f = 0, last = 0, before = 0; f < c.frames; f++, at++) {
+        const x = (2 * last - before + unzig(blob[at]! | (blob[at + m]! << 8) | (blob[at + 2 * m]! << 16) | (blob[at + 3 * m]! << 24))) | 0;
+        root[f * 3 + a] = x / CLIP_ROOT_STEPS;
+        before = f === 0 ? x : last;
+        last = x;
+      }
+    }
     index.set(c.id, i);
     hash = hashString(`${c.id}:${c.bones}:${c.frames}:${c.loop}`, hash);
     hash = hashBytes(blob.subarray(c.rotOffset, c.rotOffset + rotBytes), hash);

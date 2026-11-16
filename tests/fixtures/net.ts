@@ -71,6 +71,8 @@ export interface JoinOptions {
   registry?: Registry;
   /** A travel ticket another server gave (S_TRAVEL). */
   ticket?: Uint8Array;
+  /** False joins without the map's statics, so every chunk's rows come whole. */
+  statics?: boolean;
 }
 
 export class Harness {
@@ -134,6 +136,7 @@ export class Harness {
       ...(opts.ticket ? { ticket: opts.ticket } : {}),
       resolveMap: (id, hash) => (id === this.map.id && hash === this.map.hash ? this.hf : null),
       nodes: (hf, reg) => mapNodes(this.map, hf, reg),
+      ...(opts.statics === false ? {} : { statics: this.map.statics }),
     });
     this.sessions.push(session);
     if (opts.manual) this.manual.add(session);
