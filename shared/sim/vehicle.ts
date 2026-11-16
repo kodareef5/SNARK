@@ -217,7 +217,7 @@ export function validateBoatSpec(s: BoatSpec): void {
     !s.buoyancyPoints.every(v => vec(v.at) && Number.isFinite(v.weight) && v.weight > 0 && Math.abs(v.at[0]) <= s.halfWidth && Math.abs(v.at[2]) <= s.halfLength) ||
     Math.abs(s.buoyancyPoints.reduce((sum, v) => sum + v.weight, 0) - 1) > 1e-6 ||
     !Array.isArray(s.hullBoxes) || s.hullBoxes.length < 1 || s.hullBoxes.length > 16 ||
-    !s.hullBoxes.every(b => b && vec(b.at) && vec(b.half) && b.half.every(n => n > 0 && n <= 12)) ||
+    !s.hullBoxes.every(b => b && vec(b.at) && vec(b.half) && b.half.every((n: number) => n > 0 && n <= 12)) ||
     !s.propeller || !vec(s.propeller.at) || !Number.isFinite(s.propeller.radius) || s.propeller.radius <= 0 || s.propeller.radius > 1) throw new Error("inconsistent boat specification");
   const submerged = s.buoyancyPoints.reduce((sum, v) => sum + v.weight * clamp((s.draft - v.at[1]) / s.buoyancyHeight + .5, 0, 1), 0);
   if (Math.abs(submerged * s.displacement - s.mass) > s.mass * .025) throw new Error("boat draft disagrees with float volume");
