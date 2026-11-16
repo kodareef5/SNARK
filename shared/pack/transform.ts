@@ -27,8 +27,9 @@ export const ENERGY_SPAN = 24;
 export const ESCAPE = 15;
 /** Coefficients a step above zero, noise's height in a band coded zero there. */
 export const FILL = 0.25;
-/** Critical band edges in Hz (Zwicker), each about one Bark: the bands as they would be at 32 kHz. */
-const EDGES_HZ = [0, 100, 200, 300, 400, 510, 630, 770, 920, 1080, 1270, 1480, 1720, 2000, 2320, 2700, 3150, 3700, 4400, 5300, 6400, 7700, 9500, 12000, 15500];
+/** Critical band edges in Hz (Zwicker), each about one Bark, those above 7.7 kHz halved so that noise filling them
+ * follows the slope of a decay: the bands as they would be at 32 kHz. */
+const EDGES_HZ = [0, 100, 200, 300, 400, 510, 630, 770, 920, 1080, 1270, 1480, 1720, 2000, 2320, 2700, 3150, 3700, 4400, 5300, 6400, 7700, 8600, 9500, 10750, 12000, 13750, 15500];
 const LAYOUT_RATE = 32000;
 
 const layouts = new Map<number, Int32Array>();
