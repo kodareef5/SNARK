@@ -5,19 +5,15 @@ requested regeneration of missing study deliverables by that study's builder.
 The current piece/position/texel bakes and study PNGs are reopened on every run.
 """
 from pathlib import Path
-import ast
-import base64
 import hashlib
 import json
-import math
-import os
 import subprocess
 import sys
 import time
-import types
 import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter, map_coordinates, distance_transform_edt
+import surface
 
 HERE = Path(__file__).resolve().parent
 ASSET = HERE.parents[2]
@@ -30,89 +26,17 @@ HEIGHT_MM = 4.0
 
 
 def geometry():
-    """Evaluate only the modeller's pure numerical construction, never Blender.
-
-    Using the current mesh constructors supplies the actual rim and tube paths;
-    the pinned corner UVs supply interpolation, not a second hand-drawn layout.
-    All Blender imports, assembly, skinning and top-level builds are excluded.
-    """
-    def extract(path, allowed, env):
-        tree = ast.parse(path.read_text())
-        nodes = [n for n in tree.body if allowed(n)]
-        exec(compile(ast.Module(body=nodes, type_ignores=[]), str(path), 'exec'), env)
-        return types.SimpleNamespace(**env)
-    rig = extract(ASSET/'rig.py', lambda n: isinstance(n, ast.FunctionDef) and n.name == '_catmull', {})
-    env = dict(np=np, math=math, os=os, rig=rig, __file__=str(ASSET/'model.py'))
-    numeric_functions = {'smin','smax','ellipsoid','mirror_x','sweep_rows','sweep_field',
-                         'gape_y','mouth_cut','head_field','shell_field','gradient',
-                         'cast','outward','_neck_frame','tube','_face','pillow',
-                         'frame_along','rings_along','face_outward','split'}
-    model = extract(ASSET/'model.py', lambda n:
-        (isinstance(n, ast.Assign) and n.lineno < 300) or
-        (isinstance(n, ast.FunctionDef) and n.name in numeric_functions) or
-        (isinstance(n, ast.ClassDef) and n.name == 'Part'), env)
-    env = dict(np=np, math=math, model=model, rig=rig)
-    saddle = extract(ASSET/'saddle.py', lambda n:
-        (isinstance(n, ast.Assign) and n.lineno < 420 and not any(isinstance(t, ast.Name) and t.id == 'TRIANGLES' for t in n.targets)) or
-        (isinstance(n, ast.FunctionDef) and n.name not in ('build','skin_weights')) or
-        (isinstance(n, ast.ClassDef) and n.name == 'Part'), env)
-    parts = [saddle.seat_part(), *saddle.cantle_part(), saddle.girth_part(), saddle.collar_part(),
-             saddle.grip_part('l'), saddle.strap_part('l',True), saddle.strap_part('l',False),
-             saddle.boss_part(), *saddle.rest_part('l'), saddle.rein_part('l'),
-             saddle.head_ring('halter_beak',saddle.HALTER['beak'],.002,saddle.HALTER['rope']),
-             saddle.head_ring('halter_head',saddle.HALTER['head'],.002,saddle.HALTER['rope'])]
-    pinned = json.loads((ASSET/'saddle_layout.json').read_text())['parts']
-    for part in parts:
-        if part.name in ('seat','cantle','cantle_plate','girth','collar','boss','halter_beak','halter_head'):
-            saddle.symmetrize(part)
-        model.face_outward(part)
-        seen=set()
-        part.triangles={i:model.split(part,f,seen) for i,f in enumerate(part.faces)}
-        record = pinned[part.name]
-        shape = hashlib.sha1(repr(part.faces).encode()).hexdigest()[:16]
-        if shape != record['shape']:
-            raise ValueError(f'{part.name}: topology no longer matches the pinned layout')
-        uv = np.frombuffer(base64.b64decode(record['uv']), '<f4').reshape(-1,2)
-        at = 0
-        part.pinned = {}
-        for face, piece in zip(record['face'], record['piece']):
-            count = len(part.faces[face])
-            part.pinned[face] = (record['pieces'][piece], uv[at:at+count].astype(F))
-            at += count
-        if at != len(uv):
-            raise ValueError(f'{part.name}: pinned topology changed; rebuild bakes before painting')
-    return {p.name:p for p in parts}, saddle
+    """Read the published layout and current bakes, never the model builders."""
+    return surface.read(ASSET)
 
 
 def length(line):
     return np.r_[0, np.cumsum(np.linalg.norm(np.diff(line,axis=0),axis=1))]*1000
 
 
-def boundary(part, island, half=True):
-    """Ordered physical perimeter, excluding the mirror cut down the middle."""
-    edges = {}
-    for f, name in zip(part.faces,part.islands):
-        if name != island:
-            continue
-        for a,b in zip(f, f[1:]+f[:1]):
-            key=tuple(sorted((a,b)))
-            edges[key]=edges.get(key,0)+1
-    pts=np.array(part.points)
-    adj={}
-    for (a,b), count in edges.items():
-        if count!=1: continue
-        if half and (min(pts[a,0],pts[b,0]) < -1e-5 or max(abs(pts[a,0]),abs(pts[b,0])) < 1e-5): continue
-        adj.setdefault(a,[]).append(b); adj.setdefault(b,[]).append(a)
-    ends=[k for k,v in adj.items() if len(v)==1]
-    start=max(ends or list(adj),key=lambda k:(pts[k,2],pts[k,1]))
-    chain=[start]; prev=None; at=start
-    while True:
-        nxt=[i for i in adj[at] if i!=prev]
-        if not nxt: break
-        n=nxt[0]; chain.append(n)
-        if n==start: break
-        prev,at=at,n
-    return pts[chain]
+def boundary(part, island):
+    """Ordered measured perimeter, excluding the mirror cut."""
+    return part.points[surface.boundary_ids(part, island)]
 
 
 def nearest_line(p,line):
@@ -120,7 +44,7 @@ def nearest_line(p,line):
     p=np.array(p,dtype=F,copy=True); p[:,0]=abs(p[:,0])
     a=line[:-1]; ab=np.diff(line,axis=0); l2=(ab*ab).sum(-1)
     arcs=length(line)
-    best=np.full(len(p),np.inf,F); along=np.zeros(len(p),F); across=np.zeros(len(p),F)
+    best=np.full(len(p),np.inf,F); along=np.zeros(len(p),F)
     for i,(q,d) in enumerate(zip(a,ab)):
         t=np.clip(((p-q)*d).sum(-1)/max(l2[i],1e-12),0,1)
         dist=((p-q-t[:,None]*d)**2).sum(-1)
@@ -156,30 +80,6 @@ def raster(part, values, size):
     return out,cover
 
 
-def tube_values(part, around, rows, offset=0, closed=False):
-    """Arc length + unwrapped circumference, including caps and the UV cut."""
-    pts=np.array(part.points)[offset:offset+around*rows].reshape(rows,around,3)
-    centres=pts.mean(1); arc=length(centres)
-    full=arc[-1]+(np.linalg.norm(centres[-1]-centres[0])*1000 if closed else 0)
-    values={}
-    for fi,face in enumerate(part.faces):
-        ids=np.asarray(face)-offset
-        if np.any(ids<0) or np.any(ids>=around*rows+(0 if closed else 2)):continue
-        rings=np.minimum(ids//around,rows-1)
-        theta=(ids%around)/around
-        body=ids<rows*around
-        if np.ptp(theta[body])>.5:theta=np.where(theta<.5,theta+1,theta)
-        s=arc[rings].copy()
-        if closed and np.ptp(rings)>rows/2:s=np.where(rings==0,full,s)
-        for j,idx in enumerate(ids):
-            if idx>=rows*around:
-                s[j]=0 if idx==rows*around else full
-                theta[j]=np.mean(theta[body])
-        # cap marker distinguishes an actual cut end of wood from its grain.
-        cap=float(not body.all())
-        values[fi]=np.stack([s,theta,np.full(len(face),full),np.full(len(face),cap)],-1)
-    return values
-
 
 def seat_edge_values(part, rim):
     """Keep the 7 mm inset even where the rear pad is substantially thicker.
@@ -189,7 +89,7 @@ def seat_edge_values(part, rim):
     a stitch into a radial spoke. The same arc phase follows both quads.
     """
     pts=np.array(part.points)
-    faces=[i for i,n in enumerate(part.islands) if n=='seat_edge']
+    faces=[i for i,n in part.islands.items() if n=='seat_edge']
     result={}
     for top,under in zip(faces[::2],faces[1::2]):
         a,m,n,b=part.faces[top]
@@ -212,7 +112,7 @@ class Study:
             subprocess.run([sys.executable,str(STUDY/'build.py')],check=True)
         self.meta=json.loads((STUDY/'study.json').read_text())['sets']
         self.active=None; self.raw=None; self.cache={}
-        self.hashes={str(path.relative_to(ASSET)):hashlib.sha256(path.read_bytes()).hexdigest() for path in required}
+        self.hashes={str(path.relative_to(ASSET)):hashlib.sha256(path.read_bytes()).hexdigest() for path in [STUDY/'study.json', *required]}
 
     def load(self,name):
         # Retain only one 2048-square material at a time. The study remains the
@@ -320,9 +220,8 @@ def main():
     lo=np.array(info['position_box']['min'],F); hi=np.array(info['position_box']['max'],F)
     pos=np.stack([np.asarray(Image.open(PAINT/f'{MAT}_position_{a}.png'),dtype=F)/65535 for a in 'xyz'],-1)*(hi-lo)+lo
     pos[...,0]=abs(pos[...,0])
-    normal=np.asarray(Image.open(BAKES/f'{MAT}_normal_object.png').convert('RGB'),dtype=F)/127.5-1
     curve=np.asarray(Image.open(BAKES/f'{MAT}_curvature.png').convert('L'),dtype=F)/255
-    study=Study(); parts,saddle=geometry()
+    study=Study(); parts=geometry()
     number={p['name']:p['number'] for p in info['pieces']}
     output=np.zeros((size,size,6),F);output[...,4:]=1
     metrics={};coord_misses={}
@@ -338,13 +237,13 @@ def main():
         coord_misses[partname]=coord_misses.get(partname,0)+int(missing.sum())
         return a[mask]
 
-    def tube(name,partname,around,rows,kind,radius,offset=0,closed=False,submask=None):
+    def tube(name,partname,section,kind,closed=False):
         mask=ids==number[name]
-        if submask is not None:mask&=submask
-        values=tube_values(parts[partname],around,rows,offset,closed)
+        radius=section.radius
+        values=surface.tube_values(parts[partname],section)
         # Restrict multi-island pieces (halter and twin rest ropes) to this chart.
-        chart,coverage=raster(parts[partname],values,size)
-        if submask is None and (name in ('rope','halter')):mask &= coverage
+        _,coverage=raster(parts[partname],values,size)
+        if name in ('rope','halter'):mask &= coverage
         s,t,total,cap=coords(partname,values,mask).T
         footprint=float(np.median(mm[mask]))
         if kind in ('rope_plait','rope_twist'):
@@ -372,31 +271,37 @@ def main():
             elif name=='peg':
                 # The end grain is sampled from the accepted wood, with a small
                 # physical concentric growth modulation confined to cap faces.
-                p=pos[mask];rr=np.sqrt((p[:,1]-.430)**2+(p[:,2]-.320)**2)*1000
+                p=pos[mask]
+                axis=section.centres[-1]-section.centres[0];axis/=np.linalg.norm(axis)
+                q=p-section.centres[0];q-=np.sum(q*axis,axis=1)[:,None]*axis
+                rr=np.linalg.norm(q,axis=1)*1000
                 rings=np.sin(rr*2*np.pi/2.8+.35*np.sin(rr))
                 data[:,:3]+=cap[:,None]*rings[:,None]*np.array([4,3.2,2.0])
                 data[:,3]+=cap*.018*rings
-                data[:,4]-=.065*np.exp(-((s-50)/25)**2)*(1-cap)
+                data[:,4]-=.065*np.exp(-((s-total/2)/25)**2)*(1-cap)
         output[mask]=data
 
-    tube('cantle','cantle',8,13,'wood',.020)
-    tube('grip','grip_l',6,11,'rope_wrap',.016)
-    tube('peg','peg_l',8,3,'wood',.016)
-    tube('rein','rein_l',5,11,'rope_plait',.006)
-    tube('rope','rest_l',5,7,'rope_plait',.0065,offset=0)
-    tube('rope','rest_l',5,7,'rope_plait',.0065,offset=37)
-    tube('halter','halter_beak',4,12,'rope_twist',.0055,closed=True)
-    tube('halter','halter_head',4,12,'rope_twist',.0055,closed=True)
+    tube_metrics={}
+    for name,partname,kind in [
+        ('cantle','cantle','wood'), ('grip','grip_l','rope_wrap'),
+        ('peg','peg_l','wood'), ('rein','rein_l','rope_plait'),
+        ('rope','rest_l','rope_plait'), ('halter','halter_beak','rope_twist'),
+        ('halter','halter_head','rope_twist')]:
+        sections=surface.tube_sections(parts[partname])
+        tube_metrics[partname]=[]
+        for section in sections:
+            tube(name,partname,section,kind,closed=name=='halter')
+            tube_metrics[partname].append(dict(length_mm=float(section.arc[-1])*(2 if section.mirrored else 1),
+                                               radius_mm=section.radius*1000))
 
     # The full seat perimeter is shared by its face, rolled edge and underside.
     seat_rim=boundary(parts['seat'],'seat_top')
     # Band boundary curves are two rings at the real front/back cut edges.
     band_lines={}
     for name in ('girth','collar'):
-        p=np.array(parts[name].points);k=20 if name=='girth' else 16
-        for side,indices in enumerate((range(0,k),range(k,2*k))):
-            line=p[list(indices)][:k//2+1]
-            band_lines[name,side]=line
+        part=parts[name]
+        for side,edge in enumerate((name+'_edge2',name+'_edge')):
+            band_lines[name,side]=part.points[surface.join_boundary(part,name+'_out',edge)]
 
     for item in info['pieces']:
         name=item['name'];mask=ids==item['number'];p=pos[mask];step=float(np.median(mm[mask]))
@@ -479,31 +384,31 @@ def main():
                 output[take]=data
         elif name.startswith('cantle_plate'):
             part=parts['cantle_plate']; points=np.array(part.points)
-            # Outer grid: 13 rows along the bow, 3 vertices down the plate.
-            grid=points[:39].reshape(13,3,3); arc=length(grid[:,0]);depth=np.linalg.norm(grid[:,2]-grid[:,0],axis=1)*1000
+            # Published half-grid: measured rows along the bow, 3 corners down.
+            grid=points[surface.plate_grid(part)]; arc=length(grid[:,0]);depth=np.linalg.norm(grid[:,2]-grid[:,0],axis=1)*1000
+            outer=grid.reshape(-1,3)
             attributes={}
             for fi in part.pinned:
                 if part.pinned[fi][0]!=name:continue
                 q=points[list(part.faces[fi])]
                 # Nearest outer vertex also identifies the shared rim of the
                 # inner pillow; row and depth agree across both plate islands.
-                idx=np.argmin(((q[:,None]-points[None,:39])**2).sum(-1),axis=1)
+                idx=np.argmin(((q[:,None]-outer[None,:])**2).sum(-1),axis=1)
                 rr=idx//3;cc=idx%3
                 attributes[fi]=np.stack([arc[rr],cc/2*depth[rr],depth[rr]],-1)
             s,dep,width=coords('cantle_plate',attributes,mask).T
             # Growth layers track the bent upper and lower edges of the plate.
-            edge=np.minimum(np.minimum(dep,width-dep),np.minimum(s,arc[-1]-s))
+            edge=np.minimum(np.minimum(dep,width-dep),np.minimum(s,2*arc[-1]-s))
             data=study.chitin(s,edge,step)
             if name.endswith('_in'):data[:,5]*=.95
             output[mask]=data
         elif name=='boss':
-            part=parts['boss'];pts=np.array(part.points);centre=pts[:16].mean(0)
-            n=pts[16:32].mean(0)-centre;n/=np.linalg.norm(n)
+            centre,n,boss_radius=surface.boss_frame(parts['boss'])
             q=p-centre;lift=np.sum(q*n,axis=1)*1000
             q-=np.sum(q*n,axis=1)[:,None]*n
             radius=np.linalg.norm(q,axis=1)*1000
             crown=(1-smooth(10,20,radius))*smooth(8,11,lift)
-            data=study.chitin(p[:,0]*1000+95,30-radius,step,crown)
+            data=study.chitin(p[:,0]*1000+95,boss_radius-radius,step,crown)
             data[:,4]+=.035
             # A narrow amber basal margin belongs to the grown material;
             # its contact shadow is supplied separately in AO below.
@@ -540,7 +445,12 @@ def main():
     save('occlusion',np.uint8(np.clip(np.rint(output[...,5]*255),0,255)))
     save('regions',np.zeros((size,size,3),np.uint8))
     (HERE/'layers/layers.json').write_text(json.dumps({f'{MAT}_height_mm':HEIGHT_MM},indent=2)+'\n')
-    report=dict(size=size,covered_texels=int(owned.sum()),pieces=metrics,coordinate_fallback_texels=coord_misses,study_sha256=study.hashes)
+    sources=[ASSET/'saddle_layout.json', BAKES/f'{MAT}_curvature.png',
+             *[PAINT/f'{MAT}_{suffix}' for suffix in
+               ('pieces.json','pieces.png','position_x.png','position_y.png','position_z.png','texel_mm.png')]]
+    report=dict(surface_sha256={str(p.relative_to(ASSET)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sources},
+                surface_fit_max_mm={n:p.fit_error_mm for n,p in parts.items()},tube_measurements=tube_metrics,
+                size=size,covered_texels=int(owned.sum()),pieces=metrics,coordinate_fallback_texels=coord_misses,study_sha256=study.hashes)
     (HERE/'checks/metrics.json').write_text(json.dumps(report,indent=2)+'\n')
     print(f'Painted all {len(metrics)} pieces, {owned.sum()} texels, 1024 square in {time.monotonic()-start:.1f}s',flush=True)
     print('Coordinate fallbacks:',{k:v for k,v in coord_misses.items() if v})

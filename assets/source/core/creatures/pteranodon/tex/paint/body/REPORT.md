@@ -1,64 +1,65 @@
-# Pteranodon body painting — body round 2
+# Body round 4 — the extended foot band
 
-The nape stripe now wraps onto both sides of the neck to the measured profile depths. **Only 15,382 neck region texels changed, all ivory to charcoal.** The accepted round 4 fuzz, base colour, height, roughness and occlusion are byte-identical to round 1. Every region texel outside the neck, including the torso mantle, is unchanged.
+The orange leg/foot band now samples the accepted skin study in **animal-space metres**, using the current position, normal and texel-size maps. Transverse scutes cover its dorsal face; the sides and back use the fine pebbled skin. The shin's original fuzz contribution and categorical fringe remain in place. **Every layer texel outside the existing orange leg band is unchanged.** Both clean rebuilds reproduce all six delivery files byte for byte.
 
-[Head / side / rider before and after](superseded/checks/round2_review.png) · [Profile before and after at 1,000 px/m](superseded/checks/round2_profile_comparison.png) · [Final head](superseded/checks/look/head_design.png) · [Final side](superseded/checks/look/side_design.png) · [Final rider](superseded/checks/look/rider_design.png)
+The visual result has a remaining limit: the pinned, stretched faces cannot resolve all the requested 3–6 mm scutes. The normal game's 1024 preview still makes much of the distal band look smooth. The dorsal diagnostic at 2048 shows more of the correctly scaled detail, but does not resolve every plate either. This is not a claim that the entire sleeve now reads as individual scutes in `feet`.
 
-## Measured profile depth
+[Final feet](checks/round4_look/feet_design.png) · [Final three quarter](checks/round4_look/three_quarter_design.png) · [Before / after crop](checks/round4_feet_comparison.png) · [Dorsal, normal preview](checks/round4_look/foot_dorsal_design.png) · [Dorsal, source-resolution diagnostic](checks/round4_full/foot_dorsal_design.png) · [Back](checks/round4_look/foot_back_design.png)
 
-Round 1 controlled the stripe by its width across X. That established a broad dorsal stripe, but its visible depth in profile was too shallow. The previous report's profile claim overstated that result. This round measures **perpendicular inward distance in the animal's YZ plane from the rear silhouette**, rather than treating transverse width as profile depth.
+## Mapping and drawing
 
-| Along the neck | Requested | Delivered coverage depth | Previous coverage depth |
-|---|---:|---:|---:|
-| Just behind the head | 15 mm | **15.4 mm** | 13.5 mm |
-| One third down | 20 mm | **21.2 mm** | 11.0 mm |
-| Two thirds down | 30 mm | **29.5 mm** | 14.0 mm |
-| Approaching the mantle | 35–40 mm | **36.5 mm** | 29.6 mm |
+`paint.py` first runs the accepted painter unchanged, including its whole-body value calibration. It then replaces only the skin contribution where the current leg piece has the existing orange region ID. That mask contains **20,890 texels**, including the orange tips within the ankle transition. All yellow fuzz texels, every region ID, the toes, claws, hands, torso and neck retain their previous bytes. The replacement preserves the old fuzz blending weight and subtracts the old skin contribution before adding the new one.
 
-These are measurements of the **delivered region PNG**, not the input width settings. Each averages dark coverage across 20 mm of contour: projected dark area divided by contour length gives the equivalent solid-band depth, counting the interlocking dark and pale locks. Individual fringe tips wander either side of this value. Samples are 0.25 mm inward and 0.5 mm along the contour, querying the live position map within 1.5 mm. The head and mantle sections are 28 mm and 432 mm along the 470 mm rear curve; the cut rings themselves cannot support a full perpendicular section. The middle sections are at one third and two thirds of the curve. [Measurements and coordinates](superseded/checks/round2_profile.json).
+The foot's long axis is fitted to the live position map with surface-area weights from `pteranodon_texel_mm.png`. Complete cross-sections at 4 mm intervals establish its centre and elliptical circumference. Longitudinal distance is a projection in metres; transverse distance is elliptical arc length in metres. The plate direction follows the foot, with front coverage selected by the actual surface normal. Atlas row count and the former 2 cm length do not set its drawing scale.
 
-## Placement and unchanged materials
+The live `skin` and `scutes` deliveries retain their **200 mm tile span**, at scale 1: the study's nominal **3–6 mm transverse scutes** and **0.5–1.5 mm pebbles**. The scute field reaches the foot's distal end; the toe painting itself is unchanged. These are the study's feature calibrations, not a claim that each filtered crease is separately measurable in the final preview.
 
-`paint.py` reads the current positions, normals, piece IDs and studies on every build. It locates the neck's dorsal meridian where the normal has almost no X component and faces backward (`abs(nx) < 0.04`, `nz < −0.2`). The upper bend may face slightly downward as it joins the head; it remains part of the rear silhouette. Two-millimetre bins average bake quantization, and the resulting curve is sampled every half millimetre.
+Each target texel integrates an 8 × 8 set of samples over its position-derived footprint. A local source prefilter and the texel-size map prevent unresolved detail from turning into large false stripes. All four material channels use the same samples. The retained pigment/crease drawing receives a **2× value-contrast gain**, with a local zero-mean correction. Relief is sampled at its original physical amplitude. No new image originals, procedural replacement scales, geometry, layout or shared-map edits were made. No Blender process was run.
 
-The requested inset interpolates through **15, 20, 30 and 37.5 mm** along that curve. Its projected distance is converted to local surface distance before sampling the existing `mantle_edge` drawing, preserving the accepted locks, wandering and face-scale fringe. The added coverage is united with the accepted dorsal stripe on the **neck only**. Both sides use the same mirrored texels. The 70 mm transverse width in [source/joins.json](source/joins.json) remains the established head-join/core contract; the new `profile` entry controls the added side coverage.
+| Layer | Construction and result |
+|---|---|
+| Base | Accepted study value drawing; neutral RGB; band-local contrast and mean correction after the old global calibration |
+| Height | Accepted skin/scute relief, preserving the old physical baseline and fuzz contribution; **0.167825 mm** occupied range in the band |
+| Roughness | Aligned study roughness; band mean **0.66236** |
+| Fine occlusion | Aligned study occlusion only; band mean **0.99064**, minimum **0.95686** |
+| Regions | Entire file byte-identical to the pre-edit delivery |
+| `layers.json` | Unchanged: full 16-bit height range encodes **0.8 mm** |
 
-The existing fuzz field and material normalization run unchanged before the new region assignment. Consequently base, height, roughness and occlusion retain exactly the previous bytes, rather than acquiring small global changes from recalibrating the new region populations. The delivered pattern/body linear means remain within 0.00012 of 0.50. No study, geometry, head, wing, feet, finger, claw or mantle painting changed. No new image originals were generated and no Blender process was run. Authored files stay in `tex/paint/body/`; the game preview uses its normal isolated temporary build.
+Final dyed linear means: pattern **0.500118**, horn skin **0.499996**, body **0.499971**. The new band changes no other region's calibration. [Material measurements](checks/round4_material_metrics.json) · [Input and output hashes / mapping metrics](checks/build_metrics.json).
 
-The six delivery files remain in `layers/`: 2048-square RGBA base, 16-bit height, roughness, occlusion, categorical regions, and `layers.json`. Full height encoding is **0.8 mm**. Occupied relief remains **0.105 mm torso**, **0.099 mm neck**, **0.135 mm leg**, and **0.169–0.198 mm digits**. Fuzz roughness remains about **0.86**. The accepted source is still round 4 fuzz: 6–12 mm fibres and 12–30 mm locks, falling to half scale near the head and lower shin.
+## Preservation and rebuild
 
-## Checks and game review
+The baseline is the user's already-rebuilt delivery from the new model, saved before editing in `checks/round4_before/`. `review_foot.py` compares decoded texels against that baseline and asserts that every change lies inside the pre-existing orange leg mask.
 
-Inspected the final game's **head, side and rider** images, plus the true-profile close-up at **1,000 px/m**. The charcoal now has visible depth along the rear neck in profile, grows toward the mantle, and remains joined to the head streak. From the rider's seat it is broader through the middle neck, with the same interlocking edges and uninterrupted dark centre. The head and torso retain their previous painting.
+| Delivered layer | Changed texels | Changed outside band |
+|---|---:|---:|
+| Base | 19,707 | **0** |
+| Height | 20,876 | **0** |
+| Roughness | 18,405 | **0** |
+| Occlusion | 14,173 | **0** |
+| Regions | **0** | **0** |
 
-`check.py` passed:
+`check.py` passes: **1,126,308 / 1,126,308** owned texels covered, zero outside-owned texels, neutral dyed base, valid pure region colours, valid 16-bit height and unchanged nape-core checks. The comparison above is against the current model, rather than the historical round-2 geometry.
 
-- **1,126,308 / 1,126,308** assigned texels covered; zero unpainted or outside-owned texels; valid pure region colours and exactly neutral dyed base.
-- Linear means: pattern **0.500119**, horn skin **0.500003**, body **0.499969**. The composer reports x1.000 corrections.
-- **7,149 / 7,149** sampled dorsal core texels remain charcoal.
-- Torso/neck seam metrics are unchanged: 673 nearby samples, mean height difference **0.0091 mm**, base difference **0.0503 linear**, and **96.0%** region agreement between neighbouring texels up to 2.5 mm apart.
-- Head/neck region agreement is **99.13%** across 1,608 neighbours within 1.5 mm. Fourteen samples differ from the previous head at the widened fringe; there is no visible pale break in the rendered join. The head maps were preserved. Base/height agreement is unchanged.
-- `review_profile.py` verifies the measured depths, zero changes outside the neck, zero changes to all four material maps, and preservation of every previously dark neck texel.
+Two complete runs starting with **no `layers/` directory** took **23.82 s** and **23.44 s**. SHA-256 matched all six delivery files on both runs. The painter reads live studies and bakes; it never reads the review baseline, old outputs or `superseded/`.
 
-[Validation](superseded/checks/validation.json) · [Build provenance](superseded/checks/build_metrics.json) · [Round 2 reproducibility](superseded/checks/round2_reproducibility.json). The first build took **55.1 seconds**. A second complete build took **31.4 seconds** including process overhead and reproduced all six delivered files byte for byte.
+[Strict scope and clean-rebuild audit](checks/round4_verification.json) · [Body validation](checks/validation.json).
 
-Reproduce from the creature folder:
+From the creature folder:
 
 ```sh
 python3 tex/paint/body/paint.py
 python3 tex/paint/body/check.py
+python3 tex/paint/body/review_foot.py --baseline tex/paint/body/checks/round4_before --rebuild
+zsh tex/paint/look.sh tex/paint/body/checks/round4_look --maps
 ```
 
-`review_profile.py` recreates the historical before/after sheets using `superseded/checks/round2_before/` and the review renders in `superseded/checks/`; its regression assertions require the geometry bakes used for that round. The renderer sources are retained as `render_details.ts.txt` and `feet_review.ts.txt`. Historical game renders used the cached model and the then-current layers of all painters; no other painter's layers were changed.
+The third command needs the preserved pre-edit review baseline; the ordinary paint and check commands do not. `review_foot.ts.txt` retains the extra game-camera review, including the explicitly labelled source-resolution diagnostic. Work from the baseline snapshot through final review took approximately **14 minutes**, including diagnostic renders. Earlier report/history is preserved with the review baseline in `checks/round4_before/REPORT.md`.
 
-## Files
+## Renderer review and the remaining density limit
 
-`paint.py` uses Python, NumPy, Pillow and SciPy. It reads the accepted `tex/studies/fuzz/` and `tex/studies/skin/` deliveries directly (metadata, layers and fuzz elements), the live piece/position/texel maps in `tex/paint/`, the flow/object-normal/region bakes in `ref/bakes/`, and `source/joins.json`. Missing study deliveries invoke that study's unchanged `build.py` in its own folder. No study copies are used. `source/` contains only the authored join data; `paint.py` regenerates nothing there. Outputs and `superseded/` are ignored; retained TypeScript review sources end in `.ts.txt`.
+Inspected the final **`feet` and `three_quarter`** views in the game's renderer, plus dorsal and back close-ups and the loud-dye feet. The ankle has finer transverse/pebbled drawing, its fuzz edge remains intact, and the toe and claw treatment remains unchanged. At three-quarter distance the foot keeps its clean orange read. The back is matte and finely grained where density permits.
 
-Two runs starting without `layers/` rebuilt all six delivered files **byte for byte**. The preserved pre-tidy painter also produced those same bytes with the current inputs. [Round 3 verification](superseded/round3_verification/reproducibility.json). `check.py` passed on the rebuilt delivery; [validation](superseded/round3_verification/checks/validation.json).
+On the elongated faces, the area-equivalent footprint is **1.636–3.059 mm per texel** (median **2.107 mm**). More importantly, the position derivatives reach **5.910 mm along the foot per source texel**. The normal review downsamples those maps from 2048 to 1024, reducing the available longitudinal samples again. Many 3–6 mm scutes therefore occupy less than a texel; the 0.5–1.5 mm pebbles disappear sooner. The filtered distal band remains too quiet in the ordinary `feet` view, even with stronger source value drawing. A render with the same game shader and full 2048 source mips confirms that this is also a source-density constraint, not only the preview's mip choice.
 
-The archived accepted delivery used eight older shared geometry/bake inputs, so its images differ from the current rebuilds. This tidy changes no painting function or placement data; the archived delivery and input hashes remain in `superseded/`.
-
-## Remaining limits
-
-The soft fringe is not a ruler-straight boundary; the table reports its coverage depth rather than its longest isolated hair. The game review loads 1024-square rgba maps, so the finest fuzz and categorical edge details are filtered. The accepted material changes no silhouette geometry. Existing model/angular joins and ankle/toe gaps remain outside this round, and there is still no form-occlusion bake. This round fixes the stripe placement only.
+The physical mapping fixes the former atlas-dependent stretching, but fully readable scutes over that entire ring would require more longitudinal texture samples or a material-detail mechanism beyond these pinned layers. Those changes are outside this round's explicit constraints. The delivered maps retain the requested physical scale and do not substitute oversized scales or aliased bands to conceal the limit.

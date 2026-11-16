@@ -1,12 +1,15 @@
 """Audit the saddle delivery and make native-scale material review sheets.
 
 python3 tex/paint/saddle/check.py [--rebuild]
---rebuild checks all six delivery files reproduce byte for byte.
+--rebuild checks two clean data-only builds reproduce all six files byte for byte.
 """
 from pathlib import Path
 import hashlib
 import importlib.util
 import json
+import os
+import shutil
+import tempfile
 import subprocess
 import sys
 import numpy as np
@@ -41,12 +44,12 @@ def main():
     report=dict(size=1024,pieces=len(meta['pieces']),covered_texels=int(own.sum()),alpha_exact=True,
                 black_regions=True,height_encoding_mm=full,used_height_mm=float(np.ptp(height[own])))
 
-    # Verify model-space coordinates against the independently baked 16-bit
-    # positions. This catches wrong face winding or a wrong quad diagonal.
+    # Check the measured polygon surface against every published 16-bit sample.
+    # This catches a wrong corner partition, UV winding or quad diagonal.
     lo=np.array(meta['position_box']['min']);hi=np.array(meta['position_box']['max'])
     p=np.stack([np.asarray(Image.open(paint.PAINT/f'{MAT}_position_{a}.png'))/65535 for a in 'xyz'],-1)*(hi-lo)+lo
     p[...,0]=abs(p[...,0])
-    parts,_=paint.geometry();errors={}
+    parts=paint.geometry();errors={}
     for name,part in parts.items():
         val={i:np.array(part.points)[list(part.faces[i])] for i in part.pinned}
         got,mask=paint.raster(part,val,1024);got[...,0]=abs(got[...,0])
@@ -54,6 +57,47 @@ def main():
         errors[name]=round(float(error.max()),5)
         assert error.max()<.025,(name,float(error.max()))
     report['max_position_error_mm']=errors
+
+    # A changed surface under the same pinned layout must be remeasured. This
+    # fixture changes every length and position without touching shared files.
+    scale=1.125;shift=np.array([0,.017,-.021])
+    moved=paint.surface.read(paint.ASSET,position=p*scale+shift)
+    deformation={}
+    for name,part in parts.items():
+        other=moved[name]
+        assert part.faces==other.faces,(name,'connectivity changed')
+        error=np.linalg.norm(other.points-(part.points*scale+shift),axis=1).max()*1000
+        assert error<.005,(name,'cached model-space shape',error)
+        deformation[name]=float(error)
+    for name in ('cantle','grip_l','rest_l','rein_l','halter_beak','halter_head','peg_l'):
+        for before,after in zip(paint.surface.tube_sections(parts[name]),paint.surface.tube_sections(moved[name])):
+            assert abs(after.arc[-1]-before.arc[-1]*scale)<.005
+            assert abs(after.radius-before.radius*scale)<.000005
+    centre,normal,radius=paint.surface.boss_frame(parts['boss'])
+    moved_centre,moved_normal,moved_radius=paint.surface.boss_frame(moved['boss'])
+    assert np.linalg.norm(moved_centre-(centre*scale+shift))<.000005
+    assert abs(moved_radius-radius*scale)<.005
+    assert np.linalg.norm(moved_normal-normal)<1e-5
+    report['changed_bake_max_position_error_mm']=deformation
+
+    # A local bend changes directions and relative lengths, not just the global
+    # frame. Rebake the deformed corners into memory using the pinned polygons.
+    bent=p.copy();expected={}
+    for name,part in parts.items():
+        q=part.points.copy()
+        q[:,1]+=.004*np.sin(q[:,2]*13)
+        q[:,2]+=.003*(q[:,0]/.3)**2
+        expected[name]=q
+        got,mask=paint.raster(part,{i:q[list(f)] for i,f in part.faces.items()},1024)
+        bent[mask]=got[mask]
+    bent_parts=paint.surface.read(paint.ASSET,position=bent)
+    bend_errors={}
+    for name,part in bent_parts.items():
+        assert part.faces==parts[name].faces,(name,'bent connectivity changed')
+        error=float(np.linalg.norm(part.points-expected[name],axis=1).max()*1000)
+        assert error<.005,(name,'failed to follow local shape refinement',error)
+        bend_errors[name]=error
+    report['locally_bent_bake_max_position_error_mm']=bend_errors
 
     # Seams in the delivered atlas, sampled after the same nearest-texel dilation
     # used by compose.py. Different materials meeting at a physical seam are
@@ -114,21 +158,6 @@ def main():
     girth=float(np.mean(abs(np.diff(wood,axis=0))))
     report['cantle_forward_grain']={'axial_colour_change_per_mm':axial,'across_colour_change_per_mm':girth}
     assert girth>2*axial,'cantle fibres no longer follow the bow'
-
-    # The director accepted every other piece. When the incoming delivery is
-    # available locally, require exact preservation in every channel.
-    before=CHECKS/'round1_before'
-    if before.exists():
-        allowed=np.isin(pieces,[p['number'] for p in meta['pieces'] if p['name'] in
-            ('cantle','cantle_plate_out','cantle_plate_in','boss')])
-        preserved={}
-        for name,a in maps.items():
-            b=np.asarray(Image.open(before/f'{MAT}_{name}.png'))
-            diff=a!=b
-            if diff.ndim==3:diff=diff.any(-1)
-            assert not np.any(diff&~allowed),(name,'changed an accepted piece')
-            preserved[name]=int(diff.sum())
-        report['round1_changed_texels_only_in_four_pieces']=preserved
 
     spec=importlib.util.spec_from_file_location('compose',paint.PAINT/'compose.py')
     compose=importlib.util.module_from_spec(spec);spec.loader.exec_module(compose)
@@ -195,10 +224,33 @@ def main():
     files=sorted(LAYERS.glob('*'))
     hashes={f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
     if '--rebuild' in sys.argv:
-        subprocess.run([sys.executable,str(HERE/'paint.py')],check=True)
-        after={f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in files}
-        assert hashes==after,'non-deterministic delivery'
-        report['byte_identical_rebuild']=len(files)
+        # Only the published data and accepted study enter this temporary asset.
+        # No rig.py, model.py, saddle.py, prepared mesh or Blender is available.
+        # Each run starts with layers/ absent and a different Python hash seed.
+        metrics=json.loads((CHECKS/'metrics.json').read_text())
+        inputs={**metrics['surface_sha256'],**metrics['study_sha256']}
+        with tempfile.TemporaryDirectory(prefix='saddle-data-rebuild-') as temp:
+            asset=Path(temp)/'asset';painter=asset/'tex/paint/saddle'
+            painter.mkdir(parents=True)
+            for name in ('paint.py','surface.py'):
+                shutil.copyfile(HERE/name,painter/name)
+            for name in inputs:
+                dest=asset/name;dest.parent.mkdir(parents=True,exist_ok=True)
+                dest.symlink_to(paint.ASSET/name)
+            runs=[]
+            for seed in ('1','8675309'):
+                if (painter/'layers').exists():shutil.rmtree(painter/'layers')
+                env=dict(os.environ,PYTHONHASHSEED=seed,PYTHONDONTWRITEBYTECODE='1')
+                subprocess.run([sys.executable,str(painter/'paint.py')],cwd=temp,env=env,check=True)
+                after={f.name:hashlib.sha256(f.read_bytes()).hexdigest() for f in sorted((painter/'layers').glob('*'))}
+                assert hashes==after,'non-deterministic or construction-dependent delivery'
+                runs.append(dict(hash_seed=seed,files=len(after),sha256=after))
+        for name,digest in inputs.items():
+            assert hashlib.sha256((paint.ASSET/name).read_bytes()).hexdigest()==digest,(name,'input changed')
+        report['clean_data_only_rebuilds']=runs
+        (CHECKS/'clean_rebuild.json').write_text(json.dumps(dict(inputs_unchanged=True,runs=runs),indent=2)+'\n')
+    report['byte_identical_rebuild']=6 if (CHECKS/'clean_rebuild.json').exists() and all(
+        run['sha256']==hashes for run in json.loads((CHECKS/'clean_rebuild.json').read_text())['runs']) else None
     report['delivery_sha256']=hashes
     (CHECKS/'validation.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps(report,indent=2))

@@ -16,6 +16,7 @@ import numpy as np
 from PIL import Image
 from scipy.ndimage import gaussian_filter, gaussian_filter1d, map_coordinates
 from scipy.spatial import cKDTree
+from scipy.special import ellipeinc
 
 HERE = Path(__file__).resolve().parent
 PAINT = HERE.parent
@@ -209,6 +210,117 @@ def tube_coordinates(mask, pos, mm):
     return dist[row].astype(F), ((frac-.5)*circumference[row]).astype(F), frac.astype(F)
 
 
+def foot_coordinates(mask, pos, normal, mm):
+    """A metric chart of the bare foot, independent of the pinned atlas.
+
+    Fit the long axis with surface-area weights, then centre elliptical sections
+    every 4 mm in animal space. The short, oblique end cuts are extrapolated from
+    complete sections. Neither atlas rows nor their old lengths set the scale.
+    """
+    p=pos[mask].astype(np.float64)
+    area=mm[mask].astype(np.float64)**2
+    centre=np.average(p,axis=0,weights=area)
+    delta=p-centre
+    covariance=np.einsum('ni,nj,n->ij',delta,delta,area)
+    axis=np.linalg.eigh(covariance)[1][:,-1]
+    if axis[2]>0:axis=-axis
+    front=unit(np.array([0.,-1.,0.])-axis*(-axis[1]))
+    side=np.cross(axis,front)
+    along=np.sum(delta*axis,axis=1)
+    across=np.sum(delta*side,axis=1)
+    depth=np.sum(delta*front,axis=1)
+    facing=np.sum(normal[mask]*front,axis=1)
+    lateral=np.sum(normal[mask]*side,axis=1)
+    bins=np.floor(along/.004).astype(int)
+    sections=[]
+    for k in np.unique(bins):
+        q=bins==k
+        if not all(np.any(q&t) for t in [facing>.65,facing<-.65,lateral>.65,lateral<-.65]):
+            continue
+        x0,x1=np.quantile(across[q],[.01,.99])
+        y0,y1=np.quantile(depth[q],[.01,.99])
+        sections.append([(k+.5)*.004,(x0+x1)/2,(y0+y1)/2,(x1-x0)/2,(y1-y0)/2])
+    sections=np.array(sections)
+    if len(sections)<3:raise ValueError('Foot band has too few complete physical sections')
+    sections[:,1:]=gaussian_filter1d(sections[:,1:],1,axis=0,mode='nearest')
+    cx,cy,rx,ry=[np.interp(along,sections[:,0],sections[:,k]) for k in range(1,5)]
+    angle=np.arctan2((across-cx)/rx,(depth-cy)/ry)
+    # True elliptical arc, measured from the dorsal meridian; metres across.
+    circum=rx*ellipeinc(angle,1-(ry/rx)**2)
+    around=unit(np.cos(angle)[:,None]*rx[:,None]*side-
+                np.sin(angle)[:,None]*ry[:,None]*front)
+    # Actual per-texel Jacobian. The chart's back seam cannot inflate a footprint.
+    du=derivatives(pos,mask,1)[mask]
+    dv=derivatives(pos,mask,0)[mask]
+    jac=np.stack([np.sum(du*axis,axis=1),np.sum(dv*axis,axis=1),
+                  np.sum(du*around,axis=1),np.sum(dv*around,axis=1)],1)
+    facts={'axis':axis.tolist(),'centre_m':centre.tolist(),
+           'longitudinal_span_mm':float(np.ptp(along)*1000),
+           'texel_mm_quantiles':np.quantile(mm[mask],[0,.1,.5,.9,1]).tolist(),
+           'longitudinal_texel_mm_quantiles':np.quantile(np.hypot(jac[:,0],jac[:,1])*1000,[0,.5,.9,1]).tolist()}
+    return along.astype(F),circum.astype(F),facing.astype(F),jac.astype(F),facts
+
+
+def sample_foot(study, along, across, jac, mm):
+    """Integrate the study over each stretched texel, in physical units.
+
+    An 8x8 quadrature follows both position-map derivatives. A small source
+    prefilter resolves detail below a quadrature cell; its level is local, with
+    the area-equivalent texel-size bake as a lower bound. All channels share it.
+    """
+    px_m=N/study.spec['span_m']
+    u=(along+.044)*px_m
+    v=(across+.102)*px_m
+    j=jac*px_m
+    footprint=np.maximum(np.sqrt(np.sum(j*j,axis=1)),mm*px_m/1000)
+    sigma=.45*np.sqrt(np.maximum((footprint/8)**2-1,0))
+    levels=np.ceil(np.log2(np.maximum(sigma,.5))).astype(int)
+    result=np.zeros((len(u),6),F)
+    channels=[study.base[...,k] for k in range(3)]+[study.h,study.r,study.ao]
+    offsets=(np.arange(8)+.5)/8-.5
+    for level in np.unique(levels):
+        take=levels==level
+        uj,vj=u[take],v[take];jj=j[take]
+        coords=np.concatenate([np.stack([vj+dx*jj[:,2]+dy*jj[:,3],
+                                          uj+dx*jj[:,0]+dy*jj[:,1]])
+                               for dy in offsets for dx in offsets],axis=1)
+        for k,channel in enumerate(channels):
+            filtered=gaussian_filter(channel,2.**int(level),mode='wrap')
+            samples=map_coordinates(filtered,coords,order=1,mode='grid-wrap',prefilter=False)
+            result[take,k]=samples.reshape(64,-1).mean(0)
+    return result[:,:3],result[:,3],result[:,4],result[:,5]
+
+
+def repaint_foot(mask, pos, normal, mm, skin, scutes, previous, base, height, rough, ao):
+    """Replace only the skin contribution of the existing orange leg texels.
+
+    Run AFTER the accepted whole-body value calibration. Zero-mean deltas keep
+    that calibration without touching any other texel, including the toe maps.
+    The original fuzz drawing, its blend weight and all region IDs are retained.
+    """
+    s,c,facing,jac,facts=foot_coordinates(mask,pos,normal,mm)
+    sb,sh,sr,so=sample_foot(skin,s,c,jac,mm[mask])
+    cb,ch,cr,co=sample_foot(scutes,s,c,jac,mm[mask])
+    top=smooth((facing-.08)/.68)
+    current=[sb*(1-top[:,None])+cb*top[:,None],
+             sh*(1-top)+ch*top,sr*(1-top)+cr*top,so*(1-top)+co*top]
+    # Preserve the study's crease/pigment drawing after footprint integration.
+    # This changes contrast only, never plate spacing or physical relief.
+    current[0]=.5+(current[0]-.5)*2
+    bare=1-smooth((pos[mask,2]+1.015)/.028+.5)
+    for k,(new,old,target) in enumerate(zip(current,previous,[base,height,rough,ao])):
+        change=(new-old).mean(1) if k==0 else new-old
+        # Only base and height need the pre-existing neutral/relief baseline.
+        if k<2:change-=np.sum(change*bare)/np.sum(bare)
+        change*=bare
+        target[mask]+=change[:,None] if k==0 else change
+    facts.update({'texels':int(mask.sum()),'scutes_scale':1.,'skin_scale':1.,
+                  'scutes_span_m':scutes.spec['span_m'],'skin_span_m':skin.spec['span_m'],
+                  'base_detail_gain':2.,
+                  'scute_weight_quantiles':np.quantile(top,[0,.25,.5,.75,1]).tolist()})
+    return facts
+
+
 def mantle_distance(p):
     x,y,z=p.T
     # Measured concept silhouette: a rounded shoulder saddle tapering to the hips.
@@ -368,6 +480,10 @@ def main():
         bb=sb*(1-w[:,None])+cb*w[:,None]
         hh=sh*(1-w)+ch*w;rr=sr*(1-w)+cr*w;oo=so*(1-w)+co*w
         if name=='leg':
+            # Retain the old skin contribution for a strictly local round-4
+            # replacement after global calibration; the accepted build below
+            # must still run unchanged for all other texels.
+            leg_skin=[a.copy() for a in [bb,hh,rr,oo]]
             # The transition follows the ankle in space; softly thins over 28 mm.
             transition=(p[:,2]+1.015)/.028
             amount=smooth(transition+.5)
@@ -419,6 +535,10 @@ def main():
     distance,_,_,_,_=nape_profile(pos[neck],normal[neck])
     wrap=mantle_ids(fuzzdir,pos[neck],distance)
     regions[neck]=np.where(wrap,0,regions[neck])
+    leg=pieces==numbers['leg']
+    foot=leg&(regions==2)
+    previous=[a[regions[leg]==2] for a in leg_skin]
+    piece_facts['foot_band']=repaint_foot(foot,pos,normal,mm,skin,scutes,previous,base,height,rough,ao)
     for region in [0,2,5]:
         m=owned&(regions==region)
         means[str(region)]=float(lin(np.round(srgb(base[m])*255)/255).mean())
