@@ -171,7 +171,7 @@ export class Corpses {
     const reg = world.reg;
     const def = reg.defs[rec.kind];
     const e = records.entOf.get(rec.pid);
-    if (this.corpse === 0 || def?.type !== "species" || def.class !== "creature" || e === undefined) return;
+    if (this.corpse === 0 || def?.type !== "species" || (def.class !== "creature" && !(def.class === "vehicle" && def.corpse)) || e === undefined) return;
     const ents = world.ents;
     const tick = world.tick;
     const young = rec.grown !== 0 && growthStep(rec.span, rec.grown, tick) < GROWN;

@@ -198,11 +198,12 @@ export class Creatures {
    * and "admin" for one an admin asked for. A module may change its level, and its colours: up to six palette indices
    * by region, with commas between.
    */
-  spawn(kind: number, x: number, z: number, level: number, why = "wild"): number {
+  spawn(kind: number, x: number, z: number, level: number, why = "wild", atY?: number): number {
     const world = this.world;
     const p = world.reg.move[kind];
     if (!p) return -1;
-    const y = groundUnder(world.hf, x, z, p.radius);
+    const y = atY ?? groundUnder(world.hf, x, z, p.radius);
+    if (!Number.isFinite(y)) return -1;
     if (!placeFree(world, x, y, z, p.radius, p.height)) return -1;
     let colours = "";
     if (this.bus.n[CREATURE_SPAWN] !== 0) {
