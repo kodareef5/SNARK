@@ -59,6 +59,9 @@ export async function guideProbe(chrome: string): Promise<boolean> {
     await command("Page.enable"); await command("Runtime.enable"); await command("Log.enable");
     await navigate("/"); await shot("overview-desktop");
     checks.overview = await evaluate("({title:document.title,overflow:document.documentElement.scrollWidth>innerWidth,bytes:performance.getEntriesByType('resource').reduce((n,r)=>n+r.transferSize,0),modelsLoaded:performance.getEntriesByType('resource').filter(r=>r.name.endsWith('.snpk')).length})");
+    await command("Input.dispatchKeyEvent", { type: "keyDown", key: "/", code: "Slash" });
+    checks.searchShortcut = await evaluate("document.activeElement===document.querySelector('.wiki-search input')");
+    if (!checks.searchShortcut) errors.push("home search shortcut did not focus the visible search");
     await navigate("/search/?q=pteranodon");
     checks.search = await evaluate("({visible:document.querySelectorAll('[data-record]:not([hidden])').length,text:document.querySelector('[data-result-count]')?.textContent})");
     await navigate("/maps/core/miami/");
@@ -84,6 +87,8 @@ export async function guideProbe(chrome: string): Promise<boolean> {
     await shot("model-desktop");
     await navigate("/sounds/core/dodo/");
     checks.audio = await evaluate("(async()=>{const a=document.querySelector('audio');await a.play();return{preload:a.preload,paused:a.paused,source:a.currentSrc}})()");
+    checks.audioExclusive = await evaluate("(async()=>{const [a,b]=document.querySelectorAll('audio');await b.play();return a.paused&&!b.paused})()");
+    if (!checks.audioExclusive) errors.push("starting another audio did not pause the first");
     await navigate("/mcp/");
     await shot("mcp-desktop");
     await evaluate("(()=>{const q=document.querySelector('[data-filter-query]');q.value='go_to';q.dispatchEvent(new Event('input',{bubbles:true}))})()");

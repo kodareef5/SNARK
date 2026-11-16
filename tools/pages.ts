@@ -1,4 +1,4 @@
-// Builds a standalone field guide and optionally serves the completed files on loopback.
+// Builds a standalone cluster wiki and optionally serves the completed files on loopback.
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, openSync, closeSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { GuideData } from "../shared/pages/types.ts";
