@@ -1,0 +1,521 @@
+{
+  "schema": 1,
+  "id": "core:cruise",
+  "subject": "Icon of the Seas",
+  "phase": "contract-prototype",
+  "frame": {
+    "units": "metres",
+    "up": "+Y",
+    "forward": "+Z",
+    "port": "+X",
+    "waterline": 0,
+    "yawUnits": "degrees"
+  },
+  "sources": [
+    {
+      "id": "builder-delivery",
+      "url": "https://www.meyerturku.fi/en/news-publications/news/meyer-turku-shipyard-delivered-the-worlds-most-advanced-cruise-ship-icon-of-the-seas/",
+      "kind": "published-dimensions-and-photograph",
+      "date": "2023-11-26"
+    },
+    {
+      "id": "operator-plan-2250",
+      "url": "https://www.royalcaribbean.com/content/dam/royal/ships/deckplans-hub/Icon_2250_v2023.pdf",
+      "kind": "public-visitor-plan",
+      "profile": "2250",
+      "pdfCreated": "2022-10-20"
+    }
+  ],
+  "dimensions": {
+    "lengthOverall": 365,
+    "minZ": -182.5,
+    "maxZ": 182.5,
+    "waterlineBeam": 48.5,
+    "deckhouseBeam": 57.8,
+    "bridgeBeam": 65.8,
+    "provisionalKeelY": -9.3,
+    "provisionalHighestY": 80,
+    "published": [
+      "lengthOverall",
+      "waterlineBeam",
+      "deckhouseBeam",
+      "bridgeBeam"
+    ],
+    "inferred": [
+      "hull stations",
+      "deck elevations",
+      "provisionalKeelY",
+      "provisionalHighestY",
+      "room dimensions"
+    ],
+    "authority": "builder-delivery"
+  },
+  "clearances": {
+    "doorWidth": 1.6,
+    "doorHeight": 2.6,
+    "minimumHeadroom": 2.6,
+    "publicStairWidth": 1.8,
+    "stairLandingClearWidth": 4.4,
+    "stairLandingClearDepth": 2.2,
+    "floorThickness": 0.24,
+    "railHeight": 1.15
+  },
+  "decks": [
+    {
+      "id": "2",
+      "index": 0,
+      "floorY": 3.0,
+      "ceilingY": 5.96,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "3",
+      "index": 1,
+      "floorY": 6.2,
+      "ceilingY": 9.56,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "4",
+      "index": 2,
+      "floorY": 9.8,
+      "ceilingY": 13.76,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "5",
+      "index": 3,
+      "floorY": 14.0,
+      "ceilingY": 18.16,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "6",
+      "index": 4,
+      "floorY": 18.4,
+      "ceilingY": 22.36,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "7",
+      "index": 5,
+      "floorY": 22.6,
+      "ceilingY": 25.76,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "8",
+      "index": 6,
+      "floorY": 26.0,
+      "ceilingY": 28.96,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "9",
+      "index": 7,
+      "floorY": 29.2,
+      "ceilingY": 32.16,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "10",
+      "index": 8,
+      "floorY": 32.4,
+      "ceilingY": 35.36,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "11",
+      "index": 9,
+      "floorY": 35.6,
+      "ceilingY": 38.56,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "12",
+      "index": 10,
+      "floorY": 38.8,
+      "ceilingY": 41.76,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "14",
+      "index": 11,
+      "floorY": 42.0,
+      "ceilingY": 45.36,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "15",
+      "index": 12,
+      "floorY": 45.6,
+      "ceilingY": 49.36,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "16",
+      "index": 13,
+      "floorY": 49.6,
+      "ceilingY": 52.96,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "17",
+      "index": 14,
+      "floorY": 53.2,
+      "ceilingY": 56.56,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "18",
+      "index": 15,
+      "floorY": 56.8,
+      "ceilingY": 59.76,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "19",
+      "index": 16,
+      "floorY": 60.0,
+      "ceilingY": 62.96,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    },
+    {
+      "id": "20",
+      "index": 17,
+      "floorY": 63.2,
+      "ceilingY": null,
+      "evidence": "inferred",
+      "outlines": [],
+      "voids": []
+    }
+  ],
+  "prototypes": [
+    {
+      "id": "core:cruise_floor_12x12",
+      "mesh": "core:cruise_floor_12x12",
+      "category": "floor",
+      "color": 101,
+      "boxes": [
+        {
+          "at": [
+            0.0,
+            -0.12,
+            0.0
+          ],
+          "half": [
+            6.0,
+            0.12,
+            6.0
+          ]
+        }
+      ],
+      "hulls": [],
+      "visualBounds": {
+        "min": [
+          -6.0,
+          -0.24,
+          -6.0
+        ],
+        "max": [
+          6.0,
+          0.0,
+          6.0
+        ]
+      },
+      "art": {
+        "kind": "floor",
+        "finish": "deck"
+      }
+    },
+    {
+      "id": "core:cruise_gangway",
+      "mesh": "core:cruise_gangway",
+      "category": "gangway",
+      "color": 101,
+      "boxes": [
+        {
+          "at": [
+            0.0,
+            -0.12,
+            0.0
+          ],
+          "half": [
+            14.8,
+            0.12,
+            1.4
+          ]
+        },
+        {
+          "at": [
+            0.0,
+            0.575,
+            -1.44
+          ],
+          "half": [
+            14.8,
+            0.575,
+            0.04
+          ]
+        },
+        {
+          "at": [
+            0.0,
+            0.575,
+            1.44
+          ],
+          "half": [
+            14.8,
+            0.575,
+            0.04
+          ]
+        }
+      ],
+      "hulls": [],
+      "visualBounds": {
+        "min": [
+          -14.8,
+          -0.24,
+          -1.48
+        ],
+        "max": [
+          14.8,
+          1.15,
+          1.48
+        ]
+      },
+      "art": {
+        "kind": "gangway",
+        "clearWidth": 2.8,
+        "finish": "deck"
+      }
+    }
+  ],
+  "instances": [
+    {
+      "id": "d5_arrival_sample",
+      "prototype": "core:cruise_floor_12x12",
+      "at": [
+        22.5,
+        14,
+        -24
+      ],
+      "yaw": 0,
+      "deck": "5",
+      "section": "arrival",
+      "placed": true
+    },
+    {
+      "id": "port_gangway",
+      "prototype": "core:cruise_gangway",
+      "at": [
+        43.2,
+        14,
+        -24
+      ],
+      "yaw": 0,
+      "deck": "5",
+      "section": "arrival",
+      "placed": true
+    }
+  ],
+  "rooms": [
+    {
+      "id": "arrival",
+      "label": "Royal Promenade arrival",
+      "deck": "5",
+      "section": "arrival",
+      "bounds": {
+        "min": [
+          16.5,
+          14,
+          -30
+        ],
+        "max": [
+          28.5,
+          18.16,
+          -18
+        ]
+      },
+      "entry": [
+        28.4,
+        14,
+        -24
+      ],
+      "routeTarget": [
+        20,
+        14,
+        -24
+      ],
+      "evidence": "original-fit-within-public-plan"
+    }
+  ],
+  "portals": [
+    {
+      "id": "boarding",
+      "from": "quay",
+      "to": "arrival",
+      "at": [
+        28.9,
+        14,
+        -24
+      ],
+      "normal": [
+        1,
+        0,
+        0
+      ],
+      "clearWidth": 2.8,
+      "clearHeight": 4.16,
+      "kind": "open"
+    }
+  ],
+  "stairs": [],
+  "doors": [],
+  "graph": {
+    "nodes": [
+      {
+        "id": "quay",
+        "at": [
+          58,
+          14,
+          -24
+        ],
+        "deck": "5",
+        "kind": "docking"
+      },
+      {
+        "id": "arrival",
+        "at": [
+          20,
+          14,
+          -24
+        ],
+        "deck": "5",
+        "kind": "lobby"
+      }
+    ]
+  },
+  "routes": [
+    {
+      "id": "board",
+      "kind": "docking",
+      "from": "quay",
+      "to": "arrival",
+      "anchors": [
+        [
+          58,
+          14,
+          -24
+        ],
+        [
+          28.9,
+          14,
+          -24
+        ],
+        [
+          20,
+          14,
+          -24
+        ]
+      ],
+      "clearWidth": 2.8,
+      "clearHeight": 2.6
+    }
+  ],
+  "docking": {
+    "shipLanding": [
+      28.9,
+      14,
+      -24
+    ],
+    "shoreLanding": [
+      58,
+      14,
+      -24
+    ],
+    "shoreApproach": [
+      61,
+      14,
+      -24
+    ],
+    "arrival": [
+      20,
+      14,
+      -24
+    ],
+    "clearWidth": 2.8,
+    "side": "port",
+    "deck": "5",
+    "seaDatum": 0,
+    "pierConnection": {
+      "xMinimum": 58,
+      "zMinimum": -25.6,
+      "zMaximum": -22.4
+    }
+  },
+  "views": [
+    {
+      "id": "arrival",
+      "at": [
+        20,
+        14,
+        -24
+      ],
+      "target": [
+        0,
+        16,
+        -24
+      ],
+      "deck": "5",
+      "section": "arrival",
+      "mode": "walk"
+    }
+  ],
+  "artBudget": {
+    "levels": 6,
+    "nearFlatLevel": 1,
+    "materialsPerPrototypeMaximum": 3,
+    "mediumSubmittedTrianglesTarget": 1000000,
+    "mediumDrawsTarget": 600,
+    "notes": "Targets require native App measurement; no renderer budget increases or portal culling assumed."
+  },
+  "prototypeScope": {
+    "complete": false,
+    "notes": "Early schema and boarding sample. Full silhouette and furnished vertical section follow before the prototype gate."
+  }
+}

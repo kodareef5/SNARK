@@ -1,0 +1,15 @@
+# Shared cruise layout contract
+
+`author_layout.py` deterministically writes `content/landmarks/cruise-layout.json`. The first commit is an adapter scaffold and real boarding sample, not a completed ship. The full silhouette and furnished vertical section are the next prototype gate.
+
+The frame uses metres, waterline Y0, +Y up, +Z bow and +X port. **All source instance yaw values are degrees**. Native conversion happens once in the content adapter. Public measurements are 365 m overall length, 48.5 m waterline beam, 57.8 m deckhouse width and 65.8 m bridge width. Published dimensions and inferred values remain separate. The provisional keel at −9.3 m and highest aerial at 80 m are modeling estimates, not builder specifications.
+
+Each `prototype` owns a stable namespaced definition/mesh ID, category, palette colour, local collision boxes/convex hulls, complete optional far `look`, local `visualBounds` and original art parameters. Each `instance` owns a stable placement ID, prototype reference, `at`, degree `yaw`, actual deck label, section and `placed` flag. Prototype geometry remains within ±16 m per axis and has at most 16 collision parts. Optional `look` replaces the native far representation, so it must retain the essential geometry rather than only added ornaments. Repeated geometry is instanced, not registered under new mesh IDs.
+
+`decks` contain actual string labels (2–12 and 14–20), ordinal index, explicit `floorY`/`ceilingY`, polygon `outlines` and `voids`. Upper levels are partial footprints. Each outline/void polygon is an array of `[x,z]` positions. Floor elevations are inferred from the actual builder photograph and the dated visitor plan: 3.2 m accommodation spacing, taller public levels and a stepped upper stack. This is not authenticated construction CAD.
+
+`graph.nodes` have `{id,at,deck,kind}`. `routes` explicitly join node IDs with ordered ship-local floor anchors and clear width/height. Room bounds, entries and targets are ship-local. Portals join the graph nodes/room IDs with a ship-local opening centre, normal and clear dimensions. Stairs record source/destination deck labels, placed instance IDs, actual upper floor opening and ordered route. No all-room geometric connector search is required.
+
+Optional cabin doors use reciprocal closed/open **prototypes** and one initially placed closed instance. `doors` identifies the instance, closed/open prototypes, ship-local hinge and clear dimensions; each placement persists independently. Static room structure does not swap with the leaf.
+
+`docking` publishes the authoritative port gangway and terminal anchors. Initial arrival is the deck5 Royal Promenade at Y14; the quay-side landing is `[58,14,-24]`, with a 2.8 m clear gangway. `views` provide reproducible floor positions and targets, labeled `walk` or `spectator`. Pools remain explicitly decorative basins and never register upper-deck map-water columns.
