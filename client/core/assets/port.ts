@@ -2,7 +2,7 @@
 // fetches, inflates, checks and caches. Tests and the benchmark use a network made of numbers (tests/fixtures/assetnet.ts).
 
 import { storedBytes, storedStep, type ManifestLevel, type ManifestTexture } from "../../../shared/pack/manifest.ts";
-import { stepBytes, type TextureFormat } from "../../../shared/pack/texture.ts";
+import { blockOf, stepBytes, type TextureFormat } from "../../../shared/pack/texture.ts";
 
 /** Why a part did not come: the network, bytes that do not have the hash listed, or a range the file does not have. */
 export const FAIL_NET = 1;
@@ -39,7 +39,7 @@ export function textureParts(tex: ManifestTexture, format: TextureFormat, last: 
   const out: AssetPart[] = [];
   for (let k = 0, at = v.at; k <= last; k++) {
     const length = storedStep(v, format, tex.role, k);
-    const bytes = stepBytes(format, tex.role, k);
+    const bytes = stepBytes(format, tex.role, k, blockOf(format, v));
     out.push(length < bytes ? { offset: at, length, hash: v.hash[k]!, inflated: bytes } : { offset: at, length, hash: v.hash[k]! });
     at += length;
   }

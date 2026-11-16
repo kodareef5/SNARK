@@ -13,7 +13,7 @@
 
 import type { Manifest, ManifestLevel } from "../../../shared/pack/manifest.ts";
 import { VERTEX_BYTES, type Pack } from "../../../shared/pack/pack.ts";
-import { LAST_STEP, STEP0_SIZE, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
+import { LAST_STEP, STEP0_SIZE, blockOf, pictureBytes, stepBytes, stepOf, topIn, type TextureFormat } from "../../../shared/pack/texture.ts";
 import { Rng } from "../../../shared/rng.ts";
 import type { TextureUpload } from "../render/packet.ts";
 import { FAIL_HASH, FAIL_RANGE, levelParts, textureParts, type AssetArrival, type AssetPart, type AssetPort } from "./port.ts";
@@ -279,7 +279,8 @@ export class Residency {
     this.made = this.format;
     (this.manifest.textures ?? []).forEach((tex, t) => {
       this.limit[t] = this.port && tex.in[this.made] ? stepOf(topIn(this.made, tex.top)) : -1;
-      for (let k = 0, bytes = 0; k <= this.limit[t]!; k++) this.through[t * STEPS + k] = bytes += stepBytes(this.made, tex.role, k);
+      const block = blockOf(this.made, tex.in[this.made] ?? {});
+      for (let k = 0, bytes = 0; k <= this.limit[t]!; k++) this.through[t * STEPS + k] = bytes += stepBytes(this.made, tex.role, k, block);
     });
     this.recan();
   }
@@ -898,10 +899,11 @@ export class Residency {
     const goal = this.goal[t]!;
     const whole = this.through[t * STEPS + goal]!;
     const tex = this.manifest.textures![t]!;
+    const block = blockOf(this.made, tex.in[this.made]!);
     let at = this.gone[t]!;
     if (at === 0) {
       // A copy is begun in a frame that has bytes left for its first row.
-      if (sent > this.spent && sent + pictureBytes(this.made, tex.role, 1) > this.uploadBytes) return sent;
+      if (sent > this.spent && sent + pictureBytes(this.made, tex.role, 1, block) > this.uploadBytes) return sent;
       // Textures keep to their share, but for a smaller copy that will give room back. Levels make way for them.
       const share = this.texBudget * (this.down[t] === 1 ? OVERFLOW : 1);
       this.texRoom(whole, share, texDrops);
@@ -920,10 +922,11 @@ export class Residency {
     const data = this.data[slot]!;
     let side = 1;
     let start = 0;
-    for (let bytes = pictureBytes(this.made, tex.role, side); start + bytes <= at; bytes = pictureBytes(this.made, tex.role, (side <<= 1))) start += bytes;
+    for (let bytes = pictureBytes(this.made, tex.role, side, block); start + bytes <= at; bytes = pictureBytes(this.made, tex.role, (side <<= 1), block)) start += bytes;
     while (at < whole) {
-      const rows = this.made === "rgba" ? side : (side + 3) >> 2;
-      const rowBytes = pictureBytes(this.made, tex.role, side) / rows;
+      // Rows of blocks, which are rows of pixels in rgba.
+      const rows = Math.ceil(side / block);
+      const rowBytes = pictureBytes(this.made, tex.role, side, block) / rows;
       const row = (at - start) / rowBytes;
       let n = Math.floor((this.uploadBytes - sent) / rowBytes);
       if (n <= 0) {
@@ -932,7 +935,7 @@ export class Residency {
       }
       if (n > rows - row) n = rows - row;
       const bytes = n * rowBytes;
-      out.push({ slot: t, role: tex.role, format: this.made, top: STEP0_SIZE << goal, size: side, row, rows: n, data: data.subarray(at, at + bytes), last: at + bytes === whole });
+      out.push({ slot: t, role: tex.role, format: this.made, block, top: STEP0_SIZE << goal, size: side, row: row * block, rows: Math.min(n * block, side - row * block), data: data.subarray(at, at + bytes), last: at + bytes === whole });
       at += bytes;
       sent += bytes;
       if (row + n === rows) {

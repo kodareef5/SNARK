@@ -240,10 +240,12 @@ export interface TextureUpload {
   slot: number;
   role: TextureRole;
   format: TextureFormat;
+  /** Pixels a block holds on a side in bc and astc: 4 in bc, and in astc the texture's own (shared/pack/texture.ts). */
+  block?: number;
   /** The side of the texture being made, and of the picture these rows belong to. */
   top: number;
   size: number;
-  /** The first row and how many: pixels in the rgba variant, blocks of four in the others. */
+  /** The first row of pixels and how many, whole rows of blocks, the last of them cut at the picture's edge. */
   row: number;
   rows: number;
   /** The scene owns it, so upload it before the next build. */

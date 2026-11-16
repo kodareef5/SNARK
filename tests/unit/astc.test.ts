@@ -1,5 +1,6 @@
-// The ASTC encoder and its decoder. The decoder is held to what a GPU showed for the same blocks; the encoder is
-// held to the decoder: every kind of block it makes must come back close to the pixels it was given.
+// The ASTC encoder and its decoder, for blocks of every side the build uses. The decoder is held to what a GPU showed
+// for the same blocks; the encoder is held to the decoder: every kind of block it makes must come back close to the
+// pixels it was given.
 import { expect, test } from "bun:test";
 import { PINNED, builtBlocks, decodedSum } from "../fixtures/astc.ts";
 import { type AstcKind, astcBlockCount, decodeAstc, decodeAstcBlock, describeAstcBlock, encodeAstc, encodeAstcBlocks, iseBits, iseDecode, iseEncode } from "../../tools/pack/astc.ts";
@@ -26,9 +27,9 @@ function picture(size: number, at: (x: number, y: number) => number[]): Uint8Arr
 
 /** What encoding and decoding does to a picture: the decibels of what came back, the largest difference in any
  *  channel, and the kinds of block that were used. A normal map is compared as the two channels it keeps. */
-function through(rgba: Uint8Array, size: number, kind: AstcKind): { db: number; worst: number; kinds: Set<string> } {
-  const blocks = encodeAstc(rgba, size, size, kind);
-  const back = decodeAstc(blocks, size, size, kind);
+function through(rgba: Uint8Array, size: number, kind: AstcKind, side = 4): { db: number; worst: number; kinds: Set<string> } {
+  const blocks = encodeAstc(rgba, size, size, kind, side);
+  const back = decodeAstc(blocks, size, size, kind, side);
   let squares = 0;
   let worst = 0;
   for (let i = 0; i < size * size * 4; i += 4) {
@@ -39,7 +40,7 @@ function through(rgba: Uint8Array, size: number, kind: AstcKind): { db: number; 
     }
   }
   const kinds = new Set<string>();
-  for (let at = 0; at < blocks.length; at += 16) kinds.add(describeAstcBlock(blocks, at).replace(/ weights.*/, ""));
+  for (let at = 0; at < blocks.length; at += 16) kinds.add(describeAstcBlock(blocks, at, side).replace(/ weights.*/, ""));
   return { db: 10 * Math.log10((255 * 255) / (squares / (size * size * 4))), worst, kinds };
 }
 
@@ -69,10 +70,11 @@ test("the integer sequence encoding gives back every value of every range", () =
 });
 
 test("the decoder reads blocks the way a GPU was seen to", () => {
-  // These blocks cover every grid, weight range, number of planes and partitions and endpoint mode of a 4 by 4
-  // block. `bun run probe -- --textured` shows each of them to a GPU, which agreed with our decoder on every pixel
-  // when this sum was pinned. After any change to the decoder, run it again.
-  expect(decodedSum(builtBlocks(PINNED.seed, PINNED.each))).toBe("7ad59271");
+  // These blocks cover every grid, weight range, number of planes and partitions and endpoint mode of a block of
+  // each side. `bun run probe -- --textured` shows each of them to a GPU, which agreed with our decoder on every
+  // pixel when these sums were pinned. After any change to the decoder, run it again.
+  const sums = [4, 5, 6, 8].map((side) => decodedSum(builtBlocks(PINNED.seed, PINNED.each, side), side));
+  expect(sums).toEqual(["7ad59271", "8d816c52", "2caa4728", "297dcb74"]);
 });
 
 test("a block the format does not allow decodes to the error colour", () => {
@@ -91,19 +93,21 @@ test("a block the format does not allow decodes to the error colour", () => {
     const block = new Uint8Array(16);
     block.set(bytes);
     for (const srgb of [false, true]) {
-      expect([what, decodeAstcBlock(block, 0, srgb, out)]).toEqual([what, false]);
+      expect([what, decodeAstcBlock(block, 0, 4, srgb, out)]).toEqual([what, false]);
       expect([what, Array.from(out)]).toEqual([what, magenta]);
     }
   }
 });
 
 test("a block of one colour comes back exactly", () => {
-  for (const kind of ["srgb", "linear"] as const) {
-    for (const colour of [[0, 0, 0, 255], [255, 255, 255, 255], [1, 128, 254, 255], [200, 17, 99, 3], [77, 77, 77, 0]]) {
-      const rgba = picture(8, () => colour);
-      const blocks = encodeAstc(rgba, 8, 8, kind);
-      expect(describeAstcBlock(blocks, 0)).toBe("solid");
-      expect(Array.from(decodeAstc(blocks, 8, 8, kind))).toEqual(Array.from(rgba));
+  for (const side of [4, 5, 6, 8]) {
+    for (const kind of ["srgb", "linear"] as const) {
+      for (const colour of [[0, 0, 0, 255], [255, 255, 255, 255], [1, 128, 254, 255], [200, 17, 99, 3], [77, 77, 77, 0]]) {
+        const rgba = picture(8, () => colour);
+        const blocks = encodeAstc(rgba, 8, 8, kind, side);
+        expect(describeAstcBlock(blocks, 0, side)).toBe("solid");
+        expect(Array.from(decodeAstc(blocks, 8, 8, kind, side))).toEqual(Array.from(rgba));
+      }
     }
   }
 });
@@ -148,6 +152,36 @@ test("every kind of block the encoder makes comes back close to its pixels", () 
   for (const kind of wanted) expect([String(kind), [...seen].some((k) => kind.test(k))]).toEqual([String(kind), true]);
 });
 
+test("larger blocks come back as close as their bits allow", () => {
+  // Slopes, edges and a rippled normal map as above, each tile a block of 5, 6 or 8: fewer bits a pixel, so the floors
+  // are lower, and the weights are on grids coarser than the pixels.
+  const seen = new Set<string>();
+  for (const side of [5, 6, 8]) {
+    const below = dice(0xa57c + side);
+    const size = side * 6;
+    const tile = (x: number, y: number): number => Math.floor(x / side) + Math.floor(y / side) * 6;
+    const [u, v] = [(x: number): number => x % side, (y: number): number => y % side];
+    const colours = Array.from({ length: 108 }, () => [below(256), below(256), below(256), below(256)]);
+    const mix = (a: number[], b: number[], t: number): number[] => a.map((c, i) => c + (b[i]! - c) * t);
+    const slope = (x: number, y: number): number => (u(x) + v(y) * (tile(x, y) % 3)) / (side - 1 + (side - 1) * (tile(x, y) % 3));
+    const opaque = (c: number[]): number[] => [c[0]!, c[1]!, c[2]!, 255];
+    const slopes = (x: number, y: number): number[] => mix(colours[tile(x, y)]!, colours[tile(x, y) + 36]!, slope(x, y));
+    const edge = (x: number, y: number): boolean => u(x) * 2 + v(y) > side + 1;
+    const check = (what: string, rgba: Uint8Array, kind: AstcKind, db: number, worst: number): void => {
+      const got = through(rgba, size, kind, side);
+      for (const k of got.kinds) seen.add(`${side} ${k}`);
+      expect([side, what, got.db >= db, got.worst <= worst]).toEqual([side, what, true, true]);
+    };
+    check("slopes", picture(size, (x, y) => opaque(slopes(x, y))), "srgb", 48, 9);
+    check("slopes with alpha", picture(size, slopes), "linear", 46, 8);
+    // Two flat colours are two points on one line, exact where a weight can sit on every pixel.
+    check("two colours", picture(size, (x, y) => opaque(colours[tile(x, y) + (edge(x, y) ? 36 : 0)]!)), "srgb", side === 8 ? 55 : Infinity, side === 8 ? 1 : 0);
+    check("normals", picture(size, (x, y) => [128 + 90 * Math.sin(x / 5), 128 + 90 * Math.cos(y / 3 + x / 9), 255, 255]), "normal", 39, 12);
+  }
+  // Grids as fine as the block and coarser, two planes, and partitions on a grid coarser than the block.
+  for (const kind of [/^5 1 part rgb 5x5$/, /^6 1 part rgb 6x6$/, /^8 1 part rgb 8x8$/, /^[568] 1 part rgba? [2-4]x[2-4]$/, /^[568] 1 part la two planes/, /^8 2 parts rgb( offset)? [2-7]x[2-7]$/]) expect([String(kind), [...seen].some((k) => kind.test(k))]).toEqual([String(kind), true]);
+});
+
 test("a mask of pure colours comes back within two levels", () => {
   // A mask gives each of three colour regions a channel to itself, and black is undyed. Here regions grow from
   // scattered points, so borders run at every angle and three regions meet in many blocks.
@@ -159,8 +193,8 @@ test("a mask of pure colours comes back within two levels", () => {
     for (const s of seeds) if ((s[0]! - x) ** 2 + (s[1]! - y) ** 2 < (nearest[0]! - x) ** 2 + (nearest[1]! - y) ** 2) nearest = s;
     return pure[nearest[2]!]!;
   });
-  const blocks = encodeAstc(rgba, 96, 96, "linear");
-  const back = decodeAstc(blocks, 96, 96, "linear");
+  const blocks = encodeAstc(rgba, 96, 96, "linear", 4);
+  const back = decodeAstc(blocks, 96, 96, "linear", 4);
   let worst = 0;
   let three = 0;
   for (let i = 0; i < back.length; i++) worst = Math.max(worst, Math.abs(back[i]! - rgba[i]!));
@@ -181,30 +215,36 @@ test("a mask of pure colours comes back within two levels", () => {
 
 test("pictures down to one pixel across are padded to whole blocks", () => {
   const below = dice(0x51de);
-  for (const [w, h] of [[1, 1], [2, 2], [3, 5], [5, 4], [6, 7], [9, 1]] as const) {
-    const rgba = new Uint8Array(w * h * 4);
-    for (let i = 0; i < w * h; i++) rgba.set([40 + (i % w) * 20, 90 + Math.floor(i / w) * 15, below(8) + 100, 255], i * 4);
-    const blocks = encodeAstc(rgba, w, h, "srgb");
-    expect(blocks.length).toBe(astcBlockCount(w, h) * 16);
-    expect(blocks.length).toBe(Math.ceil(w / 4) * Math.ceil(h / 4) * 16);
-    const back = decodeAstc(blocks, w, h, "srgb");
-    let worst = 0;
-    for (let i = 0; i < back.length; i++) worst = Math.max(worst, Math.abs(back[i]! - rgba[i]!));
-    expect(worst).toBeLessThanOrEqual(4);
+  for (const side of [4, 5, 6, 8]) {
+    for (const [w, h] of [[1, 1], [2, 2], [3, 5], [5, 4], [6, 7], [9, 1]] as const) {
+      const rgba = new Uint8Array(w * h * 4);
+      for (let i = 0; i < w * h; i++) rgba.set([40 + (i % w) * 20, 90 + Math.floor(i / w) * 15, below(8) + 100, 255], i * 4);
+      const blocks = encodeAstc(rgba, w, h, "srgb", side);
+      expect(blocks.length).toBe(astcBlockCount(w, h, side) * 16);
+      expect(blocks.length).toBe(Math.ceil(w / side) * Math.ceil(h / side) * 16);
+      const back = decodeAstc(blocks, w, h, "srgb", side);
+      let worst = 0;
+      for (let i = 0; i < back.length; i++) worst = Math.max(worst, Math.abs(back[i]! - rgba[i]!));
+      // Red runs across and green down: two slopes, which a larger block holds with fewer bits for each.
+      expect([side, w, h, worst <= (side === 4 ? 4 : 8)]).toEqual([side, w, h, true]);
+    }
   }
 });
 
 test("the same pixels give the same bytes", () => {
   const below = dice(0xb17e5);
   const rgba = picture(40, (x, y) => [x * 6 + below(30), y * 5 + below(60), ((x >> 3) + (y >> 3)) % 2 ? 200 : 40 + below(20), y > 20 ? 255 : 128 + below(100)]);
-  const whole = encodeAstc(rgba, 40, 40, "srgb");
-  expect(Array.from(encodeAstc(rgba, 40, 40, "srgb"))).toEqual(Array.from(whole));
-  // A range of blocks is the same bytes the whole picture has there, whatever was encoded before it.
-  const part = new Uint8Array(30 * 16);
-  encodeAstcBlocks(rgba, 40, 40, "srgb", 55, 30, part);
-  expect(Array.from(part)).toEqual(Array.from(whole.subarray(55 * 16, 85 * 16)));
-  // And the same bytes on any machine: this sum changes only when the encoder's choices do.
-  let sum = 0x811c9dc5;
-  for (const kind of ["srgb", "linear", "normal"] as const) for (const b of encodeAstc(rgba, 40, 40, kind)) sum = Math.imul(sum ^ b, 0x01000193);
-  expect((sum >>> 0).toString(16)).toBe("55b08dc0");
+  const sums = [4, 5, 6, 8].map((side) => {
+    const whole = encodeAstc(rgba, 40, 40, "srgb", side);
+    expect(Array.from(encodeAstc(rgba, 40, 40, "srgb", side))).toEqual(Array.from(whole));
+    // A range of blocks is the same bytes the whole picture has there, whatever was encoded before it.
+    const part = new Uint8Array(15 * 16);
+    encodeAstcBlocks(rgba, 40, 40, "srgb", side, 7, 15, part);
+    expect(Array.from(part)).toEqual(Array.from(whole.subarray(7 * 16, 22 * 16)));
+    let sum = 0x811c9dc5;
+    for (const kind of ["srgb", "linear", "normal"] as const) for (const b of encodeAstc(rgba, 40, 40, kind, side)) sum = Math.imul(sum ^ b, 0x01000193);
+    return (sum >>> 0).toString(16);
+  });
+  // And the same bytes on any machine: these sums change only when the encoder's choices do.
+  expect(sums).toEqual(["55b08dc0", "7a3ca2b6", "65450937", "a30529e2"]);
 });

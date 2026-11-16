@@ -1,13 +1,16 @@
-// ASTC with 4 by 4 pixel blocks, low dynamic range: an encoder, and the decoder that checks it. Both are written from
-// the ASTC chapter of the Khronos Data Format Specification, which has the same text and tables as the extension
-// KHR_texture_compression_astc_ldr. The section numbers cited here, C.2.x, are the extension's.
+// ASTC, low dynamic range, with square blocks of 4, 5, 6 or 8 pixels a side: an encoder, and the decoder that checks
+// it. Both are written from the ASTC chapter of the Khronos Data Format Specification, which has the same text and
+// tables as the extension KHR_texture_compression_astc_ldr. The section numbers cited here, C.2.x, are the extension's.
 //
-// A block is 16 bytes. It holds one or more pairs of end colours, and a weight for each pixel that says where between
-// its pair the pixel lies. How the 128 bits are shared out between weights and colours is chosen block by block.
+// A block is 16 bytes whatever its side. It holds one or more pairs of end colours, and weights on a grid no finer
+// than the block's pixels that say where between its pair each pixel lies. How the 128 bits are shared out between
+// weights and colours is chosen block by block.
 //
 // The encoder fits lines through the block's colours, estimates the error of every way of spending the bits, runs the
 // most promising ones for real, and keeps the one whose decoded pixels are closest. It works in integers and in
 // float operations that are exact everywhere, so the same pixels give the same bytes on any machine.
+
+import { ASTC_BLOCKS } from "../../shared/pack/texture.ts";
 
 /** How the texture will be read. `srgb` is base colour, decoded through the sRGB format. `normal` takes x from red and
  *  y from green, and stores x as luminance and y as alpha. */
@@ -313,6 +316,76 @@ for (let range = 0; range <= LAST_RANGE; range++) {
   WEIGHT_NEAR.push(near);
 }
 
+// ---- Block modes (C.2.10) ----
+
+// What the last block mode read says: the weight grid, whether there are two planes, and the weight range.
+let modeW = 0;
+let modeH = 0;
+let modeDual = 0;
+let modeRange = 0;
+
+/** Reads a block mode, table C.2.8, into modeW and the rest. False for a reserved mode. */
+function readMode(mode: number): boolean {
+  if ((mode & 3) !== 0) {
+    const r = ((mode & 3) << 1) | ((mode >> 4) & 1);
+    const A = (mode >> 5) & 3;
+    const B = (mode >> 7) & 3;
+    switch ((mode >> 2) & 3) {
+      case 0:
+        modeW = B + 4;
+        modeH = A + 2;
+        break;
+      case 1:
+        modeW = B + 8;
+        modeH = A + 2;
+        break;
+      case 2:
+        modeW = A + 2;
+        modeH = B + 8;
+        break;
+      default:
+        if (B & 2) {
+          modeW = (B & 1) + 2;
+          modeH = A + 2;
+        } else {
+          modeW = A + 2;
+          modeH = (B & 1) + 6;
+        }
+    }
+    modeDual = (mode >> 10) & 1;
+    modeRange = r - 2 + 6 * ((mode >> 9) & 1);
+    return true;
+  }
+  // With its low two bits clear the range is in bits 2 to 4, and the grid is 6 or more on a side.
+  if ((mode & 15) === 0) return false;
+  const r = ((mode >> 1) & 6) | ((mode >> 4) & 1);
+  const A = (mode >> 5) & 3;
+  let high = (mode >> 9) & 1;
+  modeDual = (mode >> 10) & 1;
+  switch ((mode >> 7) & 3) {
+    case 0:
+      modeW = 12;
+      modeH = A + 2;
+      break;
+    case 1:
+      modeW = A + 2;
+      modeH = 12;
+      break;
+    case 2:
+      // Bits 9 and 10 are the height here, so this row has one plane and the lower ranges only.
+      modeW = A + 6;
+      modeH = ((mode >> 9) & 3) + 6;
+      modeDual = high = 0;
+      break;
+    default:
+      if (A > 1) return false;
+      modeW = A ? 10 : 6;
+      modeH = A ? 6 : 10;
+  }
+  modeRange = r - 2 + 6 * high;
+  return true;
+}
+
 // ---- Partitions (C.2.21) ----
 
 function hash52(p: number): number {
@@ -329,9 +402,9 @@ function hash52(p: number): number {
   return p >>> 0;
 }
 
-/** The partition of each of a block's 16 pixels, for a pattern index and a number of partitions. A block this small
- *  doubles its coordinates, and has no z. */
-function partitionOf(index: number, parts: number, out: Uint8Array): void {
+/** The partition of each pixel of a block `side` across, rows top to bottom, for a pattern index and a number of
+ *  partitions. A block of fewer than 31 pixels doubles its coordinates. There is no z. */
+function partitionOf(index: number, parts: number, side: number, out: Uint8Array): void {
   const seed = index + (parts - 1) * 1024;
   const r = hash52(seed);
   const s = [r & 15, (r >>> 4) & 15, (r >>> 8) & 15, (r >>> 12) & 15, (r >>> 16) & 15, (r >>> 20) & 15, (r >>> 24) & 15, (r >>> 28) & 15];
@@ -345,9 +418,10 @@ function partitionOf(index: number, parts: number, out: Uint8Array): void {
     sh2 = seed & 2 ? 4 : 5;
   }
   for (let k = 0; k < 8; k++) s[k] = (s[k]! * s[k]!) >> (k & 1 ? sh2 : sh1);
-  for (let i = 0; i < 16; i++) {
-    const x = (i & 3) << 1;
-    const y = (i >> 2) << 1;
+  const small = side * side < 31 ? 1 : 0;
+  for (let i = 0; i < side * side; i++) {
+    const x = (i % side) << small;
+    const y = ((i / side) | 0) << small;
     const a = (s[0]! * x + s[1]! * y + (r >>> 14)) & 63;
     const b = (s[2]! * x + s[3]! * y + (r >>> 10)) & 63;
     const c = parts < 3 ? 0 : (s[4]! * x + s[5]! * y + (r >>> 6)) & 63;
@@ -356,96 +430,191 @@ function partitionOf(index: number, parts: number, out: Uint8Array): void {
   }
 }
 
-/** PARTITION[parts][index] is the partition of each pixel. Index 0 of the outer array is one partition. */
-const PARTITION: Uint8Array[][] = [[], [new Uint8Array(16)], [], [], []];
-/** The patterns of two and of three partitions that differ from one another and leave no partition empty: the index
- *  of each, and a 16-bit mask of the pixels of each of its partitions. */
-const DISTINCT: { index: number[]; masks: number[] }[] = [];
-
-for (let parts = 2; parts <= 4; parts++) {
-  const seen = new Set<string>();
-  const distinct = { index: [] as number[], masks: [] as number[] };
-  for (let index = 0; index < 1024; index++) {
-    const row = new Uint8Array(16);
-    partitionOf(index, parts, row);
-    PARTITION[parts]!.push(row);
-    const masks = [0, 0, 0, 0];
-    for (let i = 0; i < 16; i++) masks[row[i]]! |= 1 << i;
-    const used = masks.slice(0, parts);
-    const key = used.slice().sort((a, b) => a - b).join();
-    if (used.includes(0) || seen.has(key)) continue;
-    seen.add(key);
-    distinct.index.push(index);
-    distinct.masks.push(...used);
-  }
-  DISTINCT[parts] = distinct;
+/** Set bits in a 32-bit number. */
+function pop32(x: number): number {
+  x -= (x >>> 1) & 0x55555555;
+  x = (x & 0x33333333) + ((x >>> 2) & 0x33333333);
+  return Math.imul((x + (x >>> 4)) & 0x0f0f0f0f, 0x01010101) >>> 24;
 }
 
-// ---- Weight grids (C.2.18) ----
+// ---- Footprints: weight grids (C.2.18) and what each block side needs ----
 
-/** The weight grids a 4 by 4 block can have. The first stores a weight for every pixel. */
-const GRIDS: readonly (readonly [number, number])[] = [[4, 4], [4, 3], [3, 4], [4, 2], [2, 4], [3, 3], [3, 2], [2, 3], [2, 2]];
-/** For each grid and each pixel: the four stored weights it blends, and sixteenths of each. */
-const GRID_AT: Uint8Array[] = [];
-const GRID_BY: Uint8Array[] = [];
-/** For each grid and each stored weight, the pixels it reaches. */
-const GRID_REACH: Uint8Array[][] = [];
-/** For each grid, the matrix that turns 16 wanted pixel weights into the stored weights that come closest to them. */
-const GRID_INVERSE: Float64Array[] = [];
-
-function gridOf(w: number, h: number): number {
-  return GRIDS.findIndex((g) => g[0] === w && g[1] === h);
+/** What blocks of one side need, made the first time a block that size is read or written. */
+interface Footprint {
+  side: number;
+  pixels: number;
+  /** 32-bit words in a mask of the pixels. */
+  words: number;
+  /** partition[parts][index]: the partition of each pixel. Index 0 of the outer array is one partition. */
+  partition: Uint8Array[][];
+  /** The patterns of two and of three partitions that differ from one another and leave no partition empty: the index
+   *  of each, and a mask of the pixels of each of its partitions, `words` to a mask. */
+  distinct: { index: number[]; masks: Int32Array }[];
+  /** Every weight grid a block mode can give this side, the full one first. */
+  grids: (readonly [number, number])[];
+  /** For each grid and each pixel: the four stored weights it blends, and sixteenths of each. */
+  at: Uint8Array[];
+  by: Uint8Array[];
+  /** For each grid and each stored weight, the pixels it reaches. */
+  reach: Uint8Array[][];
+  /** For each grid of a 4 by 4 block, the matrix that turns the wanted weights of the pixels into the stored weights
+   *  that come closest. Larger blocks fit rows and then columns with `across`. */
+  inverse: Float64Array[];
+  /** The same for a row of pixels and a row of a grid `n` wide, at `n`. */
+  across: Float64Array[];
+  /** For each grid, the grids at least as wide and as tall, which fit any weights at least as closely, or nearly. */
+  over: number[][];
+  /** The block mode for a grid, a weight range and one or two planes, at (grid * 12 + range) * 2 + planes - 1, or -1. */
+  mode: Int16Array;
+  /** See CONFIGS below. */
+  configs: Int32Array[][];
 }
 
-for (const [N, M] of GRIDS) {
-  const at = new Uint8Array(64);
-  const by = new Uint8Array(64);
-  const count = N * M;
-  for (let i = 0; i < 16; i++) {
-    // A block 4 wide has the scale floor((1024 + 2) / 3).
-    const gs = (342 * (i & 3) * (N - 1) + 32) >> 6;
-    const gt = (342 * (i >> 2) * (M - 1) + 32) >> 6;
-    const fs = gs & 15;
-    const ft = gt & 15;
-    const v0 = (gs >> 4) + (gt >> 4) * N;
-    const w11 = (fs * ft + 8) >> 4;
-    const factors = [16 - fs - ft + w11, fs - w11, ft - w11, w11];
-    const places = [v0, v0 + 1, v0 + N, v0 + N + 1];
-    for (let k = 0; k < 4; k++) {
-      by[i * 4 + k] = factors[k]!;
-      at[i * 4 + k] = factors[k]! > 0 ? places[k]! : 0;
-    }
-  }
-  GRID_AT.push(at);
-  GRID_BY.push(by);
-  GRID_REACH.push(Array.from({ length: count }, (_, j) => Uint8Array.from([...Array(16).keys()].filter((i) => [0, 1, 2, 3].some((k) => by[i * 4 + k] > 0 && at[i * 4 + k] === j)))));
-  // Least squares: solve (A' A) X = A', where row i of A holds pixel i's sixteenths.
-  const A = new Float64Array(16 * count);
-  for (let i = 0; i < 16; i++) for (let k = 0; k < 4; k++) A[i * count + at[i * 4 + k]] += by[i * 4 + k] / 16;
-  const m = new Float64Array(count * (count + 16));
-  const wide = count + 16;
+/** The matrix that turns `rows` wanted values into the `count` that come closest through A, which is `rows` by
+ *  `count`: the solution X of (A' A) X = A', `count` by `rows`. */
+function leastSquares(A: Float64Array, rows: number, count: number): Float64Array {
+  const wide = count + rows;
+  const m = new Float64Array(count * wide);
   for (let r = 0; r < count; r++) {
-    for (let c = 0; c < count; c++) for (let i = 0; i < 16; i++) m[r * wide + c] += A[i * count + r] * A[i * count + c];
-    for (let i = 0; i < 16; i++) m[r * wide + count + i] = A[i * count + r];
+    for (let c = 0; c < count; c++) for (let i = 0; i < rows; i++) m[r * wide + c] += A[i * count + r]! * A[i * count + c]!;
+    for (let i = 0; i < rows; i++) m[r * wide + count + i] = A[i * count + r]!;
   }
   for (let c = 0; c < count; c++) {
     let pivot = c;
-    for (let r = c + 1; r < count; r++) if (Math.abs(m[r * wide + c]) > Math.abs(m[pivot * wide + c])) pivot = r;
+    for (let r = c + 1; r < count; r++) if (Math.abs(m[r * wide + c]!) > Math.abs(m[pivot * wide + c]!)) pivot = r;
     for (let k = 0; k < wide; k++) {
-      const swap = m[c * wide + k];
-      m[c * wide + k] = m[pivot * wide + k];
+      const swap = m[c * wide + k]!;
+      m[c * wide + k] = m[pivot * wide + k]!;
       m[pivot * wide + k] = swap;
     }
-    const d = m[c * wide + c];
-    for (let k = 0; k < wide; k++) m[c * wide + k] /= d;
+    const d = m[c * wide + c]!;
+    for (let k = 0; k < wide; k++) m[c * wide + k]! /= d;
     for (let r = 0; r < count; r++) {
-      const f = m[r * wide + c];
-      if (r !== c && f !== 0) for (let k = 0; k < wide; k++) m[r * wide + k] -= f * m[c * wide + k];
+      const f = m[r * wide + c]!;
+      if (r !== c && f !== 0) for (let k = 0; k < wide; k++) m[r * wide + k]! -= f * m[c * wide + k]!;
     }
   }
-  const inverse = new Float64Array(count * 16);
-  for (let r = 0; r < count; r++) for (let i = 0; i < 16; i++) inverse[r * 16 + i] = m[r * wide + count + i];
-  GRID_INVERSE.push(inverse);
+  const inv = new Float64Array(count * rows);
+  for (let r = 0; r < count; r++) for (let i = 0; i < rows; i++) inv[r * rows + i] = m[r * wide + count + i]!;
+  return inv;
+}
+
+/** The grids of a 4 by 4 block, in the order its encoder was tuned with. */
+const GRIDS_4: readonly (readonly [number, number])[] = [[4, 4], [4, 3], [3, 4], [4, 2], [2, 4], [3, 3], [3, 2], [2, 3], [2, 2]];
+
+const footprints = new Map<number, Footprint>();
+
+function footprint(side: number): Footprint {
+  const had = footprints.get(side);
+  if (had) return had;
+  if (!ASTC_BLOCKS.includes(side)) throw new Error(`astc: blocks ${side} pixels across are not one of ${ASTC_BLOCKS.join(", ")}`);
+  const pixels = side * side;
+  const words = (pixels + 31) >> 5;
+  const partition: Uint8Array[][] = [[], [new Uint8Array(pixels)], [], [], []];
+  const distinct: Footprint["distinct"] = [];
+  for (let parts = 2; parts <= 4; parts++) {
+    const seen = new Set<string>();
+    const index: number[] = [];
+    const masks: number[] = [];
+    for (let k = 0; k < 1024; k++) {
+      const row = new Uint8Array(pixels);
+      partitionOf(k, parts, side, row);
+      partition[parts]!.push(row);
+      const m = new Int32Array(parts * words);
+      for (let i = 0; i < pixels; i++) m[row[i]! * words + (i >> 5)] |= 1 << (i & 31);
+      const used = Array.from({ length: parts }, (_, p) => Array.from(m.subarray(p * words, (p + 1) * words)));
+      const key = used.map((w) => w.join(".")).sort().join();
+      if (used.some((w) => w.every((v) => v === 0)) || seen.has(key)) continue;
+      seen.add(key);
+      index.push(k);
+      masks.push(...m);
+    }
+    distinct[parts] = { index, masks: Int32Array.from(masks) };
+  }
+
+  // Every grid some mode gives, no wider or taller than the block and of 64 weights at most, and its modes.
+  const shapes = new Map<number, number[]>();
+  for (let mode = 0; mode < 2048; mode++) {
+    if ((mode & 0x1ff) === 0x1fc || !readMode(mode) || modeW > side || modeH > side || modeW * modeH > 64) continue;
+    const key = modeW * 16 + modeH;
+    if (!shapes.has(key)) shapes.set(key, new Array(WEIGHT_RANGES * 2).fill(-1));
+    const modes = shapes.get(key)!;
+    if (modes[modeRange * 2 + modeDual] === -1) modes[modeRange * 2 + modeDual] = mode;
+  }
+  const grids = side === 4 ? GRIDS_4.slice() : [...shapes.keys()].map((k) => [k >> 4, k & 15] as const).sort((a, b) => b[0] * b[1] - a[0] * a[1] || b[0] - a[0]);
+  if (grids[0]![0] !== side || grids[0]![1] !== side || grids.length !== shapes.size) throw new Error(`astc: the grids of a block ${side} across are not as expected`);
+  const mode = new Int16Array(grids.length * WEIGHT_RANGES * 2);
+  grids.forEach(([w, h], g) => shapes.get(w * 16 + h)!.forEach((m, k) => (mode[g * WEIGHT_RANGES * 2 + k] = m)));
+
+  const at: Uint8Array[] = [];
+  const by: Uint8Array[] = [];
+  const reach: Uint8Array[][] = [];
+  const inverse: Float64Array[] = [];
+  // The scale from a pixel's place to the grid's, C.2.18: floor((1024 + side / 2) / (side - 1)).
+  const ds = ((1024 + (side >> 1)) / (side - 1)) | 0;
+  for (const [N, M] of grids) {
+    const gAt = new Uint8Array(pixels * 4);
+    const gBy = new Uint8Array(pixels * 4);
+    const count = N * M;
+    for (let i = 0; i < pixels; i++) {
+      const gs = (ds * (i % side) * (N - 1) + 32) >> 6;
+      const gt = (ds * ((i / side) | 0) * (M - 1) + 32) >> 6;
+      const fs = gs & 15;
+      const ft = gt & 15;
+      const v0 = (gs >> 4) + (gt >> 4) * N;
+      const w11 = (fs * ft + 8) >> 4;
+      const factors = [16 - fs - ft + w11, fs - w11, ft - w11, w11];
+      const places = [v0, v0 + 1, v0 + N, v0 + N + 1];
+      for (let k = 0; k < 4; k++) {
+        gBy[i * 4 + k] = factors[k]!;
+        gAt[i * 4 + k] = factors[k]! > 0 ? places[k]! : 0;
+      }
+    }
+    at.push(gAt);
+    by.push(gBy);
+    reach.push(Array.from({ length: count }, (_, j) => Uint8Array.from([...Array(pixels).keys()].filter((i) => [0, 1, 2, 3].some((k) => gBy[i * 4 + k]! > 0 && gAt[i * 4 + k] === j)))));
+    // Row i of A holds pixel i's sixteenths.
+    const A = new Float64Array(pixels * count);
+    for (let i = 0; i < pixels; i++) for (let k = 0; k < 4; k++) A[i * count + gAt[i * 4 + k]!] += gBy[i * 4 + k]! / 16;
+    inverse.push(side === 4 ? leastSquares(A, pixels, count) : new Float64Array(0));
+  }
+  // The same along one row of pixels, for grids 2 to `side` wide.
+  const across = Array.from({ length: side + 1 }, (_, n) => {
+    if (n < 2) return new Float64Array(0);
+    const A = new Float64Array(side * n);
+    for (let x = 0; x < side; x++) {
+      const gs = (ds * x * (n - 1) + 32) >> 6;
+      A[x * n + (gs >> 4)] += (16 - (gs & 15)) / 16;
+      if (gs & 15) A[x * n + (gs >> 4) + 1] += (gs & 15) / 16;
+    }
+    return leastSquares(A, side, n);
+  });
+  const over = grids.map(([w, h], g) => grids.flatMap(([w2, h2], g2) => (g2 !== g && w2 >= w && h2 >= h ? [g2] : [])));
+  const fp: Footprint = { side, pixels, words, partition, distinct, grids, at, by, reach, inverse, across, over, mode, configs: [] };
+  for (let parts = 1; parts <= 3; parts++) {
+    for (let channels = 1; channels <= 4; channels++) {
+      for (let planes = 1; planes <= 2; planes++) {
+        // Two planes need two channels and, here, one partition. A 4 by 4 block tries smaller grids with one partition
+        // only; a larger one cannot spend a weight on every pixel and still hold more than one pair of colours.
+        const usable = planes === 1 || (channels > 1 && parts === 1);
+        fp.configs.push(grids.map((_, g) => (usable && (g === 0 || parts === 1 || side > 4) ? configsFor(fp, parts, channels, planes, g) : new Int32Array(0))));
+      }
+    }
+  }
+  footprints.set(side, fp);
+  return fp;
+}
+
+/** The weight grids a block `side` across can have, and for each grid, weight range and number of planes the block
+ *  mode that says so, or -1: for tests that build blocks bit by bit. */
+export function astcModes(side: number): { grids: readonly (readonly [number, number])[]; mode: (g: number, range: number, planes: number) => number } {
+  const fp = footprint(side);
+  return { grids: fp.grids, mode: (g, range, planes) => fp.mode[(g * WEIGHT_RANGES + range) * 2 + planes - 1]! };
+}
+
+/** The grid of a footprint that is `w` by `h`, or -1. */
+function gridOf(fp: Footprint, w: number, h: number): number {
+  return fp.grids.findIndex((g) => g[0] === w && g[1] === h);
 }
 
 // ---- End colours (C.2.14) ----
@@ -574,7 +743,7 @@ const info: AstcBlockInfo = { valid: false, solid: false, partitions: 0, pattern
 const dBit = new Uint8Array(128);
 const dStream = new Uint8Array(192);
 const dValues = new Int32Array(32);
-const dWeights = new Int32Array(40);
+const dWeights = new Int32Array(72);
 const dEnds = new Int32Array(32);
 const dModes = new Int32Array(4);
 
@@ -585,26 +754,28 @@ function field(at: number, count: number): number {
 }
 
 /** The error colour, C.2.5: opaque magenta. */
-function invalid(out: Uint16Array): boolean {
-  for (let i = 0; i < 64; i += 4) {
+function invalid(out: Uint16Array, pixels: number): boolean {
+  for (let i = 0; i < pixels * 4; i += 4) {
     out[i] = out[i + 2] = out[i + 3] = 0xffff;
     out[i + 1] = 0;
   }
   return false;
 }
 
-/** Decodes the block at `blocks[at]` to 16 pixels of red, green, blue and alpha as the 16-bit results of C.2.19, rows
- *  top to bottom. Returns false, with the error colour in `out`, for a block the format does not allow. It also
- *  returns false for a block with a high dynamic range mode in some partition: those pixels are the error colour and
- *  the others are decoded, as C.2.24 asks of this profile.
+/** Decodes the block at `blocks[at]`, `side` pixels across, to its pixels' red, green, blue and alpha as the 16-bit
+ *  results of C.2.19, rows top to bottom. Returns false, with the error colour in `out`, for a block the format does
+ *  not allow. It also returns false for a block with a high dynamic range mode in some partition: those pixels are the
+ *  error colour and the others are decoded, as C.2.24 asks of this profile.
  *
- *  This reads everything a 4 by 4 low dynamic range block can be: every weight grid and range, one or two planes,
- *  one to four partitions with one mode or a mode each, all ten endpoint modes, and void-extent blocks.
+ *  This reads everything a low dynamic range block can be: every weight grid and range, one or two planes, one to four
+ *  partitions with one mode or a mode each, all ten endpoint modes, and void-extent blocks.
  *
  *  `srgb` chooses how an end colour's 8 bits become 16 before they are blended: with 0x80 under them, as the sRGB
  *  format does, or repeated. The specification keeps alpha out of the first; the GPU this was checked on does not,
  *  and this follows the GPU. With `srgb` false the alpha is the specification's in either format. */
-export function decodeAstcBlock16(blocks: Uint8Array, at: number, srgb: boolean, out: Uint16Array): boolean {
+export function decodeAstcBlock16(blocks: Uint8Array, at: number, side: number, srgb: boolean, out: Uint16Array): boolean {
+  const fp = footprint(side);
+  const pixels = fp.pixels;
   for (let i = 0; i < 128; i++) dBit[i] = (blocks[at + (i >> 3)] >> (i & 7)) & 1;
   info.valid = info.solid = false;
   info.partitions = 0;
@@ -617,48 +788,20 @@ export function decodeAstcBlock16(blocks: Uint8Array, at: number, srgb: boolean,
     const t0 = field(38, 13);
     const t1 = field(51, 13);
     const none = s0 === 8191 && s1 === 8191 && t0 === 8191 && t1 === 8191;
-    if (dBit[9] || !dBit[10] || !dBit[11] || (!none && (s0 >= s1 || t0 >= t1))) return invalid(out);
-    for (let i = 0; i < 64; i++) out[i] = field(64 + (i & 3) * 16, 16);
+    if (dBit[9] || !dBit[10] || !dBit[11] || (!none && (s0 >= s1 || t0 >= t1))) return invalid(out, pixels);
+    for (let i = 0; i < pixels * 4; i++) out[i] = field(64 + (i & 3) * 16, 16);
     info.valid = info.solid = true;
     return true;
   }
-  // The block mode, table C.2.8. With its low two bits clear a mode is reserved or its grid is 6 or more across, so
-  // only the first five rows can be a 4 by 4 block's.
-  if ((mode & 3) === 0) return invalid(out);
-  const r = ((mode & 3) << 1) | ((mode >> 4) & 1);
-  const A = (mode >> 5) & 3;
-  const B = (mode >> 7) & 3;
-  let w: number;
-  let h: number;
-  switch ((mode >> 2) & 3) {
-    case 0:
-      w = B + 4;
-      h = A + 2;
-      break;
-    case 1:
-      w = B + 8;
-      h = A + 2;
-      break;
-    case 2:
-      w = A + 2;
-      h = B + 8;
-      break;
-    default:
-      if (B & 2) {
-        w = (B & 1) + 2;
-        h = A + 2;
-      } else {
-        w = A + 2;
-        h = (B & 1) + 6;
-      }
-  }
-  if (w > 4 || h > 4) return invalid(out);
-  const dual = (mode >> 10) & 1;
-  const wRange = r - 2 + 6 * ((mode >> 9) & 1);
+  if (!readMode(mode) || modeW > side || modeH > side) return invalid(out, pixels);
+  const w = modeW;
+  const h = modeH;
+  const dual = modeDual;
+  const wRange = modeRange;
   const weights = w * h * (dual + 1);
   const wBits = iseBits(wRange, weights);
   const parts = field(11, 2) + 1;
-  if (wBits < 24 || wBits > 96 || (dual && parts === 4)) return invalid(out);
+  if (weights > 64 || wBits < 24 || wBits > 96 || (dual && parts === 4)) return invalid(out, pixels);
 
   // The colour endpoint modes, C.2.11, and how many bits are left for the colours, C.2.22.
   let config = 17;
@@ -684,7 +827,7 @@ export function decodeAstcBlock16(blocks: Uint8Array, at: number, srgb: boolean,
   let values = 0;
   for (let p = 0; p < parts; p++) values += ((dModes[p] >> 2) + 1) * 2;
   const left = 128 - config - wBits;
-  if (values > 18 || left < iseBits(FIRST_COLOUR_RANGE, values)) return invalid(out);
+  if (values > 18 || left < iseBits(FIRST_COLOUR_RANGE, values)) return invalid(out, pixels);
   let cRange = LAST_RANGE;
   while (iseBits(cRange, values) > left) cRange--;
   const second = dual ? field(128 - wBits - extra - 2, 2) : -1;
@@ -707,11 +850,11 @@ export function decodeAstcBlock16(blocks: Uint8Array, at: number, srgb: boolean,
     else endColours(cem, dValues, from, dEnds, p * 8);
     from += ((cem >> 2) + 1) * 2;
   }
-  const g = gridOf(w, h);
-  const gAt = GRID_AT[g];
-  const gBy = GRID_BY[g];
-  const part = PARTITION[parts]![pattern]!;
-  for (let i = 0; i < 16; i++) {
+  const g = gridOf(fp, w, h);
+  const gAt = fp.at[g]!;
+  const gBy = fp.by[g]!;
+  const part = fp.partition[parts]![pattern]!;
+  for (let i = 0; i < pixels; i++) {
     const p = part[i];
     const e = p * 8;
     for (let c = 0; c < 4; c++) {
@@ -751,28 +894,28 @@ export function astcFloat8(c: number): number {
   return (c * 255 + 32768) >> 16;
 }
 
-const d16 = new Uint16Array(64);
+const d16 = new Uint16Array(256);
 
-/** Decodes one block to 16 pixels of 8-bit RGBA at `out[to]`, as a GPU shows it. False for a block that is not valid.
+/** Decodes one block to its pixels as 8-bit RGBA at `out[to]`, as a GPU shows them. False for a block that is not valid.
  *
  *  The specification lets a GPU make 8 bits of a 16-bit result in more than one way. This is what Apple silicon
- *  does, read from it with tools/pack/astc-gpu.ts: the sRGB format takes the top 8 bits of all four channels, and the
- *  linear format goes through a 16-bit float. A GPU that chooses otherwise differs by one level at most. */
-export function decodeAstcBlock(blocks: Uint8Array, at: number, srgb: boolean, out: Uint8Array, to = 0): boolean {
-  const ok = decodeAstcBlock16(blocks, at, srgb, d16);
-  for (let i = 0; i < 64; i++) out[to + i] = srgb ? d16[i] >> 8 : astcFloat8(d16[i]);
+ *  does, read from it with `bun run probe -- --textured`: the sRGB format takes the top 8 bits of all four channels,
+ *  and the linear format goes through a 16-bit float. A GPU that chooses otherwise differs by one level at most. */
+export function decodeAstcBlock(blocks: Uint8Array, at: number, side: number, srgb: boolean, out: Uint8Array, to = 0): boolean {
+  const ok = decodeAstcBlock16(blocks, at, side, srgb, d16);
+  for (let i = 0; i < side * side * 4; i++) out[to + i] = srgb ? d16[i] >> 8 : astcFloat8(d16[i]);
   return ok;
 }
 
 /** What the block at `blocks[at]` is. */
-export function astcBlockInfo(blocks: Uint8Array, at: number): AstcBlockInfo {
-  decodeAstcBlock16(blocks, at, false, d16);
+export function astcBlockInfo(blocks: Uint8Array, at: number, side: number): AstcBlockInfo {
+  decodeAstcBlock16(blocks, at, side, false, d16);
   return { ...info, modes: info.modes.slice() };
 }
 
 /** A line about a block, for reports: "2 parts rgb 4x4 weights 8 colours 16". */
-export function describeAstcBlock(blocks: Uint8Array, at: number): string {
-  const b = astcBlockInfo(blocks, at);
+export function describeAstcBlock(blocks: Uint8Array, at: number, side: number): string {
+  const b = astcBlockInfo(blocks, at, side);
   if (b.solid) return "solid";
   if (b.partitions === 0) return "invalid";
   const modes = b.modes.map((m) => CEM_NAMES[m] ?? "hdr");
@@ -780,23 +923,23 @@ export function describeAstcBlock(blocks: Uint8Array, at: number): string {
   return `${b.partitions} part${b.partitions > 1 ? "s" : ""} ${mode}${b.secondPlane >= 0 ? " two planes" : ""} ${b.gridWidth}x${b.gridHeight} weights ${b.weightLevels} colours ${b.colourLevels}`;
 }
 
-/** Blocks in a picture: a picture's last column and row of blocks may hang over its edge. */
-export function astcBlockCount(width: number, height: number): number {
-  return ((width + 3) >> 2) * ((height + 3) >> 2);
+/** Blocks in a picture of blocks `side` across: its last column and row of blocks may hang over its edge. */
+export function astcBlockCount(width: number, height: number, side: number): number {
+  return Math.ceil(width / side) * Math.ceil(height / side);
 }
 
 /** Decodes a picture to 8-bit RGBA. For `normal`, x comes back in red, green and blue and y in alpha. */
-export function decodeAstc(blocks: Uint8Array, width: number, height: number, kind: AstcKind): Uint8Array {
+export function decodeAstc(blocks: Uint8Array, width: number, height: number, kind: AstcKind, side: number): Uint8Array {
   const out = new Uint8Array(width * height * 4);
-  const across = (width + 3) >> 2;
-  const block = new Uint8Array(64);
+  const across = Math.ceil(width / side);
+  const block = new Uint8Array(side * side * 4);
   for (let b = 0; b * 16 < blocks.length; b++) {
-    decodeAstcBlock(blocks, b * 16, kind === "srgb", block);
-    const bx = (b % across) * 4;
-    const by = ((b / across) | 0) * 4;
-    for (let i = 0; i < 16; i++) {
-      const x = bx + (i & 3);
-      const y = by + (i >> 2);
+    decodeAstcBlock(blocks, b * 16, side, kind === "srgb", block);
+    const bx = (b % across) * side;
+    const by = ((b / across) | 0) * side;
+    for (let i = 0; i < side * side; i++) {
+      const x = bx + (i % side);
+      const y = by + ((i / side) | 0);
       if (x < width && y < height) out.set(block.subarray(i * 4, i * 4 + 4), (y * width + x) * 4);
     }
   }
@@ -805,36 +948,24 @@ export function decodeAstc(blocks: Uint8Array, width: number, height: number, ki
 
 // ---- The encoder ----
 
-/** Which ways of spending the bits are worth trying, for a number of partitions, a kind of end colour (1 to 4
+/** CONFIGS: which ways of spending the bits are worth trying, for a number of partitions, a kind of end colour (1 to 4
  *  channels), one or two planes of weights and a grid: pairs of a weight range and the colour range it leaves room
- *  for. A pair is left out when another has finer weights and colours at least as fine. */
-const CONFIGS: Int32Array[][] = [];
-
-function configsFor(parts: number, channels: number, planes: number, g: number): Int32Array {
+ *  for. A pair is left out when no block mode has it, or another has finer weights and colours at least as fine. */
+function configsFor(fp: Footprint, parts: number, channels: number, planes: number, g: number): Int32Array {
   const pairs: number[] = [];
-  const weights = GRIDS[g]![0] * GRIDS[g]![1] * planes;
+  const weights = fp.grids[g]![0] * fp.grids[g]![1] * planes;
   const values = parts * channels * 2;
   let finest = -1;
   for (let wRange = WEIGHT_RANGES - 1; wRange >= 0; wRange--) {
     const wBits = iseBits(wRange, weights);
     const left = 128 - (parts === 1 ? 17 : 29) - (planes - 1) * 2 - wBits;
-    if (wBits < 24 || wBits > 96 || values > 18 || left < iseBits(FIRST_COLOUR_RANGE, values)) continue;
+    if (fp.mode[(g * WEIGHT_RANGES + wRange) * 2 + planes - 1]! < 0 || weights > 64 || wBits < 24 || wBits > 96 || values > 18 || left < iseBits(FIRST_COLOUR_RANGE, values)) continue;
     let cRange = LAST_RANGE;
     while (iseBits(cRange, values) > left) cRange--;
     if (cRange > finest) pairs.push(wRange, cRange);
     finest = Math.max(finest, cRange);
   }
   return Int32Array.from(pairs);
-}
-
-for (let parts = 1; parts <= 3; parts++) {
-  for (let channels = 1; channels <= 4; channels++) {
-    for (let planes = 1; planes <= 2; planes++) {
-      // Two planes need two channels and, here, one partition. Smaller grids are tried with one partition only.
-      const usable = planes === 1 || (channels > 1 && parts === 1);
-      CONFIGS.push(GRIDS.map((_, g) => (usable && (g === 0 || parts === 1) ? configsFor(parts, channels, planes, g) : new Int32Array(0))));
-    }
-  }
 }
 
 /** Mean squared error of a value rounded to a range's steps, for the estimates: weights as a share of the line, and
@@ -847,10 +978,6 @@ const COLOUR_STEP = LEVELS.map((n) => (255 * 255) / ((n - 1) * (n - 1) * 12));
 const COLOUR_SHARE = 0.15;
 const SHORT_SHARE = 0.5;
 const GRID_SHARE = 0.5;
-
-/** How many bits are set in each 16-bit number. */
-const POP = new Uint8Array(65536);
-for (let i = 1; i < 65536; i++) POP[i] = POP[i >> 1] + (i & 1);
 
 /** What 8 bits a GPU shows for the sum `e0 * (64 - w) + e1 * w` of two 8-bit end values, in each format: what
  *  decodeAstcBlock does, by table. */
@@ -869,23 +996,29 @@ interface Fit {
   part: Uint8Array;
   /** The channel on the second plane, as an index into the block's channels, or -1. */
   second: number;
-  /** Ideal weights, 0 to 1: the first plane's 16, then the second's. */
+  /** Ideal weights, 0 to 1: the first plane's, one a pixel, then the second's. */
   u: Float64Array;
   /** Squared length of each line: the first plane's by partition from 0, the second's from 4. */
   len2: Float64Array;
   /** Squared error of the lines themselves. */
   base: number;
+  /** What each grid's weights miss of the ideal ones (gridCost), where it has been measured, else -1. */
+  miss: Float64Array;
 }
+
+// The footprint of the blocks being encoded, and its pixels.
+let fp: Footprint;
+let N = 16;
 
 /** Fits to reuse. 0 is one line through the block and 1 to 4 have a channel on a plane of its own. 7 is the pixels'
  *  own grouping, and from 8 on are partition patterns. */
 const fits: Fit[] = [];
-for (let i = 0; i < 12; i++) fits.push({ parts: 1, pattern: 0, part: PARTITION[1]![0]!, second: -1, u: new Float64Array(32), len2: new Float64Array(8), base: 0 });
+for (let i = 0; i < 12; i++) fits.push({ parts: 1, pattern: 0, part: new Uint8Array(64), second: -1, u: new Float64Array(128), len2: new Float64Array(8), base: 0, miss: new Float64Array(64) });
 
 // The block being encoded. Its pixels, and the channels that vary: `channels` of them, each read from `chan[c]` of
 // a pixel and weighing `cw[c]` in the error. `fx` holds them scaled by the square root of that weight.
-const px = new Int32Array(64);
-const fx = new Float64Array(64);
+const px = new Int32Array(256);
+const fx = new Float64Array(256);
 let channels = 0;
 let cem = 0;
 const chan = new Int32Array(4);
@@ -898,7 +1031,7 @@ const fSum = new Float64Array(12);
 const fCov = new Float64Array(48);
 const fMean = new Float64Array(12);
 const fDir = new Float64Array(12);
-const fAlong = new Float64Array(16);
+const fAlong = new Float64Array(64);
 const fLow = new Float64Array(8);
 const fHigh = new Float64Array(8);
 const vec = new Float64Array(4);
@@ -910,7 +1043,7 @@ function fit(f: Fit): void {
   fCount.fill(0);
   fSum.fill(0);
   fCov.fill(0);
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < N; i++) {
     const p = part[i];
     const o = i * 4;
     fCount[p]++;
@@ -958,7 +1091,7 @@ function fit(f: Fit): void {
   fLow.fill(Infinity);
   fHigh.fill(-Infinity);
   let along = 0;
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < N; i++) {
     const p = part[i];
     const o = i * 4;
     let t = 0;
@@ -974,6 +1107,7 @@ function fit(f: Fit): void {
     }
   }
   f.base = Math.max(0, spread - along);
+  f.miss.fill(-1);
   for (let p = 0; p < parts; p++) {
     const a = fHigh[p] - fLow[p];
     const b = second >= 0 ? fHigh[4 + p] - fLow[4 + p] : 0;
@@ -982,10 +1116,10 @@ function fit(f: Fit): void {
     fHigh[p] = a > 0 ? 1 / a : 0;
     fHigh[4 + p] = b > 0 ? 1 / b : 0;
   }
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < N; i++) {
     const p = part[i];
     f.u[i] = (fAlong[i] - fLow[p]) * fHigh[p];
-    f.u[16 + i] = second >= 0 ? (fx[i * 4 + second] - fLow[4 + p]) * fHigh[4 + p] : 0;
+    f.u[N + i] = second >= 0 ? (fx[i * 4 + second] - fLow[4 + p]) * fHigh[4 + p] : 0;
   }
 }
 
@@ -996,8 +1130,8 @@ function weightCost(f: Fit, wRange: number): number {
   const planes = f.second >= 0 ? 2 : 1;
   let cost = 0;
   for (let plane = 0; plane < planes; plane++) {
-    for (let i = 0; i < 16; i++) {
-      const w = u[plane * 16 + i];
+    for (let i = 0; i < N; i++) {
+      const w = u[plane * N + i];
       const d = w - near[(w * 256 + 0.5) | 0] * (1 / 64);
       cost += len2[plane * 4 + part[i]] * d * d;
     }
@@ -1005,29 +1139,58 @@ function weightCost(f: Fit, wRange: number): number {
   return cost;
 }
 
-const gridWeights = new Float64Array(16);
+const gridWeights = new Float64Array(64);
+const gridRows = new Float64Array(64);
 
-/** The error a smaller grid adds to a one-partition fit before any rounding: its best weights cannot follow the
- *  ideal ones exactly. */
+/** The weights a grid stores that come closest to the wanted weights `want[o..]`, into gridWeights. Past 4 by 4 they
+ *  are fitted along rows and then down columns, which is nearly as close and far quicker. */
+function fitGrid(g: number, want: Float64Array, o: number): void {
+  const gw = fp.grids[g]![0];
+  const gh = fp.grids[g]![1];
+  const side = fp.side;
+  if (side === 4) {
+    const inverse = fp.inverse[g]!;
+    for (let j = 0; j < gw * gh; j++) {
+      let s = 0;
+      for (let i = 0; i < N; i++) s += inverse[j * N + i] * want[o + i];
+      gridWeights[j] = s;
+    }
+    return;
+  }
+  const px = fp.across[gw]!;
+  const py = fp.across[gh]!;
+  for (let y = 0; y < side; y++) {
+    for (let j = 0; j < gw; j++) {
+      let s = 0;
+      for (let x = 0; x < side; x++) s += px[j * side + x] * want[o + y * side + x];
+      gridRows[y * gw + j] = s;
+    }
+  }
+  for (let k = 0; k < gh; k++) {
+    for (let j = 0; j < gw; j++) {
+      let s = 0;
+      for (let y = 0; y < side; y++) s += py[k * side + y] * gridRows[y * gw + j];
+      gridWeights[k * gw + j] = s;
+    }
+  }
+}
+
+/** The error a smaller grid adds to a fit before any rounding: its best weights cannot follow the ideal ones exactly. */
 function gridCost(f: Fit, g: number): number {
-  const count = GRIDS[g]![0] * GRIDS[g]![1];
-  const inverse = GRID_INVERSE[g];
-  const at = GRID_AT[g];
-  const by = GRID_BY[g];
+  const at = fp.at[g]!;
+  const by = fp.by[g]!;
   const planes = f.second >= 0 ? 2 : 1;
   let cost = 0;
   for (let plane = 0; plane < planes; plane++) {
-    const o = plane * 16;
-    for (let j = 0; j < count; j++) {
-      let s = 0;
-      for (let i = 0; i < 16; i++) s += inverse[j * 16 + i] * f.u[o + i];
-      gridWeights[j] = s;
-    }
+    const o = plane * N;
+    fitGrid(g, f.u, o);
     let miss = 0;
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < N; i++) {
       const k = i * 4;
       const d = f.u[o + i] - (gridWeights[at[k]] * by[k] + gridWeights[at[k + 1]] * by[k + 1] + gridWeights[at[k + 2]] * by[k + 2] + gridWeights[at[k + 3]] * by[k + 3]) * (1 / 16);
-      miss += d * d;
+      // A share of a line is as long as its partition's line.
+      if (f.parts === 1) miss += d * d;
+      else cost += d * d * f.len2[plane * 4 + f.part[i]];
     }
     cost += miss * f.len2[plane * 4];
   }
@@ -1064,29 +1227,37 @@ function offer(cost: number, f: Fit, g: number, wRange: number, cRange: number, 
 
 /** Offers every way of spending the bits on a fit with a grid. */
 function consider(f: Fit, g: number, keep: number): void {
-  const pairs = CONFIGS[((f.parts - 1) * 4 + channels - 1) * 2 + (f.second >= 0 ? 1 : 0)]![g]!;
+  const pairs = fp.configs[((f.parts - 1) * 4 + channels - 1) * 2 + (f.second >= 0 ? 1 : 0)]![g]!;
   if (pairs.length === 0) return;
   // Ends under 30 levels apart can be stored as base and offset, which is a bit finer.
   let longest = 0;
   for (let p = 0; p < f.parts; p++) longest = Math.max(longest, f.len2[p], f.len2[4 + p]);
-  const ends = 16 * cwSum * COLOUR_SHARE * (longest < 900 ? SHORT_SHARE : 1);
+  const ends = N * cwSum * COLOUR_SHARE * (longest < 900 ? SHORT_SHARE : 1);
   if (g === 0) {
     for (let k = 0; k < pairs.length; k += 2) offer(f.base + weightCost(f, pairs[k]) + ends * COLOUR_STEP[pairs[k + 1]]!, f, g, pairs[k], pairs[k + 1], keep);
     return;
   }
   // A smaller grid is worth measuring only if it could beat the worst candidate kept with no error of its own.
-  const lines = 16 * GRID_SHARE * (f.len2[0] + f.len2[4]);
+  let lines = N * GRID_SHARE * (f.len2[0] + f.len2[4]);
+  if (f.parts > 1) {
+    lines = 0;
+    for (let i = 0; i < N; i++) lines += f.len2[f.part[i]] + f.len2[4 + f.part[i]];
+    lines *= GRID_SHARE;
+  }
   let least = Infinity;
   for (let k = 0; k < pairs.length; k += 2) least = Math.min(least, lines * WEIGHT_STEP[pairs[k]]! + ends * COLOUR_STEP[pairs[k + 1]]!);
-  if (cands === keep && f.base + least >= candCost[keep - 1]) return;
-  const miss = f.base + gridCost(f, g);
+  // Past 4 by 4, what a grid that holds this one misses is about the least this one can.
+  let floor = 0;
+  if (fp.side > 4) for (const o of fp.over[g]!) floor = Math.max(floor, f.miss[o]);
+  if (cands === keep && f.base + floor + least >= candCost[keep - 1]) return;
+  const miss = f.base + (f.miss[g] = gridCost(f, g));
   for (let k = 0; k < pairs.length; k += 2) offer(miss + lines * WEIGHT_STEP[pairs[k]]! + ends * COLOUR_STEP[pairs[k + 1]]!, f, g, pairs[k], pairs[k + 1], keep);
 }
 
 // A trial: one way of spending the bits, carried through to the pixels a GPU would show.
-const tWant = new Float64Array(32);
-const tWeight = new Int32Array(32);
-const tStored = new Int32Array(32);
+const tWant = new Float64Array(128);
+const tWeight = new Int32Array(128);
+const tStored = new Int32Array(128);
 const tValues = new Int32Array(24);
 const tEnds = new Int32Array(24);
 let tCem = 0;
@@ -1117,27 +1288,26 @@ let bestW = 0;
 let bestC = 0;
 let bestCem = 0;
 const bestValues = new Int32Array(24);
-const bestStored = new Int32Array(32);
+const bestStored = new Int32Array(128);
 
 /** Rounds the wanted weights to what a grid and a range can store, and works out the weight each pixel then gets. */
 function placeWeights(g: number, wRange: number, planes: number): void {
   const near = WEIGHT_NEAR[wRange];
   if (g === 0) {
-    for (let i = 0; i < planes * 16; i++) tWeight[i] = tStored[i] = near[(tWant[i] * 256 + 0.5) | 0];
+    for (let i = 0; i < planes * N; i++) tWeight[i] = tStored[i] = near[(tWant[i] * 256 + 0.5) | 0];
     return;
   }
-  const count = GRIDS[g]![0] * GRIDS[g]![1];
-  const inverse = GRID_INVERSE[g];
-  const at = GRID_AT[g];
-  const by = GRID_BY[g];
+  const count = fp.grids[g]![0] * fp.grids[g]![1];
+  const at = fp.at[g]!;
+  const by = fp.by[g]!;
   for (let plane = 0; plane < planes; plane++) {
-    const o = plane * 16;
+    const o = plane * N;
+    fitGrid(g, tWant, o);
     for (let j = 0; j < count; j++) {
-      let s = 0;
-      for (let i = 0; i < 16; i++) s += inverse[j * 16 + i] * tWant[o + i];
+      const s = gridWeights[j];
       tStored[o + j] = near[((s < 0 ? 0 : s > 1 ? 1 : s) * 256 + 0.5) | 0];
     }
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < N; i++) {
       const k = i * 4;
       tWeight[o + i] = (tStored[o + at[k]] * by[k] + tStored[o + at[k + 1]] * by[k + 1] + tStored[o + at[k + 2]] * by[k + 2] + tStored[o + at[k + 3]] * by[k + 3] + 8) >> 4;
     }
@@ -1313,7 +1483,7 @@ function placeEnds(f: Fit, cRange: number): void {
   sBB.fill(0);
   sA.fill(0);
   sB.fill(0);
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < N; i++) {
     const p = part[i];
     const o = i * 4;
     const w = tWeight[i] * (1 / 64);
@@ -1328,7 +1498,7 @@ function placeEnds(f: Fit, cRange: number): void {
       sB[p * 4 + c] += w * x;
     }
     if (second >= 0) {
-      const w1 = tWeight[16 + i] * (1 / 64);
+      const w1 = tWeight[N + i] * (1 / 64);
       const v1 = 1 - w1;
       const x = px[o + chan[second]];
       sAA[3 + p] += v1 * v1;
@@ -1395,7 +1565,7 @@ function placeEnds(f: Fit, cRange: number): void {
 /** With the end colours fixed, the weight each pixel wants: where it falls along the line between its two ends. */
 function wantWeights(f: Fit): void {
   const { part, second } = f;
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < N; i++) {
     const e = part[i] * 8;
     const o = i * 4;
     let num = 0;
@@ -1405,7 +1575,7 @@ function wantWeights(f: Fit): void {
       const d = tEnds[e + 4 + ch] - tEnds[e + ch];
       if (c === second) {
         const t = d !== 0 ? (px[o + ch] - tEnds[e + ch]) / d : 0;
-        tWant[16 + i] = t < 0 ? 0 : t > 1 ? 1 : t;
+        tWant[N + i] = t < 0 ? 0 : t > 1 ? 1 : t;
       } else {
         num += cw[c] * d * (px[o + ch] - tEnds[e + ch]);
         den += cw[c] * d * d;
@@ -1423,7 +1593,7 @@ function pixelError(f: Fit, i: number): number {
   let error = 0;
   for (let c = 0; c < channels; c++) {
     const ch = chan[c];
-    const w = tWeight[c === f.second ? 16 + i : i];
+    const w = tWeight[c === f.second ? N + i : i];
     const d = shown[tEnds[e + ch] * (64 - w) + tEnds[e + 4 + ch] * w] - px[o + ch];
     error += cw[c] * d * d;
   }
@@ -1432,14 +1602,14 @@ function pixelError(f: Fit, i: number): number {
 
 function trialError(f: Fit): number {
   let error = 0;
-  for (let i = 0; i < 16; i++) error += pixelError(f, i);
+  for (let i = 0; i < N; i++) error += pixelError(f, i);
   return error;
 }
 
 /** Works out the weight of pixel `i` from the weights stored for a smaller grid, for the plane that starts at `o`. */
 function infill(g: number, o: number, i: number): void {
-  const at = GRID_AT[g];
-  const by = GRID_BY[g];
+  const at = fp.at[g]!;
+  const by = fp.by[g]!;
   const k = i * 4;
   tWeight[o + i] = (tStored[o + at[k]] * by[k] + tStored[o + at[k + 1]] * by[k + 1] + tStored[o + at[k + 2]] * by[k + 2] + tStored[o + at[k + 3]] * by[k + 3] + 8) >> 4;
 }
@@ -1462,7 +1632,7 @@ function keep(f: Fit, g: number, wRange: number, cRange: number, error: number):
 // The best a trial reached, to come back to.
 let rCem = 0;
 const rValues = new Int32Array(24);
-const rStored = new Int32Array(32);
+const rStored = new Int32Array(128);
 
 /** How many times a trial fits its ends and weights to each other. It stops sooner when a round does not help. */
 const ROUNDS = 3;
@@ -1498,12 +1668,12 @@ function trial(f: Fit, g: number, wRange: number, cRange: number): void {
   tValues.set(rValues);
   tStored.set(rStored);
   endColours(tCem, tValues, 0, tEnds, 0);
-  for (let i = 0; i < planes * 16; i++) infill(g, i & 16, i & 15);
-  const reaches = GRID_REACH[g]!;
+  for (let plane = 0; plane < planes; plane++) for (let i = 0; i < N; i++) infill(g, plane * N, i);
+  const reaches = fp.reach[g]!;
   const below = WEIGHT_BELOW[wRange];
   const above = WEIGHT_ABOVE[wRange];
   for (let plane = 0; plane < planes; plane++) {
-    const o = plane * 16;
+    const o = plane * N;
     for (let j = 0; j < reaches.length; j++) {
       const reach = reaches[j]!;
       const was = tStored[o + j];
@@ -1543,16 +1713,18 @@ function runCandidates(): void {
 const centre = new Float64Array(12);
 const centreSum = new Float64Array(12);
 const centreCount = new Int32Array(3);
-const cluster = new Uint8Array(16);
-const clusterMask = new Int32Array(3);
+const cluster = new Uint8Array(64);
+const clusterMask = new Int32Array(6);
 const nearCost = new Int32Array(1024);
 const nearAt = new Int32Array(1024);
+/** Pixels each of three groups shares with each of a pattern's three partitions. */
+const shared3 = new Int32Array(9);
 
 /** Sorts the pixels into `parts` groups of like colour, starting from the two ends of the block's line. */
 function groupPixels(parts: number, line: Fit): void {
   let first = 0;
   let last = 0;
-  for (let i = 1; i < 16; i++) {
+  for (let i = 1; i < N; i++) {
     if (line.u[i] < line.u[first]) first = i;
     if (line.u[i] > line.u[last]) last = i;
   }
@@ -1564,7 +1736,7 @@ function groupPixels(parts: number, line: Fit): void {
     // The third starts at the pixel farthest from both.
     let far = 0;
     let farthest = -1;
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < N; i++) {
       let d0 = 0;
       let d1 = 0;
       for (let c = 0; c < channels; c++) {
@@ -1582,7 +1754,7 @@ function groupPixels(parts: number, line: Fit): void {
   for (let round = 0; round < 3; round++) {
     centreSum.fill(0);
     centreCount.fill(0);
-    for (let i = 0; i < 16; i++) {
+    for (let i = 0; i < N; i++) {
       let pick = 0;
       let least = Infinity;
       for (let k = 0; k < parts; k++) {
@@ -1600,7 +1772,14 @@ function groupPixels(parts: number, line: Fit): void {
     for (let k = 0; k < parts; k++) if (centreCount[k] > 0) for (let c = 0; c < channels; c++) centre[k * 4 + c] = centreSum[k * 4 + c] / centreCount[k];
   }
   clusterMask.fill(0);
-  for (let i = 0; i < 16; i++) clusterMask[cluster[i]] |= 1 << i;
+  for (let i = 0; i < N; i++) clusterMask[cluster[i] * fp.words + (i >> 5)] |= 1 << (i & 31);
+}
+
+/** Pixels that two masks of the footprint's share. */
+function overlap(a: Int32Array, at: number, b: Int32Array, bt: number): number {
+  let n = 0;
+  for (let w = 0; w < fp.words; w++) n += pop32(a[at + w] & b[bt + w]);
+  return n;
 }
 
 /** Patterns are fitted only if the pixels' own grouping is estimated to come within this factor of the block in hand.
@@ -1610,7 +1789,10 @@ const HOPE = 1.5;
 /** Tries blocks of two or three partitions. The `nearest` patterns to the pixels' own grouping are fitted, or every
  *  pattern when `nearest` is that many, and the `fitted` with the straightest lines go on to trials. */
 function tryPartitions(parts: number, line: Fit, nearest: number, fitted: number, trials: number): void {
-  const { index, masks } = DISTINCT[parts]!;
+  const { index, masks } = fp.distinct[parts]!;
+  const words = fp.words;
+  // A 4 by 4 block has a weight for every pixel with several partitions; a larger one has them on smaller grids.
+  const grids = fp.side === 4 ? 1 : fp.grids.length;
   let found = 0;
   if (nearest >= index.length) {
     for (found = 0; found < index.length; found++) nearAt[found] = index[found]!;
@@ -1624,23 +1806,22 @@ function tryPartitions(parts: number, line: Fit, nearest: number, fitted: number
     own.part = cluster;
     own.second = -1;
     fit(own);
-    consider(own, 0, 1);
-    const hope = candCost[0];
+    for (let g = 0; g < grids; g++) consider(own, g, 1);
+    const hope = cands > 0 ? candCost[0] : Infinity;
     cands = 0;
     if (hope >= bestError * HOPE) return;
     for (let j = 0; j < index.length; j++) {
       let off: number;
       if (parts === 2) {
-        off = POP[clusterMask[1] ^ masks[j * 2 + 1]!];
-        if (off > 8) off = 16 - off;
+        // The pixels in the pattern's second partition and not the grouping's, or the other way round.
+        off = 0;
+        for (let w = 0; w < words; w++) off += pop32(clusterMask[words + w] ^ masks[(j * 2 + 1) * words + w]!);
+        if (off > N / 2) off = N - off;
       } else {
-        const m0 = masks[j * 3]!;
-        const m1 = masks[j * 3 + 1]!;
-        const m2 = masks[j * 3 + 2]!;
-        const a = clusterMask[0];
-        const b = clusterMask[1];
-        const c = clusterMask[2];
-        off = 16 - Math.max(POP[a & m0] + POP[b & m1] + POP[c & m2], POP[a & m0] + POP[b & m2] + POP[c & m1], POP[a & m1] + POP[b & m0] + POP[c & m2], POP[a & m1] + POP[b & m2] + POP[c & m0], POP[a & m2] + POP[b & m0] + POP[c & m1], POP[a & m2] + POP[b & m1] + POP[c & m0]);
+        const m = j * 3 * words;
+        const s = shared3;
+        for (let x = 0; x < 3; x++) for (let y = 0; y < 3; y++) s[x * 3 + y] = overlap(clusterMask, x * words, masks, m + y * words);
+        off = N - Math.max(s[0] + s[4] + s[8], s[0] + s[5] + s[7], s[1] + s[3] + s[8], s[1] + s[5] + s[6], s[2] + s[3] + s[7], s[2] + s[4] + s[6]);
       }
       let at = found;
       while (at > 0 && nearCost[at - 1] > off) at--;
@@ -1660,7 +1841,7 @@ function tryPartitions(parts: number, line: Fit, nearest: number, fitted: number
     const f = fits[8 + kept]!;
     f.parts = parts;
     f.pattern = nearAt[k];
-    f.part = PARTITION[parts]![f.pattern]!;
+    f.part = fp.partition[parts]![f.pattern]!;
     f.second = -1;
     fit(f);
     let at = kept;
@@ -1670,13 +1851,13 @@ function tryPartitions(parts: number, line: Fit, nearest: number, fitted: number
     fits[8 + at] = f;
     if (kept < fitted) kept++;
   }
-  for (let n = 0; n < kept; n++) consider(fits[8 + n]!, 0, trials);
+  for (let n = 0; n < kept; n++) for (let g = 0; g < grids; g++) consider(fits[8 + n]!, g, trials);
   runCandidates();
 }
 
 const eBits = new Uint8Array(128);
 const eStream = new Uint8Array(128);
-const eCodes = new Int32Array(32);
+const eCodes = new Int32Array(64);
 
 function setBits(at: number, count: number, value: number): void {
   for (let i = 0; i < count; i++) eBits[at + i] = (value >> i) & 1;
@@ -1684,13 +1865,10 @@ function setBits(at: number, count: number, value: number): void {
 
 /** Writes the best block found, laid out as C.2.9 to C.2.11 have it. */
 function writeBest(out: Uint8Array, at: number): void {
-  const [w, h] = GRIDS[bestGrid]!;
+  const [w, h] = fp.grids[bestGrid]!;
   const planes = bestSecond >= 0 ? 2 : 1;
   eBits.fill(0);
-  // The block mode, table C.2.8: its first row has grids 4 wide, its fifth has grids 2 and 3 wide.
-  const r = (bestW % 6) + 2;
-  const shape = w === 4 ? ((h - 2) << 5) | (r >> 1) : 0x100 | ((w - 2) << 7) | ((h - 2) << 5) | 0xc | (r >> 1);
-  setBits(0, 11, ((planes - 1) << 10) | (bestW >= 6 ? 0x200 : 0) | shape | ((r & 1) << 4));
+  setBits(0, 11, fp.mode[(bestGrid * WEIGHT_RANGES + bestW) * 2 + planes - 1]!);
   setBits(11, 2, bestParts - 1);
   let colourAt = 17;
   if (bestParts === 1) setBits(13, 4, bestCem);
@@ -1704,7 +1882,7 @@ function writeBest(out: Uint8Array, at: number): void {
   for (let k = 0; k < values; k++) eCodes[k] = COLOUR_CODE[bestC][bestValues[k]];
   iseEncode(eCodes, values, bestC, eBits, colourAt);
   const weights = w * h * planes;
-  for (let j = 0; j < w * h; j++) for (let plane = 0; plane < planes; plane++) eCodes[j * planes + plane] = WEIGHT_CODE[bestW][bestStored[plane * 16 + j]];
+  for (let j = 0; j < w * h; j++) for (let plane = 0; plane < planes; plane++) eCodes[j * planes + plane] = WEIGHT_CODE[bestW][bestStored[plane * N + j]];
   iseEncode(eCodes, weights, bestW, eStream, 0);
   const wBits = iseBits(bestW, weights);
   for (let k = 0; k < wBits; k++) eBits[127 - k] = eStream[k];
@@ -1716,7 +1894,7 @@ function writeBest(out: Uint8Array, at: number): void {
   }
 }
 
-/** How many one-partition candidates are run. More was tried and gained under 0.1 dB. */
+/** How many one-partition candidates are run. More was tried on 4 by 4 blocks and gained under 0.1 dB. */
 const LINE_TRIALS = 6;
 /** A block is not searched further once its mean squared error per channel is below this, */
 const GOOD_ENOUGH = 0.25;
@@ -1729,7 +1907,7 @@ function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
   let solid = true;
   let grey = true;
   let opaque = true;
-  for (let i = 0; i < 64; i += 4) {
+  for (let i = 0; i < N * 4; i += 4) {
     if (px[i] !== px[0] || px[i + 1] !== px[1] || px[i + 2] !== px[2] || px[i + 3] !== px[3]) solid = false;
     if (px[i] !== px[i + 1] || px[i] !== px[i + 2]) grey = false;
     if (px[i + 3] !== 255) opaque = false;
@@ -1752,7 +1930,7 @@ function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
   cwSum = 0;
   for (let c = 0; c < channels; c++) cwSum += cw[c];
   const scale = Math.sqrt(cw[0]);
-  for (let i = 0; i < 16; i++) for (let c = 0; c < channels; c++) fx[i * 4 + c] = px[i * 4 + chan[c]] * (c === 0 ? scale : 1);
+  for (let i = 0; i < N; i++) for (let c = 0; c < channels; c++) fx[i * 4 + c] = px[i * 4 + chan[c]] * (c === 0 ? scale : 1);
   shown = kind === "srgb" ? SHOWN_SRGB : SHOWN_LINEAR;
   bestError = Infinity;
   cands = 0;
@@ -1769,28 +1947,31 @@ function encodeBlock(kind: AstcKind, out: Uint8Array, at: number): void {
     fit(f);
     consider(f, 0, LINE_TRIALS);
   }
-  for (let k = 0; k < lines; k++) for (let g = 1; g < GRIDS.length; g++) consider(fits[k]!, g, LINE_TRIALS);
+  for (let k = 0; k < lines; k++) for (let g = 1; g < fp.grids.length; g++) consider(fits[k]!, g, LINE_TRIALS);
   runCandidates();
   // More partitions, while the block is not yet good. A block that stays bad has every pattern fitted. That is slow,
   // about a millisecond, and it is where three regions of a mask meet that it pays most: somewhere there may be a
   // pattern that puts no more than two colours in a partition, which is exact.
-  const good = 16 * cwSum * GOOD_ENOUGH;
-  const bad = 16 * cwSum * BAD;
+  const good = N * cwSum * GOOD_ENOUGH;
+  const bad = N * cwSum * BAD;
   if (bestError > good) tryPartitions(2, line, bestError > bad ? 1024 : 8, 2, 4);
   if (bestError > good && channels < 4) tryPartitions(3, line, bestError > bad ? 1024 : 6, 2, 3);
   writeBest(out, at);
 }
 
-/** Encodes `count` blocks of a picture of RGBA pixels, starting with block `first`, into `out` from its start. Blocks
- *  are counted along rows from the top left. A picture whose side is not a multiple of four is padded by repeating
- *  its edge. A build spreads a picture over cores by giving each a range of blocks. */
-export function encodeAstcBlocks(rgba: Uint8Array, width: number, height: number, kind: AstcKind, first: number, count: number, out: Uint8Array): void {
-  const across = (width + 3) >> 2;
+/** Encodes `count` blocks `side` pixels across of a picture of RGBA pixels, starting with block `first`, into `out`
+ *  from its start. Blocks are counted along rows from the top left. A picture whose side is not a multiple of the
+ *  block's is padded by repeating its edge. A build spreads a picture over cores by giving each a range of blocks. */
+export function encodeAstcBlocks(rgba: Uint8Array, width: number, height: number, kind: AstcKind, side: number, first: number, count: number, out: Uint8Array): void {
+  fp = footprint(side);
+  N = fp.pixels;
+  for (let i = 0; i < fits.length; i++) fits[i]!.part = fp.partition[1]![0]!;
+  const across = Math.ceil(width / side);
   for (let b = 0; b < count; b++) {
-    const bx = ((first + b) % across) * 4;
-    const by = (((first + b) / across) | 0) * 4;
-    for (let i = 0; i < 16; i++) {
-      const from = (Math.min(by + (i >> 2), height - 1) * width + Math.min(bx + (i & 3), width - 1)) * 4;
+    const bx = ((first + b) % across) * side;
+    const by = (((first + b) / across) | 0) * side;
+    for (let i = 0; i < N; i++) {
+      const from = (Math.min(by + ((i / side) | 0), height - 1) * width + Math.min(bx + (i % side), width - 1)) * 4;
       if (kind === "normal") {
         px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = rgba[from];
         px[i * 4 + 3] = rgba[from + 1];
@@ -1805,9 +1986,9 @@ export function encodeAstcBlocks(rgba: Uint8Array, width: number, height: number
   }
 }
 
-/** Encodes a picture of RGBA pixels, rows top to bottom, to its blocks. */
-export function encodeAstc(rgba: Uint8Array, width: number, height: number, kind: AstcKind): Uint8Array {
-  const out = new Uint8Array(astcBlockCount(width, height) * 16);
-  encodeAstcBlocks(rgba, width, height, kind, 0, out.length / 16, out);
+/** Encodes a picture of RGBA pixels, rows top to bottom, to its blocks `side` pixels across. */
+export function encodeAstc(rgba: Uint8Array, width: number, height: number, kind: AstcKind, side: number): Uint8Array {
+  const out = new Uint8Array(astcBlockCount(width, height, side) * 16);
+  encodeAstcBlocks(rgba, width, height, kind, side, 0, out.length / 16, out);
   return out;
 }

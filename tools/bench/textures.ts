@@ -4,7 +4,7 @@
 
 import { availableParallelism } from "node:os";
 import { join } from "node:path";
-import { TEXTURE_ROLES, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
+import { TEXTURE_ROLES, blockOf, pictureBytes, type TextureRole } from "../../shared/pack/texture.ts";
 import { decodeAstc, encodeAstc } from "../pack/astc.ts";
 import { decodeBc5, decodeBc7, encodeBc5, encodeBc7 } from "../pack/bc.ts";
 import { encodeTextures, encodingOf, type TextureSource } from "../pack/encode.ts";
@@ -46,7 +46,7 @@ export async function benchTextures(section: Section, record: Row): Promise<void
     for (const format of ["bc", "astc"] as const) {
       const how = encodingOf(format, s.role, false);
       const t0 = performance.now();
-      const blocks = how.with === "astc" ? encodeAstc(top, SIZE, SIZE, how.kind) : how.with === "bc5" ? encodeBc5(top, SIZE, SIZE) : encodeBc7(top, SIZE, SIZE, how.channels);
+      const blocks = how.with === "astc" ? encodeAstc(top, SIZE, SIZE, how.kind, how.block) : how.with === "bc5" ? encodeBc5(top, SIZE, SIZE) : encodeBc7(top, SIZE, SIZE, how.channels);
       took[how.with][0]! += (performance.now() - t0) / 1000;
       took[how.with][1]! += megapixels;
       made.push(blocks);
@@ -54,7 +54,7 @@ export async function benchTextures(section: Section, record: Row): Promise<void
       const db =
         how.with === "bc7" ? decibels(top, decodeBc7(blocks, SIZE, SIZE), [[0, 0], [1, 1], [2, 2]])
         : how.with === "bc5" ? decibels(top, decodeBc5(blocks, SIZE, SIZE), [[0, 0], [1, 1]])
-        : decibels(top, decodeAstc(blocks, SIZE, SIZE, how.kind), how.kind === "normal" ? [[0, 0], [1, 3]] : [[0, 0], [1, 1], [2, 2]]);
+        : decibels(top, decodeAstc(blocks, SIZE, SIZE, how.kind, how.block), how.kind === "normal" ? [[0, 0], [1, 3]] : [[0, 0], [1, 1], [2, 2]]);
       if (db < FLOOR_DB) under++;
       record(`${s.id}, ${format}`, db, "dB");
     }
@@ -73,8 +73,9 @@ export async function benchTextures(section: Section, record: Row): Promise<void
   let differ = 0;
   sources.forEach((s, i) => {
     variants.slice(0, 2).forEach((v, f) => {
-      const at = v.placed[i]!.at + pictureOffset(v.format, s.role, SIZE);
-      if (!Buffer.from(alone[i]![f]!).equals(v.bytes.subarray(at, at + pictureBytes(v.format, s.role, SIZE)))) differ++;
+      const block = blockOf(v.format, v.placed[i]!);
+      const at = v.placed[i]!.at + pictureOffset(v.format, s.role, SIZE, block);
+      if (!Buffer.from(alone[i]![f]!).equals(v.bytes.subarray(at, at + pictureBytes(v.format, s.role, SIZE, block)))) differ++;
     });
   });
   record("pictures whose bytes differ between one core and all", differ, "", 0);

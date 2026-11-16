@@ -53,7 +53,7 @@ let makers: string | null = null;
  */
 export function rgbaOf(m: Material, role: TextureRole, top: number, cache: string | null = SNAP_CACHE): RgbaTexture {
   const side = topIn("rgba", top);
-  const sizes = Array.from({ length: Math.log2(side) + 1 }, (_, k) => pictureBytes("rgba", role, 1 << k));
+  const sizes = Array.from({ length: Math.log2(side) + 1 }, (_, k) => pictureBytes("rgba", role, 1 << k, 1));
   const hash = createHash("sha256").update((makers ??= MAKERS.map((f) => readFileSync(join(import.meta.dir, f), "utf8")).join("\0")));
   // Its custom coarse mips can change even when the three source PNGs do not.
   if (m.id === SURFACE_MATERIAL) hash.update(readFileSync(join(import.meta.dir, "../surfaces/build.ts")));
@@ -124,7 +124,7 @@ export function splitWithTextures(whole: Uint8Array, texture: (t: ManifestTextur
     return made;
   });
   if (textures.length > 0) {
-    const file = writeTextureFile("rgba", textures);
+    const file = writeTextureFile("rgba", textures.map((t) => ({ ...t, block: 1 })));
     manifest.textures!.forEach((t, i) => (t.in.rgba = { file: files.length, ...file.placed[i]! }));
     files.push({ name: "core.tex.rgba.sntx", role: "tex", bytes: file.bytes });
     manifest.files.push({ name: "core.tex.rgba.sntx", bytes: file.bytes.length, role: "tex", format: "rgba" });

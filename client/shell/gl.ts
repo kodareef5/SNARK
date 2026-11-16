@@ -45,12 +45,15 @@ interface MeshLod {
 
 /**
  * The formats of each variant for a base colour, a normal map and the rest: the sRGB and linear BC7 of
- * EXT_texture_compression_bptc and the BC5 of EXT_texture_compression_rgtc, the ASTC 4x4 of
- * WEBGL_compressed_texture_astc, and SRGB8_ALPHA8, RG8 and RGBA8.
+ * EXT_texture_compression_bptc and the BC5 of EXT_texture_compression_rgtc, the ASTC of WEBGL_compressed_texture_astc
+ * by the side of its blocks, and SRGB8_ALPHA8, RG8 and RGBA8.
  */
-const FORMATS: Readonly<Record<TextureFormat, readonly number[]>> = {
+const FORMATS: Readonly<Record<string, readonly number[]>> = {
   bc: [0x8e8d, 0x8dbd, 0x8e8c],
-  astc: [0x93d0, 0x93b0, 0x93b0],
+  astc4: [0x93d0, 0x93b0, 0x93b0],
+  astc5: [0x93d2, 0x93b2, 0x93b2],
+  astc6: [0x93d4, 0x93b4, 0x93b4],
+  astc8: [0x93d7, 0x93b7, 0x93b7],
   rgba: [0x8c43, 0x822b, 0x8058],
 };
 /** Frames that upload a frame that asks the card for an error: a want of memory is known within about 130 ms at 60 a second. */
@@ -339,7 +342,7 @@ export class GlRenderer {
    */
   private fill(u: TextureUpload): void {
     const gl = this.gl;
-    const internal = FORMATS[u.format][u.role === "base" || u.role === "layer" ? 0 : u.role === "normal" ? 1 : 2]!;
+    const internal = FORMATS[u.format === "astc" ? `astc${u.block}` : u.format]![u.role === "base" || u.role === "layer" ? 0 : u.role === "normal" ? 1 : 2]!;
     let copy = this.making.get(u.slot);
     gl.activeTexture(gl.TEXTURE0 + UNIT.maps);
     if (u.size === 1 && u.row === 0) {
@@ -350,10 +353,10 @@ export class GlRenderer {
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     } else if (copy) gl.bindTexture(gl.TEXTURE_2D, copy);
     else return;
-    // The picture `size` across is as many halvings below the top as `size` is below `top`. A block row is four pixel rows.
+    // The picture `size` across is as many halvings below the top as `size` is below `top`.
     const level = Math.clz32(u.size) - Math.clz32(u.top);
     if (u.format === "rgba") gl.texSubImage2D(gl.TEXTURE_2D, level, 0, u.row, u.size, u.rows, u.role === "normal" ? gl.RG : gl.RGBA, gl.UNSIGNED_BYTE, u.data);
-    else gl.compressedTexSubImage2D(gl.TEXTURE_2D, level, 0, u.row * 4, u.size, Math.min(u.rows * 4, u.size - u.row * 4), internal, u.data);
+    else gl.compressedTexSubImage2D(gl.TEXTURE_2D, level, 0, u.row, u.size, u.rows, internal, u.data);
     if (!u.last) return;
     gl.deleteTexture(this.textures.get(u.slot) ?? null);
     this.textures.set(u.slot, copy);

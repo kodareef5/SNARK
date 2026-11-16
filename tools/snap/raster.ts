@@ -798,7 +798,7 @@ export class Rasterizer {
     if (u.format !== "rgba") throw new Error(`texture ${u.slot} comes as ${u.format}, and only the rgba variant is read here`);
     if (u.size === 1 && u.row === 0) {
       const pictures: Uint8Array[] = [];
-      for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size)));
+      for (let size = 1; size <= u.top; size <<= 1) pictures.push(new Uint8Array(pictureBytes("rgba", u.role, size, 1)));
       this.making.set(u.slot, { role: u.role, top: u.top, pictures, left: pictures.reduce((sum, p) => sum + p.length, 0) });
     }
     const t = this.making.get(u.slot);

@@ -7,7 +7,7 @@ import { PULL_SLOTS } from "../../client/core/render/farnodes.ts";
 import { FramePacket } from "../../client/core/render/packet.ts";
 import type { Manifest } from "../../shared/pack/manifest.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
-import { pictureBytes, textureBytes, type TextureFormat } from "../../shared/pack/texture.ts";
+import { blockOf, pictureBytes, textureBytes, type TextureFormat } from "../../shared/pack/texture.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import type { SplitFile } from "../../tools/pack/split.ts";
 import { FakeNet, type NetOptions } from "./assetnet.ts";
@@ -89,23 +89,26 @@ export class Card {
     }
     for (const u of p.texUploads) {
       const tex = this.manifest.textures![u.slot]!;
-      const rows = u.format === "rgba" ? u.size : (u.size + 3) >> 2;
-      const rowBytes = pictureBytes(u.format, tex.role, u.size) / rows;
+      const v = tex.in[u.format]!;
+      const block = blockOf(u.format, v);
+      // Rows of blocks: the upload's rows are pixels, whole blocks but for the picture's edge.
+      const rows = Math.ceil(u.size / block);
+      const rowBytes = pictureBytes(u.format, tex.role, u.size, block) / rows;
+      const [row, n] = [u.row / block, Math.ceil(u.rows / block)];
       if (u.size === 1 && u.row === 0) {
         if (this.making.has(u.slot)) throw new Error(`texture ${u.slot} begun twice`);
-        this.making.set(u.slot, { top: u.top, format: u.format, bytes: textureBytes(u.format, tex.role, u.top), size: 1, row: 0 });
-        this.texBytes += textureBytes(u.format, tex.role, u.top);
+        this.making.set(u.slot, { top: u.top, format: u.format, bytes: textureBytes(u.format, tex.role, u.top, block), size: 1, row: 0 });
+        this.texBytes += textureBytes(u.format, tex.role, u.top, block);
       }
       const copy = this.making.get(u.slot);
-      if (!copy || copy.top !== u.top || copy.format !== u.format || tex.role !== u.role) throw new Error(`texture ${u.slot} sent rows of a copy that was not begun`);
-      if (copy.size !== u.size || copy.row !== u.row || u.rows < 1 || u.row + u.rows > rows || u.data.length !== u.rows * rowBytes) throw new Error(`texture ${u.slot} sent rows out of order`);
+      if (!copy || copy.top !== u.top || copy.format !== u.format || tex.role !== u.role || (u.format !== "rgba" && u.block !== block)) throw new Error(`texture ${u.slot} sent rows of a copy that was not begun`);
+      if (copy.size !== u.size || copy.row !== row || n < 1 || row + n > rows || u.rows !== Math.min(n * block, u.size - u.row) || u.data.length !== n * rowBytes) throw new Error(`texture ${u.slot} sent rows out of order`);
       // The rows are the ones the file holds there.
-      const v = tex.in[u.format]!;
-      let at = v.at + u.row * rowBytes;
-      for (let size = 1; size < u.size; size <<= 1) at += pictureBytes(u.format, tex.role, size);
+      let at = v.at + row * rowBytes;
+      for (let size = 1; size < u.size; size <<= 1) at += pictureBytes(u.format, tex.role, size, block);
       if (Buffer.compare(u.data, this.files[v.file]!.subarray(at, at + u.data.length)) !== 0) throw new Error(`texture ${u.slot} sent the wrong bytes`);
       this.mostBand = Math.max(this.mostBand, u.data.length);
-      copy.row += u.rows;
+      copy.row += n;
       if (copy.row === rows) [copy.size, copy.row] = [u.size * 2, 0];
       if (u.last !== (copy.size > u.top)) throw new Error(`texture ${u.slot} completed at the wrong rows`);
       if (!u.last) continue;

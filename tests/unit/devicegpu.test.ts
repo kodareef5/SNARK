@@ -42,7 +42,7 @@ test("the memory step's blocks decode to the colour it reads back for, by the re
   expect(Array.from(decodeBc7(bc.bytes, 4, 4))).toEqual(Array.from({ length: 64 }, (_, i) => bc.rgba[i % 4]!));
   const astc = solidBlock("astc");
   const out = new Uint8Array(64);
-  expect(decodeAstcBlock(astc.bytes, 0, false, out)).toBe(true);
+  expect(decodeAstcBlock(astc.bytes, 0, 4, false, out)).toBe(true);
   expect(Array.from(out)).toEqual(Array.from({ length: 64 }, (_, i) => astc.rgba[i % 4]!));
   expect(solidBlock("rgba").bytes.length).toBe(64);
 });
