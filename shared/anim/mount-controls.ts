@@ -36,19 +36,22 @@ function toward(ax: number, ay: number, az: number, bx: number, by: number, bz: 
 
 /**
  * `solved` must be solve(HUMAN, pose, solved, rest, scale). Updates both pose and solved; call before placing the
- * seated body in the vehicle's full frame. The left hand wraps a fore/aft collective, the right an upright cyclic.
+ * seated body in the vehicle's full frame. Helicopter hands wrap the fore/aft collective and upright cyclic;
+ * helm hands grasp opposite upright sides of a wheel, with their palms facing inward and fingers forward.
  * Returns the greatest remaining grip distance, in metres, so unreachable content can be diagnosed explicitly.
  */
-export function fitPilotControls(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, left: MountControl, right: MountControl): number {
+export function fitPilotControls(pose: Pose, solved: Solved, rest: Float32Array, scale: Float32Array | null, left: MountControl, right: MountControl, style: "helicopter" | "helm" = "helicopter"): number {
   const scales = scale ?? UNIT_SCALE;
   for (let side = 0; side < 2; side++) {
     const [upper, lower, wrist, prop, , , sign] = ARMS[side]!;
     const control = side === 0 ? left : right, at = side * 3;
-    // The right palm faces the upright stick; its fingers curl around +Y. The left palm lies over the collective.
+    // At a helm both palms face the wheel's centre and their fingers curl around its upright rim. Mirroring the
+    // grasp (rather than reusing the collective pose) also keeps both wrists behind the wheel through steering.
     quatIdentity(hand, 0);
-    if (side === 1) {
-      quatAxis(hand, 0, 0, 1, 0, TAU / 4);
-      quatAxis(q, 0, 0, 0, 1, TAU / 4);
+    if (style === "helm" || side === 1) {
+      const turn = style === "helm" ? -sign * TAU / 4 : TAU / 4;
+      quatAxis(hand, 0, 0, 1, 0, turn);
+      quatAxis(q, 0, 0, 0, 1, turn);
       quatMul(hand, 0, q, 0, hand, 0);
     }
     if (control.rotation) quatMul(hand, 0, control.rotation, 0, hand, 0);
