@@ -64,7 +64,7 @@ export interface PackLod {
   error: number;
   /** Where the surface entries are, one per vertex, right after the vertices. Absent in a flat level. */
   surfaceOffset?: number;
-  /** Where the skin entries are, right after the surface. Absent in a flat level and in a mesh that follows one bone. */
+  /** Where the skin entries are, right after the surface. Absent in a flat level, in a mesh that follows one bone, and where every vertex is wholly on its own. */
   skinOffset?: number;
   /**
    * The runs of indices drawn with each material, three numbers a run: index into the header's `materials`, first
