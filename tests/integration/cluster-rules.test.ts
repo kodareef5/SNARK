@@ -334,7 +334,7 @@ test("a transfer's file carries any record, as a save keeps it: a creature with 
   const parcel = openParcel(bytes);
   expect(parcel.head).toEqual(head);
   const back = parcelRecords(reg, parcel);
-  const plain = new RecordCodec(reg, Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, reg.ids.map((s, i): [string, number] => [s, i]), reg.ids.length), false);
+  const plain = new RecordCodec(Uint16Array.from(reg.ids, (_, i) => i), idMap(reg, reg.ids.map((s, i): [string, number] => [s, i]), reg.ids.length), false);
   const form = (r: typeof rex): string => Buffer.from(plain.encode(r)).toString("hex");
   expect(back.map((r) => [r.pid, r.kind, r.x, r.z, form(r)])).toEqual([rex, bag].map((r) => [r.pid, r.kind, r.x, r.z, form(r)]));
   expect([back[0]!.saddle, items.held(back[0]!).get(id("berry")), items.held(back[1]!).get(id("stone"))]).toEqual([id("saddle_parasaur"), 20, 7]);

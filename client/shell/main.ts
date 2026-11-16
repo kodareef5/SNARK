@@ -38,6 +38,8 @@ const bench = params.has("bench") ? new BenchRun() : null;
 /** A device probe (tools/device.ts). The page measures itself and reports. */
 const device = params.has("device") ? (await import("./device.ts")).devicePage(params.get("device")!) : null;
 const root = document.querySelector<HTMLElement>("#ui")!;
+/** The GPU's times of a frame where nothing times it. */
+const UNTIMED: readonly number[][] = [];
 /** A survivor arriving from another server of the cluster, with its ticket (client/core/travel.ts). */
 const arrival = arrivalOf(location.hash);
 
@@ -46,7 +48,7 @@ async function boot(): Promise<void> {
   // The server names its map's file. The renderer draws from its ground, which comes first; the far city from its statics,
   // which come after, while the world is drawn.
   const mapFile = fetchJson(fetch, "map.json").then((named) => fetchMap(fetch, (named as { file: string }).file));
-  const [manifestText, skyBytes] = [fetchText(fetch, "assets/manifest.json"), fetchBytes(fetch, SKY_FILE)];
+  const manifestText = fetchText(fetch, "assets/manifest.json"), skyBytes = fetchBytes(fetch, SKY_FILE);
   // The socket opens once the map's ground is in, so its handshake runs while the map is read. The server waits 5 s for a
   // hello, and a socket it gave up on is opened again.
   const sockets = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}`;
@@ -96,7 +98,8 @@ async function boot(): Promise<void> {
   app.debug = app.stress || params.has("debug");
   app.steer = driveCheck || !selfcheck && !device;
   app.plainSky = selfcheck;
-  [app.ui.settings.touchFirst, app.dpr] = [matchMedia("(pointer: coarse)").matches, devicePixelRatio];
+  app.ui.settings.touchFirst = matchMedia("(pointer: coarse)").matches;
+  app.dpr = devicePixelRatio;
   app.address((name) => params.get(name), measured);
   app.page = {
     origin: location.origin,
@@ -181,7 +184,7 @@ async function boot(): Promise<void> {
       for (const t of renderer.failedTextures) app.scene?.assets.residency.failedTexture(t);
       app.pressure();
     }
-    const [ours, gpu] = [performance.now() - t0, clock?.take() ?? []];
+    const ours = performance.now() - t0, gpu = clock?.take() ?? UNTIMED;
     app.drawn(packet, ours);
     device?.frame(now, packet, t0, built);
     if (progress.frames === 30) loser?.loseContext();

@@ -5,7 +5,7 @@ import { closeSync, existsSync, mkdtempSync, openSync, rmSync, statSync, writeSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KEEP_NEWEST, backupName, backupsToKeep, listBackups, restoreBackup, type BackupReport } from "../../server/persist/backup.ts";
-import { WorldStore } from "../../server/persist/store.ts";
+import { SCHEMA_VERSION, WorldStore } from "../../server/persist/store.ts";
 import { Harness } from "../fixtures/net.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "snark-keeper-"));
@@ -109,19 +109,17 @@ test("two thousand commits never grow the log past what a few seconds write", ()
   h.host.shutdown();
 });
 
-test("a save is copied beside itself before its form changes, and a damaged one names the backup to restore", () => {
+test("a save of another schema is refused, and a damaged one names the backup to restore", () => {
   const { db, h, reports } = world("form");
   h.host.exec("backup");
   h.host.shutdown();
-  // Made to look like a save from before schema 2.
   const raw = new Database(db);
-  raw.exec("DROP TABLE chunk_blobs");
-  raw.exec("UPDATE meta SET value = 1 WHERE key = 'schema_version'");
+  raw.exec(`UPDATE meta SET value = ${SCHEMA_VERSION - 1} WHERE key = 'schema_version'`);
   raw.close();
-  new WorldStore(db, h.reg).close();
-  const before = new Database(`${db}.pre-v1`, { readonly: true });
-  expect((before.query("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: number }).value).toBe(1);
-  before.close();
+  expect(() => new WorldStore(db, h.reg)).toThrow(`save has schema ${SCHEMA_VERSION - 1}, and this build reads ${SCHEMA_VERSION}`);
+  const fixed = new Database(db);
+  fixed.exec(`UPDATE meta SET value = ${SCHEMA_VERSION} WHERE key = 'schema_version'`);
+  fixed.close();
 
   const size = statSync(db).size;
   const fd = openSync(db, "r+");

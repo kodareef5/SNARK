@@ -75,7 +75,7 @@ export function unhex(text: string): Uint8Array {
 export function sealParcel(reg: Registry, head: ParcelHead, records: readonly EntityRecord[]): Uint8Array {
   const identity = new Uint16Array(reg.ids.length);
   for (let i = 0; i < identity.length; i++) identity[i] = i;
-  const codec = new RecordCodec(reg, identity, idMap(reg, reg.ids.map((id, i) => [id, i]), reg.ids.length), false);
+  const codec = new RecordCodec(identity, idMap(reg, reg.ids.map((id, i) => [id, i]), reg.ids.length), false);
   const body: ParcelBody = {
     ...head,
     ids: [...reg.ids],
@@ -101,7 +101,7 @@ export function openParcel(bytes: Uint8Array): Parcel {
 export function parcelRecords(reg: Registry, parcel: Parcel): EntityRecord[] {
   const ids = parcel.body.ids;
   const map = idMap(reg, ids.map((id, i): [string, number] => [id, i]), ids.length);
-  const codec = new RecordCodec(reg, new Uint16Array(reg.ids.length), map, false, "the survivor", "this server's content lacks it");
+  const codec = new RecordCodec(new Uint16Array(reg.ids.length), map, false, "the survivor", "this server's content lacks it");
   return parcel.body.records.map((r) => {
     const rec = codec.decode({ pid: r.pid, kind: r.kind, x: r.x, y: r.y, z: r.z, yaw: r.yaw, data: new Uint8Array(Buffer.from(r.data, "base64")) });
     if (!rec) throw new Error(`the survivor uses content this build does not have: ${ids[r.kind] ?? "a kind"}`);

@@ -247,10 +247,11 @@ test("a body that steps back to a level whose surface has not come keeps its mat
   expect(drawn(w, p, TUBE)).toEqual([[1, flags, 1, hide, 0, 288], [1, flags | DRAW_TWO_SIDED, 1, horn, 288, 96]]);
 });
 
-test("a body the frame has no bones to pose is drawn rigid on one bone, with its materials", () => {
-  // Six bodies of two bones each, and bones for eight: the nearest two are posed and the rest stand as they were made.
+test("a body the frame has no bones to pose is drawn on one bone in the pose it stands in, with its materials", () => {
+  // Six bodies of two bones each, and bones for ten: the nearest two are posed, and the rest stand in the tube's still pose,
+  // which takes two bones of the frame's and is the pose it was made in.
   const at = [[32, 22.5], [31, 23], [33, 23.4], [30, 23.8], [34, 24.2], [32, 24.6]] as const;
-  const w = sceneWorld({}, { bones: 8 });
+  const w = sceneWorld({}, { bones: 10 });
   at.forEach(([x, z]) => w.place(TUBE, x, z, { colors: [8, 7, 14, 6] }));
   let p = w.frame();
   for (let f = 0; f < 4; f++) p = w.frame();
@@ -260,7 +261,7 @@ test("a body the frame has no bones to pose is drawn rigid on one bone, with its
     [0, flags, 2, hide, 0, 1152], [0, flags | DRAW_TWO_SIDED, 2, horn, 1152, 384],
     [0, flags | DRAW_ONE_BONE, 4, hide, 0, 1152], [0, flags | DRAW_ONE_BONE | DRAW_TWO_SIDED, 4, horn, 1152, 384],
   ]);
-  expect([p.boneCount, w.scene.characters.posed, p.dropped]).toEqual([8, 2, 0]);
+  expect([p.boneCount, w.scene.characters.posed, p.dropped]).toEqual([10, 2, 0]);
   const bodies = w.raster.color.slice();
   const ids = w.raster.pickId.slice();
 
@@ -348,9 +349,9 @@ function lowPoly(saddled: boolean) {
     remote.tick = own.tick = f / 2;
     scene.hour = 6 + f / 30;
     own.firstPerson = f >= 150;
-    // A piece is added, and later the frame has bones for few of the bodies.
+    // A piece is added, and later the frame has bones for few of the bodies and the poses the rest stand in.
     if (f === 100) structs.add(kind(PANEL), 42, 0, 34, 0, 0, 1);
-    if (f === 200) scene.assets.tier = { ...tierOf("lowpoly"), bones: 40 };
+    if (f === 200) scene.assets.tier = { ...tierOf("lowpoly"), bones: 66 };
     const p = w.frame(1000 / 60, false);
     hash = hashPacket(p, hash);
     draws += p.drawCount;
@@ -372,7 +373,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   expect(log).toEqual([`17 ask ${post} 0.0000`, `1167 ask ${post} 0.0000`, `2733 ask ${post} 0.0000`]);
   // The far wood is about a draw a frame, every mesh of a tile in one, and the pulled draws' three levels are uploads in
   // place of the palm's last level.
-  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7613, 767, 23, 0, []]);
+  expect([draws, rigid, uploads, texLedger, worn]).toEqual([7554, 108, 23, 0, []]);
   // Taken from the scene as it was before it drew anything with a material. A change here changes what low poly draws.
   // It was 3323304581 before the dodo's grey box joined the pack, which numbers the meshes after it one on, 289722570
   // before the palette was refitted and the horn's flat colour became 177, and 3173910610 until a loose thing's up
@@ -428,7 +429,12 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 1504947198 (and 7,900 draws) until chunks were drawn by 16 m cell: a chunk's instances are uploaded in the
   // order of their cells, and the pieces' and nodes' draws whose cells are out of view are left out. Each of the 300
   // frames draws the picture it did.
-  expect(hash).toBe(3243977566);
+  // It was 3243977566, with 7,613 draws of which 767 were on one bone, until bodies were thinned by distance: loose things
+  // and the dead take their bones before the living (the order of the rows); a body left on one bone stands in a pose,
+  // whose bones the frame keeps for it and whose first bone its draw's offset names, in a draw after the rest (the order
+  // of draws); and from frame 200 the frame has 66 bones, not 40, as few as leaves bones for those poses and drops
+  // nothing. Every body here is near enough to be posed every frame: posing all of them every frame gives this hash too.
+  expect(hash).toBe(4216232697);
 
   // The same scene with a saddle on the nearest and the farthest tube (FL5). Each is drawn on its tube's bones, rigid with
   // it when the frame has no bones to pose it, at its tube's level or, where the tube is drawn coarser, at the coarsest of
@@ -437,7 +443,7 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // pin moved only for this: without the saddles it is the hash above.
   const saddled = lowPoly(true);
   expect(saddled.log).toEqual(log);
-  expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 97, 1, 0, 0, 273]);
+  expect([saddled.draws - draws, saddled.rigid - rigid, saddled.uploads - uploads, saddled.texLedger, saddled.worn[0] ?? 0, saddled.worn[1]]).toEqual([273, 71, 1, 0, 0, 273]);
   // It was 1277817829 until the sign letters' and the four resource nodes' grey boxes took mesh numbers, as above:
   // 1675711496 with the letters alone, 3184345957 with the nodes alone.
   // It was 295710133 until the smithy's and the fabricator's grey boxes (S2), as above; without them it is that again.
@@ -448,7 +454,8 @@ test("low poly asks for no surface and no texture, draws nothing with a material
   // It was 2182034391 until the street wrecks' kinds, as above; without them it is that again.
   // It was 1893532195 until the pteranodon was drawn on its own art, as above.
   // It was 3121847286 until clips were stored to 0.025 degrees, as above, and 359459847 until chunks were drawn by cell.
-  expect(saddled.hash).toBe(1443514794);
+  // It was 1443514794, with 97 more draws on one bone, until bodies without bones stood in a pose, as above.
+  expect(saddled.hash).toBe(2400700468);
 });
 
 test("a sized draw at the size a mesh was made draws as it always did, flat and with materials; at another size it is that much larger", () => {

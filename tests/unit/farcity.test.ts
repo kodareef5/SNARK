@@ -378,8 +378,7 @@ test("a level made from what a worker is sent, its tile's statics, those round i
     chunks.forEach((c, r) => {
       const part = level.cell > 0 ? cellPart(city, c, w.hf, goneOf(c), level.cell, level.tall) : mergedPart(city, c, w.hf, goneOf, level.gap, level.least);
       expect([made.first[r], made.count[r]]).toEqual([faces * 6, part.faces * 6]);
-      const at = (made.first.at(-1)! + made.count.at(-1)!) * made.indexBytes;
-      const view = new DataView(made.data.buffer, (at + 3) & ~3);
+      const view = new DataView(made.data.buffer);
       for (let v = 0; v < part.faces * 4; v++) {
         const o = (faces * 4 + v) * VERTEX_BYTES;
         const got = [0, 1, 2].map((a) => bounds.center[a]! + (view.getInt16(o + a * 2, true) / 32767) * bounds.half[a]!);

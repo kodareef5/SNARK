@@ -322,8 +322,7 @@ export class Progression {
    * a paused unit goes on from its ticks left and spends nothing more.
    */
   resume(rec: EntityRecord): void {
-    // A job of something no longer made at all is dropped, as a job whose content is gone is when read: the metal ingot
-    // in the hand, since the stations wave (planning/reference/stations-plan.md, Decided 2).
+    // A job of something not made here by a job is dropped, as a job whose content is gone is when read.
     const made = rec.jobs.filter((j) => this.craftOf(j.item) !== null);
     if (made.length !== rec.jobs.length) {
       rec.jobs.splice(0, rec.jobs.length, ...made);

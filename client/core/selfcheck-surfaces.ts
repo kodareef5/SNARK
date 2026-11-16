@@ -58,7 +58,7 @@ export class SelfcheckSurfaces implements AssetPort {
         let at = 0;
         const pictures: Uint8Array[] = [];
         for (let size = 1; size <= this.tops[role]!; size *= 2) {
-          const bytes = pictureBytes("rgba", name, size);
+          const bytes = pictureBytes("rgba", name, size, 1);
           pictures.push(a.data.subarray(at, at += bytes));
         }
         if (at !== a.data.length) this.error = `world-surface reference ${name} has ${a.data.length} bytes, expected ${at}`;

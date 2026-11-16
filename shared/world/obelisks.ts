@@ -3,9 +3,7 @@
 
 import type { Registry } from "../content/registry.ts";
 import { TAU, detCos, detSin } from "../math/scalar.ts";
-import { chunkAt } from "../coords.ts";
-import type { MapData, MapStatic } from "./mapfile.ts";
-import type { StructureStore } from "./structures.ts";
+import type { MapStatic } from "./mapfile.ts";
 
 export const OBELISK = "core:obelisk";
 export const TRAVEL_TERMINAL = "core:travel_terminal";
@@ -37,22 +35,4 @@ export function obeliskStatics(reg: Registry, at: ObeliskPlace, ground: (x: numb
   for (let i = 0; i < OBELISK_PIECES; i++) pieces.push({ kind: OBELISK, x: at.x, y: foot + half * (2 * i + 1), z: at.z, yaw: at.yaw & 0xffff });
   pieces.push({ kind: TRAVEL_TERMINAL, x: tx, y: ground(tx, tz) + reg.halfY[terminal]!, z: tz, yaw: at.yaw & 0xffff });
   return pieces;
-}
-
-/**
- * Sets down the map's obelisks and terminals that `structs` lacks: a save made before its map had them gets them as it loads,
- * since a map's pieces are otherwise set down only in a new world. Returns how many pieces it set down.
- */
-export function restoreObelisks(map: MapData, structs: StructureStore, reg: Registry): number {
-  let n = 0;
-  for (const s of map.statics) {
-    if (s.kind !== OBELISK && s.kind !== TRAVEL_TERMINAL) continue;
-    const kind = reg.index.get(s.kind);
-    if (kind === undefined) continue;
-    const t = structs.chunks[chunkAt(structs.dims, s.x, s.z)];
-    let there = false;
-    for (let i = 0; t && i < t.high && !there; i++) there = t.kind[i] === kind && Math.abs(t.x[i]! - s.x) < 0.01 && Math.abs(t.y[i]! - s.y) < 0.01 && Math.abs(t.z[i]! - s.z) < 0.01;
-    if (!there && structs.add(kind, s.x, s.y, s.z, s.yaw, 0, reg.maxHp[kind]!) >= 0) n++;
-  }
-  return n;
 }

@@ -766,7 +766,7 @@ export class GameServer {
     let z = cz;
     let y = 0;
     let yaw = at ? at.yaw : world.spawn.yaw;
-    // A place on the ground, or one saved before bodies stood on their lower sphere, is lifted to where the body rests there.
+    // A place on the ground is lifted to where the body rests there.
     // A bed is stood on as it is. A spawn point on ground too steep to stand on is taken as taken.
     const wantY = want ? (exact ? want.y : Math.max(want.y, groundUnder(world.hf, want.x, want.z, p.radius))) : 0;
     const slides = want !== null && !exact && wantY === groundUnder(world.hf, want.x, want.z, p.radius) && !groundStands(p.slopeCos);

@@ -68,7 +68,7 @@ const NONDETERMINISTIC = /\bMath\.(sin|cos|tan|asin|acos|atan|atan2|sinh|cosh|ta
 /** Seeded randomness only, wherever game state is produced. */
 const SEEDED_ONLY_DIRS = ["shared", "server", "client/core", "content"];
 /** The frame's build and the shell's work each frame, where an array made on every call is garbage every frame (madeArrays). */
-const FRAME_DIRS = ["client/core/render", "client/core/details", "client/shell/gl.ts", "client/shell/ui.ts"];
+const FRAME_DIRS = ["client/core/render", "client/core/details", "client/shell"];
 const MADE_ARRAY = {
   destructured: "`[a, b] = [x, y]` makes an array each time it runs, even in Safari's top tier; write a plain assignment each (`a = x; b = y;`, `const a = x, b = y;`)",
   set: "`t.set([x, y], k)` makes an array each time it runs; write the elements (`t[k] = x; t[k + 1] = y;`)",

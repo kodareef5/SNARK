@@ -36,7 +36,7 @@ function smallFiles(): GameFiles {
     role: t.role,
     top: 64,
     pictures: Array.from({ length: 7 }, (_, k) => {
-      const out = new Uint8Array(pictureBytes("rgba", t.role, 1 << k));
+      const out = new Uint8Array(pictureBytes("rgba", t.role, 1 << k, 1));
       for (let i = 0; i < out.length; i += PIXEL[t.role].length) out.set(PIXEL[t.role], i);
       return out;
     }),

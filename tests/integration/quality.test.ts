@@ -1,7 +1,6 @@
 // Quality and blueprints through the server and the wire: what the console gives, what a blueprint makes in the hands and
 // at a station, what crafting skill adds, what survives a restart, and a loot roll minted. The ledger balances throughout.
 
-import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +13,7 @@ import { NO_TARGET } from "../../server/build.ts";
 import type { Def, LootDef, SpeciesDef } from "../../shared/content/defs.ts";
 import { compileContent, type Registry } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
-import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_OPEN, BOX_SELF, CMD_CRAFT, CMD_CRAFT_BLUEPRINT, CMD_DROP, CMD_MOVE, CMD_PLACE, CMD_REPAIR, CMD_SELECT, CMD_STRUCT, CMD_USE, RESULT_DENIED, RESULT_INVALID, RESULT_OK, RESULT_SHORT } from "../../shared/net/protocol.ts";
 import { FLAG_BLUEPRINT, QUALITY_CRAFT_XP, type Inventory } from "../../shared/sim/items.ts";
 import { NO_PIN, STRUCT_USE } from "../../shared/world/upkeep.ts";
@@ -214,74 +213,6 @@ test("at a station a blueprint lies in the station, makes its item there with no
   expect([backBox.total(spark), back.jobs.length, backBox.flags[0]]).toEqual([6, 0, FLAG_BLUEPRINT]);
   expect(h.host.items.audit()).toEqual([]);
   void again;
-  h.host.shutdown();
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test("a save from before flags, its slots in COMP_SLOTS2 under record format 4, loads with nothing lost and nothing a blueprint", () => {
-  const dir = mkdtempSync(joinPath(tmpdir(), "snark-slots2-"));
-  const dbPath = joinPath(dir, "world.db");
-  let { h, s, rec, items } = setup(undefined, dbPath);
-  h.say(s, "give stone 70 2");
-  h.say(s, "give hatchet 1 4");
-  h.say(s, "give berry 12");
-  h.run(300);
-  const was = slots(items.inv(rec));
-  const pid = rec.pid;
-  h.host.shutdown();
-  // Rewrite every record as the build before wrote it: format 4, and each slot without its flags byte, as part 11.
-  const db = new Database(dbPath);
-  let rewrote = 0;
-  for (const row of db.query("SELECT pid, data FROM entities").all() as { pid: number; data: Uint8Array }[]) {
-    const r = new BitReader(row.data);
-    const w = new BitWriter(row.data.length + 16);
-    // This build writes revision 7. What 6 and 7 added, a creature's flying bit and a job's paused bit, is 0 here and reads as
-    // the padding of 4 does; a fire's piece and lanes are a burning fire's, and nothing here burns.
-    expect(r.u8()).toBe(7);
-    w.u8(4);
-    w.string(r.string(256));
-    const n = r.varint();
-    w.varint(n);
-    for (let k = 0; k < n; k++) {
-      const part = r.varint();
-      const blob = r.blob(1 << 20);
-      if (part !== 22) {
-        w.varint(part);
-        w.blob(blob);
-        continue;
-      }
-      const c = new BitReader(blob);
-      const o = new BitWriter(blob.length + 16);
-      o.varint(c.varint());
-      o.varint(c.varint());
-      const used = c.varint();
-      o.varint(used);
-      for (let i = 0; i < used; i++) {
-        for (let f = 0; f < 3; f++) o.varint(c.varint());
-        o.u8(c.u8());
-        o.varint(c.varint());
-        o.varint(c.varint());
-        const holds = c.bool();
-        o.bool(holds);
-        if (holds) (o.varint(c.varint()), o.u8(c.u8()), o.varint(c.varint()));
-        expect(c.u8()).toBe(0);
-      }
-      w.varint(11);
-      w.blob(o.bytes());
-      rewrote++;
-    }
-    db.query("UPDATE entities SET data = ? WHERE pid = ?").run(w.bytes().slice(), row.pid);
-  }
-  db.close();
-  expect(rewrote).toBeGreaterThan(0);
-  h = new Harness({}, 1, 60, { dev: true, dbPath });
-  s = h.join("ada");
-  h.run(600);
-  rec = h.host.records.byPid.get(pid)!;
-  items = h.host.items;
-  // Spoilage aside, it is what it was. The berries kept their clock, so nothing spoiled in a second.
-  expect(slots(items.inv(rec))).toEqual(was);
-  expect(items.audit()).toEqual([]);
   h.host.shutdown();
   rmSync(dir, { recursive: true, force: true });
 });

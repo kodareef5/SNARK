@@ -1,9 +1,8 @@
 // Blocks for the ASTC decoder's test and for `bun run probe -- --textured`, which shows the same ones to a GPU.
 
-import { astcBlockInfo, decodeAstcBlock } from "../../tools/pack/astc.ts";
+import { astcBlockInfo, astcModes, decodeAstcBlock } from "../../tools/pack/astc.ts";
 
 const MODE_NAMES: Record<number, string> = { 0: "l", 1: "l offset", 4: "la", 5: "la offset", 6: "rgb scale", 8: "rgb", 9: "rgb offset", 10: "rgb scale a", 12: "rgba", 13: "rgba offset" };
-const GRIDS = [[4, 4], [4, 3], [3, 4], [4, 2], [2, 4], [3, 3], [3, 2], [2, 3], [2, 2]] as const;
 
 /** A seeded source of whole numbers below `n`. */
 function dice(seed: number): (n: number) => number {
@@ -23,8 +22,8 @@ export interface Sample {
   row: string;
 }
 
-function describe(block: Uint8Array): string {
-  const b = astcBlockInfo(block, 0);
+function describe(block: Uint8Array, side: number): string {
+  const b = astcBlockInfo(block, 0, side);
   if (b.solid) return "solid";
   const names = b.modes.map((m) => MODE_NAMES[m] ?? "hdr");
   const mode = names.every((n) => n === names[0]) ? names[0]! : names.join(" + ");
@@ -36,28 +35,30 @@ function setBits(block: Uint8Array, at: number, count: number, value: number): v
 }
 
 /**
- * Blocks of random bits under a block mode, a partition count and endpoint modes that were chosen: `each` or so for
- * every grid, weight range, number of planes and number of partitions. Then some of random bits alone, and some
- * void-extent blocks, good and bad. Each comes with whether the format allows it.
+ * Blocks `side` pixels across of random bits under a block mode, a partition count and endpoint modes that were
+ * chosen: `each` or so for every grid, weight range, number of planes and number of partitions the side has a mode
+ * for. Then some of random bits alone, and some void-extent blocks, good and bad. Each comes with whether the format
+ * allows it.
  */
-export function builtBlocks(seed: number, each: number): Sample[] {
+export function builtBlocks(seed: number, each: number, side: number): Sample[] {
   const below = dice(seed);
   const out: Sample[] = [];
   const add = (block: Uint8Array): void => {
-    const b = astcBlockInfo(block, 0);
-    if (b.valid) out.push({ block, set: "built", row: describe(block) });
+    const b = astcBlockInfo(block, 0, side);
+    if (b.valid) out.push({ block, set: "built", row: describe(block, side) });
     else out.push({ block, set: "invalid", row: b.partitions > 0 ? "a partition with an hdr mode" : block[0] === 0xfc && block[1]! & 1 ? "void-extent that is not allowed" : "block mode or bit counts not allowed" });
   };
   const ldr = [0, 1, 4, 5, 6, 8, 9, 10, 12, 13];
+  const { grids, mode } = astcModes(side);
   for (let parts = 1; parts <= 4; parts++) {
-    for (const [w, h] of GRIDS) {
+    for (let g = 0; g < grids.length; g++) {
       for (let range = 0; range < 12; range++) {
         for (let dual = 0; dual < 2; dual++) {
+          const bits = mode(g, range, dual + 1);
+          if (bits < 0) continue;
           for (let n = 0; n < (parts === 1 ? each * 2 : each * 3); n++) {
             const block = new Uint8Array(16).map(() => below(256));
-            const r = (range % 6) + 2;
-            const shape = w === 4 ? ((h - 2) << 5) | (r >> 1) : 0x100 | ((w - 2) << 7) | ((h - 2) << 5) | 0xc | (r >> 1);
-            setBits(block, 0, 11, (dual << 10) | (range >= 6 ? 0x200 : 0) | shape | ((r & 1) << 4));
+            setBits(block, 0, 11, bits);
             setBits(block, 11, 2, parts - 1);
             // One mode for every partition two times in three, else a mode for each.
             if (parts === 1) setBits(block, 13, 4, ldr[below(10)]!);
@@ -83,18 +84,18 @@ export function builtBlocks(seed: number, each: number): Sample[] {
   return out;
 }
 
-/** A sum over what our decoder makes of some blocks, in both formats. */
-export function decodedSum(samples: Sample[]): string {
-  const out = new Uint8Array(64);
+/** A sum over what our decoder makes of some blocks `side` across, in both formats. */
+export function decodedSum(samples: Sample[], side: number): string {
+  const out = new Uint8Array(side * side * 4);
   let sum = 0x811c9dc5;
   for (const s of samples) {
     for (const srgb of [false, true]) {
-      decodeAstcBlock(s.block, 0, srgb, out);
-      for (let i = 0; i < 64; i++) sum = Math.imul(sum ^ out[i]!, 0x01000193);
+      decodeAstcBlock(s.block, 0, side, srgb, out);
+      for (let i = 0; i < out.length; i++) sum = Math.imul(sum ^ out[i]!, 0x01000193);
     }
   }
   return (sum >>> 0).toString(16).padStart(8, "0");
 }
 
-/** The seed and count of the set the unit test pins. */
+/** The seed and count of the sets the unit test pins. */
 export const PINNED = { seed: 0x5eed0a57, each: 1 };

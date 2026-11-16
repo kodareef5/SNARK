@@ -29,13 +29,9 @@ def keep(m, man, name, url, source, licence, params=None, data=None, accept=None
     return path
 
 
-def counties(t):
-    return t.get('counties') or [t['county']]
-
-
 def tiger(m, man):
     t = m.city['tiger']
-    for county in counties(t):
+    for county in t['counties']:
         for layer in t['layers']:
             name = f"tl_{t['year']}_{county}_{layer}.zip"
             p = keep(m, man, name, f"https://www2.census.gov/geo/tiger/TIGER{t['year']}/{layer.upper()}/{name}", t['source'], t['licence'])

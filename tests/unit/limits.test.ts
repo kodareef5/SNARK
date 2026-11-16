@@ -202,7 +202,7 @@ test("a budget smaller than one create still carries one of each kind a snapshot
   expect(fresh).toEqual([2, 4, 5, 6]);
 });
 
-test("a frame short of bones poses survivors first, then the nearest, and draws every other body rigid on one bone where it stands", () => {
+test("a frame short of bones poses survivors first, then the nearest, and stands every other body on one bone where it is, in a pose for what it does", () => {
   const view = provingView(320, 180);
   const { remote, cam, scene, reg, hf, raster, pack } = view;
   const raptor = reg.index.get("core:raptor")!;
@@ -255,21 +255,24 @@ test("a frame short of bones poses survivors first, then the nearest, and draws 
   };
   // With the tier's own bones every body is posed.
   expect(frame(tier.bones)).toEqual({ rigid: [], posed: 8, used: 2 * HUMAN_BONES + 6 * each });
-  // With enough for the survivors and two raptors, and one bone each for the rest, the four farther raptors are rigid.
-  const short = 2 * HUMAN_BONES + 2 * each + 4;
+  // With enough for the survivors and two raptors, one bone each for the rest and the bones of the one pose they stand in,
+  // the four farther raptors stand in it.
+  const short = 2 * HUMAN_BONES + 2 * each + 4 + each;
   expect(frame(short)).toEqual({ rigid: [202, 203, 204, 205], posed: 4, used: short });
   for (let k = 2; k < 6; k++) {
     const [pixels, off] = shown(k);
     expect(pixels).toBeGreaterThan(8);
     expect(off).toBeLessThan(3);
   }
-  // One bone less and a raptor more is rigid. With hardly any, all are, and none is left out.
+  // One bone less and a raptor more stands. With only enough for a bone each and the raptors' and the survivors' poses,
+  // all stand, and none is left out.
   expect(frame(short - 1).rigid).toEqual([201, 202, 203, 204, 205]);
-  expect(frame(3)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 0, used: 8 });
+  const least = 8 + each + HUMAN_BONES;
+  expect(frame(least)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 0, used: least });
   for (let k = 0; k < 8; k++) expect(shown(k)[0]).toBeGreaterThan(8);
   // The viewer's own body is posed whatever is left.
   scene.own = { kind: survivor, x: cam.x, y: hf.heightAt(cam.x, cam.z + 3), z: cam.z + 3, yaw: 0, state: new AnimState(), tick: 0, firstPerson: false, colors: new Uint8Array(6), look: null, gear: new Uint16Array(6), id: 7 };
-  expect(frame(3)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 1, used: 8 + HUMAN_BONES });
+  expect(frame(least + HUMAN_BONES)).toEqual({ rigid: [200, 201, 202, 203, 204, 205, 206, 207], posed: 1, used: least + HUMAN_BONES });
 });
 
 test("what a full frame leaves out is counted: draws past 4,096 and beams past sixteen", () => {

@@ -5,7 +5,7 @@ import { Database, type Statement } from "bun:sqlite";
 import type { Registry } from "../../shared/content/registry.ts";
 import type { ChunkTable, StructureStore } from "../../shared/world/structures.ts";
 import type { EntityRecord } from "../records.ts";
-import { existsSync, mkdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { RecordCodec, WITHOUT, idMap, type RecordRow } from "./codec.ts";
 import { listBackups } from "./backup.ts";
@@ -17,25 +17,17 @@ const CHUNK_FORMAT = 1;
 /** Per structure slot in a chunk blob: kind, x, y, z, yaw, owner, hp, mod. */
 const SLOT_BYTES = 2 + 4 + 4 + 4 + 2 + 4 + 4 + 4;
 
-const MIGRATIONS: ((db: Database) => void)[] = [
-  (db) => {
-    db.exec(`
-      CREATE TABLE content_ids (idx INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE);
-      CREATE TABLE chunk_structs (chunk INTEGER PRIMARY KEY, version INTEGER NOT NULL, slots INTEGER NOT NULL, data BLOB NOT NULL);
-      CREATE TABLE entities (pid INTEGER PRIMARY KEY, kind INTEGER NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL, yaw INTEGER NOT NULL, data BLOB NOT NULL);
-      CREATE TABLE survivors (name TEXT PRIMARY KEY, pid INTEGER NOT NULL) WITHOUT ROWID;
-      CREATE TABLE journal (seq INTEGER PRIMARY KEY, tick INTEGER NOT NULL, op INTEGER NOT NULL, data BLOB NOT NULL);
-    `);
-  },
-  // Schema 2 adds per-chunk state other than structures, keyed by tag.
-  (db) => {
-    db.exec("CREATE TABLE chunk_blobs (chunk INTEGER NOT NULL, tag INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (chunk, tag)) WITHOUT ROWID");
-  },
-  // Schema 3 adds what left this world for another of its cluster, and what came (server/cluster/cluster.ts).
-  (db) => {
-    db.exec("CREATE TABLE IF NOT EXISTS transfers (id TEXT NOT NULL, dir INTEGER NOT NULL, pid INTEGER NOT NULL, name TEXT NOT NULL, hop INTEGER NOT NULL, peer INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, dir)) WITHOUT ROWID");
-  },
-];
+// chunk_blobs holds per-chunk state other than structures, keyed by tag. transfers holds what left this world for another
+// of its cluster, and what came (server/cluster/cluster.ts).
+const SCHEMA = `
+  CREATE TABLE content_ids (idx INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE);
+  CREATE TABLE chunk_structs (chunk INTEGER PRIMARY KEY, version INTEGER NOT NULL, slots INTEGER NOT NULL, data BLOB NOT NULL);
+  CREATE TABLE entities (pid INTEGER PRIMARY KEY, kind INTEGER NOT NULL, x REAL NOT NULL, y REAL NOT NULL, z REAL NOT NULL, yaw INTEGER NOT NULL, data BLOB NOT NULL);
+  CREATE TABLE survivors (name TEXT PRIMARY KEY, pid INTEGER NOT NULL) WITHOUT ROWID;
+  CREATE TABLE journal (seq INTEGER PRIMARY KEY, tick INTEGER NOT NULL, op INTEGER NOT NULL, data BLOB NOT NULL);
+  CREATE TABLE chunk_blobs (chunk INTEGER NOT NULL, tag INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (chunk, tag)) WITHOUT ROWID;
+  CREATE TABLE transfers (id TEXT NOT NULL, dir INTEGER NOT NULL, pid INTEGER NOT NULL, name TEXT NOT NULL, hop INTEGER NOT NULL, peer INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (id, dir)) WITHOUT ROWID;
+`;
 
 /**
  * A transfer as a save records it: `dir` is TRANSFER_OUT for one that left and TRANSFER_IN for one that came, `peer` the
@@ -165,15 +157,12 @@ export class WorldStore {
       const named = this.meta("save_id");
       this.saveId = typeof named === "string" && named !== "" ? named : [...crypto.getRandomValues(new Uint8Array(8))].map((b) => b.toString(16).padStart(2, "0")).join("");
       if (named !== this.saveId) db.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('save_id', ?)").run(this.saveId);
-      if (current > SCHEMA_VERSION) throw new Error(`save has schema ${current}; this build understands up to ${SCHEMA_VERSION}`);
-      if (current < SCHEMA_VERSION) {
-        // The save as it was, kept beside it before its form changes. An older copy of the same form is left alone.
-        if (current > 0 && !existsSync(`${path}.pre-v${current}`)) db.query("VACUUM INTO ?").run(`${path}.pre-v${current}`);
+      if (current === 0) {
         db.transaction(() => {
-          for (let v = current; v < SCHEMA_VERSION; v++) MIGRATIONS[v]!(db);
+          db.exec(SCHEMA);
           db.query("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ?)").run(SCHEMA_VERSION);
         })();
-      }
+      } else if (current !== SCHEMA_VERSION) throw new Error(`save has schema ${current}, and this build reads ${SCHEMA_VERSION}`);
 
       // Intern every content id this build knows, then map the save's indices to runtime ones.
       const saved = new Map<string, number>();
@@ -198,7 +187,7 @@ export class WorldStore {
         if (runtime !== undefined) toSaved[runtime] = idx;
       }
       this.missingContent.push(...map.lost.values());
-      this.codec = new RecordCodec(reg, toSaved, map, opts.allowMissingContent ?? false);
+      this.codec = new RecordCodec(toSaved, map, opts.allowMissingContent ?? false);
       if (this.missingContent.length > 0 && !opts.allowMissingContent && this.referencesMissing()) {
         db.close();
         throw new Error(`save uses content this build does not have: ${this.missingContent.join(", ")}: ${WITHOUT}`);
@@ -406,14 +395,14 @@ export function readSave(path: string, reg: Registry): SaveView {
       if (row.idx > high) high = row.idx;
     }
     // What this build lacks is counted as left out, not refused: the reader is only counting.
-    const codec = new RecordCodec(reg, new Uint16Array(reg.ids.length), idMap(reg, saved, high), true);
+    const codec = new RecordCodec(new Uint16Array(reg.ids.length), idMap(reg, saved, high), true);
     const records: EntityRecord[] = [];
     for (const row of db.query("SELECT pid, kind, x, y, z, yaw, data FROM entities").all() as RecordRow[]) {
       const rec = codec.decode(row);
       if (rec) records.push(rec);
     }
     const ledger = meta("ledger");
-    const transfers = (db.query("SELECT name FROM sqlite_master WHERE name = 'transfers'").get() ? db.query("SELECT id, dir, pid, name, hop, peer, at FROM transfers").all() : []) as TransferRow[];
+    const transfers = db.query("SELECT id, dir, pid, name, hop, peer, at FROM transfers").all() as TransferRow[];
     db.exec("COMMIT");
     return { tick: Number(meta("tick") ?? 0), world: Number(meta("world_id") ?? 1), ledger: typeof ledger === "string" ? ledger : null, records, transfers };
   } finally {

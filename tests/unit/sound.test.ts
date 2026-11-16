@@ -8,7 +8,7 @@ import { MODE_FLYER } from "../../shared/sim/character.ts";
 import { flyerAnim } from "../fixtures/flyer/flyer.ts";
 import { buildRigs } from "../../shared/anim/rigs.ts";
 import { TICK_RATE } from "../../shared/coords.ts";
-import { parseManifest } from "../../shared/pack/manifest.ts";
+import { MANIFEST_VERSION, parseManifest } from "../../shared/pack/manifest.ts";
 import { decodeTake, decodeTakes, takeFits, type ManifestSound } from "../../shared/pack/sound.ts";
 import { ACT_SWING } from "../../shared/sim/weapon.ts";
 import { buildProvingHeightfield, PROVING_POOL } from "../../shared/world/proving.ts";
@@ -175,7 +175,7 @@ test("a WAV of 16, 24 or 32 bits, or of floats, reads back; a take is cut, level
 });
 
 const made = builtSounds();
-const built = { file: made.file, manifest: parseManifest(JSON.stringify({ version: 3, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: made.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: made.sounds })) };
+const built = { file: made.file, manifest: parseManifest(JSON.stringify({ version: MANIFEST_VERSION, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: made.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: made.sounds })) };
 
 test("the build names each sound by its owner and occasion, and a manifest that says a wrong thing of one is refused", () => {
   const ids = built.manifest.sounds!.map((s) => s.id);
@@ -665,7 +665,7 @@ test("a voice taken over in the frame it was started never reaches the device, w
 
 test("a pteranodon is heard flapping once a beat of its flight, twice flying fast, and as it takes off; never on still wings or standing", () => {
   const flaps = builtSounds(1, false, true);
-  const manifest = parseManifest(JSON.stringify({ version: 3, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: flaps.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: flaps.sounds }));
+  const manifest = parseManifest(JSON.stringify({ version: MANIFEST_VERSION, files: [{ name: "boot", bytes: 0, role: "boot" }, { name: "sounds", bytes: flaps.file.length, role: "sound" }], boot: 0, clipHash: 0, meshes: [], sounds: flaps.sounds }));
   const net = new FakeNet([new Uint8Array(0), flaps.file], { latencyMs: 1, bytesPerSecond: 1e8 });
   const ptera = reg.index.get("core:pteranodon")!;
   const flyer = flyerAnim();
