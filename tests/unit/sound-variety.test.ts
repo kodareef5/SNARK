@@ -25,7 +25,7 @@ function pack(): { sounds: Sounds; frame: () => number[][] } {
     mkdirSync(join(dir, "takes"), { recursive: true });
     const takes = [0, 1, 2, 3, 4, 5].map((k) => {
       writeFileSync(join(dir, "takes", `${k}.wav`), writeWav(chirp(0.5 + k * 0.05, 32000), 32000));
-      return { file: `takes/${k}.wav` };
+      return { file: `takes/${k}.wav`, from: k < 4 ? "moss" : "stable" };
     });
     writeFileSync(join(dir, "sounds.json"), JSON.stringify({ sounds: { chase: { range: 60, level: -20, vary: 0, takes } } }));
     const built = buildSounds(1, root, null)!;
@@ -79,6 +79,19 @@ test("six of a pack calling at once are at most three voices, each a different t
   for (let k = 0; k < 40; k++) frame();
   call();
   expect(frame().length).toBe(3);
+});
+
+test("asked for one maker's takes, a sound waits for them rather than play another's", () => {
+  const { sounds, frame } = pack();
+  sounds.from = "stable";
+  const owner = sounds.resolver.owner("core:packbeast");
+  let started: number[][] = [];
+  for (let k = 0; k < 30 && started.length === 0; k++) {
+    sounds.hear(owner, cueKey("chase"), 1, 381, 3, 383, 1, 1, false);
+    started = frame();
+  }
+  const first = sounds.library.first[sounds.library.index.get("core:packbeast/sound/chase")!]!;
+  expect([first + 4, first + 5]).toContain(started[0]![1]!);
 });
 
 test("a body's own voice stays with it, and bodies differ", () => {

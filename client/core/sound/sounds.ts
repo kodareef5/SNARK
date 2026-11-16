@@ -412,8 +412,9 @@ export class Sounds {
     const first = lib.first[e.sound]!;
     const last = this.lastTakes.get(e.sound) ?? [];
     const free = pool.filter((k) => !this.mixer.playingTake(first + k));
-    // No take plays twice at once while the sound has more to hold.
-    if (free.length === 0 && held < sound.takes.length) {
+    const unheld = this.from !== "" && takes.length === 0 && sound.takes.some((t) => t.from === this.from);
+    // No take plays twice at once, and no other maker's stands in for `from`'s, while the sound has more to hold.
+    if ((free.length === 0 || unheld) && held < sound.takes.length) {
       lib.grow(e.sound);
       return HEARD_WAITING;
     }
