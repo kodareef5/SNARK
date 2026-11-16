@@ -1,0 +1,27 @@
+# The utility helicopter
+
+An original four-seat transport: a broad, softly faceted cabin with a glazed nose, four independent doors, a low instrument console, upholstered seats, raised turbine fairing, a tapered tail with a swept fin, four main blades and two tail blades. Structural struts join the long skids to the belly and wide rubber steps serve both rows. It has no mounted weapon fittings.
+
+The mechanical measurements live in `content/vehicles/helicopter-art.ts`. Engine coordinates are metres, +Y up, +Z forward, +X the pilot's left; the origin is on the resting skid support plane. Blender's model is rotated into its export frame once. Every moving part is rigid on its named bone; the authoritative vehicle provides its attitude and rotor phase.
+
+The cabin was enlarged before modelling to fit the game's survivors. Seat pelvis anchors are X ±0.48, Y 1.10, front Z 0.65 and rear Z −0.95. The roof above the seats rises to 2.60, the shell is about 65 mm thick, and the low console ends at 1.52. Human proportions are preserved. Pilot and cabin seat profiles keep hands on the controls or in the lap. The cabin uses hollow geometry; no invisible solid box surrounds the occupants.
+
+The nose and roof follow sampled curved sections. The inner volume follows the same curved shell, leaving continuous wall thickness around the rounded belly and bow. Each door is cut from that shell and then inset, with a separately cut window, hinges, handle and frame. The UV layout follows connected face charts and guards its hash against textures made for an older model.
+
+Three liveries share all geometry, pivots, sockets, trim and cabin. Their painted panels differ: utility, rescue and police lettering, with paint region 0, stripe region 1 and upholstery region 2. Graphics do not copy real agencies. Panels have restrained fasteners and seams; the metal, intake mesh, skid treads, seat stitching, instruments and controls have distinct material responses. Clear window centres use the renderer's native cutout material, with visible perimeter and sparse edge reflections; opaque glass must never hide the pilot's view.
+
+The six mesh levels are made through the native surface simplifier. The first two keep textures; the remaining four keep the palette and dye regions. Review includes the last textured level beside the first flat level, silhouette against the sky, front and rear doors open, cockpit sightlines, and all damage stages. Rotor blade tips retain a contrasting band at range.
+
+`helicopter_wreck` is built from the same model and UV layout on the same eight-bone skeleton. Its blades bend, tail sags, bow is crushed and panels buckle while all surfaces remain closed. It can retain any final aircraft attitude, including an inverted impact. Wreck materials are the complete burnt/damaged state of the same seven-map material sets.
+
+The generated concept and the Blender geometry review are design evidence. Native rendered sheets and the game's preview are the final presentation evidence. Sound production belongs to the separate sound workstream; rotor, exhaust and landing sockets are ready for effects and sound cue integration.
+
+The real human fit audit (`bun ref/fit.ts --bounds --controls --write`) reads the native body pack, including every armor, hair and beard mesh, both sexes and all four seats. Independent bone-axis intervals cover every creator slider combination on the body, legs and passenger arms. It tests entire interval boxes against each interpolated inner-shell polygon, including quadratic extrema between stations. Head motion is sampled across yaw ±0.8 and look pitch ±π/2, with an angle-times-radius allowance between samples. The accepted fit has 59.5 mm minimum body cross-section clearance; head clearance remains 89.3 mm after the conservative continuous-look allowance.
+
+The pilot uses scale-aware, fixed-length two-bone arm fitting to the authored cyclic and collective grips. A separate actual-mesh audit tests every combination of the 12 arm/torso proportion extrema, plus 512 interior samples per sex. Its 9,216 pilot profiles leave at least 310.9 mm around the armored hands and forearms, with maximum grip residual 0.000000207 m. Together the audits check 30,768,944 geometry points. The control fit is sampled evidence for the nonlinear arm solve, rather than an interval proof between every possible arm slider value. The native occupied reviews use this same solve, including the actual large and small armored bodies.
+
+The six native levels preserve both blade assemblies explicitly. At high speed the renderer can replace their discrete silhouettes with motion cards: only blades follow rotor_main/rotor_tail, while hub caps, grips, mast and pitch-link hardware retain chassis weights. The wreck keeps these same bones and has its damaged hub/tail positions attached to the displaced structure.
+
+Texture maps use 60 MB in the largest tier; livery variants share trim/cabin maps. The instrument displays have six times the ordinary chart density, dark matte faces, original printed flight and service reference graphics. Their graphics are static artwork; the game HUD provides actual telemetry. The UV grid is quantized before tangent export, preventing microscopic Boolean cuts from changing orientation later in the native 16-bit pack.
+
+The final civilian and rescue native levels have 34,208 / 18,000 / 7,000 / 2,598 / 998 / 480 triangles. Each retains both blade assemblies; all six remain within their declared budgets.

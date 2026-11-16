@@ -225,6 +225,8 @@ async function sharedPack(dir: string): Promise<Record<string, string>> {
 }
 
 type Tier = "fast" | "slow";
+/** Measured ordering for a clean checkout, before it has a passing fast tier of its own to learn from. */
+const SEED_TIMES = join(ROOT, "tools/test-times.json");
 
 const args = process.argv.slice(2);
 if (args.some((a) => a !== "--slow" && a !== "--slow-only")) {
@@ -291,13 +293,14 @@ async function checkTests(tier: Tier, dir: string, env: Record<string, string>):
   const files = testFiles.filter((f) => SLOW_TEST.test(f) === (tier === "slow")).length;
   if (files === 0) return;
   // Each test file in a worker of its own: about half the time, and one file cannot lean on what another left behind.
-  const workers = Math.min(cpus().length, files);
+  // More JS heaps than sixteen contend for cache and memory on a machine of many threads, and time out files fast alone.
+  const workers = Math.min(16, cpus().length, files);
   const report = join(dir, `${tier}.xml`);
   const watch = join(dir, `${tier}-watch`);
   mkdirSync(watch);
   const times = timesOf(tier);
   // The slowest files start first, by their times in the last run, or the last of them may start when the rest are done.
-  const timed = existsSync(times) ? ["--timings", times] : [];
+  const timed = existsSync(times) ? ["--timings", times] : tier === "fast" ? ["--timings", SEED_TIMES] : [];
   const only = tier === "slow" ? [".slow.test.ts"] : ["--path-ignore-patterns=**/*.slow.test.ts"];
   const stopped: string[] = [];
   const most = new Map<string, number>();

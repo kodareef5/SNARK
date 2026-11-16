@@ -165,9 +165,9 @@ const FABRICATOR: Readonly<Record<string, Made>> = {
 
 test("the fabricator makes the shock dart, the flashlight and laser, the poison grenade and the vault, at ARK's numbers (Fabricator, and each page)", () => {
   for (const name of Object.keys(FABRICATOR)) expect([name, made(name)]).toEqual([name, FABRICATOR[name]!]);
-  // What it makes, lit or out, is these and S2's polymer and electronics.
+  // What it makes, lit or out, includes these, S2's materials and SNARK's original helicopter assembly.
   const makes = (kind: string): string[] => stationRecipes(reg, at(kind)).map((k) => reg.ids[k]!.slice(5)).sort();
-  expect([makes("fabricator"), makes("fabricator_lit")]).toEqual([[...Object.keys(FABRICATOR), "electronics", "polymer"].sort(), [...Object.keys(FABRICATOR), "electronics", "polymer"].sort()]);
+  expect([makes("fabricator"), makes("fabricator_lit")]).toEqual([[...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly"].sort(), [...Object.keys(FABRICATOR), "electronics", "polymer", "helicopter_assembly"].sort()]);
   // The vault weighs 20 and stacks to 1 (Vault).
   expect([item("piece_vault").weight, item("piece_vault").stack]).toEqual([20, 1]);
 });

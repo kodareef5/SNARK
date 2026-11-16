@@ -1355,7 +1355,7 @@ export class DeviceRun {
         scene.assets.tier = mine.set(change, copy).get(change)!;
       }
       // The flight moves the camera as it builds; the body stays where the server has it.
-      if (this.fly) [cam.x, cam.y, cam.z, cam.yaw, cam.pitch] = [this.fly.x, this.fly.y, this.fly.z, this.fly.yaw, this.fly.pitch];
+      if (this.fly) [cam.x, cam.y, cam.z, cam.yaw, cam.pitch, cam.roll] = [this.fly.x, this.fly.y, this.fly.z, this.fly.yaw, this.fly.pitch, 0];
       return build(cam, remote);
     };
   }

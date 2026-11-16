@@ -14,14 +14,14 @@ import type { Manifest } from "../../shared/pack/manifest.ts";
 import type { Registry } from "../../shared/content/registry.ts";
 import { MODE_FLYER, stanceEye } from "../../shared/sim/character.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { CARRY_THROW, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
+import { CARRY_THROW, CMD_VEHICLE, VEHICLE_INSPECT, CMD_CARRY, CMD_OPEN, CMD_ORDER, CMD_SELECT, CMD_TAKE, MARKER_DEATH, ORDER_ALL, ORDER_ATTACK, ORDER_FOLLOW, ORDER_STAY, ORDER_YOURS, REJECT_FULL, REJECT_PASSWORD, REJECT_TRAVEL, REJECT_VERSION, RESULT_OK, SESSION_ALIVE, SESSION_CREATING, RESULT_NO_SNAP, TEXT_NOTICE } from "../../shared/net/protocol.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NODE, HIT_NONE, HIT_STRUCTURE, castWorld, lookDirection, rayBox, rayHit } from "../../shared/world/ray.ts";
 import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { structName } from "./ui/structure.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
-import { Controls } from "./controls.ts";
+import { Controls, LOOK_SPEED } from "./controls.ts";
 import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
@@ -35,13 +35,15 @@ import { BTN_JUMP, BTN_MELEE, BTN_PRIMARY, BTN_PRONE, BTN_RELOAD, BTN_SECONDARY 
 import { FISTS, HOLD_CARRY } from "../../shared/sim/weapon.ts";
 import { KICK_UNIT, scopeFitted, shotCone, sway, swayOut } from "../../shared/sim/aim.ts";
 import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
-import { handleGen, handleIndex } from "../../shared/ids.ts";
-import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
+import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
+import { VehiclePlacement } from "./vehicle-placement.ts";
+import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
+import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { Lasers, daylight } from "./render/laser.ts";
-import { Viewpoint } from "./viewpoint.ts";
+import { CockpitLook, Viewpoint } from "./viewpoint.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
@@ -134,6 +136,7 @@ export class App {
   private fov = BASE_FOV;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
+  private readonly cockpit = new CockpitLook();
   scene: Scene | null = null;
   /** Draw the stress meshes, if the pack has them. `marks` are the rocks whose colour says which level is on the screen. */
   stress = false;
@@ -166,6 +169,7 @@ export class App {
   private last = -1;
   /** Eased eye height above the feet, or -1 before the first frame and while there is no living body. */
   private eye = -1;
+  private helicopterViewHost = -1;
   private readonly aim = [0, 0, 0];
   private readonly seatAt = [0, 0, 0];
   private readonly body: OwnBody = { kind: 0, x: 0, y: 0, z: 0, yaw: 0, state: new AnimState(), tick: 0, firstPerson: true, colors: new Uint8Array(6), look: null, gear: new Uint16Array(GEAR_COUNT), id: 0 };
@@ -200,14 +204,17 @@ export class App {
     // The inventory pictures the build drew, fetched as they are first shown.
     if (stream?.manifest.icons) new Icons(stream.manifest, reg.defs).install(this.ui.frame);
     this.shots = new Shots(reg, pack);
+    this.ui.inventory.onDeploy = slot => this.vehiclePlacement.begin(slot);
     session.onResult = (seq, code) => {
       this.ui.creator.result(seq, code === RESULT_OK);
       this.builder.result(seq, code, this.nowMs);
+      this.vehiclePlacement.result(seq, code, this.nowMs);
       this.ui.structure.result(seq, code, this.nowMs, this.session, this.aimed);
     };
   }
 
   readonly builder = new Builder();
+  readonly vehiclePlacement = new VehiclePlacement();
   /** The page, for travel between the servers of a cluster. The shell sets it; without one nobody travels. */
   page: Page | null = null;
   /** The page is on its way to another server, or has said it arrived. */
@@ -301,6 +308,7 @@ export class App {
   /** Returns true if the page should not also act on the key. */
   key(code: string, down: boolean, repeat = false, source = 0): boolean {
     if (down && !repeat) this.ui.inputDevice = source;
+    if (!this.ui.captureKeyboard && this.vehiclePlacement.key(code, down, repeat)) return true;
     if (this.ui.key(code, down, repeat, this.session)) {
       // A screen that captures the keyboard releases the body's keys and a push-to-talk microphone.
       if (this.ui.captureKeyboard) {
@@ -350,7 +358,11 @@ export class App {
     // F opens the tribe creature that is ridden or looked at.
     if (code === "KeyF") {
       const which = this.session.driving >= 0 ? this.session.driving : this.lookedAt;
-      if (down && !repeat && which >= 0) this.session.command(CMD_OPEN, (w) => w.u32(which >>> 0));
+      if (down && !repeat && which >= 0) {
+        const r = this.remote, at = r.id.subarray(0, r.count).indexOf(which);
+        if (at >= 0 && this.reg.vehicle[r.kind[at]!]) this.session.command(CMD_VEHICLE, w => { w.u8(VEHICLE_INSPECT); w.u32(makeHandle(which, r.gen[at]!)); });
+        else this.session.command(CMD_OPEN, (w) => w.u32(which >>> 0));
+      }
       return true;
     }
     // Whistles. T and Y tell the creature looked at to follow or stay. J and U tell every tribe creature that hears.
@@ -396,6 +408,10 @@ export class App {
 
   mouseButton(button: number, down: boolean, source = 0): void {
     if (!this.ui.wantsPointerLock) { if (!down) this.controls.mouseButton(button, false, source); return; }
+    if (button === 0 && this.vehiclePlacement.active) {
+      if (down) this.vehiclePlacement.place(this.session);
+      return;
+    }
     if (button === 0 && this.builder.active) {
       if (down) this.builder.place(this.session, this.reg);
       return;
@@ -413,7 +429,35 @@ export class App {
   }
 
   look(dx: number, dy: number): void {
-    if (this.ui.wantsPointerLock) this.controls.look(dx, dy);
+    if (!this.ui.wantsPointerLock) return;
+    this.refreshCockpitLook();
+    if (this.cockpit.active) this.cockpit.look(-dx * LOOK_SPEED * this.controls.zoom, -dy * LOOK_SPEED * this.controls.zoom);
+    else this.controls.look(dx, dy);
+  }
+
+  /** Refresh the world-space look sent with inputs; a passenger's head follows the same rotated view as the camera. */
+  private refreshCockpitLook(): void {
+    const s = this.session, r = this.remote;
+    let host = -1, frame: VehicleFrame | undefined;
+    if (s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.bodyKind]?.movement === "rotor") {
+      host = s.driving;
+      const b = s.own;
+      frame = { x: b.x, y: b.y, z: b.z, yaw: b.vehicleYaw, pitch: b.vehiclePitch, roll: b.vehicleRoll, qx: b.vehicleQx, qy: b.vehicleQy, qz: b.vehicleQz, qw: b.vehicleQw };
+    } else if (s.sessionState === SESSION_ALIVE && s.own.seat > 0) {
+      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1 && r.gen[i] === s.own.seatGen && r.vehicleRotorcraft[i]) {
+        host = r.id[i]!;
+        frame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
+        break;
+      }
+    }
+    this.cockpitLook(host, frame);
+  }
+
+  private cockpitLook(host: number, frame?: VehicleFrame): void {
+    if (host !== this.helicopterViewHost && host >= 0) this.view.thirdPerson = true;
+    this.helicopterViewHost = host;
+    if (!this.session.thirdPerson) this.view.thirdPerson = false;
+    this.cockpit.sync(host, !this.view.thirdPerson, this.controls, frame);
   }
 
   blur(): void {
@@ -486,6 +530,7 @@ export class App {
     const flyer = s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.flies[s.own.kind] === 1;
     if (flyer !== this.flying) c.fly(flyer, flyer && s.own.mode === MODE_FLYER);
     this.flying = flyer;
+    c.heli(s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.own.kind]?.movement === "rotor");
     if (c.wing && !this.wingWas) this.wingFrom = s.simTick;
     this.wingWas = c.wing;
     return flyer;
@@ -659,7 +704,7 @@ export class App {
       }
       const car = this.reg.vehicle[r.kind[hit]!];
       if (car) {
-        const frame = { x: r.x[hit]!, y: r.y[hit]!, z: r.z[hit]!, yaw: r.yaw[hit]!, pitch: r.vehiclePitch[hit]!, roll: r.vehicleRoll[hit]! };
+        const frame = { ...remoteVehiclePose(r, hit), x: r.x[hit]!, y: r.y[hit]!, z: r.z[hit]!, yaw: r.yaw[hit]! };
         let slot = 0, near = Infinity;
         for (let j = 0; j < car.seats.length; j++) {
           vehiclePoint(frame, car.seats[j]!.entry, this.seatAt);
@@ -739,6 +784,7 @@ export class App {
     cam.y = body.y + 1.15;
     cam.z = body.z + back;
     cam.yaw = Math.PI;
+    cam.roll = 0;
     cam.pitch = -0.06;
   }
 
@@ -834,6 +880,7 @@ export class App {
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
     this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
+    this.refreshCockpitLook();
     if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons);
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
@@ -891,23 +938,38 @@ export class App {
     const by = session.ownPrev.y + (session.own.y - session.ownPrev.y) * a + session.smoothY;
     const bz = session.ownPrev.z + (session.own.z - session.ownPrev.z) * a + session.smoothZ;
     const car = this.reg.vehicle[session.bodyKind];
+    const rotor = car?.movement === "rotor";
+    const vehiclePose = car ? predictedVehiclePose(session.ownPrev, session.own, a, rotor) : undefined;
     if (alive && car && session.driving >= 0) {
-      this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
+      if (car.movement === "rotor") {
+        const altitude = castWorld(world, bx, by + .05, bz, 0, -1, 0, 2000) !== HIT_NONE ? Math.max(0, rayHit.t - .05) : by - world.hf.heightAt(bx, bz);
+        this.vehicleTelemetry.updateRotor(session.driving, session.own, car.spec, altitude, c.directFlight, this.steer && (c.buttons & BTN_PRONE) !== 0);
+      } else this.vehicleTelemetry.update(session.driving, session.own, this.steer ? c.moveZ : 0, this.steer && (c.buttons & BTN_JUMP) !== 0, car.spec, dt);
       hud.vehicle = this.vehicleTelemetry;
     } else this.vehicleTelemetry.stop();
     const carYaw = session.ownPrev.vehicleYaw + Math.atan2(Math.sin(session.own.vehicleYaw - session.ownPrev.vehicleYaw), Math.cos(session.own.vehicleYaw - session.ownPrev.vehicleYaw)) * a;
     const passenger = alive && session.driving < 0 && session.own.seatSlot !== 0 && session.own.seat > 0;
     // A passenger's chase camera is third person, so it obeys the same server rule.
-    const chase = passenger && session.thirdPerson;
+    let passengerRotor = false;
+    let cockpitFrame: VehicleFrame | undefined = rotor ? { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw } : undefined;
+    if (passenger) for (let i = 0; i < this.remote.count; i++) {
+      const r = this.remote;
+      if (r.id[i] !== session.own.seat - 1 || r.gen[i] !== session.own.seatGen) continue;
+      passengerRotor = r.vehicleRotorcraft[i] !== 0;
+      if (passengerRotor) cockpitFrame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
+    }
+    const helicopterHost = rotor && session.driving >= 0 ? session.driving : passengerRotor ? session.own.seat - 1 : -1;
+    this.cockpitLook(helicopterHost, cockpitFrame);
+    const chase = passenger && session.thirdPerson && (!passengerRotor || this.view.thirdPerson);
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
     // A session without a living body looks from the eye.
     const third = this.view.thirdPerson;
     if (!alive) this.view.thirdPerson = false;
-    else if (session.driving >= 0) this.view.thirdPerson = true;
+    else if (session.driving >= 0 && !rotor) this.view.thirdPerson = true;
     // The view turns with the kick and, through a scope, with the sway, as a shot does (shared/sim/aim.ts), so the middle of
     // the view is where the next shot is pointed. The look the input sends stays the player's own.
-    const gun = alive ? (this.reg.weapon[session.own.held] ?? null) : null;
+    const gun = alive && session.weaponsAllowed ? (this.reg.weapon[session.own.held] ?? null) : null;
     const aiming = alive && this.steer && (c.buttons & BTN_SECONDARY) !== 0 && gun !== null && gun.clip > 0;
     const held = session.inventory && session.inventory.hotbar >= 0 && session.held >= 0 ? session.inventory.hotbar + session.held : -1;
     const scoped = aiming && scopeFitted(this.reg, session.inventory, held);
@@ -923,7 +985,19 @@ export class App {
       lookPitch = lookPitch > PI / 2 ? PI / 2 : lookPitch;
     }
     // The chase camera looks at two thirds of the vehicle's height from a boom one and a half times its length.
-    if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + car.spec.height * 2 / 3, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: car.spec.halfLength * 3 });
+    if (alive && car && rotor) {
+      const frame = { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw };
+      if (third) {
+        vehiclePoint(frame, [0, 1.65, -.35], this.seatSpot);
+        this.view.placeVehicle(cam, world, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, false, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: Math.max(10, car.spec.halfLength * 2) });
+      } else {
+        const slot = car.seats.findIndex(seat => seat.driver) + 1, ch = this.scene.characters;
+        ch.seat(session.bodyKind, bx, by, bz, carYaw, this.body.state, session.tickClock, this.seatSpot, slot, vehiclePose);
+        const seat = ch.seatPose(session.bodyKind, slot, vehiclePose!, this.seatSpot, carYaw);
+        if (!seat || !ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot)) vehiclePoint(frame, [.48, 1.86, .70], this.seatSpot);
+        this.view.placeCockpit(cam, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, frame, this.cockpit.yaw, this.cockpit.pitch);
+      }
+    } else if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + car.spec.height * 2 / 3, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: car.spec.halfLength * 3 });
     else if (alive && session.driving >= 0) {
       // Riding, the camera is behind where the rider looks, which the mount turns to and flies along: at the rider's head,
       // on a boom as long as the mount is big, and drawn in by whatever is in the way.
@@ -932,6 +1006,14 @@ export class App {
       this.view.placeVehicle(cam, world, bx, by + view.up, bz, lookYaw, lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: session.driving, boom: view.boom });
     } else if (passenger) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw, boom: number | undefined;
+      if (!chase && passengerRotor && cockpitFrame) {
+        const host = this.remote.id.subarray(0, this.remote.count).indexOf(session.own.seat - 1);
+        const anchor = this.reg.vehicle[this.remote.kind[host] ?? 0]?.seats[session.own.seatSlot - 1]?.anchor;
+        if (anchor) {
+          vehiclePoint(cockpitFrame, [anchor[0], anchor[1] + .76, anchor[2] + .05], this.seatSpot);
+          px = this.seatSpot[0]!; py = this.seatSpot[1]!; pz = this.seatSpot[2]!;
+        }
+      }
       for (let i = 0; i < this.remote.count; i++) {
         const r = this.remote;
         const ch = this.scene.characters;
@@ -941,13 +1023,13 @@ export class App {
         if (chase) {
           const view = vehicle ? null : this.mountView(r.kind[i]!, r.id[i]!);
           px = r.x[i]!; py = r.y[i]! + (view?.up ?? 1); pz = r.z[i]!;
-          boom = view?.boom;
+          boom = vehicle ? Math.max(6, (this.reg.vehicle[r.kind[i]!]!.spec.halfLength) * (passengerRotor ? 2 : 3)) : view?.boom;
         } else if (vehicle) {
-          const pose = { pitch: r.vehiclePitch[i]!, roll: r.vehicleRoll[i]!, steering: r.steering[i]!, wheelAngle: r.wheelAngle[i]! };
-          if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.seatSpot, session.own.seatSlot, pose) &&
-            ch.seatedOrigin(session.ownKind, session.ownLook, ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading)!, this.seatSpot)) {
-            // Preserve the authority's root + stance-eye contract; an authored seated eye/muzzle must change combat too.
-            px = this.seatSpot[0]!; py = this.seatSpot[1]! + eye; pz = this.seatSpot[2]!;
+          const pose = remoteVehiclePose(r, i);
+          if (ch.seat(r.kind[i]!, r.x[i]!, r.y[i]!, r.z[i]!, heading, this.body.state, r.tick, this.seatSpot, session.own.seatSlot, pose)) {
+            const seat = ch.seatPose(r.kind[i]!, session.own.seatSlot, pose, this.seatSpot, heading)!;
+            const found = passengerRotor ? ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot) : ch.seatedOrigin(session.ownKind, session.ownLook, seat, this.seatSpot);
+            if (found) { px = this.seatSpot[0]!; py = this.seatSpot[1]! + (passengerRotor ? 0 : eye); pz = this.seatSpot[2]!; }
           }
         } else {
           // On a saddle, the eye is over the seat's origin as the server has it, posed as its creature is drawn.
@@ -961,6 +1043,7 @@ export class App {
         break;
       }
       if (chase) this.view.placeVehicle(cam, world, px, py, pz, lookYaw, lookPitch, heading, 0, dt, false, boom === undefined ? undefined : { vx: 0, vy: 0, vz: 0, id: session.own.seat - 1, boom });
+      else if (passengerRotor && cockpitFrame) this.view.placeCockpit(cam, px, py, pz, cockpitFrame, this.cockpit.yaw, this.cockpit.pitch);
       else this.view.place(cam, world, px, py, pz, lookYaw, lookPitch, dt);
     } else this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch, dt);
     this.view.thirdPerson = third;
@@ -997,12 +1080,13 @@ export class App {
     body.id = handleIndex(session.ownHandle);
     body.generation = handleGen(session.ownHandle);
     body.vehicle = undefined;
+    body.cockpitActor = rotor && !third ? handleIndex(session.ownHandle) : undefined;
     body.attachment = passenger ? { host: session.own.seat - 1, slot: session.own.seatSlot, generation: session.own.seatGen } : undefined;
     body.look = session.ownLook;
     const inv = session.inventory;
     body.gear.fill(0);
     if (inv && inv.hotbar >= 0) {
-      if (session.held >= 0) body.gear[GEAR_HELD] = inv.item[inv.hotbar + session.held]!;
+      if (session.held >= 0 && session.weaponsAllowed) body.gear[GEAR_HELD] = inv.item[inv.hotbar + session.held]!;
       for (let k = 0; k < ARMOR_SLOTS; k++) body.gear[GEAR_WORN + k] = inv.item[inv.armor + k]!;
     }
     body.state.mode = session.own.mode;
@@ -1018,16 +1102,7 @@ export class App {
     if (riding) {
       body.kind = session.bodyKind;
       body.yaw = car ? carYaw : (session.own.yaw / 65536) * TAU;
-      if (car) body.vehicle = {
-        pitch: session.ownPrev.vehiclePitch + (session.own.vehiclePitch - session.ownPrev.vehiclePitch) * a,
-        roll: session.ownPrev.vehicleRoll + (session.own.vehicleRoll - session.ownPrev.vehicleRoll) * a,
-        steering: session.ownPrev.steering + (session.own.steering - session.ownPrev.steering) * a,
-        wheelAngle: session.ownPrev.wheelAngle + Math.atan2(Math.sin(session.own.wheelAngle - session.ownPrev.wheelAngle), Math.cos(session.own.wheelAngle - session.ownPrev.wheelAngle)) * a,
-        groundPitch: session.ownPrev.vehicleGroundPitch + (session.own.vehicleGroundPitch - session.ownPrev.vehicleGroundPitch) * a,
-        groundRoll: session.ownPrev.vehicleGroundRoll + (session.own.vehicleGroundRoll - session.ownPrev.vehicleGroundRoll) * a,
-        rideOffset: session.ownPrev.vehicleRideOffset + (session.own.vehicleRideOffset - session.ownPrev.vehicleRideOffset) * a,
-        grounded: session.own.grounded,
-      };
+      if (car) body.vehicle = vehiclePose;
       body.firstPerson = false;
       body.id = session.driving;
       body.look = null;
@@ -1098,11 +1173,12 @@ export class App {
     if (this.sound && this.sounds) this.sounds.frame(this.sound, nowMs, this.remote, world.hf, cam, { master: vol.masterVolume, effects: vol.soundVolume, ambience: vol.ambienceVolume, music: vol.musicVolume, interface: vol.interfaceVolume }, soundView(session));
     const ghost = this.scene.ghost;
     ghost.kind = 0;
-    const b = this.builder;
+    const b = this.builder, v = this.vehiclePlacement;
     if (alive && session.driving < 0) {
       lookDirection(Math.round((c.yaw / TAU) * 65536) & 0xffff, Math.round((c.pitch / (PI / 2)) * 16384), this.aim);
       b.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
-    } else b.active = false;
+      v.update(session, world, this.reg, session.own.x, session.own.y + eyeNow, session.own.z, this.aim[0]!, this.aim[1]!, this.aim[2]!, c.yaw, nowMs);
+    } else { b.active = false; v.active = false; }
     if (b.active && b.problem !== RESULT_NO_SNAP) {
       ghost.kind = b.kind;
       ghost.x = b.pose.x / STRUCT_UNITS;
@@ -1111,9 +1187,13 @@ export class App {
       ghost.yaw = b.pose.yaw;
       ghost.color = b.problem === 0 ? GHOST_OK : GHOST_BAD;
     }
+    if (v.active) {
+      ghost.kind = v.kind; ghost.x = v.pose.x; ghost.y = v.pose.y; ghost.z = v.pose.z; ghost.yaw = v.pose.yaw;
+      ghost.color = v.problem === RESULT_OK ? GHOST_OK : GHOST_BAD;
+    }
     const menu = this.ui.structure;
     menu.tick(nowMs);
-    const built = alive && !b.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
+    const built = alive && !b.active && !v.active && session.driving < 0 ? this.builtAt(world, eyeNow) : ((this.aimed = this.terminalAimed = -1), "");
     if (this.aimed >= 0 && this.useDownAt >= 0 && nowMs - this.useDownAt >= STRUCT_HOLD_MS && !menu.open && this.ui.wantsPointerLock) {
       menu.begin(this.aimed);
       this.useDownAt = -1;
@@ -1122,7 +1202,7 @@ export class App {
     }
     const whom = alive ? this.who(world, eyeNow) : ((this.lookedAt = this.target = -1), "");
     this.eggAimed = -1;
-    hud.prompt = !alive ? "" : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
+    hud.prompt = !alive ? "" : v.active ? v.notice : b.active ? b.notice : menu.notice || this.prompt(world, eyeNow) || whom || built;
     if (b.active) hud.ammo = "E turn   Q next place   R form";
     this.ui.build(aspect, hud, session);
     return packet;

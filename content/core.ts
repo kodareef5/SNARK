@@ -18,6 +18,8 @@ import { SPAWNS } from "./spawns.ts";
 import { ROADS } from "./vehicles/roads.ts";
 import { COMPACT_SPECIES } from "./vehicles/compact.ts";
 import { WRECKS } from "./vehicles/wrecks.ts";
+import { HELICOPTERS } from "./vehicles/helicopter.ts";
+import { HELICOPTER_ITEMS } from "./vehicles/helicopter-items.ts";
 import { CIVILIAN } from "./civilians.ts";
 import type { ContentPack } from "../shared/content/packs.ts";
 
@@ -386,6 +388,8 @@ const ALL: readonly Def[] = [
   ...BUILDING_CONTENT,
   ...CREATURES,
   COMPACT_SPECIES,
+  ...HELICOPTERS,
+  ...HELICOPTER_ITEMS,
   ...ROADS,
   ...WRECKS,
   CIVILIAN,

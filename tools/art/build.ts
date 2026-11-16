@@ -121,7 +121,12 @@ export function convertModel(asset: Asset & { spec: CreatureAsset }, glb: string
   measureSpans(textured.map((t) => t.mesh));
   for (const t of textured) {
     out.faults.push(...surfaceFaults(t.mesh));
-    meshes[meshes.indexOf(t.mesh)] = withSurfaceLevels(t.mesh, { budgets: t.budgets, flat: t.flat ?? Math.max(1, t.budgets.length), maps: t.maps, palette });
+    const preserveBones = spec.preserveBones?.map(name => {
+      const bone = made.rig.names!.indexOf(name);
+      if (bone < 0) out.faults.push(`${asset.id}: preserved LOD bone "${name}" does not exist`);
+      return bone;
+    });
+    meshes[meshes.indexOf(t.mesh)] = withSurfaceLevels(t.mesh, { budgets: t.budgets, flat: t.flat ?? Math.max(1, t.budgets.length), maps: t.maps, palette, preserveBones });
   }
   out.meshes.push(...meshes);
   out.rigs.push(made.rig);
@@ -354,7 +359,13 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
     // The body's plan, or a worn saddle's or the saddled model's own.
     const plan = planOf(asset.id, spec, m.id);
     const budgets = plan.budgets.triangles.slice(1);
-    return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, { budgets, flat: plan.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}), palette });
+    const names = pack.header.rigs.find(r => r.id === m.rig)?.names ?? [];
+    const preserveBones = spec.preserveBones?.map(name => {
+      const index = names.indexOf(name);
+      if (index < 0) throw new Error(`${m.id}: preserved bone ${name} is absent from its rig`);
+      return index;
+    });
+    return withSurfaceLevels({ ...measured, lods: [measured.lods[0]!] }, { budgets, flat: plan.flat ?? Math.max(1, budgets.length), maps: measured.materials!.map((d) => pictures.get(d.id) ?? {}), palette, preserveBones });
   });
   // A creature's rig takes what its asset now says of how it moves and dies.
   const spec = asset?.spec;

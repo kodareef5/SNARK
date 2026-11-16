@@ -3,7 +3,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { WRECK_KINDS, WRECK_PAINTS } from "../../content/vehicles/wrecks.ts";
-import type { VehicleDefinition } from "../../shared/sim/vehicle.ts";
+import type { WheelVehicleDefinition } from "../../shared/sim/vehicle.ts";
 import { S } from "./ground.ts";
 import { hash3 } from "./raster.ts";
 import { obstacleIndex } from "./ruin-obstacles.ts";
@@ -102,7 +102,7 @@ export interface Parked { kind: string; x: number; z: number; yaw: number; distr
  * room and a margin clear of every piece and of every reserved route; so many a kilometre of such street in each
  * district, within its least and most, chosen by a hash and spread apart. Intact streets, with fewest pieces near, first.
  */
-export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: ReturnType<typeof roadIndex>, cars: Cars, seed: number, vehicle: { id: string; def: VehicleDefinition }): Parked[] {
+export function parkCars(site: Site, pieces: readonly StaticPiece[], roads: ReturnType<typeof roadIndex>, cars: Cars, seed: number, vehicle: { id: string; def: WheelVehicleDefinition }): Parked[] {
   const { ground } = site; const size = (ground.n - 1) * 2; const spec = vehicle.def.spec;
   const at = (x: number, z: number): number => Math.max(0, Math.min(ground.n - 1, Math.round((size - z) / 2))) * ground.n + Math.max(0, Math.min(ground.n - 1, Math.round((size - x) / 2)));
   const obstacles = obstacleIndex(pieces);

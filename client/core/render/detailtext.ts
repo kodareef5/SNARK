@@ -8,7 +8,7 @@
 import { CELL } from "../../../shared/pack/details.ts";
 import { AIR } from "./atmosphere.ts";
 import { FADE_ORDER } from "./hand.ts";
-import { DETAIL_LIT, DETAIL_PUFF } from "./packet.ts";
+import { DETAIL_LIT, DETAIL_PUFF, DETAIL_ROTOR } from "./packet.ts";
 import { AMBIENT, DIFFUSE } from "./shading.ts";
 import { SHADOW_GLSL } from "./shadowtext.ts";
 import { LIGHT } from "./surface.ts";
@@ -84,8 +84,9 @@ const SHAPES = `vec3 shapeOf(uint shape, vec2 c) {
 
 /** Whether a cut-out particle that shows this much keeps its pixel, by the far fade's pattern, and how much a see-through one shows by the ground. */
 const KEEPS = `const float FADE_ORDER[16] = float[16](${FADE_ORDER.map((v) => v.toFixed(1)).join(", ")});
-uniform float uBlend;
+uniform float uBlend, uFrom;
 float covers(float alpha) {
+  if ((vFlags & ${DETAIL_ROTOR}u) != 0u && uBlend > 0.5 && 1.0 / gl_FragCoord.w + 0.5 * fwidth(1.0 / gl_FragCoord.w) < uFrom) discard;
   if (uBlend > 0.5) return alpha * vShows * ((vFlags & ${DETAIL_PUFF}u) != 0u ? clamp((vRel.y - vFloor) / (0.5 * vHalf), 0.0, 1.0) : 1.0);
   ivec2 q = ivec2(gl_FragCoord.xy) & 3;
   if (vShows * 16.0 <= FADE_ORDER[q.y * 4 + q.x] + 0.5) return 0.0;
@@ -104,14 +105,23 @@ flat in float vShows, vGrey, vFloor, vHalf;
 flat in uint vFlags;
 `;
 
+/** Area coverage of blades swept around their axle: chord / circumference, with softened roots/tips. */
+const ROTOR_SHAPE = `vec3 rotorOf(vec2 c, float density) {
+  float r = length(c);
+  float root = smoothstep(0.09, 0.17, r);
+  float edge = 1.0 - smoothstep(0.975, 1.0, r);
+  return vec3(min(0.65, density / max(r, 0.12)) * root * edge, smoothstep(0.91, 0.94, r), 1.0);
+}
+`;
+
 export const DETAIL_FLAT_FRAGMENT = `#version 300 es
 precision highp float;
 ${INS}uniform vec3 uSun, uSky;
 uniform vec2 uFog;
 uniform float uLight;
 out vec4 o;
-${SHAPES}${KEEPS}void main() {
-  vec3 s = shapeOf(vFlags & 7u, vCorner);
+${SHAPES}${ROTOR_SHAPE}${KEEPS}void main() {
+  vec3 s = (vFlags & ${DETAIL_ROTOR}u) != 0u ? rotorOf(vCorner, vGrey) : shapeOf(vFlags & 7u, vCorner);
   float a = covers(s.x);
   if (a < 0.004) discard;
   vec3 n = facing(-normalize(vRel));
@@ -125,19 +135,28 @@ export const DETAIL_LIT_FRAGMENT = `#version 300 es
 precision highp float;
 ${INS}uniform sampler2D uDetails;
 out vec4 o;
-${LIGHT}${SHADOW_GLSL}${AIR}${KEEPS}vec3 linear(vec3 c) {
+${LIGHT}${SHADOW_GLSL}${AIR}${ROTOR_SHAPE}${KEEPS}vec3 linear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
 void main() {
-  vec4 t = texture(uDetails, vUv);
+  bool rotor = (vFlags & ${DETAIL_ROTOR}u) != 0u;
+  vec3 s = rotorOf(vCorner, vGrey);
+  vec4 t = rotor ? vec4(s.z, s.y, 0.0, s.x) : texture(uDetails, vUv);
   float a = covers(t.a);
   if (a < 0.004) discard;
   vec3 v = -normalize(vRel);
   vec3 n = facing(v);
-  vec3 albedo = linear(vec3(t.r)) * mix(mix(linear(vA), linear(vB), t.g) / vGrey, vec3(1.0), t.b);
+  vec3 albedo = linear(vec3(t.r)) * mix(mix(linear(vA), linear(vB), t.g) / (rotor ? 1.0 : vGrey), vec3(1.0), t.b);
   vec3 light = (vFlags & ${DETAIL_LIT}u) != 0u ? lit(albedo, vec3(1.0, 1.0, 0.0), n, v, vec3(0.0), sunShadow(vRel, n)) : albedo / fSunColor.w;
   o = vec4(shown(light, vRel), a);
 }`;
+
+/** `rotorOf`'s twin. The result is alpha, tip paint share, shade; it is independent of angular phase/display FPS. */
+export function rotorOf(x: number, y: number, density: number, out: Float64Array | number[]): void {
+  const r = Math.hypot(x, y);
+  const ease = (a: number, b: number) => { const t = Math.max(0, Math.min(1, (r - a) / (b - a))); return t * t * (3 - 2 * t); };
+  [out[0], out[1], out[2]] = [Math.min(.65, density / Math.max(r, .12)) * ease(.09, .17) * (1 - ease(.975, 1)), ease(.91, .94), 1];
+}
 
 /** `shapeOf`'s twin: how much of a flat shape shows at corner (x, y), the share of the second colour, and the shade. */
 export function shapeOf(shape: number, x: number, y: number, out: Float64Array | number[]): void {

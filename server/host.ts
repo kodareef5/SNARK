@@ -1,7 +1,7 @@
 // Assembles a running world: map, records, persistence and the game loop. server/main.ts and the tests both use it.
 
 import type { Registry } from "../shared/content/registry.ts";
-import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
+import { CHOOSE_ARRIVED, CHOOSE_DIED, SESSION_DEAD, CMD_CARRY, CMD_CHAT, CMD_CLOSE, CMD_FAR, CMD_FEED, CMD_NAME, CMD_OPEN, CMD_ORDER, CMD_PLACE, CMD_STRUCT, CMD_TAKE, CMD_TEXT, CMD_TRAVEL, CMD_VEHICLE, MAX_CHAT_BYTES, MAX_TEXT_BYTES, RESULT_BUSY, RESULT_DENIED, RESULT_FAR, RESULT_INVALID, RESULT_OK, TEXT_CONSOLE, TEXT_MOTD, TEXT_NOTICE, REJECT_KICKED } from "../shared/net/protocol.ts";
 import { Rng } from "../shared/rng.ts";
 import { Genome } from "../shared/sim/genome.ts";
 import { addAdminCommands } from "./commands/admin.ts";
@@ -17,6 +17,9 @@ import { Beds } from "./beds.ts";
 import { DEADLINE_TAME, Taming } from "./taming.ts";
 import { Riding } from "./riding.ts";
 import { Urban } from "./urban.ts";
+import { foundVehicle, vehiclePlaceFree, VehicleService, VEHICLE_ORIGIN, type VehicleStart } from "./vehicle-service.ts";
+import { isRotorVehicle } from "../shared/sim/vehicle.ts";
+import { groundUnder } from "../shared/world/collide.ts";
 import { VehicleContacts } from "./vehicle-contacts.ts";
 import { Entangle } from "./entangle.ts";
 import { Breeding, DEADLINE_BREED } from "./breeding.ts";
@@ -172,6 +175,7 @@ export interface Host {
   readonly taming: Taming;
   readonly riding: Riding;
   readonly urban: Urban;
+  readonly vehicles: VehicleService;
   readonly entangle: Entangle;
   readonly breeding: Breeding;
   readonly tactical: Tactical;
@@ -220,7 +224,7 @@ export interface Host {
   /** `id` is a content id. Returns the entity index, or -1. */
   spawnCreature(id: string, x: number, z: number, level: number, why?: string): number;
   /** Creates a normal vehicle record/entity; ownerTeam is legal title, separate from its driver. */
-  spawnVehicle(id: string, x: number, z: number, ownerTeam?: number, yaw?: number): number;
+  spawnVehicle(id: string, x: number, z: number, ownerTeam?: number, yaw?: number, start?: VehicleStart): number;
   /** Recomputes a body's vitals' maxima, movement modifiers, level and gear. Call it after changing its stat points or what it carries. */
   refreshBody(rec: EntityRecord): void;
   /** Run a console line as the operator, or as `client`. Returns what it printed. */
@@ -405,10 +409,14 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (e >= 0 && persistence) persistence.attach(records.byPid.get(world.ents.pid[e]!)!, e);
     return e;
   };
-  const parkVehicle = (id: string, x: number, z: number, ownerTeam: number, yaw: number, why: string): number => {
+  const parkVehicle = (id: string, x: number, z: number, ownerTeam: number, yaw: number, why: string, start: VehicleStart = {}): number => {
     const kind = reg.index.get(id);
     if (kind === undefined || !reg.vehicle[kind] || !Number.isSafeInteger(ownerTeam) || ownerTeam < 0 || !Number.isFinite(yaw)) return -1;
-    const e = creatures.spawn(kind, x, z, 1, why);
+    const def = reg.vehicle[kind]!;
+    const y = start.y ?? groundUnder(world.hf, x, z, def.spec.halfWidth);
+    if (!Number.isFinite(y) || [start.hull, start.engine, start.rotor, start.fuel].some(n => n !== undefined && (!Number.isFinite(n) || n < 0 || n > 1))) return -1;
+    if (isRotorVehicle(def) && !vehiclePlaceFree(world, x, y, z, yaw, def)) return -1;
+    const e = creatures.spawn(kind, x, z, 1, why, y);
     if (e < 0) return e;
     const rec = records.byPid.get(world.ents.pid[e]!)!;
     rec.team = ownerTeam; rec.yaw = Math.round(yaw / (2 * Math.PI) * 65536) & 65535;
@@ -416,13 +424,19 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     // Registered once turned, so the parked state it saves at once has its yaw.
     urban.register(e);
     world.ents.vehicleYaw[e] = Math.fround(yaw);
+    world.ents.vehicleQy[e] = Math.fround(Math.sin(yaw / 2)); world.ents.vehicleQw[e] = Math.fround(Math.cos(yaw / 2));
+    world.ents.fuel[e] = Math.fround((start.fuel ?? 1) * def.spec.fuelCapacity);
+    world.ents.vehicleEngineCondition[e] = start.engine ?? 1; world.ents.vehicleRotorCondition[e] = start.rotor ?? 1;
+    if (start.origin) rec.extra.set(VEHICLE_ORIGIN, new TextEncoder().encode(start.origin));
     if (persistence) persistence.attach(rec, e);
     records.dirty.add(rec.pid);
     items.inv(rec);
     refreshBody(rec);
+    if (start.hull !== undefined && rec.vitals) survival.add(rec, V_HEALTH, -(1 - Math.max(.01, start.hull)) * rec.vitals.max[V_HEALTH]! / 1e6);
+    urban.changed(e);
     return e;
   };
-  const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0): number => parkVehicle(id, x, z, ownerTeam, yaw, "admin");
+  const spawnVehicle = (id: string, x: number, z: number, ownerTeam = 0, yaw = 0, start: VehicleStart = {}): number => parkVehicle(id, x, z, ownerTeam, yaw, "admin", start);
   const death = new Death({ world, game, records, items, survival, creatures, persistence, deadlines, rules, bus });
   const progression = new Progression(world, records, items, deadlines);
   progression.rules = rules;
@@ -507,8 +521,18 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (victim && car.team !== 0 && !tribes.may(victim, car.team)) return true;
     return !victim || kind?.type !== "species" || kind.class !== "survivor" || tribes.may(me, victim.team);
   };
-  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec) });
-  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e) });
+  const urban = new Urban({ world, game, records, items, creatures, rigs: opts.rigs ?? [], refresh: (rec) => refreshBody(rec), may: urbanMay, tangled: rec => entangle.tangled(rec), damage: (rec, points, by) => survival.hurt(rec, points, by) });
+  const vehicles = new VehicleService({ world, game, records, items, survival, urban,
+    may: (actor, vehicle) => urbanMay(actor, vehicle, null),
+    spawn: (kind, x, z, team, yaw, start) => parkVehicle(kind, x, z, team, yaw, "crafted", start),
+    discard: e => { const pid = world.ents.pid[e]!; persistence?.detach(pid); creatures.remove(e); survival.forget(pid); records.delete(pid); },
+  });
+  death.canOpen = (c, rec) => {
+    const actor = records.byPid.get(c.pid);
+    return !!actor && (reg.vehicle[rec.kind] ? urbanMay(actor, rec, null) : rec.team !== 0 && tribes.may(actor, rec.team));
+  };
+  game.onVehicleStep = e => urban.impact(e);
+  urban.contacts = new VehicleContacts({ world, records, combat, driverOf: e => urban.riderOf(e), impact: (e, speed, rotor) => urban.collision(e, speed, rotor) });
   // The use button gets off a mount, and sets down what is in the arms.
   death.riding = (c) => urban.riding(c) || riding.riding(c) || carry.holding(c) >= 0;
   death.offMount = (c) => (urban.riding(c) ? urban.dismount(c) : riding.riding(c) ? riding.dismount(c) : void carry.drop(c));
@@ -807,7 +831,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     // The map's parked vehicles, owned by nobody. From here on the save keeps them, as it keeps any record.
     const missed = new Map<string, number>();
     for (const v of parsed?.vehicles ?? []) {
-      if (parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild") < 0) missed.set(v.kind, (missed.get(v.kind) ?? 0) + 1);
+      if (parkVehicle(v.kind, v.x, v.z, 0, (v.yaw / 65536) * 2 * Math.PI, "wild", foundVehicle(world.mapId, v, opts.seed ?? 1)) < 0) missed.set(v.kind, (missed.get(v.kind) ?? 0) + 1);
     }
     if (missed.size > 0) say(`not parked, for want of the content or of room: ${[...missed].map(([id, n]) => `${n} of the map's ${id}`).join(", ")}`);
   }
@@ -1213,6 +1237,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     taming,
     riding,
     urban,
+    vehicles,
     entangle,
     breeding,
     tactical,
@@ -1275,6 +1300,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
       cluster?.stop();
     },
   };
+  game.handle(CMD_VEHICLE, (c, r) => vehicles.command(c, r));
   game.handle(CMD_PLACE, (c, r) => build.place(c, r));
   game.handle(CMD_STRUCT, (c, r) => build.act(c, r));
   game.handle(CMD_FEED, (c, r) => taming.feed(c, r));

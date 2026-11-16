@@ -1,0 +1,623 @@
+{
+  "id": "core:helicopter_rescue",
+  "kind": "creature",
+  "meshes": [
+    {
+      "id": "core:helicopter_rescue",
+      "size": [
+        9.196834564208984,
+        3.3199991434812546,
+        10.285085678100586
+      ],
+      "levels": [
+        {
+          "triangles": 34208,
+          "vertices": 27894,
+          "budget": 38000,
+          "error": 0,
+          "from": 0,
+          "tall": 0,
+          "starts": [
+            null,
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 0,
+              "tall": 0
+            }
+          ],
+          "parts": 134,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1664,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 18000,
+          "vertices": 17891,
+          "budget": 18000,
+          "error": 0.0031,
+          "from": 10.86726046146387,
+          "tall": 235.61284244060514,
+          "starts": [
+            {
+              "from": 0,
+              "tall": 0
+            },
+            {
+              "from": 10.86726046146387,
+              "tall": 235.61284244060514
+            },
+            {
+              "from": 17.077123582300366,
+              "tall": 149.935445189476
+            },
+            {
+              "from": 29.884966269025643,
+              "tall": 85.67739725112914
+            }
+          ],
+          "parts": 134,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1650,
+          "collapsed": 0,
+          "materials": 3,
+          "bothWays": 0
+        },
+        {
+          "triangles": 7000,
+          "vertices": 4332,
+          "budget": 7000,
+          "error": 0.024,
+          "from": 84.13362937907512,
+          "tall": 30.4333254819115,
+          "starts": [
+            {
+              "from": 42.06681468953756,
+              "tall": 60.866650963823
+            },
+            {
+              "from": 84.13362937907512,
+              "tall": 30.4333254819115
+            },
+            {
+              "from": 132.2099890242609,
+              "tall": 19.36666167030732
+            },
+            {
+              "from": 231.36748079245658,
+              "tall": 11.066663811604181
+            }
+          ],
+          "parts": 103,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 1526,
+          "collapsed": 0
+        },
+        {
+          "triangles": 2598,
+          "vertices": 1779,
+          "budget": 2600,
+          "error": 0.08995,
+          "from": 315.325831776992,
+          "tall": 8.120064608847981,
+          "starts": [
+            {
+              "from": 157.662915888496,
+              "tall": 16.240129217695962
+            },
+            {
+              "from": 315.325831776992,
+              "tall": 8.120064608847981
+            },
+            {
+              "from": 495.5120213638445,
+              "tall": 5.16731384199417
+            },
+            {
+              "from": 867.1460373867279,
+              "tall": 2.9527507668538115
+            }
+          ],
+          "parts": 52,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 806,
+          "collapsed": 0
+        },
+        {
+          "triangles": 998,
+          "vertices": 746,
+          "budget": 1000,
+          "error": 0.28891,
+          "from": 1012.7936193295247,
+          "tall": 2.5281222926374163,
+          "starts": [
+            {
+              "from": 506.3968096647624,
+              "tall": 5.056244585274833
+            },
+            {
+              "from": 1012.7936193295247,
+              "tall": 2.5281222926374163
+            },
+            {
+              "from": 1591.5328303749673,
+              "tall": 1.6088050953147197
+            },
+            {
+              "from": 2785.182453156193,
+              "tall": 0.9193171973226969
+            }
+          ],
+          "parts": 33,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 308,
+          "collapsed": 0
+        },
+        {
+          "triangles": 480,
+          "vertices": 380,
+          "budget": 480,
+          "error": 0.48873,
+          "from": 1713.276195268141,
+          "tall": 1.4944853222963108,
+          "starts": [
+            {
+              "from": 856.6380976340705,
+              "tall": 2.9889706445926216
+            },
+            {
+              "from": 1713.276195268141,
+              "tall": 1.4944853222963108
+            },
+            {
+              "from": 2692.291163992793,
+              "tall": 0.9510361141885614
+            },
+            {
+              "from": 4711.509536987388,
+              "tall": 0.5434492081077493
+            }
+          ],
+          "parts": 18,
+          "openEdges": 0,
+          "holes": 0,
+          "flipped": 0,
+          "insideOut": 0,
+          "crowded": 178,
+          "collapsed": 0
+        }
+      ],
+      "materials": [
+        {
+          "id": "core:helicopter/body_rescue",
+          "span": 11.0469,
+          "texels": 185.39137676633263
+        },
+        {
+          "id": "core:helicopter/cabin",
+          "span": 12.7851,
+          "texels": 160.18646705931124
+        },
+        {
+          "id": "core:helicopter/trim",
+          "span": 8.2517,
+          "texels": 248.1912817964783
+        }
+      ],
+      "strays": 0
+    }
+  ],
+  "clips": [],
+  "gaits": [],
+  "textures": [
+    {
+      "id": "core:helicopter/body_rescue",
+      "name": "body",
+      "layers": [
+        {
+          "what": "base",
+          "file": "../helicopter/tex/rescue/body_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/rescue/body_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/rescue/body_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "hurt",
+          "file": "../helicopter/tex/rescue/body_hurt.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "decay",
+          "file": "../helicopter/tex/rescue/body_decay.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "../helicopter/tex/rescue/body_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "../helicopter/tex/rescue/body_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "layer": 512,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 11.0469,
+      "tiles": true,
+      "mean": [
+        202,
+        201,
+        201
+      ],
+      "nearest": {
+        "colour": 1,
+        "distance": 5.47722557505166
+      },
+      "normal": {
+        "x": 0.888060539294927,
+        "y": 0.7296977685760793,
+        "length": 1.0000101777859183,
+        "off": 0.004067085229336742
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 1.003921568627451,
+        "cover": [
+          0.8770740658629175,
+          0.09636344909667968,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "core:helicopter/trim",
+      "name": "trim",
+      "layers": [
+        {
+          "what": "base",
+          "file": "../helicopter/tex/trim_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/trim_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/trim_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "hurt",
+          "file": "../helicopter/tex/trim_hurt.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "decay",
+          "file": "../helicopter/tex/trim_decay.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "../helicopter/tex/trim_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "../helicopter/tex/trim_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "layer": 512,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 8.2517,
+      "tiles": true,
+      "mean": [
+        65,
+        53,
+        45
+      ],
+      "nearest": {
+        "colour": 116,
+        "distance": 9.433981132056603
+      },
+      "normal": {
+        "x": 0.9940615642626669,
+        "y": 0.9950493906621243,
+        "length": 1.0000156520575865,
+        "off": 0.005041540105474418
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 0,
+        "cover": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "id": "core:helicopter/cabin",
+      "name": "cabin",
+      "layers": [
+        {
+          "what": "base",
+          "file": "../helicopter/tex/cabin_base.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "normal",
+          "file": "../helicopter/tex/cabin_normal.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "height",
+          "file": "../helicopter/tex/cabin_height.png",
+          "width": 2048,
+          "height": 2048,
+          "depth": 16,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "hurt",
+          "file": "../helicopter/tex/cabin_hurt.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "decay",
+          "file": "../helicopter/tex/cabin_decay.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "packed",
+          "file": "../helicopter/tex/cabin_packed.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8,
+          "seam": [
+            0,
+            0
+          ]
+        },
+        {
+          "what": "mask",
+          "file": "../helicopter/tex/cabin_mask.png",
+          "width": 1024,
+          "height": 1024,
+          "depth": 8
+        }
+      ],
+      "tops": {
+        "base": 2048,
+        "layer": 512,
+        "mask": 1024,
+        "mro": 1024,
+        "normal": 2048
+      },
+      "span": 12.7851,
+      "tiles": true,
+      "mean": [
+        107,
+        107,
+        104
+      ],
+      "nearest": {
+        "colour": 98,
+        "distance": 8.306623862918075
+      },
+      "normal": {
+        "x": 0.7831013530816098,
+        "y": 0.6418197459686285,
+        "length": 1.0000204509484438,
+        "off": 0.003929282294836578
+      },
+      "regions": {
+        "sameSize": true,
+        "over": 0,
+        "most": 1,
+        "cover": [
+          0,
+          0,
+          0.12847890666886871,
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "megabytes": {
+    "textures": 59.999982833862305,
+    "budget": 80
+  },
+  "pictures": true,
+  "notes": [
+    "no hit capsules: nothing can hit it"
+  ],
+  "faults": [],
+  "rig": {
+    "skeleton": "core:helicopter",
+    "bones": 8,
+    "capsules": 0,
+    "buried": [],
+    "sockets": [
+      "seat_driver",
+      "seat_front_passenger",
+      "seat_rear_left",
+      "seat_rear_right",
+      "approach_front_left",
+      "approach_front_right",
+      "approach_rear_left",
+      "approach_rear_right",
+      "camera_driver",
+      "camera_front_passenger",
+      "camera_rear_left",
+      "camera_rear_right",
+      "camera_chase",
+      "rotor_main",
+      "rotor_tail",
+      "exhaust",
+      "landing",
+      "cyclic",
+      "collective",
+      "pedals",
+      "refuel"
+    ]
+  }
+}

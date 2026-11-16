@@ -46,6 +46,8 @@ export const KEY_MARKER = 4000;
 export const KEY_VEHICLE = 3500;
 const DASH_W = 212;
 const DASH_H = 106;
+const HELI_W = 244;
+const HELI_H = 178;
 /** Indices of the minimap's picture and the map screen's in the frame's image table. */
 export const IMAGE_MINIMAP = 1;
 export const IMAGE_MAP = 2;
@@ -168,17 +170,19 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     }
   }
 
-  // The car's instruments sit under the minimap and its clock, or in the minimap's place while it is hidden.
+  // The car's instruments sit under the minimap and its clock, or in the minimap's place while it is hidden. A
+  // helicopter's are taller, with its flight state and its keys.
   const dash = m.vehicle?.active ? m.vehicle : null;
+  const dashW = dash?.rotor ? HELI_W : DASH_W, dashH = dash?.rotor ? HELI_H : DASH_H;
   const dashY = options.minimap ? mapY + MINIMAP_SIZE + 28 : mapY;
   if (mapTools) {
-    const beside = dash && !options.minimap ? DASH_W + 4 : 0;
+    const beside = dash && !options.minimap ? dashW + 4 : 0;
     const toggle = f.add(KEY_MINIMAP_TOGGLE, K_BUTTON, W - MARGIN - 32 - beside, mapY + (options.minimap ? MINIMAP_SIZE - 32 : 0), 32, 32, S_HUD_HIT);
     toggle.text = "◇";
     toggle.label = options.minimap ? "Hide minimap" : "Show minimap";
     toggle.interactive = true;
   }
-  if (dash) {
+  if (dash && !dash.rotor) {
     const x = W - MARGIN - DASH_W, y = dashY;
     glass(f, KEY_VEHICLE, x, y, DASH_W, DASH_H);
     f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(dash.speed * 3.6).toString().padStart(3, "0"));
@@ -190,6 +194,22 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
     const warn = dash.handbrake ? "HANDBRAKE" : dash.brake > 0 ? "BRAKING" : "";
     f.text(KEY_VEHICLE + 5, x + 12, y + 65, DASH_W - 24, warn ? S_WARNING : S_MENU_NOTE, warn || "W/S drive · A/D steer");
     f.text(KEY_VEHICLE + 6, x + 12, y + 83, DASH_W - 24, S_MENU_NOTE, "Space brake · E exit");
+  }
+  if (dash?.rotor) {
+    const v = dash, x = W - MARGIN - HELI_W, y = dashY, line = HELI_W - 24;
+    glass(f, KEY_VEHICLE, x, y, HELI_W, HELI_H);
+    f.text(KEY_VEHICLE, x + 12, y + 6, 52, S_MENU_MAIN, Math.round(v.speed * 3.6).toString().padStart(3, "0"));
+    f.text(KEY_VEHICLE + 10, x + 64, y + 15, 40, S_MENU_NOTE, "km/h");
+    f.text(KEY_VEHICLE + 1, x + HELI_W - 104, y + 15, 92, v.recovery ? S_WARNING : S_MENU_NOTE, v.recovery ? "RECOVERING" : v.direct ? "DIRECT" : "ASSISTED");
+    f.add(KEY_VEHICLE + 2, K_BAR, x + 12, y + 41, line, 3, S_MENU_FOCUS).value = Math.min(1, v.rpm / v.redline);
+    f.text(KEY_VEHICLE + 3, x + 12, y + 47, line, S_MENU_NOTE, `Rotor ${Math.round(v.rpm)} rpm · Fuel ${Math.round(v.fuel * 100)}%`);
+    f.text(KEY_VEHICLE + 4, x + 12, y + 65, line, S_MENU_NOTE, `${v.altitude.toFixed(1)} m AGL · ${v.vertical >= 0 ? "+" : ""}${v.vertical.toFixed(1)} m/s`);
+    f.text(KEY_VEHICLE + 5, x + 12, y + 83, line, S_MENU_NOTE, `Collective ${Math.round(v.collective * 100)}% · ${v.engineOn ? "ENGINE ON" : "ENGINE OFF"}`);
+    const worn = v.rotorCondition < .7 || v.engineCondition < .7;
+    f.text(KEY_VEHICLE + 6, x + 12, y + 101, line, worn ? S_WARNING : S_MENU_NOTE, worn ? `Engine ${Math.round(v.engineCondition * 100)}% · Rotor ${Math.round(v.rotorCondition * 100)}%` : "W/S pitch · A/D bank · Q/R yaw");
+    f.text(KEY_VEHICLE + 7, x + 12, y + 119, line, S_MENU_NOTE, v.engineOn ? "Space/Ctrl collective · Shift agile" : "Hold Space to start and lift");
+    f.text(KEY_VEHICLE + 8, x + 12, y + 137, line, S_MENU_NOTE, "C flight mode · Hold X recover");
+    f.text(KEY_VEHICLE + 9, x + 12, y + 155, line, S_MENU_NOTE, v.grounded ? "V cockpit/chase · E exit" : "V cockpit/chase · Land to exit");
   }
 
   const barW = 150;
@@ -207,7 +227,7 @@ export function buildHud(f: UiFrame, m: HudModel, options: Pick<Settings, "minim
   const buffW = barW + labelW;
   const buffH = lineHeight(S_BUFF) + 2;
   let by = H - MARGIN - HOTBAR_CELL - 64 - buffH;
-  const buffTop = dash ? Math.max(200, dashY + DASH_H + 4) : 200;
+  const buffTop = dash ? Math.max(200, dashY + dashH + 4) : 200;
   for (let i = 0; i < m.buffs.length && i < 16 && by > buffTop; i++) {
     const b = m.buffs[i]!;
     const n = f.add(KEY_BUFF + i, K_PANEL, Math.max(MARGIN, W - MARGIN - buffW - 58), by, buffW, buffH, S_BUFF);

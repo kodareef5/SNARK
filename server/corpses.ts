@@ -14,15 +14,21 @@ import { WET_DAMP, WET_GRAVITY } from "../shared/anim/ragdoll.ts";
 import { Solved, rayZones, zoneHit } from "../shared/anim/skeleton.ts";
 import type { ItemDef, SpeciesDef } from "../shared/content/defs.ts";
 import { TICK_DT, TICK_RATE } from "../shared/coords.ts";
+import { POS_UNITS } from "../shared/net/view.ts";
 import { detCos, detSin } from "../shared/math/scalar.ts";
+import { quatNormalize } from "../shared/math/quat.ts";
 import { Rng } from "../shared/rng.ts";
 import { GROWN, growthStep, leftAtPeriod, youngScale } from "../shared/sim/breeding.ts";
 import { Body as Mover, MF_OUT, MF_ROOTED, MODE_FLYER, MODE_WALK, STANCE_STAND, stepBody, type MoveParams } from "../shared/sim/character.ts";
 import { F_GROUNDED, F_PROP } from "../shared/sim/entities.ts";
 import { Inventory } from "../shared/sim/items.ts";
+import { createHelicopter, type HelicopterState } from "../shared/sim/helicopter.ts";
+import { helicopterWreckDefinition, stepHelicopterWreck } from "../shared/sim/helicopter-wreck.ts";
+import { rayVehicle, vehiclePoint } from "../shared/sim/vehicle-frame.ts";
 import type { DeadlineHeap } from "../shared/sim/schedule.ts";
 import { groundUnder, restingAt, type CollisionWorld } from "../shared/world/collide.ts";
 import { rayBox } from "../shared/world/ray.ts";
+import { helicopterWorld } from "../shared/world/helicopter.ts";
 import type { Death } from "./death.ts";
 import { event } from "./events/bus.ts";
 import type { GameServer } from "./game.ts";
@@ -58,6 +64,10 @@ const PROBE = 0.02;
 const WET_KEEP = 1 - WET_DAMP * TICK_DT;
 
 const HARVEST = event("harvest");
+/** Namespaced rigid salvage state, preserved by the record codec in builds without aircraft. */
+const WRECK_COMPONENT = 0x687772;
+const WRECK_FIELDS = ["qx", "qy", "qz", "qw", "vx", "vy", "vz", "pitchRate", "yawRate", "rollRate"] as const;
+const wreckRotation = new Float64Array(4), wreckPoint = new Float64Array(3);
 
 export interface CorpsesContext {
   readonly world: ServerWorld;
@@ -106,6 +116,8 @@ export interface Body {
   /** While it falls or sinks to where it will lie: its capsule, and the ticks it has fallen. */
   drop: Mover | null;
   dropped: number;
+  /** Rigid rotorcraft salvage, carrying its complete crash orientation independently of creature ragdolls. */
+  readonly wreck: HelicopterState | null;
 }
 
 /** What one blow gave, for tests and the console. */
@@ -173,7 +185,7 @@ export class Corpses {
     const reg = world.reg;
     const def = reg.defs[rec.kind];
     const e = records.entOf.get(rec.pid);
-    if (this.corpse === 0 || def?.type !== "species" || def.class !== "creature" || e === undefined) return;
+    if (this.corpse === 0 || def?.type !== "species" || (def.class !== "creature" && !(def.class === "vehicle" && def.corpse)) || e === undefined) return;
     const ents = world.ents;
     const tick = world.tick;
     const young = rec.grown !== 0 && growthStep(rec.span, rec.grown, tick) < GROWN;
@@ -201,6 +213,11 @@ export class Corpses {
     // Survival clears rec.out as health runs out, so the body asks what the entity still shows.
     const out = rec.out || (ents.mflags[e]! & MF_OUT) !== 0 || (ents.cue[e]! & CUE_OUT) !== 0;
     const b = this.make(body, rec.kind, max, max, young, size, out, !out && ents.mode[e] === MODE_FLYER, life);
+    if (b.wreck) {
+      Object.assign(b.wreck, { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]!,
+        vx: ents.vx[e]!, vy: ents.vy[e]!, vz: ents.vz[e]!,
+        pitchRate: ents.vehiclePitchRate[e]!, yawRate: ents.vehicleYawRate[e]!, rollRate: ents.vehicleRollRate[e]! });
+    }
     // Off the ground with nothing under it, it falls on as it was going.
     if ((ents.flags[e]! & F_GROUNDED) === 0 && !this.held(b)) this.fallFrom(b, ents.vx[e]!, ents.vy[e]!, ents.vz[e]!, ents.yaw[e]!);
     this.save(b);
@@ -240,10 +257,24 @@ export class Corpses {
 
   private make(rec: EntityRecord, kind: number, max: number, left: number, young: boolean, size: number, out: boolean, air: boolean, life: number): Body {
     const anim = this.ctx.world.anims[kind];
+    const def = this.ctx.world.reg.vehicle[kind];
+    const wreck = def?.movement === "rotor" ? createHelicopter(def.spec, rec.x, rec.y, rec.z, yawOf16(rec.yaw), 0) : null;
+    const saved = rec.extra.get(WRECK_COMPONENT);
+    if (wreck && saved?.length === 1 + WRECK_FIELDS.length * 4 && saved[0] === 1) {
+      const view = new DataView(saved.buffer, saved.byteOffset, saved.byteLength);
+      const values = WRECK_FIELDS.map((_, i) => view.getFloat32(1 + i * 4, true));
+      if (values.every(Number.isFinite)) {
+        for (let i = 0; i < WRECK_FIELDS.length; i++) wreck[WRECK_FIELDS[i]!] = values[i]!;
+        wreckRotation.set([wreck.qx, wreck.qy, wreck.qz, wreck.qw]); quatNormalize(wreckRotation, 0);
+        [wreck.qx, wreck.qy, wreck.qz, wreck.qw] = Array.from(wreckRotation) as [number, number, number, number];
+        for (const field of ["vx", "vy", "vz"] as const) wreck[field] = Math.max(-120, Math.min(120, wreck[field]));
+        for (const field of ["pitchRate", "yawRate", "rollRate"] as const) wreck[field] = Math.max(-5, Math.min(5, wreck[field]));
+      }
+    }
     const b: Body = {
       rec, kind, e: -1, max, left, young, size, out, air, life, next: 0, stage: 0,
       x: rec.x, y: rec.y, z: rec.z, yaw: yawOf16(rec.yaw),
-      fall: null, pose: anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false, drop: null, dropped: 0,
+      fall: null, pose: !wreck && anim?.rig.ragdoll ? new Solved(anim.rig.bones) : null, moving: false, drop: null, dropped: 0, wreck,
     };
     this.bodies.set(rec.pid, b);
     return b;
@@ -252,6 +283,12 @@ export class Corpses {
   /** Whether the ground, or something its kind's capsule could stand on, holds a body up where it is. */
   private held(b: Body): boolean {
     const world = this.ctx.world;
+    if (b.wreck) {
+      const def = world.reg.vehicle[b.kind]!;
+      if (def.movement !== "rotor") return false;
+      const hit = helicopterWorld(world).blocked(b.wreck, { ...b.wreck, y: b.wreck.y - .035 }, helicopterWreckDefinition(def));
+      return !!hit && (hit.ny ?? 0) > .45;
+    }
     const p = world.reg.move[b.kind]!;
     return rests(world, b.x, b.y, b.z, p);
   }
@@ -268,6 +305,7 @@ export class Corpses {
     m.vz = vz;
     m.yaw = yaw;
     b.drop = m;
+    if (b.wreck) { b.wreck.vx = vx; b.wreck.vy = vy; b.wreck.vz = vz; }
     b.dropped = 0;
     b.fall = null;
   }
@@ -292,12 +330,14 @@ export class Corpses {
     records.entOf.set(rec.pid, e);
     this.byEnt.set(e, b);
     this.cue(b);
+    this.wreckPose(b);
     if (b.drop) ents.anim[e] = FALLING;
     else this.lay(b);
   }
 
   /** Lays a body's ragdoll where it lies. */
   private lay(b: Body): void {
+    if (b.wreck) return;
     const anim = this.ctx.world.anims[b.kind];
     const r = anim && b.pose ? layCorpse(anim, b.out, b.air, b.x, b.y, b.z, b.yaw, b.size, b.pose) : null;
     if (r) {
@@ -314,6 +354,17 @@ export class Corpses {
   private descend(b: Body): void {
     const world = this.ctx.world;
     const m = b.drop!;
+    const def = world.reg.vehicle[b.kind];
+    if (b.wreck && def?.movement === "rotor") {
+      const stopped = stepHelicopterWreck(b.wreck, def, helicopterWorld(world));
+      m.x = b.wreck.x; m.y = b.wreck.y; m.z = b.wreck.z;
+      b.x = b.rec.x = m.x; b.y = b.rec.y = m.y; b.z = b.rec.z = m.z; b.dropped++;
+      if (b.e >= 0) world.ents.setPosition(b.e, b.x, b.y, b.z);
+      this.wreckPose(b);
+      if (stopped || b.dropped >= DROP_TICKS) this.land(b);
+      else this.save(b);
+      return;
+    }
     const p = world.reg.move[b.kind]!;
     const wet = m.y + p.height * 0.5 < world.hf.waterAt(m.x, m.z);
     if (wet) {
@@ -346,8 +397,11 @@ export class Corpses {
     const rec = b.rec;
     b.drop = null;
     b.x = rec.x = wireX(m.x);
-    b.y = rec.y = wireY(m.y);
+    // A rigid fin may be thinner than the view's position grid: round up beyond the native 8 mm contact tolerance,
+    // so a sleeping wreck is not quantized into terrain and repeatedly woken by a sideways contact normal.
+    b.y = rec.y = b.wreck ? Math.ceil((m.y + .008) * POS_UNITS) / POS_UNITS : wireY(m.y);
     b.z = rec.z = wireX(m.z);
+    if (b.wreck) { b.wreck.x = b.x; b.wreck.y = b.y; b.wreck.z = b.z; b.wreck.vx = b.wreck.vy = b.wreck.vz = 0; }
     const ents = this.ctx.world.ents;
     if (b.e >= 0) {
       ents.setPosition(b.e, b.x, b.y, b.z);
@@ -355,6 +409,14 @@ export class Corpses {
     }
     this.save(b);
     this.lay(b);
+  }
+
+  private wreckPose(b: Body): void {
+    if (!b.wreck || b.e < 0) return;
+    const s = b.wreck, ents = this.ctx.world.ents, e = b.e;
+    ents.vehicleQx[e] = s.qx; ents.vehicleQy[e] = s.qy; ents.vehicleQz[e] = s.qz; ents.vehicleQw[e] = s.qw;
+    ents.vehicleRotorRpm[e] = ents.vehicleEngineOn[e] = ents.vehicleRpm[e] = ents.vehicleCollective[e] = 0;
+    ents.vehicleEngineCondition[e] = ents.vehicleRotorCondition[e] = 0;
   }
 
   private wake(b: Body): void {
@@ -418,7 +480,7 @@ export class Corpses {
     const world = this.ctx.world;
     for (const b of this.loaded) {
       if (this.bodies.get(b.rec.pid) !== b || this.held(b)) continue;
-      this.fallFrom(b, 0, 0, 0, b.rec.yaw);
+      this.fallFrom(b, b.wreck?.vx ?? 0, b.wreck?.vy ?? 0, b.wreck?.vz ?? 0, b.rec.yaw);
       this.dropping.push(b);
       if (b.e >= 0) world.ents.anim[b.e] = FALLING;
     }
@@ -447,6 +509,11 @@ export class Corpses {
     // One that sleeps wakes when something is built or taken where it lies.
     if (tick % SHAKE_TICKS !== 0) return;
     for (const b of this.bodies.values()) {
+      if (b.wreck && !b.drop && !this.held(b)) {
+        this.fallFrom(b, 0, 0, 0, b.rec.yaw); this.dropping.push(b);
+        if (b.e >= 0) world.ents.anim[b.e] = FALLING;
+        continue;
+      }
       if (b.moving || !b.fall || b.fall.ragdoll.awake) continue;
       if (b.fall.tick(world)) {
         b.fall.ragdoll.pose(b.pose!);
@@ -493,6 +560,10 @@ export class Corpses {
 
   /** Where a body's middle lies now: its ragdoll's first body, or a third of the way up its box. For aiming at it. */
   middle(b: Body): { x: number; y: number; z: number } {
+    if (b.wreck) {
+      vehiclePoint(b.wreck, [0, this.ctx.world.reg.bodyHeight[b.kind]! / 2, 0], wreckPoint);
+      return { x: wreckPoint[0]!, y: wreckPoint[1]!, z: wreckPoint[2]! };
+    }
     const anim = this.ctx.world.anims[b.kind];
     const bone = anim?.rig.ragdoll?.bone[0];
     if (!b.pose || !b.fall || bone === undefined) return { x: b.x, y: b.y + this.ctx.world.reg.bodyHeight[b.kind]! * b.size * 0.33, z: b.z };
@@ -512,6 +583,10 @@ export class Corpses {
   /** Where a ray meets body `b` within `maxT`, or `maxT`. */
   private ray(b: Body, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxT: number): number {
     const reg = this.ctx.world.reg;
+    if (b.wreck) {
+      const def = reg.vehicle[b.kind]!;
+      return Math.min(maxT, rayVehicle(def, b.x, b.y, b.z, b.wreck.yaw, ox, oy, oz, dx, dy, dz, def.spec.height, b.wreck));
+    }
     const anim = this.ctx.world.anims[b.kind];
     if (!anim || !b.pose || !b.fall) {
       const r = reg.bodyRadius[b.kind]! * b.size;
@@ -609,6 +684,11 @@ export class Corpses {
   /** Writes a body's own state into its record, for the store. */
   private save(b: Body): void {
     b.rec.corpse = { species: b.kind, max: b.max, left: b.left, span: sizeSpan(b.size), young: b.young, out: b.out, air: b.air, life: b.life };
+    if (b.wreck) {
+      const bytes = new Uint8Array(1 + WRECK_FIELDS.length * 4), view = new DataView(bytes.buffer); bytes[0] = 1;
+      for (let i = 0; i < WRECK_FIELDS.length; i++) view.setFloat32(1 + i * 4, b.wreck[WRECK_FIELDS[i]!], true);
+      b.rec.extra.set(WRECK_COMPONENT, bytes);
+    }
     this.ctx.records.dirty.add(b.rec.pid);
   }
 

@@ -42,8 +42,9 @@ import { BTN_CROUCH, BTN_PRONE, Body } from "../sim/character.ts";
  * 15: beds, the choosing list numbered with why a survivor chooses, and naming and travelling from a bed. 16: the flyers'.
  * 17: the stations wave's (planning/reference/stations-plan.md, S0), OWN_STATION's layout. 18: vehicles: a body's
  * mechanical state and seat after the flight counters, and a view entry's vehicle parts (view.ts).
+ * 19: rotor state/condition, observer rotor and service parts, and vehicle maintenance/deployment commands.
  */
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 
 // Protocol 16: the flyers' contracts (planning/reference/flyers-plan.md, FL0). Each is read by nothing until the package
 // named builds it; the server refuses the new codes until then. Besides these: MODE_FLYER (5) in a body's mode bits, the
@@ -85,6 +86,20 @@ function writeVehicle(w: BitWriter, b: Body): void {
     w.f32(b.vehicleRpm);
     w.f32(b.vehicleShiftTime);
     w.f32(b.vehiclePayloadMass);
+    const rotor = b.vehicleRotorRpm !== 0 || b.vehicleRotorPhase !== 0 || b.vehicleEngineCondition !== 1 || b.vehicleRotorCondition !== 1 || b.vehicleEngineOn || b.vehicleQx !== 0 || b.vehicleQy !== 0 || b.vehicleQz !== 0 || b.vehicleQw !== 1 || b.vehicleCollective !== 0;
+    w.bool(rotor);
+    if (rotor) {
+      w.f32(b.vehicleRotorRpm);
+      w.f32(b.vehicleRotorPhase);
+      w.f32(b.vehicleEngineCondition);
+      w.f32(b.vehicleRotorCondition);
+      w.bool(b.vehicleEngineOn);
+      w.f32(b.vehicleQx);
+      w.f32(b.vehicleQy);
+      w.f32(b.vehicleQz);
+      w.f32(b.vehicleQw);
+      w.f32(b.vehicleCollective);
+    }
     // A new vehicle field goes here, in readVehicle at the same place, in Body.copy and equals, and in VEHICLE_FIELDS.
   }
   // A seat costs a body one bit when it has none: the entity it sits on, the seat's place in it from 1, and the entity's generation.
@@ -110,6 +125,17 @@ function readVehicle(r: BitReader, b: Body): void {
   b.vehicleRpm = b.vehicle ? r.f32() : 0;
   b.vehicleShiftTime = b.vehicle ? r.f32() : 0;
   b.vehiclePayloadMass = b.vehicle ? r.f32() : 0;
+  const rotor = b.vehicle && r.bool();
+  b.vehicleRotorRpm = rotor ? r.f32() : 0;
+  b.vehicleRotorPhase = rotor ? r.f32() : 0;
+  b.vehicleEngineCondition = rotor ? r.f32() : 1;
+  b.vehicleRotorCondition = rotor ? r.f32() : 1;
+  b.vehicleEngineOn = rotor && r.bool();
+  b.vehicleQx = rotor ? r.f32() : 0;
+  b.vehicleQy = rotor ? r.f32() : 0;
+  b.vehicleQz = rotor ? r.f32() : 0;
+  b.vehicleQw = rotor ? r.f32() : 1;
+  b.vehicleCollective = rotor ? r.f32() : 0;
   b.seat = r.bool() ? r.varint() + 1 : 0;
   b.seatSlot = b.seat !== 0 ? r.u8() : 0;
   b.seatGen = b.seat !== 0 ? r.bits(12) : 0;
@@ -302,6 +328,13 @@ export const CMD_CRAFT_BLUEPRINT = 30;
  * says why) where it may not go; on success the answer is S_TRAVEL, once its leaving is saved.
  */
 export const CMD_TRAVEL = 31;
+/** Vehicle service: action u8 then generation-qualified target u32 (refuel adds count u8, 0 fills).
+ * Deploy instead sends own inventory slot u8, x/y/z f32 and yaw u16. */
+export const CMD_VEHICLE = 32;
+export const VEHICLE_INSPECT = 0;
+export const VEHICLE_REFUEL = 1;
+export const VEHICLE_REPAIR = 2;
+export const VEHICLE_DEPLOY = 3;
 
 /** The only boxes a slot command can address. No ids travel. */
 export const BOX_SELF = 0;

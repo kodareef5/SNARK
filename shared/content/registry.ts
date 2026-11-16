@@ -117,6 +117,8 @@ export interface Registry {
   readonly doorway: Uint8Array;
   /** Per placeable item: the structures it may be set down as, the usual one first. Null for everything else. */
   readonly places: readonly (Uint16Array | null)[];
+  /** Per assembly item: deployed vehicle kind, or 0. */
+  readonly vehicleDeploy: Uint16Array;
   /** Per structure: the item that places it (0 if none), its full health, and the days it lasts unvisited (0 means for ever). */
   readonly pieceItem: Uint16Array;
   readonly maxHp: Float32Array;
@@ -500,6 +502,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       }
     } else if (d.type === "item") {
       if (!(Number.isInteger(d.stack) && d.stack >= 1 && d.stack <= 65535)) errors.push(`${d.id}: stack must be a whole number from 1 to 65535`);
+      if (d.deploys !== undefined && (d.stack !== 1 || d.places !== undefined || d.weapon !== undefined || d.eat !== undefined)) errors.push(`${d.id}: a vehicle assembly stacks to 1 and has no other use`);
       if (d.craft) {
         if (d.craft.count !== undefined) positive(d, "craft.count", d.craft.count, 1000);
         positive(d, "craft.seconds", d.craft.seconds, 86400);
@@ -673,6 +676,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
   const role = new Int8Array(n).fill(-1);
   const doorway = new Uint8Array(n);
   const places: (Uint16Array | null)[] = new Array(n).fill(null);
+  const vehicleDeploy = new Uint16Array(n);
   const pieceItem = new Uint16Array(n);
   const maxHp = new Float32Array(n);
   const decayDays = new Float32Array(n);
@@ -939,6 +943,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
       saddleArmor[i] = d.saddle.armor;
       saddleSeats[i] = d.saddle.seats;
     }
+    if (d.type === "item" && d.deploys !== undefined) vehicleDeploy[i] = index.get(d.deploys)!;
     if (d.type === "item" && d.dose) {
       doseTorpor[i] = d.dose.torpor;
       doseSeconds[i] = d.dose.seconds;
@@ -984,7 +989,7 @@ export function compileContent(all: readonly Def[]): CompileResult {
     for (const a of d.aliases ?? []) aliases.set(a.toLowerCase(), at + 1);
     if (d.type === "species" && d.tag !== undefined) tags.set(d.tag, [...(tags.get(d.tag) ?? []), at + 1]);
   });
-  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
+  return { registry: { defs, ids, index, hash, redirects, renames, aliases, tags, baseHash: hash, tuning: "", source: null, halfX, halfY, halfZ, parts, role, doorway, places, vehicleDeploy, pieceItem, maxHp, decayDays, structSlots, opens, lockedAtFirst, fallsWhole, lights, burning, isBed, runAt, taming, eats, breedEgg, incubateTicks, matureTicks, birthScale, colorSet, mutationColors, keeps, saddleFits, saddleArmor, saddleSeats, doseTorpor, doseSeconds, temper, sight, leash, fuelTicks, cooksInto, cookTicks, spoilsInto, recipeOf, recipeMakes, craftAt, blueprints, move, vehicle, stack, weight, spoilTicks, bodyRadius, bodyHeight, soft, nodeHits, wearSlot, uses, weapon, damage, damageType, reach, armor, takes, zoneMul, power, ammoSpeed, ammoGravity, ammoRecover, ammoTorpor, ammoTorporOver, ammoTorporSeconds, ammoBuff, structTakes, throwSpeed, fuseTicks, blast, meleeTorpor, alarm, tamedMove, drag, mass, carriable, feces, eggChance, drawSize, propItem, propFertile, decomposeTicks, youngItem, blowDamage, blowTorpor, blowReach, structureMul, cloudProp, cloudTicks, cloudBuff, ammoPellets, weaponPellets, ammoFalloffFull, ammoFalloffNone, ammoBlast, ammoPierce, ammoLight, ammoLightColor, flies, grabDrag, grabReach, defendsEgg, riderWeight, biteStamina, rollDamage, missileMul, biteStructureMul, stationBase, stationFuel, stationCooks, structKeeps, firedAt, burnsInto, powered, dry }, errors };
 }
 
 const paletteIndex = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 256;

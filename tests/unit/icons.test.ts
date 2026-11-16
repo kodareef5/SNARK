@@ -107,6 +107,13 @@ test("a structure's item with no mesh of its own is drawn as the first structure
   expect(subjects(["core:campfire", "core:campfire_lit"])).toEqual([`${campfire!.id}/icon core:campfire ${(reg.defs.find((d) => d?.id === "core:campfire") as { color: number }).color}`]);
 });
 
+test("a vehicle assembly is pictured from its authored deployment model and livery", () => {
+  const subjects = (meshes: string[]) => iconSubjects(reg.defs, id => meshes.includes(id));
+  expect(subjects(["core:helicopter"])).toEqual([{ icon: "core:helicopter_assembly/icon", owner: "core:helicopter_assembly", mesh: "core:helicopter", colors: [103, 86, 101, 0, 0, 0] }]);
+  expect(subjects(["core:helicopter", "core:helicopter_assembly/dropped"])[0]!.mesh).toBe("core:helicopter_assembly/dropped");
+  expect(subjects(["core:bag"])).toEqual([]);
+});
+
 test("a sheet of pictures is a file of the manifest, which still reads version 3 and refuses a picture outside its sheet", () => {
   expect(MANIFEST_VERSION).toBe(4);
   expect([sheet.role, [...sheet.bytes.subarray(0, 8)]]).toEqual(["icon", [137, 80, 78, 71, 13, 10, 26, 10]]);

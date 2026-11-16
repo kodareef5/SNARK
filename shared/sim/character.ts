@@ -173,7 +173,7 @@ export class Body {
    */
   kind = 0;
   yaw = 0;
-  /** Full wheel-controller state, copied and replayed with the ordinary body. */
+  /** Full vehicle controller state, copied and replayed with the ordinary body. */
   vehicle = false;
   vehicleYaw = 0;
   vehicleYawRate = 0;
@@ -181,6 +181,16 @@ export class Body {
   vehicleRpm = 0;
   vehicleShiftTime = 0;
   vehiclePayloadMass = 0;
+  vehicleRotorRpm = 0;
+  vehicleRotorPhase = 0;
+  vehicleEngineCondition = 1;
+  vehicleRotorCondition = 1;
+  vehicleEngineOn = false;
+  vehicleQx = 0;
+  vehicleQy = 0;
+  vehicleQz = 0;
+  vehicleQw = 1;
+  vehicleCollective = 0;
   vehiclePitchRate = 0;
   vehicleRollRate = 0;
   vehicleGroundPitch = 0;
@@ -245,6 +255,16 @@ export class Body {
     this.vehicleRpm = o.vehicleRpm;
     this.vehicleShiftTime = o.vehicleShiftTime;
     this.vehiclePayloadMass = o.vehiclePayloadMass;
+    this.vehicleRotorRpm = o.vehicleRotorRpm;
+    this.vehicleRotorPhase = o.vehicleRotorPhase;
+    this.vehicleEngineCondition = o.vehicleEngineCondition;
+    this.vehicleRotorCondition = o.vehicleRotorCondition;
+    this.vehicleEngineOn = o.vehicleEngineOn;
+    this.vehicleQx = o.vehicleQx;
+    this.vehicleQy = o.vehicleQy;
+    this.vehicleQz = o.vehicleQz;
+    this.vehicleQw = o.vehicleQw;
+    this.vehicleCollective = o.vehicleCollective;
     this.vehiclePitchRate = o.vehiclePitchRate;
     this.vehicleRollRate = o.vehicleRollRate;
     this.vehicleGroundPitch = o.vehicleGroundPitch;
@@ -296,6 +316,16 @@ export class Body {
       this.vehicleRpm === o.vehicleRpm &&
       this.vehicleShiftTime === o.vehicleShiftTime &&
       this.vehiclePayloadMass === o.vehiclePayloadMass &&
+      this.vehicleRotorRpm === o.vehicleRotorRpm &&
+      this.vehicleRotorPhase === o.vehicleRotorPhase &&
+      this.vehicleEngineCondition === o.vehicleEngineCondition &&
+      this.vehicleRotorCondition === o.vehicleRotorCondition &&
+      this.vehicleEngineOn === o.vehicleEngineOn &&
+      this.vehicleQx === o.vehicleQx &&
+      this.vehicleQy === o.vehicleQy &&
+      this.vehicleQz === o.vehicleQz &&
+      this.vehicleQw === o.vehicleQw &&
+      this.vehicleCollective === o.vehicleCollective &&
       this.vehiclePitchRate === o.vehiclePitchRate &&
       this.vehicleRollRate === o.vehicleRollRate &&
       this.vehicleGroundPitch === o.vehicleGroundPitch &&

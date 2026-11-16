@@ -213,16 +213,19 @@ cue("crate/land", "prop", "build", "world", "waits:loot", "a supply crate lands"
 // or an outboard alike.
 const VEHICLE = "species/vehicle";
 const WAITS_VEHICLES = "waits:vehicles";
+// A rotorcraft fires these from its snapshot state (client/core/sound/vehicles.ts); a car waits for them still.
+const ROTOR_FIRES = new Set(["engine/{revs}", "engine/start", "engine/stop", "vehicle/cabin", "vehicle/wash", "vehicle/wash/water"]);
+const vstatus = (name: string): CueStatus => (ROTOR_FIRES.has(name) ? "fire" : WAITS_VEHICLES);
 const vfalls = (n: string, shared = true): string[] => [`{owner}/${n}`, `{family}/${n}`, ...(shared ? [`core:vehicle/${n}`] : [])];
-cue("engine/{revs}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a running engine (a rotor, a propeller, an outboard): four layers looped, faded across by rpm and each played faster or slower to meet it", { loop: true, falls: vfalls("engine/{revs}") });
-for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the engine: ${n} (the telemetry's engine state)`, { falls: vfalls(`engine/${n}`) });
+cue("engine/{revs}", VEHICLE, "vehicle", "body", vstatus("engine/{revs}"), "a running engine (a rotor, a propeller, an outboard): four layers looped, faded across by rpm and each played faster or slower to meet it", { loop: true, falls: vfalls("engine/{revs}") });
+for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", vstatus(`engine/${n}`), `the engine: ${n} (the telemetry's engine state)`, { falls: vfalls(`engine/${n}`) });
 cue("engine/brake", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a truck slowing on its engine brake", { falls: vfalls("engine/brake", false) });
 cue("shift", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the gear changes", { falls: vfalls("shift") });
 cue("tire/roll/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "wheels on the ground at speed, by the surface under them (urban:asphalt, gravel, mud)", { loop: true, falls: ["core:vehicle/tire/roll/{road}", "core:vehicle/tire/roll/dirt"] });
 cue("tire/skid/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the wheels slip (the telemetry's slip)", { loop: true, falls: ["core:vehicle/tire/skid/{road}", "core:vehicle/tire/skid/asphalt"] });
 for (const n of ["brake", "handbrake", "horn", "door/open", "door/close", "crash/light", "crash/heavy", "glass/break", "suspension", "splash"]) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the vehicle: ${n.replace("/", " ")}`, { falls: vfalls(n) });
 cue("vehicle/wind", VEHICLE, "bed", "ear", WAITS_VEHICLES, "wind past the cabin at speed, for the driver and passengers", { loop: true, falls: ["{family}/wind", "core:vehicle/wind"] });
-cue("vehicle/cabin", VEHICLE, "bed", "ear", WAITS_VEHICLES, "the engine as heard inside, for the pilot and passengers of a helicopter or plane", { loop: true, falls: vfalls("cabin", false) });
+cue("vehicle/cabin", VEHICLE, "bed", "ear", vstatus("vehicle/cabin"), "the engine as heard inside, for the pilot and passengers of a helicopter or plane", { loop: true, falls: vfalls("cabin", false) });
 // Each family's own occasions: a rotor's wash, a hull in the water, a raft's paddle and sail, a ship's anchor, a board's tricks.
 const VEHICLE_ONCE: Readonly<Record<string, string>> = {
   flyby: "a helicopter or plane passes fast and low, heard by those it passes",
@@ -258,7 +261,7 @@ const VEHICLE_LOOPS: Readonly<Record<string, string>> = {
   "roll/rough": "a skateboard rolling on rough ground",
   "roll/smooth": "a skateboard rolling on smooth ground",
 };
-for (const [n, when] of Object.entries(VEHICLE_LOOPS)) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, when, { loop: true, falls: vfalls(n, false) });
+for (const [n, when] of Object.entries(VEHICLE_LOOPS)) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", vstatus(`vehicle/${n}`), when, { loop: true, falls: vfalls(n, false) });
 
 /** The shared families a vehicle may belong to, each by the words that name it, and the family each one also falls back to. */
 export const VEHICLE_FAMILIES: Readonly<Record<string, { words: readonly string[]; also?: string }>> = {
@@ -276,9 +279,14 @@ export const VEHICLE_FAMILIES: Readonly<Record<string, { words: readonly string[
 };
 
 /** A vehicle's families, nearest first (`core:speedboat`, then `core:boat`), from its id and its definition's aliases: the
- * first family one of them names, and the family that one falls back to. None for a vehicle no word places (the compact). */
+ * first family one of them names, and the family that one falls back to. A name is a word whole and each of its parts, so
+ * a livery or a wreck (`core:helicopter_rescue`, `core:boat_wreck`) is of its vehicle's family. None for a vehicle no word
+ * places (the compact). */
 export function vehicleFamilies(id: string, aliases: readonly string[] = []): string[] {
-  const words = [id.slice(id.indexOf(":") + 1), ...aliases].map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  const words = [id.slice(id.indexOf(":") + 1), ...aliases].flatMap((w) => {
+    const lower = w.toLowerCase();
+    return [lower.replace(/[^a-z0-9]/g, ""), ...lower.split(/[^a-z0-9]+/)];
+  });
   for (const [f, def] of Object.entries(VEHICLE_FAMILIES)) {
     if (def.words.some((w) => words.includes(w))) return [`core:${f}`, ...(def.also ? [`core:${def.also}`] : [])];
   }

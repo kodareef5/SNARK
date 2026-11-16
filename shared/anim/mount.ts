@@ -13,7 +13,7 @@ import {
 import type { Solved } from "./skeleton.ts";
 
 /** `ride` sits astride a saddle (shared/anim/seat.ts): its rider's hands on the grips, a passenger's upper body its own. */
-export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride"] as const;
+export const MOUNT_MOTION_ROLES = ["drive", "passenger", "enter", "exit", "carjack", "displaced", "ride", "pilot", "cabin"] as const;
 export type MountMotionRole = typeof MOUNT_MOTION_ROLES[number];
 
 export interface MountMotionProfile {
@@ -97,7 +97,11 @@ export function mountPose(profile: MountMotionProfile, input: MountPoseInput, ou
     for (let i = B_SPINE * 4; i < B_UPPER_LEG_L * 4; i++) sampled.rot[i] = input.upper.rot[i]!;
     for (let i = B_FINGERS_L * 4; i < HUMAN_BONES * 4; i++) sampled.rot[i] = input.upper.rot[i]!;
   }
-  const mirror = input.side === -1 && input.role !== "drive" && input.role !== "passenger" && input.role !== "ride";
+  // Enclosed cabins keep arms and torso in their authored seat pose; only the head and neck follow a look.
+  if ((input.role === "pilot" || input.role === "cabin") && input.upper) {
+    for (const bone of [B_NECK, B_HEAD]) for (let k = 0; k < 4; k++) sampled.rot[bone * 4 + k] = input.upper.rot[bone * 4 + k]!;
+  }
+  const mirror = input.side === -1 && input.role !== "drive" && input.role !== "passenger" && input.role !== "ride" && input.role !== "pilot" && input.role !== "cabin";
   for (let b = 0; b < HUMAN_BONES; b++) {
     const src = (mirror ? mirrors[b]! : b) * 4;
     out.rot[b * 4] = sampled.rot[src]!;
@@ -145,6 +149,19 @@ function seated(driver: boolean, steering = 0): Pose {
     b.level(left ? B_FOOT_L : B_FOOT_R).turn(left ? B_FOOT_L : B_FOOT_R, -10);
     b.aim(left ? B_UPPER_ARM_L : B_UPPER_ARM_R, side * 0.1, driver ? -0.58 - steering * side * 0.18 : -0.95, driver ? 0.85 : 0.2);
     b.aim(left ? B_LOWER_ARM_L : B_LOWER_ARM_R, -side * (driver ? 0.35 : 0.1), driver ? -steering * side * 0.6 : -0.3, 1);
+    b.level(left ? B_HAND_L : B_HAND_R);
+  }
+  return b.pose;
+}
+
+/** Compact enclosed-cabin pose. Elbows stay beside the torso, hands on the lap or helicopter controls. */
+function cabinSeat(pilot: boolean): Pose {
+  const b = new PoseBuilder();
+  b.pose.rot.set(seated(false).rot); b.pose.root.set(seated(false).root);
+  for (const side of [1, -1] as const) {
+    const left = side === 1;
+    b.aim(left ? B_UPPER_ARM_L : B_UPPER_ARM_R, side * 0.04, -0.9, pilot ? 0.3 : 0.14);
+    b.aim(left ? B_LOWER_ARM_L : B_LOWER_ARM_R, -side * (pilot ? 0.15 : 0.42), pilot ? -0.05 : -0.25, 0.85);
     b.level(left ? B_HAND_L : B_HAND_R);
   }
   return b.pose;
@@ -208,6 +225,7 @@ function fallbacks(): Fallbacks {
       carjack: keyframes("carjack", [stand, touch, grab, grab]),
       displaced: keyframes("displaced", [sit, recoil, duck, stand]),
       ride: keyframes("ride", [astride()]),
+      pilot: keyframes("pilot", [cabinSeat(true)]), cabin: keyframes("cabin", [cabinSeat(false)]),
     },
     left: seated(true, -1), right: seated(true, 1),
   };

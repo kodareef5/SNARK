@@ -88,10 +88,12 @@ import { TOKEN_BYTES } from "../../shared/voice/packet.ts";
 import { CH_RELIABLE, CH_UNRELIABLE, type Connection } from "../../shared/net/transport.ts";
 import { EntityView, MAX_VIEW, VIEW_RING, ViewRing, dequantX, dequantY, readViewDelta } from "../../shared/net/view.ts";
 import { BTN_JUMP, Body, stanceEye, stepBody, type MoveParams } from "../../shared/sim/character.ts";
+import { quatNlerp } from "../../shared/math/quat.ts";
+import { interpolateRotorPhase, unpackVehicleQuaternion, unpackRotorRpm, unpackRotorPhase, unpackVehicleFuel, unpackEngineCondition, unpackRotorCondition, vehicleEngineRunning } from "../../shared/sim/vehicle-presentation.ts";
 import { MAX_VEHICLE_DOORS } from "../../shared/sim/vehicle.ts";
 import { PredictionTrace } from "./diagnostics.ts";
 import { stepVehicleBody, unpackVehiclePitch, unpackVehicleRoll, unpackVehicleSteering, unpackVehicleWheel, unpackVehicleGroundPitch, unpackVehicleGroundRoll, unpackVehicleRideOffset, vehicleRideGrounded, vehicleDoor, withVehicleDoor, unpackVehicleGear, unpackVehicleRpm, vehicleShifting } from "../../shared/sim/vehicle-body.ts";
-import { FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
+import { ACT_NONE, FISTS, actionOut, biteCost, stepAction } from "../../shared/sim/weapon.ts";
 import { aimSeed, aimShot, scopeFitted, shotAim, stepAim } from "../../shared/sim/aim.ts";
 import { GEAR_COUNT } from "../../shared/sim/entities.ts";
 import { Inventory } from "../../shared/sim/items.ts";
@@ -186,6 +188,17 @@ export class RemoteSample {
   readonly vehicleGear = new Int8Array(MAX_VIEW);
   readonly vehicleRpm = new Float32Array(MAX_VIEW);
   readonly vehicleShifting = new Uint8Array(MAX_VIEW);
+  readonly vehicleRotorcraft = new Uint8Array(MAX_VIEW);
+  readonly vehicleRotorRpm = new Float32Array(MAX_VIEW);
+  readonly vehicleRotorPhase = new Float32Array(MAX_VIEW);
+  readonly vehicleFuel = new Float32Array(MAX_VIEW);
+  readonly vehicleEngineCondition = new Float32Array(MAX_VIEW);
+  readonly vehicleRotorCondition = new Float32Array(MAX_VIEW);
+  readonly vehicleEngineOn = new Uint8Array(MAX_VIEW);
+  readonly vehicleQx = new Float32Array(MAX_VIEW);
+  readonly vehicleQy = new Float32Array(MAX_VIEW);
+  readonly vehicleQz = new Float32Array(MAX_VIEW);
+  readonly vehicleQw = new Float32Array(MAX_VIEW);
   readonly flags = new Uint8Array(MAX_VIEW);
   readonly level = new Uint16Array(MAX_VIEW);
   /** Six colour regions per entity. Zero means the species' own colour. */
@@ -334,6 +347,19 @@ export class ClientSession {
   get bodyKind(): number {
     return this.own.kind !== 0 ? this.own.kind : this.ownKind;
   }
+  /** A seat may stow the held item without changing its inventory slot. */
+  get weaponsAllowed(): boolean {
+    if (this.driving >= 0) return !this.registry.vehicle[this.own.kind];
+    const b = this.own;
+    if (!b.seat || !b.seatSlot) return true;
+    const view = this.views.find(this.latestSnapshot);
+    if (!view) return false;
+    const parent = b.seat - 1;
+    for (let i = 0; i < view.count; i++) if (view.id[i] === parent && view.gen[i] === b.seatGen) {
+      return this.registry.vehicle[view.kind[i]!]?.seats[b.seatSlot - 1]?.weapons !== false;
+    }
+    return false;
+  }
   /** A SESSION_* state, as the server last sent it. */
   sessionState = SESSION_ALIVE;
   readonly name: string;
@@ -470,6 +496,9 @@ export class ClientSession {
   private tapped = 0;
   private readonly bodies: Body[] = [];
   private readonly bodyTick = new Uint32Array(HISTORY);
+  private readonly rotorQuatA = new Float64Array(4);
+  private readonly rotorQuatB = new Float64Array(4);
+  private readonly rotorQuat = new Float64Array(4);
   private readonly views = new ViewRing(() => new EntityView());
   /** What is drawn after each snapshot: every body as it was last told of. `views` are what deltas are read against. */
   private readonly drawn = new ViewRing(() => new EntityView());
@@ -694,11 +723,25 @@ export class ClientSession {
       out.vehicleRideOffset[n] = unpackVehicleRideOffset(ride);
       out.vehicleGrounded[n] = vehicleRideGrounded(ride) ? 1 : 0;
       out.vehicleDoors[n] = b.vehicleDoors[j]!;
+      out.vehicleRotorcraft[n] = this.registry.vehicle[b.kind[j]!]?.movement === "rotor" ? 1 : 0;
+      const rotor = b.vehicleRotor[j]!, systems = b.vehicleSystems[j]!;
+      out.vehicleRotorRpm[n] = unpackRotorRpm(rotor); out.vehicleRotorPhase[n] = unpackRotorPhase(rotor);
+      out.vehicleFuel[n] = unpackVehicleFuel(systems); out.vehicleEngineCondition[n] = unpackEngineCondition(systems);
+      out.vehicleRotorCondition[n] = unpackRotorCondition(systems); out.vehicleEngineOn[n] = vehicleEngineRunning(systems) ? 1 : 0;
+      unpackVehicleQuaternion(b.vehicleAttitudeA[j]!, b.vehicleAttitudeB[j]!, this.rotorQuat);
       const drive = b.vehicleDrive[j]!;
       out.vehicleGear[n] = unpackVehicleGear(drive);
       out.vehicleRpm[n] = unpackVehicleRpm(drive);
       out.vehicleShifting[n] = vehicleShifting(drive) ? 1 : 0;
       if (a !== b && i < na && a!.id[i] === id && a!.gen[i] === b.gen[j]) {
+        if (out.vehicleRotorcraft[n]) {
+          unpackVehicleQuaternion(a!.vehicleAttitudeA[i]!, a!.vehicleAttitudeB[i]!, this.rotorQuatA);
+          this.rotorQuatB.set(this.rotorQuat);
+          quatNlerp(this.rotorQuat, 0, this.rotorQuatA, 0, this.rotorQuatB, 0, k);
+          const oldRotor = a!.vehicleRotor[i]!, rpm = unpackRotorRpm(oldRotor);
+          out.vehicleRotorPhase[n] = interpolateRotorPhase(unpackRotorPhase(oldRotor), unpackRotorPhase(rotor), rpm, out.vehicleRotorRpm[n]!, (b.tick - a!.tick) / TICK_RATE, k);
+          out.vehicleRotorRpm[n] = rpm + (out.vehicleRotorRpm[n]! - rpm) * k;
+        }
         const oldPose = a!.vehiclePose[i]!;
         out.vehiclePitch[n] = unpackVehiclePitch(oldPose) + (out.vehiclePitch[n]! - unpackVehiclePitch(oldPose)) * k;
         out.vehicleRoll[n] = unpackVehicleRoll(oldPose) + (out.vehicleRoll[n]! - unpackVehicleRoll(oldPose)) * k;
@@ -740,6 +783,8 @@ export class ClientSession {
         out.z[n] = dequantX(b.qz[j]!);
         out.yaw[n] = (b.yaw[j]! * TAU) / 1024;
       }
+      out.vehicleQx[n] = this.rotorQuat[0]!; out.vehicleQy[n] = this.rotorQuat[1]!;
+      out.vehicleQz[n] = this.rotorQuat[2]!; out.vehicleQw[n] = this.rotorQuat[3]!;
     }
   }
 
@@ -780,13 +825,13 @@ export class ClientSession {
     this.remoteDelay = want > d ? Math.min(want, d + ticks * 0.1) : Math.max(want, d - ticks * 0.01);
   }
 
-  private step(t: number): void {
+  private step(t: number, pilot = true): void {
     const i = t & this.inputs.mask;
     const inp = this.inputs;
     const buttons = inp.buttons[i]!;
     // The body steps with the move parameters of the kind the server last sent: its own species, or its mount's once tamed.
     const vehicle = this.registry.vehicle[this.own.kind];
-    if (vehicle) stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT);
+    if (vehicle) stepVehicleBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, buttons, vehicle, TICK_DT, inp.yaw[i]!, pilot);
     // Any vehicle seat slot other than 0 holds the body still, as the server does (server/game.ts).
     else if (this.own.seatSlot === 0) stepBody(this.world!, this.own, inp.moveX[i]!, inp.moveZ[i]!, inp.yaw[i]!, inp.pitch[i]!, buttons, this.registry.tamedMove[this.own.kind] ?? this.move!, TICK_DT);
     else this.own.yaw = inp.yaw[i]!;
@@ -804,8 +849,10 @@ export class ClientSession {
     }
     // The action step takes the same buttons as the server's, and those that went down since the tick before.
     const before = inp.has(t - 1) ? inp.buttons[(t - 1) & inp.mask]! : 0;
-    const w = this.registry.weapon[this.own.held] ?? FISTS;
-    stepAction(this.own, buttons, buttons & ~before, w);
+    const armed = this.weaponsAllowed;
+    if (!armed) { this.own.act = ACT_NONE; this.own.actTicks = 0; }
+    const w = armed ? this.registry.weapon[this.own.held] ?? FISTS : FISTS;
+    stepAction(this.own, armed ? buttons : 0, armed ? buttons & ~before : 0, w);
     stepAim(this.own, w, t);
     // A replay after a correction steps old ticks again, so a shot is noted only on a tick's first step.
     if (actionOut.fire && t > this.firedTick) {
@@ -1406,6 +1453,7 @@ export class ClientSession {
     let last = this.inputs.has(tick) ? tick : 0;
     let gap = 0;
     for (let t = tick + 1; t <= this.simTick; t++) {
+      let pilot = true;
       if (this.inputs.has(t)) {
         last = t;
         gap = 0;
@@ -1413,12 +1461,14 @@ export class ClientSession {
         const i = last & this.inputs.mask;
         const held = ++gap <= INPUT_HOLD_TICKS;
         // Past the hold the server stops a quiet car on its handbrake (server/game.ts); replay the same.
-        const quiet = this.registry.vehicle[this.own.kind] ? BTN_JUMP : this.inputs.buttons[i]! & INPUT_KEPT;
+        const vehicle = this.registry.vehicle[this.own.kind];
+        const quiet = vehicle ? (vehicle.movement === "rotor" ? 0 : BTN_JUMP) : this.inputs.buttons[i]! & INPUT_KEPT;
+        pilot = held;
         this.inputs.set(t, held ? this.inputs.moveX[i]! : 0, held ? this.inputs.moveZ[i]! : 0, this.inputs.yaw[i]!, this.inputs.pitch[i]!, held ? this.inputs.buttons[i]! & BUTTON_MASK : quiet);
         last = t;
       } else this.inputs.set(t, 0, 0, Math.round((this.ownYaw / TAU) * YAW_UNITS) & 0xffff, 0, 0);
       if (t === this.simTick) this.ownPrev.copy(this.own);
-      this.step(t);
+      this.step(t, pilot);
     }
     // Replaying a seated body only steps look/action/aim. Its spatial state is the latest authoritative pin;
     // rendering attaches it to the interpolated host, so it needs no independent correction fade.

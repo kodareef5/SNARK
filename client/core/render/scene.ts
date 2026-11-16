@@ -1,3 +1,4 @@
+import { remoteVehiclePose } from "../vehicle-view.ts";
 // Structures are drawn per chunk and per mesh as instanced batches. A chunk's instance buffer is rebuilt only when a
 // piece is added, removed or replaced, and uploaded once. Damage changes nothing that is drawn. Resource nodes are drawn
 // the same way, each as the mesh of its form (shared/world/nodes.ts) at its size.
@@ -83,6 +84,8 @@ export interface OwnBody {
   id: number;
   generation?: number;
   vehicle?: VehicleRenderPose;
+  /** The seated local pilot remains a remote body; hide only its head in cockpit view. */
+  cockpitActor?: number;
   attachment?: { host: number; slot: number; generation: number };
 }
 
@@ -731,12 +734,15 @@ export class Scene {
   /** Small details (client/core/details/): the cut-out ones with the near opaque, the see-through ones after the sea. */
   private showDetails(cam: Camera, remote: RemoteSample | null): void {
     const p = this.packet;
-    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? [], this.own, this.world.hf, this.assets.tier, this.now);
+    const cut = this.details.frame(p, cam, remote, this.characters.fallen, this.shots?.ends ?? [], this.own, this.world.hf, this.assets.tier, this.now, this.world, this.characters.rotorBlur.count);
+    const particles = p.detailCount;
+    this.characters.rotorBlur.write(p);
+    const rotorPasses = this.characters.rotorBlur.passes(cam);
     // The clouds' puffs after them, in the depth ranges they reach, as they may be seen from far off (clouds.ts).
     const seen = p.detailCount;
     const solid = this.clouds.write(p, cam, remote, this.cloudRange);
     const far = seen < p.detailCount ? cam.passesOf(this.cloudRange[0]!, this.cloudRange[1]!) : NEAR;
-    for (const [first, count, flags, passes] of [[0, cut, DRAW_CUTOUT, NEAR], [cut, seen - cut, DRAW_BLEND, NEAR], [seen, solid, DRAW_CUTOUT, far], [seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far]] as const) {
+    for (const [first, count, flags, passes] of [[0, cut, DRAW_CUTOUT, NEAR], [cut, particles - cut, DRAW_BLEND, NEAR], [particles, seen - particles, DRAW_BLEND, rotorPasses], [seen, solid, DRAW_CUTOUT, far], [seen + solid, p.detailCount - seen - solid, DRAW_BLEND, far]] as const) {
       const d = p.drawCount;
       if (count === 0) continue;
       const copies = passes === (NEAR | FAR) ? 2 : 1;
@@ -877,7 +883,7 @@ export class Scene {
               const ms = this.mountState;
               ms.unpack(remote.anim[j]!, remote.cue[j]!);
               ms.seed = bodySeed(on);
-              const vehicle = this.remoteVehicle(remote, j);
+              const vehicle = remoteVehiclePose(remote, j);
               saddle = remote.gear[j * GEAR_COUNT + GEAR_WORN]!;
               found = held ? ch.heldAt(remote.id[i]!, kind, on, remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, at) : ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, remote.seatSlot[i]!, vehicle, saddle);
               yaw = remote.yaw[j]!;
@@ -960,7 +966,7 @@ export class Scene {
       const at = this.seatAt;
       if (own.attachment && remote) for (let j = 0; j < remote.count; j++) {
         if (remote.id[j] !== own.attachment.host || remote.gen[j] !== own.attachment.generation) continue;
-        const vehicle = this.remoteVehicle(remote, j), ms = this.mountState;
+        const vehicle = remoteVehiclePose(remote, j), ms = this.mountState;
         ms.unpack(remote.anim[j]!, remote.cue[j]!);
         ms.seed = bodySeed(remote.id[j]!);
         if (ch.seat(remote.kind[j]!, remote.x[j]! - cam.x, remote.y[j]! - cam.y, remote.z[j]! - cam.z, remote.yaw[j]!, ms, remote.tick, at, own.attachment.slot, vehicle, remote.gear[j * GEAR_COUNT + GEAR_WORN]!)) {
@@ -987,12 +993,10 @@ export class Scene {
     st.seed = bodySeed(remote.id[i]!);
     const look = remote.hasLook[i] !== 0 ? remote.look : null;
     const size = remote.grown[i] !== 0 ? youngScale(this.birthScale[kind]!, remote.span[i]!, remote.grown[i]!, remote.tick) : 1;
-    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, false, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, this.remoteVehicle(remote, i), this.vehicleSeats[i], this.seated[i] !== 2);
+    this.characters.add(this.packet, kind, at[k * 4]!, at[k * 4 + 1]!, at[k * 4 + 2]!, at[k * 4 + 3]!, st, remote.tick, look, i * LOOK_BYTES, remote.colors, i * 6, remote.gear, i * GEAR_COUNT, remote.id[i]!, false, this.own?.cockpitActor === remote.id[i]!, size, rigid, unseen, this.seated[i] !== 0 ? this.seatTurn : null, i * 9, remoteVehiclePose(remote, i), this.vehicleSeats[i], this.seated[i] !== 2);
   }
 
-  private remoteVehicle(remote: RemoteSample, i: number): VehicleRenderPose {
-    return { pitch: remote.vehiclePitch[i]!, roll: remote.vehicleRoll[i]!, steering: remote.steering[i]!, wheelAngle: remote.wheelAngle[i]!, groundPitch: remote.vehicleGroundPitch[i]!, groundRoll: remote.vehicleGroundRoll[i]!, rideOffset: remote.vehicleRideOffset[i]!, grounded: remote.vehicleGrounded[i] !== 0, doors: remote.vehicleDoors[i]! };
-  }
+
 
   /**
    * Poses the bodies out of view whose shadows may fall in it, nearest first, by the same call as a body in view, so a

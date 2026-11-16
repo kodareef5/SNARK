@@ -10,7 +10,7 @@ import type { Registry } from "../../../shared/content/registry.ts";
 import type { Manifest } from "../../../shared/pack/manifest.ts";
 import type { DetailSheet } from "../../../shared/pack/details.ts";
 import { Rng } from "../../../shared/rng.ts";
-import { KEYS, type CueKind } from "../../../shared/sound/cues.ts";
+import { KEYS, vehicleFamilies, type CueKind } from "../../../shared/sound/cues.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
 import type { AssetPort } from "../assets/port.ts";
 import type { RemoteSample } from "../session.ts";
@@ -26,6 +26,7 @@ import { MusicDirector, type MusicState, type MusicTrack } from "./music.ts";
 import { paved } from "./ground.ts";
 import { V_HEALTH } from "../../../shared/sim/vitals.ts";
 import { Resolver } from "./resolve.ts";
+import { VehicleSounds } from "./vehicles.ts";
 import { WorldSounds } from "./world.ts";
 
 interface Pending {
@@ -75,6 +76,8 @@ export interface SoundView {
   trees: (x: number, z: number, r: number) => number;
   /** The structures that burn near (x, z), for their crackle. */
   lit?: Lit;
+  /** The vehicle the player sits in, or -1. */
+  vehicle?: number;
 }
 
 /** What became of an occasion asked for: the sound board and the in-game log read these. */
@@ -121,6 +124,7 @@ export class Sounds {
   readonly actions: ActionSounds;
   readonly build: BuildSounds;
   readonly world = new WorldSounds();
+  readonly vehicles: VehicleSounds;
   /** The music director, once the build's music.json has come (setMusic); null for none. */
   music: MusicDirector | null = null;
   private readonly musicState: MusicState = { alive: false, place: "grass", night: false, hunters: 0, chasers: 0, apex: false, sinceHurt: Infinity, sinceFight: Infinity, health: 1, home: false };
@@ -174,10 +178,16 @@ export class Sounds {
   constructor(manifest: Pick<Manifest, "sounds">, port: AssetPort | null, reg: Registry, animOf: (kind: number) => CreatureAnim | null, touch = false, decoder: SoundDecoder = new InlineDecoder(), sheets: readonly DetailSheet[] = []) {
     this.library = new SoundLibrary(manifest, port, decoder);
     this.library.budget = touch ? SOUND_BUDGET_TOUCH : SOUND_BUDGET;
-    this.resolver = new Resolver(this.library.index);
+    // A vehicle falls back to its family's sounds (a helicopter's, a boat's) before the shared car's, whoever asks first.
+    this.resolver = new Resolver(this.library.index, (id) => {
+      const kind = reg.index.get(id);
+      const d = kind !== undefined && reg.vehicle[kind] ? reg.defs[kind] : null;
+      return d ? vehicleFamilies(id, "aliases" in d ? (d.aliases ?? []) : []) : [];
+    });
     this.creatures = new CreatureSounds(reg, this.library, this.resolver, animOf, sheets);
     this.actions = new ActionSounds(reg, (id) => this.resolver.owner(id));
     this.build = new BuildSounds(reg, (id) => this.resolver.owner(id));
+    this.vehicles = new VehicleSounds(reg, (id) => this.resolver.owner(id));
     this.ui = this.resolver.owner("core:ui");
     const survivor = reg.defs.find((d) => d?.type === "species" && (d as { class?: string }).class === "survivor");
     this.survivor = this.resolver.owner(survivor?.id ?? "core:survivor");
@@ -233,6 +243,7 @@ export class Sounds {
     // What was heard since the last frame (the interface hears between frames) is kept until it is played below.
     for (const l of this.loops.values()) l.target = 0;
     this.creatures.update(remote, hf, ear.x, ear.y, ear.z, this.emit, this.want);
+    this.vehicles.update(remote, hf, ear.x, ear.y, ear.z, view?.vehicle ?? -1, this.hear, (id, owner, key, x, y, z, level, on, flat) => this.loop(id, owner, key, x, y, z, level, on, flat));
     if (view) {
       this.pinVoice(view.own.female);
       this.bodies.update(dt, remote, hf, ear.x, ear.y, ear.z, view.ownId, view.body, view.own.female, this.survivor, this.isSurvivor, this.hear);

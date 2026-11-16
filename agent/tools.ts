@@ -416,6 +416,7 @@ export class Agent implements ToolHost {
     const at = this.where(a);
     if (a.id === undefined && !at) throw new Bad("give x and z, lat and lon, or an id");
     const reg = this.session.registry;
+    if (this.session.driving >= 0 && reg.vehicle[this.session.bodyKind]?.movement === "rotor") return Promise.resolve(refused("flying a helicopter is not one of your ways yet: land it and mount with off"));
     let target = a.id !== undefined ? this.target(a) : c.place(at![0], at![1]);
     this.idle();
     // A floor, a slab or a foundation is gone onto, not up to.

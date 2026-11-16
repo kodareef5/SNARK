@@ -104,8 +104,8 @@ export interface Simplified {
  * nothing more can be collapsed without turning a triangle over. The levels are flat: what `fine` has of a surface is
  * left behind.
  */
-export function simplify(fine: SourceLod, targets: readonly number[]): Simplified[] {
-  return collapsed(fine, targets, false);
+export function simplify(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = []): Simplified[] {
+  return collapsed(fine, targets, false, preserveBones);
 }
 
 /**
@@ -114,12 +114,12 @@ export function simplify(fine: SourceLod, targets: readonly number[]): Simplifie
  * than STRETCH. It costs more the further it slides the picture over the surface, and the further its new edges reach
  * across changing bone weights, so the loops of edges at a joint are the last to go.
  */
-export function simplifySurface(fine: SourceLod, targets: readonly number[]): Simplified[] {
+export function simplifySurface(fine: SourceLod, targets: readonly number[], preserveBones: readonly number[] = []): Simplified[] {
   if (!fine.uvs || !fine.normals) throw new Error("a level keeps its surface only if it has texture coordinates and normals");
-  return collapsed(fine, targets, true);
+  return collapsed(fine, targets, true, preserveBones);
 }
 
-function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean): Simplified[] {
+function collapsed(fine: SourceLod, targets: readonly number[], textured: boolean, preserveBones: readonly number[]): Simplified[] {
   const { joints, weights, tangents } = fine;
   const uvs = fine.uvs ?? new Float32Array(0);
   const normals = fine.normals ?? new Float32Array(0);
@@ -179,6 +179,61 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   let left = faces;
   const around: number[][] = Array.from({ length: bone.length }, () => []);
   for (let f = 0; f < faces; f++) for (let k = 0; k < 3; k++) around[corners[f * 3 + k]!]!.push(f);
+
+  // A succession of locally gentle collapses can still turn an entire small closed part inside out. Keep each
+  // original connected component's signed volume, measured near the component for numerical stability. Open
+  // sheets have no enclosed volume and are left to the ordinary face-turn check below.
+  const component = bone.map((_, i) => i);
+  const componentOf = (v: number): number => {
+    while (component[v] !== v) v = component[v] = component[component[v]!]!;
+    return v;
+  };
+  for (let f = 0; f < faces; f++) {
+    const [a, b, c] = corners.slice(f * 3, f * 3 + 3) as [number, number, number];
+    component[componentOf(a)] = componentOf(b);
+    component[componentOf(b)] = componentOf(c);
+  }
+  for (let v = 0; v < component.length; v++) component[v] = componentOf(v);
+  // Some thin moving parts define the silhouette even when their surface area is small (rotor blades). Preserve
+  // each of their closed islands' axis extremes explicitly; this is opt-in, so existing assets keep their levels.
+  const locked = new Uint8Array(bone.length);
+  const extremes = new Map<number, number[]>();
+  for (let v = 0; v < bone.length; v++) {
+    if (!preserveBones.includes(bone[v]!)) continue;
+    const part = component[v]!;
+    let ends = extremes.get(part);
+    if (!ends) extremes.set(part, (ends = [v, v, v, v, v, v]));
+    for (let axis = 0; axis < 3; axis++) {
+      if (pos[v * 3 + axis]! < pos[ends[axis * 2]! * 3 + axis]!) ends[axis * 2] = v;
+      if (pos[v * 3 + axis]! > pos[ends[axis * 2 + 1]! * 3 + axis]!) ends[axis * 2 + 1] = v;
+    }
+  }
+  for (const ends of extremes.values()) for (const v of ends) locked[v] = 1;
+  const closed = new Uint8Array(bone.length).fill(1);
+  const edgeUse = new Map<number, number>();
+  for (let f = 0; f < faces; f++) for (let k = 0; k < 3; k++) {
+    const a = corners[f * 3 + k]!, b = corners[f * 3 + (k + 1) % 3]!;
+    const key = Math.min(a, b) * bone.length + Math.max(a, b);
+    edgeUse.set(key, (edgeUse.get(key) ?? 0) + (a < b ? 1 : -1));
+  }
+  for (const [key, balance] of edgeUse) if (balance !== 0) closed[component[Math.floor(key / bone.length)]!] = 0;
+  const volume = new Float64Array(bone.length);
+  const volumeOf = (f: number, swap = -1, to = -1): number => {
+    const centre = component[corners[f * 3]!]! * 3;
+    const at = (k: number): number => (corners[f * 3 + k] === swap ? to : corners[f * 3 + k]!) * 3;
+    const [a, b, c] = [at(0), at(1), at(2)];
+    const ax = pos[a]! - pos[centre]!, ay = pos[a + 1]! - pos[centre + 1]!, az = pos[a + 2]! - pos[centre + 2]!;
+    const bx = pos[b]! - pos[centre]!, by = pos[b + 1]! - pos[centre + 1]!, bz = pos[b + 2]! - pos[centre + 2]!;
+    const cx = pos[c]! - pos[centre]!, cy = pos[c + 1]! - pos[centre + 1]!, cz = pos[c + 2]! - pos[centre + 2]!;
+    return (ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx)) / 6;
+  };
+  for (let f = 0; f < faces; f++) volume[component[corners[f * 3]!]!]! += volumeOf(f);
+  const initialVolume = volume.slice();
+  const volumeChange = (from: number, to: number): number => {
+    let delta = 0;
+    for (const f of around[from]!) if (alive[f]) delta += volumeOf(f, from, to) - volumeOf(f);
+    return delta;
+  };
 
   /** The normal of face `f`, its length twice the area, with corner `swap` moved to vertex `to` if given. */
   const normal = (f: number, out: number[], swap = -1, to = -1): void => {
@@ -322,6 +377,7 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
   const version = new Uint32Array(bone.length);
   const heap = new Heap();
   const price = (from: number, to: number): void => {
+    if (locked[from]) return;
     let cost = Math.max(0, errorAt(quadrics[from]!, quadrics[to]!, pos[to * 3]!, pos[to * 3 + 1]!, pos[to * 3 + 2]!));
     if (textured) cost += strain(from, to);
     if (cost < Infinity) heap.push({ cost, from, to, stamp: version[from]! + version[to]! });
@@ -412,6 +468,10 @@ function collapsed(fine: SourceLod, targets: readonly number[], textured: boolea
       const m = heap.pop();
       if (!m) break;
       if (m.stamp !== version[m.from]! + version[m.to]! || turns(m.from, m.to)) continue;
+      const part = component[m.from]!;
+      const delta = closed[part] && initialVolume[part] !== 0 ? volumeChange(m.from, m.to) : 0;
+      if (closed[part] && (volume[part]! + delta) * Math.sign(initialVolume[part]!) < -Math.abs(initialVolume[part]!) * 1e-12) continue;
+      volume[part]! += delta;
       // With a surface, a move is priced by the triangles around its `from`, which this changes for every point beside either end.
       const near = textured ? new Set([...neighbours(m.from), ...neighbours(m.to)]) : new Set([m.to]);
       for (const f of textured ? around[m.from]! : []) {
@@ -475,6 +535,8 @@ export interface LevelPlan {
   /** The pictures of each of the mesh's materials, in the order of `materials`. The base colour and the regions are read. */
   maps: readonly MaterialMaps[];
   palette: Uint8Array;
+  /** Rigid bones whose small closed parts must retain their axis extremes at every level. */
+  preserveBones?: readonly number[];
 }
 
 /**
@@ -493,13 +555,13 @@ export function withSurfaceLevels(mesh: SourceMesh, plan: LevelPlan): SourceMesh
   const colours = baker(fine, mesh.materials ?? [], plan.maps, plan.palette);
   const worth = (made: SourceLod, last: SourceLod): boolean => made.indices.length <= last.indices.length * 0.8;
   const surface = [fine];
-  for (const made of simplifySurface(fine, plan.budgets.slice(0, plan.flat - 1))) {
+  for (const made of simplifySurface(fine, plan.budgets.slice(0, plan.flat - 1), plan.preserveBones)) {
     if (!worth(made.lod, surface[surface.length - 1]!)) break;
     surface.push(made.lod);
   }
   const flat = surface.map(colours);
   const lods = surface.map((lod, level) => painted(lod, flat[level]!));
-  for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), plan.budgets.slice(plan.flat - 1))) {
+  for (const made of simplify(flatOf(surface[surface.length - 1]!, flat[flat.length - 1]!), plan.budgets.slice(plan.flat - 1), plan.preserveBones)) {
     if (!worth(made.lod, lods[lods.length - 1]!)) break;
     lods.push(made.lod);
   }

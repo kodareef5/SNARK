@@ -23,6 +23,7 @@ import { placeObelisks, placeRegions, placeSpawns, staticCover } from "./places.
 import { STATIC_LAYERS, siteOf } from "./statics.ts";
 import { makeTint } from "./tint.ts";
 import { vocabulary } from "./ruin-vocabulary.ts";
+import { helicopterSites, type HelicopterSite } from "../helicopter/sites.ts";
 import { growRuins } from "./ruin-growth.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
@@ -141,6 +142,27 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
     writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "growth.json"), JSON.stringify(grown.summary, null, 2) + "\n");
     lap("growth placed around structures and routes");
   }
+  // Surveyed hospitals and emergency-service sites receive matching liveries. Industrial yards receive civilian craft.
+  const facts = JSON.parse(readFileSync(join(source, "base/buildings_attributes.json"), "utf8")) as { fields: string[]; rows: (string | number | null)[][] };
+  const idAt = facts.fields.indexOf("OBJECTID"), primaryAt = facts.fields.indexOf("PRIM_OCC"), classAt = facts.fields.indexOf("OCC_CLS");
+  const uses = new Map(facts.rows.map(row => [Number(row[idAt]), `${row[classAt] ?? ""} ${row[primaryAt] ?? ""}`.toLowerCase()]));
+  const aircraftSites: HelicopterSite[] = [];
+  for (const { building } of site.footprints) {
+    const use = uses.get(Math.floor(building.id / 4)) ?? "";
+    const kind = /hospital/.test(use) ? "hospital" : /police|emergency response/.test(use) ? "police" : /industrial/.test(use) && building.area > 1200 ? "civilian" : null;
+    if (!kind) continue;
+    const [x, z] = site.toEngine(building.e, building.n);
+    const radius = Math.max(...building.rings[0]!.map(point => Math.hypot(point[0]! - building.e, point[1]! - building.n)));
+    aircraftSites.push({ id: `building-${building.id}`, kind, x, z, radius });
+  }
+  // After the parked cars, which keep their places in the list, and clear of them.
+  const aircraft = helicopterSites(map, reg, aircraftSites);
+  if (aircraft.length) {
+    const all = [...(map.vehicles ?? []), ...aircraft];
+    map = { ...map, vehicles: all };
+    put("vehicles.json", lines(all.map(v => ({ ...v, yaw: v.yaw * 360 / 65536 }))));
+  }
+  lap(`${aircraft.length} found aircraft at surveyed service sites and industrial yards`);
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
   writeFileSync(`${file}.tmp`, bytes);

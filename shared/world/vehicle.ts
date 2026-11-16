@@ -2,7 +2,7 @@
 // Conservative swept chassis AABBs deliberately stop early at angled/narrow gaps.
 // The VehicleWorld boundary allows a later oriented-body/contact solver without changing controls or seats.
 import { detCos, detSin, TAU } from "../math/scalar.ts";
-import type { VehicleSpec, VehicleState, VehicleSurface, VehicleWorld, WheelContact } from "../sim/vehicle.ts";
+import type { VehicleHullSpec, VehicleSpec, VehicleState, VehicleSurface, VehicleWorld, WheelContact } from "../sim/vehicle.ts";
 import type { CollisionWorld } from "./collide.ts";
 import { frame, frameAxes, frameOf, HALF_SIDE, sixtyOf } from "./frame.ts";
 import { castWorld, HIT_NONE, rayHit } from "./ray.ts";
@@ -17,7 +17,7 @@ export type VehicleSurfaceAt = (hit: number, ref: number, x: number, z: number) 
  * radians: the hull as upright capsules of its half width along its length, and small ones in its corners, so a piece
  * through its nose or boot is met as one through its middle.
  */
-export function vehicleMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, spec: VehicleSpec, x: number, y: number, z: number, yaw: number, slack: number): boolean {
+export function vehicleMeetsKind(parts: PartTable, kind: number, sx: number, sy: number, sz: number, syaw: number, spec: VehicleHullSpec, x: number, y: number, z: number, yaw: number, slack: number): boolean {
   const sn = detSin(yaw), cs = detCos(yaw), w = spec.halfWidth, l = spec.halfLength, corner = Math.min(0.3, w / 2);
   const along = Math.max(0, l - w), steps = Math.ceil(along / (w / 2));
   // A point on the hull's long axis or in a corner, in the world: +X the left (cos, -sin), +Z forward (sin, cos).

@@ -3,12 +3,14 @@
 import { ZONE_NONE } from '../shared/anim/human.ts';
 import { CHUNK_SIZE, TICK_DT } from '../shared/coords.ts';
 import { makeHandle } from '../shared/ids.ts';
+import { quatNlerp } from '../shared/math/quat.ts';
 import { clamp, detCos, detSin, TAU } from '../shared/math/scalar.ts';
 import { youngScale } from '../shared/sim/breeding.ts';
 import { Body, MODE_GHOST, MODE_NONE, stanceHeight } from '../shared/sim/character.ts';
 import { DMG_MELEE } from '../shared/sim/damage.ts';
 import { F_ALIVE, F_GROUNDED, F_HELD, F_PROP } from '../shared/sim/entities.ts';
-import type { VehicleSpec } from '../shared/sim/vehicle.ts';
+import { isRotorVehicle, type RotorVehicleDefinition, type VehicleHullSpec, type VehicleSpec } from '../shared/sim/vehicle.ts';
+import { helicopterMeetsCapsule, helicopterMeetsVehicle } from '../shared/world/helicopter.ts';
 import { capsuleFree } from '../shared/world/collide.ts';
 import type { Combat, Source } from './combat.ts';
 import { Past } from './history.ts';
@@ -20,10 +22,11 @@ export interface VehicleContactsContext {
   records: Records;
   combat: Combat;
   driverOf(vehicle: number): EntityRecord | null;
+  impact?(vehicle: number, speed: number, rotor: boolean): void;
 }
 interface Frame { body: Body; handle: number; pid: number; tick: number; by: number; byHandle: number }
 interface Touch { seen: number }
-interface Contact { entity: number; handle: number; pid: number; t: number; nx: number; nz: number; speed: number; mass: number }
+interface Contact { entity: number; handle: number; pid: number; t: number; nx: number; ny?: number; nz: number; rotor?: boolean; speed: number; mass: number }
 const MIN_HARM_SPEED = 2.5;
 const REARM_TICKS = 15;
 const SKIN = 0.025;
@@ -109,14 +112,14 @@ export class VehicleContacts {
       }
       // Consume once: an accidentally repeated host hook cannot repeat an impact.
       frame.tick = -1;
-      const spec = world.reg.vehicle[ents.kind[e]!]!.spec, from = frame.body;
+      const def = world.reg.vehicle[ents.kind[e]!]!, spec = def.spec, from = frame.body;
       const distance = length(ents.x[e]! - from.x, ents.z[e]! - from.z);
       // Administrative teleports are discontinuities, not a road sweep through the map.
       if (distance > Math.max(4, spec.maxForward * TICK_DT * 2)) continue;
-      this.gather(e, from, spec);
+      this.gather(e, from, spec, isRotorVehicle(def) ? Math.max(6, ...def.rotors.map(r => r.radius)) : 0);
       let first: Contact | null = null;
       for (const target of this.candidates) {
-        const contact = this.contact(e, frame, target, spec);
+        const contact = isRotorVehicle(def) ? this.rotorContact(e, frame, target, def) : this.contact(e, frame, target, def.spec);
         if (contact && (!first || contact.t < first.t || (contact.t === first.t && target < first.entity))) first = contact;
       }
       if (first && this.resolve(e, frame, first)) this.changed.push(e);
@@ -131,8 +134,8 @@ export class VehicleContacts {
   }
 
   /** Every body near the car's path, however many: a herd beside a road is met, never a reason to stop the car. */
-  private gather(e: number, from: Body, spec: VehicleSpec): void {
-    const { world } = this.ctx, ents = world.ents, pad = this.padding + length(spec.halfWidth, spec.halfLength);
+  private gather(e: number, from: Body, spec: VehicleHullSpec, reach = 0): void {
+    const { world } = this.ctx, ents = world.ents, pad = this.padding + Math.max(reach, length(spec.halfWidth, spec.halfLength));
     const x0 = Math.max(0, Math.floor((Math.min(from.x, ents.x[e]!) - pad) / CHUNK_SIZE));
     const x1 = Math.min(world.dims.chunksX - 1, Math.floor((Math.max(from.x, ents.x[e]!) + pad) / CHUNK_SIZE));
     const z0 = Math.max(0, Math.floor((Math.min(from.z, ents.z[e]!) - pad) / CHUNK_SIZE));
@@ -151,13 +154,59 @@ export class VehicleContacts {
 
   private target(car: number, e: number): boolean {
     const { world, records } = this.ctx, ents = world.ents;
-    if (e === car || (ents.flags[e]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE || ents.vehicle[e] ||
+    if (e === car || (ents.flags[e]! & (F_ALIVE | F_PROP | F_HELD)) !== F_ALIVE || (ents.vehicle[e] && world.reg.vehicle[ents.kind[car]!]!.movement !== 'rotor') ||
       ents.mode[e] === MODE_GHOST || ents.mode[e] === MODE_NONE || !world.reg.move[ents.kind[e]!]) return false;
     const seat = ents.seat[e]! - 1;
     // Any valid seat is protected from a second impact on its attached visual body.
     if (seat >= 0 && ents.gen[seat] === ents.seatGen[e] && (ents.flags[seat]! & F_ALIVE) !== 0) return false;
     const rec = records.byPid.get(ents.pid[e]!);
     return !!rec && !rec.dead && records.entOf.get(rec.pid) === e;
+  }
+
+  /** Sweep full attitude and actor motion together. Small intervals preserve thin rotor/tail contacts in a fast roll. */
+  private rotorContact(car: number, frame: Frame, e: number, def: RotorVehicleDefinition): Contact | null {
+    const { world } = this.ctx, ents = world.ents, from = frame.body, kind = ents.kind[e]!, move = world.reg.move[kind]!;
+    const scale = ents.grown[e] ? youngScale(world.reg.birthScale[kind]!, ents.span[e]!, ents.grown[e]!, world.tick) : 1;
+    const other = world.reg.vehicle[kind];
+    const radius = other ? Math.max(Math.hypot(other.spec.halfWidth, other.spec.halfLength), isRotorVehicle(other) ? 6 : 0) : move.radius * scale;
+    const height = stanceHeight(move, ents.stance[e]!) * scale, past = this.past;
+    if (!world.history.at(world.tick - 1, e, past)) { past.x = ents.x[e]!; past.y = ents.y[e]!; past.z = ents.z[e]!; }
+    const otherFrom = other ? this.frames.get(e)?.body : undefined;
+    if (otherFrom) { past.x = otherFrom.x; past.y = otherFrom.y; past.z = otherFrom.z; }
+    const ax = ents.x[e]! - past.x, ay = ents.y[e]! - past.y, az = ents.z[e]! - past.z;
+    if (Math.hypot(ax, ay, az) > move.radius * 8 + .05) return null;
+    const dx = ents.x[car]! - from.x, dy = ents.y[car]! - from.y, dz = ents.z[car]! - from.z;
+    if (Math.hypot(past.x - from.x, past.z - from.z) > 7 + radius + Math.hypot(dx - ax, dz - az)) return null;
+    // Most candidates are far above/below the craft. Its longest part extends less than 7 m from its origin.
+    if (Math.max(from.y, ents.y[car]!) + 7 < Math.min(past.y, ents.y[e]!) || Math.min(from.y, ents.y[car]!) - 7 > Math.max(past.y, ents.y[e]!) + height) return null;
+    const a = [from.vehicleQx, from.vehicleQy, from.vehicleQz, from.vehicleQw];
+    const b = [ents.vehicleQx[car]!, ents.vehicleQy[car]!, ents.vehicleQz[car]!, ents.vehicleQw[car]!], q = [0, 0, 0, 1];
+    const angle = 2 * Math.acos(Math.min(1, Math.abs(a.reduce((sum, n, i) => sum + n * b[i]!, 0))));
+    const n = Math.min(128, Math.max(1, Math.ceil((Math.hypot(dx - ax, dy - ay, dz - az) + angle * 7) / Math.min(.12, radius / 2))));
+    for (let i = 0; i <= n; i++) {
+      const t = i / n; quatNlerp(q, 0, a, 0, b, 0, t);
+      const pose = { x: from.x + dx * t, y: from.y + dy * t, z: from.z + dz * t, yaw: 0, pitch: 0, roll: 0,
+        qx: q[0]!, qy: q[1]!, qz: q[2]!, qw: q[3]! };
+      const otherQ = [ents.vehicleQx[e]!, ents.vehicleQy[e]!, ents.vehicleQz[e]!, ents.vehicleQw[e]!];
+      if (otherFrom) quatNlerp(otherQ, 0, [otherFrom.vehicleQx, otherFrom.vehicleQy, otherFrom.vehicleQz, otherFrom.vehicleQw], 0, otherQ, 0, t);
+      const hit = other ? helicopterMeetsVehicle(def, pose, other, {
+        x: past.x + ax * t, y: past.y + ay * t, z: past.z + az * t,
+        yaw: (otherFrom?.vehicleYaw ?? ents.vehicleYaw[e]!) + turn(ents.vehicleYaw[e]! - (otherFrom?.vehicleYaw ?? ents.vehicleYaw[e]!)) * t,
+        pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!,
+        ...(isRotorVehicle(other) ? { qx: otherQ[0]!, qy: otherQ[1]!, qz: otherQ[2]!, qw: otherQ[3]! } : {}),
+      }) : helicopterMeetsCapsule(def, pose, past.x + ax * t, past.y + ay * t, past.z + az * t, radius, height);
+      if (!hit) continue;
+      // Shared convex queries point from the obstacle towards the aircraft; contacts use aircraft towards actor.
+      const nx = -hit.nx, ny = -hit.ny, nz = -hit.nz;
+      const closing = Math.max(angle * Math.min(6, Math.hypot(past.x - from.x, past.y + height / 2 - from.y, past.z - from.z)) / TICK_DT, ((dx - ax) * nx + (dy - ay) * ny + (dz - az) * nz) / TICK_DT);
+      const rpm = Math.max(from.vehicleRotorRpm, ents.vehicleRotorRpm[car]!);
+      const spinning = hit.rotor && rpm > 30;
+      if (!spinning && closing < .001) continue;
+      const speed = spinning ? Math.max(closing, Math.min(32, rpm * TAU / 60)) : closing;
+      const mass = world.reg.mass[kind]! || 80 * (move.radius / .4) ** 2 * move.height / 1.8;
+      return { entity: e, handle: makeHandle(e, ents.gen[e]!), pid: ents.pid[e]!, t, nx, ny, nz, speed, rotor: spinning, mass: Math.max(1, mass * scale ** 3) };
+    }
+    return null;
   }
 
   private contact(car: number, frame: Frame, e: number, p: VehicleSpec): Contact | null {
@@ -204,10 +253,10 @@ export class VehicleContacts {
     if (!pairs) { pairs = new Map(); this.touches.set(frame.handle, pairs); }
     if (!previous) this.pairCount++;
     if (previous) previous.seen = world.tick; else pairs.set(c.handle, { seen: world.tick });
-    const spec = world.reg.vehicle[ents.kind[car]!]!.spec;
+    const def = world.reg.vehicle[ents.kind[car]!]!, spec = def.spec, ny = c.ny ?? 0;
     const mass = Math.max(1, (spec.mass ?? world.reg.mass[ents.kind[car]!]!) || 1100) + Math.max(0, ents.vehiclePayloadMass[car]!);
     const impulse = c.speed / (1 / mass + 1 / c.mass);
-    const carNormal = ((ents.x[car]! - frame.body.x) * c.nx + (ents.z[car]! - frame.body.z) * c.nz) / TICK_DT;
+    const carNormal = ((ents.x[car]! - frame.body.x) * c.nx + (ents.y[car]! - frame.body.y) * ny + (ents.z[car]! - frame.body.z) * c.nz) / TICK_DT;
     let taken = 0;
     // Harm needs a live driver to answer to the rules. Crediting the car's own record would let an
     // unowned (team 0) car coast through PvE protection, so a driverless car only blocks.
@@ -216,7 +265,7 @@ export class VehicleContacts {
     // or access change there must revoke impact authority in this same tick too.
     const current = this.ctx.driverOf(car);
     const by = driver && current?.pid === frame.by && frame.byHandle !== 0 && ents.resolve(frame.byHandle) === records.entOf.get(frame.by) ? driver : null;
-    if (by && fresh && c.speed > MIN_HARM_SPEED && carNormal > MIN_HARM_SPEED) {
+    if (by && fresh && c.speed > MIN_HARM_SPEED && (c.rotor || carNormal > MIN_HARM_SPEED)) {
       const harmful = c.speed - MIN_HARM_SPEED;
       const src: Source = { by, x: frame.body.x, z: frame.body.z, item: 0,
         base: Math.min(300, 0.5 * harmful * harmful * mass / (mass + c.mass)), type: DMG_MELEE,
@@ -227,9 +276,13 @@ export class VehicleContacts {
     // A death/module callback can destroy and reuse either slot during Combat.land.
     if (ents.resolve(frame.handle) !== car || ents.pid[car] !== frame.pid) return false;
     this.clip(car, frame, c.t, taken <= 0);
+    // Only momentum transferred into the aircraft damages its hull. A pedestrian cannot deliver the same
+    // aircraft energy loss as a building or another full-mass vehicle at the same relative closing speed.
+    if (isRotorVehicle(def)) this.ctx.impact?.(car, c.rotor ? Math.max(0, carNormal) : impulse / mass, !!c.rotor);
     if (taken > 0) {
-      const loss = Math.min(impulse / mass, Math.max(0, ents.vx[car]! * c.nx + ents.vz[car]! * c.nz));
+      const loss = Math.min(impulse / mass, Math.max(0, ents.vx[car]! * c.nx + ents.vy[car]! * ny + ents.vz[car]! * c.nz));
       ents.vx[car] = Math.fround(ents.vx[car]! - c.nx * loss);
+      ents.vy[car] = Math.fround(ents.vy[car]! - ny * loss);
       ents.vz[car] = Math.fround(ents.vz[car]! - c.nz * loss);
     }
     if (taken <= 0) this.clipActor(car, c);
@@ -237,7 +290,7 @@ export class VehicleContacts {
       const kick = Math.min(12, impulse / c.mass);
       ents.vx[c.entity] = Math.fround(ents.vx[c.entity]! + c.nx * kick);
       ents.vz[c.entity] = Math.fround(ents.vz[c.entity]! + c.nz * kick);
-      ents.vy[c.entity] = Math.fround(Math.max(ents.vy[c.entity]!, Math.min(3, kick * 0.2)));
+      ents.vy[c.entity] = Math.fround(isRotorVehicle(def) ? ents.vy[c.entity]! + ny * kick : Math.max(ents.vy[c.entity]!, Math.min(3, kick * 0.2)));
       // The next native step must retain the vertical impulse instead of zeroing it
       // as grounded motion. Horizontal velocity already approaches input gradually.
       ents.flags[c.entity] = ents.flags[c.entity]! & ~F_GROUNDED;
@@ -255,7 +308,8 @@ export class VehicleContacts {
     if (ents.resolve(contact.handle) !== e || ents.pid[e] !== contact.pid || !this.target(car, e) ||
       !world.history.at(world.tick - 1, e, past)) return;
     const dx = ents.x[e]! - past.x, dz = ents.z[e]! - past.z;
-    if (dx * contact.nx + dz * contact.nz >= -0.00001) return;
+    const ny = contact.ny ?? 0;
+    if (dx * contact.nx + (ents.y[e]! - past.y) * ny + dz * contact.nz >= -0.00001) return;
     const distance = length(dx, dz), b = this.body, p = world.reg.move[ents.kind[e]!]!;
     const at = Math.max(0, contact.t - SKIN / Math.max(distance, SKIN));
     const dy = ents.y[e]! - past.y;
@@ -267,8 +321,8 @@ export class VehicleContacts {
       const x = past.x + dx * fraction, y = past.y + dy * fraction, z = past.z + dz * fraction;
       if (!capsuleFree(world, x, y, z, p.radius, stanceHeight(p, b.stance))) continue;
       b.x = x; b.y = y; b.z = z;
-      const inward = Math.min(0, b.vx * contact.nx + b.vz * contact.nz);
-      b.vx = Math.fround(b.vx - contact.nx * inward); b.vz = Math.fround(b.vz - contact.nz * inward);
+      const inward = Math.min(0, b.vx * contact.nx + b.vy * ny + b.vz * contact.nz);
+      b.vx = Math.fround(b.vx - contact.nx * inward); b.vy = Math.fround(b.vy - ny * inward); b.vz = Math.fround(b.vz - contact.nz * inward);
       ents.storeBody(e, b); ents.pose(e, world.tick); world.history.track(e);
       break;
     }
@@ -282,6 +336,12 @@ export class VehicleContacts {
     b.x = from.x + (b.x - from.x) * at; b.y = from.y + (b.y - from.y) * at; b.z = from.z + (b.z - from.z) * at;
     b.vehicleYaw = from.vehicleYaw + turn(b.vehicleYaw - from.vehicleYaw) * at;
     b.yaw = Math.round(b.vehicleYaw * 65536 / TAU) & 65535;
+    const def = this.ctx.world.reg.vehicle[ents.kind[car]!]!;
+    if (isRotorVehicle(def)) {
+      const q = [0, 0, 0, 1]; quatNlerp(q, 0, [from.vehicleQx, from.vehicleQy, from.vehicleQz, from.vehicleQw], 0, [b.vehicleQx, b.vehicleQy, b.vehicleQz, b.vehicleQw], 0, at);
+      [b.vehicleQx, b.vehicleQy, b.vehicleQz, b.vehicleQw] = q as [number, number, number, number];
+      if (brake) b.vy = b.vehiclePitchRate = b.vehicleRollRate = 0;
+    }
     if (brake) b.vx = b.vz = b.vehicleYawRate = 0;
     ents.storeBody(car, b);
   }
