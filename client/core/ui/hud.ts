@@ -154,8 +154,8 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.add(KEY_VEHICLE + 3, K_BAR, x + 10, y + 34, width - 20, 4, S_STAMINA).value = Math.min(1, v.rpm / v.redline);
     f.text(KEY_VEHICLE + 4, x + 10, y + 42, 100, S_LABEL, `${Math.round(v.rpm / 100) * 100} rpm`);
     f.text(KEY_VEHICLE + 5, x + 118, y + 42, 84, S_LABEL, `Fuel ${Math.round(v.fuel * 100)}%`);
-    f.text(KEY_VEHICLE + 6, x + 10, y + 63, width - 20, S_LABEL, v.handbrake ? "HANDBRAKE" : v.brake > 0 ? "BRAKING" : "W/S drive · A/D steer");
-    f.text(KEY_VEHICLE + 7, x + 10, y + 82, width - 20, S_LABEL, "Space brake · E exit");
+    f.text(KEY_VEHICLE + 6, x + 10, y + 63, width - 20, S_LABEL, v.handbrake ? "HANDBRAKE" : v.brake > 0 ? "BRAKING" : "W/S drive | A/D steer");
+    f.text(KEY_VEHICLE + 7, x + 10, y + 82, width - 20, S_LABEL, "Space brake | E exit");
   }
 
   if (m.vehicle?.active && m.vehicle.rotor) {
@@ -164,13 +164,13 @@ export function buildHud(f: UiFrame, m: HudModel): void {
     f.text(KEY_VEHICLE + 1, x + 10, y + 7, 128, S_TITLE, `${Math.round(v.speed * 3.6)} km/h`);
     f.text(KEY_VEHICLE + 2, x + 140, y + 10, 96, S_LABEL, v.recovery ? "RECOVERING" : v.direct ? "DIRECT" : "ASSISTED");
     f.add(KEY_VEHICLE + 3, K_BAR, x + 10, y + 33, width - 20, 4, S_STAMINA).value = Math.min(1, v.rpm / v.redline);
-    f.text(KEY_VEHICLE + 4, x + 10, y + 42, width - 20, S_LABEL, `Rotor ${Math.round(v.rpm)} rpm  ·  Fuel ${Math.round(v.fuel * 100)}%`);
-    f.text(KEY_VEHICLE + 5, x + 10, y + 61, width - 20, S_LABEL, `${v.altitude.toFixed(1)} m AGL  ·  ${v.vertical >= 0 ? "+" : ""}${v.vertical.toFixed(1)} m/s`);
-    f.text(KEY_VEHICLE + 6, x + 10, y + 80, width - 20, S_LABEL, `Collective ${Math.round(v.collective * 100)}%  ·  ${v.engineOn ? "ENGINE ON" : "ENGINE OFF"}`);
-    f.text(KEY_VEHICLE + 7, x + 10, y + 99, width - 20, S_LABEL, v.rotorCondition < .7 || v.engineCondition < .7 ? `Engine ${Math.round(v.engineCondition * 100)}% · Rotor ${Math.round(v.rotorCondition * 100)}%` : "W/S pitch · A/D bank · Q/R yaw");
-    f.text(KEY_VEHICLE + 8, x + 10, y + 122, width - 20, S_LABEL, v.engineOn ? "Space/Ctrl collective · Shift agile" : "Hold Space to start and lift");
-    f.text(KEY_VEHICLE + 9, x + 10, y + 144, width - 20, S_LABEL, "C flight mode · Hold X recover");
-    f.text(KEY_VEHICLE + 10, x + 10, y + 166, width - 20, S_LABEL, "V cockpit/chase · E exit");
+    f.text(KEY_VEHICLE + 4, x + 10, y + 42, width - 20, S_LABEL, `Rotor ${Math.round(v.rpm)} rpm  |  Fuel ${Math.round(v.fuel * 100)}%`);
+    f.text(KEY_VEHICLE + 5, x + 10, y + 61, width - 20, S_LABEL, `${v.altitude.toFixed(1)} m AGL  |  ${v.vertical >= 0 ? "+" : ""}${v.vertical.toFixed(1)} m/s`);
+    f.text(KEY_VEHICLE + 6, x + 10, y + 80, width - 20, S_LABEL, `Collective ${Math.round(v.collective * 100)}%  |  ${v.engineOn ? "ENGINE ON" : "ENGINE OFF"}`);
+    f.text(KEY_VEHICLE + 7, x + 10, y + 99, width - 20, S_LABEL, v.rotorCondition < .7 || v.engineCondition < .7 ? `Engine ${Math.round(v.engineCondition * 100)}% | Rotor ${Math.round(v.rotorCondition * 100)}%` : "W/S pitch | A/D bank | Q/R yaw");
+    f.text(KEY_VEHICLE + 8, x + 10, y + 122, width - 20, S_LABEL, v.engineOn ? "Space/Ctrl collective | Shift agile" : "Hold Space to start and lift");
+    f.text(KEY_VEHICLE + 9, x + 10, y + 144, width - 20, S_LABEL, "C flight mode | Hold X recover");
+    f.text(KEY_VEHICLE + 10, x + 10, y + 166, width - 20, S_LABEL, "V cockpit/chase | E exit");
   }
 
   const barW = 150;

@@ -276,10 +276,10 @@ export class InventoryScreen {
         const gasoline = reg.index.get("core:gasoline")!, haveFuel = own.total(gasoline);
         const repairItems = VEHICLE_REPAIR_BILL.map(([id]) => own.total(reg.index.get(id)!));
         const maxCost = VEHICLE_REPAIR_BILL.map(([, n]) => Math.ceil(n * VEHICLE_REPAIR_STEP));
-        const lines = [`Hull ${hull} · Fuel ${(fuel * def.spec.fuelCapacity).toFixed(1)}/${def.spec.fuelCapacity}`];
-        if (def.movement === "rotor") lines.push(`Engine ${Math.round(engine * 100)}% · Rotor ${Math.round(rotor * 100)}%`);
+        const lines = [`Hull ${hull} | Fuel ${(fuel * def.spec.fuelCapacity).toFixed(1)}/${def.spec.fuelCapacity}`];
+        if (def.movement === "rotor") lines.push(`Engine ${Math.round(engine * 100)}% | Rotor ${Math.round(rotor * 100)}%`);
         lines.push(stopped ? "Service available when stationary" : "To service: land and wait for rotors to stop");
-        lines.push(`Refuel: ${VEHICLE_FUEL_PER_GASOLINE} fuel per gasoline · carrying ${haveFuel}`);
+        lines.push(`Refuel: ${VEHICLE_FUEL_PER_GASOLINE} fuel per gasoline | carrying ${haveFuel}`);
         lines.push(`Repair: up to ${VEHICLE_REPAIR_STEP * 100}%; at most ${maxCost[0]} ingots, ${maxCost[1]} polymer, ${maxCost[2]} electronics`);
         lines.push(`Materials: ${repairItems[0]} ingots, ${repairItems[1]} polymer, ${repairItems[2]} electronics`);
         this.service = { handle: makeHandle(subject.id, r.gen[index]!), fuel: stopped && fuel < .9999 && haveFuel > 0,
