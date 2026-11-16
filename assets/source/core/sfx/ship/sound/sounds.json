@@ -1,0 +1,77 @@
+{
+  "sounds": {
+    "engine/idle": {
+      "range": 60, "level": -20, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/idle/moss-pt-10001-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/low": {
+      "range": 80, "level": -18, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/low/moss-pt-10010-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/mid": {
+      "range": 100, "level": -17, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/mid/moss-pt-10022-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/high": {
+      "range": 120, "level": -16, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/engine/high/moss-pt-10032-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "engine/start": {
+      "range": 80, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/start/moss-pt-10040-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "horn": {
+      "range": 800, "level": -8, "vary": 0.0,
+      "takes": [
+        {"file": "takes/horn/moss-pt-10051-06165.wav", "from": "moss", "start": 0.05, "end": 5.885},
+        {"file": "takes/horn/moss-pt-10050-00000.wav", "from": "moss", "start": 0.0, "end": 5.54}
+      ]
+    },
+    "horn/small": {
+      "range": 300, "level": -10, "vary": 0.0,
+      "takes": [
+        {"file": "takes/horn/small/moss-pt-10060-00025.wav", "from": "moss", "start": 0.025, "end": 1.735}
+      ]
+    },
+    "anchor/drop": {
+      "range": 80, "level": -14, "vary": 0.0,
+      "takes": [
+        {"file": "takes/anchor/drop/moss-pt-10070-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "anchor/raise": {
+      "range": 60, "level": -16, "vary": 0.0,
+      "takes": [
+        {"file": "takes/anchor/raise/moss-pt-10080-00200.wav", "from": "moss", "start": 0.05, "end": 8.75}
+      ]
+    },
+    "hull/slow": {
+      "range": 30, "level": -24, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/hull/slow/moss-pt-10090-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "hull/fast": {
+      "range": 60, "level": -20, "vary": 0.0, "loop": true,
+      "takes": [
+        {"file": "takes/hull/fast/moss-pt-10100-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+      ]
+    },
+    "bell": {
+      "range": 120, "level": -12, "vary": 0.0,
+      "takes": [
+        {"file": "takes/bell/moss-pt-10110-00000.wav", "from": "moss", "start": 0.0, "end": 1.988}
+      ]
+    }
+  }
+}

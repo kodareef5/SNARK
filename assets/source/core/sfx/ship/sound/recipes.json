@@ -1,0 +1,979 @@
+{
+  "takes": {
+    "takes/engine/idle/moss-pt-10001-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/idle",
+      "prompt_id": "v3-10000",
+      "prompt": "A motor yacht's big marine diesel engines idle at anchor: a deep low throbbing rumble felt through the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10001,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10001.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motor yacht's big marine diesel engines idle at anchor: a deep low throbbing rumble felt through the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 52.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "01dfbfffbf2796dcc77a789f1c145f86d34017e34cac7bfcc10df4fb91986f4f",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "96d75aaf5eb3452526c82c3d311f2488b3c3f176f06ecf83b737ae906ab195ea",
+      "cut": {
+        "source_file": "moss-pt-10001.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/low/moss-pt-10010-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/low",
+      "prompt_id": "v3-10010",
+      "prompt": "A ship's big marine diesel engine runs at slow ahead: a deep steady pounding throb and hum, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10010,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10010.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A ship's big marine diesel engine runs at slow ahead: a deep steady pounding throb and hum, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "005947ec2296315eb1e8f4da86d2588db5e9d57d78c84477bc472fc8f12a1406",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "a468f165b298e975653372845764b50e84a5654ad08acfe6aa1852f8aad0f0d9",
+      "cut": {
+        "source_file": "moss-pt-10010.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/mid/moss-pt-10022-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/mid",
+      "prompt_id": "v3-10020",
+      "prompt": "A ship's big marine diesel engine runs at cruising speed: a deep loud steady rumble and drone with water rushing along the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10022,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10022.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A ship's big marine diesel engine runs at cruising speed: a deep loud steady rumble and drone with water rushing along the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "498cc20f46b6a994c59aa79b458b50fd061061affeb7b8606c8fa6bf4d056c42",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "eb3fa88890f22e6848a4c0293c3b306d25e3d94ebd4c4248b48b6bce0197f5bf",
+      "cut": {
+        "source_file": "moss-pt-10022.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/high/moss-pt-10032-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/high",
+      "prompt_id": "v3-10030",
+      "prompt": "A ship's big marine diesel engine runs at full power: a heavy roaring drone and vibration with water rushing along the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10032,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10032.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A ship's big marine diesel engine runs at full power: a heavy roaring drone and vibration with water rushing along the hull, constant pitch. Recorded on deck. Steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "580867a4536c55ff702f1297f68494a8e75651508ce5b02dd7151c139536adef",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "20ced7a198fc0e55899bfb1712c61d895eed76f845242dcea836b5fd72d1099f",
+      "cut": {
+        "source_file": "moss-pt-10032.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/start/moss-pt-10040-00200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/start",
+      "prompt_id": "v3-10040",
+      "prompt": "A ship's big diesel engine starts: a hiss of compressed air, a few heavy slow chugs, and it rumbles into a steady throbbing idle, one start. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10040,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10040.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A ship's big diesel engine starts: a hiss of compressed air, a few heavy slow chugs, and it rumbles into a steady throbbing idle, one start. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "cabde5539b7fa46ad657914b25d06018dbfa13239128fea44c187026ad620ca9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "bdab3676ba554e969dab257c64ec92ac67885f0ed4025176de5cb406069d706a",
+      "cut": {
+        "source_file": "moss-pt-10040.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7200,
+          429601
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/horn/moss-pt-10051-06165.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "horn",
+      "prompt_id": "v3-10050",
+      "prompt": "A big ship sounds its deep foghorn: a long, loud, low blast over the sea, two separate blasts with long pauses. No music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10051,
+      "seconds": 12,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10051.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big ship sounds its deep foghorn: a long, loud, low blast over the sea, two separate blasts with long pauses. No music, no voices, quiet background. duration: 12.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "320b4039c80d5009acdb00e483b20fb677eb6c24bcceb08693810f3100a21ba5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "978caa7a4b8e629372ebf74aa5a13f0e0860c4acfc064813b9253de37f326133",
+      "cut": {
+        "source_file": "moss-pt-10051.wav",
+        "source_frames": 576000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          293520,
+          576000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/horn/moss-pt-10050-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "horn",
+      "prompt_id": "v3-10050",
+      "prompt": "A big ship sounds its deep foghorn: a long, loud, low blast over the sea, two separate blasts with long pauses. No music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10050,
+      "seconds": 12,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10050.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A big ship sounds its deep foghorn: a long, loud, low blast over the sea, two separate blasts with long pauses. No music, no voices, quiet background. duration: 12.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "9a74f1cdc1a9097aa04934bcac9eff227020039a8f69a616d69c09669d045534",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f2bc2b46a20117677838d2b84eaa5bc3102da78889ec31cd1f3459867ed6766f",
+      "cut": {
+        "source_file": "moss-pt-10050.wav",
+        "source_frames": 576000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          268320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/horn/small/moss-pt-10060-00025.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "horn/small",
+      "prompt_id": "v3-10060",
+      "prompt": "A motor yacht's twin air horn sounds a loud bright blast, three separate blasts with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10060,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10060.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motor yacht's twin air horn sounds a loud bright blast, three separate blasts with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "0719939ebe682eb52ed9a38bc75daaaacf6219044993d5d526fe113db9cb8e1a",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "47fce8547da64bb35d5b11654f7545f8b3709d82c763f571f85c7ad483145918",
+      "cut": {
+        "source_file": "moss-pt-10060.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          85680
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/anchor/drop/moss-pt-10070-00200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "anchor/drop",
+      "prompt_id": "v3-10070",
+      "prompt": "A ship's anchor is dropped: the heavy chain rattles and roars out through the hawse pipe and the anchor splashes into the sea, one drop. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10070,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10070.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A ship's anchor is dropped: the heavy chain rattles and roars out through the hawse pipe and the anchor splashes into the sea, one drop. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "c29ced841bdd1ce8b60f18efa2cb6de662b869f1970dab4d132489851897a6c1",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "3b88cac3bc3cfd54a9323e95926f33fbebe653ccde236607ed2265e6eca842a7",
+      "cut": {
+        "source_file": "moss-pt-10070.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7200,
+          429601
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/anchor/raise/moss-pt-10080-00200.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "anchor/raise",
+      "prompt_id": "v3-10080",
+      "prompt": "A ship's anchor is raised: an electric windlass grinds and the heavy chain clanks in link by link, steady, one haul. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10080,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10080.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A ship's anchor is raised: an electric windlass grinds and the heavy chain clanks in link by link, steady, one haul. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "643a597279fddb472955c6dd925526214540253dc2a255eed086b2179f0842aa",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "0cabdd4f945d6301432e38c9f0d125151be84e3fe75056cab0496421e2e92075",
+      "cut": {
+        "source_file": "moss-pt-10080.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          7200,
+          429601
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/hull/slow/moss-pt-10090-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hull/slow",
+      "prompt_id": "v3-10090",
+      "prompt": "Aboard a wooden yacht at sea: the hull and timbers creak and groan slowly with the swell and water sloshes against the side, steady. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10090,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10090.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Aboard a wooden yacht at sea: the hull and timbers creak and groan slowly with the swell and water sloshes against the side, steady. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "80e585dcd1b2806a82220e02f7bade5a0f65a65623de05394c23a80f3687dce4",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "48c2e6e6a6af0b5a93b5b3364b95b6cdc4d17bce34950d0c12939466786c7a10",
+      "cut": {
+        "source_file": "moss-pt-10090.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/hull/fast/moss-pt-10100-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hull/fast",
+      "prompt_id": "v3-10100",
+      "prompt": "The bow of a large ship cuts through the sea: a heavy steady rushing wash of water and foam along the hull, constant. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10100,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10100.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "The bow of a large ship cuts through the sea: a heavy steady rushing wash of water and foam along the hull, constant. Close-miked, dry, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "8546189a36f474445cf10632286746a28130bce5ef9532b12fe413da936bfebb",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "355adf4f0f057928fab345fcc9927a5c78a514631ca621bd195a13fb310a995a",
+      "cut": {
+        "source_file": "moss-pt-10100.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/bell/moss-pt-10110-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "bell",
+      "prompt_id": "v3-10110",
+      "prompt": "A ship's brass bell rings, two sharp clangs at a time, four separate rings with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10110,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10110.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A ship's brass bell rings, two sharp clangs at a time, four separate rings with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "23919e00c02007cd0ddb4b95740c6a598419c0720ebfdde37b736284f5cc5dcd",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "13c1daaf7c29c86b33b107f0c290a27fdc66cdd6bd2b61491297fb18b8c5c446",
+      "cut": {
+        "source_file": "moss-pt-10110.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          97824
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

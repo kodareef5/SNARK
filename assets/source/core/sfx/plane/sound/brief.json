@@ -1,0 +1,237 @@
+{
+  "asset": "core/sfx/plane",
+  "review": "../ref/sound",
+  "about": "Light propeller planes: the engine and propeller by power, starting with a cough and stopping, a pass overhead, landing gear, touchdown, the stall horn and the cockpit.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 100,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the propeller engine idling",
+      "prompts": [
+        {
+          "id": "v3-9200",
+          "models": [
+            "moss"
+          ],
+          "seed": 9200,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A small single-engine propeller plane idles on the ground: the piston engine putters and the propeller hums steadily, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 200,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the propeller engine at low revs",
+      "prompts": [
+        {
+          "id": "v3-9210",
+          "models": [
+            "moss"
+          ],
+          "seed": 9210,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A small propeller plane taxis at low power: a steady droning buzz of the propeller and engine, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 300,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the propeller engine at middle revs",
+      "prompts": [
+        {
+          "id": "v3-9220",
+          "models": [
+            "moss"
+          ],
+          "seed": 9220,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A small propeller plane runs at cruise power: a loud steady droning propeller roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 350,
+      "level": -12,
+      "vary": 0.0,
+      "want": "the propeller engine at full power",
+      "prompts": [
+        {
+          "id": "v3-9230",
+          "models": [
+            "moss"
+          ],
+          "seed": 9230,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A small propeller plane at full throttle for take-off: a loud straining propeller roar and engine snarl, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 100,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the starter, a cough and the engine catching",
+      "prompts": [
+        {
+          "id": "v3-9240",
+          "models": [
+            "moss"
+          ],
+          "seed": 9240,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A small propeller plane's engine is started: the starter whirs, the propeller turns over, the engine coughs, sputters and catches into a rough idle, one start. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "engine/stop": {
+      "kind": "impact",
+      "range": 100,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the engine cut and the propeller winding down",
+      "prompts": [
+        {
+          "id": "v3-9250",
+          "models": [
+            "moss"
+          ],
+          "seed": 9250,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A small propeller plane's engine is shut off: the engine cuts with a last cough and the propeller winds down and stops, one shutdown. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "flyby": {
+      "kind": "impact",
+      "range": 500,
+      "level": -12,
+      "vary": 0.0,
+      "want": "a plane passing low overhead",
+      "prompts": [
+        {
+          "id": "v3-9260",
+          "models": [
+            "moss"
+          ],
+          "seed": 9260,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A small propeller plane flies low overhead and away: the engine drone grows loud, passes with a Doppler sweep and fades into the distance, one pass. Recorded outdoors from the ground, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "gear": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the landing gear lowering and locking",
+      "prompts": [
+        {
+          "id": "v3-9270",
+          "models": [
+            "moss"
+          ],
+          "seed": 9270,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An airplane's landing gear lowers with a hydraulic whine and locks with a heavy clunk, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "touchdown": {
+      "kind": "impact",
+      "range": 80,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the wheels touching the runway",
+      "prompts": [
+        {
+          "id": "v3-9280",
+          "models": [
+            "moss"
+          ],
+          "seed": 9280,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "An airplane's wheels touch down on a runway: a short tyre screech and a heavy thump, four separate touchdowns with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "stall": {
+      "kind": "impact",
+      "range": 5,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the stall warning horn",
+      "prompts": [
+        {
+          "id": "v3-9290",
+          "models": [
+            "moss"
+          ],
+          "seed": 9290,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A light airplane's stall warning horn blares a harsh buzzing tone, three separate warnings with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "cabin": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "the cockpit in flight",
+      "prompts": [
+        {
+          "id": "v3-9300",
+          "models": [
+            "moss"
+          ],
+          "seed": 9300,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Inside the cockpit of a small propeller plane in flight: a loud steady engine drone and propeller buzz through the cabin with wind noise, constant. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    }
+  }
+}

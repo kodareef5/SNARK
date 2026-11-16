@@ -1,0 +1,1054 @@
+{
+  "takes": {
+    "takes/engine/idle/moss-pt-10200-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/idle",
+      "prompt_id": "v3-10200",
+      "prompt": "A motorcycle's twin-cylinder engine idles: a lumpy uneven burble from the exhaust, constant. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10200,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10200.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's twin-cylinder engine idles: a lumpy uneven burble from the exhaust, constant. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a88f1b1ebdcf0fefa8b9d3df43f9813c53bbfcf463cf6283891c7d3672c56aac",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c180551fa3fa3e5f6b03393c281d3cfd540b7d44071b8741102e0988c2c7aee3",
+      "cut": {
+        "source_file": "moss-pt-10200.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/low/moss-pt-10212-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/low",
+      "prompt_id": "v3-10210",
+      "prompt": "A motorcycle rides at low revs: a steady deep thrumming exhaust note, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10212,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10212.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle rides at low revs: a steady deep thrumming exhaust note, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "e4873bff5bd334697e042b44f8655a1e60eb213d03e671799f3118166f1441a6",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "7c300c17a5d395a0564b9ed593d1553d0735161a8638c6c77977066aa9144d64",
+      "cut": {
+        "source_file": "moss-pt-10212.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/mid/moss-pt-10220-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/mid",
+      "prompt_id": "v3-10220",
+      "prompt": "A motorcycle rides at middle revs: a strong steady snarling exhaust drone, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10220,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10220.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle rides at middle revs: a strong steady snarling exhaust drone, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "505dcabc45f3ff0d4b31e4268a8ffe67c3d15d8d3b6c8ed9867b8c33ddcc3cf9",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "458e3d32a0a03a82afcb30e4a683a610191044a75204e778eab7832c8ce72bfe",
+      "cut": {
+        "source_file": "moss-pt-10220.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/high/moss-pt-10232-01500.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/high",
+      "prompt_id": "v3-10230",
+      "prompt": "A motorcycle rides near its redline: a loud screaming high-pitched howl, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10232,
+      "seconds": 20,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10232.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle rides near its redline: a loud screaming high-pitched howl, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background. duration: 20.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "943f5a325d41fb260dcce0f42db65b2f4c777ea0b8e7994dcea6ee31f1fcf2f5",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.2
+        },
+        "stages": {
+          "text": {
+            "seconds": 6.9,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1076.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c4437f8b7c61137b6a70b8e7e51d3c7919c1cf5a2b38bd92a92c52e193e5be57",
+      "cut": {
+        "source_file": "moss-pt-10232.wav",
+        "source_frames": 960000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          72000,
+          648000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "loop_crossfade_frames": 36000
+      }
+    },
+    "takes/engine/start/moss-pt-10241-04805.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/start",
+      "prompt_id": "v3-10240",
+      "prompt": "A motorcycle is started: the electric starter whirs briefly and the engine barks into life with a blip of the throttle, three separate starts with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10241,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10241.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle is started: the electric starter whirs briefly and the engine barks into life with a blip of the throttle, three separate starts with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "a6f113f6241b368bdb5eaf55f8a146505e1826bc3699f672fcb15c07256d7ada",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "2572af9049747bdf5a76066557a7631241245ed8c7ca5a76804c7d4c52b228b4",
+      "cut": {
+        "source_file": "moss-pt-10241.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          228240,
+          480000
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/start/moss-pt-10241-00075.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/start",
+      "prompt_id": "v3-10240",
+      "prompt": "A motorcycle is started: the electric starter whirs briefly and the engine barks into life with a blip of the throttle, three separate starts with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10241,
+      "seconds": 10,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10241.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle is started: the electric starter whirs briefly and the engine barks into life with a blip of the throttle, three separate starts with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 10.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "65dee311710709bb2badf765c624a72ccbb51d93bf537d93cac5e2ee5804335b",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "2572af9049747bdf5a76066557a7631241245ed8c7ca5a76804c7d4c52b228b4",
+      "cut": {
+        "source_file": "moss-pt-10241.wav",
+        "source_frames": 480000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1199,
+          15120
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/stop/moss-pt-10250-05465.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/stop",
+      "prompt_id": "v3-10250",
+      "prompt": "A motorcycle's engine is switched off: it cuts out with a last pop from the exhaust, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10250,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10250.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's engine is switched off: it cuts out with a last pop from the exhaust, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "d50f3f9ee7629f2c3a605658c1b104f6a0881af5a31daadfbb786478c49e2217",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c1f7c4ecda2b487d26c4b81dec01eaedb4bbe1936744ab96f18201046f3d310b",
+      "cut": {
+        "source_file": "moss-pt-10250.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          259920,
+          312240
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/stop/moss-pt-10250-00580.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/stop",
+      "prompt_id": "v3-10250",
+      "prompt": "A motorcycle's engine is switched off: it cuts out with a last pop from the exhaust, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10250,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10250.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's engine is switched off: it cuts out with a last pop from the exhaust, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "bc1228e79e8590f6ee51f8997e02f71ad42e1ce2f8b8089c570a20f0857975ba",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "c1f7c4ecda2b487d26c4b81dec01eaedb4bbe1936744ab96f18201046f3d310b",
+      "cut": {
+        "source_file": "moss-pt-10250.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          25439,
+          63600
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/rev/moss-pt-10260-00000.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/rev",
+      "prompt_id": "v3-10260",
+      "prompt": "A motorcycle's engine is revved hard while standing: a sharp rising snarl and a crackling fall, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10260,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10260.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's engine is revved hard while standing: a sharp rising snarl and a crackling fall, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.9,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "3919cc5721b1bb798f2b46715c22d7986ed096a54bb01f8cba08088172846002",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "946f6b7973d23b606f22813bd58362278fe93e504e107aa8a1905b3c8eefa8ec",
+      "cut": {
+        "source_file": "moss-pt-10260.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          0,
+          305376
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/engine/rev/moss-pt-10261-00080.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "engine/rev",
+      "prompt_id": "v3-10260",
+      "prompt": "A motorcycle's engine is revved hard while standing: a sharp rising snarl and a crackling fall, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10261,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10261.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's engine is revved hard while standing: a sharp rising snarl and a crackling fall, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "13af06a770e0c307ccf5fff02d45063c3998fae11f78a4b4e2191d456b3e24d7",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "f0dadf724d86d17c57eeff0646923b991f1b0892426db7bfb6784887a5db4553",
+      "cut": {
+        "source_file": "moss-pt-10261.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          1440,
+          184320
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/shift/moss-pt-10270-00065.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "shift",
+      "prompt_id": "v3-10270",
+      "prompt": "A motorcycle's gearbox clicks into gear with a solid mechanical clunk, six separate shifts with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's gearbox clicks into gear with a solid mechanical clunk, six separate shifts with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "f60e87cdba4cf9267c9b6e9f1090637b18a111ab4d28c8d52ea46c288acd9b12",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "4ed2632a1701edbef42129a4ad6c31625df9c8a1b573e2c02e08d94b22f5cb30",
+      "cut": {
+        "source_file": "moss-pt-10270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          720,
+          25440
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/shift/moss-pt-10270-01135.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "shift",
+      "prompt_id": "v3-10270",
+      "prompt": "A motorcycle's gearbox clicks into gear with a solid mechanical clunk, six separate shifts with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10270,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10270.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's gearbox clicks into gear with a solid mechanical clunk, six separate shifts with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "cc43b176525043667ce138509c6fe823448cc39ba1581e8196e9827efbd9fc00",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "4ed2632a1701edbef42129a4ad6c31625df9c8a1b573e2c02e08d94b22f5cb30",
+      "cut": {
+        "source_file": "moss-pt-10270.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          52080,
+          78864
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/horn/moss-pt-10280-05450.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "horn",
+      "prompt_id": "v3-10280",
+      "prompt": "A motorcycle's small electric horn beeps, short and long beeps, four separate beeps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10280,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10280.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's small electric horn beeps, short and long beeps, four separate beeps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "2c6204e188de3ce365fce16f9b98bd5939c87a64e066926fd4157daa44d345c1",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "442a7a804b41a50ce2741f35385d7d0d681733e12e516bff2661af8df43545ee",
+      "cut": {
+        "source_file": "moss-pt-10280.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          259200,
+          279360
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/horn/moss-pt-10280-00820.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "horn",
+      "prompt_id": "v3-10280",
+      "prompt": "A motorcycle's small electric horn beeps, short and long beeps, four separate beeps with pauses. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 10280,
+      "seconds": 8,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-15",
+      "file": "moss-pt-10280.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A motorcycle's small electric horn beeps, short and long beeps, four separate beeps with pauses. Close-miked, dry, no music, no voices, quiet background. duration: 8.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "4d6ef171c50707f70681dd22d6dd20f8253f25eeb14b8b119c96ba2a118364eb",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.3
+        },
+        "stages": {
+          "text": {
+            "seconds": 2.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1061.6,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.8,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "442a7a804b41a50ce2741f35385d7d0d681733e12e516bff2661af8df43545ee",
+      "cut": {
+        "source_file": "moss-pt-10280.wav",
+        "source_frames": 384000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          36959,
+          59520
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_24",
+        "margin_seconds": 0.05
+      }
+    }
+  }
+}

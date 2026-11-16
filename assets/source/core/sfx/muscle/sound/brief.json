@@ -1,0 +1,152 @@
+{
+  "asset": "core/sfx/muscle",
+  "review": "../ref/sound",
+  "about": "Muscle cars: a big V8 by revs, its start, stop and revs; the rest falls back to core:vehicle.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 60,
+      "level": -20,
+      "vary": 0.0,
+      "want": "the V8 idling",
+      "prompts": [
+        {
+          "id": "v3-11000",
+          "models": [
+            "moss"
+          ],
+          "seed": 11000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A classic V8 muscle car idles: a deep lumpy loping rumble from the big exhaust, constant. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 90,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the V8 at low revs",
+      "prompts": [
+        {
+          "id": "v3-11010",
+          "models": [
+            "moss"
+          ],
+          "seed": 11010,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A V8 muscle car at low revs under load: a deep steady throaty burble, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 120,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the V8 at middle revs",
+      "prompts": [
+        {
+          "id": "v3-11020",
+          "models": [
+            "moss"
+          ],
+          "seed": 11020,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A V8 muscle car at middle revs: a loud steady growling roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 150,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the V8 at full power",
+      "prompts": [
+        {
+          "id": "v3-11030",
+          "models": [
+            "moss"
+          ],
+          "seed": 11030,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A V8 muscle car near its redline: a loud howling V8 roar, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 60,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the starter and the V8 barking into life",
+      "prompts": [
+        {
+          "id": "v3-11040",
+          "models": [
+            "moss"
+          ],
+          "seed": 11040,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A V8 muscle car is started: the starter cranks and the big engine fires with a loud bark and settles into a lumpy rumbling idle, two separate starts with long pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/stop": {
+      "kind": "impact",
+      "range": 40,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the V8 switched off",
+      "prompts": [
+        {
+          "id": "v3-11050",
+          "models": [
+            "moss"
+          ],
+          "seed": 11050,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A V8 muscle car's engine is switched off: it shudders and dies with a last burble, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "engine/rev": {
+      "kind": "impact",
+      "range": 120,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the V8 revved in neutral",
+      "prompts": [
+        {
+          "id": "v3-11060",
+          "models": [
+            "moss"
+          ],
+          "seed": 11060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A V8 muscle car's engine is revved hard in neutral: a loud rising roar and a crackling burbling fall, four separate revs with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}

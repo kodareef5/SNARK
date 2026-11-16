@@ -5,8 +5,9 @@
 //
 // Names may hold variables in braces, filled from VARIANTS. A fallback is `<owner>/<name>`, where `{owner}` is the asking
 // owner and `{name}` its id without the pack (`shotgun` for `core:shotgun`), so a shared family may hold one owner's
-// sound under its name; a fallback may end in `@<rate>` to play the stand-in at that rate (a death cried with its pain
-// is lower).
+// sound under its name; `{family}` is each shared family the owner belongs to, nearest first (a speedboat's
+// core:speedboat, then core:boat: vehicleFamilies). A fallback may end in `@<rate>` to play the stand-in at that rate (a
+// death cried with its pain is lower).
 
 import { HOLD_NAMES } from "../sim/weapon.ts";
 
@@ -206,16 +207,83 @@ cue("waterfall", "world", "bed", "world", "waits:maps", "a waterfall near the ea
 cue("cave", "world", "bed", "ear", "waits:caves", "inside a cave", { loop: true });
 cue("crate/land", "prop", "build", "world", "waits:loot", "a supply crate lands");
 
-// ---- Vehicles (species/vehicle; feat/vehicle-foundation). Shared family core:vehicle; a car's own engine in its folder.
+// ---- Vehicles (species/vehicle; feat/vehicle-foundation). A vehicle's own sounds first (in its folder), then its
+// families' (`{family}`: core:helicopter, then any family it belongs to as well, from vehicleFamilies), then core:vehicle,
+// the shared car. Every family names its sounds as core:vehicle does, so one engine of four layers serves a car, a rotor
+// or an outboard alike.
 const VEHICLE = "species/vehicle";
 const WAITS_VEHICLES = "waits:vehicles";
-cue("engine/{revs}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a running engine: four layers looped, faded across by rpm and each played faster or slower to meet it", { loop: true, falls: ["{owner}/engine/{revs}", "core:vehicle/engine/{revs}"] });
-for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the engine: ${n} (the telemetry's engine state)`, { falls: [`{owner}/engine/${n}`, `core:vehicle/engine/${n}`] });
-cue("shift", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the gear changes", { falls: ["{owner}/shift", "core:vehicle/shift"] });
+const vfalls = (n: string, shared = true): string[] => [`{owner}/${n}`, `{family}/${n}`, ...(shared ? [`core:vehicle/${n}`] : [])];
+cue("engine/{revs}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a running engine (a rotor, a propeller, an outboard): four layers looped, faded across by rpm and each played faster or slower to meet it", { loop: true, falls: vfalls("engine/{revs}") });
+for (const n of ["start", "stop", "rev", "stall"]) cue(`engine/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the engine: ${n} (the telemetry's engine state)`, { falls: vfalls(`engine/${n}`) });
+cue("engine/brake", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "a truck slowing on its engine brake", { falls: vfalls("engine/brake", false) });
+cue("shift", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the gear changes", { falls: vfalls("shift") });
 cue("tire/roll/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "wheels on the ground at speed, by the surface under them (urban:asphalt, gravel, mud)", { loop: true, falls: ["core:vehicle/tire/roll/{road}", "core:vehicle/tire/roll/dirt"] });
 cue("tire/skid/{road}", VEHICLE, "vehicle", "body", WAITS_VEHICLES, "the wheels slip (the telemetry's slip)", { loop: true, falls: ["core:vehicle/tire/skid/{road}", "core:vehicle/tire/skid/asphalt"] });
-for (const n of ["brake", "handbrake", "horn", "door/open", "door/close", "crash/light", "crash/heavy", "glass/break", "suspension", "splash"]) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the vehicle: ${n.replace("/", " ")}`, { falls: [`{owner}/${n}`, `core:vehicle/${n}`] });
-cue("vehicle/wind", VEHICLE, "bed", "ear", WAITS_VEHICLES, "wind past the cabin at speed, for the driver and passengers", { loop: true, falls: ["core:vehicle/wind"] });
+for (const n of ["brake", "handbrake", "horn", "door/open", "door/close", "crash/light", "crash/heavy", "glass/break", "suspension", "splash"]) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, `the vehicle: ${n.replace("/", " ")}`, { falls: vfalls(n) });
+cue("vehicle/wind", VEHICLE, "bed", "ear", WAITS_VEHICLES, "wind past the cabin at speed, for the driver and passengers", { loop: true, falls: ["{family}/wind", "core:vehicle/wind"] });
+cue("vehicle/cabin", VEHICLE, "bed", "ear", WAITS_VEHICLES, "the engine as heard inside, for the pilot and passengers of a helicopter or plane", { loop: true, falls: vfalls("cabin", false) });
+// Each family's own occasions: a rotor's wash, a hull in the water, a raft's paddle and sail, a ship's anchor, a board's tricks.
+const VEHICLE_ONCE: Readonly<Record<string, string>> = {
+  flyby: "a helicopter or plane passes fast and low, heard by those it passes",
+  land: "it comes down onto the ground: a helicopter's skids, a skateboard after a jump",
+  gear: "a plane's landing gear lowers or rises",
+  touchdown: "a plane's wheels meet the runway",
+  stall: "a plane's stall warning, as it slows too far in the air",
+  alarm: "a helicopter's cockpit warning: low fuel, a wreck",
+  slam: "a hull drops onto the water off a wave",
+  beach: "a hull or raft runs aground",
+  bump: "a raft knocks into a rock or a shore",
+  paddle: "a paddle stroke",
+  "sail/fill": "a sail catches the wind",
+  "horn/small": "a yacht's horn, where its owner has a ship's as well",
+  "anchor/drop": "the anchor goes down",
+  "anchor/raise": "the anchor comes up",
+  bell: "a ship's bell",
+  push: "a rider pushes a skateboard on",
+  ollie: "a skateboard leaves the ground",
+  grind: "a skateboard grinds along an edge",
+};
+for (const [n, when] of Object.entries(VEHICLE_ONCE)) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, when, { falls: vfalls(n, false) });
+const VEHICLE_LOOPS: Readonly<Record<string, string>> = {
+  wash: "a helicopter's downwash on the ground below it",
+  "wash/water": "a helicopter's downwash on the water below it",
+  "hull/slow": "water at the hull, moving slowly or at rest",
+  "hull/fast": "water at the hull at speed",
+  creak: "a raft's logs and lashings, or a wooden hull, working in the swell",
+  "sail/flap": "a sail loose in the wind",
+  reverse: "a truck backing up",
+  roll: "a bicycle coasting",
+  pedal: "a bicycle being pedalled",
+  "roll/rough": "a skateboard rolling on rough ground",
+  "roll/smooth": "a skateboard rolling on smooth ground",
+};
+for (const [n, when] of Object.entries(VEHICLE_LOOPS)) cue(`vehicle/${n}`, VEHICLE, "vehicle", "body", WAITS_VEHICLES, when, { loop: true, falls: vfalls(n, false) });
+
+/** The shared families a vehicle may belong to, each by the words that name it, and the family each one also falls back to. */
+export const VEHICLE_FAMILIES: Readonly<Record<string, { words: readonly string[]; also?: string }>> = {
+  helicopter: { words: ["helicopter", "heli", "chopper", "gyrocopter"] },
+  plane: { words: ["plane", "airplane", "aeroplane", "aircraft", "biplane", "seaplane", "glider"] },
+  speedboat: { words: ["speedboat", "powerboat", "jetski"], also: "boat" },
+  boat: { words: ["boat", "motorboat", "dinghy", "skiff"] },
+  raft: { words: ["raft", "canoe", "kayak"], also: "boat" },
+  ship: { words: ["ship", "yacht", "ferry", "trawler"], also: "boat" },
+  motorbike: { words: ["motorbike", "motorcycle", "dirtbike", "scooter", "quad"] },
+  bicycle: { words: ["bicycle", "bmx", "cycle"] },
+  skateboard: { words: ["skateboard", "longboard"] },
+  truck: { words: ["truck", "lorry", "pickup", "semi", "bus"] },
+  muscle: { words: ["muscle", "musclecar", "hotrod"] },
+};
+
+/** A vehicle's families, nearest first (`core:speedboat`, then `core:boat`), from its id and its definition's aliases: the
+ * first family one of them names, and the family that one falls back to. None for a vehicle no word places (the compact). */
+export function vehicleFamilies(id: string, aliases: readonly string[] = []): string[] {
+  const words = [id.slice(id.indexOf(":") + 1), ...aliases].map((w) => w.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  for (const [f, def] of Object.entries(VEHICLE_FAMILIES)) {
+    if (def.words.some((w) => words.includes(w))) return [`core:${f}`, ...(def.also ? [`core:${def.also}`] : [])];
+  }
+  return [];
+}
 
 // ---- Music, never placed.
 cue("music/explore/{biome}/{time}", "music", "music", "ear", "waits:music", "quiet stretches, rarely");
@@ -255,15 +323,18 @@ export function cueKey(key: string): number {
 }
 
 /** The sound ids a key looks for when asked of `owner`, in order, with the playback rate of each. */
-export function candidates(owner: string, k: CueKey): { id: string; rate: number }[] {
+export function candidates(owner: string, k: CueKey, families: readonly string[] = []): { id: string; rate: number }[] {
   const name = owner.slice(owner.indexOf(":") + 1);
-  const fill = (s: string): string => s.replace(/\{(\w+)\}/g, (_, v: string) => (v === "owner" ? owner : v === "name" ? name : (k.vars[v] ?? `{${v}}`)));
+  const fill = (s: string, family: string): string => s.replace(/\{(\w+)\}/g, (_, v: string) => (v === "owner" ? owner : v === "name" ? name : v === "family" ? family : (k.vars[v] ?? `{${v}}`)));
   const out = [{ id: `${owner}/sound/${k.key}`, rate: 1 }];
   for (const f of k.cue.falls) {
     const [path, rate] = f.split("@") as [string, string | undefined];
-    const full = fill(path);
-    const slash = full.indexOf("/");
-    out.push({ id: `${full.slice(0, slash)}/sound/${full.slice(slash + 1)}`, rate: rate ? Number(rate) : 1 });
+    // `{family}` stands for each of the owner's families in turn, and for nothing where it has none.
+    for (const family of path.includes("{family}") ? families : [""]) {
+      const full = fill(path, family);
+      const slash = full.indexOf("/");
+      out.push({ id: `${full.slice(0, slash)}/sound/${full.slice(slash + 1)}`, rate: rate ? Number(rate) : 1 });
+    }
   }
   return out;
 }
@@ -281,8 +352,8 @@ export function cueFaults(): string[] {
       out.push((e as Error).message);
     }
     for (const f of c.falls) {
-      if (!/^(\{owner\}|[a-z0-9_]+:[a-z0-9_]+)\/[a-z0-9_/{}]+(@[0-9.]+)?$/.test(f)) out.push(`${c.name}: fallback ${f} is not <owner>/<name>[@rate]`);
-      for (const m of f.matchAll(/\{(\w+)\}/g)) if (m[1] !== "owner" && m[1] !== "name" && !c.name.includes(`{${m[1]}}`)) out.push(`${c.name}: fallback ${f} uses {${m[1]}}, which the name does not fill`);
+      if (!/^(\{owner\}|\{family\}|[a-z0-9_]+:[a-z0-9_]+)\/[a-z0-9_/{}]+(@[0-9.]+)?$/.test(f)) out.push(`${c.name}: fallback ${f} is not <owner>/<name>[@rate]`);
+      for (const m of f.matchAll(/\{(\w+)\}/g)) if (m[1] !== "owner" && m[1] !== "name" && m[1] !== "family" && !c.name.includes(`{${m[1]}}`)) out.push(`${c.name}: fallback ${f} uses {${m[1]}}, which the name does not fill`);
     }
   }
   if (new Set(KEYS.map((k) => k.key)).size !== KEYS.length) out.push("two cues expand to the same key");

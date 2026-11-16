@@ -165,6 +165,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A small four-cylinder car engine sputters, coughs and stalls, three separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v3-7700",
+          "models": [
+            "moss"
+          ],
+          "seed": 7700,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A car engine runs roughly, coughs and splutters, and dies into silence, two separate stalls with long pauses. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },
@@ -531,6 +542,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A car drives over a pothole: a heavy suspension thump and creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v3-7710",
+          "models": [
+            "moss"
+          ],
+          "seed": 7710,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 8,
+          "text": "A car's suspension bottoms out over a bump: a deep metallic clunk and a spring creak, five separate bumps with pauses. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

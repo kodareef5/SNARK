@@ -5,7 +5,7 @@
 // twice running. The server adds what the build does not ship: each owner's folder, its takes' files and what made them.
 
 import type { ManifestSound } from "../../../shared/pack/sound.ts";
-import { CUES, KEYS, candidates, expand, type Cue } from "../../../shared/sound/cues.ts";
+import { CUES, KEYS, candidates, expand, vehicleFamilies, type Cue } from "../../../shared/sound/cues.ts";
 
 /** An owner as the server lists it (server/sound-board.ts). */
 export interface ListedOwner {
@@ -153,11 +153,14 @@ function ownOccasions(o: ListedOwner, have: ReadonlyMap<string, ManifestSound>):
 
 /** A shared family's occasions: each name the catalogue's fallbacks look for in it, and the cues that fall back there. */
 function familyOccasions(id: string, have: ReadonlyMap<string, ManifestSound>): Occasion[] {
+  const vehicle = vehicleFamilies(id).includes(id);
   const rows = new Map<string, { cues: Cue[] }>();
   for (const c of CUES) {
     for (const f of c.falls) {
-      if (!f.startsWith(`${id}/`)) continue;
-      const pattern = f.slice(id.length + 1).split("@")[0]!;
+      // A vehicle family holds what `{family}` stands for as well as what names it.
+      const at = f.startsWith(`${id}/`) ? id.length + 1 : vehicle && f.startsWith("{family}/") ? 9 : -1;
+      if (at < 0) continue;
+      const pattern = f.slice(at).split("@")[0]!;
       const row = rows.get(pattern) ?? { cues: [] };
       if (!row.cues.includes(c)) row.cues.push(c);
       rows.set(pattern, row);

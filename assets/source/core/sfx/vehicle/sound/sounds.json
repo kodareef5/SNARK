@@ -42,6 +42,13 @@
         {"file": "takes/engine/rev/moss-pt-7450-00095.wav", "from": "moss", "start": 0.05, "end": 7.047}
       ]
     },
+    "engine/stall": {
+      "range": 30, "level": -20, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/stall/moss-pt-7700-06030.wav", "from": "moss", "start": 0.05, "end": 4.02},
+        {"file": "takes/engine/stall/moss-pt-7701-01245.wav", "from": "moss", "start": 0.05, "end": 8.575}
+      ]
+    },
     "shift": {
       "range": 20, "level": -22, "vary": 0.0,
       "takes": [
@@ -150,6 +157,13 @@
       "takes": [
         {"file": "takes/glass/break/moss-pt-7630-03980.wav", "from": "moss", "start": 0.05, "end": 0.705},
         {"file": "takes/glass/break/moss-pt-7630-00000.wav", "from": "moss", "start": 0.0, "end": 0.65}
+      ]
+    },
+    "suspension": {
+      "range": 30, "level": -22, "vary": 0.0,
+      "takes": [
+        {"file": "takes/suspension/moss-pt-7710-02125.wav", "from": "moss", "start": 0.05, "end": 5.81},
+        {"file": "takes/suspension/moss-pt-7711-00415.wav", "from": "moss", "start": 0.05, "end": 1.81}
       ]
     },
     "splash": {

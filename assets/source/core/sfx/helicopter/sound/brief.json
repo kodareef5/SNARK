@@ -1,0 +1,299 @@
+{
+  "asset": "core/sfx/helicopter",
+  "review": "../ref/sound",
+  "about": "Helicopters: a turbine and a main rotor whose chop quickens with power, start-up and shut-down, a pass overhead, downwash on ground and water, the cabin, skids, the sliding door and the cockpit alarm.",
+  "notes": "v3 (vehicle round). Engine layers are 20 s beds cut to loop, played faster or slower by rpm; slot names match core:vehicle's, so a vehicle of this family is heard by them first and by core:vehicle for the rest.",
+  "slots": {
+    "engine/idle": {
+      "kind": "impact",
+      "range": 120,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the turbine and rotor idling",
+      "prompts": [
+        {
+          "id": "v3-9000",
+          "models": [
+            "moss"
+          ],
+          "seed": 9000,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A helicopter sits on the ground at idle: the turbine whines steadily and the main rotor turns slowly, a soft regular whump-whump of the blades, constant. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/low": {
+      "kind": "impact",
+      "range": 250,
+      "level": -15,
+      "vary": 0.0,
+      "want": "the turbine and rotor at low revs",
+      "prompts": [
+        {
+          "id": "v3-9010",
+          "models": [
+            "moss"
+          ],
+          "seed": 9010,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A helicopter hovers low nearby: the main rotor beats a steady heavy thumping chop with the turbine's whine under it, constant pitch. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/mid": {
+      "kind": "impact",
+      "range": 300,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the turbine and rotor at middle revs",
+      "prompts": [
+        {
+          "id": "v3-9020",
+          "models": [
+            "moss"
+          ],
+          "seed": 9020,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A helicopter flies steadily nearby at cruising power: a fast constant rotor chop and a loud turbine whine, steady and even. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/high": {
+      "kind": "impact",
+      "range": 350,
+      "level": -12,
+      "vary": 0.0,
+      "want": "the turbine and rotor at full power",
+      "prompts": [
+        {
+          "id": "v3-9030",
+          "models": [
+            "moss"
+          ],
+          "seed": 9030,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 20,
+          "text": "A helicopter climbs at full power: the rotor blades slap hard and fast in a loud thudding chop and the turbine screams, constant and steady. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "engine/start": {
+      "kind": "impact",
+      "range": 120,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the turbine winding up and the rotor starting to turn",
+      "prompts": [
+        {
+          "id": "v3-9040",
+          "models": [
+            "moss"
+          ],
+          "seed": 9040,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A helicopter starts up: the turbine winds up from silence with a rising whine and the main rotor begins to turn, its thumps getting faster and faster, one start. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "engine/stop": {
+      "kind": "impact",
+      "range": 120,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the turbine winding down and the rotor slowing to a stop",
+      "prompts": [
+        {
+          "id": "v3-9050",
+          "models": [
+            "moss"
+          ],
+          "seed": 9050,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A helicopter shuts down: the turbine whine falls away and the main rotor slows, its thumps getting slower and slower until it stops, one shutdown. Recorded from just outside, steady, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "flyby": {
+      "kind": "impact",
+      "range": 400,
+      "level": -12,
+      "vary": 0.0,
+      "want": "a helicopter passing fast overhead",
+      "prompts": [
+        {
+          "id": "v3-9060",
+          "models": [
+            "moss"
+          ],
+          "seed": 9060,
+          "takes": 2,
+          "takes_moss-pt": 2,
+          "seconds": 10,
+          "text": "A helicopter flies fast and low overhead and away: the rotor chop grows loud, passes over with a Doppler sweep and fades into the distance, one pass. Recorded outdoors from the ground, no music, no voices, quiet background."
+        }
+      ],
+      "whole": true
+    },
+    "wash": {
+      "kind": "impact",
+      "range": 40,
+      "level": -20,
+      "vary": 0.0,
+      "want": "rotor downwash blasting the ground",
+      "prompts": [
+        {
+          "id": "v3-9070",
+          "models": [
+            "moss"
+          ],
+          "seed": 9070,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Strong rotor downwash from a hovering helicopter blasts the ground: roaring gusting wind with dust and grass whipping, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "wash/water": {
+      "kind": "impact",
+      "range": 40,
+      "level": -20,
+      "vary": 0.0,
+      "want": "rotor downwash whipping the water",
+      "prompts": [
+        {
+          "id": "v3-9080",
+          "models": [
+            "moss"
+          ],
+          "seed": 9080,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "A helicopter hovers just above the sea: its rotor downwash whips the water into a hissing roaring spray, steady. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true
+    },
+    "land": {
+      "kind": "impact",
+      "range": 60,
+      "level": -14,
+      "vary": 0.0,
+      "want": "the skids touching down",
+      "prompts": [
+        {
+          "id": "v3-9090",
+          "models": [
+            "moss"
+          ],
+          "seed": 9090,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A helicopter's skids touch down on the ground: a heavy metal thump and creak as it settles, four separate touchdowns with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "cabin": {
+      "kind": "impact",
+      "range": 1,
+      "level": -24,
+      "vary": 0.0,
+      "want": "inside the cabin in flight",
+      "prompts": [
+        {
+          "id": "v3-9100",
+          "models": [
+            "moss"
+          ],
+          "seed": 9100,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 20,
+          "text": "Inside a helicopter cabin in flight: a steady muffled rotor thrum and turbine drone through the airframe with a faint rattle, constant. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ],
+      "loop": true,
+      "space": "ear"
+    },
+    "alarm": {
+      "kind": "impact",
+      "range": 10,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the cockpit warning",
+      "prompts": [
+        {
+          "id": "v3-9110",
+          "models": [
+            "moss"
+          ],
+          "seed": 9110,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A helicopter cockpit warning: a harsh electronic warbling alarm, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/open": {
+      "kind": "impact",
+      "range": 25,
+      "level": -18,
+      "vary": 0.0,
+      "want": "the sliding side door opening",
+      "prompts": [
+        {
+          "id": "v3-9120",
+          "models": [
+            "moss"
+          ],
+          "seed": 9120,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A helicopter's heavy sliding side door rolls open along its rail and stops with a clunk, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    },
+    "door/close": {
+      "kind": "impact",
+      "range": 25,
+      "level": -16,
+      "vary": 0.0,
+      "want": "the sliding side door closing",
+      "prompts": [
+        {
+          "id": "v3-9130",
+          "models": [
+            "moss"
+          ],
+          "seed": 9130,
+          "takes": 1,
+          "takes_moss-pt": 1,
+          "seconds": 8,
+          "text": "A helicopter's heavy sliding side door rolls shut along its rail and latches with a solid bang, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        }
+      ]
+    }
+  }
+}
