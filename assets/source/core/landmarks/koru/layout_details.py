@@ -158,3 +158,41 @@ for name,y,z,x in [('fore_1',6.75,25,5.4),('fore_2',6.75,37,4.6),('aft',3.75,-46
 furnish('fore_hatch','foredeck',[('deck_hatch',-1.6,6.88,42,1.1,.10,1.8)])
 
 D['routes'].append({'id':'lower_workshop_access','kind':'circulation','deck':0,'anchors':[[0,.75,22],[.6,.75,30.4],[.6,.75,36.8],[0,.75,37]]})
+
+# A native look REPLACES its collision proxy at distance; preserve the entire visible part, not only its ornament.
+# Rail/stair proxies remain open barwork rather than filling circulation with an enclosing rectangle.
+def beam_points(a,b,r):
+ d=[b[k]-a[k] for k in range(3)];length=math.sqrt(sum(v*v for v in d));d=[v/length for v in d]
+ up=[0,1,0] if abs(d[1])<.9 else [1,0,0]
+ u=[d[1]*up[2]-d[2]*up[1],d[2]*up[0]-d[0]*up[2],d[0]*up[1]-d[1]*up[0]];length=math.sqrt(sum(v*v for v in u));u=[v/length for v in u]
+ v=[d[1]*u[2]-d[2]*u[1],d[2]*u[0]-d[0]*u[2],d[0]*u[1]-d[1]*u[0]]
+ return [[p[k]+r*(su*u[k]+sv*v[k]) for k in range(3)] for p in(a,b) for su in(-1,1) for sv in(-1,1)]
+for module in mods:
+ if 'look' not in module:continue
+ o=module['origin'];a=module['art'];look=module['look'];world_hulls=[]
+ if module['category'] in('mast','flag'):
+  look['boxes']=[*module['boxes'],*look['boxes']]
+ if module['category']=='stairs' and 'flight' in a:
+  look['hulls']=[module['hulls'][0]]
+  (x0,y0,z0),(x1,y1,z1)=a['flight']
+  for x in(x0-.04,x1+.04):world_hulls.append(beam_points([x,y0+1.075,z0],[x,y1+1.075,z1],.016))
+ if module['category']=='rail':
+  for h in module['hulls']:
+   ps=[[p[k]+o[k] for k in range(3)] for p in h['points']];ends=[]
+   for z in(min(p[2] for p in ps),max(p[2] for p in ps)):
+    points=[p for p in ps if abs(p[2]-z)<1e-5];x=(min(p[0] for p in points)+max(p[0] for p in points))/2
+    ends.append([x,min(p[1] for p in points),max(p[1] for p in points),z])
+   p,q=ends
+   world_hulls.append(beam_points([p[0],p[2]-.025,p[3]],[q[0],q[2]-.025,q[3]],.016))
+   world_hulls.append(beam_points([p[0],p[1]+.495,p[3]],[q[0],q[1]+.495,q[3]],.010))
+   n=max(1,math.ceil(math.hypot(q[0]-p[0],q[3]-p[3])/2))
+   posts=[]
+   for i in range(1,n):
+    t=i/n;x=p[0]+(q[0]-p[0])*t;z=p[3]+(q[3]-p[3])*t;y0=p[1]+(q[1]-p[1])*t;y1=p[2]+(q[2]-p[2])*t-.025
+    posts.append(box([x-.023,y0,z-.023],[x+.023,y1,z+.023]))
+   extend_look(module,posts)
+ if world_hulls:
+  look.setdefault('hulls',[]).extend([{'points':[[p[k]-o[k] for k in range(3)] for p in h]} for h in world_hulls])
+ assert len(look.get('boxes',[]))+len(look.get('hulls',[]))<=64,module['id']
+ for h in look.get('hulls',[]):
+  assert all(module['visualBounds']['min'][k]-.00001<=p[k]<=module['visualBounds']['max'][k]+.00001 for p in h['points'] for k in range(3)),module['id']
