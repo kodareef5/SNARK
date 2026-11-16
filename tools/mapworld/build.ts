@@ -5,7 +5,7 @@
 // var/maps/<name>/layers, then the map file var/maps/<name>.snmap, and says what it holds. The same inputs give the same
 // bytes.
 
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { compileContent } from "../../shared/content/registry.ts";
@@ -14,6 +14,7 @@ import { MapStatics, mapHeightfield, mapNodes, parseMap, writeMap } from "../../
 import { obeliskStatics } from "../../shared/world/obelisks.ts";
 import { describe } from "../map.ts";
 import { readLayers, waterLayer } from "../map/layers.ts";
+import { writeMapFile } from "../map/pack.ts";
 import { lakeSquares } from "./lakes.ts";
 import { writeGrey } from "../map/png.ts";
 import { Base } from "./base.ts";
@@ -30,7 +31,7 @@ import { growRuins } from "./ruin-growth.ts";
 
 const ROOT = resolve(import.meta.dir, "../..");
 
-export function buildMap(name: string): { file: string; stats: Record<string, unknown> } {
+export async function buildMap(name: string): Promise<{ file: string; stats: Record<string, unknown> }> {
   const t0 = performance.now();
   const compiled = compileContent(CORE_CONTENT);
   if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
@@ -140,7 +141,7 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   Bun.gc(true);
   if (growth) {
     const grown = growRuins(map, compiled.registry, site, growth);
-    map = { ...map, nodes: [grown.layer] };
+    map = { ...map, nodes: grown.layers };
     writeFileSync(join(source, "reports", world.ruins?.report ?? "ruins", "growth.json"), JSON.stringify(grown.summary, null, 2) + "\n");
     lap("growth placed around structures and routes");
   }
@@ -171,10 +172,9 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   lap(`${aircraft.length} found aircraft at surveyed service sites and industrial yards; ${boats.length} boats at mapped waterfronts`);
   const bytes = writeMap(map);
   const file = join(ROOT, "var/maps", `${name}.snmap`);
-  writeFileSync(`${file}.tmp`, bytes);
-  renameSync(`${file}.tmp`, file);
   const built = (performance.now() - t0) / 1000;
-  lap(`map file ${file}`);
+  const packed = await writeMapFile(file, bytes);
+  lap(`map file ${file} and its copies for the wire`);
   for (const line of describe(bytes)) console.log(`        ${line}`);
 
   // The numbers: nodes by kind, how much land is walkable, the deepest water and the tallest heap.
@@ -240,7 +240,8 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
   const stats = {
     id: world.id,
     bytes: bytes.length,
-    gzipped: Bun.gzipSync(bytes).length,
+    groundBrotli: packed.ground,
+    brotli: packed.br.length,
     buildSeconds: Number(built.toFixed(1)),
     totalSeconds: Number(((performance.now() - t0) / 1000).toFixed(2)),
     peakResidentMiB: Number((process.resourceUsage().maxRSS / 1024).toFixed(1)),
@@ -270,6 +271,6 @@ export function buildMap(name: string): { file: string; stats: Record<string, un
 }
 
 if (import.meta.main) {
-  const { stats } = buildMap(process.argv[2] ?? (() => { throw new Error("Map name required"); })());
+  const { stats } = await buildMap(process.argv[2] ?? (() => { throw new Error("Map name required"); })());
   console.log(JSON.stringify({ ...stats, spawns: undefined, surfaceSquareMetres: undefined }, null, 2));
 }

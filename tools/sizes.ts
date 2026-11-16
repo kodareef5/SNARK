@@ -12,18 +12,18 @@ const MB = 1024 * KB;
 /** The budgets, by row name: today's size and about 3%. A negative budget pins the row at exactly that number. */
 const BUDGETS: Record<string, number> = {
   "the page's script, Brotli": 323 * KB,
-  "manifest, Brotli": 189 * KB,
-  "manifest": 980 * KB,
+  "manifest, Brotli": 127 * KB,
+  "manifest": 583 * KB,
   "boot pack, Brotli": 591 * KB,
-  "everything before the first frame, Brotli": 1218 * KB,
+  "everything before the first frame, Brotli": 1160 * KB,
   "mesh file": 20.2 * MB,
-  // Textures and sounds are still coming down this round; these hold them where they were until they are tightened.
+  // Textures are still coming down this round; these hold them where they were until they are tightened.
   "textures to 1,024, the largest compressed variant": 256 * MB,
   "textures to 2,048, the largest compressed variant": 640 * MB,
   "texture file, rgba": 354 * MB,
   "textures with a 2,048 step": 160,
-  "sound file": 256 * MB,
-  "sound, kbit/s": 260,
+  "sound file": 4 * MB,
+  "sound, kbit/s": 42,
   "music": 41 * MB,
   "sound takes stored twice": 0,
   "texture steps stored twice, astc": 0,

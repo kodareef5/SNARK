@@ -331,7 +331,7 @@ export class FarBlocks {
   private readonly waiting: number[] = [];
   private readonly colours: Uint8Array;
   /** The far city, whose cells these leave to it, and per chunk its count of changes when last looked at. */
-  private readonly city: FarCityCells | null;
+  private city: FarCityCells | null;
   private readonly cityStamp: Uint32Array;
 
   /** `bounds` is FAR_MESH's centre and half extent, as the pack has them, and `colours` what farColours gives. */
@@ -348,6 +348,12 @@ export class FarBlocks {
     this.far = new Uint8Array(chunkCount(dims));
     this.stamp = new Uint32Array(chunkCount(dims));
     this.cityStamp = new Uint32Array(chunkCount(dims));
+  }
+
+  /** A far city come after these: every chunk's blocks are made again, without the cells it draws. */
+  leaveTo(city: FarCityCells): void {
+    this.city = city;
+    this.cityStamp.fill(0xffffffff);
   }
 
   /** Whether `chunk` is drawn far this frame, so its real pieces are not. */
