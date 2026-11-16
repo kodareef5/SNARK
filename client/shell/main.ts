@@ -12,6 +12,7 @@ import { mapHeightfield, mapNodes, parseMap } from "../../shared/world/mapfile.t
 import { App } from "../core/app.ts";
 import { fetchBytes, fetchJson, fetchText } from "../core/fetched.ts";
 import { loadIdentity } from "../core/identity.ts";
+import { SelfcheckSurfaces } from "../core/selfcheck-surfaces.ts";
 import { SelfcheckProgress, selfcheckReport } from "../core/selfcheck-report.ts";
 import { BenchRun, PassClock } from "../core/passes.ts";
 import { groundSize } from "../core/render/terrain.ts";
@@ -73,7 +74,8 @@ async function boot(): Promise<void> {
     nodes: (ground, content) => mapNodes(map, ground, content),
     city: (content) => new CityStatics(map.dims, map.statics, content),
   });
-  const app = new App(session, reg, pack, { manifest, port });
+  const surfaces = selfcheck ? new SelfcheckSurfaces(manifest, port) : null;
+  const app = new App(session, reg, pack, { manifest, port: surfaces ?? port });
   session.prediction.enabled = selfcheck;
   const skin = installSkin(app.ui.frame), skinImage = new Image();
   skinImage.src = SKIN_URL;
@@ -165,6 +167,7 @@ async function boot(): Promise<void> {
       canvas.width = width;
       canvas.height = height;
     }
+    if (packet.lit) surfaces?.start();
     renderer.draw(packet);
     if (renderer.failed.length + renderer.failedTextures.length > 0) {
       for (const slot of renderer.failed) app.scene?.assets.residency.failed(slot);
@@ -190,11 +193,11 @@ async function boot(): Promise<void> {
     // second of played voice, or for ten seconds to report that none was.
     const voiced = voiceCheck || voiceListen;
     // Parts are written to disk a little after they arrive. The report waits until that has been still for half a second.
-    if (progress.advance(performance.now() - t0, port.cache.used, selfcheck, voiced, voice.report.played, !drive || drive.finished)) {
+    if (progress.advance(performance.now() - t0, port.cache.used, selfcheck && (!packet.lit || surfaces!.done), voiced, voice.report.played, !drive || drive.finished)) {
       const report = selfcheckReport(app, pack, manifest, hf, packet, {
         has: name => params.has(name), voiced, voiceListen, voice: voice.report,
         driveCheck, drive, restored, misplaced: view.misplaced(app.ui.frame), sound: sound ? { peak: sound.peak } : null,
-        cache: port.cache, userAgent: navigator.userAgent, width, height, times: progress.times, renderer,
+        cache: port.cache, userAgent: navigator.userAgent, width, height, times: progress.times, renderer, surfaces,
       });
       document.title = report.ok ? "SNARK self-check passed" : "SNARK self-check FAILED";
       void fetch("__selfcheck", { method: "POST", body: JSON.stringify(report) });

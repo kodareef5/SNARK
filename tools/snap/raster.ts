@@ -1,8 +1,9 @@
 // Software rasterizer that executes a frame packet on the CPU, so rendering can be looked at and tested without a browser.
 // It reads the same packet, pack bytes and shading constants as the WebGL2 shell, and records what is under every pixel.
 
+import { decodeTexture, sample, sampleWorldTexture, type Texture } from "../../client/core/render/cpu-texture.ts";
 import { SURFACE_MATERIAL, surfaceIndex } from "../../content/surfaces.ts";
-import { WORLD_MIN_MIP, worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
+import { worldSurface, type WorldSample } from "../../client/core/render/world-surfaces.ts";
 import { FAR_FROM, NEAR_BODY } from "../../client/core/render/camera.ts";
 import { FAR_SLOTS, fadeKeeps } from "../../client/core/render/far.ts";
 import { nearKeeps } from "../../client/core/render/hand.ts";
@@ -50,12 +51,6 @@ function surfaceOf(entries: Uint8Array, skin: Uint8Array | null, range: readonly
   return skin && skin.length > 0 ? { ...decodeSurface(entries, range), skin: decodeSkin(skin) } : decodeSurface(entries, range);
 }
 
-/** A texture on the card: its pictures as numbers from 0 to 1, smallest first, picture k being 1 << k pixels across. A base colour is held as light. */
-interface Texture {
-  channels: number;
-  pictures: Float32Array[];
-}
-
 /**
  * What a textured draw reads besides its vertices' places: its material's maps in the order of MAP_ROLES, what its
  * flags say, and its layer with the level it is drawn at, 0 for none.
@@ -72,53 +67,10 @@ interface Surfaced {
   tangents: Float32Array;
 }
 
-const TO_LINEAR = Float32Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
-
-/** Pictures of the rgba variant as a texture: two channels for a normal map and four for the rest. */
-function decodeTexture(role: TextureRole, pictures: readonly ArrayLike<number>[]): Texture {
-  return {
-    channels: role === "normal" ? 2 : 4,
-    pictures: pictures.map((bytes) => Float32Array.from(bytes, (b, i) => ((role === "base" || role === "layer") && (i & 3) !== 3 ? TO_LINEAR[b]! : b / 255))),
-  };
-}
-
 /** What a draw reads where its material has no texture: one pixel of NEUTRAL. */
 const NEUTRALS = MAP_ROLES.map((role) => decodeTexture(role, [NEUTRAL[role].slice(0, role === "normal" ? 2 : 4)]));
 
-function bilinear(t: Texture, k: number, u: number, v: number, weight: number, out: Float64Array): void {
-  const size = 1 << k;
-  const p = t.pictures[k]!;
-  const x = u * size - 0.5;
-  const y = v * size - 0.5;
-  const fx = x - Math.floor(x);
-  const fy = y - Math.floor(y);
-  // The picture repeats: past one edge is the other.
-  const x0 = Math.floor(x) & (size - 1);
-  const x1 = (Math.floor(x) + 1) & (size - 1);
-  const y0 = Math.floor(y) & (size - 1);
-  const y1 = (Math.floor(y) + 1) & (size - 1);
-  const a = (y0 * size + x0) * t.channels, b = (y0 * size + x1) * t.channels, c = (y1 * size + x0) * t.channels, d = (y1 * size + x1) * t.channels;
-  const wa = weight * (1 - fx) * (1 - fy), wb = weight * fx * (1 - fy), wc = weight * (1 - fx) * fy, wd = weight * fx * fy;
-  for (let i = 0; i < t.channels; i++) out[i]! += p[a + i]! * wa + p[b + i]! * wb + p[c + i]! * wc + p[d + i]! * wd;
-}
-
-/**
- * Samples a texture as a graphics card does when it filters between pixels and between pictures, repeats the texture
- * both ways and takes no account of slant. `spread` is the base-two logarithm of how much of the texture's width one
- * step between screen pixels crosses.
- */
-function sample(t: Texture, u: number, v: number, spread: number, out: Float64Array): void {
-  const top = t.pictures.length - 1;
-  // How many halvings below the top picture a pixel of the texture is as large as a pixel of the screen.
-  const level = top + spread > 0 ? Math.min(top + spread, top) : 0;
-  const whole = Math.floor(level);
-  out.fill(0);
-  bilinear(t, top - whole, u, v, 1 - (level - whole), out);
-  if (level > whole) bilinear(t, top - whole - 1, u, v, level - whole, out);
-}
-
 const beside = new Float64Array(4);
-const worldMean = new Float64Array(4);
 
 /**
  * The share of a pixel of a cut-out draw that alpha to coverage covers, as SURFACE's fragment works it out: from the
@@ -277,17 +229,7 @@ export class Rasterizer {
   private readonly textures = new Map<number, Texture>();
   /** Textures being made: their pictures as bytes, and how many bytes are still to come. */
   private worldMaps: Texture[] | null = null;
-  private readonly worldSample: WorldSample = (role, u, v, spread, out) => {
-    const t = this.worldMaps![role]!, top = t.pictures.length - 1;
-    const lod = Math.max(0, Math.min(top + spread, Math.max(0, top - WORLD_MIN_MIP)));
-    const x = Math.floor(u * 4) / 4, y = Math.floor(v * 4) / 4;
-    const fade = Math.max(0, Math.min(1, (spread + WORLD_MIN_MIP) / (WORLD_MIN_MIP - 2)));
-    if (fade > 0) sample(t, x + 0.125, y + 0.125, -Math.min(top, 4), worldMean);
-    if (fade >= 1) { out.set(worldMean); return; }
-    const margin = 0.5 * 2 ** (Math.ceil(lod) - top);
-    sample(t, Math.max(x + margin, Math.min(x + 0.25 - margin, u)), Math.max(y + margin, Math.min(y + 0.25 - margin, v)), lod - top, out);
-    if (fade > 0) for (let c = 0; c < t.channels; c++) out[c] = out[c]! * (1 - fade) + worldMean[c]! * fade;
-  };
+  private readonly worldSample: WorldSample = (role, u, v, spread, out) => sampleWorldTexture(this.worldMaps![role]!, u, v, spread, out);
   private readonly making = new Map<number, { role: TextureRole; top: number; pictures: Uint8Array[]; left: number }>();
   /** For a textured draw: each vertex's normal and tangent after its bones, a vertex's bones blended, and the instance's dyes. */
   private frames = new Float32Array(6 * 1024);

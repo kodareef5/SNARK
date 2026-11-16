@@ -1,7 +1,7 @@
 // What the client draws, held still while the way it finds its meshes changes underneath.
 import { expect, test } from "bun:test";
 import { App } from "../../client/core/app.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_PLAIN, type FramePacket } from "../../client/core/render/packet.ts";
 import type { BitWriter } from "../../shared/net/codec.ts";
 import { BOX_SELF, CMD_MOVE, CMD_SELECT } from "../../shared/net/protocol.ts";
 import { Harness } from "../fixtures/net.ts";
@@ -9,7 +9,7 @@ import { frozenPack } from "../fixtures/pack.ts";
 import { SADDLE, WORN, saddledFrozenPack } from "../fixtures/saddles.ts";
 
 /** Everything of a frame packet that names a mesh, a level, an instance or a bone. */
-function fold(hash: number, p: FramePacket): number {
+function fold(hash: number, p: FramePacket, plainMesh = -1): number {
   const mix = (v: number): void => {
     hash = Math.imul(hash ^ (v >>> 0), 16777619) >>> 0;
   };
@@ -20,7 +20,7 @@ function fold(hash: number, p: FramePacket): number {
     mix(p.drawBuffer[i]!);
     mix(p.drawFirst[i]!);
     mix(p.drawInstances[i]!);
-    mix(p.drawFlags[i]!);
+    mix(p.drawFlags[i]! & (p.drawMesh[i] === plainMesh ? ~DRAW_PLAIN : -1));
   }
   mix(p.transientCount);
   for (let i = 0; i < p.transientCount * 20; i++) mix(p.transient[i]!);
@@ -66,22 +66,24 @@ function scene(saddled = false) {
 /** Three hundred frames of the scene, hashed, and the meshes they drew by id. */
 function frames(saddled = false) {
   const { h, app, pack } = scene(saddled);
-  let hash = 2166136261;
+  let hash = 2166136261, beforePlain = 2166136261;
+  const grazer = pack.header.meshes.findIndex((m) => m.id === "core:grazer");
   let most = 0;
   const meshes = new Set<number>();
   for (let f = 0; f < 300; f++) {
     h.run(1000 / 60, (now) => {
       const p = app.frame(now, 1280, 720)!;
       hash = fold(hash, p);
+      beforePlain = fold(beforePlain, p, grazer);
       most = Math.max(most, p.drawCount);
       for (let i = 0; i < p.drawCount; i++) meshes.add(p.drawMesh[i]!);
     });
   }
-  return { hash: hash.toString(16), most, drawn: new Set([...meshes].map((m) => pack.header.meshes[m]!.id)) };
+  return { hash: hash.toString(16), beforePlain: beforePlain.toString(16), most, drawn: new Set([...meshes].map((m) => pack.header.meshes[m]!.id)) };
 }
 
 test("three hundred frames of a busy scene draw what they drew before", () => {
-  const { hash, most, drawn } = frames();
+  const { hash, beforePlain, most, drawn } = frames();
   // Bodies in parts, armor, a held weapon, creatures, a dummy, structures and nodes: a scene that uses the pack widely.
   const missing = ["core:human_m/head", "core:human_m/armor/hide/torso", "core:rifle", "core:mannequin/torso", "core:raptor", "core:parasaur", "core:grazer", "core:wall_metal", "core:storage_box", "core:campfire", "core:tree"].filter((id) => !drawn.has(id));
   expect(missing).toEqual([]);
@@ -133,7 +135,10 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // without the bin, its lit kind, its piece and its engram it is that again.
   // It was 52c8cbd9 until the refining forge's grey boxes (content/items/stations.ts, S1) numbered the meshes after them on;
   // without the forge, its item and engram and the two recipes fired at it it is that again.
-  expect(hash).toBe("e73ea001");
+  // Rigid species on lit tiers now carry DRAW_PLAIN, keeping the world atlas off their palette draws. Only the
+  // grazer's flag changes in these medium-tier frames: clearing it reproduces the previous entire 300-frame pin.
+  expect(beforePlain).toBe("e73ea001");
+  expect(hash).toBe("5e9c5281");
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -145,5 +150,6 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // It was 7d2d1185 until the vehicles' three road pieces' grey boxes (content/vehicles/roads.ts) numbered the meshes after them on; without the roads it is that again.
   // It was e48a2ec9 until the preserving bin's grey box (S3), as above; without the bin it is that again.
   // It was 32d21d3d until the refining forge's grey boxes (S1), as above; without the forge it is that again.
-  expect(saddled.hash).toBe("c7cb77a9");
+  expect(saddled.beforePlain).toBe("c7cb77a9");
+  expect(saddled.hash).toBe("92762531");
 });

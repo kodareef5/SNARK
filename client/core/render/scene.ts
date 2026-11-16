@@ -34,7 +34,7 @@ import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
-import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
 import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
 import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
@@ -234,6 +234,8 @@ export class Scene {
   private readonly leafTris: number[][];
   private readonly world: RenderWorld;
   private readonly batches = new Map<number, ChunkBatch>();
+  /** Rigid species keep palette lighting; the static fallback finish belongs to world geometry. */
+  private readonly speciesKind: Uint8Array;
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
   /** Scratch for the runs of cells a mesh of a chunk of nodes is drawn in. */
@@ -381,6 +383,7 @@ export class Scene {
     const missing = Math.max(0, table.find(MISSING_MESH));
     this.meshOfKind = new Uint16Array(reg.defs.length).fill(missing);
     this.colorOfKind = new Uint8Array(reg.defs.length);
+    this.speciesKind = Uint8Array.from(reg.defs, (d) => d?.type === "species" ? 1 : 0);
     this.pitched = Uint8Array.from(reg.defs, (d) => (d?.type === "prop" && d.pitched ? 1 : 0));
     this.birthScale = reg.birthScale;
     this.saddleSeats = reg.saddleSeats;
@@ -1433,11 +1436,18 @@ export class Scene {
   }
 
   private entities(cam: Camera, remote: RemoteSample): void {
+    this.entityBatch(cam, remote, false);
+    if (this.packet.lit) this.entityBatch(cam, remote, true);
+  }
+
+  /** A prop and a species can share a mesh, so the lit palette policy groups instances by kind as well as mesh. */
+  private entityBatch(cam: Camera, remote: RemoteSample, plain: boolean): void {
     const p = this.packet;
     this.counts.fill(0);
     let visible = 0;
     const bodies = this.characters;
     for (let i = 0; i < remote.count; i++) {
+      if (p.lit && this.speciesKind[remote.kind[i]!] !== Number(plain)) continue;
       // A cloud has no mesh of its own: it is puffs among the details (clouds.ts).
       if (bodies.has(remote.kind[i]!) || this.pitched[remote.kind[i]!] !== 0 || this.clouds.kinds[remote.kind[i]!] !== 0) continue;
       // A bag of one stack is drawn as its item, where the item has a lying mesh.
@@ -1455,9 +1465,10 @@ export class Scene {
       visible++;
     }
     if (visible === 0) return;
-    const total = this.drawTallied(cam, p.transientCount);
+    const total = this.drawTallied(cam, p.transientCount, plain ? DRAW_PLAIN : 0);
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
+      if (p.lit && this.speciesKind[kind] !== Number(plain)) continue;
       if (bodies.has(kind) || this.pitched[kind] !== 0 || this.clouds.kinds[kind] !== 0) continue;
       const lies = this.dropped.item(kind, remote.gear, i * GEAR_COUNT);
       const mesh = lies !== 0 ? this.dropped.mesh(lies) : this.meshOfKind[kind]!;
@@ -1495,13 +1506,13 @@ export class Scene {
    * Draws what was tallied, the instances of each mesh together, from transient instance `total` on. Returns where
    * they end. They are drawn at their finest however far off, so only their materials are told how near they are.
    */
-  private drawTallied(cam: Camera, total: number): number {
+  private drawTallied(cam: Camera, total: number, flags = 0): number {
     const counts = this.counts;
     for (let m = 0; m < counts.length; m++) {
       this.cursor[m] = total;
       if (counts[m]! > 0) {
         showMaterials(this.assets, m, Math.sqrt(this.nearest[m]!));
-        this.draw(m, 0, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, 0, cam.passesOf(this.from[m]!, this.to[m]!));
+        this.draw(m, 0, TRANSIENT_BUFFER, total, counts[m]!, 0, 0, 0, flags, cam.passesOf(this.from[m]!, this.to[m]!));
       }
       total += counts[m]!;
     }

@@ -169,3 +169,30 @@ The one-shot [WebGL compiler probe](../../../tools/surfaces/compile.ts) uses a l
 | Low-poly shader, texture policy and geometry governor preserved | No low-poly repin; existing city draw overruns remain visible in the report. |
 
 No commits were made. `planning/decisions.md` was not edited.
+
+## Round one, continued
+
+The grazer regression was a missing `DRAW_PLAIN` flag on rigid species. Its dyed palette colour entered the concrete fallback, including its weather and growth. The same pixel still belonged to the grazer; no ground occlusion or texture-unit clash is needed to reproduce the failure. Species now retain palette lighting on lit tiers, including when a prop shares their mesh. Low poly keeps its original batching and flags. Skipping reflected sky for fully rough draws was harmless: its contribution is multiplied by `1 - roughness² = 0`; a regression test verifies identical lighting with and without that input.
+
+The self-check now intersects the **actual readback pixel centre** with the plaza, block face and slope planes, computes the projected pixel footprint, and calls `worldSurface`, `lit` and `shown` with the frame's city and sky. Its RGBA atlas comes through the asset worker independently of the GPU's selected variant. Filtering is shared with the software rasterizer in `cpu-texture.ts`. Missing reference maps fail the report explicitly. **No probe tolerance changed.**
+
+At 1280 × 577, spawn camera, 09:00 lighting:
+
+| Probe | Reported M5 GPU | New CPU twin | Software rasterizer |
+| --- | --- | --- | --- |
+| Plaza | 126, 126, 122 | 126, 125, 122 | 126, 125, 122 |
+| Block | 50, 55, 59 | 50, 55, 59 | 50, 55, 59 |
+| Slope | 66, 77, 45 | 66, 77, 45 | 66, 77, 45 |
+
+With the server's seeded grazer facing, clearing its new flag reproduces **98, 96, 65**, within one channel level of the GPU's **98, 95, 65**, and fails the unchanged probe. Restoring the flag gives **175, 159, 60** and passes; removing the atlas gives exactly the same restored colour. This isolates the faulty draw policy. The three world pixels show no material CPU/GLSL mismatch in the supplied capture; the corrected browser run remains pending.
+
+I inspected the full-size software [before](evidence/continued/before.png) and [after](evidence/continued/after.png). [Pixel evidence](evidence/continued/software-probe.json) includes all six probes, entity picks and flags. Reproduce with `bun tools/surfaces/probe.ts`. Tests compare the twins against independently rasterized planes at 1280 × 577 and 320 × 180, exercise shared species/prop meshes, and check reference loading and failures.
+
+The **medium** 300-frame packet pins in `tests/integration/assets.test.ts` move from `e73ea001` → `5e9c5281` and `c7cb77a9` → `92762531`. The test also clears only the grazer's new flag and requires both old hashes, proving every other folded field is unchanged. The low-poly pins `1425549560` and `2182034391` remain unchanged. No surface art, GLSL, atlas bytes or normal gameplay downloads changed. The proving frame still has 296 draws / 263,795 triangles; species and props sharing a mesh require separate lit batches. Lit self-checks alone read three reference maps, 13,981,010 bytes before storage compression; their fetched/cached bytes appear separately as `surfaceReference` in the report.
+
+Validation: `bun run check` passed policy and types, with **1,694 tests passing and two failing** ([log](evidence/continued/check.txt)). Both failures are the known sandbox socket bind failures: `listen.test.ts` and `sockets.test.ts`, `EADDRINUSE` on port 0. The failed run does not evaluate the gate's CPU budget, so that also awaits the coordinator's unsandboxed run. The focused rendering and packet tests passed **37/37** ([log](evidence/continued/target-tests.txt)). Chrome was not run in this sandbox. The coordinator should run **`bun run check`**, then **`bun run probe`** outside it; `bun run probe --twice` additionally exercises the reference-map cache. The probe report should have all six passes and `surfaceReference.ready: true`.
+
+| Decision | Reason / consequence |
+| --- | --- |
+| Keep rigid species' palette policy separate from world fallbacks | Restores the grazer without changing ground, statics or low poly. |
+| Read independent RGBA reference maps only during self-checks | Holds compressed GPU draws to the same CPU surface calculation without sampling GPU output to manufacture an expectation. |
