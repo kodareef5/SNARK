@@ -50,9 +50,13 @@ export class Camera {
     const cp = Math.cos(this.pitch);
     // Basis: forward f, right r = f x up, up u = r x f.
     const fx = sy * cp, fy = sp, fz = cy * cp;
-    const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
-    const rx = -cy * cr + sy * sp * sr, ry = -cp * sr, rz = sy * cr + cy * sp * sr;
-    const ux = -cy * sr - sy * sp * cr, uy = cp * cr, uz = sy * sr - cy * sp * cr;
+    // Keep the usual level view byte-identical, including signed zeros in frame packets.
+    let rx = -cy, ry = 0, rz = sy, ux = -sy * sp, uy = cp, uz = -cy * sp;
+    if (this.roll !== 0) {
+      const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
+      rx = -cy * cr + sy * sp * sr; ry = -cp * sr; rz = sy * cr + cy * sp * sr;
+      ux = -cy * sr - sy * sp * cr; uy = cp * cr; uz = sy * sr - cy * sp * cr;
+    }
     const fl = 1 / Math.tan(this.fovY / 2);
     const m = this.viewProj;
     const sx = fl / this.aspect;
@@ -123,8 +127,11 @@ export class Camera {
     const rx = (sx * 2 - 1) * t * this.aspect;
     const ry = (1 - sy * 2) * t;
     // Rotate the screen offset by roll, then use the same basis as `update`.
-    const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
-    const right = rx * cr + ry * sr, up = ry * cr - rx * sr;
+    let right = rx, up = ry;
+    if (this.roll !== 0) {
+      const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
+      right = rx * cr + ry * sr; up = ry * cr - rx * sr;
+    }
     const x = syaw * cp - cyaw * right - syaw * sp * up;
     const y = sp + cp * up;
     const z = cyaw * cp + syaw * right - cyaw * sp * up;
