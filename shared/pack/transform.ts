@@ -55,9 +55,16 @@ export const STEP = Float64Array.from({ length: 256 }, (_, i) => 2 ** ((i - 128)
 export class Model {
   readonly freq: Uint16Array;
   total = 0;
+  private readonly prior: Uint16Array;
+  private readonly start: number;
   constructor(prior: readonly number[]) {
-    this.freq = Uint16Array.from(prior);
-    for (const f of prior) this.total += f;
+    this.prior = Uint16Array.from(prior);
+    this.freq = this.prior.slice();
+    this.start = this.total = prior.reduce((a, b) => a + b, 0);
+  }
+  reset(): void {
+    this.freq.set(this.prior);
+    this.total = this.start;
   }
   update(s: number): void {
     this.freq[s]! += 24;
@@ -96,7 +103,14 @@ export class Models {
   readonly fine = FINE_PRIORS.map((p) => new Model(p));
   /** A coefficient's magnitude, by its band's fineness and the magnitude before it (none, one, more). */
   readonly magnitude = Array.from({ length: 3 * 24 }, (_, c) => new Model(MAGNITUDE_PRIORS[Math.floor(c / 3)]!));
+  /** As made: a decoder keeps one set for every take, since making them costs more than a short take's decoding. */
+  reset(): this {
+    for (const list of [this.energy, this.fine, this.magnitude]) for (const m of list) m.reset();
+    return this;
+  }
 }
+
+let kept: Models | null = null;
 
 /** The coefficients' magnitudes in a band of fineness `fine` are coded shifted down by this many bits, the rest sent as they are. */
 export const shiftOf = (fine: number): number => Math.max(0, (fine - 12) >> 2);
@@ -282,7 +296,7 @@ export function decodeTransform(data: Uint8Array, samples: number, out: Float32A
   const bands = edges.length - 1;
   const window = windowOf(n);
   const d = new RangeDecoder(data.subarray(1));
-  const m = new Models();
+  const m = (kept ??= new Models()).reset();
   const energy = new Int32Array(bands).fill(QUIET);
   const fine = new Int32Array(bands);
   const was = new Int32Array(bands);
