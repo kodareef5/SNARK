@@ -1,0 +1,35 @@
+[
+  {
+    "name": "best-downtown-street",
+    "x": 7276,
+    "z": 4324,
+    "look": [
+      7301,
+      4188,
+      14
+    ],
+    "size": [
+      960,
+      540
+    ]
+  },
+  {
+    "name": "spawn-south-beach",
+    "spawn": "South Beach",
+    "size": [
+      960,
+      540
+    ]
+  },
+  {
+    "name": "flyer-150m",
+    "x": 7276,
+    "z": 4324,
+    "size": [
+      960,
+      540
+    ],
+    "up": 150,
+    "pitch": -35
+  }
+]

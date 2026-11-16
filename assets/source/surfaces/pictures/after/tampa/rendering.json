@@ -1,0 +1,66 @@
+{
+  "map": "core:tampa",
+  "mapHash": 779721272,
+  "tier": "medium",
+  "seconds": 14.19,
+  "peakResidentMiB": 4245.9,
+  "views": [
+    {
+      "name": "downtown-street",
+      "frames": 86,
+      "milliseconds": 4782,
+      "eye": [
+        3120,
+        3.760625,
+        4290
+      ],
+      "draws": 908,
+      "triangles": 1458010,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 1.5,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "spawn-ybor-city",
+      "frames": 71,
+      "milliseconds": 3962,
+      "eye": [
+        984,
+        8.291875000000001,
+        5772
+      ],
+      "draws": 1012,
+      "triangles": 1020778,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 1.16,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "flyer-150m",
+      "frames": 41,
+      "milliseconds": 2610,
+      "eye": [
+        3120,
+        152.140625,
+        4290
+      ],
+      "draws": 756,
+      "triangles": 532994,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 1.91,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

@@ -9,6 +9,7 @@ import { DETAIL_FLAT_FRAGMENT, DETAIL_LIT_FRAGMENT, DETAIL_VERTEX } from "./deta
 import { FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, FLAT_FRAGMENT, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, FLAT_TERRAIN_VERTEX, LIT_FAR_FRAGMENT, LIT_FRAGMENT, LIT_SPLIT_FRAGMENT, PULLED_VERTEX } from "./glsl.ts";
 import { DEPTH_CUTOUT_FRAGMENT, DEPTH_FRAGMENT, DEPTH_VERTEX, clampDepth, shadowDefines } from "./shadowtext.ts";
 import { SURFACE_VERTEX, surfaceFragment } from "./surface.ts";
+import { worldVertex } from "./world-surfaces.ts";
 import { WATER_FRAGMENT } from "./water.ts";
 
 /**
@@ -41,9 +42,9 @@ const WINDOW = { uHeight: UNIT.windowHeights, uTint: UNIT.windowTint };
  * A program of FLAT's vertex text: FLAT's fragment on low poly, and on a lit tier `lit`, which reads the sky table for
  * the haze and looks the sun's shadow up.
  */
-function flatOr(tier: Tier, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>): ProgramText {
+function flatOr(tier: Tier, format: TextureFormat, hard: boolean, vertex: string, flat: string, lit: string, samplers: Record<string, number>): ProgramText {
   if (!tier.lit) return { vertex, fragment: flat, defines: "", samplers };
-  return { vertex, fragment: lit, defines: shadowDefines(tier.shadows, hard), samplers: { ...samplers, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
+  return { vertex: worldVertex(vertex, "uHeight" in samplers), fragment: lit.replace("nn.rg", format === "astc" ? "nn.ra" : "nn.rg"), defines: shadowDefines(tier.shadows, hard), samplers: { ...samplers, uWorldBase: UNIT.maps, uWorldNormal: UNIT.maps + 1, uWorldOrm: UNIT.maps + 2, uSkyTable: UNIT.sky, uShadow: UNIT.shadow } };
 }
 
 /**
@@ -53,8 +54,8 @@ function flatOr(tier: Tier, hard: boolean, vertex: string, flat: string, lit: st
  * see-through, which low poly does not either. The depth programs draw the sun's shadow maps.
  */
 export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureFormat, hard?: boolean) => ProgramText>> = {
-  flat: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, MESH),
-  terrain: (tier, _, hard = false) => flatOr(tier, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, GROUND),
+  flat: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, MESH),
+  terrain: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_TERRAIN_VERTEX, FLAT_FRAGMENT, LIT_FRAGMENT, GROUND),
   // The same, for the tiles that read the window round the camera (terrain.ts).
   terrainWindow: (tier, format, hard) => {
     const t = PROGRAMS.terrain!(tier, format, hard);
@@ -62,12 +63,12 @@ export const PROGRAMS: Readonly<Record<string, (tier: Tier, format: TextureForma
   },
   // See-through flat draws where the view is split in two depth ranges. A program of their own keeps the discard out of
   // the opaque draws, which some GPUs would then test for depth only after shading.
-  seeThrough: (tier, _, hard = false) => flatOr(tier, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH),
+  seeThrough: (tier, format, hard = false) => flatOr(tier, format, hard, FLAT_MESH_VERTEX, FLAT_SPLIT_FRAGMENT, LIT_SPLIT_FRAGMENT, MESH),
   // Far blocks (far.ts), which fade out over the last of their reach, and nodes in the hand-over between the near store
   // and the far one (hand.ts). A program of their own keeps the discard out of the rest.
-  far: (tier, _, hard = false) => flatOr(tier, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
+  far: (tier, format, hard = false) => flatOr(tier, format, hard, FAR_MESH_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, MESH),
   // Far nodes of every mesh in one draw (packet.ts DRAW_PULLED), their vertices read from the atlas.
-  pulled: (tier, _, hard = false) => flatOr(tier, hard, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas }),
+  pulled: (tier, format, hard = false) => flatOr(tier, format, hard, PULLED_VERTEX, FLAT_FAR_FRAGMENT, LIT_FAR_FRAGMENT, { uPalette: UNIT.palette, uAtlas: UNIT.atlas }),
   surface: (tier, format, hard = false) => ({
     vertex: SURFACE_VERTEX,
     fragment: surfaceFragment(format, AIR),

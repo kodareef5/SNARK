@@ -292,7 +292,7 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const nodes = new NodeField(dims, reg, map ? (mapNodes(map, hf, reg) ?? { perChunk: 0, at: (_c, _i, out) => void (out.kind = 0) }) : provingNodes(hf, reg));
   if (!map) nodes.retain(0, 64, 1, () => false);
   const farNodes = map ? { farNodes: { nodes: nodes.source, held: (c: number) => nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(dims) } } : {};
-  const scene = new Scene({ dims, hf, structs, nodes: nodes.store, ...farNodes }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  const scene = new Scene({ mapId: map?.id, dims, hf, structs, nodes: nodes.store, ...farNodes }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
   cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;

@@ -1236,6 +1236,7 @@ void main() {}`);
     const made = PROGRAMS[name];
     if (!made) throw new Error(`the renderer has no program "${name}"`);
     const text = made(tier, this.variant, this.report.compareArray === "hard");
+    if (vertex && text.fragment.includes("flat in int vSurface;")) vertex = vertex.replace("void main() {", "flat out int vSurface;\nvoid main() {\n  vSurface = 8;");
     const prog = this.program(withDefines(vertex ?? text.vertex, text.defines), withDefines(text.fragment, text.defines));
     gl.useProgram(prog);
     const units: Record<string, number> = {};

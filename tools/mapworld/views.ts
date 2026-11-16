@@ -7,6 +7,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { DRAW_SIZED, DRAW_PULLED, DRAW_RANGED, DRAW_SKINNED } from "../../client/core/render/packet.ts";
 import { tierOf } from "../../client/core/assets/tiers.ts";
 import { chunkAt, chunkCx, chunkCz } from "../../shared/coords.ts";
 import { FarStore } from "../../client/core/farcells.ts";
@@ -90,7 +91,7 @@ for (const v of views) {
     });
   }
   const complete = (chunk: number): boolean => Math.abs(chunkCx(map.dims, chunk) - Math.floor(view.cam.x / 64)) <= 3 && Math.abs(chunkCz(map.dims, chunk) - Math.floor(view.cam.z / 64)) <= 3;
-  const scene = new Scene({ dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
+  const scene = new Scene({ mapId: map.id, dims: map.dims, hf: view.hf, structs: view.structs, nodes: view.nodes.store,
     far: { cells: farCells, complete },
     city: { statics: city, complete },
     farNodes: { nodes: view.nodes.source, held: (c) => view.nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(map.dims) }
@@ -122,6 +123,13 @@ for (const v of views) {
   // What the frame spends against the tier's budget, and how long core takes to build it, the picture drawn as it stands.
   const packet = scene.packet;
   const [triangles, draws] = [packet.triangles, packet.drawCount];
+  const drawKinds: Record<string, number> = {};
+  for (let d = 0; d < draws; d++) {
+    const f = packet.drawFlags[d]!;
+    const group = f & DRAW_PULLED ? "far nodes" : f & DRAW_SIZED ? "near nodes" : f & DRAW_SKINNED ? "bodies" : f & DRAW_RANGED ? "far city" : "built";
+    drawKinds[group] = (drawKinds[group] ?? 0) + 1;
+  }
+  console.log(JSON.stringify({ name: v.name, drawKinds, squeeze: scene.budget.squeeze }));
   const builds: number[] = [];
   for (let k = 0; k < 15; k++) {
     const t = performance.now();

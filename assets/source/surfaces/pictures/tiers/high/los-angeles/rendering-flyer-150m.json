@@ -1,0 +1,28 @@
+{
+  "map": "core:los-angeles",
+  "mapHash": 2219525009,
+  "tier": "high",
+  "seconds": 7.47,
+  "peakResidentMiB": 2994.5,
+  "views": [
+    {
+      "name": "flyer-150m",
+      "frames": 64,
+      "milliseconds": 5068,
+      "eye": [
+        5130,
+        264.84375,
+        3633
+      ],
+      "draws": 1378,
+      "triangles": 1562842,
+      "budget": {
+        "draws": 2048,
+        "triangles": 4000000
+      },
+      "buildMs": 1.54,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

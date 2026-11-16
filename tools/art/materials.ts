@@ -1,6 +1,9 @@
 // The materials an asset names in its asset.ts: where their pictures are, what a pack says of each, the colour each is
 // drawn flat in, and the mips of each of their textures for the texture build.
 
+import { surfaceMips, worldMaterial, worldSurfaceMesh } from "../surfaces/build.ts";
+import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
+import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type PackMaterial, type PackTexture } from "../../shared/pack/pack.ts";
@@ -177,7 +180,7 @@ export function mipsOf(m: Material, role: TextureRole, top: number): Uint8Array[
   }
   const mips = materialMips(readMaps(m, [role]))[role];
   if (!mips || mips.length < Math.log2(top) + 1) throw new Error(`${m.id}: its pictures do not make a ${role} texture ${top} pixels across`);
-  return mips.slice(0, Math.log2(top) + 1);
+  return (m.id === SURFACE_MATERIAL ? surfaceMips(mips) : mips).slice(0, Math.log2(top) + 1);
 }
 
 /**
@@ -198,6 +201,10 @@ export async function gameTextures(source: string = SOURCE): Promise<TextureSour
       if (had && had.top !== t.top) throw new Error(`texture ${t.id} is ${had.top} pixels across in one pack and ${t.top} in ${asset.id}: assets that share a material give it one size`);
       out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(m, t.role, t.top) });
     }
+  }
+  if (resolve(source) === resolve(SOURCE)) {
+    const m = worldMaterial();
+    for (const t of worldSurfaceMesh().textures!) out.set(t.id, { id: t.id, role: t.role, top: t.top, mips: () => mipsOf(m, t.role, t.top) });
   }
   return [...out.values()];
 }

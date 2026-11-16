@@ -1,0 +1,66 @@
+{
+  "map": "core:miami",
+  "mapHash": 2569618600,
+  "tier": "medium",
+  "seconds": 20.92,
+  "peakResidentMiB": 3577.5,
+  "views": [
+    {
+      "name": "best-downtown-street",
+      "frames": 53,
+      "milliseconds": 6013,
+      "eye": [
+        7276,
+        3.666875,
+        4324
+      ],
+      "draws": 1239,
+      "triangles": 1548413,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 2.26,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "spawn-south-beach",
+      "frames": 41,
+      "milliseconds": 2797,
+      "eye": [
+        408,
+        4.010625,
+        3894
+      ],
+      "draws": 206,
+      "triangles": 274842,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 1.11,
+      "dropped": 0,
+      "casterDropped": 0
+    },
+    {
+      "name": "flyer-150m",
+      "frames": 38,
+      "milliseconds": 2749,
+      "eye": [
+        7276,
+        152.046875,
+        4324
+      ],
+      "draws": 954,
+      "triangles": 1045432,
+      "budget": {
+        "draws": 1024,
+        "triangles": 2000000
+      },
+      "buildMs": 1.23,
+      "dropped": 0,
+      "casterDropped": 0
+    }
+  ]
+}

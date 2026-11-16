@@ -1,6 +1,7 @@
 // Builds the core asset pack: grayboxes made from the content, every pack found under assets/source, and every .glb
 // under assets/source as "<folder>:<file name>". `bun run build` splits it into the files a client fetches.
 
+import { worldSurfaceMesh } from "../surfaces/build.ts";
 import { readFileSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { CORE_CONTENT } from "../../content/core.ts";
@@ -177,7 +178,7 @@ export function withArt(made: readonly SourceMesh[], art: readonly SourceMesh[])
 
 export function buildCorePack(extra: SourceMesh[] = []): Uint8Array {
   const made = [...grayboxMeshes(CORE_CONTENT), farMesh(), ...mannequinMeshes(), ...weaponMeshes()];
-  return buildPack([...withArt(made, coreArt().meshes), ...extra], defaultPalette(), coreClips(), coreArt().rigs, coreArt().details);
+  return buildPack([...withArt(made, coreArt().meshes), worldSurfaceMesh(), ...extra], defaultPalette(), coreClips(), coreArt().rigs, coreArt().details);
 }
 
 /** Every .glb under assets/source, imported. What the import had to say of each is printed. */

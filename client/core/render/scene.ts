@@ -35,6 +35,8 @@ import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnod
 import { HAND_NEAR } from "./hand.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TRANSIENT_BUFFER } from "./packet.ts";
+import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
+import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
 import { UNDERWATER_DIM, UNDERWATER_VIEW, WATER_TILE } from "./shading.ts";
 import { SKY_ASKED, SKY_MATERIAL, airFrame } from "./atmosphere.ts";
 import { Cascades, MAX_REACH, reach } from "./shadow.ts";
@@ -44,6 +46,8 @@ import { TerrainLod, type CastTest } from "./terrain.ts";
 import { WATER_ASKED, WATER_MATERIAL, seaFrame } from "./water.ts";
 
 export interface RenderWorld {
+  /** Chooses the data-defined city surface palette; no terrain or geometry changes. */
+  readonly mapId?: string;
   readonly dims: MapDims;
   readonly hf: Heightfield;
   readonly structs: StructureStore;
@@ -265,6 +269,7 @@ export class Scene {
   private readonly waterMesh: number;
   /** The materials whose pictures the dome and the sea draw, or -1 where the pack has none. */
   private readonly skyMaterial: number;
+  private readonly worldMaterial: number;
   private readonly waterMaterial: number;
   private readonly beamMesh: number;
   /** Places to mark with a beam, x, y, z each. The app sets them before build(). */
@@ -443,6 +448,8 @@ export class Scene {
     this.lakes = world.hf.water && far >= 0 ? new Lakes(world.hf, world.hf.water, far, pack.header.meshes[far]!) : null;
     this.waterMesh = table.find(WATER_MESH);
     this.beamMesh = table.find(BEAM_MESH);
+    this.worldMaterial = table.materials.findIndex((m) => m.id === SURFACE_MATERIAL);
+    citySurface(this.packet.surfaceCity, world.mapId ?? "default");
     this.skyMaterial = table.materials.findIndex((m) => m.id === SKY_MATERIAL);
     this.waterMaterial = table.materials.findIndex((m) => m.id === WATER_MATERIAL);
     for (let k = 0; k < 3; k++) {
@@ -484,6 +491,7 @@ export class Scene {
     [p.frame[FRAME.handFrom], p.frame[FRAME.handTo]] = this.assets.tier.nodes.band;
     // Lit tiers take their light from the sky table, and the air and the dome's pictures from atmosphere.ts.
     if (p.tier.lit) {
+      if (this.worldMaterial >= 0) this.assets.residency.material(this.worldMaterial, WORLD_ASKED, 1);
       skyFrame(this.hour, theSky(), p.frame);
       airFrame(p.frame, theSky(), this.hour, cam.x, cam.z, this.now / 1000, this.viewDistance, this.plainSky ? 0 : p.tier.clouds, this.plainSky);
       if (!this.plainSky && this.skyMaterial >= 0) this.assets.residency.material(this.skyMaterial, SKY_ASKED.pixels, SKY_ASKED.distance);

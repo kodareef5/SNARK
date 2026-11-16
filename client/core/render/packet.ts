@@ -253,6 +253,8 @@ export class FramePacket {
   camX = 0;
   camY = 0;
   camZ = 0;
+  /** World-surface city dials: tint/scale, weather/wetness/growth/desert. */
+  readonly surfaceCity = Float32Array.from([1, 1, 1, 1, 1, 0, 0.08, 0, 1, 0, 0, 0]);
   /** Linear 0..1 RGB. */
   readonly sky = new Float32Array(3);
   /** Unit vector toward the sun. */

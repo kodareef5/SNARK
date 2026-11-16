@@ -1,7 +1,8 @@
 // WebGL2 executor for frame packets. It decides nothing: tiles, batches, levels of detail, materials and colours all
 // arrive in the packet. Keep it that way, because logic added here cannot be tested.
 
-import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { ATLAS_ROWS, ATLAS_WIDTH, BONES_PER_ROW, BONE_ROWS, DETAIL_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME_FLOATS, FramePacket, SOURCE_MAP, SOURCE_WINDOW, STEP_BODY, STEP_FAR, STEP_FAR_SEE, TILE_CASTS, TRANSIENT_BUFFER, stepOf, type TextureUpload } from "../core/render/packet.ts";
+import { SURFACE_MATERIAL } from "../../content/surfaces.ts";
 import { SKY_MATERIAL } from "../core/render/atmosphere.ts";
 import { MOST_LOD } from "../core/render/detailtext.ts";
 import { PROGRAMS, UNIT, type ProgramText } from "../core/render/programs.ts";
@@ -118,6 +119,7 @@ export class GlRenderer {
   private readonly uv: Float32Array;
   /** The material whose pictures the dome draws over the sky, if the pack has it. */
   private readonly sky: PackMaterial | undefined;
+  private readonly worldMaterial: PackMaterial | undefined;
   private readonly forced: string | null;
 
   constructor(canvas: HTMLCanvasElement, pack: Pack, hf: Heightfield, manifest: Manifest, forced: string | null = null) {
@@ -128,6 +130,7 @@ export class GlRenderer {
     this.hf = hf;
     this.ground = groundSize(hf);
     this.materials = manifest.materials ?? [];
+    this.worldMaterial = this.materials.find((m) => m.id === SURFACE_MATERIAL);
     this.sky = this.materials.find((m) => m.id === SKY_MATERIAL);
     this.uv =Float32Array.from(manifest.meshes.flatMap((m) => m.uv ?? [0, 0, 1, 1]));
     this.forced = forced;
@@ -392,6 +395,10 @@ export class GlRenderer {
     const gl = this.gl;
     const prog = this.program(name, p.tier);
     if (this.current !== prog) gl.useProgram((this.current = prog).program);
+    if (p.lit && prog.uniform("uWorldReady")) {
+      this.maps(this.worldMaterial);
+      gl.uniform1f(prog.uniform("uWorldReady"), this.worldMaterial && this.textures.has(this.worldMaterial.base) ? 1 : 0);
+    }
     if (prog.pass === this.pass) return prog;
     prog.pass = this.pass;
     prog.alpha = 1;
@@ -404,6 +411,8 @@ export class GlRenderer {
     gl.uniform3f(prog.uniform("uCamMod"), p.camX % 16, p.camY % 16, p.camZ % 16);
     gl.uniform1f(prog.uniform("uAlpha"), 1);
     gl.uniform1f(prog.uniform("uLight"), p.light);
+    gl.uniform3f(prog.uniform("uWorldEye"), p.camX, p.camY, p.camZ);
+    gl.uniform4fv(prog.uniform("uSurfaceCity"), p.surfaceCity);
     gl.uniform1i(prog.uniform("uCascades"), p.cascadeCount);
     return prog;
   }
@@ -552,7 +561,7 @@ export class GlRenderer {
       if (textured) this.material(prog, p.drawMaterial[d]!, p.drawMesh[d]!, (flags & DRAW_CUTOUT) !== 0, layer);
       else if (water) this.maps(this.materials[p.drawMaterial[d]!]);
       else {
-        gl.uniform1f(prog.uniform("uSolid"), (flags & DRAW_PLAIN) !== 0 ? 2 : 1);
+        gl.uniform1f(prog.uniform("uSolid"), (flags & DRAW_PLAIN) !== 0 || (p.lit && (flags & (DRAW_SIZED | DRAW_PULLED)) !== 0) ? 2 : 1);
         const alpha = blend ? WATER_ALPHA : 1;
         if (prog.alpha !== alpha) gl.uniform1f(prog.uniform("uAlpha"), (prog.alpha = alpha));
       }

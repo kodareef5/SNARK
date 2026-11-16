@@ -323,7 +323,7 @@ export class ClientSession {
   /** The survivor left for another server of the cluster: the ticket to take there, and that server's world id (S_TRAVEL). */
   travelled: { ticket: Uint8Array; world: number } | null = null;
 
-  world: (CollisionWorld & { dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource }) | null = null;
+  world: (CollisionWorld & { mapId: string; dims: MapDims; far: FarSource; farNodes?: FarNodeSource; city?: CitySource }) | null = null;
   /** Handle of the local entity, or 0 while there is none (spectating, dead). */
   ownHandle = 0;
   ownKind = 0;
@@ -1238,7 +1238,7 @@ export class ClientSession {
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
     const statics = this.opts.city?.(reg) ?? null;
     const city = statics && statics.count > 0 ? { city: { statics, complete: far.complete } } : {};
-    this.world = { dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city };
+    this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes, ...city };
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
