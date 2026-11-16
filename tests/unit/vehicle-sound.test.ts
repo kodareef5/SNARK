@@ -1,4 +1,4 @@
-// A helicopter and a boat are heard by their own families, from the state their snapshots carry.
+// Vehicles are heard from the state their snapshots carry: a helicopter and a boat by their own families, a car by the shared car's.
 import { expect, test } from "bun:test";
 import { RemoteSample } from "../../client/core/session.ts";
 import { Resolver } from "../../client/core/sound/resolve.ts";
@@ -51,6 +51,29 @@ test("a rotorcraft's engine layers follow its rotor, its start is heard once and
   r.y[0] = 40;
   frame();
   expect(looped).toEqual(["3 5 engine/high"]);
+});
+
+test("a car's engine runs while its driver's seat is taken and it has fuel: started as the driver sits, its layers by rpm, stopped as they leave", () => {
+  const { r, heard, looped, frame } = hearing("core:compact");
+  r.vehicleFuel[0] = 1; r.vehicleRpm[0] = 850;
+  frame();
+  expect([heard, looped]).toEqual([[], []]);
+  r.count = 2; r.id[1] = 9; r.seat[1] = 8; r.seatSlot[1] = 2;
+  frame();
+  expect([heard, looped]).toEqual([[], []]);
+  r.seatSlot[1] = 1;
+  frame();
+  expect(heard).toEqual(["5 engine/start"]);
+  expect(looped).toEqual(["0 5 engine/idle", "1 5 engine/low"]);
+  r.vehicleRpm[0] = 6800;
+  frame();
+  expect(looped).toEqual(["3 5 engine/high"]);
+  r.seat[1] = 0;
+  frame();
+  expect([heard, looped]).toEqual([["5 engine/start", "5 engine/stop"], []]);
+  r.seat[1] = 8; r.vehicleFuel[0] = 0;
+  frame();
+  expect(heard.length).toBe(2);
 });
 
 test("a boat's engine follows its rpm, and the water at its hull runs fast at speed", () => {

@@ -118,7 +118,7 @@ export class App {
   readonly ui = new Ui();
   readonly cam = new Camera();
   readonly hud = new HudModel();
-  /** Read-only to the shell: native sound follows this state and never drives simulation. */
+  /** The dash's readings of the vehicle driven. */
   readonly vehicleTelemetry = new VehicleTelemetry();
   readonly feedback = new Feedback();
   /** Laser dots this frame (client/core/render/laser.ts). */
