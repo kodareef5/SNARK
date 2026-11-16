@@ -1014,11 +1014,19 @@ export function mapNodes(map: MapData, hf: Heightfield, reg: Registry): NodeSour
 }
 
 /** Server side: sets the map's static pieces down in `structs`. Clients receive them by replication. */
+/** Each of the table's kinds as a content index, 0 for one this content lacks. */
+export function staticKinds(statics: MapStatics, reg: Registry): Uint16Array {
+  return Uint16Array.from(statics.kinds, (id) => reg.index.get(id) ?? 0);
+}
+
+/**
+ * Sets the map's statics down in the map's order, so that slot s of a chunk holds the s-th static of that chunk in the map's
+ * order (MapStatics row first[chunk] + s), with no owner and its kind's most health (Registry.maxHp).
+ */
 export function placeStatics(map: MapData, structs: StructureStore, reg: Registry): void {
   eachStatic(map.statics, (id, x, y, z, yaw) => {
     const kind = reg.index.get(id);
     if (kind === undefined) throw new Error(`map "${map.id}" needs content "${id}"`);
-    const def = reg.defs[kind]!;
-    structs.add(kind, x, y, z, yaw, 0, def.type === "structure" ? def.hp : 0);
+    structs.add(kind, x, y, z, yaw, 0, reg.maxHp[kind]!);
   });
 }

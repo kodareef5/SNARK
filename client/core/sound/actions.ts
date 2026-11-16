@@ -54,6 +54,10 @@ const K = {
   tamed: cueKey("tame/done"),
 };
 const VOICE = (n: string): number[] => [cueKey(`voice/male/${n}`), cueKey(`voice/female/${n}`)];
+/** By hold, what the item in hand makes; and what a blow or a shot of it lands as. */
+const IN_HAND = HOLD_NAMES.map((_, h) => [SWING[h]!, DRAW[h]!, RELEASE[h]!, FIRE[h]!, RELOAD[h]!, K.equip, K.pump, K.shell]);
+const LANDS = [K.flesh, K.stone];
+const MARKS = [K.marker, K.head, K.kill];
 const HURT = VOICE("hurt");
 const HURT_BADLY = VOICE("hurt/badly");
 const DEATH = VOICE("death");
@@ -232,6 +236,14 @@ export class ActionSounds {
     this.hungry = low;
     this.food = food;
     this.water = water;
+  }
+
+  /** Tells `want` of each sound the item in the player's hand may make, so that the first of each is not late. */
+  ahead(own: OwnState, ui: number, survivor: number, want: (owner: number, key: number) => void): void {
+    const o = this.ownerOf(own.held, survivor);
+    for (const k of IN_HAND[(this.reg.weapon[own.held] ?? FISTS).hold]!) want(o, k);
+    for (const k of LANDS) want(survivor, k);
+    for (const k of MARKS) want(ui, k);
   }
 
   /** An action begun: a swing, a draw, a reload or taking something in hand. */

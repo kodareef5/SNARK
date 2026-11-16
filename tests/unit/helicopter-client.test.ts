@@ -3,7 +3,6 @@ import { Controls } from "../../client/core/controls.ts";
 import { HudModel, VehicleTelemetry } from "../../client/core/hud.ts";
 import { buildHud, KEY_VEHICLE } from "../../client/core/ui/hud.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
-import { vehicleSoundTargets } from "../../client/core/audio/vehicle.ts";
 import { predictedVehiclePose } from "../../client/core/vehicle-view.ts";
 import { HELICOPTER } from "../../content/vehicles/helicopter.ts";
 import { Body, BTN_CROUCH, BTN_JUMP, BTN_MOD, BTN_PRIMARY, BTN_PRONE } from "../../shared/sim/character.ts";
@@ -36,12 +35,11 @@ test("predicted aircraft presentation crosses inversion without an Euler jump or
   expect(pose.rotorPhase!).toBeGreaterThan(a.vehicleRotorPhase);
 });
 
-test("rotor instruments show physical flight state in wide and portrait views and leave car audio silent", () => {
+test("rotor instruments show physical flight state in wide and portrait views", () => {
   const b = new Body(), v = new VehicleTelemetry(), hud = new HudModel();
   b.fuel = 72; b.vehicleRotorRpm = 410; b.vehicleCollective = .63; b.vehicleEngineOn = true; b.vy = -2.4; b.vz = 20;
   v.updateRotor(4, b, HELICOPTER, 12.6, true, false); hud.vehicle = v;
   expect(v.rpm).toBe(410); expect(v.vertical).toBe(-2.4); expect(v.collective).toBe(.63);
-  expect(vehicleSoundTargets(v).engine).toBe(0);
   for (const aspect of [16 / 9, 9 / 16]) {
     const f = new UiFrame(); f.begin(aspect); buildHud(f, hud);
     const gauges = f.nodes.slice(0, f.count).filter(n => n.key >= KEY_VEHICLE && n.key < KEY_VEHICLE + 11);

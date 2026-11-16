@@ -30,6 +30,9 @@ export async function serveFile(dir: string, req: Request): Promise<Response> {
   }
   // A whole file goes out compressed where a compressed copy was built beside it. A range never does: its offsets are the file's own.
   const packed = Bun.file(path + ".br");
-  if ((req.headers.get("accept-encoding") ?? "").includes("br") && (await packed.exists())) return new Response(packed, { headers: { ...headers, "content-encoding": "br", vary: "accept-encoding" } });
+  if (await packed.exists()) {
+    headers.vary = "accept-encoding";
+    if ((req.headers.get("accept-encoding") ?? "").includes("br")) return new Response(packed, { headers: { ...headers, "content-encoding": "br" } });
+  }
   return new Response(file, { headers: { ...headers, "accept-ranges": "bytes" } });
 }

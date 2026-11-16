@@ -241,7 +241,7 @@ export function startServer(opts: ServerOptions = {}): RunningServer {
   const server = Bun.serve<Socket>({
     port: opts.port ?? 8787,
     ...(hostname ? { hostname } : {}),
-    ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) } } : {}),
+    ...(opts.cert && opts.key ? { tls: { cert: Bun.file(opts.cert), key: Bun.file(opts.key) }, http2: true } : {}),
     async fetch(req, srv) {
       const url = new URL(req.url);
       const answered = opts.routes?.(req, url);

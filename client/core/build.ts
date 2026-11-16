@@ -56,6 +56,8 @@ export class Builder {
   private readonly aim = makeAim();
   private support: Support | null = null;
   private supportOf: unknown = null;
+  /** The last question support was asked (kind, pose, the store's shapes) and its answer, 1 if it stands. */
+  private readonly stood = new Float64Array(7).fill(-1);
   private qDownAt = -1;
   private refusal = "";
   private refusalUntil = 0;
@@ -124,8 +126,15 @@ export class Builder {
         if (this.supportOf !== structs) {
           this.supportOf = structs;
           this.support = new Support(structs, reg, (x, z) => world.hf.heightAt(x, z));
+          this.stood[5] = -1;
         }
-        if (!this.support!.stands(kind, p.x, p.y, p.z, p.yaw)) problem = RESULT_NO_SUPPORT;
+        // Asked again only when the piece, its pose or any piece's place has changed.
+        const s = this.stood;
+        if (s[0] !== kind || s[1] !== p.x || s[2] !== p.y || s[3] !== p.z || s[4] !== p.yaw || s[5] !== structs.shapes) {
+          s.set([kind, p.x, p.y, p.z, p.yaw, structs.shapes]);
+          s[6] = this.support!.stands(kind, p.x, p.y, p.z, p.yaw) ? 1 : 0;
+        }
+        if (s[6] === 0) problem = RESULT_NO_SUPPORT;
       }
     }
     this.problem = problem;

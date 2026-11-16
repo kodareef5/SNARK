@@ -6,12 +6,13 @@ import { deriveRegistry, parseTuning } from "../../shared/content/tuning.ts";
 import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, YAW_UNITS, chunkAt, chunkCx, chunkCz, type MapDims } from "../../shared/coords.ts";
 import { handleIndex } from "../../shared/ids.ts";
 import { PI, TAU } from "../../shared/math/scalar.ts";
-import { BitReader, BitWriter } from "../../shared/net/codec.ts";
+import { BitReader, BitWriter, Named } from "../../shared/net/codec.ts";
 import {
   CMD_TEXT,
   CMD_VIEW,
   BUTTON_MASK,
   HELLO_SPECTATE,
+  HELLO_STATICS,
   INPUT_HOLD_TICKS,
   INPUT_KEPT,
   INPUT_REDUNDANCY,
@@ -100,14 +101,14 @@ import { Inventory } from "../../shared/sim/items.ts";
 import { V_COUNT, Vitals } from "../../shared/sim/vitals.ts";
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import type { Heightfield } from "../../shared/world/heightfield.ts";
+import { staticKinds, type MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeField, type NodeSource } from "../../shared/world/nodes.ts";
 import { GONE_TAKEN, StructureStore } from "../../shared/world/structures.ts";
-import { CMD_FAR, RESULT_BUSY, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
+import { CMD_FAR, CMD_STATICS, RESULT_BUSY, RESULT_OK, S_FAR, S_MARKS, S_TACTICAL } from "../../shared/net/protocol.ts";
 import { FarStore } from "./farcells.ts";
 import type { FarSource } from "./render/far.ts";
 import type { CitySource } from "./render/farcity.ts";
 import { CityStatics } from "../../shared/world/city.ts";
-import type { MapStatics } from "../../shared/world/mapfile.ts";
 import { NodeChanges, type FarNodeSource } from "./render/farnodes.ts";
 import { MapStore } from "./tactical.ts";
 
@@ -132,6 +133,8 @@ export interface SessionOptions {
   nodes?(hf: Heightfield, registry: Registry): NodeSource | null;
   /** The map's static pieces by chunk, which the far city draws past the near rows (render/farcity.ts). Without it the far city is made of the statics staticsArrived gives. */
   city?(registry: Registry): CityStatics | null;
+  /** The statics of the map file resolveMap accepts. With them the server sends a chunk's only where they differ (HELLO_STATICS). */
+  statics?: MapStatics;
 }
 
 /** Null if the tuning does not parse or the derived content does not compile. */
@@ -442,8 +445,15 @@ export class ClientSession {
   readonly far = new FarStore();
   /** Per chunk, 1 once its last row has come since it was last dropped: the near store holds it whole. */
   private whole = new Uint8Array(0);
-  /** The map's statics once they have come (staticsArrived). */
-  private mapStatics: MapStatics | null = null;
+  /** The map's statics, come after the session began (staticsArrived). */
+  private arrived: MapStatics | null = null;
+  /** The command that told the server of them (CMD_STATICS), until its answer. */
+  private staticsSeq = 0;
+  /** The map's statics' kinds as content indices, from the welcome or CMD_STATICS's answer, when the client takes chunks from them. */
+  private staticKinds: Uint16Array | null = null;
+  private readonly kinds = new Named();
+  private readonly yaws = new Named();
+  private readonly owners = new Named();
   readonly progress = { xp: 0, level: 1, statPoints: 0, engramPoints: 0, engrams: [] as number[], jobs: [] as { item: number; left: number; doneAt: number }[], version: 0 };
   /** Resource nodes around the body, filled from the map minus those the server reports used up. */
   nodeField: NodeField | null = null;
@@ -547,7 +557,7 @@ export class ClientSession {
       }
     };
     const w = this.w;
-    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, opts.spectate ? HELLO_SPECTATE : 0, opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
+    writeHello(w, PROTOCOL_VERSION, (opts.registry.source ?? opts.registry).hash, opts.clipHash ?? 0, opts.name, (opts.spectate ? HELLO_SPECTATE : 0) | (opts.statics ? HELLO_STATICS : 0), opts.key, opts.look ?? null, opts.password ?? "", opts.ticket ?? null);
     conn.send(CH_RELIABLE, w.bytes());
   }
 
@@ -627,6 +637,7 @@ export class ClientSession {
     let dt = this.lastNow < 0 ? 0 : nowMs - this.lastNow;
     const frameMs = dt;
     this.lastNow = nowMs;
+    if (this.arrived && !this.staticKinds && this.staticsSeq === 0) this.staticsSeq = this.command(CMD_STATICS);
     if (dt > 100) this.hitch = true;
     if (dt > 250) dt = 250;
     const ticks = (dt / 1000) * TICK_RATE;
@@ -918,6 +929,10 @@ export class ClientSession {
       const code = r.u8();
       if (r.overflow) return;
       // The newest view or far request, refused, is forgotten so that it is asked again.
+      if (seq !== 0 && seq === this.staticsSeq) {
+        if (code === RESULT_OK) this.staticKinds = staticKinds(this.arrived!, this.registry);
+        else if (code === RESULT_BUSY) this.staticsSeq = 0;
+      }
       if (code === RESULT_BUSY && seq !== 0 && (seq === this.viewSeq || seq === this.farSeq)) {
         if (seq === this.viewSeq) this.viewCap = this.viewBytes = -1;
         else this.farAsked = -1;
@@ -1270,6 +1285,7 @@ export class ClientSession {
     const day = r.f64();
     const night = r.f64();
     const motdSeconds = r.u16();
+    const fills = r.bool();
     const refuse = (reason: number): void => {
       this.state = "closed";
       this.closeReason = reason;
@@ -1292,12 +1308,14 @@ export class ClientSession {
     const source = this.opts.nodes?.(hf, reg) ?? null;
     this.nodeField = source ? new NodeField(dims, reg, source) : null;
     this.whole = new Uint8Array(dims.chunksX * dims.chunksZ);
+    this.staticKinds = fills && this.opts.statics ? staticKinds(this.opts.statics, reg) : null;
+    this.staticsSeq = 0;
     const far: FarSource = { cells: this.far, complete: (chunk) => this.whole[chunk] === 1 };
     const field = this.nodeField;
     this.nodeChanges = field ? new NodeChanges(dims) : null;
     const nodes = field ? { nodes: field.store, farNodes: { nodes: field.source, held: (c: number) => field.isLoaded(c), gone: (c: number) => this.nodeGone.get(c), changes: this.nodeChanges! } } : {};
     this.world = { mapId, dims, hf, structs: new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts), far, ...nodes };
-    this.startCity();
+    this.startCity(this.arrived);
     this.recenterNodes();
     this.move = move;
     this.ownPrev.copy(this.own);
@@ -1308,17 +1326,20 @@ export class ClientSession {
     this.state = "active";
   }
 
-  /** Call when the map's statics arrive after the session began: the far city starts with them. */
+  /**
+   * Call when the map's statics arrive after the session began: the far city starts with them, and the server is told, so
+   * that from its answer on it sends a chunk's statics only where they differ from them (CMD_STATICS).
+   */
   staticsArrived(statics: MapStatics): void {
-    this.mapStatics = statics;
-    this.startCity();
+    this.arrived = statics;
+    this.startCity(statics);
   }
 
-  private startCity(): void {
+  private startCity(statics: MapStatics | null): void {
     const world = this.world;
     if (!world || world.city) return;
-    const statics = this.opts.city?.(this.registry) ?? (this.mapStatics ? new CityStatics(world.dims, this.mapStatics, this.registry) : null);
-    if (statics && statics.count > 0) world.city = { statics, complete: world.far.complete };
+    const city = this.opts.city?.(this.registry) ?? (statics ? new CityStatics(world.dims, statics, this.registry) : null);
+    if (city && city.count > 0) world.city = { statics: city, complete: world.far.complete };
   }
 
   private snapshot(r: BitReader): void {
@@ -1517,32 +1538,61 @@ export class ClientSession {
     const final = r.bool();
     const count = r.bits(16);
     if (chunk >= world.structs.chunks.length) return;
+    const structs = world.structs;
+    const statics = this.staticKinds ? (this.arrived ?? this.opts.statics)! : null;
+    const maxHp = this.registry.maxHp;
+    if (statics && statics.first[chunk + 1]! > statics.first[chunk]! && r.bool()) {
+      // Slots the server has as the map has them, set down from this client's own copy of the map.
+      const first = r.u16();
+      const n = r.u16();
+      const at = statics.first[chunk]! + first;
+      if (r.overflow || at + n > statics.first[chunk + 1]!) return;
+      for (let m = at; m < at + n; m++) {
+        const kind = this.staticKinds![statics.kind[m]!]!;
+        structs.put(chunk, m - at + first, kind, statics.x[m]!, statics.y[m]!, statics.z[m]!, statics.yaw[m]!, 0, maxHp[kind]!, version);
+      }
+    }
     const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
     const kinds = this.registry.defs.length;
     const told = this.onStructure && this.whole[chunk] === 1 ? this.onStructure : null;
-    const rows = world.structs.chunks[chunk];
+    const rows = structs.chunks[chunk];
+    this.kinds.reset();
+    this.yaws.reset();
+    this.owners.reset();
+    let slot = -1;
+    let height = 0;
     for (let i = 0; i < count; i++) {
-      const slot = r.u16();
-      const kind = r.u16();
-      const was = told && rows && slot < rows.high ? rows.kind[slot]! : 0;
+      slot += r.bool() ? 1 : r.varint() + 2;
+      const inPlace = r.bool();
+      const kind = inPlace ? 0 : this.kinds.read(r, 16);
+      if (r.overflow || slot > 0xffff || kind >= kinds) return;
+      const was = rows && slot < rows.high ? rows.kind[slot]! : 0;
       const hpWas = was !== 0 ? rows!.hp[slot]! : 0;
+      if (inPlace) {
+        const owner = this.owners.read(r, 0);
+        const hp = r.bool() ? maxHp[was]! : r.f32();
+        if (r.overflow) return;
+        if (was === 0) continue;
+        if (told && hpWas !== Math.fround(hp)) told(was, was, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, hp, -1);
+        structs.put(chunk, slot, was, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, rows!.yaw[slot]!, owner, hp, version);
+        continue;
+      }
       if (kind === 0) {
-        if (!r.overflow) {
-          if (told && was !== 0) told(was, 0, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, 0, GONE_TAKEN);
-          world.structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
-        }
+        if (told && was !== 0) told(was, 0, rows!.x[slot]!, rows!.y[slot]!, rows!.z[slot]!, hpWas, 0, GONE_TAKEN);
+        structs.put(chunk, slot, 0, 0, 0, 0, 0, 0, 0, version);
         continue;
       }
       const x = x0 + r.bits(15) / STRUCT_UNITS;
       const z = z0 + r.bits(15) / STRUCT_UNITS;
-      const y = r.svarint() / STRUCT_UNITS;
-      const yaw = r.u16();
-      const owner = r.varint();
-      const hp = r.f32();
-      if (r.overflow || kind >= kinds) return;
+      if (!r.bool()) height += r.svarint();
+      const yaw = this.yaws.read(r, 16);
+      const owner = this.owners.read(r, 0);
+      const hp = r.bool() ? maxHp[kind]! : r.f32();
+      if (r.overflow) return;
+      const y = height / STRUCT_UNITS;
       if (told && (was !== kind || hpWas !== Math.fround(hp))) told(was, kind, x, y, z, hpWas, hp, -1);
-      world.structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
+      structs.put(chunk, slot, kind, x, y, z, yaw, owner, hp, version);
     }
     // Removals follow, each as runs of slots. A row newer than its removal (the slot was reused) is left alone.
     const t = world.structs.chunks[chunk];
