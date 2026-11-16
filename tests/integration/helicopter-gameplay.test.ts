@@ -177,3 +177,13 @@ test("aircraft contacts respect altitude and seated crew while solid cabin impac
     expect(ents.seat[c.ent]).toBe(e + 1);
   } finally { h.host.shutdown(); }
 });
+
+test("parking reserves the complete rotor discs of both aircraft", () => {
+  const { h, actor } = setup();
+  try {
+    expect(h.host.spawnVehicle("core:helicopter", 62, 64, actor.team)).toBeGreaterThanOrEqual(0);
+    // Cabins do not meet here; the two main rotors do. Neither a found placement nor a kit may create this overlap.
+    expect(h.host.spawnVehicle("core:helicopter_police", 68, 64, actor.team)).toBe(-1);
+    expect(h.host.spawnVehicle("core:helicopter_police", 72, 64, actor.team)).toBeGreaterThanOrEqual(0);
+  } finally { h.host.shutdown(); }
+});

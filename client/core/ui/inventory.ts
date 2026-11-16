@@ -1,12 +1,15 @@
 // Every action is a command, and the grids show what the server last said, so nothing here can get out of step with it.
 // A click picks a stack up or puts it down, a middle click picks up half, and a right click eats, uses or puts on.
 
+import { CUE_HURT_SHIFT } from "../../../shared/anim/pose.ts";
+import { makeHandle } from "../../../shared/ids.ts";
 import type { ItemDef } from "../../../shared/content/defs.ts";
 import type { Registry } from "../../../shared/content/registry.ts";
-import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT } from "../../../shared/net/protocol.ts";
+import { BOX_OPEN, BOX_SELF, CMD_ATTACH, CMD_CLOSE, CMD_DETACH, CMD_DROP, CMD_LOAD, CMD_MOVE, CMD_REPAIR, CMD_UNLOAD, CMD_FEED, CMD_ORDER, ORDER_FOLLOW, ORDER_LEVEL, ORDER_MATE, ORDER_STANCE, ORDER_STAY, ORDER_UNMATE, ORDER_UNSADDLE, ORDER_WANDER, ORDER_YOURS, CMD_USE, CMD_CRAFT_BLUEPRINT, CMD_VEHICLE, VEHICLE_REFUEL, VEHICLE_REPAIR } from "../../../shared/net/protocol.ts";
+import { VEHICLE_FUEL_PER_GASOLINE, VEHICLE_REPAIR_BILL, VEHICLE_REPAIR_STEP } from "../../../shared/sim/vehicle-maintenance.ts";
 import { ARMOR_SLOTS, FLAG_BLUEPRINT, HOTBAR_SLOTS, QUALITY_MUL, QUALITY_NAMES, blueprintCost, type Inventory } from "../../../shared/sim/items.ts";
-import type { ClientSession } from "../session.ts";
-import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import { RemoteSample, type ClientSession } from "../session.ts";
+import { K_BUTTON, K_PANEL, columns, lineHeight, wrap, type UiFrame } from "./nodes.ts";
 import { KEY_STATION_VIEW, StationPanel } from "./station.ts";
 import { S_BUTTON, S_LABEL, S_PANEL, S_SLOT, S_SLOT_HELD, S_SLOT_TEXT, S_SWATCH, S_TITLE } from "./style.ts";
 
@@ -54,6 +57,11 @@ const PAD = 12;
 
 /** The button that makes one from the picked-up blueprint. */
 export const KEY_INV_CRAFT = 297;
+export const KEY_VEHICLE_SERVICE = 2860;
+export const KEY_VEHICLE_REFUEL = 2898;
+export const KEY_VEHICLE_REPAIR = 2899;
+export const KEY_INV_DEPLOY = 2900;
+export const KEY_VEHICLE_TAB = 2901;
 /** A slot's colour by quality: none for primitive, then green, blue, purple, gold and cyan, as ARK's tiers read. */
 const QUALITY_TINT: readonly number[] = [-1, 0x3f7a42, 0x31579a, 0x6c4290, 0x8f7426, 0x2b8790];
 
@@ -72,6 +80,11 @@ export function itemLabel(reg: Registry, item: number): string {
 
 export class InventoryScreen {
   open = false;
+  /** The app starts the world preview; the inventory never creates a vehicle directly. */
+  onDeploy: ((slot: number) => void) | null = null;
+  private readonly vehicleSample = new RemoteSample();
+  private vehicleBag = false;
+  private service: { handle: number; fuel: boolean; repair: boolean; lines: string[] } | null = null;
   /** Box and slot of the picked-up stack. `held` is -1 for none. */
   heldBox = BOX_SELF;
   held = -1;
@@ -124,7 +137,16 @@ export class InventoryScreen {
       return;
     }
     if (kind === 0 && this.registry && this.station.click(key, session, this.registry)) return;
-    const subject = session.subject;
+    if (kind === 0 && key === KEY_VEHICLE_TAB) { this.vehicleBag = !this.vehicleBag; return; }
+    if (kind === 0 && (key === KEY_VEHICLE_REFUEL || key === KEY_VEHICLE_REPAIR)) {
+      const service = this.service, refuel = key === KEY_VEHICLE_REFUEL;
+      if (service && (refuel ? service.fuel : service.repair)) session.command(CMD_VEHICLE, w => { w.u8(refuel ? VEHICLE_REFUEL : VEHICLE_REPAIR); w.u32(service.handle); if (refuel) w.u8(0); });
+      return;
+    }
+    if (kind === 0 && key === KEY_INV_DEPLOY && this.heldBox === BOX_SELF && this.held >= 0 && this.registry?.vehicleDeploy[session.inventory?.item[this.held] ?? 0]) {
+      this.onDeploy?.(this.held); if (this.onDeploy) this.close(session); return;
+    }
+    const subject = this.service ? null : session.subject;
     if (kind === 0 && subject?.owned && subject.id >= 0 && key >= KEY_OPEN_ORDER && key <= KEY_OPEN_UNSADDLE) {
       // Orders to an owned creature: follow or stay, the next stance, saddle off, or a level into a stat.
       const next = (subject.stance + 1) % STANCE_WORDS.length;
@@ -170,7 +192,9 @@ export class InventoryScreen {
     if (kind !== 0 || slot < 0 || !inv) return;
     if (button === 2) {
       // Only a carried item can be used, but a torpor dose in an open creature's inventory can be fed to it.
-      if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
+      if (box === BOX_SELF && this.registry?.vehicleDeploy[inv.item[slot]!] && !(inv.flags[slot]! & FLAG_BLUEPRINT)) {
+        this.onDeploy?.(slot); if (this.onDeploy) this.close(session);
+      } else if (box === BOX_SELF && inv.item[slot] !== 0) session.command(CMD_USE, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
       else if (box === BOX_OPEN && session.subject && inv.item[slot] !== 0 && (this.registry?.doseTorpor[inv.item[slot]!] ?? 0) > 0) session.command(CMD_FEED, (w) => (w.varint(slot), w.u16(inv.item[slot]!)));
       this.held = -1;
       return;
@@ -214,7 +238,7 @@ export class InventoryScreen {
     const isOpen = !!session?.open;
     if (isOpen && !this.hadOpen) {
       this.open = true;
-      this.page = 0;
+      this.page = 0; this.vehicleBag = false;
     }
     this.hadOpen = isOpen;
     const own = session?.inventory;
@@ -237,20 +261,55 @@ export class InventoryScreen {
     this.pageSize = cols * OPEN_ROWS;
     this.pages = other ? Math.max(1, Math.ceil(other.bag / this.pageSize)) : 1;
     if (this.page >= this.pages) this.page = this.pages - 1;
-    const onPage = other ? Math.min(this.pageSize, other.bag - this.page * this.pageSize) : 0;
+    let onPage = other ? Math.min(this.pageSize, other.bag - this.page * this.pageSize) : 0;
     // An open creature has a status line under its name.
     const subject = other ? session.subject : null;
+    this.service = null;
+    if (subject && typeof session.sampleRemote === "function") {
+      session.sampleRemote(this.vehicleSample);
+      const r = this.vehicleSample, index = r.id.subarray(0, r.count).indexOf(subject.id);
+      const def = index >= 0 ? reg.vehicle[r.kind[index]!] : null;
+      if (def && index >= 0) {
+        const hull = session.looked?.id === subject.id && session.looked.health >= 0 ? `${Math.round(session.looked.health * 100)}%` : ["75–100%", "50–75%", "25–50%", "under 25%"][(r.cue[index]! >>> CUE_HURT_SHIFT) & 3]!;
+        const fuel = r.vehicleFuel[index]!, engine = r.vehicleEngineCondition[index]!, rotor = r.vehicleRotorCondition[index]!;
+        const stopped = r.vehicleGrounded[index] !== 0 && (def.movement !== "rotor" || (!r.vehicleEngineOn[index] && r.vehicleRotorRpm[index]! <= 30));
+        const gasoline = reg.index.get("core:gasoline")!, haveFuel = own.total(gasoline);
+        const repairItems = VEHICLE_REPAIR_BILL.map(([id]) => own.total(reg.index.get(id)!));
+        const maxCost = VEHICLE_REPAIR_BILL.map(([, n]) => Math.ceil(n * VEHICLE_REPAIR_STEP));
+        const lines = [`Hull ${hull} · Fuel ${(fuel * def.spec.fuelCapacity).toFixed(1)}/${def.spec.fuelCapacity}`];
+        if (def.movement === "rotor") lines.push(`Engine ${Math.round(engine * 100)}% · Rotor ${Math.round(rotor * 100)}%`);
+        lines.push(stopped ? "Service available when stationary" : "To service: land and wait for rotors to stop");
+        lines.push(`Refuel: ${VEHICLE_FUEL_PER_GASOLINE} fuel per gasoline · carrying ${haveFuel}`);
+        lines.push(`Repair: up to ${VEHICLE_REPAIR_STEP * 100}%; at most ${maxCost[0]} ingots, ${maxCost[1]} polymer, ${maxCost[2]} electronics`);
+        lines.push(`Materials: ${repairItems[0]} ingots, ${repairItems[1]} polymer, ${repairItems[2]} electronics`);
+        this.service = { handle: makeHandle(subject.id, r.gen[index]!), fuel: stopped && fuel < .9999 && haveFuel > 0,
+          repair: stopped && repairItems.every(n => n > 0), lines: [] };
+        for (const line of lines) wrap(line, columns(w - PAD * 2, S_LABEL), this.service.lines);
+      }
+    }
     // An owned one has a row of buttons under that, and a second row when it has levels to spend.
-    const orderH = subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
-    const subjectH = subject ? infoH + 2 + orderH : 0;
+    const orderH = !this.service && subject?.owned ? 28 + (subject.points > 0 ? 28 : 0) : 0;
+    const subjectH = this.service ? this.service.lines.length * infoH + 30 : subject ? infoH + 2 + orderH : 0;
+    if (this.service && other) {
+      const roomRows = Math.max(1, Math.min(OPEN_ROWS, Math.floor((f.height - titleH - subjectH - PAD * 2 - 48) / (CELL + GAP))));
+      this.pageSize = cols * roomRows; this.pages = Math.max(1, Math.ceil(other.bag / this.pageSize));
+      if (this.page >= this.pages) this.page = this.pages - 1;
+    }
+    onPage = other ? Math.min(this.pageSize, other.bag - this.page * this.pageSize) : 0;
     const otherH = other ? titleH + subjectH + rows(this.pages > 1 ? this.pageSize : other.bag) + PAD * 2 : 0;
     // An open crafting station's panel goes beside the column, the two centred together. Where the canvas is too narrow for
     // both, the open container's title row has a button that shows the panel alone, in place of the inventory.
     const stationW = other && this.station.showing(session) ? this.station.width(f) + 8 : 0;
     const narrow = stationW > 0 && w + stationW > f.width - 8;
     this.station.begin(session, narrow);
-    const x0 = Math.round((f.width - w - (narrow ? 0 : stationW)) / 2);
+    const vehicleWide = !!this.service && f.width >= 2 * w + 16, vehicleNarrow = !!this.service && !vehicleWide;
+    let x0 = Math.round((f.width - w - (vehicleWide ? w + 8 : narrow ? 0 : stationW)) / 2);
     let y = Math.max(4, Math.round((f.height - ownH - otherH - (other ? 8 : 0)) / 2));
+    if (this.service) y = vehicleNarrow ? 36 : Math.max(4, Math.round((f.height - Math.max(ownH, otherH)) / 2));
+    if (vehicleNarrow) {
+      const tab = f.add(KEY_VEHICLE_TAB, K_BUTTON, x0, 4, w, 26, S_BUTTON);
+      tab.text = this.vehicleBag ? "Aircraft / cargo" : "Your bag"; tab.interactive = true;
+    }
     const tick = session.serverTick;
     if (narrow && this.station.alone) {
       this.held = -1;
@@ -289,7 +348,7 @@ export class InventoryScreen {
     };
     const fit = (text: string): string => text.slice(0, Math.floor((w - PAD * 2) / (18 * 0.6)));
 
-    if (other) {
+    if (other && !(vehicleNarrow && this.vehicleBag)) {
       f.add(KEY_OPEN_PANEL, K_PANEL, x0, y, w, otherH, S_PANEL);
       const pagerW = this.pages > 1 ? 120 : 0;
       const viewW = narrow ? 84 : 0;
@@ -309,7 +368,15 @@ export class InventoryScreen {
         }
         f.text(KEY_OPEN_PAGE + 1, px + 34, y + PAD + 2, pagerW - 68, S_LABEL, `${this.page + 1} / ${this.pages}`);
       }
-      if (subject) {
+      if (this.service) {
+        const service = this.service, sy = y + PAD + titleH;
+        for (let i = 0; i < service.lines.length; i++) f.text(KEY_VEHICLE_SERVICE + i, x0 + PAD, sy + i * infoH, w - PAD * 2, S_LABEL, service.lines[i]!);
+        const bw = (w - PAD * 2 - GAP) / 2;
+        for (const [i, key, label, enabled] of [[0, KEY_VEHICLE_REFUEL, "Refuel", service.fuel], [1, KEY_VEHICLE_REPAIR, "Repair up to 25%", service.repair]] as const) {
+          const b = f.add(key, K_BUTTON, x0 + PAD + i * (bw + GAP), sy + service.lines.length * infoH + 3, bw, 24, S_BUTTON);
+          b.text = label; b.interactive = enabled; b.alpha = enabled ? 1 : .45;
+        }
+      } else if (subject) {
         const pct = (v: number): string => `${Math.round(v * 100)}%`;
         const grown = subject.stage >= STAGE_WORDS.length;
         const sex = subject.breeds ? (subject.female ? "  female" : "  male") : "";
@@ -352,7 +419,9 @@ export class InventoryScreen {
       }
       grid(other, BOX_OPEN, KEY_OPEN_SLOT, y + PAD + titleH + subjectH + 4, this.page * this.pageSize, onPage);
       if (stationW > 0 && !narrow) this.station.build(f, session, reg, x0 + w + 8, y);
-      y += otherH + 8;
+      if (vehicleNarrow) return;
+      if (vehicleWide) x0 += w + 8;
+      else y += otherH + 8;
     }
     f.add(KEY_INV_PANEL, K_PANEL, x0, y, w, ownH, S_PANEL);
     f.text(KEY_INV_TITLE, x0 + PAD, y + PAD, w - PAD * 2, S_TITLE, fit(`Inventory  ${own.weight(reg).toFixed(1)} kg`));
@@ -402,10 +471,11 @@ export class InventoryScreen {
       if ((inv.flags[shown]! & FLAG_BLUEPRINT) !== 0) info = blueprintInfo(reg, item, q);
     }
     // A picked-up blueprint can be made from, in the bag or in the station it belongs to.
-    const craftW = this.held >= 0 && heldInv && (heldInv.flags[this.held]! & FLAG_BLUEPRINT) !== 0 ? 64 : 0;
+    const deploy = this.onDeploy && this.heldBox === BOX_SELF && this.held >= 0 && heldInv && reg.vehicleDeploy[heldInv.item[this.held]!] && !(heldInv.flags[this.held]! & FLAG_BLUEPRINT);
+    const craftW = deploy ? 76 : this.held >= 0 && heldInv && (heldInv.flags[this.held]! & FLAG_BLUEPRINT) !== 0 ? 64 : 0;
     if (craftW > 0) {
-      const b = f.add(KEY_INV_CRAFT, K_BUTTON, x0 + w - PAD - craftW, y + ownH - PAD - infoH - 2, craftW, infoH + 2, S_BUTTON);
-      b.text = "Craft";
+      const b = f.add(deploy ? KEY_INV_DEPLOY : KEY_INV_CRAFT, K_BUTTON, x0 + w - PAD - craftW, y + ownH - PAD - infoH - 2, craftW, infoH + 2, S_BUTTON);
+      b.text = deploy ? "Assemble" : "Craft";
       b.interactive = true;
     }
     f.text(KEY_INV_INFO, x0 + PAD, y + ownH - PAD - infoH, w - PAD * 2 - craftW, S_LABEL, info.slice(0, Math.floor((w - PAD * 2 - craftW) / 7.2)));

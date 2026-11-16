@@ -9,9 +9,10 @@ import { stanceEye } from "../shared/sim/character.ts";
 import { F_ALIVE, F_GROUNDED } from "../shared/sim/entities.ts";
 import { FLAG_BLUEPRINT } from "../shared/sim/items.ts";
 import { V_HEALTH } from "../shared/sim/vitals.ts";
+import { VEHICLE_FUEL_PER_GASOLINE as FUEL_PER_ITEM, VEHICLE_REPAIR_STEP as REPAIR_STEP, VEHICLE_REPAIR_BILL as REPAIR_BILL } from "../shared/sim/vehicle-maintenance.ts";
 import { isRotorVehicle, type VehicleDefinition } from "../shared/sim/vehicle.ts";
 import { groundUnder } from "../shared/world/collide.ts";
-import { helicopterPlacement } from "../shared/world/helicopter.ts";
+import { helicopterPlacement, helicopterMeetsCapsule, helicopterMeetsVehicle } from "../shared/world/helicopter.ts";
 import type { MapVehicle } from "../shared/world/mapfile.ts";
 import { castWorld, HIT_NONE, rayHit } from "../shared/world/ray.ts";
 import type { Client, GameServer } from "./game.ts";
@@ -44,9 +45,6 @@ export interface VehicleServiceContext {
 }
 
 /** Fraction of a full repair per action. The complete bill is intentionally much less than a new assembly. */
-const REPAIR_STEP = .25;
-const REPAIR_BILL = [["core:ingot", 160], ["core:polymer", 40], ["core:electronics", 30]] as const;
-const FUEL_PER_ITEM = 5;
 const REACH = 5;
 const DEPLOY_REACH = 12;
 
@@ -180,6 +178,21 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
   if (isRotorVehicle(def)) {
     if (!helicopterPlacement(world, x, y, z, yaw, def)) return false;
   } else if (Math.abs(y - groundUnder(world.hf, x, z, spec.halfWidth)) > .2) return false;
+  if (isRotorVehicle(def)) {
+    const posed = { x, y, z, yaw, pitch: 0, roll: 0 }, ents = world.ents, pad = 15;
+    for (let cz = Math.max(0, Math.floor((z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((z + pad) / CHUNK_SIZE)); cz++) {
+      for (let cx = Math.max(0, Math.floor((x - pad) / CHUNK_SIZE)); cx <= Math.min(world.dims.chunksX - 1, Math.floor((x + pad) / CHUNK_SIZE)); cx++) {
+        for (let e = ents.chunkHead[cz * world.dims.chunksX + cx]!; e >= 0; e = ents.next[e]!) {
+          if (!(ents.flags[e]! & F_ALIVE)) continue;
+          const kind = ents.kind[e]!, other = world.reg.vehicle[kind];
+          if (other ? helicopterMeetsVehicle(def, posed, other, {
+            x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!,
+            ...(isRotorVehicle(other) ? { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! } : {}),
+          }) : helicopterMeetsCapsule(def, posed, ents.x[e]!, ents.y[e]!, ents.z[e]!, world.reg.bodyRadius[kind]!, world.reg.bodyHeight[kind]!)) return false;
+        }
+      }
+    }
+  }
   const parts: { x: number; y: number; z: number; radius: number; height: number }[] = [];
   const add = (lx: number, ly: number, lz: number, radius: number, height: number): void => { parts.push({ x: x + cs * lx + sn * lz, y: y + ly, z: z - sn * lx + cs * lz, radius, height }); };
   const along = Math.max(0, spec.halfLength - spec.halfWidth);
@@ -202,6 +215,7 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
   }
   for (const part of parts) {
     if (part.height > .2 && !placeFree(world, part.x, part.y, part.z, part.radius, part.height)) return false;
+    if (isRotorVehicle(def)) continue; // Whole aircraft/actor envelopes were checked above, including adjacent rotor discs.
     // Dynamic bodies are separate from the static collision world. Test only nearby chunks and vertical overlap.
     const pad = part.radius + 8;
     for (let cz = Math.max(0, Math.floor((part.z - pad) / CHUNK_SIZE)); cz <= Math.min(world.dims.chunksZ - 1, Math.floor((part.z + pad) / CHUNK_SIZE)); cz++) {
