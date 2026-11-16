@@ -163,6 +163,8 @@ export class StructureStore {
   readonly dims: MapDims;
   readonly chunks: (ChunkTable | null)[];
   count = 0;
+  /** Bumped with any chunk's `shape`. */
+  shapes = 0;
   /** Called after any change to a chunk's table. `healthOnly` is true when nothing but a piece's health changed. */
   onChunkChanged: ((chunk: number, healthOnly: boolean) => void) | null = null;
 
@@ -454,7 +456,8 @@ export class StructureStore {
   dropChunk(chunk: number): void {
     const t = this.chunks[chunk];
     if (!t) return;
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0) this.erase(chunk, t, s, 0);
+    // Later slots were written later, so they lie nearer the head of each cell's list.
+    for (let s = t.high - 1; s >= 0; s--) if (t.kind[s] !== 0) this.erase(chunk, t, s, 0);
     this.chunks[chunk] = null;
     this.onChunkChanged?.(chunk, false);
   }
@@ -557,6 +560,7 @@ export class StructureStore {
     t.hp[slot] = hp;
     t.mod[slot] = mod;
     t.shape++;
+    this.shapes++;
     t.live++;
     this.count++;
     this.footprint(kind, x, z, yaw);
@@ -607,6 +611,7 @@ export class StructureStore {
     t.hp[slot] = 0;
     t.mod[slot] = mod;
     t.shape++;
+    this.shapes++;
     t.live--;
     this.count--;
   }
