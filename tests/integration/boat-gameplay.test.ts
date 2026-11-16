@@ -167,11 +167,13 @@ test("destroying a loaded boat releases its swimmer crew and preserves cargo in 
     const anchor = BOAT_ART.anchors.boarding_water;
     ents.setPosition(c.ent, 62 + anchor[0], 1.65, 64 + anchor[2]);
     expect(h.host.urban.mount(c, e)).toBe(RESULT_OK); h.run(1400); expect(c.drive).toBe(e);
-    const y = ents.y[e]!;
+    const y = ents.y[e]!; ents.vehicleFlooding[e] = .17;
     h.host.survival.hurt(rec, 1e6, 0); h.run(100);
     expect(c.drive).toBe(-1); expect(ents.seat[c.ent]).toBe(0);
+    expect(ents.mode[c.ent]).toBe(MODE_SWIM); expect(ents.z[c.ent]!).toBeLessThan(60.5);
     const wreck = [...h.host.corpses.bodies.values()].find(b => h.reg.ids[b.kind] === "core:boat")!;
     expect(wreck.wreck).toBeDefined(); expect(h.host.items.inv(wreck.rec).total(cargo)).toBe(13);
+    expect(ents.vehicleFlooding[wreck.e]!).toBeGreaterThanOrEqual(.17); expect(ents.vehicleFlooding[wreck.e]!).toBeLessThan(.2);
     h.run(3000); expect(wreck.y).toBeLessThan(y);
     const handle = makeHandle(wreck.e, ents.gen[wreck.e]!);
     ents.setPosition(c.ent, wreck.x + 3, 1.65, wreck.z);

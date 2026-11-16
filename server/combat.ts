@@ -161,6 +161,9 @@ export class Combat {
   /** A second entity the cast in progress skips: the rider of the creature that is biting. -1 for none. */
   private spare = -1;
   private readonly human: Uint8Array;
+  /** Vehicle origins can be in an adjacent chunk even when their hull touches a ray. */
+  private readonly vehicleReach: Float32Array;
+  private readonly targetReach: number;
   private readonly anims: (CreatureAnim | null)[];
   private readonly dir = [0, 0, 0];
   private readonly st = new AnimState();
@@ -214,6 +217,16 @@ export class Combat {
     const reg = ctx.world.reg;
     this.survivor = reg.index.get("core:survivor")!;
     this.human = Uint8Array.from(reg.defs, (d) => (d?.type === "species" && d.skeleton === HUMAN.id ? 1 : 0));
+    this.vehicleReach = Float32Array.from(reg.vehicle, (vehicle, kind) => {
+      if (!vehicle) return 0;
+      const spec = vehicle.spec, h = reg.bodyHeight[kind]!;
+      if (vehicle.movement !== "boat") return Math.hypot(spec.halfWidth, spec.halfLength, h * .5);
+      const marine = vehicle.spec;
+      const reach = Math.max(marine.halfLength, Math.abs(marine.propeller.at[2]) + marine.propeller.radius,
+        ...(marine.outboard?.boxes ?? []).map(box => Math.abs(box.at[2]) + box.half[2]));
+      return Math.hypot(marine.halfWidth + .5, reach + .5, h);
+    });
+    this.targetReach = Math.max(BODY_REACH, ...this.vehicleReach);
     // A creature whose skeleton came with its model is hit on that rig's capsules, as posed.
     this.anims = ctx.world.anims;
     this.dose = reg.index.get("core:tranquilized") ?? 0;
@@ -555,7 +568,7 @@ export class Combat {
     const near = this.near;
     const nearT = this.nearT;
     const slack = width + (this.at < 0 ? 0 : REWIND_REACH) + (sweep > 0 ? SWEEP_REACH : 0);
-    const pad = BODY_REACH + slack;
+    const pad = this.targetReach + slack;
     const ex = ox + dx * maxT;
     const ez = oz + dz * maxT;
     const x0 = Math.max(0, Math.floor((Math.min(ox, ex) - pad) / CHUNK_METRES));
@@ -580,10 +593,11 @@ export class Combat {
           // A sphere that holds the body in any pose. A larger box gets a larger sphere.
           const h = reg.bodyHeight[kind]!;
           const rig = this.anims[kind]?.rig;
-          const car = reg.vehicle[kind]?.spec;
-          const r = (car ? Math.hypot(car.halfWidth, car.halfLength, h * 0.5) : rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
+          const vehicle = reg.vehicle[kind], car = vehicle?.spec;
+          const marine = vehicle?.movement === "boat" ? vehicle.spec : null;
+          const r = (car ? this.vehicleReach[kind]! : rig ? rig.reach : Math.max(BODY_REACH, h * 0.5 + reg.bodyRadius[kind]!)) + slack;
           const px = ents.x[i]! - ox;
-          const py = ents.y[i]! + (this.human[kind] ? BODY_REACH_Y : rig && !car ? rig.mid : h * 0.5) - oy;
+          const py = ents.y[i]! + (marine ? 0 : this.human[kind] ? BODY_REACH_Y : rig && !car ? rig.mid : h * 0.5) - oy;
           const pz = ents.z[i]! - oz;
           const t = px * dx + py * dy + pz * dz;
           if (t < -r || t > maxT + r || px * px + py * py + pz * pz - t * t > r * r) continue;
@@ -636,6 +650,7 @@ export class Combat {
   private sweep = 0;
   private span = 0;
   private readonly before = new Past();
+  private readonly vehicleNow = new Past();
 
   /** Where body `i` was at `tick`, which may be now, a remembered tick, or a moment between two. False if it was not there then. */
   private where(i: number, tick: number, out: Past): boolean {
@@ -651,6 +666,7 @@ export class Combat {
       out.yaw = ents.yaw[i]!;
       out.anim = ents.anim[i]!;
       out.cue = ents.cue[i]!;
+      out.vehicleFrom(ents, i);
       return true;
     }
     // Between the last remembered tick and this one, which is not recorded yet. Blend as a client does.
@@ -659,6 +675,7 @@ export class Combat {
     out.x += (ents.x[i]! - out.x) * k;
     out.y += (ents.y[i]! - out.y) * k;
     out.z += (ents.z[i]! - out.z) * k;
+    this.vehicleNow.vehicleFrom(ents, i); out.blendVehicle(this.vehicleNow, k);
     let turn = ents.yaw[i]! - out.yaw;
     if (turn > 32768) turn -= 65536;
     else if (turn < -32768) turn += 65536;
@@ -756,7 +773,7 @@ export class Combat {
       } else if (reg.vehicle[kind]) {
         // A vehicle is met by its mechanical hull up to its belt line, whatever its art, turned as it was.
         const def = reg.vehicle[kind]!;
-        const t = rayVehicle(def, past.x, past.y, past.z, (past.yaw * TAU) / 65536, rx, ry, rz, ux, uy, uz, def.beltline);
+        const t = rayVehicle(def, past.x, past.y, past.z, (past.yaw * TAU) / 65536, rx, ry, rz, ux, uy, uz, def.beltline, def.movement === "boat" || def.movement === "rotor" ? past : { pitch: past.pitch, roll: past.roll });
         if (t < reach) {
           this.t = t * scale;
           this.zone = ZONE_TORSO;

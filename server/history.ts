@@ -8,6 +8,7 @@ export const HISTORY_TICKS = 16;
 const MASK = HISTORY_TICKS - 1;
 /** Per entity per tick. */
 const ROW_BYTES = 20;
+const VEHICLE_FIELDS = ["pitch", "roll", "qx", "qy", "qz", "qw", "steering"] as const;
 
 export class Past {
   x = 0;
@@ -18,6 +19,25 @@ export class Past {
   /** Packed pose state and cues. See `AnimState.pack` and `packCue`. */
   anim = 0;
   cue = 0;
+  /** Mechanical attitude is sparse in History; ordinary creatures do not allocate a second ring. */
+  pitch = 0; roll = 0; qx = 0; qy = 0; qz = 0; qw = 1; steering = 0;
+
+  vehicleFrom(ents: EntityStore, e: number): void {
+    this.pitch = ents.vehiclePitch[e]!; this.roll = ents.vehicleRoll[e]!;
+    this.qx = ents.vehicleQx[e]!; this.qy = ents.vehicleQy[e]!; this.qz = ents.vehicleQz[e]!; this.qw = ents.vehicleQw[e]!;
+    this.steering = ents.steering[e]!;
+  }
+
+  blendVehicle(other: Past, k: number): void {
+    this.pitch += (other.pitch - this.pitch) * k; this.roll += (other.roll - this.roll) * k;
+    this.steering += (other.steering - this.steering) * k;
+    const sign = this.qx * other.qx + this.qy * other.qy + this.qz * other.qz + this.qw * other.qw < 0 ? -1 : 1;
+    this.qx += (other.qx * sign - this.qx) * k; this.qy += (other.qy * sign - this.qy) * k;
+    this.qz += (other.qz * sign - this.qz) * k; this.qw += (other.qw * sign - this.qw) * k;
+    const norm = Math.hypot(this.qx, this.qy, this.qz, this.qw);
+    if (norm > 1e-6) { this.qx /= norm; this.qy /= norm; this.qz /= norm; this.qw /= norm; }
+    else { this.qx = this.qy = this.qz = 0; this.qw = 1; }
+  }
 }
 
 export class History {
@@ -41,6 +61,7 @@ export class History {
    * change seldom, so a body without any keeps none. Each is told of by `cued`.
    */
   private readonly cues = new Map<number, Uint32Array>();
+  private readonly vehicles = new Map<number, Float32Array>();
 
   constructor(ents: EntityStore, capacity = 256) {
     this.ents = ents;
@@ -57,7 +78,7 @@ export class History {
   }
 
   get bytes(): number {
-    return this.capacity * HISTORY_TICKS * ROW_BYTES + this.rowOf.byteLength;
+    return this.capacity * HISTORY_TICKS * ROW_BYTES + this.rowOf.byteLength + this.vehicles.size * HISTORY_TICKS * VEHICLE_FIELDS.length * 4;
   }
 
   /** The entity in row `r`, for `r` below `rows`: an awake creature or a player's body. */
@@ -86,6 +107,7 @@ export class History {
     const r = this.rowOf[e]!;
     if (r < 0) return;
     this.cues.delete(e);
+    this.vehicles.delete(e);
     this.rowOf[e] = -1;
     const last = --this.rows;
     if (r === last) return;
@@ -146,6 +168,7 @@ export class History {
       out.yaw = ents.yaw[e]!;
       out.anim = ents.anim[e]!;
       out.cue = ents.cue[e]!;
+      out.vehicleFrom(ents, e);
       return true;
     }
     const i = r * HISTORY_TICKS + (tick & MASK);
@@ -156,6 +179,9 @@ export class History {
     out.yaw = this.yaw[i]!;
     out.anim = this.anim[i]!;
     out.cue = this.cues.get(e)?.[tick & MASK] ?? 0;
+    const vehicle = this.vehicles.get(e);
+    if (vehicle) for (let field = 0; field < VEHICLE_FIELDS.length; field++) out[VEHICLE_FIELDS[field]!] = vehicle[(tick & MASK) * VEHICLE_FIELDS.length + field]!;
+    else out.vehicleFrom(ents, e);
     return true;
   }
 
@@ -168,6 +194,7 @@ export class History {
     out.x += (later.x - out.x) * k;
     out.y += (later.y - out.y) * k;
     out.z += (later.z - out.z) * k;
+    out.blendVehicle(later, k);
     let turn = later.yaw - out.yaw;
     if (turn > 32768) turn -= 65536;
     else if (turn < -32768) turn += 65536;
@@ -187,6 +214,16 @@ export class History {
     this.yaw[i] = ents.yaw[e]!;
     this.anim[i] = ents.anim[e]!;
     this.gen[i] = ents.gen[e]!;
+    if (ents.vehicle[e]) {
+      let ring = this.vehicles.get(e);
+      current.vehicleFrom(ents, e);
+      if (!ring) {
+        ring = new Float32Array(HISTORY_TICKS * VEHICLE_FIELDS.length);
+        for (let tick = 0; tick < HISTORY_TICKS; tick++) for (let field = 0; field < VEHICLE_FIELDS.length; field++) ring[tick * VEHICLE_FIELDS.length + field] = current[VEHICLE_FIELDS[field]!]!;
+        this.vehicles.set(e, ring);
+      }
+      for (let field = 0; field < VEHICLE_FIELDS.length; field++) ring[(i & MASK) * VEHICLE_FIELDS.length + field] = current[VEHICLE_FIELDS[field]!]!;
+    }
   }
 
   private grow(): void {
@@ -218,3 +255,4 @@ export class History {
 }
 
 const later = new Past();
+const current = new Past();

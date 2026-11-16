@@ -573,7 +573,10 @@ export class Death {
           const body = this.corpses?.at(i);
           const car = reg.vehicle[ents.kind[i]!];
           // A vehicle is looked at by its hull, nose to tail and up to its roof.
-          const t = car && !body ? rayVehicle(car, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[i]!, ox, oy, oz, d[0]!, d[1]!, d[2]!, car.spec.height) : body ? this.corpses!.hit(i, ox, oy, oz, d[0]!, d[1]!, d[2]!, best) : rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
+          const t = car && !body ? rayVehicle(car, ents.x[i]!, ents.y[i]!, ents.z[i]!, ents.vehicleYaw[i]!, ox, oy, oz, d[0]!, d[1]!, d[2]!, car.spec.height, {
+            pitch: ents.vehiclePitch[i]!, roll: ents.vehicleRoll[i]!, steering: ents.steering[i]!,
+            ...(car.movement === "boat" || car.movement === "rotor" ? { qx: ents.vehicleQx[i]!, qy: ents.vehicleQy[i]!, qz: ents.vehicleQz[i]!, qw: ents.vehicleQw[i]! } : {}),
+          }) : body ? this.corpses!.hit(i, ox, oy, oz, d[0]!, d[1]!, d[2]!, best) : rayBox(ox, oy, oz, d[0]!, d[1]!, d[2]!, ents.x[i]! - r, ents.y[i]!, ents.z[i]! - r, ents.x[i]! + r, ents.y[i]! + reg.bodyHeight[ents.kind[i]!]! * size, ents.z[i]! + r);
           if (t < best) {
             best = t;
             hit = i;

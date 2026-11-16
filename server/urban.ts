@@ -448,9 +448,9 @@ export class Urban {
   changed(e: number): void { const host = this.hosts.get(this.ctx.world.ents.pid[e]!); if (host) this.note(host); this.save(e); }
 
   /** Actor contacts arrive after aircraft stepping; apply their damage at the next safe lifecycle point. */
-  collision(e: number, speed: number, rotor: boolean): void {
+  collision(e: number, speed: number, rotor: boolean, propeller = false): void {
     const pid = this.ctx.world.ents.pid[e]!, old = this.impacts.get(pid);
-    this.impacts.set(pid, { speed: Math.max(old?.speed ?? 0, speed), rotor: !!old?.rotor || rotor, prop: !!old?.prop, water: !!old?.water, landing: old?.landing ?? 0 });
+    this.impacts.set(pid, { speed: Math.max(old?.speed ?? 0, speed), rotor: !!old?.rotor || rotor, prop: !!old?.prop || propeller, water: !!old?.water, landing: old?.landing ?? 0 });
   }
 
   private applyImpact(host: HostSeat): boolean {

@@ -96,7 +96,7 @@ test("a learned expensive assembly crafts at a fueled fabricator, deploys, servi
     expect(h.host.items.inv(actor).total(kit)).toBe(0);
     // The ordinary use ray opens salvage; cargo comes back through the ordinary two-inventory move.
     h.world.ents.setPosition(c.ent, savedWreck.x - 4, savedWreck.y, savedWreck.z);
-    h.pilots[0]!.yaw = Math.PI / 2; h.pilots[0]!.buttons = BTN_USE; h.run(150); h.pilots[0]!.buttons = 0; h.run(100);
+    h.pilots[0]!.yaw = Math.PI / 2; h.pilots[0]!.pitch = -.25; h.pilots[0]!.buttons = BTN_USE; h.run(150); h.pilots[0]!.buttons = 0; h.run(100);
     expect(c.open).toBe(wreckPid);
     expect(move(BOX_OPEN, s.open!.inventory.item.indexOf(cargo), BOX_SELF, s.inventory!.free(), cargo, 13)).toBe(RESULT_OK);
     const beforeMetal = h.host.items.inv(actor).total(ingot);

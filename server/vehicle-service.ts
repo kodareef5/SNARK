@@ -249,7 +249,7 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
           if (!(ents.flags[e]! & F_ALIVE)) continue;
           const kind = ents.kind[e]!, other = world.reg.vehicle[kind];
           const frame = {
-            x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!,
+            x: ents.x[e]!, y: ents.y[e]!, z: ents.z[e]!, yaw: ents.vehicleYaw[e]!, pitch: ents.vehiclePitch[e]!, roll: ents.vehicleRoll[e]!, steering: ents.steering[e]!,
             ...(other && (isRotorVehicle(other) || isBoatVehicle(other)) ? { qx: ents.vehicleQx[e]!, qy: ents.vehicleQy[e]!, qz: ents.vehicleQz[e]!, qw: ents.vehicleQw[e]! } : {}),
           };
           const hit = isBoatVehicle(def)
@@ -283,7 +283,7 @@ export function vehiclePlaceFree(world: ServerWorld, x: number, y: number, z: nu
   if (isBoatVehicle(def)) {
     const prop = def.spec.propeller;
     add(prop.at[0], prop.at[1] - prop.radius, prop.at[2], prop.radius, prop.radius * 2);
-    for (const box of def.spec.hullBoxes) {
+    for (const box of [...def.spec.hullBoxes, ...(def.spec.outboard?.boxes ?? [])]) {
       if (Math.abs(box.at[2]) + box.half[2] <= spec.halfLength) continue;
       const radius = Math.min(box.half[0], box.half[2]);
       const steps = Math.max(1, Math.ceil(box.half[2] / radius));

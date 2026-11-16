@@ -8,8 +8,36 @@ import type { VehicleDefinition } from "./vehicle.ts";
  * chassis' footprint from the ground up to `top`: its roof for what a look meets, its belt line for what a shot meets, so
  * a shot through the open cabin reaches the people in it. It is the mechanical shape, whatever mesh draws the vehicle.
  */
-export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, top: number, attitude?: Pick<VehicleFrame, "pitch" | "roll" | "qx" | "qy" | "qz" | "qw">): number {
+export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: number, yaw: number, ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, top: number, attitude?: Pick<VehicleFrame, "pitch" | "roll" | "qx" | "qy" | "qz" | "qw" | "steering">): number {
   const s = def.spec, sn = detSin(yaw), cs = detCos(yaw), rx = ox - x, rz = oz - z;
+  if (def.movement === "boat") {
+    vehicleRotation({ x, y, z, yaw, pitch: 0, roll: 0, ...attitude }, rayRotation);
+    quatUnrotate(rayRotation, 0, rx, oy - y, rz, rayOrigin, 0);
+    quatUnrotate(rayRotation, 0, dx, dy, dz, rayDirection, 0);
+    let near = Infinity;
+    for (const box of def.spec.hullBoxes) {
+      const low = box.at[1] - box.half[1], high = Math.min(top, box.at[1] + box.half[1]);
+      if (low >= high) continue;
+      near = Math.min(near, rayBox(rayOrigin[0]!, rayOrigin[1]!, rayOrigin[2]!, rayDirection[0]!, rayDirection[1]!, rayDirection[2]!,
+        box.at[0] - box.half[0], low, box.at[2] - box.half[2], box.at[0] + box.half[0], high, box.at[2] + box.half[2]));
+    }
+    const motor = def.spec.outboard;
+    if (motor) {
+      // The articulated motor yaws by -steering around its authored pivot. Keep rays in that same joint frame.
+      const sn = detSin(-(attitude?.steering ?? 0)), cs = detCos(-(attitude?.steering ?? 0)), pivot = motor.pivot;
+      const px = rayOrigin[0]! - pivot[0], pz = rayOrigin[2]! - pivot[2];
+      const mx = cs * px - sn * pz, mz = sn * px + cs * pz, my = rayOrigin[1]! - pivot[1];
+      const vx = cs * rayDirection[0]! - sn * rayDirection[2]!, vz = sn * rayDirection[0]! + cs * rayDirection[2]!;
+      for (const box of motor.boxes) {
+        const low = box.at[1] - box.half[1], high = Math.min(top, box.at[1] + box.half[1]);
+        if (low >= high) continue;
+        near = Math.min(near, rayBox(mx, my, mz, vx, rayDirection[1]!, vz,
+          box.at[0] - box.half[0] - pivot[0], low - pivot[1], box.at[2] - box.half[2] - pivot[2],
+          box.at[0] + box.half[0] - pivot[0], high - pivot[1], box.at[2] + box.half[2] - pivot[2]));
+      }
+    }
+    return near;
+  }
   if (attitude?.qx !== undefined && attitude.qy !== undefined && attitude.qz !== undefined && attitude.qw !== undefined) {
     vehicleRotation({ x, y, z, yaw, ...attitude }, rayRotation);
     quatUnrotate(rayRotation, 0, rx, oy - y, rz, rayOrigin, 0);
@@ -20,7 +48,7 @@ export function rayVehicle(def: VehicleDefinition, x: number, y: number, z: numb
   return rayBox(cs * rx - sn * rz, oy - y, sn * rx + cs * rz, cs * dx - sn * dz, dy, sn * dx + cs * dz, -s.halfWidth, 0, -s.halfLength, s.halfWidth, top, s.halfLength);
 }
 
-export interface VehicleFrame { x: number; y: number; z: number; yaw: number; pitch: number; roll: number; qx?: number; qy?: number; qz?: number; qw?: number }
+export interface VehicleFrame { x: number; y: number; z: number; yaw: number; pitch: number; roll: number; qx?: number; qy?: number; qz?: number; qw?: number; steering?: number }
 const rayRotation = new Float64Array(4), rayOrigin = new Float64Array(3), rayDirection = new Float64Array(3);
 const yaw = new Float64Array(4), roll = new Float64Array(4), pitch = new Float64Array(4), rotation = new Float64Array(4);
 
