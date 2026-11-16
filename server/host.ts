@@ -664,6 +664,7 @@ function makeHost(content: Registry, opts: HostOptions, opened: { close(): void 
     if (taker) taming.meal(taker);
     buffs.died(rec);
     spawner?.left(rec);
+    if (isBoatVehicle(reg.vehicle[rec.kind])) urban.releaseHost(rec.pid);
     corpses.fell(rec, cause, by);
     if (rec.kind === survivor) beds.died(rec, by !== 0 ? (records.byPid.get(by)?.team ?? 0) : 0);
     death.die(rec, cause);

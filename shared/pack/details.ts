@@ -19,7 +19,7 @@ export type FlatShape = (typeof FLAT_SHAPES)[number];
 export const GROUNDS = ["grass", "sand", "stone", "water", "built"] as const;
 
 /** What a body does that a sheet may answer. */
-export const OCCASIONS = ["thrown", "land", "struck", "down", "death", "up", "splash", "step", "peck", "rotor_wash", "engine_smoke"] as const;
+export const OCCASIONS = ["thrown", "land", "struck", "down", "death", "up", "splash", "step", "peck", "rotor_wash", "engine_smoke", "boat_wake", "boat_spray"] as const;
 export type Occasion = (typeof OCCASIONS)[number];
 
 export interface DetailPicture {
