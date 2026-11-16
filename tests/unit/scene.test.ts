@@ -213,12 +213,11 @@ test("a wall of one piece whose material tiles is the same two draws at 10 piece
   };
   const [few, many] = [wall(10, true), wall(1000, false)];
   const [plank, lattice] = [material(few.w, PANEL), material(few.w, `${PANEL}/lattice`)];
-  // Of the 1,000, the 15 in the 16 m cell to the near right are out of view and left out.
-  for (const [{ w, p }, pieces] of [[few, 10], [many, 985]] as const) {
+  for (const [{ w, p }, pieces] of [[few, 10], [many, 1000]] as const) {
     expect(drawn(w, p, PANEL)).toEqual([[0, DRAW_TEXTURED, pieces, plank, 0, 3], [0, DRAW_TEXTURED | DRAW_TWO_SIDED | DRAW_CUTOUT, pieces, lattice, 3, 3]]);
     expect([p.drawCount, p.dropped]).toEqual([2, 0]);
   }
-  expect(many.p.triangles - few.p.triangles).toBe(975 * 2);
+  expect(many.p.triangles - few.p.triangles).toBe(990 * 2);
   // The picture is laid a metre wide on a piece two metres wide. The mesh says so, the packet need not, and the row is drawn.
   expect(few.w.manifest.meshes[few.w.mesh(PANEL)]!.uv).toEqual([0, 0, 2, 2]);
   expect(few.w.raster.pickKind.filter((kind) => kind === PICK_STRUCTURE).length).toBeGreaterThan(600);

@@ -67,9 +67,10 @@ test("a frame on medium at the iPhone's view keeps within medium's draws and tri
     expect(most(frames, (f) => f.triangles - f.parts.crowns)).toBeLessThanOrEqual(1.5e6);
     expect(most(frames, (f) => f.uploads)).toBe(0);
   }
-  // Nothing holds what is cast into the sun's maps yet. Pinned at today's most a heading, to fall as casters are listed
-  // by cell and take levels at two texels (review B3, B6): lower it with them.
-  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([1112574, 4015468, 205904]);
+  // Nothing holds what is cast into the sun's maps yet: pinned at the most a heading. It was 1,112,574, 4,015,468 and
+  // 205,904 while a chunk cast all its instances into every cascade its box met; by its 16 m cells, each into the
+  // cascades it reaches, it is this (the touch rule's one tap keeps the levels).
+  expect(Object.values(scenes).map((frames) => most(frames, (f) => f.cast))).toEqual([342046, 1736330, 138704]);
 });
 
 test("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws and casts what it did", () => {
@@ -80,9 +81,10 @@ test("a 20,000-piece base 30 and 60 m off on medium at the iPhone's view draws a
     const [f] = headings(base.scene, base.cam, [1.5 * Math.PI]);
     return [f!.draws, f!.triangles, f!.cast];
   });
-  // Four times medium's triangles. Pinned at today's draws, triangles and triangles cast, to fall as a chunk's pieces are
-  // drawn by cell and shell before interior (review B2, B4): lower it with them.
-  expect(frames).toEqual([[15, 8676500, 256408], [15, 8680596, 250264]]);
+  // Pinned at its draws, triangles and triangles cast, to fall again as shell is drawn before interior (review B4). It was
+  // 15 draws and 8,676,500 and 8,680,596 triangles while the chunk was drawn whole at the level of its box's nearest
+  // point; by its 16 m cells, each at its own level, it is this. What it casts is cascade 1's, which holds every cell.
+  expect(frames).toEqual([[27, 5784668, 256408], [27, 4311372, 250264]]);
 });
 
 test("the HUD holds at most 500 nodes in every mode, the vehicles' dashes and the menus among them, and grows none after warming up", () => {

@@ -264,7 +264,7 @@ export class Scene {
   /** Per mesh and cell, as `counts` and `cursor` are per mesh, for a chunk being laid out. */
   private cellCounts = new Uint32Array(0);
   private cellCursor = new Uint32Array(0);
-  /** For the chunk being drawn, per cell: 1 where it is in view, and the cascades it casts into; and whether all of it is in view. */
+  /** For the chunk being drawn, per cell: 2 where all of it is in view, 1 where some is, and the cascades it casts into; and whether all the chunk is in view. */
   private cellSeen = new Uint8Array(0);
   private cellCasts = new Uint8Array(0);
   private wholeView = false;
@@ -367,12 +367,7 @@ export class Scene {
    * The cascades something in a camera-relative box casts into: those it can shade, its shadow reaching as far along the
    * light as its top stands over the floor, while that shadow can fall in view.
    */
-  private readonly castBox: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => {
-    const dx = Math.max(minX, -maxX, 0), dy = Math.max(minY, -maxY, 0), dz = Math.max(minZ, -maxZ, 0);
-    if (dx * dx + dy * dy + dz * dz > this.castRange * this.castRange) return 0;
-    const stretch = this.stretch(minX, minZ, maxX, maxZ, maxY);
-    return this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0;
-  };
+  private readonly castBox: CastTest = (minX, minY, minZ, maxX, maxY, maxZ) => this.castsBy(minX, minY, minZ, maxX, maxY, maxZ, -1);
   private readonly bodyShadows: BodyShadows = {
     body: (x, y, z, r) => {
       if (Math.hypot(x, y, z) - r > this.castRange) return 0;
@@ -641,6 +636,14 @@ export class Scene {
     return low > this.floor ? reach(top + p.camY - low, this.sunY) : most;
   }
 
+  /** As `castBox`, the box's shadow reaching `stretch` metres along the light, or as far as `stretch()` finds where that is under 0. */
+  private castsBy(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, stretch: number): number {
+    const dx = Math.max(minX, -maxX, 0), dy = Math.max(minY, -maxY, 0), dz = Math.max(minZ, -maxZ, 0);
+    if (dx * dx + dy * dy + dz * dz > this.castRange * this.castRange) return 0;
+    if (stretch < 0) stretch = this.stretch(minX, minZ, maxX, maxZ, maxY);
+    return this.inView(minX, minY, minZ, maxX, maxY, maxZ, stretch) ? this.cascades.mask(minX, minY, minZ, maxX, maxY, maxZ, Infinity, stretch) : 0;
+  }
+
   /** Whether the shadow of a camera-relative box, swept `stretch` metres away from the sun, can fall in view. */
   private inView(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, stretch: number): boolean {
     const sx = -this.sunAt[0]! * stretch, sy = -this.sunAt[1]! * stretch, sz = -this.sunAt[2]! * stretch;
@@ -650,7 +653,8 @@ export class Scene {
   /**
    * Puts the meshes of a chunk in the caster list, each at the level `Cascades.entries` gives a cascade, and into each
    * cascade only the cells that cast into it (`cellCasts`): a run of neighbouring cells a caster, with a cell between
-   * that does not when it weighs less than a draw. Runs alike in every way but their cascades are one caster.
+   * that does not when it weighs less than a draw. Runs alike in every way but their cascades are one caster, and a mesh
+   * whose instances here weigh less than a draw is cast whole.
    */
   private castChunk(b: ChunkBatch, id: number, ox: number, oy: number, oz: number, casts: number): void {
     const c = this.cascades;
@@ -678,7 +682,7 @@ export class Scene {
       const n = c.entries(mask, this.assets.table.error[mesh]!, this.assets.held(mesh), out, scale);
       for (let e = 0; e < n; e++) {
         const level = out[e * 2]!, bits = out[e * 2 + 1]!;
-        if ((every & bits) === bits) {
+        if ((every & bits) === bits || b.ranges[r + 2]! * tris[level]! <= RUN_TRIANGLES) {
           this.cast(mesh, level, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, flags, bits);
           continue;
         }
@@ -1410,16 +1414,20 @@ export class Scene {
     this.batches.delete(id);
   }
 
-  /** Finds which cells of a chunk are in view, if it is, every one where all of it is; and which of `casts` each casts into. */
+  /**
+   * Finds which cells of a chunk are in view, if it is, and which wholly; and which of `casts` each casts into, its
+   * shadow reaching as far as the chunk's can, which is at least as far as its own.
+   */
   private zones(cam: Camera, b: ChunkBatch, seen: boolean, casts: number): void {
     const z = b.zone;
     this.wholeView = seen && cam.boxInside(b.minX - cam.x, b.minY - cam.y, b.minZ - cam.z, b.maxX - cam.x, b.maxY - cam.y, b.maxZ - cam.z);
+    const stretch = casts !== 0 ? this.stretch(b.minX - cam.x, b.minZ - cam.z, b.maxX - cam.x, b.maxZ - cam.z, b.maxY - cam.y) : 0;
     for (let c = 0, k = 0; c < b.cells; c++, k += 6) {
       const ax = z[k]! - cam.x, ay = z[k + 1]! - cam.y, az = z[k + 2]! - cam.z;
       const bx = z[k + 3]! - cam.x, by = z[k + 4]! - cam.y, bz = z[k + 5]! - cam.z;
       const held = ax <= bx;
-      this.cellSeen[c] = seen && held && (this.wholeView || cam.boxVisible(ax, ay, az, bx, by, bz)) ? 1 : 0;
-      this.cellCasts[c] = casts !== 0 && held ? casts & this.castBox(ax, ay, az, bx, by, bz) : 0;
+      this.cellSeen[c] = !seen || !held ? 0 : this.wholeView || cam.boxInside(ax, ay, az, bx, by, bz) ? 2 : cam.boxVisible(ax, ay, az, bx, by, bz) ? 1 : 0;
+      this.cellCasts[c] = casts !== 0 && held ? casts & this.castsBy(ax, ay, az, bx, by, bz, stretch) : 0;
     }
   }
 
@@ -1456,7 +1464,9 @@ export class Scene {
       const tree = sized && this.treeOf[mesh] === 1;
       const near = this.assets.choose(errors, (dist * cover) / reach, b.level[q]!);
       const crown = tree ? this.assets.choose(errors, (dist * scale) / reach, b.crown[q]!) : near;
-      const one = far <= from && near === this.assets.choose(errors, (far * cover) / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!));
+      // A mesh whose instances here weigh less than a draw at the level the nearest asks for is drawn whole at it.
+      const light = far <= from && !tree && b.ranges[r + 2]! * this.trisOfMesh[mesh]![near]! <= RUN_TRIANGLES;
+      const one = light || (far <= from && near === this.assets.choose(errors, (far * cover) / reach, b.level[q]!) && (!tree || crown === this.assets.choose(errors, (far * scale) / reach, b.crown[q]!)));
       if (one) {
         b.level[q] = near;
         b.crown[q] = crown;
@@ -1464,12 +1474,14 @@ export class Scene {
         levels.fill(near, q * cells, (q + 1) * cells);
         crowns.fill(crown, q * cells, (q + 1) * cells);
         thins.fill(b.thin[q]!, q * cells, (q + 1) * cells);
-        if (this.wholeView) {
+        let whole = this.wholeView;
+        for (let c = 0; light && !whole && c < cells; c++) whole = shown[c] !== 0 && first[q * (cells + 1) + c + 1] !== first[q * (cells + 1) + c];
+        if (whole) {
           this.assets.wantTextured(mesh, near, dist / reach);
           if (crown !== near) this.assets.wantTextured(mesh, crown, dist / reach);
           this.draw(mesh, near, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, flags, passes, 0, 0, crown, leavesAt(b.thin[q]!));
-          continue;
         }
+        if (whole || light) continue;
       } else {
         b.level[q] = -1;
         b.crown[q] = -1;
@@ -1491,7 +1503,7 @@ export class Scene {
         const qc = q * cells + c;
         // A cell is seen where its mesh's own instances in it are: a node's reach sideways from its trunk, a piece whole.
         const k = qc * 6, spread = sized ? this.assets.table.side[mesh]! * b.cellReach[qc]! : 0;
-        if (shown[c] === 0 || (!this.wholeView && !cam.boxVisible(box[k]! - spread - cam.x, box[k + 1]! - cam.y, box[k + 2]! - spread - cam.z, box[k + 3]! + spread - cam.x, box[k + 4]! - cam.y, box[k + 5]! + spread - cam.z))) {
+        if (shown[c] === 0 || (shown[c] === 1 && !cam.boxVisible(box[k]! - spread - cam.x, box[k + 1]! - cam.y, box[k + 2]! - spread - cam.z, box[k + 3]! + spread - cam.x, box[k + 4]! - cam.y, box[k + 5]! + spread - cam.z))) {
           if (next === first[at]) {
             next = first[at + 1]!;
             gap += n;

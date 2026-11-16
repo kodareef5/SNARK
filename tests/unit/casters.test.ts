@@ -102,6 +102,27 @@ test("a pillar behind the camera whose shadow falls in view casts, and one whose
   for (let d = 0; d < p.drawCount; d++) expect(p.drawBuffer[d]).not.toBe(chunk(85, 128));
 });
 
+test("a chunk's pieces cast by their 16 m cells: each into the cascades it reaches, and no other", () => {
+  const w = world();
+  w.scene.hour = MORNING;
+  // Pillars in two cells of the chunk the camera stands in, too many to cast whole, from 1 m ahead and from 48 m: the near
+  // cascade reaches the first cell alone.
+  w.cam.x = 66;
+  const near: number[] = [], far: number[] = [];
+  for (let i = 0; i < 13; i++) for (let j = 0; j < 15; j++) near.push(w.pillar(67 + i, 129 + j) % 65536);
+  for (let i = 0; i < 12; i++) for (let j = 0; j < 15; j++) far.push(w.pillar(114 + i, 129 + j) % 65536);
+  const p = w.frame();
+  const chunk = chunkAt(w.dims, 70, 136);
+  const slots = p.uploads.find((u) => u.buffer === chunk)!.slots;
+  const cast = [new Set<number>(), new Set<number>()];
+  for (let e = 0; e < p.casterCount; e++) {
+    if (p.casterBuffer[e] !== chunk) continue;
+    for (let k = 0; k < 2; k++) if ((p.casterCascades[e]! & (1 << k)) !== 0) for (let i = p.casterFirst[e]!; i < p.casterFirst[e]! + p.casterInstances[e]!; i++) cast[k]!.add(slots[i]!);
+  }
+  const sorted = (slots: Iterable<number>): number[] => [...slots].sort((a, b) => a - b);
+  expect(cast.map(sorted)).toEqual([sorted(near), sorted([...near, ...far])]);
+});
+
 test("a body out of view whose shadow falls in it is posed by the call that poses it in view, and only casts", () => {
   const w = world();
   w.scene.hour = MORNING;
