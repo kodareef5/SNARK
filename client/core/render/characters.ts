@@ -9,10 +9,10 @@ import { vehicleRotation } from "../../../shared/sim/vehicle-frame.ts";
 import { vehicleDoor } from "../../../shared/sim/vehicle-body.ts";
 import type { Seat } from "../../../shared/sim/seats.ts";
 import type { VehicleDefinition } from "../../../shared/sim/vehicle.ts";
-import { quatAxis, quatMul, quatRotate } from "../../../shared/math/quat.ts";
-import { B_HEAD, B_SPINE, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
+import { quatAxis, quatMul, quatRotate, quatUnrotate } from "../../../shared/math/quat.ts";
+import { B_HEAD, B_NECK, B_SPINE, SOCKET_EYE, HUMAN, HUMAN_BONES, SLOT_COUNT, SLOT_HEAD, SLOT_NAMES } from "../../../shared/anim/human.ts";
 import { BEARD_STYLES, HAIR_STYLES, LOOK_BEARD, LOOK_HAIR, LOOK_SEX, REGION_MAIN, REGION_SECOND, REGION_TRIM, SEX_IDS, defaultLook, lookColors, lookLift, lookScales } from "../../../shared/anim/look.ts";
-import { AnimState, HumanAnim, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
+import { AnimState, HumanAnim, PITCH_STEPS, advanceHuman, humanPose } from "../../../shared/anim/pose.ts";
 import { handsAt } from "../../../shared/anim/hold.ts";
 import { ACT_NONE, HOLD_CARRY } from "../../../shared/sim/weapon.ts";
 import { STANCE_CROUCH, STANCE_STAND } from "../../../shared/sim/character.ts";
@@ -172,6 +172,7 @@ export class Characters {
   private readonly groundRotation = new Float64Array(4);
   private readonly wheel = new Float64Array(4);
   private readonly steer = new Float64Array(4);
+  private readonly localLook = new Float64Array(3);
   private readonly origin = new Float64Array(3);
   private readonly scales = new Float32Array(HUMAN_BONES * 3);
   private readonly lookColor = new Uint8Array(6);
@@ -753,7 +754,8 @@ export class Characters {
       const g = this.gaitOf(id);
       advanceHuman(this.anim, g, st, tick, x + p.camX, z + p.camZ, yaw);
       humanPose(this.anim, st, tick, this.pose, g);
-      if (vehicleSeat) mountPose(this.mount, { role: vehicleSeat.role ?? (vehicleSeat.driver ? "drive" : "passenger"), tick, startTick: 0, durationTicks: 1, steering: vehicleSeat.steer, ...(!vehicleSeat.driver || vehicleSeat.role === "pilot" ? { upper: this.pose } : {}) }, this.pose);
+      const enclosed = vehicleSeat?.role === "pilot" || vehicleSeat?.role === "cabin";
+      if (vehicleSeat) mountPose(this.mount, { role: vehicleSeat.role ?? (vehicleSeat.driver ? "drive" : "passenger"), tick, startTick: 0, durationTicks: 1, steering: vehicleSeat.steer, ...(!enclosed && !vehicleSeat.driver ? { upper: this.pose } : {}) }, this.pose);
       else if (seat) {
         mountPose(this.mount, { role: "ride", tick: 0, startTick: 0, durationTicks: 1, ...(steers ? {} : { upper: this.pose }) }, this.pose);
         if (!steers) {
@@ -765,8 +767,21 @@ export class Characters {
         }
       }
       if (vehicleSeat && (!vehicleSeat.driver || vehicleSeat.role === "pilot") && vehicleSeat.aimYaw !== undefined) {
-        const turn = Math.atan2(Math.sin(vehicleSeat.aimYaw - vehicleSeat.yaw), Math.cos(vehicleSeat.aimYaw - vehicleSeat.yaw));
-        const enclosed = vehicleSeat.role === "pilot" || vehicleSeat.role === "cabin", joint = enclosed ? B_HEAD : B_SPINE, limit = enclosed ? .8 : 1.2;
+        let turn = Math.atan2(Math.sin(vehicleSeat.aimYaw - vehicleSeat.yaw), Math.cos(vehicleSeat.aimYaw - vehicleSeat.yaw));
+        if (enclosed) {
+          // Inputs/observer look are in world space. Only after unrotating by the complete cabin attitude may
+          // those angles turn a seated neck; subtracting world yaw reverses the gaze through a loop or bank.
+          const pitch = st.pitch / PITCH_STEPS * Math.PI / 2, cp = Math.cos(pitch);
+          vehicleRotation(vehicleSeat, this.rotation);
+          quatUnrotate(this.rotation, 0, Math.sin(vehicleSeat.aimYaw) * cp, Math.sin(pitch), Math.cos(vehicleSeat.aimYaw) * cp, this.localLook, 0);
+          turn = Math.atan2(this.localLook[0]!, this.localLook[2]!);
+          const tilt = Math.max(-.75, Math.min(.75, Math.atan2(this.localLook[1]!, Math.hypot(this.localLook[0]!, this.localLook[2]!))));
+          for (const [bone, share] of [[B_NECK, .35], [B_HEAD, .65]] as const) {
+            quatAxis(this.steer, 0, 1, 0, 0, -tilt * share);
+            quatMul(this.pose.rot, bone * 4, this.steer, 0, this.pose.rot, bone * 4);
+          }
+        }
+        const joint = enclosed ? B_HEAD : B_SPINE, limit = enclosed ? .8 : 1.2;
         quatAxis(this.steer, 0, 0, 1, 0, Math.max(-limit, Math.min(limit, turn)));
         quatMul(this.pose.rot, joint * 4, this.steer, 0, this.pose.rot, joint * 4);
       }

@@ -4,6 +4,49 @@
 import type { CollisionWorld } from "../../shared/world/collide.ts";
 import { HIT_NONE, castWorld, rayHit } from "../../shared/world/ray.ts";
 import type { Camera } from "./render/camera.ts";
+import { quatRotate } from "../../shared/math/quat.ts";
+import { vehicleRotation, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
+
+const rotation = new Float64Array(4), forward = new Float64Array(3), up = new Float64Array(3);
+
+/** Full aircraft attitude composed with mouse look in the cabin's own frame. */
+function cockpitOrientation(frame: VehicleFrame, yaw: number, pitch: number, out: { yaw: number; pitch: number; roll?: number }): void {
+  vehicleRotation(frame, rotation);
+  const sy = Math.sin(yaw), cy = Math.cos(yaw), sp = Math.sin(pitch), cp = Math.cos(pitch);
+  quatRotate(rotation, 0, sy * cp, sp, cy * cp, forward, 0);
+  quatRotate(rotation, 0, -sy * sp, cp, -cy * sp, up, 0);
+  out.yaw = Math.atan2(forward[0]!, forward[2]!);
+  out.pitch = Math.atan2(forward[1]!, Math.hypot(forward[0]!, forward[2]!));
+  const wy = out.yaw, wp = out.pitch;
+  const right = -Math.cos(wy) * up[0]! + Math.sin(wy) * up[2]!;
+  const upright = -Math.sin(wy) * Math.sin(wp) * up[0]! + Math.cos(wp) * up[1]! - Math.cos(wy) * Math.sin(wp) * up[2]!;
+  if ("roll" in out) out.roll = Math.atan2(right, upright);
+}
+
+/** Cockpit mouse offsets and the independent chase bearing survive view switches. Flight controls never read them. */
+export class CockpitLook {
+  active = false;
+  yaw = 0;
+  pitch = 0;
+  private host = -1;
+  private chaseYaw = 0;
+  private chasePitch = 0;
+
+  sync(host: number, inside: boolean, look: { yaw: number; pitch: number }, frame?: VehicleFrame): void {
+    const changed = host !== this.host;
+    const active = host >= 0 && inside && frame !== undefined;
+    if (this.active && !active && !changed) { look.yaw = this.chaseYaw; look.pitch = this.chasePitch; }
+    if (changed) { this.yaw = this.pitch = 0; this.host = host; }
+    if (active && (!this.active || changed)) { this.chaseYaw = look.yaw; this.chasePitch = look.pitch; }
+    this.active = active;
+    if (active) cockpitOrientation(frame!, this.yaw, this.pitch, look);
+  }
+
+  look(yaw: number, pitch: number): void {
+    this.yaw += yaw;
+    this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch + pitch));
+  }
+}
 
 /** Metres behind, beside and above the eye. */
 const BACK = 3.4;
@@ -60,6 +103,7 @@ export class Viewpoint {
     const viewPitch = Math.max(-1.35, Math.min(1.15, pitch - 0.12));
     cam.yaw = yaw;
     cam.pitch = viewPitch;
+    cam.roll = 0;
     const dx = this.target[0]! - ex - Math.sin(yaw) * Math.cos(viewPitch) * this.boom;
     const dy = this.target[1]! - ey - Math.sin(viewPitch) * this.boom + 0.65;
     const dz = this.target[2]! - ez - Math.cos(yaw) * Math.cos(viewPitch) * this.boom;
@@ -83,6 +127,15 @@ export class Viewpoint {
     this.vehicleLook = false;
     this.put(cam, world, ex, ey, ez, yaw, pitch);
     this.ease(cam, world, ex, ey, ez, switched, Math.max(0, Math.min(100, dt)));
+  }
+
+  /** An enclosed eye stays in its seat even during a loop; it never eases through the cabin wall from chase view. */
+  placeCockpit(cam: Camera, ex: number, ey: number, ez: number, frame: VehicleFrame, yaw: number, pitch: number): void {
+    this.vehicleLook = false;
+    this.easing = 0;
+    cam.x = ex; cam.y = ey; cam.z = ez;
+    cockpitOrientation(frame, yaw, pitch, cam);
+    this.ease(cam, null, ex, ey, ez, false, 0);
   }
 
   /**
@@ -117,6 +170,7 @@ export class Viewpoint {
   private put(cam: Camera, world: CollisionWorld | null, ex: number, ey: number, ez: number, yaw: number, pitch: number): void {
     cam.yaw = yaw;
     cam.pitch = pitch;
+    cam.roll = 0;
     cam.x = ex;
     cam.y = ey;
     cam.z = ez;

@@ -20,7 +20,7 @@ import { ACT_REACH } from "../../shared/world/upkeep.ts";
 import { structName } from "./ui/structure.ts";
 import type { Pack } from "../../shared/pack/pack.ts";
 import { hourOfDay } from "../../shared/sim/clock.ts";
-import { Controls } from "./controls.ts";
+import { Controls, LOOK_SPEED } from "./controls.ts";
 import { HudModel, VehicleTelemetry, fillAction, fillBuffs, fillHotbar, fillOverhead, updateHud } from "./hud.ts";
 import { Chart } from "./tactical.ts";
 import { Camera } from "./render/camera.ts";
@@ -37,12 +37,12 @@ import { AnimState, CUE_HELD, CUE_OUT } from "../../shared/anim/pose.ts";
 import { handleGen, handleIndex, makeHandle } from "../../shared/ids.ts";
 import { VehiclePlacement } from "./vehicle-placement.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "./vehicle-view.ts";
-import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
+import { vehiclePoint, type VehicleFrame } from "../../shared/sim/vehicle-frame.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
 import { ARMOR_SLOTS, FLAG_ON, type Inventory } from "../../shared/sim/items.ts";
 import type { ItemDef } from "../../shared/content/defs.ts";
 import { Lasers, daylight } from "./render/laser.ts";
-import { Viewpoint } from "./viewpoint.ts";
+import { CockpitLook, Viewpoint } from "./viewpoint.ts";
 import { CLOSED_BAD_CONTENT, CLOSED_BAD_VERSION, RemoteSample, type ClientSession } from "./session.ts";
 import { Builder, GHOST_BAD, GHOST_OK } from "./build.ts";
 import { STRUCT_UNITS, TICK_RATE } from "../../shared/coords.ts";
@@ -134,6 +134,7 @@ export class App {
   private fov = BASE_FOV;
   readonly remote = new RemoteSample();
   readonly view = new Viewpoint();
+  private readonly cockpit = new CockpitLook();
   scene: Scene | null = null;
   /** Draw the stress meshes, if the pack has them. `marks` are the rocks whose colour says which level is on the screen. */
   stress = false;
@@ -401,7 +402,35 @@ export class App {
   }
 
   look(dx: number, dy: number): void {
-    if (this.ui.wantsPointerLock) this.controls.look(dx, dy);
+    if (!this.ui.wantsPointerLock) return;
+    this.refreshCockpitLook();
+    if (this.cockpit.active) this.cockpit.look(-dx * LOOK_SPEED * this.controls.zoom, -dy * LOOK_SPEED * this.controls.zoom);
+    else this.controls.look(dx, dy);
+  }
+
+  /** Refresh the world-space look sent with inputs; a passenger's head follows the same rotated view as the camera. */
+  private refreshCockpitLook(): void {
+    const s = this.session, r = this.remote;
+    let host = -1, frame: VehicleFrame | undefined;
+    if (s.sessionState === SESSION_ALIVE && s.driving >= 0 && this.reg.vehicle[s.bodyKind]?.movement === "rotor") {
+      host = s.driving;
+      const b = s.own;
+      frame = { x: b.x, y: b.y, z: b.z, yaw: b.vehicleYaw, pitch: b.vehiclePitch, roll: b.vehicleRoll, qx: b.vehicleQx, qy: b.vehicleQy, qz: b.vehicleQz, qw: b.vehicleQw };
+    } else if (s.sessionState === SESSION_ALIVE && s.own.seat > 0) {
+      for (let i = 0; i < r.count; i++) if (r.id[i] === s.own.seat - 1 && r.gen[i] === s.own.seatGen && r.vehicleRotorcraft[i]) {
+        host = r.id[i]!;
+        frame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
+        break;
+      }
+    }
+    this.cockpitLook(host, frame);
+  }
+
+  private cockpitLook(host: number, frame?: VehicleFrame): void {
+    if (host !== this.helicopterViewHost && host >= 0) this.view.thirdPerson = true;
+    this.helicopterViewHost = host;
+    if (!this.session.thirdPerson) this.view.thirdPerson = false;
+    this.cockpit.sync(host, !this.view.thirdPerson, this.controls, frame);
   }
 
   blur(): void {
@@ -709,6 +738,7 @@ export class App {
     cam.y = body.y + 1.15;
     cam.z = body.z + back;
     cam.yaw = Math.PI;
+    cam.roll = 0;
     cam.pitch = -0.06;
   }
 
@@ -802,6 +832,7 @@ export class App {
     if (this.usePulse > 0) c.key("KeyE", --this.usePulse > 0);
     this.holding = this.heldInArms();
     const flyer = this.flyerKeys();
+    this.refreshCockpitLook();
     if (this.steer) session.update(nowMs, c.moveX, c.moveZ, c.yaw, c.pitch, this.holding >= 0 ? c.buttons & ~HANDS_FULL : c.buttons);
     else session.update(nowMs, 0, 0, c.yaw, c.pitch, 0);
     // Once a tick has stepped with its jump held, a flyer not in the air came down or would not go up.
@@ -872,10 +903,15 @@ export class App {
     const passenger = alive && session.driving < 0 && session.own.seatSlot !== 0 && session.own.seat > 0;
     // A passenger's chase camera is third person, so it obeys the same server rule.
     let passengerRotor = false;
-    if (passenger) for (let i = 0; i < this.remote.count; i++) if (this.remote.id[i] === session.own.seat - 1 && this.remote.gen[i] === session.own.seatGen) passengerRotor = this.remote.vehicleRotorcraft[i] !== 0;
+    let cockpitFrame: VehicleFrame | undefined = rotor ? { ...vehiclePose!, x: bx, y: by, z: bz, yaw: carYaw } : undefined;
+    if (passenger) for (let i = 0; i < this.remote.count; i++) {
+      const r = this.remote;
+      if (r.id[i] !== session.own.seat - 1 || r.gen[i] !== session.own.seatGen) continue;
+      passengerRotor = r.vehicleRotorcraft[i] !== 0;
+      if (passengerRotor) cockpitFrame = { ...remoteVehiclePose(r, i), x: r.x[i]!, y: r.y[i]!, z: r.z[i]!, yaw: r.yaw[i]! };
+    }
     const helicopterHost = rotor && session.driving >= 0 ? session.driving : passengerRotor ? session.own.seat - 1 : -1;
-    if (helicopterHost !== this.helicopterViewHost && helicopterHost >= 0) this.view.thirdPerson = true;
-    this.helicopterViewHost = helicopterHost;
+    this.cockpitLook(helicopterHost, cockpitFrame);
     const chase = passenger && session.thirdPerson && (!passengerRotor || this.view.thirdPerson);
     // A server rule can forbid third person. A rider still sees its mount from behind.
     if (!session.thirdPerson) this.view.thirdPerson = false;
@@ -911,7 +947,7 @@ export class App {
         ch.seat(session.bodyKind, bx, by, bz, carYaw, this.body.state, session.tickClock, this.seatSpot, slot, vehiclePose);
         const seat = ch.seatPose(session.bodyKind, slot, vehiclePose!, this.seatSpot, carYaw);
         if (!seat || !ch.seatedEye(session.ownKind, session.ownLook, seat, this.seatSpot)) vehiclePoint(frame, [.48, 1.86, .70], this.seatSpot);
-        this.view.place(cam, world, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, c.yaw, c.pitch, dt);
+        this.view.placeCockpit(cam, this.seatSpot[0]!, this.seatSpot[1]!, this.seatSpot[2]!, frame, this.cockpit.yaw, this.cockpit.pitch);
       }
     } else if (alive && car) c.yaw = this.view.placeVehicle(cam, world, bx, by + car.spec.height * 2 / 3, bz, c.yaw, c.pitch, carYaw, Math.hypot(session.own.vx, session.own.vz), dt, true, { vx: session.own.vx, vy: session.own.vy, vz: session.own.vz, id: session.driving, boom: car.spec.halfLength * 3 });
     else if (alive && session.driving >= 0) {
@@ -922,6 +958,14 @@ export class App {
       this.view.placeVehicle(cam, world, bx, by + view.up, bz, lookYaw, lookPitch, lookYaw, Math.hypot(o.vx, o.vy, o.vz), dt, false, { vx: o.vx, vy: o.vy, vz: o.vz, id: session.driving, boom: view.boom });
     } else if (passenger) {
       let px = bx, py = by + eye, pz = bz, heading = c.yaw, boom: number | undefined;
+      if (!chase && passengerRotor && cockpitFrame) {
+        const host = this.remote.id.subarray(0, this.remote.count).indexOf(session.own.seat - 1);
+        const anchor = this.reg.vehicle[this.remote.kind[host] ?? 0]?.seats[session.own.seatSlot - 1]?.anchor;
+        if (anchor) {
+          vehiclePoint(cockpitFrame, [anchor[0], anchor[1] + .76, anchor[2] + .05], this.seatSpot);
+          px = this.seatSpot[0]!; py = this.seatSpot[1]!; pz = this.seatSpot[2]!;
+        }
+      }
       for (let i = 0; i < this.remote.count; i++) {
         const r = this.remote;
         const ch = this.scene.characters;
@@ -951,6 +995,7 @@ export class App {
         break;
       }
       if (chase) this.view.placeVehicle(cam, world, px, py, pz, lookYaw, lookPitch, heading, 0, dt, false, boom === undefined ? undefined : { vx: 0, vy: 0, vz: 0, id: session.own.seat - 1, boom });
+      else if (passengerRotor && cockpitFrame) this.view.placeCockpit(cam, px, py, pz, cockpitFrame, this.cockpit.yaw, this.cockpit.pitch);
       else this.view.place(cam, world, px, py, pz, lookYaw, lookPitch, dt);
     } else this.view.place(cam, world, bx, by + eye, bz, lookYaw, lookPitch, dt);
     this.view.thirdPerson = third;

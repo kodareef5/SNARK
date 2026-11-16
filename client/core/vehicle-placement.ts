@@ -48,8 +48,8 @@ export class VehiclePlacement {
     if (item !== this.item) { this.turn = 0; this.suppressed = 0; }
     this.item = item; this.slot = slot; this.kind = reg.vehicleDeploy[item] ?? 0;
     const def = reg.vehicle[this.kind];
-    this.active = !!def && item !== this.suppressed;
-    if (!this.active || !def) { this.notice = ""; if (!item) this.selected = -1; return; }
+    this.active = !!def && item !== this.suppressed && session.driving < 0 && session.own.seat === 0;
+    if (!this.active || !def) { this.notice = ""; if (!def) this.selected = -1; return; }
     const hit = castWorld(world, ox, oy, oz, dx, dy, dz, REACH);
     const distance = hit === HIT_NONE ? 8 : rayHit.t;
     const p = this.pose;

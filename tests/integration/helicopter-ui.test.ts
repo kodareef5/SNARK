@@ -64,6 +64,9 @@ test("assembly preview shares support checks, rotates, cancels and submits exact
     update(0); expect(preview.active).toBe(true); expect(preview.problem).toBe(RESULT_NO_SUPPORT); expect(preview.place(session)).toBe(0);
     update(-1.6 / length); expect(preview.problem).toBe(RESULT_OK);
     preview.key("KeyE", true, false); update(-1.6 / length); expect(preview.pose.yaw).toBe(4096);
+    session.own.seat = 5; update(-1.6 / length);
+    expect(preview.active).toBe(false); expect(preview.key("KeyE", true, false)).toBe(false); expect(preview.key("KeyQ", true, false)).toBe(false);
+    session.own.seat = 0; update(-1.6 / length); expect(preview.active).toBe(true);
     preview.key("Escape", true, false); expect(preview.active).toBe(false);
     preview.begin(slot); update(-1.6 / length);
     session.onResult = (seq, code) => preview.result(seq, code, h.now);

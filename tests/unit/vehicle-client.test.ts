@@ -9,11 +9,12 @@ import { buildHud, KEY_VEHICLE } from "../../client/core/ui/hud.ts";
 import { UiFrame } from "../../client/core/ui/nodes.ts";
 import { B_HEAD, B_HIPS, B_PROP_R, B_SPINE, HUMAN, HUMAN_BONES, SLOT_NAMES, SLOT_TORSO } from "../../shared/anim/human.ts";
 import { defaultLook, LOOK_SKIN, LOOK_REGIONS } from "../../shared/anim/look.ts";
-import { AnimState } from "../../shared/anim/pose.ts";
+import { AnimState, PITCH_STEPS } from "../../shared/anim/pose.ts";
+import { quatRotate, quatUnrotate } from "../../shared/math/quat.ts";
 import { parsePack, type PackRig } from "../../shared/pack/pack.ts";
 import { defaultPalette, SKIN_BASE } from "../../shared/pack/palette.ts";
 import { GEAR_COUNT, GEAR_HELD, GEAR_WORN } from "../../shared/sim/entities.ts";
-import { vehiclePoint } from "../../shared/sim/vehicle-frame.ts";
+import { vehiclePoint, vehicleRotation } from "../../shared/sim/vehicle-frame.ts";
 import { Body } from "../../shared/sim/character.ts";
 import { boxMesh, buildPack, type SourceMesh } from "../../tools/pack/write.ts";
 import { coreRegistry, flatWorld } from "../fixtures/world.ts";
@@ -224,4 +225,33 @@ test("an inverted enclosed passenger keeps a seated pelvis and stows held equipm
   const drawn: string[] = [];
   characters.flush(packet, new InstanceWriter(packet.transient), false, m => drawn.push(pack.header.meshes[m]!.id));
   expect(drawn).not.toContain("core:rifle"); expect(drawn).toContain("core:human_m/head");
+});
+
+test("own and observed enclosed head look stays cabin-local through inversion and steep pitch without moving the torso", () => {
+  const q = new Float64Array(4), direction = new Float64Array(3), local = new Float64Array(3);
+  const localYaw = .3, localPitch = -.25;
+  const gaze = [Math.sin(localYaw) * Math.cos(localPitch), Math.sin(localPitch), Math.cos(localYaw) * Math.cos(localPitch)];
+  for (const role of ["pilot", "cabin"] as const) for (const own of [false, true]) {
+    let levelHead: number[] | null = null, levelSpine: number[] | null = null;
+    for (const angles of [{ yaw: 0, pitch: 0, roll: 0 }, { yaw: .7, pitch: 1.45, roll: .8 }, { yaw: -.4, pitch: 0, roll: Math.PI }, { yaw: .3, pitch: Math.PI, roll: .4 }]) {
+      const f = fixture(), st = new AnimState(), seated = { ...seat, ...angles, role, driver: role === "pilot", weapons: false };
+      vehicleRotation(seated, q); quatRotate(q, 0, gaze[0]!, gaze[1]!, gaze[2]!, direction, 0);
+      seated.aimYaw = Math.atan2(direction[0]!, direction[2]!);
+      st.pitch = Math.atan2(direction[1]!, Math.hypot(direction[0]!, direction[2]!)) * PITCH_STEPS / (Math.PI / 2);
+      const pitchBefore = st.pitch;
+      f.characters.add(f.packet, survivor, 0, 0, 0, seated.aimYaw, st, 3, defaultLook(), 0, colors, 0, null, 0, 7, own, own, 1, false, false, null, 0, undefined, seated);
+      expect(st.pitch).toBe(pitchBefore);
+      const heads: number[] = [], spines: number[] = [];
+      for (const [bone, out] of [[B_HEAD, heads], [B_SPINE, spines]] as const) {
+        const at = bone * BONE_FLOATS, m = f.packet.bones;
+        for (let col = 0; col < 3; col++) {
+          quatUnrotate(q, 0, m[at + col]!, m[at + 4 + col]!, m[at + 8 + col]!, local, 0);
+          out.push(...local);
+        }
+      }
+      if (levelHead) for (let k = 0; k < 9; k++) { expect(heads[k]!).toBeCloseTo(levelHead[k]!, 5); expect(spines[k]!).toBeCloseTo(levelSpine![k]!, 5); }
+      else { levelHead = heads; levelSpine = spines; }
+      close(transform(f.packet, B_HIPS, rest.subarray(0, 3)), [seat.x, seat.y, seat.z]);
+    }
+  }
 });

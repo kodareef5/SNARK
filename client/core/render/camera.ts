@@ -25,6 +25,8 @@ export class Camera {
   /** Radians. Yaw 0 faces +Z, and positive pitch looks up. */
   yaw = 0;
   pitch = 0;
+  /** Rotation about the view forward axis; zero keeps the horizon level. */
+  roll = 0;
   fovY = 1.2217; // 70 degrees
   aspect = 16 / 9;
   near = 0.25;
@@ -48,12 +50,13 @@ export class Camera {
     const cp = Math.cos(this.pitch);
     // Basis: forward f, right r = f x up, up u = r x f.
     const fx = sy * cp, fy = sp, fz = cy * cp;
-    const rx = -cy, rz = sy;
-    const ux = -sy * sp, uy = cp, uz = -cy * sp;
+    const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
+    const rx = -cy * cr + sy * sp * sr, ry = -cp * sr, rz = sy * cr + cy * sp * sr;
+    const ux = -cy * sr - sy * sp * cr, uy = cp * cr, uz = sy * sr - cy * sp * cr;
     const fl = 1 / Math.tan(this.fovY / 2);
     const m = this.viewProj;
     const sx = fl / this.aspect;
-    m[0] = sx * rx; m[4] = 0; m[8] = sx * rz; m[12] = 0;
+    m[0] = sx * rx; m[4] = sx * ry; m[8] = sx * rz; m[12] = 0;
     m[1] = fl * ux; m[5] = fl * uy; m[9] = fl * uz; m[13] = 0;
     m[3] = fx; m[7] = fy; m[11] = fz; m[15] = 0;
     depthRows(m, this.near, this.far, fx, fy, fz);
@@ -119,10 +122,12 @@ export class Camera {
     const t = Math.tan(this.fovY / 2);
     const rx = (sx * 2 - 1) * t * this.aspect;
     const ry = (1 - sy * 2) * t;
-    // forward + right * rx + up * ry, with the basis `update` builds.
-    const x = syaw * cp - cyaw * rx - syaw * sp * ry;
-    const y = sp + cp * ry;
-    const z = cyaw * cp + syaw * rx - cyaw * sp * ry;
+    // Rotate the screen offset by roll, then use the same basis as `update`.
+    const cr = Math.cos(this.roll), sr = Math.sin(this.roll);
+    const right = rx * cr + ry * sr, up = ry * cr - rx * sr;
+    const x = syaw * cp - cyaw * right - syaw * sp * up;
+    const y = sp + cp * up;
+    const z = cyaw * cp + syaw * right - cyaw * sp * up;
     const l = Math.hypot(x, y, z);
     out[0] = x / l;
     out[1] = y / l;
