@@ -30,7 +30,6 @@ export function weigh(dist: string): boolean {
   const size = (name: string): number => statSync(join(dist, name)).size;
   const fileOf = (role: string, format?: TextureFormat): number => m.files.filter((f) => f.role === role && (!format || f.format === format)).reduce((s, f) => s + f.bytes, 0);
   const boot = `assets/${m.files[m.boot]!.name}`;
-  // As the page asks for them: its script's modules, and the files the first frame needs, which the server's map is not among.
   const { script, first } = firstFrame(dist);
   const textures = (format: TextureFormat, widest: number): number => {
     let bytes = 0;
