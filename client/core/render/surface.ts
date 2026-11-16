@@ -266,10 +266,24 @@ export function skinMode(flags: number, entries: boolean): number {
 const f = (n: number): string => (Number.isInteger(n) ? n.toFixed(1) : String(n));
 
 /**
+ * How a SURFACE program is made: `dyed` reads the instance's region colours and the material's masks, which a
+ * material without masks does without; `drops` may leave a fragment out, by a cut-out draw's cutoff or a node's
+ * hand-over (hand.ts), which every other draw does without, so a GPU can skip what is hidden before shading it.
+ */
+export interface SurfaceVariant {
+  readonly dyed: boolean;
+  readonly drops: boolean;
+  /** A body's hurt and decay layer, at `uLevel`. */
+  readonly layered: boolean;
+}
+
+export const SURFACE_ANY: SurfaceVariant = { dyed: true, drops: true, layered: false };
+
+/**
  * The vertex text. Its attributes 0 and 2 to 6 are the flat program's, `uSkin` is what `skinMode` gives, and `uUv` is
  * what the mesh's stored texture coordinates span (PackMesh.uv): 0, 0, 1, 1 for a mesh that does not say.
  */
-export const SURFACE_VERTEX = `#version 300 es
+export const surfaceVertex = ({ dyed, drops }: SurfaceVariant): string => `#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=2) in vec3 iPos;
 layout(location=3) in float iYaw;
@@ -284,24 +298,17 @@ layout(location=11) in vec4 aWeights;
 uniform mat4 uViewProj;
 uniform vec3 uOffset, uCenter, uHalf;
 uniform vec4 uUv;
-uniform float uSkin, uGrey;
-uniform highp sampler2D uPalette, uBones;
+uniform float uSkin${dyed ? ", uGrey" : ""};
+uniform highp sampler2D ${dyed ? "uPalette, " : ""}uBones;
 out vec3 vRel, vNormal;
 out vec4 vTangent;
 out vec2 vUv;
-flat out mat3 vDye, vDye2;
-flat out float vAt;
-${FRAME_BLOCK}${HAND_VERTEX}mat3x4 bone(int i) {
+${dyed ? "flat out mat3 vDye, vDye2;\n" : ""}${drops ? "flat out float vAt;\n" : ""}${FRAME_BLOCK}${drops ? HAND_VERTEX : ""}mat3x4 bone(int i) {
   int n = i * 3;
   ivec2 at = ivec2(n % ${BONES_PER_ROW * 3}, n / ${BONES_PER_ROW * 3});
   return mat3x4(texelFetch(uBones, at, 0), texelFetch(uBones, at + ivec2(1, 0), 0), texelFetch(uBones, at + ivec2(2, 0), 0));
 }
-vec3 dye(uint i) {
-  if (i == 0u) return vec3(1.0);
-  vec3 c = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;
-  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)) / uGrey;
-}
-void main() {
+${dyed ? DYE : ""}void main() {
   vec3 l = uCenter + aPos * uHalf;
   vec3 p, n, t;
   if (uSkin > 0.5) {
@@ -320,15 +327,21 @@ void main() {
     n = r * aNormal;
     t = r * aTangent.xyz;
   }
-  vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));
-  vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 ? 0u : iRegB.y));
-  vRel = p;
-  vAt = length(iPos + uOffset);
-  vNormal = normalize(n);
+${dyed ? "  vDye = mat3(dye(iRegA.x), dye(iRegA.y), dye(iRegA.z));\n  vDye2 = mat3(dye(iRegA.w), dye(iRegB.x), dye(uSkin < -0.5 ? 0u : iRegB.y));\n" : ""}  vRel = p;
+${drops ? "  vAt = length(iPos + uOffset);\n" : ""}  vNormal = normalize(n);
   vTangent = vec4(normalize(t), aTangent.w);
   vUv = uUv.xy + aUv * uUv.zw;
-  gl_Position = handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : uViewProj * vec4(p, 1.0);
+  gl_Position = ${drops ? "handGone(vAt) ? vec4(0.0, 0.0, 2.0, 1.0) : " : ""}uViewProj * vec4(p, 1.0);
 }`;
+
+const DYE = `vec3 dye(uint i) {
+  if (i == 0u) return vec3(1.0);
+  vec3 c = texelFetch(uPalette, ivec2(int(i), 0), 0).rgb;
+  return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c)) / uGrey;
+}
+`;
+
+export const SURFACE_VERTEX = surfaceVertex(SURFACE_ANY);
 
 /**
  * The light's GLSL, which LIT, SURFACE and the dome share: the frame block, the fog's two uniforms, and the twins of
@@ -348,11 +361,11 @@ vec3 skyOn(float up) {
   return mix(fSkyBelow.rgb, fSkyAbove.rgb, 0.5 + 0.5 * up);
 }
 vec3 skyLight(vec3 n) {
-  vec2 s = -fMoon.xz;
-  float toward = dot(n.xz, s) * inversesqrt(max(dot(s, s), 1e-12));
+  float toward = dot(n.xz, fLook.xy);
   return skyOn(n.y) + fSkySide.rgb * (1.0 - n.y * n.y) + (fSkySun.rgb + fSkyAlong.rgb * toward) * toward;
 }
 vec3 direct(vec3 l, vec3 colour, vec3 albedo, float metal, float a2, vec3 n, vec3 v, float nv) {
+  if (colour.r + colour.g + colour.b <= 0.0) return vec3(0.0);
   float nl = max(dot(n, l), 0.0);
   vec3 h = l + v;
   h /= max(length(h), 0.000001);
@@ -406,7 +419,7 @@ export function skyFrom(out: Out, frame: Float32Array, r: Numbers, look: (view: 
 export const skyFromGlsl = (sky: string): string => `uniform highp sampler3D uSkyTable;
 ${sky}
 vec3 skyFrom(vec3 r) {
-  return skyLook(uSkyTable, r, fTrueSun) * fSkyScale;
+  return skyLook(uSkyTable, r) * fSkyScale;
 }
 `;
 
@@ -419,44 +432,41 @@ vec3 skyFrom(vec3 r) {
  * `air` is the sky table's lookup, which smooth surfaces mirror, and the air (atmosphere.ts AIR). The sun's shadow is
  * looked up off the surface along the mesh's normal, turned to the side seen. A node's draw first drops what its
  * hand-over between the near store and the far one says (hand.ts). With `layered` it draws a body's hurt and decay
- * layer as `wounded` has it, at `uLevel`; without, its text is the one every unhurt body is drawn with.
+ * layer as `wounded` has it, at `uLevel`; without, its text is the one every unhurt body is drawn with. Undyed, the
+ * albedo is the base colour under the tint, which is what `dyed` gives with no mask; one that never drops writes alpha 1.
  */
-export function surfaceFragment(format: TextureFormat, air: string, layered = false): string {
-  const albedo = "dyed(base.rgb, mask, mask2)";
+export function surfaceFragment(format: TextureFormat, air: string, { dyed, drops, layered }: SurfaceVariant = SURFACE_ANY): string {
+  const albedo = dyed ? "dyed(base.rgb, mask, mask2)" : "base.rgb * uTint";
   return `#version 300 es
 precision highp float;
 precision highp sampler2D;
 in vec3 vRel, vNormal;
 in vec4 vTangent;
 in vec2 vUv;
-flat in mat3 vDye, vDye2;
-uniform sampler2D uBase, uNormal, uMro, uMask, uMask2;
+${dyed ? "flat in mat3 vDye, vDye2;\n" : ""}uniform sampler2D uBase, uNormal, uMro${dyed ? ", uMask, uMask2" : ""};
 uniform vec3 uTint;
 uniform float uCutoff;
 ${layered ? "uniform sampler2D uLayer;\nuniform float uLevel;\n" : ""}out vec4 o;
-${LIGHT}${HAND_GLSL}${SHADOW_GLSL}${air}vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
-  return base * uTint * (1.0 - dot(mask + mask2, vec3(1.0)) + vDye * mask + vDye2 * mask2);
-}
-${layered ? WOUNDED : ""}vec3 bumped(vec2 b) {
+${LIGHT}${drops ? HAND_GLSL : ""}${SHADOW_GLSL}${air}${dyed ? DYED : ""}${layered ? WOUNDED : ""}vec3 bumped(vec2 b) {
   b = clamp(b * ${f(BUMP_SCALE)} - ${f(BUMP_ZERO)}, -1.0, 1.0);
   vec3 n = normalize(b.x * vTangent.xyz + b.y * vTangent.w * cross(vNormal, vTangent.xyz) + sqrt(max(1.0 - dot(b, b), 0.0)) * vNormal);
   return gl_FrontFacing ? n : -n;
 }
 void main() {
-  if (handDrops()) discard;
-  vec4 base = texture(uBase, vUv);
-  vec3 mask = texture(uMask, vUv).rgb;
-  vec3 mask2 = texture(uMask2, vUv).rgb;
-  vec3 mro = texture(uMro, vUv).rgb;
+${drops ? "  if (handDrops()) discard;\n" : ""}  vec4 base = texture(uBase, vUv);
+${dyed ? "  vec3 mask = texture(uMask, vUv).rgb;\n  vec3 mask2 = texture(uMask2, vUv).rgb;\n" : ""}  vec3 mro = texture(uMro, vUv).rgb;
   vec2 bump = texture(uNormal, vUv).${format === "astc" ? "ra" : "rg"};
-  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;
-  if (cover == 0.0) discard;
-  vec3 v = -normalize(vRel);
+${drops ? "  float cover = uCutoff > 0.0 ? clamp((base.a - uCutoff) / max(fwidth(base.a), 0.0001) + 0.5, 0.0, 1.0) : 1.0;\n  if (cover == 0.0) discard;\n" : "  float cover = 1.0;\n"}  vec3 v = -normalize(vRel);
   vec3 n = bumped(bump);
   float shade = sunShadow(vRel, normalize(gl_FrontFacing ? vNormal : -vNormal));
 ${layered ? `  vec3 albedo = wounded(${albedo}, mro);\n` : ""}  o = vec4(shown(lit(${layered ? "albedo" : albedo}, mro, n, v, skyFrom(reflect(-v, n)), shade), vRel), cover);
 }`;
 }
+
+const DYED = `vec3 dyed(vec3 base, vec3 mask, vec3 mask2) {
+  return base * uTint * (1.0 - dot(mask + mask2, vec3(1.0)) + vDye * mask + vDye2 * mask2);
+}
+`;
 
 /** `wounded` as GLSL, reading the layer on its unit at the draw's level. */
 const WOUNDED = `vec3 wounded(vec3 albedo, inout vec3 mro) {

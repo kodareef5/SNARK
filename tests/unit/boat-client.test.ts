@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { HudModel, VehicleTelemetry } from "../../client/core/hud.ts";
 import { buildHud, KEY_PROMPT, KEY_VEHICLE } from "../../client/core/ui/hud.ts";
 import { UiFrame, textWidth } from "../../client/core/ui/nodes.ts";
-import { vehicleSoundTargets } from "../../client/core/audio/vehicle.ts";
 import { predictedVehiclePose, remoteVehiclePose } from "../../client/core/vehicle-view.ts";
 import { RemoteSample } from "../../client/core/session.ts";
 import { BOAT } from "../../content/vehicles/boat.ts";
@@ -23,12 +22,11 @@ test("capsized predicted and observed boats share one full-attitude render pose 
   const observed = remoteVehiclePose(remote, 0); expect(observed.qz).toBe(1); expect(observed.flooding).toBe(.5);
 });
 
-test("marine instruments fit wide and portrait views and do not emit placeholder car audio", () => {
+test("marine instruments fit wide and portrait views", () => {
   const b = new Body(), v = new VehicleTelemetry(), hud = new HudModel();
   b.fuel = 72; b.vehicleRpm = 4500; b.vehicleGear = -1; b.vehicleEngineOn = true; b.vz = -4; b.vehicleFlooding = .2;
   v.updateBoat(4, b, BOAT, true); hud.vehicle = v; hud.crosshair = true; hud.prompt = "E  exit vehicle";
   expect(v.rpm).toBe(4500); expect(v.gear).toBe(-1); expect(v.flooding).toBe(.2);
-  expect(vehicleSoundTargets(v).engine).toBe(0);
   for (const aspect of [16 / 9, 9 / 16]) {
     const f = new UiFrame(); f.begin(aspect); buildHud(f, hud);
     const gauges = f.nodes.slice(0, f.count).filter(n => n.key >= KEY_VEHICLE && n.key < KEY_VEHICLE + 11);

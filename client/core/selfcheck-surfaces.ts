@@ -24,6 +24,7 @@ export class SelfcheckSurfaces implements AssetPort {
   constructor(manifest: Manifest, port: AssetPort) { this.manifest = manifest; this.port = port; }
 
   get cache(): AssetPort["cache"] { return this.port.cache; }
+  get protocol(): string { return this.port.protocol; }
   get done(): boolean { return this.started && this.left === 0; }
   request(r: AssetRequest): void { this.port.request(r); }
   cancel(slot: number): void { this.port.cancel(slot); }

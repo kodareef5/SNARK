@@ -71,10 +71,14 @@ export class Clouds {
   /** Each cloud's puffs, by entity id, made the first frame it is seen and dropped when it is gone. */
   private readonly made = new Map<number, Puff[]>();
   private readonly seen = new Set<number>();
-  /** This frame's see-through puffs, kept aside to be written far to near. */
-  private readonly soft = new Float32Array(MAX_DETAILS * DETAIL_FLOATS);
-  private readonly softWords = new Uint32Array(this.soft.buffer);
-  private readonly order = new Uint32Array(MAX_DETAILS);
+  /**
+   * This frame's puffs, kept aside to be written in order: the cut-out ones near to far, so that a GPU skips what the
+   * nearer have hidden, and the see-through ones far to near. Their keys are distances, the see-through inverted.
+   */
+  private readonly held = new Float32Array(MAX_DETAILS * DETAIL_FLOATS);
+  private readonly heldWords = new Uint32Array(this.held.buffer);
+  private readonly hardOrder = new Uint32Array(MAX_DETAILS);
+  private readonly softOrder = new Uint32Array(MAX_DETAILS);
 
   constructor(reg: Registry, details: PackDetails | undefined, palette: Uint8Array) {
     const n = reg.defs.length;
@@ -97,13 +101,13 @@ export class Clouds {
       this.flats.push(p.flat);
       this.greys.push(Math.max(1, Math.min(255, Math.round(p.grey * 255))));
     }
-    if (this.cells.length === 0) [this.cells[0], this.flats[0], this.greys[0]] = [0, 1, 255];
+    if (this.cells.length === 0) { this.cells[0] = 0; this.flats[0] = 1; this.greys[0] = 255; }
   }
 
   /**
-   * Writes the puffs of the clouds in view into `p` after its particles: the cut-out ones, then the see-through ones far
-   * to near. Returns how many are cut out; the rest, to `p.detailCount`, are see-through. `range` gets the nearest and
-   * farthest depth along the view any of them reaches.
+   * Writes the puffs of the clouds in view into `p` after its particles: the cut-out ones near to far, then the
+   * see-through ones far to near. Returns how many are cut out; the rest, to `p.detailCount`, are see-through. `range`
+   * gets the nearest and farthest depth along the view any of them reaches.
    */
   write(p: FramePacket, cam: Camera, remote: RemoteSample | null, range: number[]): number {
     this.written = this.dropped = 0;
@@ -115,15 +119,16 @@ export class Clouds {
       this.made.clear();
       return 0;
     }
-    const out = p.details;
     const words = p.detailWords;
+    const to = this.held;
+    const toWords = this.heldWords;
     const first = p.detailCount;
     let cut = 0;
     let soft = 0;
     // The camera's right and up, which a puff faces.
-    const [sy, cyw, sp, cp] = [Math.sin(cam.yaw), Math.cos(cam.yaw), Math.sin(cam.pitch), Math.cos(cam.pitch)];
-    const [rx, rz] = [-cyw, sy];
-    const [ux, uy, uz] = [-sy * sp, cp, -cyw * sp];
+    const sy = Math.sin(cam.yaw), cyw = Math.cos(cam.yaw), sp = Math.sin(cam.pitch), cp = Math.cos(cam.pitch);
+    const rx = -cyw, rz = sy;
+    const ux = -sy * sp, uy = cp, uz = -cyw * sp;
     const tick = remote.tick;
     for (let i = 0; i < remote.count; i++) {
       const kind = remote.kind[i]!;
@@ -165,10 +170,8 @@ export class Clouds {
         const depth = cam.depth(px, py, pz);
         if (depth - half < range[0]!) range[0] = depth - half;
         if (depth + half > range[1]!) range[1] = depth + half;
-        // A see-through puff waits in `soft`; a cut-out one goes straight in.
-        const to = f.rim ? this.soft : out;
-        const toWords = f.rim ? this.softWords : words;
-        const o = (f.rim ? soft : first + cut) * DETAIL_FLOATS;
+        const n = cut + soft;
+        const o = n * DETAIL_FLOATS;
         to[o + DETAIL.middle] = px;
         to[o + DETAIL.middle + 1] = py;
         to[o + DETAIL.middle + 2] = pz;
@@ -185,21 +188,19 @@ export class Clouds {
         toWords[o + DETAIL.colourA] = f.colour;
         toWords[o + DETAIL.colourB] = f.colour;
         toWords[o + DETAIL.misc] = (f.misc | (Math.round(Math.min(1, shows) * 255) << 16)) >>> 0;
-        if (f.rim) {
-          this.order[soft] = (0x7ffff - Math.min(0x7ffff, Math.floor(d * 64))) * MAX_DETAILS + soft;
-          soft++;
-        } else cut++;
+        const near = Math.min(0x7ffff, Math.floor(d * 64));
+        if (f.rim) this.softOrder[soft++] = (0x7ffff - near) * MAX_DETAILS + n;
+        else this.hardOrder[cut++] = near * MAX_DETAILS + n;
       }
     }
     for (const id of this.made.keys()) if (!seen.has(id)) this.made.delete(id);
-    // The see-through ones far to near: their keys are inverted distances, sorted from least.
-    sortU32(this.order, soft);
+    sortU32(this.hardOrder, cut);
+    sortU32(this.softOrder, soft);
     // Copied as words, so a colour word that reads as a float's NaN keeps its bits.
-    const from = this.softWords;
-    for (let k = 0; k < soft; k++) {
-      const a = (this.order[k]! % MAX_DETAILS) * DETAIL_FLOATS;
-      const b = (first + cut + k) * DETAIL_FLOATS;
-      for (let w = 0; w < DETAIL_FLOATS; w++) words[b + w] = from[a + w]!;
+    for (let k = 0; k < cut + soft; k++) {
+      const a = ((k < cut ? this.hardOrder[k]! : this.softOrder[k - cut]!) % MAX_DETAILS) * DETAIL_FLOATS;
+      const b = (first + k) * DETAIL_FLOATS;
+      for (let w = 0; w < DETAIL_FLOATS; w++) words[b + w] = toWords[a + w]!;
     }
     p.detailCount = first + cut + soft;
     this.written = cut + soft;

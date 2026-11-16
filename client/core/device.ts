@@ -25,12 +25,12 @@ import { FarCells, writeFar } from "../../shared/world/tactical.ts";
 import type { App } from "./app.ts";
 import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./assets/tiers.ts";
 import { FrameTimer, GPU_PLAN, GpuQuestions, type Gl2, type GpuReport, type PassTime } from "./devicegpu.ts";
-import { BodyCopies, LOOK, TextureMemory, farBases, farSpots, rocks } from "./devicescene.ts";
+import { BodyCopies, LOOK, TextureMemory, boxBase, farBases, farSpots, rocks } from "./devicescene.ts";
 import { CITY_BUFFER } from "./render/farcity.ts";
 import { FAR_BUFFER } from "./render/far.ts";
 import { FAR_NODE_BUFFERS } from "./render/farnodes.ts";
 import { donePage, progressText, startPage } from "./devicetext.ts";
-import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, type FramePacket } from "./render/packet.ts";
+import { DRAW_TEXTURED, FRAME, SOURCE_WINDOW, TILE_CASTS, TILE_QUADS, type FramePacket } from "./render/packet.ts";
 import { groundSize } from "./render/terrain.ts";
 import { CUTOUTS, type Cutouts, type Thing } from "./render/scene.ts";
 import { effectsOff } from "./passes.ts";
@@ -52,13 +52,15 @@ export const SCENES: readonly SceneName[] = ["plain", "stress", "crowd"];
 export const scenesOf = (tier: Tier): readonly SceneName[] => [...SCENES, ...(tier.split > 0 ? ["crowd1" as const] : []), ...(tier.lit && tier.shadows.cascades > 0 ? ["crowd0" as const] : [])];
 
 /**
- * What the ladder adds, a rung at a time. Bodies: copies of the crowd, posed. Pieces: stone and wood houses the server
- * builds, with their materials near. Triangles: rocks near, each a draw. Draws: rocks far, each a draw of few triangles.
+ * What the ladder adds, a rung at a time. Bodies: copies of the crowd, dressed, some riding. Pieces: stone and wood houses
+ * the server builds, with their materials near. Triangles: rocks near, each a draw. Draws: rocks far, each a draw of few
+ * triangles. Base: the compact base up close, a storey a rung (devicescene.ts boxBase). Vehicles: parked cars,
+ * helicopters and boats.
  */
-export type Axis = "bodies" | "triangles" | "draws" | "pieces";
-export const AXES: readonly Axis[] = ["bodies", "triangles", "draws", "pieces"];
-/** Each axis's last rung is the most the engine takes: a view of 2,048 bodies, 4,096 draws a frame, the base's 4,096 pieces. */
-export const RUNGS: Readonly<Record<Axis, readonly number[]>> = { bodies: [25, 50, 100, 200, 400, 800, 1600, 2048], triangles: [8, 16, 32, 64, 128, 256, 512, 1024], draws: [256, 512, 1024, 2048, 3600], pieces: [64, 128, 256, 512, 1024, 2048, 4096] };
+export type Axis = "bodies" | "triangles" | "draws" | "pieces" | "base" | "vehicles";
+export const AXES: readonly Axis[] = ["bodies", "triangles", "draws", "pieces", "base", "vehicles"];
+/** The last rung of bodies, draws and pieces is the most the engine takes: a view of 2,048 bodies, 4,096 draws a frame, the houses' 4,096 pieces. */
+export const RUNGS: Readonly<Record<Axis, readonly number[]>> = { bodies: [25, 50, 100, 200, 400, 800, 1600, 2048], triangles: [8, 16, 32, 64, 128, 256, 512, 1024], draws: [256, 512, 1024, 2048, 3600], pieces: [64, 128, 256, 512, 1024, 2048, 4096], base: [1, 2, 3].map((s) => boxBase(s).length), vehicles: [3, 12, 48, 192] };
 /** Texture memory the ladder takes at the end, in megabytes, until the device refuses it or it is all held. */
 export const MEMORY_MB: readonly number[] = [128, 256, 512, 768, 1024, 1536, 2048, 3072, 4096];
 
@@ -169,6 +171,27 @@ function texturedDraws(p: FramePacket): number {
   return n;
 }
 
+/** The draws a frame makes into its shadow maps and their triangles: one a caster and cascade drawn, and one for each of the ground's two sources a cascade casts from. */
+function casterLoad(p: FramePacket, tris: readonly (readonly number[])[]): [number, number] {
+  let [draws, triangles] = [0, 0];
+  for (let k = 0; k < p.cascadeCount; k++) {
+    if ((p.cascadesDrawn & (1 << k)) === 0) continue;
+    for (let e = 0; e < p.casterCount; e++) {
+      if ((p.casterCascades[e]! & (1 << k)) === 0) continue;
+      draws++;
+      triangles += ((p.casterFlags[e]! & DRAW_TEXTURED) !== 0 ? p.casterIndexCount[e]! / 3 : tris[p.casterMesh[e]!]![p.casterLod[e]!]!) * p.casterInstances[e]!;
+    }
+    let sources = 0;
+    for (let t = 0; t < p.tileCount; t++) {
+      if ((p.tilePass[t]! & (TILE_CASTS << k)) === 0) continue;
+      sources |= 1 << p.tileSource[t * 4 + 3]!;
+      triangles += TILE_QUADS * TILE_QUADS * 2;
+    }
+    draws += (sources & 1) + (sources >> 1);
+  }
+  return [draws, triangles];
+}
+
 /** Rounded to a tenth. Nothing gives zeros. */
 export function spread(values: readonly number[]): Spread {
   const s = [...values].sort((a, b) => a - b);
@@ -196,11 +219,16 @@ export interface PhaseReport {
    */
   gpuMs: number | null;
   gpuOff: number | null;
-  /** Medians a frame: WebGL draw calls, triangles, draws the frame asked to have drawn with their materials, and bones posed. */
+  /**
+   * Medians a frame: WebGL draw calls, triangles, draws the frame asked to have drawn with their materials, and bones
+   * posed; and of the calls, those into the shadow maps, with their triangles, which `triangles` leaves out.
+   */
   drawCalls: number;
   triangles: number;
   textured: number;
   bones: number;
+  casterDraws: number;
+  casterTris: number;
   /** Totals over the measured frames, as the frame packet counted them. */
   dropped: number;
   skipped: number;
@@ -231,13 +259,15 @@ export interface RungReport {
   canvas: number[];
   settled: boolean;
   frameMs: Spread;
-  /** Medians: our code's ms, draw calls, triangles, bones posed and draws with materials. */
+  /** Medians: our code's ms, draw calls, triangles, bones posed, draws with materials, and draws and triangles into the shadow maps. */
   buildMs: number;
   drawMs: number;
   calls: number;
   tris: number;
   bones: number;
   mat: number;
+  casterDraws: number;
+  casterTris: number;
   fetched: number;
   failed: number;
   refused: number;
@@ -668,6 +698,9 @@ export interface Load {
   pieces: number;
   near: number;
   far: number;
+  /** Pieces of the compact base the server is to stand, and vehicles parked on the page. */
+  base?: number;
+  vehicles?: number;
   /** Drawn in one depth range on a tier of two, with no shadows on a tier that casts, and with no far trees, rocks or bushes. */
   oneRange?: boolean;
   noShadows?: boolean;
@@ -690,7 +723,7 @@ const bare = (tier: Tier, yaw: number): Load => ({ tier, yaw, stress: false, bod
 
 /** The rung of `axis` with `n` on `tier`. */
 export function rungLoad(tier: Tier, axis: Axis, n: number): Load {
-  const load = bare(tier, axis === "bodies" ? LOOK.bodies : axis === "pieces" ? LOOK.pieces : LOOK.rocks);
+  const load = bare(tier, axis === "bodies" || axis === "vehicles" ? LOOK.bodies : axis === "pieces" || axis === "base" ? LOOK.pieces : LOOK.rocks);
   if (axis === "triangles") load.near = n;
   else if (axis === "draws") load.far = n;
   else load[axis] = n;
@@ -891,8 +924,8 @@ export interface DeviceSide {
   expected: Record<string, string> | null;
   /** Bodies added on the page, which the run sets the number of. */
   bodies: BodyCopies;
-  /** Asks the probe's server to stand `n` pieces in its base. Resolves with how many stand, or null if it would not. */
-  base(n: number): Promise<number | null>;
+  /** Asks the probe's server to stand `n` pieces in its houses, or with `box` in the compact base. Resolves with how many stand, or null if it would not. */
+  base(n: number, box: boolean): Promise<number | null>;
   /** Texture memory for the ladder's last step, in the renderer's variant. Null where the renderer gives none. */
   memory: TextureMemory | null;
   /** The GPU questions, or those named, made when a test comes to them, once the canvas has its size. Null where the renderer gives none. */
@@ -944,13 +977,13 @@ export class DeviceRun {
   private failedAt: Failures = { net: 0, hash: 0, range: 0, status: 0, refused: 0 };
   private dropped = 0;
   private skipped = 0;
-  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[], gpu: [] as number[], gpuOff: [] as number[] };
+  private readonly samples = { frame: [] as number[], build: [] as number[], draw: [] as number[], calls: [] as number[], tris: [] as number[], textured: [] as number[], bones: [] as number[], casterDraws: [] as number[], casterTris: [] as number[], gpu: [] as number[], gpuOff: [] as number[] };
   /** Tiers above this index are not tried in the quick look, for `stopWhy`. */
   private stopAbove = TIERS.length;
   private stopWhy = "";
-  /** The base's pieces as the server last said, and whether it is still to say; the client's count of structures, and how long it has stood. */
-  private pieces = 0;
-  private asking = false;
+  /** The pieces of each base as the server was last asked, and how many answers are still to come; the client's count of structures, and how long it has stood. */
+  private readonly stood = { pieces: 0, base: 0 };
+  private asking = 0;
   private structs = -1;
   private structsStill = 0;
   /** Snapshot counts: from the first snapshot, at the step's start, and when the page was hidden. */
@@ -1027,7 +1060,7 @@ export class DeviceRun {
     const count = app.session.world?.structs.count ?? 0;
     this.structsStill = count === this.structs ? this.structsStill + 1 : 0;
     this.structs = count;
-    const quiet = r.flying === 0 && r.waiting === 0 && p.assetUploads.length === 0 && p.texUploads.length === 0 && p.skipped === 0 && !this.asking && this.structsStill >= STILL;
+    const quiet = r.flying === 0 && r.waiting === 0 && p.assetUploads.length === 0 && p.texUploads.length === 0 && p.skipped === 0 && this.asking === 0 && this.structsStill >= STILL;
     if (quiet && this.still === 0) this.stillSince = now;
     this.still = quiet ? this.still + 1 : 0;
     if (r.stats.fetched + r.stats.cached !== this.got) [this.got, this.gotAt] = [r.stats.fetched + r.stats.cached, now];
@@ -1162,14 +1195,15 @@ export class DeviceRun {
   }
 
   /**
-   * The quick look asks the GPU questions first, where the renderer gives them, and the tree order the SURFACE pass's
-   * cost alone. The other tests begin at once.
+   * The quick look asks the GPU questions first, where the renderer gives them, facing the crowd, whose thatch and bodies
+   * give the executor draws of every kind to copy; the tree order the SURFACE pass's cost alone. The other tests begin
+   * at once.
    */
   private ask(): void {
     const make = this.side.questions;
     if ((this.mode !== "quick" && this.mode !== "trees") || !make) return this.begin();
     this.questions = make(this.mode === "trees" ? ["surface"] : undefined);
-    if (this.mode === "quick") this.report.gpuTests = this.questions.report;
+    if (this.mode === "quick") [this.report.gpuTests, this.side.app.controls.yaw] = [this.questions.report, LOOK.crowd];
     this.stage = "gpu";
     this.report.stage = "gpu questions";
   }
@@ -1255,7 +1289,7 @@ export class DeviceRun {
       this.next(phase);
     } else {
       const { held, limit, invalid } = judgeRung(phase, this.side.display);
-      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, invalid, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, fetched: phase.fetched, failed: phase.failed, refused: phase.refused, missed: phase.missed });
+      this.report.ladder!.rungs.push({ tier: phase.tier, axis: step.axis!, n: step.n!, held, limit, invalid, canvas: phase.canvas, settled: phase.settled, frameMs: phase.frameMs, buildMs: phase.buildMs.median, drawMs: phase.drawMs.median, calls: phase.drawCalls, tris: phase.triangles, bones: phase.bones, mat: phase.textured, casterDraws: phase.casterDraws, casterTris: phase.casterTris, fetched: phase.fetched, failed: phase.failed, refused: phase.refused, missed: phase.missed });
       this.nextRung(held, phase.lost > 0);
     }
     return true;
@@ -1270,6 +1304,9 @@ export class DeviceRun {
     s.tris.push(p.triangles);
     s.bones.push(p.boneCount);
     s.textured.push(texturedDraws(p));
+    const [draws, tris] = casterLoad(p, this.side.app.scene!.assets.table.tris);
+    s.casterDraws.push(draws);
+    s.casterTris.push(tris);
     this.dropped += p.dropped;
     this.skipped += p.skipped;
     if (s.frame.length % 30 === 0) this.rtt.push(tenth((this.side.app.session.stats.rttTicks * 1000) / TICK_RATE));
@@ -1282,7 +1319,7 @@ export class DeviceRun {
     return {
       tier: load.tier.name, scene: this.step!.scene ?? "plain", ratio: this.ratio(), canvas: this.canvas, settleMs: this.settleMs, settled: this.settled, frames: s.frame.length,
       frameMs: spread(s.frame), buildMs: spread(s.build), drawMs: spread(s.draw), gpuMs: s.gpu.length > 0 ? spread(s.gpu).median : null, gpuOff: s.gpuOff.length > 0 ? spread(s.gpuOff).median : null,
-      drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median, bones: spread(s.bones).median,
+      drawCalls: spread(s.calls).median, triangles: spread(s.tris).median, textured: spread(s.textured).median, bones: spread(s.bones).median, casterDraws: spread(s.casterDraws).median, casterTris: spread(s.casterTris).median,
       dropped: this.dropped, skipped: this.skipped, fetched: app.scene!.assets.residency.stats.fetched - this.fetchedAt, ...this.failedSince(), missed: this.missedSince(this.stepBase),
       lost: this.lostCount - this.lostAt, fellTo: app.ui.settings.tier === load.tier.name ? null : app.ui.settings.tier,
     };
@@ -1613,9 +1650,9 @@ export class DeviceRun {
     this.step = { kind: "rung", load };
     this.apply(load);
     t.at = null;
-    this.asking = true;
+    this.asking++;
     void this.side.stand(step.wood).then((at) => {
-      this.asking = false;
+      this.asking--;
       if (this.trees !== t || t.k !== k) return;
       if (!at) return void (this.report.errors.length < 10 && this.report.errors.push(`${this.report.stage}: the server would not stand the body in the wood`));
       t.at = at;
@@ -1763,14 +1800,16 @@ export class DeviceRun {
     app.controls.pitch = 0;
     const assets = app.scene!.assets;
     app.scene!.things = [...(load.stress ? this.stressed() : []), ...(load.near + load.far > 0 ? rocks(assets.table, hf, load.near, load.far) : [])];
-    bodies.n = load.bodies;
+    [bodies.n, bodies.vehicles] = [load.bodies, load.vehicles ?? 0];
     this.variant(load);
-    if (load.pieces !== this.pieces) {
-      this.asking = true;
-      this.pieces = load.pieces;
-      void this.side.base(load.pieces).then((n) => {
-        this.asking = false;
-        if (n === null) this.report.errors.length < 10 && this.report.errors.push(`${this.report.stage}: the server would not build the base`);
+    for (const what of ["pieces", "base"] as const) {
+      const n = load[what] ?? 0;
+      if (n === this.stood[what]) continue;
+      this.stood[what] = n;
+      this.asking++;
+      void this.side.base(n, what === "base").then((got) => {
+        this.asking--;
+        if (got === null) this.report.errors.length < 10 && this.report.errors.push(`${this.report.stage}: the server would not build the ${what === "base" ? "compact base" : "houses"}`);
       });
     }
     this.fetchedAt = assets.residency.stats.fetched;
@@ -1997,6 +2036,8 @@ export interface RendererLike {
   format?: string;
   drawCalls: number;
   readPixel(sx: number, sy: number): [number, number, number];
+  /** The renderer's executor, which the GPU questions time a draw of each kind through. */
+  draw?(p: FramePacket): void;
 }
 
 /** A line of progress over the bottom of the game, and the whole page before and after. */
@@ -2139,10 +2180,10 @@ export class DeviceProbe {
       now: () => b.now(),
       pageBytes: () => b.entries().reduce((sum, e) => sum + (e.transferSize || e.encodedBodySize || 0), 0),
       expected: this.expected,
-      bodies: new BodyCopies(side.app.session, side.hf),
-      base: (n) => this.within(() => b.fetch(`base/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
+      bodies: new BodyCopies(side.app.session, side.hf, side.reg),
+      base: (n, box) => this.within(() => b.fetch(`${box ? "box" : "base"}/${n}`, "").then((res) => (res.ok ? (res.json() as Promise<{ pieces: number }>) : null)).then((r) => r?.pieces ?? null), 20000, null),
       memory: new TextureMemory(gl, create, gpu.variant),
-      questions: (only) => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight], only ? { ...GPU_PLAN, only } : GPU_PLAN),
+      questions: (only) => new GpuQuestions(gl, create, () => b.now(), gpu.variant, [gl.drawingBufferWidth, gl.drawingBufferHeight], only ? { ...GPU_PLAN, only } : GPU_PLAN, renderer.draw ? { draw: (p) => renderer.draw!(p), frame: () => side.app.scene!.packet } : null),
       frames: new FrameTimer(gl),
       display: this.report.idleFrameMs ?? 16.7,
       terrainMap: this.offered.includes("terrain"),

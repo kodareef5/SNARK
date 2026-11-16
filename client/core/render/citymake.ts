@@ -85,8 +85,13 @@ export function cityKinds(city: CityStatics, hf: Heightfield, bounds: { center: 
  */
 export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (chunk: number) => Gone, chunks: readonly number[], level: { gap: number; least: number; cell: number; tall: number }, ox: number, oy: number, oz: number): CityJob {
   const dims = city.dims;
-  let [cx0, cz0, cx1, cz1] = [Infinity, Infinity, -Infinity, -Infinity];
-  for (const c of chunks) [cx0, cz0, cx1, cz1] = [Math.min(cx0, chunkCx(dims, c)), Math.min(cz0, chunkCz(dims, c)), Math.max(cx1, chunkCx(dims, c)), Math.max(cz1, chunkCz(dims, c))];
+  let cx0 = Infinity, cz0 = Infinity, cx1 = -Infinity, cz1 = -Infinity;
+  for (const c of chunks) {
+    cx0 = Math.min(cx0, chunkCx(dims, c));
+    cz0 = Math.min(cz0, chunkCz(dims, c));
+    cx1 = Math.max(cx1, chunkCx(dims, c));
+    cz1 = Math.max(cz1, chunkCz(dims, c));
+  }
   // Cells are made of a chunk's own pieces; boxes hide each other across a chunk's edge.
   const area: number[] = [];
   if (level.cell > 0) area.push(...chunks);
@@ -97,11 +102,11 @@ export function cityJob(id: number, city: CityStatics, hf: Heightfield, gone: (c
   }
   const counts = Uint32Array.from(area, (c) => city.in(c));
   const n = counts.reduce((sum, k) => sum + k, 0);
-  const [kind, yaw, x, y, z] = [new Uint16Array(n), new Uint16Array(n), new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+  const kind = new Uint16Array(n), yaw = new Uint16Array(n), x = new Float32Array(n), y = new Float32Array(n), z = new Float32Array(n);
   const lost = area.some((c) => gone(c) !== null) ? new Uint8Array(n) : null;
   let at = 0;
   for (const c of area) {
-    const [from, to] = [city.first[c]!, city.first[c + 1]!];
+    const from = city.first[c]!, to = city.first[c + 1]!;
     kind.set(city.kind.subarray(from, to), at);
     yaw.set(city.yaw.subarray(from, to), at);
     x.set(city.x.subarray(from, to), at);
@@ -181,7 +186,7 @@ export class LevelMaking {
     const data = new Uint8Array(start + verts * VERTEX_BYTES);
     const index = indexBytes === 4 ? new Uint32Array(data.buffer, 0, faces * 6) : new Uint16Array(data.buffer, 0, faces * 6);
     const view = new DataView(data.buffer);
-    const [ce, h] = [k.center, k.half];
+    const ce = k.center, h = k.half;
     const q = (v: number, a: number): number => Math.max(-32767, Math.min(32767, Math.round(((v - ce[a]!) / h[a]!) * 32767)));
     const first = new Uint32Array(parts.length);
     const count = new Uint32Array(parts.length);

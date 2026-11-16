@@ -166,7 +166,7 @@ export class FarCity {
   /** The tiles that may be in reach: those within it and two tiles more of where the camera was when they were found. */
   private around: number[] = [];
   private readonly listed: Uint8Array;
-  private aroundAt: [number, number, number] = [Infinity, Infinity, -1];
+  private readonly aroundAt = Float64Array.of(Infinity, Infinity, -1);
   /** Per chunk, the box its pieces' faces may reach, as a tile's; and per chunk of the tile being drawn, its depth ranges or 0. */
   private readonly chunkBox: Float64Array;
   private readonly ways = new Uint8Array(CITY_TILE * CITY_TILE);
@@ -194,7 +194,8 @@ export class FarCity {
       byTile.set(t, [...(byTile.get(t) ?? []), c]);
     }
     const cb = (this.chunkBox = new Float64Array(chunks * 6));
-    for (const [t, list] of byTile) {
+    for (const t of byTile.keys()) {
+      const list = byTile.get(t)!;
       const box = Float64Array.from([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
       for (const c of list) {
         cb.fill(Infinity, c * 6, c * 6 + 3).fill(-Infinity, c * 6 + 3, c * 6 + 6);
@@ -400,9 +401,8 @@ export class FarCity {
         const z1 = cb[k + 5]! - cam.z;
         ways[r] = this.source.complete(c) || !cam.boxVisible(x0, y0, z0, x1, y1, z1) ? 0 : cam.passes(x0, y0, z0, x1, y1, z1);
       }
-      const ox = (tile.t % this.tilesX) * TILE_METRES - LOCAL - cam.x;
-      const oy = tile.base - cam.y;
-      const oz = Math.floor(tile.t / this.tilesX) * TILE_METRES - LOCAL - cam.z;
+      const tx = this.cornerX(tile.t), tz = this.cornerZ(tile.t);
+      const ox = tx - LOCAL - cam.x, oy = tile.base - cam.y, oz = tz - LOCAL - cam.z;
       const most = Math.hypot(Math.max(-ax, bx), Math.max(-ay, by), Math.max(-az, bz));
       for (let l = 0; l < tile.held.length; l++) {
         const h = tile.held[l];
@@ -467,7 +467,9 @@ export class FarCity {
   private nearby(p: FramePacket, cam: Camera, reach: number): readonly number[] {
     const at = this.aroundAt;
     if (reach === at[2] && Math.hypot(cam.x - at[0], cam.z - at[1]) < TILE_METRES) return this.around;
-    this.aroundAt = [cam.x, cam.z, reach];
+    at[0] = cam.x;
+    at[1] = cam.z;
+    at[2] = reach;
     const list: number[] = [];
     for (let n = 0; n < this.tiles.length; n++) {
       const b = this.tiles[n]!.box;
@@ -490,6 +492,15 @@ export class FarCity {
     return Math.floor(cz / CITY_TILE) * this.tilesX + Math.floor(cx / CITY_TILE);
   }
 
+  /** Tile `t`'s corner nearest the map's origin, in metres. */
+  private cornerX(t: number): number {
+    return (t % this.tilesX) * TILE_METRES;
+  }
+
+  private cornerZ(t: number): number {
+    return Math.floor(t / this.tilesX) * TILE_METRES;
+  }
+
   /** Lets go of every level of `tile` on the card, and of what is being made of it. */
   private letGo(p: FramePacket, tile: Tile): void {
     tile.unseen = 0;
@@ -510,8 +521,7 @@ export class FarCity {
     this.asked.set(id, { tile: n, level, epoch: tile.epoch, version: tile.version });
     tile.making |= 1 << level;
     this.out++;
-    const [tx, tz] = [(tile.t % this.tilesX) * TILE_METRES, Math.floor(tile.t / this.tilesX) * TILE_METRES];
-    this.maker.make(cityJob(id, this.source.statics, this.hf, (c) => this.gone.get(c) ?? null, tile.chunks, this.levels[level]!, tx - LOCAL, tile.base, tz - LOCAL));
+    this.maker.make(cityJob(id, this.source.statics, this.hf, (c) => this.gone.get(c) ?? null, tile.chunks, this.levels[level]!, this.cornerX(tile.t) - LOCAL, tile.base, this.cornerZ(tile.t) - LOCAL));
   }
 
   /** Keeps a worker making a few levels ahead, in this frame's order: in update, and as each level comes back. */
@@ -573,8 +583,8 @@ export class FarCity {
       this.seenShape[c] = -1;
       this.whole.delete(c);
     }
-    const tables = near?.chunks ?? [];
-    for (let c = 0; c < tables.length; c++) {
+    const tables = near?.chunks;
+    for (let c = 0; tables && c < tables.length; c++) {
       const table = tables[c];
       if (!table || table.shape === this.seenShape[c] || this.tileOfChunk[c]! < 0 || !this.source.complete(c)) continue;
       this.seenShape[c] = table.shape;

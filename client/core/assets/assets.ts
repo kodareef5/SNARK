@@ -17,6 +17,13 @@ import { DEFAULT_TIER, TIERS, tierOf, type Tier } from "./tiers.ts";
 /** A level is left only when another is right by this margin, so that a body at the edge of a switch does not flicker. */
 export const HYSTERESIS = 0.15;
 
+/** The coarsest level, but none finer than `finest`, whose error is within `limit`. */
+function within(errors: readonly number[], finest: number, limit: number): number {
+  let level = errors.length - 1;
+  while (level > finest && errors[level]! > limit) level--;
+  return level;
+}
+
 export class Assets {
   readonly table: AssetTable;
   readonly bind: Binding;
@@ -87,14 +94,9 @@ export class Assets {
   choose(errors: readonly number[], distance: number, was: number): number {
     const allowed = (this.tier.threshold * this.residency.relax * distance) / this.scale;
     const finest = Math.min(this.tier.finest, errors.length - 1);
-    const within = (limit: number): number => {
-      let level = errors.length - 1;
-      while (level > finest && errors[level]! > limit) level--;
-      return level;
-    };
-    const want = within(allowed);
+    const want = within(errors, finest, allowed);
     if (was < 0 || was >= errors.length || want === was) return want;
-    if (want > was) return Math.max(was, within(allowed * (1 - HYSTERESIS)));
+    if (want > was) return Math.max(was, within(errors, finest, allowed * (1 - HYSTERESIS)));
     return errors[was]! > allowed * (1 + HYSTERESIS) || was < finest ? want : was;
   }
 

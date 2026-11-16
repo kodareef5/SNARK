@@ -69,6 +69,7 @@ function frames(saddled = false) {
   let hash = 2166136261, beforePlain = 2166136261;
   const grazer = pack.header.meshes.findIndex((m) => m.id === "core:grazer");
   let most = 0;
+  const counts = [0, 0, 0];
   const meshes = new Set<number>();
   for (let f = 0; f < 300; f++) {
     h.run(1000 / 60, (now) => {
@@ -76,14 +77,17 @@ function frames(saddled = false) {
       hash = fold(hash, p);
       beforePlain = fold(beforePlain, p, grazer);
       most = Math.max(most, p.drawCount);
+      counts[0]! += p.drawCount;
+      counts[1]! += p.triangles;
+      for (const u of [...p.uploads, ...p.assetUploads, ...p.texUploads]) counts[2]! += u.data.length;
       for (let i = 0; i < p.drawCount; i++) meshes.add(p.drawMesh[i]!);
     });
   }
-  return { hash: hash.toString(16), beforePlain: beforePlain.toString(16), most, drawn: new Set([...meshes].map((m) => pack.header.meshes[m]!.id)) };
+  return { hash: hash.toString(16), beforePlain: beforePlain.toString(16), most, counts, drawn: new Set([...meshes].map((m) => pack.header.meshes[m]!.id)) };
 }
 
 test("three hundred frames of a busy scene draw what they drew before", () => {
-  const { hash, beforePlain, most, drawn } = frames();
+  const { hash, beforePlain, most, counts, drawn } = frames();
   // Bodies in parts, armor, a held weapon, creatures, a dummy, structures and nodes: a scene that uses the pack widely.
   const missing = ["core:human_m/head", "core:human_m/armor/hide/torso", "core:rifle", "core:mannequin/torso", "core:raptor", "core:parasaur", "core:grazer", "core:wall_metal", "core:storage_box", "core:campfire", "core:tree"].filter((id) => !drawn.has(id));
   expect(missing).toEqual([]);
@@ -142,6 +146,9 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // a grey box, which numbers the meshes after it anew; with its mesh a box again they are those again.
   expect(beforePlain).toBe("aca29c81");
   expect(hash).toBe("291b6419");
+  // What the hash cannot say: the 300 frames' draws, triangles and bytes put on the card. A change that moves the hash
+  // and leaves the frames as they were leaves these.
+  expect(counts).toEqual([37800, 34572000, 0]);
 
   // The same scene with the raptor's box saddle in the pack and on the raptor (FL5), drawn on its bones wherever it is
   // seen. The saddle's mesh numbers the meshes after it on, so the pack that holds it is the frozen one with it added:
@@ -157,4 +164,5 @@ test("three hundred frames of a busy scene draw what they drew before", () => {
   // They were d122e6e1 and c0721ce1 until the pteranodon's mesh became its own, as above.
   expect(saddled.beforePlain).toBe("a49f75cd");
   expect(saddled.hash).toBe("40c252f5");
+  expect(saddled.counts).toEqual([38100, 34590000, 0]);
 });

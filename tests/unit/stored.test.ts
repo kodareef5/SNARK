@@ -16,6 +16,7 @@ import { deflate } from "../../tools/pack/deflate.ts";
 import { partHash } from "../../tools/pack/manifest.ts";
 import type { SplitFile } from "../../tools/pack/split.ts";
 import { storeParts } from "../../tools/pack/store.ts";
+import { encodeSurface } from "../../tools/pack/surface.ts";
 import { FakeNet } from "../fixtures/assetnet.ts";
 import { sceneRegistry, sceneSet } from "../fixtures/sceneworld.ts";
 
@@ -34,7 +35,7 @@ test("every filter comes undone: indices of both widths and their padding, verti
     level.set(noise(verts * 8), at);
     expect(roundTrip(level, FILTER_LEVEL, [count, bytes])).toEqual(level);
   }
-  for (const [data, filter, numbers] of [[noise(12 * 40), FILTER_SURFACE, []], [noise(8 * 40, 4), FILTER_PLANES, [8]], [noise(16 * 9), FILTER_PLANES, [16]], [noise(77), FILTER_NONE, []], [new Uint8Array(0), FILTER_NONE, []]] as const) {
+  for (const [data, filter, numbers] of [[noise(8 * 40, 4), FILTER_PLANES, [8]], [noise(16 * 9), FILTER_PLANES, [16]], [noise(77), FILTER_NONE, []], [new Uint8Array(0), FILTER_NONE, []]] as const) {
     expect(roundTrip(data, filter, [...numbers])).toEqual(data);
   }
   // A step 0 of pictures 1 to 64 across, and a later step of one picture, four channels and two, as they are and in planes.
@@ -48,7 +49,44 @@ test("every filter comes undone: indices of both widths and their padding, verti
   }
   // A stream that comes to the wrong size, or names no filter, is refused.
   expect(roundTrip(noise(100), FILTER_PLANES, [3])).toBeNull();
-  expect(unfilterPart(Uint8Array.of(9, 1, 2, 3), 3)).toBeNull();
+  for (const filter of [2, 9]) expect(unfilterPart(Uint8Array.of(filter, 1, 2, 3), 3)).toBeNull();
+});
+
+test("a surface comes back with its coordinates and signs exactly, its normal within a 10-bit step and its tangent within a quarter of a degree", () => {
+  const rng = new Rng(4);
+  const n = 4000;
+  const unit = (): number[] => {
+    const v = [rng.range(-1, 1), rng.range(-1, 1), rng.range(-1, 1)];
+    const l = Math.hypot(...v);
+    return l > 0.1 ? v.map((c) => c / l) : unit();
+  };
+  const [uvs, normals, tangents] = [new Float32Array(n * 2), new Float32Array(n * 3), new Float32Array(n * 4)];
+  for (let v = 0; v < n; v++) {
+    const [nn, r] = [unit(), unit()];
+    const d = r[0]! * nn[0]! + r[1]! * nn[1]! + r[2]! * nn[2]!;
+    // Most tangents square to their normal, some off it, a few along it, as sources have them.
+    const off = v % 50 === 0 ? 1 : v % 7 === 0 ? 0.6 : 0;
+    const t = v % 97 === 0 ? nn : r.map((c, k) => c - nn[k]! * d * (1 - off));
+    normals.set(nn, v * 3);
+    tangents.set([...t, v % 3 === 0 ? -1 : 1], v * 4);
+    uvs.set([rng.range(0, 1), rng.range(0, 1)], v * 2);
+  }
+  const raw = encodeSurface(uvs, normals, tangents);
+  const back = roundTrip(raw, FILTER_SURFACE)!;
+  const [a, b] = [new DataView(raw.buffer), new DataView(back.buffer)];
+  const field = (w: number, s: number): number => Math.max((((w >>> s) & 1023) ^ 512) - 512, -511);
+  const angle = (w0: number, w1: number): number => {
+    const [p, q] = [[0, 10, 20].map((s) => field(w0, s)), [0, 10, 20].map((s) => field(w1, s))];
+    return (Math.acos(Math.min(1, (p[0]! * q[0]! + p[1]! * q[1]! + p[2]! * q[2]!) / (Math.hypot(...p) * Math.hypot(...q)))) * 180) / Math.PI;
+  };
+  let [normal, tangent, same] = [0, 0, true];
+  for (let v = 0; v < n; v++) {
+    same &&= a.getUint32(v * 12, true) === b.getUint32(v * 12, true);
+    for (const k of [4, 8]) same &&= a.getUint32(v * 12 + k, true) >>> 30 === b.getUint32(v * 12 + k, true) >>> 30;
+    normal = Math.max(normal, angle(a.getUint32(v * 12 + 4, true), b.getUint32(v * 12 + 4, true)));
+    tangent = Math.max(tangent, angle(a.getUint32(v * 12 + 8, true), b.getUint32(v * 12 + 8, true)));
+  }
+  expect([same, normal < 0.2, tangent < 0.3]).toEqual([true, true, true]);
 });
 
 let stored: Promise<Set> | null = null;
@@ -124,10 +162,25 @@ function fetchAll(set: Set, tier: string): { frames: number[]; fetched: number; 
   return { frames, fetched: assets.residency.stats.fetched, download: assets.residency.download(), surfaces, rows };
 }
 
-test("the asset library puts on the card from a stored set what it would from the raw one, frame by frame, for fewer bytes", async () => {
+/** A raw set with each surface as the stored set carries it. */
+function carried(raw: Set): Set {
+  const files = raw.files.map((f) => ({ ...f, bytes: f.bytes.slice() }));
+  const manifest = structuredClone(raw.manifest);
+  for (const level of manifest.meshes.flatMap((m) => m.levels)) {
+    const p = level.parts[1];
+    if (!p) continue;
+    const at = level.surface ? level.surface.at : level.at + level.parts[0]!.bytes;
+    const part = files[(level.surface ?? level).file]!.bytes.subarray(at, at + p.bytes);
+    part.set(unfilterPart(filterPart(part, FILTER_SURFACE), p.bytes)!);
+    p.hash = partHash(part);
+  }
+  return { files, manifest };
+}
+
+test("the asset library puts on the card from a stored set what it would from the raw one, its surfaces as carried, frame by frame, for fewer bytes", async () => {
   const set = await storedSet();
   for (const tier of ["lowpoly", "medium"]) {
-    const [was, now] = [fetchAll(sceneSet(), tier), fetchAll(set, tier)];
+    const [was, now] = [fetchAll(carried(sceneSet()), tier), fetchAll(set, tier)];
     expect(now.frames).toEqual(was.frames);
     expect(now.fetched).toBeGreaterThan(0);
     expect(now.fetched).toBeLessThan(was.fetched * 0.75);

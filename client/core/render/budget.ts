@@ -92,7 +92,8 @@ export class FrameBudget {
   /** Starts again from no squeeze, as a new scene does. */
   reset(): void {
     this.squeeze = this.floor = this.under = this.floorUntil = 0;
-    [this.forget, this.fellAt] = [FORGET_MS, -Infinity];
+    this.forget = FORGET_MS;
+    this.fellAt = -Infinity;
   }
 
   begin(tier: Tier): void {
@@ -118,7 +119,8 @@ export class FrameBudget {
       this.under = 0;
       if (now - this.fellAt < FELL_MS) this.forget = Math.min(this.forget * 2, FORGET_MOST);
       this.squeeze = Math.min(SQUEEZE_MOST, this.squeeze + UP);
-      [this.floor, this.floorUntil] = [Math.max(this.floor, this.squeeze), now + this.forget];
+      this.floor = Math.max(this.floor, this.squeeze);
+      this.floorUntil = now + this.forget;
     } else if (this.crowns < room * LOW) {
       if (++this.under < WAIT || this.squeeze <= this.floor) return;
       this.squeeze = Math.max(0, this.floor, this.squeeze - DOWN);

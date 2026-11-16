@@ -17,6 +17,10 @@ class Side implements AssetPort {
     return this.split.port.cache;
   }
 
+  get protocol(): string {
+    return this.split.port.protocol;
+  }
+
   request(r: AssetRequest): void {
     this.split.port.request(r);
   }

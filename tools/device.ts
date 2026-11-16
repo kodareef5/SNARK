@@ -19,7 +19,8 @@
 //
 // While the tunnel is up anyone may reach the server. The short path has four letters nobody is told and closes after
 // 64 wrong guesses, the probe's routes need a 128-bit token, joining needs a random password, and cheats are off. What a
-// page may change is the size of the base in front of it, up to BASE_MOST pieces.
+// page may change is the size of the two bases in front of it: the houses up to BASE_MOST pieces, the compact base up to
+// all of its own.
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
@@ -27,7 +28,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { TIERS } from "../client/core/assets/tiers.ts";
 import { AXES, FAR_CHUNKS, FLIGHT_TIER_COUNT, MEMORY_MB, MODES, TREE_TIERS, WOODS, deviceScenarios, scenesOf, type DeviceReport, type LayerAnswer, type LayerCount, type Mode } from "../client/core/device.ts";
-import { BASE_MOST, STAND, basePieces, crowdScene, terrainWood } from "../client/core/devicescene.ts";
+import { BASE_MOST, STAND, basePieces, boxBase, crowdScene, terrainWood } from "../client/core/devicescene.ts";
 import { deviceTable, materialsLacking } from "../client/core/devicetext.ts";
 import { CORE_CONTENT } from "../content/core.ts";
 import { startServer } from "../server/main.ts";
@@ -39,6 +40,7 @@ import { parsePack } from "../shared/pack/pack.ts";
 import { writeMap } from "../shared/world/mapfile.ts";
 import { groundUnder } from "../shared/world/collide.ts";
 import { placeFree } from "../server/place.ts";
+import type { ServerWorld } from "../server/world.ts";
 import { flock } from "./bench/gpu.ts";
 import { benchHills } from "./bench/terrain.ts";
 import { buildClient } from "./build-client.ts";
@@ -49,6 +51,7 @@ export const MAX_RUNS = 16;
 export const MAX_POSTS = 2000;
 /** Wrong guesses at the short path, after which it leads nowhere. */
 export const MAX_WRONG = 64;
+const BOX_MOST = boxBase().length;
 /** Letters for the short path, none easily taken for another. */
 const LETTERS = "abcdefghjkmnpqrstuvwxyz";
 
@@ -69,8 +72,8 @@ export interface DeviceOptions {
   say(line: string): void;
   /** Each run the page says is done, once. */
   done?(report: DeviceReport, file: string): void;
-  /** Stands `n` pieces in the base, from 0 to BASE_MOST, and says how many stand. */
-  base(n: number): number;
+  /** Stands `n` pieces in the houses, from 0 to BASE_MOST, or with `box` in the compact base, and says how many stand. */
+  base(n: number, box: boolean): number;
   /** What the server has held back so far, which each report's answer tells the page. */
   held(): { skipped: number; overflows: number };
   /** What has changed of the files the server serves since it started, or "" for nothing. */
@@ -198,10 +201,10 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
     if (path === "/__device/ping") return json(true);
     if (path === "/__device/hashes") return json(o.expected);
     if (path === "/__device/report" && req.method === "POST") return receive(req);
-    const base = /^\/__device\/base\/(\d{1,5})$/.exec(path);
+    const base = /^\/__device\/(base|box)\/(\d{1,5})$/.exec(path);
     if (base && req.method === "POST") {
-      const n = Number(base[1]);
-      return n > BASE_MOST ? answer("too many pieces", 400) : json({ pieces: o.base(n) });
+      const [box, n] = [base[1] === "box", Number(base[2])];
+      return n > (box ? BOX_MOST : BASE_MOST) ? answer("too many pieces", 400) : json({ pieces: o.base(n, box) });
     }
     const spot = /^\/__device\/stand\/(\d)$/.exec(path);
     if (spot && req.method === "POST" && o.stand) {
@@ -216,6 +219,29 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
     return answer("not found", 404);
   };
   return { routes, unfinished: () => [...runs.values()].filter((r) => !r.told) };
+}
+
+/**
+ * Stands the first `n` pieces of the houses (devicescene.ts basePieces) in `world`, or with `box` of the compact base
+ * (boxBase), and says how many stand: each base grows from where it stood and shrinks from its far end or its top.
+ */
+export function bases(world: ServerWorld): (n: number, box: boolean) => number {
+  const built: [number[], number[]] = [[], []];
+  return (n, box) => {
+    const mine = built[box ? 1 : 0];
+    while (mine.length > n) world.structs.remove(mine.pop()!);
+    const plan = box ? boxBase().slice(0, n) : basePieces(n);
+    for (let i = mine.length; i < plan.length; i++) {
+      const p = plan[i]!;
+      const kind = world.reg.index.get(p.id) ?? 0;
+      const def = world.reg.defs[kind];
+      const ref = def?.type === "structure" ? world.structs.add(kind, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw, 0, def.hp) : -1;
+      // A piece the store will not take is left out, and the base is smaller than asked.
+      if (ref < 0) break;
+      mine.push(ref);
+    }
+    return mine.length;
+  };
 }
 
 /** What a report of `mode` lacks of a whole run on a desktop, which can run every tier and hold the screen on. Empty if nothing. */
@@ -360,24 +386,9 @@ if (import.meta.main) {
     }
     console.log(`\n${table.join("\n")}\n\nkept in ${file}\n`);
   };
-  /** The base's pieces as they stand, in the order basePieces gives them, so that it shrinks from the far end. */
-  const built: number[] = [];
   let server: ReturnType<typeof startServer> | null = null;
-  const base = (n: number): number => {
-    const world = server!.host.world;
-    while (built.length > n) world.structs.remove(built.pop()!);
-    const plan = basePieces(n);
-    for (let i = built.length; i < plan.length; i++) {
-      const p = plan[i]!;
-      const kind = world.reg.index.get(p.id) ?? 0;
-      const def = world.reg.defs[kind];
-      const ref = def?.type === "structure" ? world.structs.add(kind, p.x, world.hf.heightAt(p.house.x, p.house.z) + p.y, p.z, p.yaw, 0, def.hp) : -1;
-      // A piece the store will not take is left out, and the base is smaller than asked.
-      if (ref < 0) break;
-      built.push(ref);
-    }
-    return built.length;
-  };
+  let stood: ((n: number, box: boolean) => number) | null = null;
+  const base = (n: number, box: boolean): number => (stood ??= bases(server!.host.world))(n, box);
   /** Where the tree order stands the body for each wood (WOODS), x, y and z: open ground nearest the map's middle and the elders' stand's. */
   let spots: number[][] = [];
   const stand = (k: number): number[] | null => {

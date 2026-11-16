@@ -36,7 +36,7 @@ export function groundAt(hf: Heightfield, x: number, y: number, z: number): numb
 /** Whether the sea comes within SHORE metres of (x, z), looked for in eight ways. A lake's basin is not the sea. */
 function nearSea(hf: Heightfield, x: number, z: number): boolean {
   for (let k = 0; k < 8; k++) {
-    const [sx, sz] = [x + Math.cos(k * 0.785) * SHORE, z + Math.sin(k * 0.785) * SHORE];
+    const sx = x + Math.cos(k * 0.785) * SHORE, sz = z + Math.sin(k * 0.785) * SHORE;
     if (hf.heightAt(sx, sz) < hf.seaLevel && seaHere(hf.water, sx, sz)) return true;
   }
   return false;
