@@ -55,4 +55,10 @@ def lifeboat(mesh, level):
         mesh.level = 1
     mesh.box([-.80, 1.72, 5.67], [.80, 2.035, 6.58], 'navy', .09)
     mesh.level = saved
-    mesh.box([-.84, 2.043, 5.63], [.84, 2.082, 6.62], 'enamel')
+    if level < 4:
+        mesh.box([-.84, 2.043, 5.63], [.84, 2.082, 6.62], 'enamel')
+    else:
+        # The 39 mm pale cap keeps its measured top plane and both visible
+        # sides; the collapsed underside moves by only 39 mm at this stage.
+        mesh.indexed([[-.84,2.082,5.63],[.84,2.082,5.63],[.84,2.082,6.62],[-.84,2.082,6.62]],
+                     [(0,1,2,3),(3,2,1,0)], 'enamel')
