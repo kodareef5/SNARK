@@ -108,9 +108,7 @@ textures.forEach((t,slot)=>view.texture(slot,t.role,t.pictures));
 posed(0);
 view.draw({mesh:index,level:0,centre:[0,1.10,-.20],radius:3.0,around:35,above:24,rig,colors:COLORS,textured:true});
 write("hero",{w:1600,h:1000,img:new Uint8Array(view.raster.color)});
-if (!args.includes("--summary")) {
-  view.draw({mesh:index,level:1,centre:[0,1.10,-.20],radius:3.0,around:35,above:24,rig,colors:COLORS,textured:false});
-  write("hero_flat",{w:1600,h:1000,img:new Uint8Array(view.raster.color)});
-  view.draw({mesh:index,level:2,centre:[0,1.10,-.20],radius:3.0,around:35,above:24,rig,colors:COLORS,textured:false});
-  write("hero_first_flat",{w:1600,h:1000,img:new Uint8Array(view.raster.color)});
-}
+view.draw({mesh:index,level:1,centre:[0,1.10,-.20],radius:3.0,around:35,above:24,rig,colors:COLORS,textured:false});
+write("hero_flat",{w:1600,h:1000,img:new Uint8Array(view.raster.color)});
+view.draw({mesh:index,level:2,centre:[0,1.10,-.20],radius:3.0,around:35,above:24,rig,colors:COLORS,textured:false});
+write("hero_first_flat",{w:1600,h:1000,img:new Uint8Array(view.raster.color)});

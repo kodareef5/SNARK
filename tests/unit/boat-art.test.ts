@@ -111,6 +111,14 @@ test("the utility stripe remains a continuous dye band when the hull is rendered
     expect(outer.colour).toBe(241); // Native stripe dye region 1.
   }
   for (const lod of mesh.lods.slice(4)) expect(lod.colors.includes(241)).toBe(true);
+  // Unlettered stations also test both painted borders on all liveries. A wider painted band than the authored
+  // UV seams makes whole simplified triangles alternately adopt the stripe and body colour.
+  for (const { mesh } of assets.slice(0, 3)) for (const level of [1, 2, 3]) {
+    for (const z of [-2.5, 1, 1.5]) for (const offset of [-.145, -.07, .07, .145]) {
+      const outer = sideHits(mesh.lods[level]!, .91 + .045 * Math.max(0, z) + offset, z).sort((a, b) => b.x - a.x)[0]!;
+      expect(outer.colour).toBe(Math.abs(offset) < .115 ? 241 : 240);
+    }
+  }
 });
 
 test("the inner wall stays inside the outer hull throughout the occupied lower shell", () => {

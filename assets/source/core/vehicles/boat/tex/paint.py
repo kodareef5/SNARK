@@ -41,16 +41,16 @@ def body(variant):
     under=paint&(y<.50)&(N[:,1]<.7)
     s.mask[under]=0;s.base[under]=rgb(.095,.115,.115)*(1+fine[under,None]*.12);s.rough[under]=.74
     centre=.91+.045*np.clip(z,0,3)
-    stripe=paint&(np.abs(y-centre)<(.115 if variant=="civilian" else .17))&(np.abs(N[:,0])>.35)
+    stripe=paint&(np.abs(y-centre)<.115)&(np.abs(N[:,0])>.35)
     s.mask[stripe]=rgb(0,1,0);s.base[stripe]=(.83+fine[stripe]*.02)[:,None]
-    edge=paint&(np.abs(np.abs(y-centre)-(.115 if variant=="civilian" else .17))<.008)&(np.abs(N[:,0])>.35)
+    edge=paint&(np.abs(np.abs(y-centre)-.115)<.008)&(np.abs(N[:,0])>.35)
     s.mask[edge]=0;s.base[edge]=rgb(.68,.70,.64);s.rough[edge]=.45
     # Fine panel fastening and continuous weld line instead of arbitrary grunge over the entire hull.
     weld=paint&(np.abs(y-(.54+.09*np.clip(z,0,3)))<.006)&(np.abs(N[:,0])>.4)
     s.base[weld]*=.75;s.height[weld]=.0005;s.rough[weld]=.47
     fastener=paint&(np.abs(y-1.23)<.008)&(np.abs((z/.28)%1-.5)<.035)&(np.abs(N[:,0])>.6)
     s.mask[fastener]=0;s.base[fastener]=rgb(.38,.42,.41);s.metal[fastener]=.8;s.height[fastener]=-.0005
-    low,high=(.83,1.04) if variant=="police" else (1.01,1.25)
+    low,high=(.815,1.005) if variant=="police" else (1.01,1.25)
     ink=label(s,{"civilian":"UTILITY","rescue":"RESCUE","police":"POLICE"}[variant],-1.75,.35,low,high)*paint
     s.base=mix(s.base,rgb(.085,.13,.14),ink);s.mask*=1-ink[:,None];s.rough=np.where(ink>.1,.55,s.rough)
     serial=label(s,"U-04",1.42,2.10,1.22,1.36)*paint
