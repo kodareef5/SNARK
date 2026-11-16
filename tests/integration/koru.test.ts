@@ -15,7 +15,6 @@ import { Harness } from "../fixtures/net.ts";
 import { coreRegistry } from "../fixtures/world.ts";
 
 const reg = withContent(coreRegistry(), KORU.defs);
-const worldPoint = koruPoint;
 const map = koruMapFile();
 const route = (id: string) => {
   const found = KORU_LAYOUT.routes.find(r => r.id === id);
@@ -45,7 +44,7 @@ function walker(h: Harness, index = 0) {
     if (height && !capsuleFree(h.world, s.own.x, s.own.y, s.own.z, .4, 2.6)) throw new Error(`${label}: less than 2.6 m native headroom`);
     expect(s.own.mode).toBe(MODE_WALK);
   };
-  const local = (points: readonly (readonly number[])[], label: string) => points.forEach((p, i) => world(worldPoint(p), `${label}[${i}]`));
+  const local = (points: readonly (readonly number[])[], label: string) => points.forEach((p, i) => world(koruPoint(p), `${label}[${i}]`));
   return { world, local, route: (id: string, reverse = false) => local(reverse ? [...route(id)].reverse() : route(id), id) };
 }
 
@@ -87,7 +86,7 @@ function navigator(h: Harness, index = 0) {
     if (Math.abs(from[1]! - to[1]!) > .01 || length > 14) continue;
     let clear = true;
     for (let t = 0, n = Math.ceil(length / .2); t <= n; t++) {
-      const f = n ? t / n : 0, p = worldPoint(from.map((v, axis) => v + (to[axis]! - v) * f));
+      const f = n ? t / n : 0, p = koruPoint(from.map((v, axis) => v + (to[axis]! - v) * f));
       const y = restingAt(h.world, p[0], p[1] + .1, p[2], .4, 1.8, .2, .71);
       if (!Number.isFinite(y) || Math.abs(y - p[1]) > .15 || !capsuleFree(h.world, p[0], y, p[2], .4, 2.6)) { clear = false; break; }
     }
@@ -106,7 +105,7 @@ function navigator(h: Harness, index = 0) {
   const open = (kind: string) => {
     if (openRoutes.has(kind)) return;
     const module = KORU_LAYOUT.modules.find(m => m.id === kind)!, box = module.boxes[0]!;
-    const p = worldPoint(module.origin.map((v, axis) => v + box.at[axis]!)), code = useAt(h, index, p);
+    const p = koruPoint(module.origin.map((v, axis) => v + box.at[axis]!)), code = useAt(h, index, p);
     const desired = reg.index.get(`${kind}_open`)!;
     const opened = h.world.structs.chunks.some(t => t && t.kind.subarray(0, t.high).includes(desired));
     if (!opened) throw new Error(`${kind}: E failed (${code}) from ${[s.own.x, s.own.y, s.own.z]} aiming ${p}`);
@@ -187,7 +186,7 @@ test("gangway rails stop an ordinary sprint into the harbour on both sides", () 
   try {
     const s = h.join("dock visitor", { latencyMs: 50 }); h.run(1000); const walk = walker(h), pilot = h.pilots[0]!;
     walk.world(KORU_QUAY, "quay");
-    const middle = route("shore_to_arrival")[1]!, at = worldPoint(middle);
+    const middle = route("shore_to_arrival")[1]!, at = koruPoint(middle);
     walk.local([middle], "gangway middle"); const before = s.stats.corrections;
     for (const side of [1, -1]) {
       pilot.yaw = side > 0 ? 0 : Math.PI; pilot.moveZ = 1; pilot.buttons = BTN_SPRINT; h.run(1500);
@@ -222,7 +221,7 @@ test("delayed peers walk onto separate yacht decks, see the correct floor, and r
     const nav = navigator(h, 1), doorRoute = route("room_vip_port"); nav.visit("room_vip_port");
     nav.reach(doorRoute[1]!, "VIP doorway");
     const openDoor = KORU_LAYOUT.modules.find(m => m.id === "koru:door_vip_port_open")!, box = openDoor.boxes[0]!;
-    expect(useAt(h, 1, worldPoint(openDoor.origin.map((v, axis) => v + box.at[axis]!)))).toBe(RESULT_OBSTRUCTED);
+    expect(useAt(h, 1, koruPoint(openDoor.origin.map((v, axis) => v + box.at[axis]!)))).toBe(RESULT_OBSTRUCTED);
     nav.reach(route("shore_to_arrival").at(-1)!, "main guest return");
     h.run(500);
     const openKind = reg.index.get(openDoor.id)!;
