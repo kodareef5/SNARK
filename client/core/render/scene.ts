@@ -12,7 +12,7 @@ import { INSTANCE_BYTES, MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, type Pack } from "
 import { atlasBytes } from "../../../shared/pack/details.ts";
 import { SKY_COLOR, WATER_COLOR } from "../../../shared/pack/palette.ts";
 import type { Heightfield } from "../../../shared/world/heightfield.ts";
-import type { StructureStore } from "../../../shared/world/structures.ts";
+import type { ChunkTable, StructureStore } from "../../../shared/world/structures.ts";
 import { SIZE_UNITS, nodeForms } from "../../../shared/world/nodes.ts";
 import { LOOK_BYTES } from "../../../shared/anim/look.ts";
 import { youngScale } from "../../../shared/sim/breeding.ts";
@@ -36,6 +36,7 @@ import { CITY_BUFFER, FarCity, type CitySource } from "./farcity.ts";
 import { FarNodes, familyOf, type FarNodeSource, type NodeLooks } from "./farnodes.ts";
 import { HAND_NEAR } from "./hand.ts";
 import { LAKE_BUFFER, Lakes } from "./lakes.ts";
+import { DOOR_FRONTIER, DOOR_OPEN, RoomFinder, Rooms } from "./rooms.ts";
 import { BONE_FLOATS, DRAW_BLEND, DRAW_CUTOUT, DRAW_DETAILS, DRAW_NEAR, DRAW_ONE_BONE, DRAW_PLAIN, DRAW_PULLED, DRAW_RANGED, DRAW_SIZED, DRAW_SKINNED, DRAW_TEXTURED, DRAW_TWO_SIDED, DRAW_WATER, FRAME, FramePacket, InstanceWriter, LOOSE_BONES, MAX_BONES, MAX_CASCADES, MAX_CASTERS, MAX_DRAWS, MAX_TILES, MAX_WATER_TILES, PASS_FAR, PASS_NEAR, STEP_BODY, STEP_FAR, STEP_FAR_SEE, STEP_NEAR_SEE, TILE_CASTS, TILE_QUADS, TRANSIENT_BUFFER } from "./packet.ts";
 import { SURFACE_MATERIAL } from "../../../content/surfaces.ts";
 import { citySurface, WORLD_ASKED } from "./world-surfaces.ts";
@@ -113,8 +114,11 @@ const BEAM_COLOR = 8;
 const RUN_TRIANGLES = 4096;
 /** What the card holds for the chunks' instance buffers is reserved under this name. */
 const INSTANCES = "chunk instances";
-/** Numbers a run of cells takes in `runs` (Scene.ranges). */
-const RUN = 9;
+/** Numbers a run of cells takes in `runs` (Scene.ranges), and in `castRuns` (Scene.castChunk). */
+const RUN = 11;
+const CAST_RUN = 5;
+/** Milliseconds a chunk's doors stand other than its rooms were found with before they are found again. */
+const SETTLE = 2000;
 /** A node form with nothing to draw: what is left of a used-up node whose mesh no pack has. */
 const HIDDEN = 0xffff;
 /** The one run of a level drawn flat: no material, and all its indices. */
@@ -139,23 +143,35 @@ export interface Thing {
 }
 
 interface ChunkBatch {
-  /** The table's `shape` when the instances were built. */
+  /** The table's `shape` and `placed` when the instances were built. */
   shape: number;
+  placed: number;
   /** A chunk of nodes, drawn sized, handed to the far store over the tier's band, its trees' crowns giving to the budget. */
   sized: boolean;
   data: Uint8Array;
   slots: Uint16Array;
+  /** Per instance, the kind it was built as. */
+  kinds: Uint16Array;
   /** Triples: mesh, first instance, instance count. */
   ranges: number[];
   /** The level each range was last drawn at whole, or -1. */
   level: Int8Array;
   /**
    * Cells the chunk is cut into, `chunkCells` squared, one row and then the next back the other way, so that neighbouring
-   * cells follow one another. A range's instances are sorted by cell, and in a cell by slot.
+   * cells follow one another. A range's instances are sorted shell first (rooms.ts), then by cell, and in a cell by slot.
    */
   cells: number;
-  /** Per range, the first instance of each cell and the end of the last. */
+  /** `cells`, or twice that where the chunk has pieces inside its rooms: a range's shell by cell, then its interior by cell. */
+  blocks: number;
+  /** Per range, the first instance of each block and the end of the last. */
   cellFirst: Uint32Array;
+  /** A chunk of pieces' rooms, kept to be brought up to date at its next rebuild. Null for nodes. */
+  rooms: Rooms | null;
+  /** Per door slot, its DOOR_ flags when the rooms were found; frontier doors shut then and open now; doors not as then, and the frame they last changed at (Scene.now). */
+  doors: Map<number, number> | null;
+  exposing: number;
+  differ: number;
+  since: number;
   /** Per range and cell: the box its level is chosen by, x, y, z least then most, in metres: its nodes' trunks, or its pieces whole. */
   cellBox: Float32Array;
   /** Per cell: the box round all it draws, as `cellBox` lays them out, tested against the view and the cascades. */
@@ -256,14 +272,21 @@ export class Scene {
   private readonly speciesKind: Uint8Array;
   private readonly counts: Uint32Array;
   private readonly cursor: Uint32Array;
-  /** Scratch for the runs of cells a mesh of a chunk is drawn in, and cast in. */
+  /** Scratch for the runs of cells a mesh of a chunk is drawn in, and cast in, and the instances a run takes (spansOf). */
   private readonly runs: number[] = [];
   private readonly castRuns: number[] = [];
+  private readonly spans = new Uint32Array(4);
   /** Cells a chunk is cut into along each side. CHUNK_CELLS, or 1 to draw, level and cast by the chunk. */
   chunkCells = CHUNK_CELLS;
-  /** Per mesh and cell, as `counts` and `cursor` are per mesh, for a chunk being laid out. */
+  /** Per mesh and block, as `counts` and `cursor` are per mesh, for a chunk being laid out. */
   private cellCounts = new Uint32Array(0);
   private cellCursor = new Uint32Array(0);
+  /** Finds the pieces of a chunk seen only from inside its rooms (rooms.ts). */
+  private readonly finder: RoomFinder;
+  /** Per slot of a chunk being laid out, the block it goes in. */
+  private blockAt = new Uint8Array(0);
+  /** Per mesh, the mesh its kinds turn into in place (a door's open form, a fire lit), or -1. */
+  private readonly twinOf: Int32Array;
   /** For the chunk being drawn, per cell: 2 where all of it is in view, 1 where some is, and the cascades it casts into; and whether all the chunk is in view. */
   private cellSeen = new Uint8Array(0);
   private cellCasts = new Uint8Array(0);
@@ -421,6 +444,12 @@ export class Scene {
       const mesh = bind.mesh(d.id, d.type === "species" ? "body" : "mesh");
       this.meshOfKind[k] = mesh >= 0 ? mesh : missing;
       this.colorOfKind[k] = d.color;
+    }
+    this.finder = new RoomFinder(reg, this.meshOfKind, (stream?.manifest ?? pack.header).meshes, table.error);
+    this.twinOf = new Int32Array(table.count).fill(-1);
+    for (let k = 1; k < reg.defs.length; k++) {
+      const other = reg.opens[k] || reg.lights[k]!;
+      if (other !== 0 && this.meshOfKind[k] !== this.meshOfKind[other]) this.twinOf[this.meshOfKind[k]!] = this.meshOfKind[other]!;
     }
     const forms = nodeForms(reg);
     this.meshOfForm = new Uint16Array(forms.count).fill(HIDDEN);
@@ -656,23 +685,25 @@ export class Scene {
    * that does not when it weighs less than a draw. Runs alike in every way but their cascades are one caster, and a mesh
    * whose instances here weigh less than a draw is cast whole.
    */
-  private castChunk(b: ChunkBatch, id: number, ox: number, oy: number, oz: number, casts: number): void {
+  private castChunk(b: ChunkBatch, id: number, ox: number, oy: number, oz: number, casts: number, all: boolean): void {
     const c = this.cascades;
     const out = this.pairs;
     const cells = b.cells;
-    const first = b.cellFirst;
     const sized = b.sized;
     const flags = sized ? DRAW_SIZED : 0;
     const runs = this.castRuns;
+    const spans = this.spans;
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
+      if (b.ranges[r + 2] === 0) continue;
+      const at0 = q * (b.blocks + 1);
       // A node is drawn up to its kind's largest size, which scales its radius and errors.
       const scale = sized ? this.reachOfMesh[mesh]! : 1;
       let mask = casts & c.fits(this.radiusOfMesh[mesh]! * scale);
       if (mask === 0) continue;
       let some = 0, every = mask;
       for (let k = 0; k < cells; k++) {
-        if (first[q * (cells + 1) + k + 1] === first[q * (cells + 1) + k]) continue;
+        if (this.firstOf(b, at0, k + 1) === this.firstOf(b, at0, k)) continue;
         some |= this.cellCasts[k]!;
         every &= this.cellCasts[k]!;
       }
@@ -683,39 +714,41 @@ export class Scene {
       for (let e = 0; e < n; e++) {
         const level = out[e * 2]!, bits = out[e * 2 + 1]!;
         if ((every & bits) === bits || b.ranges[r + 2]! * tris[level]! <= RUN_TRIANGLES) {
-          this.cast(mesh, level, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, flags, bits);
+          for (let s = 0, m = this.spansOf(b, at0, 0, cells, all); s < m; s++) this.cast(mesh, level, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, bits);
           continue;
         }
-        // Each cascade's runs, three numbers each: first and end instance, and the cascades that take it.
+        // Each cascade's runs, five numbers each: first and end instance as if each cell's shell and interior lay
+        // together, the cascades that take it, and its first and end cell.
         runs.length = 0;
         for (let i = 0; i < c.count; i++) {
           const bit = 1 << i;
           if ((bits & bit) === 0) continue;
           let open = -1, gap = 0;
           for (let k = 0; k < cells; k++) {
-            const at = q * (cells + 1) + k;
-            const count = first[at + 1]! - first[at]!;
-            if (count === 0) continue;
+            const v0 = this.firstOf(b, at0, k), v1 = this.firstOf(b, at0, k + 1);
+            if (v1 === v0) continue;
             if ((this.cellCasts[k]! & bit) === 0) {
-              gap += count;
+              gap += v1 - v0;
               continue;
             }
-            if (open >= 0 && gap * tris[level]! <= RUN_TRIANGLES) runs[open + 1] = first[at + 1]!;
-            else {
+            if (open >= 0 && gap * tris[level]! <= RUN_TRIANGLES) {
+              runs[open + 1] = v1;
+              runs[open + 4] = k + 1;
+            } else {
               open = runs.length;
-              runs.push(first[at]!, first[at + 1]!, bit);
+              runs.push(v0, v1, bit, k, k + 1);
             }
             gap = 0;
           }
         }
-        for (let k = 0; k < runs.length; k += 3) {
+        for (let k = 0; k < runs.length; k += CAST_RUN) {
           if (runs[k + 2] === 0) continue;
-          for (let j = k + 3; j < runs.length; j += 3) {
+          for (let j = k + CAST_RUN; j < runs.length; j += CAST_RUN) {
             if (runs[j] !== runs[k] || runs[j + 1] !== runs[k + 1]) continue;
             runs[k + 2]! |= runs[j + 2]!;
             runs[j + 2] = 0;
           }
-          this.cast(mesh, level, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, flags, runs[k + 2]!);
+          for (let s = 0, m = this.spansOf(b, at0, runs[k + 3]!, runs[k + 4]!, all); s < m; s++) this.cast(mesh, level, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, runs[k + 2]!);
         }
       }
     }
@@ -1358,6 +1391,9 @@ export class Scene {
     const world = this.world;
     const chunks = store.chunks;
     const band = this.assets.tier.nodes.band[1];
+    // How far the near plane's corners are from the camera: a room that near may be cut into and seen.
+    const slope = Math.tan(cam.fovY / 2);
+    const reach = cam.near * Math.sqrt(1 + slope * slope * (1 + cam.aspect * cam.aspect));
 
     // Chunks that no longer exist on this client free their buffers.
     for (const id of this.batches.keys()) if (id >= base && id < base + NODE_BUFFERS && !chunks[id - base]) this.drop(id);
@@ -1374,7 +1410,10 @@ export class Scene {
       // Until the near store holds it whole, a chunk the far feed has cells of is drawn as blocks.
       if (base === 0 && (this.far?.isFar(chunk) || this.city?.isFar(chunk))) continue;
       let batch = this.batches.get(id);
-      if (!batch || batch.shape !== t.shape) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
+      // A piece that took another kind in place is moved in place; a chunk whose doors have stood a while other than its
+      // rooms were found with has them found again.
+      const turned = batch !== undefined && batch.shape !== t.shape && !batch.sized && batch.placed === t.placed;
+      if (!batch || (batch.shape !== t.shape && !(turned && this.reform(batch, t, meshOf, colorOf))) || (batch.differ > 0 && this.now - batch.since >= SETTLE)) batch = this.rebuild(store, chunk, id, batch, meshOf, colorOf, sizeOf);
       const x0 = chunkCx(world.dims, chunk) * CHUNK_SIZE;
       const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
       const ax = batch.minX - cam.x;
@@ -1400,8 +1439,10 @@ export class Scene {
         batch.onCard = batch.data.length;
       }
       this.zones(cam, batch, seen, casts);
-      if (seen) this.ranges(cam, batch, id, dist, x0 - cam.x, -cam.y, z0 - cam.z, cam.passes(ax, ay, az, bx, by, bz));
-      if (casts !== 0) this.castChunk(batch, id, x0 - cam.x, -cam.y, z0 - cam.z, casts);
+      // From outside air a chunk's interior is neither seen nor seen to cast: only its shell is drawn and cast.
+      const all = batch.blocks === batch.cells || batch.exposing > 0 || batch.rooms!.near(cam.x, cam.y, cam.z, reach);
+      if (seen) this.ranges(cam, batch, id, dist, x0 - cam.x, -cam.y, z0 - cam.z, cam.passes(ax, ay, az, bx, by, bz), all);
+      if (casts !== 0) this.castChunk(batch, id, x0 - cam.x, -cam.y, z0 - cam.z, casts, all);
     }
   }
 
@@ -1441,12 +1482,12 @@ export class Scene {
    * budget's squeeze, as if it stood farther off, and its leaves thinned by it; its trunk, and any other node, at the
    * squeeze's later scale for cover (budget.ts). Pieces give nothing to the squeeze.
    */
-  private ranges(cam: Camera, b: ChunkBatch, id: number, dist: number, ox: number, oy: number, oz: number, passes: number): void {
+  private ranges(cam: Camera, b: ChunkBatch, id: number, dist: number, ox: number, oy: number, oz: number, passes: number, all: boolean): void {
     const sized = b.sized;
     const band = this.assets.tier.nodes.band;
     const from = sized ? band[0] : Infinity, to = sized ? band[1] : Infinity;
     const cells = b.cells;
-    const first = b.cellFirst;
+    const spans = this.spans;
     const box = b.cellBox;
     const levels = b.cellLevel, crowns = b.cellCrown, thins = b.cellThin;
     const fx = Math.max(Math.abs(b.minX - cam.x), Math.abs(b.maxX - cam.x));
@@ -1458,6 +1499,8 @@ export class Scene {
     const flags = sized ? DRAW_SIZED : 0;
     for (let r = 0, q = 0; r < b.ranges.length; r += 3, q++) {
       const mesh = b.ranges[r]!;
+      if (b.ranges[r + 2] === 0) continue;
+      const at0 = q * (b.blocks + 1);
       const errors = this.assets.table.error[mesh]!;
       const reach = b.reach[q]!;
       const tree = sized && this.treeOf[mesh] === 1;
@@ -1474,11 +1517,11 @@ export class Scene {
         crowns.fill(crown, q * cells, (q + 1) * cells);
         thins.fill(b.thin[q]!, q * cells, (q + 1) * cells);
         let whole = this.wholeView;
-        for (let c = 0; light && !whole && c < cells; c++) whole = first[q * (cells + 1) + c + 1] !== first[q * (cells + 1) + c] && this.cellShows(cam, b, q, c, mesh);
+        for (let c = 0; light && !whole && c < cells; c++) whole = this.firstOf(b, at0, c + 1) !== this.firstOf(b, at0, c) && this.cellShows(cam, b, q, c, mesh);
         if (whole) {
           this.assets.wantTextured(mesh, near, dist / reach);
           if (crown !== near) this.assets.wantTextured(mesh, crown, dist / reach);
-          this.draw(mesh, near, id, b.ranges[r + 1]!, b.ranges[r + 2]!, ox, oy, oz, flags, passes, 0, 0, crown, leavesAt(b.thin[q]!));
+          for (let s = 0, n = this.spansOf(b, at0, 0, cells, all); s < n; s++) this.draw(mesh, near, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, 0, 0, crown, leavesAt(b.thin[q]!));
         }
         if (whole || light) continue;
       } else {
@@ -1493,11 +1536,12 @@ export class Scene {
       // where a cell of it reaches into it, which keeps every pixel of a node short of it.
       const runs = this.runs;
       runs.length = 0;
-      // The instance the last run may go on from, past cells out of view, which hold `gap`; -1 where it cannot.
+      // The instance the last run may go on from, past cells out of view, which hold `gap`; -1 where it cannot. Runs are
+      // made as if each cell's shell and interior lay together, and drawn as their shell's and, given `all`, interior's.
       let next = -1, gap = 0;
       for (let c = 0; c < cells; c++) {
-        const at = q * (cells + 1) + c;
-        const n = first[at + 1]! - first[at]!;
+        const v0 = this.firstOf(b, at0, c), v1 = this.firstOf(b, at0, c + 1);
+        const n = v1 - v0;
         if (n === 0) continue;
         const qc = q * cells + c, k = qc * 6;
         const dx = Math.max(box[k]! - cam.x, cam.x - box[k + 3]!, 0);
@@ -1509,8 +1553,8 @@ export class Scene {
           continue;
         }
         if (!this.cellShows(cam, b, q, c, mesh)) {
-          if (next === first[at]) {
-            next = first[at + 1]!;
+          if (next === v0) {
+            next = v1;
             gap += n;
           }
           continue;
@@ -1527,9 +1571,9 @@ export class Scene {
           thin = thins[qc] = tree ? thinning(squeeze, d, to, thins[qc]!) : 0;
         }
         // A run is its first and end instance, its level and the coarsest a cell of it asked for, its nearest distance,
-        // its hand-over, its crown's level and the coarsest a cell asked for, and its least thinning.
+        // its hand-over, its crown's level and the coarsest a cell asked for, its least thinning, and its first and end cell.
         const last = runs.length - RUN;
-        if (last >= 0 && next === first[at]) {
+        if (last >= 0 && next === v0) {
           const finer = Math.min(runs[last + 2]!, level), coarser = Math.max(runs[last + 3]!, level);
           const crownFiner = Math.min(runs[last + 6]!, crown), crownCoarser = Math.max(runs[last + 7]!, crown);
           const fuller = Math.min(runs[last + 8]!, thin);
@@ -1537,7 +1581,7 @@ export class Scene {
           const cost = this.cost(mesh, finer, crownFiner, fuller);
           const more = had * (cost - this.cost(mesh, runs[last + 2]!, runs[last + 6]!, runs[last + 8]!)) + n * (cost - this.cost(mesh, level, crown, thin)) + gap * cost;
           if (coarser - finer <= 1 && crownCoarser - crownFiner <= 1 && more <= RUN_TRIANGLES) {
-            runs[last + 1] = next = first[at + 1]!;
+            runs[last + 1] = next = v1;
             runs[last + 2] = finer;
             runs[last + 3] = coarser;
             runs[last + 4] = Math.min(runs[last + 4]!, seen);
@@ -1545,20 +1589,52 @@ export class Scene {
             runs[last + 6] = crownFiner;
             runs[last + 7] = crownCoarser;
             runs[last + 8] = fuller;
+            runs[last + 10] = c + 1;
             gap = 0;
             continue;
           }
         }
-        runs.push(first[at]!, first[at + 1]!, level, level, seen, hand, crown, crown, thin);
-        next = first[at + 1]!;
+        runs.push(v0, v1, level, level, seen, hand, crown, crown, thin, c, c + 1);
+        next = v1;
         gap = 0;
       }
       for (let k = 0; k < runs.length; k += RUN) {
         this.assets.wantTextured(mesh, runs[k + 2]!, runs[k + 4]!);
         if (runs[k + 6] !== runs[k + 2]) this.assets.wantTextured(mesh, runs[k + 6]!, runs[k + 4]!);
-        this.draw(mesh, runs[k + 2]!, id, runs[k]!, runs[k + 1]! - runs[k]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
+        for (let s = 0, n = this.spansOf(b, at0, runs[k + 9]!, runs[k + 10]!, all); s < n; s++) this.draw(mesh, runs[k + 2]!, id, spans[s * 2]!, spans[s * 2 + 1]!, ox, oy, oz, flags, passes, runs[k + 5]!, 0, runs[k + 6]!, leavesAt(runs[k + 8]!));
       }
     }
+  }
+
+  /** The first instance of cell `c` of the range whose blocks begin at `at0` in `cellFirst`, as if each cell's shell and interior lay together. */
+  private firstOf(b: ChunkBatch, at0: number, c: number): number {
+    const first = b.cellFirst;
+    return b.blocks === b.cells ? first[at0 + c]! : first[at0 + c]! + first[at0 + b.cells + c]! - first[at0 + b.cells]!;
+  }
+
+  /**
+   * Writes to `spans` the first instance and count of each run that draws cells `c0` up to `c1` of the range whose blocks
+   * begin at `at0`: their shell, and given `all` their interior, one run where the two meet. Returns how many.
+   */
+  private spansOf(b: ChunkBatch, at0: number, c0: number, c1: number, all: boolean): number {
+    const first = b.cellFirst, cells = b.cells, spans = this.spans;
+    const s0 = first[at0 + c0]!, s1 = first[at0 + c1]!;
+    let n = 0;
+    if (s1 > s0) {
+      spans[0] = s0;
+      spans[1] = s1 - s0;
+      n = 1;
+    }
+    if (!all || b.blocks === cells) return n;
+    const i0 = first[at0 + cells + c0]!, i1 = first[at0 + cells + c1]!;
+    if (i1 === i0) return n;
+    if (n === 1 && s1 === i0) {
+      spans[1] = i1 - s0;
+      return 1;
+    }
+    spans[n * 2] = i0;
+    spans[n * 2 + 1] = i1 - i0;
+    return n + 1;
   }
 
   /** Whether range `q`'s instances in cell `c` of a chunk may be in view: a node's reach sideways from its trunk, a piece whole. */
@@ -1578,7 +1654,90 @@ export class Scene {
     return (this.trunkTris[mesh]![level] ?? 0) + (tris[crown] ?? 0) - trunk - leaf * (1 - leavesAt(thin));
   }
 
-  /** The instances of a chunk of the store, each mesh's together, sorted by cell (ChunkBatch.cells), and in a cell by slot. */
+  /**
+   * Follows the pieces of a chunk that took another kind in place (a door opening or shutting, a fire lit) without laying
+   * the chunk out again: each is moved into the same block of its new mesh's range, which `rebuild` set beside the old.
+   * Counts the doors that now stand other than when the rooms were found, and those of them that open an inside room
+   * onto outside air. False where a piece took a kind whose mesh has no range here.
+   */
+  private reform(b: ChunkBatch, t: ChunkTable, meshOf: Uint16Array, colorOf: Uint8Array): boolean {
+    const { slots, kinds, data, ranges, cellFirst } = b;
+    const blocks = b.blocks;
+    for (let moves = 0; ; moves++) {
+      let i = 0;
+      while (i < slots.length && t.kind[slots[i]!] === kinds[i]) i++;
+      if (i === slots.length) break;
+      const slot = slots[i]!, kind = t.kind[slot]!, was = kinds[i]!;
+      if (moves === 16 || kind === 0 || meshOf[kind] === HIDDEN) return false;
+      let q = 0, to = -1;
+      while (ranges[q * 3 + 1]! + ranges[q * 3 + 2]! <= i) q++;
+      for (let r = 0; r < ranges.length; r += 3) if (ranges[r] === meshOf[kind]) to = r / 3;
+      if (to < 0) return false;
+      let block = 0;
+      while (cellFirst[q * (blocks + 1) + block + 1]! <= i) block++;
+      let at = i;
+      if (to !== q) {
+        // Its place among the slots of the same block of the new range, the slots of the old range moving up or down one.
+        let d = cellFirst[to * (blocks + 1) + block]!;
+        while (d < cellFirst[to * (blocks + 1) + block + 1]! && slots[d]! < slot) d++;
+        const bytes = data.slice(i * INSTANCE_BYTES, (i + 1) * INSTANCE_BYTES);
+        const step = to > q ? -1 : 1;
+        at = to > q ? d - 1 : d;
+        if (to > q) {
+          data.copyWithin(i * INSTANCE_BYTES, (i + 1) * INSTANCE_BYTES, d * INSTANCE_BYTES);
+          slots.copyWithin(i, i + 1, d);
+          kinds.copyWithin(i, i + 1, d);
+        } else {
+          data.copyWithin((d + 1) * INSTANCE_BYTES, d * INSTANCE_BYTES, i * INSTANCE_BYTES);
+          slots.copyWithin(d + 1, d, i);
+          kinds.copyWithin(d + 1, d, i);
+        }
+        data.set(bytes, at * INSTANCE_BYTES);
+        slots[at] = slot;
+        ranges[q * 3 + 2]!--;
+        ranges[to * 3 + 2]!++;
+        const lo = Math.min(q, to), hi = Math.max(q, to);
+        for (let r = lo + 1; r <= hi; r++) ranges[r * 3 + 1]! += step;
+        // Block starts between the two places move with the instances.
+        for (let r = lo; r <= hi; r++) {
+          for (let k = 0; k <= blocks; k++) {
+            const moved = r === q ? (to > q ? k > block : k <= block) : r === to ? (to > q ? k <= block : k > block) : true;
+            if (moved) cellFirst[r * (blocks + 1) + k]! += step;
+          }
+        }
+        const mesh = meshOf[kind]!, rad = this.radiusOfMesh[mesh]!, cell = block % b.cells;
+        const x = t.x[slot]!, y = t.y[slot]!, z = t.z[slot]!;
+        grow(b.cellBox, (to * b.cells + cell) * 6, x - rad, y - rad, z - rad, x + rad, y + rad, z + rad);
+        grow(b.zone, cell * 6, x - rad, y - rad, z - rad, x + rad, y + rad, z + rad);
+        b.minX = Math.min(b.minX, x - rad);
+        b.minY = Math.min(b.minY, y - rad);
+        b.minZ = Math.min(b.minZ, z - rad);
+        b.maxX = Math.max(b.maxX, x + rad);
+        b.maxY = Math.max(b.maxY, y + rad);
+        b.maxZ = Math.max(b.maxZ, z + rad);
+      }
+      data[at * INSTANCE_BYTES + 14] = colorOf[kind]!;
+      kinds[at] = kind;
+      const open = this.finder.door(kind), opened = this.finder.door(was);
+      if (open < 0 || opened < 0) continue;
+      const doors = (b.doors ??= new Map());
+      // A door the rooms were found without stood as it did before this, and opens nothing inside.
+      if (!doors.has(slot)) doors.set(slot, opened === 1 ? DOOR_OPEN : 0);
+      const flags = doors.get(slot)!, then = flags & DOOR_OPEN ? 1 : 0;
+      b.differ += (open !== then ? 1 : 0) - (opened !== then ? 1 : 0);
+      if ((flags & DOOR_FRONTIER) !== 0 && then === 0) b.exposing += open - opened;
+      b.since = this.now;
+    }
+    b.shape = t.shape;
+    b.uploaded = false;
+    return true;
+  }
+
+  /**
+   * The instances of a chunk of the store, each mesh's together, shell before interior (rooms.ts), then by cell
+   * (ChunkBatch.cells), and in a cell by slot. A mesh whose kinds turn into another's in place (a door and its open form)
+   * has that mesh's range beside it, empty or not, so the turn can be made in place (`reform`).
+   */
   private rebuild(store: StructureStore, chunk: number, id: number, old: ChunkBatch | undefined, meshOf: Uint16Array, colorOf: Uint8Array, sizeOf: Uint8Array | null): ChunkBatch {
     const world = this.world;
     const t = store.chunks[chunk]!;
@@ -1586,44 +1745,64 @@ export class Scene {
     const z0 = chunkCz(world.dims, chunk) * CHUNK_SIZE;
     const side = this.chunkCells;
     const cells = side * side;
-    if (this.cellCounts.length < this.counts.length * cells) {
-      this.cellCounts = new Uint32Array(this.counts.length * cells);
-      this.cellCursor = new Uint32Array(this.counts.length * cells);
+    if (this.cellCounts.length < this.counts.length * cells * 2) {
+      this.cellCounts = new Uint32Array(this.counts.length * cells * 2);
+      this.cellCursor = new Uint32Array(this.counts.length * cells * 2);
     }
     if (this.cellSeen.length < cells) {
       this.cellSeen = new Uint8Array(cells);
       this.cellCasts = new Uint8Array(cells);
     }
-    const cellOf = (x: number, z: number): number => {
-      const i = Math.min(side - 1, Math.max(0, Math.floor(((x - x0) * side) / CHUNK_SIZE)));
-      const j = Math.min(side - 1, Math.max(0, Math.floor(((z - z0) * side) / CHUNK_SIZE)));
-      return j * side + (j & 1 ? side - 1 - i : i);
-    };
-    const counts = this.cellCounts.fill(0, 0, this.counts.length * cells);
-    for (let s = 0; s < t.high; s++) if (t.kind[s] !== 0 && meshOf[t.kind[s]!] !== HIDDEN) counts[meshOf[t.kind[s]!]! * cells + cellOf(t.x[s]!, t.z[s]!)]!++;
+    if (this.blockAt.length < t.high) this.blockAt = new Uint8Array(Math.max(t.high, this.blockAt.length * 2));
+    const rooms = sizeOf === null ? (old?.rooms ?? new Rooms()) : null;
+    const inside = rooms !== null && this.finder.find(t, x0, z0, rooms);
+    const blocks = inside ? cells * 2 : cells;
+    const shell = rooms?.shell, blockAt = this.blockAt;
+    const counts = this.cellCounts.fill(0, 0, this.counts.length * blocks);
+    for (let s = 0; s < t.high; s++) {
+      const kind = t.kind[s]!;
+      if (kind === 0 || meshOf[kind] === HIDDEN) continue;
+      const i = Math.min(side - 1, Math.max(0, Math.floor(((t.x[s]! - x0) * side) / CHUNK_SIZE)));
+      const j = Math.min(side - 1, Math.max(0, Math.floor(((t.z[s]! - z0) * side) / CHUNK_SIZE)));
+      const block = (inside && shell![s] === 0 ? cells : 0) + j * side + (j & 1 ? side - 1 - i : i);
+      blockAt[s] = block;
+      counts[meshOf[kind]! * blocks + block]!++;
+    }
     const ranges: number[] = [];
     let total = 0;
     for (let m = 0; m < this.counts.length; m++) {
       const from = total;
-      for (let c = 0; c < cells; c++) {
-        this.cellCursor[m * cells + c] = total;
-        total += counts[m * cells + c]!;
+      for (let c = 0; c < blocks; c++) {
+        this.cellCursor[m * blocks + c] = total;
+        total += counts[m * blocks + c]!;
       }
-      if (total > from) ranges.push(m, from, total - from);
+      const twin = sizeOf ? -1 : this.twinOf[m]!;
+      let paired = false;
+      for (let c = 0; twin >= 0 && !paired && c < blocks; c++) paired = counts[twin * blocks + c]! > 0;
+      if (total > from || paired) ranges.push(m, from, total - from);
     }
     const n = ranges.length / 3;
     const data = old && old.data.length === total * INSTANCE_BYTES ? old.data : new Uint8Array(total * INSTANCE_BYTES);
     const slots = old && old.slots.length === total ? old.slots : new Uint16Array(total);
+    const kinds = old && old.kinds.length === total ? old.kinds : new Uint16Array(total);
     const w = new InstanceWriter(data);
     const b: ChunkBatch = {
       shape: t.shape,
+      placed: t.placed,
       sized: sizeOf !== null,
       data,
       slots,
+      kinds,
       ranges,
       level: new Int8Array(n).fill(-1),
       cells,
-      cellFirst: new Uint32Array(n * (cells + 1)),
+      blocks,
+      rooms,
+      doors: inside && rooms.doors.size > 0 ? new Map(rooms.doors) : null,
+      exposing: 0,
+      differ: 0,
+      since: this.now,
+      cellFirst: new Uint32Array(n * (blocks + 1)),
       cellBox: new Float32Array(n * cells * 6),
       zone: new Float32Array(cells * 6),
       cellLevel: new Int8Array(n * cells).fill(-1),
@@ -1646,8 +1825,8 @@ export class Scene {
     emptyBoxes(b.zone);
     for (let q = 0; q < n; q++) {
       const m = ranges[q * 3]!;
-      for (let c = 0; c < cells; c++) b.cellFirst[q * (cells + 1) + c] = this.cellCursor[m * cells + c]!;
-      b.cellFirst[q * (cells + 1) + cells] = ranges[q * 3 + 1]! + ranges[q * 3 + 2]!;
+      for (let c = 0; c < blocks; c++) b.cellFirst[q * (blocks + 1) + c] = this.cellCursor[m * blocks + c]!;
+      b.cellFirst[q * (blocks + 1) + blocks] = ranges[q * 3 + 1]! + ranges[q * 3 + 2]!;
       this.cursor[m] = q;
     }
     const box = b.cellBox, zone = b.zone;
@@ -1658,11 +1837,13 @@ export class Scene {
       const x = t.x[s]!;
       const y = t.y[s]!;
       const z = t.z[s]!;
-      const cell = cellOf(x, z);
-      const i = this.cellCursor[mesh * cells + cell]!++;
+      const block = blockAt[s]!;
+      const cell = block % cells;
+      const i = this.cellCursor[mesh * blocks + block]!++;
       w.set(i, x - x0, y, z - z0, t.yaw[s]!, colorOf[kind]!);
       if (sizeOf) w.size(i, sizeOf[kind]!);
       slots[i] = s;
+      kinds[i] = kind;
       // A node is held by its mesh's own bounds at its size, which for a tall tree are far tighter sideways than a sphere.
       const k = sizeOf ? sizeOf[kind]! / SIZE_UNITS : 1;
       const r = sizeOf ? this.assets.table.side[mesh]! * k : this.radiusOfMesh[mesh]!;
@@ -1966,6 +2147,16 @@ function emptyBoxes(box: Float32Array): void {
     box.fill(Infinity, k, k + 3);
     box.fill(-Infinity, k + 3, k + 6);
   }
+}
+
+/** Grows the box at `at` in `box` round another, laid out as `emptyBoxes` lays them. */
+function grow(box: Float32Array, at: number, x0: number, y0: number, z0: number, x1: number, y1: number, z1: number): void {
+  box[at] = Math.min(box[at]!, x0);
+  box[at + 1] = Math.min(box[at + 1]!, y0);
+  box[at + 2] = Math.min(box[at + 2]!, z0);
+  box[at + 3] = Math.max(box[at + 3]!, x1);
+  box[at + 4] = Math.max(box[at + 4]!, y1);
+  box[at + 5] = Math.max(box[at + 5]!, z1);
 }
 
 export { bodySeed };
