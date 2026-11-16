@@ -6,6 +6,7 @@ all share exact model-space texel positions and the model's guarded UV layout.
 import json
 import math
 import os
+import sys
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from scipy import ndimage
@@ -33,7 +34,7 @@ def label(s,text,z0,z1,y0,y1):
 def body(variant):
     s=Surface("body");P,N=s.P,s.N;x,y,z=P.T
     fine=fbm(P,.0028,2,615)-.5;broad=fbm(P,.18,3,92)
-    paint=s.where("paint","jamb")
+    paint=s.where("paint","jamb","paint_lower","paint_band")
     grey=(.84+fine*.025+(broad-.5)*.025)*(.91+.09*s.AO)
     s.base[:]=grey[:,None];s.mask[paint,0]=1;s.rough[:]=.38+fine*.045;s.metal[:]=.16;s.height[:]=fine*.000025
     # The antifouling follows the keel and waterline; the upper stripe remains consistent across chart seams.
@@ -49,7 +50,8 @@ def body(variant):
     s.base[weld]*=.75;s.height[weld]=.0005;s.rough[weld]=.47
     fastener=paint&(np.abs(y-1.23)<.008)&(np.abs((z/.28)%1-.5)<.035)&(np.abs(N[:,0])>.6)
     s.mask[fastener]=0;s.base[fastener]=rgb(.38,.42,.41);s.metal[fastener]=.8;s.height[fastener]=-.0005
-    ink=label(s,{"civilian":"UTILITY","rescue":"RESCUE","police":"POLICE"}[variant],-1.75,.35,1.01,1.25)*paint
+    low,high=(.83,1.04) if variant=="police" else (1.01,1.25)
+    ink=label(s,{"civilian":"UTILITY","rescue":"RESCUE","police":"POLICE"}[variant],-1.75,.35,low,high)*paint
     s.base=mix(s.base,rgb(.085,.13,.14),ink);s.mask*=1-ink[:,None];s.rough=np.where(ink>.1,.55,s.rough)
     serial=label(s,"U-04",1.42,2.10,1.22,1.36)*paint
     s.base=mix(s.base,rgb(.13,.18,.18),serial);s.mask*=1-serial[:,None]
@@ -96,15 +98,15 @@ def displays():
     for side in range(2):
         im=Image.new("RGB",(640,250),(8,22,27));d=ImageDraw.Draw(im)
         if side==0:
-            d.text((20,8),"NAVIGATION REF",font=font,fill=(205,224,210))
+            d.text((20,8),"COASTAL CHART",font=font,fill=(205,224,210))
             for xx in range(45,620,50):d.line((xx,48,xx,235),fill=(27,64,67),width=2)
             for yy in range(65,240,42):d.line((20,yy,620,yy),fill=(27,64,67),width=2)
             d.polygon(((20,80),(140,72),(191,118),(170,170),(242,198),(235,249),(20,249)),fill=(108,126,97))
             d.line(((300,224),(320,176),(363,155),(402,104),(472,63)),fill=(238,199,90),width=5)
             d.polygon(((354,143),(346,164),(370,160)),fill=(232,239,218))
-            d.text((497,205),"REF",font=small,fill=(114,160,161))
+            d.text((497,205),"ROUTE A",font=small,fill=(114,160,161))
         else:
-            d.text((20,8),"SERVICE REF",font=font,fill=(205,224,210))
+            d.text((20,8),"ENGINE STATUS",font=font,fill=(205,224,210))
             for cx,text,angle in ((116,"RPM",-70),(320,"TEMP",-125),(524,"FUEL",-45)):
                 d.arc((cx-68,67,cx+68,203),190,350,fill=(105,185,157),width=10)
                 for a in range(190,351,32):
@@ -157,10 +159,10 @@ def save(s,folder,cutout=False,wreck=False):
 
 
 if __name__=="__main__":
-    report={}
+    report=json.load(open(os.path.join(HERE,"maps.json"))) if "--body" in sys.argv else {}
     for variant in ("civilian","rescue","police"):
         s=body(variant);save(s,HERE if variant=="civilian" else os.path.join(HERE,variant),wreck=variant=="civilian")
-        report[variant+"_height_mm"]=float(np.ptp(s.height)*1000);print("painted body",variant,flush=True);del s
-    for name,fn in (("trim",trim),("cabin",cabin)):
-        s=fn();save(s,HERE,cutout=name=="cabin",wreck=True);report[name+"_height_mm"]=float(np.ptp(s.height)*1000);print("painted",name,flush=True);del s
+        report[variant+"_height_mm"]=round(float(np.ptp(s.height)*1000),3);print("painted body",variant,flush=True);del s
+    for name,fn in (() if "--body" in sys.argv else (("trim",trim),("cabin",cabin))):
+        s=fn();save(s,HERE,cutout=name=="cabin",wreck=True);report[name+"_height_mm"]=round(float(np.ptp(s.height)*1000),3);print("painted",name,flush=True);del s
     with open(os.path.join(HERE,"maps.json"),"w") as f:json.dump(report,f,indent=2);f.write("\n")

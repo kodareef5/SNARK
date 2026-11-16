@@ -15,6 +15,8 @@ for source in ("rig.py","model.py"):
 from parts import TAGS
 
 palette={"paint":(.66,.62,.51),"jamb":(.35,.34,.30),"glass":(.13,.21,.22),"glass_in":(.1,.2,.2),"leather":(.36,.34,.29),"metal":(.32,.34,.35),"chrome":(.52,.54,.56),"panel":(.38,.39,.36),"headliner":(.48,.48,.42),"amber":(.95,.55,.06),"headlamp":(.43,.68,.70),"taillamp":(.60,.03,.01)}
+palette["paint_lower"]=palette["paint"]
+palette["paint_band"]=palette["paint"]
 mats=[]
 for tag,_ in TAGS:
     m=bpy.data.materials.new("review-"+tag);m.use_nodes=True

@@ -42,7 +42,7 @@ const BACKGROUND = [0.84, 0.83, 0.81] as const;
 function posed(open: number): void {
   rig.a.rest();
   quatAxis(rig.a.rot, rig.names.indexOf("steering") * 4, 0, 0, 1, open);
-  quatAxis(rig.a.rot, rig.names.indexOf("outboard") * 4, 0, 1, 0, open * .55 / .65);
+  quatAxis(rig.a.rot, rig.names.indexOf("outboard") * 4, 0, 1, 0, -open * .55 / .65);
   solve(rig, rig.a, rig.solved);
 }
 
@@ -98,11 +98,19 @@ const write = (name: string, p: { w: number; h: number; img: Uint8Array }): void
   console.log(file);
 };
 
-for (const [name, shot] of Object.entries(VIEWS)) write(`stages_${name}`, row(shot, 300, 2, name === "cabin" ? .65 : 0));
-write("steering", row(VIEWS.back_right!, 300, 2, .65));
-write("driver", driver(960, 540));
+for (const [name, shot] of Object.entries(VIEWS)) if (!args.includes("--summary") || name === "side") write(`stages_${name}`, row(shot, 300, 2, name === "cabin" ? .65 : 0));
+if (!args.includes("--summary")) {
+  write("steering", row(VIEWS.back_right!, 300, 2, .65));
+  write("driver", driver(960, 540));
+}
 const view=new ModelView(pack,1600,1000,BACKGROUND);
 textures.forEach((t,slot)=>view.texture(slot,t.role,t.pictures));
 posed(0);
 view.draw({mesh:index,level:0,centre:[0,1.10,-.20],radius:3.0,around:35,above:24,rig,colors:COLORS,textured:true});
 write("hero",{w:1600,h:1000,img:new Uint8Array(view.raster.color)});
+if (!args.includes("--summary")) {
+  view.draw({mesh:index,level:1,centre:[0,1.10,-.20],radius:3.0,around:35,above:24,rig,colors:COLORS,textured:false});
+  write("hero_flat",{w:1600,h:1000,img:new Uint8Array(view.raster.color)});
+  view.draw({mesh:index,level:2,centre:[0,1.10,-.20],radius:3.0,around:35,above:24,rig,colors:COLORS,textured:false});
+  write("hero_first_flat",{w:1600,h:1000,img:new Uint8Array(view.raster.color)});
+}

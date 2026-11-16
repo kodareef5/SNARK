@@ -29,7 +29,7 @@ export const BOAT_ART = {
     approach_rear_right: [-1.75, 0.73, -1.20],
     boarding_water: [1.12, 0.60, -4.02],
     boarding_ladder: [1.03, 0.73, -3.48],
-    boarding_deck: [0.93, 0.73, -2.70],
+    boarding_deck: [0.83, 0.73, -2.70],
     camera_driver: [0.48, 2.04, 0.45],
     camera_front_passenger: [-0.48, 2.04, 0.45],
     camera_rear_left: [0.48, 2.04, -1.15],

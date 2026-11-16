@@ -9,7 +9,7 @@ import bpy
 import bmesh
 from mathutils import Vector
 from parts import E2B, MATERIALS, TAG, TAGS, Part, cylinder, is_closed, layout, layout_hash, rbox, tags_of, transform
-from shape import BONES, HULL, SECTION_TAGS, sample, section, stations
+from shape import BONES, HULL, SECTION_TAGS, interior, sample, section, stations
 
 HERE=os.path.dirname(os.path.abspath(__file__))
 SIZES={"body":2048,"trim":2048,"cabin":2048}
@@ -55,7 +55,7 @@ zs=sorted(set(stations(-3.40,3.40,.16)+[r[0] for r in HULL]))
 put(loft("continuous-hard-hull",[section(z) for z in zs],lambda row,k:SECTION_TAGS[k]))
 # Author the actual clear envelope used by the body fit audit. The open top is deliberately unconstrained.
 with open(os.path.join(HERE,"ref","interior.json"),"w") as f:
-    json.dump([[[w-.09,3.2,z],[w-.09,deck,z],[-w+.09,deck,z],[-w+.09,3.2,z]] for z in zs for w,_,_,_,deck in [sample(z)]],f)
+    json.dump([interior(z) for z in zs],f)
 
 for side in (-1,1):
     path=[(side*sample(z)[0],sample(z)[3]-.07,z) for z in zs]
@@ -71,12 +71,14 @@ for side in (-1,1):
             w,_,_,sheer,_=sample(z)
             put(rbox("rail-foot",(side*(w-.045)-.045,sheer-.005,z-.055),(side*(w-.045)+.045,sheer+.025,z+.055),.008,"metal",2))
     # Recessed aft rigging lockers are outside the four occupied envelopes.
-    put(rbox("aft-rigging-locker",(min(side*.70,side*1.13),.76,-3.18),(max(side*.70,side*1.13),1.22,-2.64),.055,"paint",4))
-    put(rbox("locker-lid",(min(side*.70,side*1.13)-.005,1.22,-3.19),(max(side*.70,side*1.13)+.005,1.25,-2.63),.025,"tread",3))
-    put(rbox("locker-latch",(side*.91-.05,1.253,-2.77),(side*.91+.05,1.265,-2.67),.01,"metal"))
+    # One opposite-side rigging locker; the ladder-side stern corner is a real open boarding corridor.
+    if side<0:
+        put(rbox("aft-rigging-locker",(-1.00,.76,-3.18),(-.70,1.22,-2.64),.055,"paint",4))
+        put(rbox("locker-lid",(-1.005,1.22,-3.19),(-.695,1.25,-2.63),.025,"tread",3))
+        put(rbox("locker-latch",(-.90,1.253,-2.77),(-.80,1.265,-2.67),.01,"metal"))
     # Deck scuppers have a dark recess and a visible metal lip.
-    put(rbox("scupper-frame",(side*1.10-.07,.755,-3.31),(side*1.10+.07,.87,-3.28),.015,"metal"))
-    put(rbox("scupper-opening",(side*1.10-.045,.773,-3.315),(side*1.10+.045,.846,-3.305),.008,"plastic"))
+    put(rbox("scupper-frame",(side*.91-.07,.755,-3.31),(side*.91+.07,.87,-3.28),.015,"metal"))
+    put(rbox("scupper-opening",(side*.91-.045,.773,-3.315),(side*.91+.045,.846,-3.305),.008,"plastic"))
     # Small side boarding pads are clear of moving controls and the propeller.
     put(rbox("boarding-tread",(min(side*1.14,side*1.28),1.366,-1.42),(max(side*1.14,side*1.28),1.388,-.88),.018,"tread",3))
 put(tube("keel-shoe",[(0,sample(z)[1]+.017,z) for z in stations(-3.35,3.36,.20)],.018,"metal",8))

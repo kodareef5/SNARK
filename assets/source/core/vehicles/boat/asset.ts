@@ -2,7 +2,7 @@ import { BOAT_ART as B } from "../../../../../content/vehicles/boat-art.ts";
 import { shared, type CreatureAsset, type MaterialSpec } from "../../../../../tools/art/spec.ts";
 
 const maps = (name: string, folder = "tex", extra: Partial<MaterialSpec> = {}): MaterialSpec => ({
-  tiles: name === "body" ? 9.0844 : name === "trim" ? 6.2164 : 11.9946,
+  tiles: name === "body" ? 9.2261 : name === "trim" ? 6.1395 : 11.9680,
   base: `${folder}/${name}_base.png`, normal: `${folder}/${name}_normal.png`, packed: `${folder}/${name}_packed.png`,
   regions: { mask: `${folder}/${name}_mask.png` }, height: `${folder}/${name}_height.png`,
   hurt: `${folder}/${name}_hurt.png`, decay: `${folder}/${name}_decay.png`, ...extra,

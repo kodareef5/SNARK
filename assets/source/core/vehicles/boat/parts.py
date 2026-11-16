@@ -18,6 +18,7 @@ TAGS = [
     ("amber", "trim"), ("mirror", "trim"), ("rubber", "trim"), ("plate", "trim"), ("exhaust", "trim"),
     ("glass", "cabin"), ("glass_in", "cabin"), ("leather", "cabin"), ("carpet", "cabin"), ("dash", "cabin"),
     ("headliner", "cabin"), ("panel", "cabin"), ("grip", "cabin"), ("gauge", "cabin"), ("metal", "cabin"), ("engine", "trim"), ("foam", "trim"),
+    ("paint_lower", "body"), ("paint_band", "body"),
 ]
 TAG = {name: i for i, (name, _) in enumerate(TAGS)}
 MATERIALS = ["body", "trim", "cabin"]
@@ -332,7 +333,9 @@ def layout(objects, sizes, gutter=6):
             t = tags[f.material_index]
             n = f.normal
             axis = max(range(6), key=lambda a: n.dot(AXES[a]))
-            key[f.index] = (dict(TAGS)[t], axis, SPARE.get(t, 1.0))
+            # Semantic paint bands retain a UV seam through the textured LOD simplifier. Their palette-baked
+            # successors then preserve the horizontal livery, rather than averaging a whole hull-side triangle.
+            key[f.index] = (dict(TAGS)[t], axis, SPARE.get(t, 1.0), t)
         seen = set()
         for f in bm.faces:
             if f.index in seen:

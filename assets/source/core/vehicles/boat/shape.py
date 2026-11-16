@@ -25,16 +25,34 @@ def stations(a, b, step=.15):
     return [a+(b-a)*i/n for i in range(n+1)]
 
 
+def interior(z):
+    w, keel, chine, sheer, deck=sample(z)
+    inner=max(.012,w-.09)
+    deck_width=max(.006,(.73+.27*max(0,min(1,(deck-chine)/(sheer-.17-chine))))*w-.09)
+    return [(inner,3.2,z),(inner,sheer,z),(deck_width,deck,z),
+            (-deck_width,deck,z),(-inner,sheer,z),(-inner,3.2,z)]
+
+
 def section(z):
     w, keel, chine, sheer, deck=sample(z)
     inner=max(.012,w-.09)
-    # Narrow longitudinal strips give the flat LODs enough colour samples to retain the painted waterline/stripe.
-    side=[((.73+.27*i/16)*w,chine+(sheer-.17-chine)*i/16,z) for i in range(17)]
-    return [(0,keel,z)]+side+[(w,sheer,z),(inner,sheer,z),(inner,deck,z),
-                            (-inner,deck,z),(-inner,sheer,z),(-w,sheer,z)]+[(-x,y,z) for x,y,z in reversed(side)]
+    # Semantic UV borders retain the painted waterline/stripe through native surface simplification.
+    span=sheer-.17-chine
+    centre=.91+.045*max(0,min(3,z))
+    water=max(.05,min(.55,(.50-chine)/span))
+    lower=max(water+.05,min(.75,(centre-.115-chine)/span))
+    upper=max(lower+.05,min(.95,(centre+.115-chine)/span))
+    bounds=[0,water,lower,upper,1]
+    ts=[bounds[k]+(bounds[k+1]-bounds[k])*i/4 for k in range(4) for i in range(4)]+[1]
+    side=[((.73+.27*t)*w,chine+span*t,z) for t in ts]
+    floor=interior(z)[2][0]
+    return [(0,keel,z)]+side+[(w,sheer,z),(inner,sheer,z),(floor,deck,z),
+                            (-floor,deck,z),(-inner,sheer,z),(-w,sheer,z)]+[(-x,y,z) for x,y,z in reversed(side)]
 
 
 SECTION_TAGS=["paint"]*41
 SECTION_TAGS[19]="panel"
 SECTION_TAGS[20]="carpet"
 SECTION_TAGS[21]="panel"
+for i in [1,2,3,4,36,37,38,39]:SECTION_TAGS[i]="paint_lower"
+for i in [9,10,11,12,28,29,30,31]:SECTION_TAGS[i]="paint_band"

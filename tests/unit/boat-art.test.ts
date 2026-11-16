@@ -5,7 +5,7 @@ import { BOAT_ART as B } from "../../content/vehicles/boat-art.ts";
 import { parsePack } from "../../shared/pack/pack.ts";
 import { bothWays, measureSurface } from "../../tools/art/check.ts";
 import { auditBoatFit } from "../../tools/art/boat-fit.ts";
-import { unpackMeshes } from "../../tools/pack/write.ts";
+import { unpackMeshes, type SourceLod } from "../../tools/pack/write.ts";
 
 const assets = ["boat", "boat_rescue", "boat_police", "boat_wreck"].map(id => {
   const pack = parsePack(new Uint8Array(readFileSync(new URL(`../../assets/source/core/vehicles/${id}/${id}.snpk`, import.meta.url))));
@@ -84,6 +84,68 @@ test("the forward eye rays stay clear through the windscreen on textured and ful
     }
     expect(hits).toBe(0);
   }
+});
+
+/** Intersections with a +X viewing ray, preserving actual winding and native provoking-vertex colour. */
+function sideHits(lod: SourceLod, y: number, z: number): { x: number; nx: number; colour: number; section: number }[] {
+  const hits = [];
+  for (let t = 0; t < lod.indices.length; t += 3) {
+    const a = lod.indices[t]! * 3, b = lod.indices[t + 1]! * 3, c = lod.indices[t + 2]! * 3, p = lod.positions;
+    const ay = p[a + 1]!, az = p[a + 2]!, by = p[b + 1]!, bz = p[b + 2]!, cy = p[c + 1]!, cz = p[c + 2]!;
+    const denominator = (bz - cz) * (ay - cy) + (cy - by) * (az - cz);
+    if (Math.abs(denominator) < 1e-9) continue;
+    const u = ((bz - cz) * (y - cy) + (cy - by) * (z - cz)) / denominator;
+    const v = ((cz - az) * (y - cy) + (ay - cy) * (z - cz)) / denominator;
+    if (u < 0 || v < 0 || u + v > 1) continue;
+    hits.push({ x: u * p[a]! + v * p[b]! + (1 - u - v) * p[c]!, nx: denominator,
+      colour: lod.colors[lod.indices[t + 2]!]!, section: lod.sections?.[t / 3] ?? -1 });
+  }
+  return hits;
+}
+
+test("the utility stripe remains a continuous dye band when the hull is rendered without textures", () => {
+  const mesh = assets[0]!.mesh;
+  for (const level of [1, 2, 3]) for (const z of [-2.5, -2, -1.5, -1, -.5, 0, .5, 1, 1.5]) {
+    const outer = sideHits(mesh.lods[level]!, .91 + .045 * Math.max(0, z), z).sort((a, b) => b.x - a.x)[0]!;
+    expect(outer.x).toBeGreaterThan(1.0);
+    expect(outer.colour).toBe(241); // Native stripe dye region 1.
+  }
+  for (const lod of mesh.lods.slice(4)) expect(lod.colors.includes(241)).toBe(true);
+});
+
+test("the inner wall stays inside the outer hull throughout the occupied lower shell", () => {
+  const fine = assets[0]!.mesh.lods[0]!;
+  const materials = assets[0]!.mesh.materials!;
+  const body = materials.findIndex(m => m.id.includes("body")), cabin = materials.findIndex(m => m.id.endsWith("/cabin"));
+  for (const z of [-2.5, -2, -1.5, -1, -.5, 0, .5, 1]) for (const y of [.78, .91, 1.10, 1.25]) {
+    const hits = sideHits(fine, y, z).filter(h => h.x > 0);
+    const outer = Math.max(...hits.filter(h => h.section === body && h.nx > 0).map(h => h.x));
+    const inner = Math.max(...hits.filter(h => h.section === cabin && h.nx < 0).map(h => h.x));
+    expect(Number.isFinite(outer) && Number.isFinite(inner)).toBe(true);
+    expect(outer - inner).toBeGreaterThan(.025);
+  }
+});
+
+test("the actual stern landing corridor contains no locker, fitting or hull triangle", () => {
+  const fine = assets[0]!.mesh.lods[0]!, landing = B.anchors.boarding_deck;
+  // Begin beyond the ladder's curved handrails at Z -3.14; those rails are intentional grasp surfaces.
+  const low = [landing[0] - .14, .80, -3.05], high = [landing[0] + .14, 1.40, -2.55];
+  let blocked = 0;
+  for (let t = 0; t < fine.indices.length; t += 3) {
+    let polygon = Array.from({length: 3}, (_, k) => [...fine.positions.slice(fine.indices[t + k]! * 3, fine.indices[t + k]! * 3 + 3)]);
+    for (let axis = 0; axis < 3 && polygon.length; axis++) for (const side of [-1, 1]) {
+      const bound = side < 0 ? low[axis]! : high[axis]!, clipped: number[][] = [];
+      for (let k = 0; k < polygon.length; k++) {
+        const a = polygon[k]!, b = polygon[(k + 1) % polygon.length]!;
+        const da = side * (a[axis]! - bound), db = side * (b[axis]! - bound);
+        if (da <= 0) clipped.push(a);
+        if ((da <= 0) !== (db <= 0)) clipped.push(a.map((v, j) => v + (b[j]! - v) * da / (da - db)));
+      }
+      polygon = clipped;
+    }
+    if (polygon.length) blocked++;
+  }
+  expect(blocked).toBe(0);
 });
 
 test("actual survivors and gear clear all other seats, console and hull across proportions and head look", () => {
