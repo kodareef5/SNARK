@@ -10,10 +10,10 @@ const twelve = (v: number): number[] => new Array<number>(12).fill(v);
 const butHealthAndMelee = (health: number, melee: number): number[] => twelve(1).map((v, n) => (n === 0 ? health : n === 8 ? melee : v));
 
 const m = new Sheet(MODE_ROWS, "mode", "Breeding");
-m.f("MatingIntervalMultiplier", 1, "The wait before a female may mate again. Lower is sooner.", live({ live: true, retime: "period" }))
+m.f("MatingIntervalMultiplier", 1, "The wait before a female may mate again. Lower is sooner.", live({ public: true, live: true, retime: "period" }))
   .f("MatingSpeedMultiplier", 1, "How fast a pair's mating goes. Higher is faster.", live({ live: true, retime: "speed", min: 0.001 }))
-  .f("EggHatchSpeedMultiplier", 1, "How fast an egg hatches, or young are carried. Higher is faster.", live({ live: true, retime: "speed", min: 0.001 }))
-  .f("BabyMatureSpeedMultiplier", 1, "How fast the young grow up. Higher is faster. Their hunger each second is as it was.", live({ live: true, retime: "speed", min: 0.001, max: 100000 }))
+  .f("EggHatchSpeedMultiplier", 1, "How fast an egg hatches, or young are carried. Higher is faster.", live({ public: true, live: true, retime: "speed", min: 0.001 }))
+  .f("BabyMatureSpeedMultiplier", 1, "How fast the young grow up. Higher is faster. Their hunger each second is as it was.", live({ public: true, live: true, retime: "speed", min: 0.001, max: 100000 }))
   .f("BabyFoodConsumptionSpeedMultiplier", 1, "How fast the young hunger. Lower eats less.", live({ retime: "rate", live: true }))
   .b("bDisableDinoBreeding", false, "Nothing breeds.", live({ live: true }))
   .n("PreventBreedingForClassNames", "Species that do not breed.", live())
@@ -25,9 +25,9 @@ m.f("MatingIntervalMultiplier", 1, "The wait before a female may mate again. Low
   .f("LayEggIntervalMultiplier", 1, "Time between eggs laid by a female alone. Higher is longer.", plan("tameBonus"));
 
 m.under("Experience")
-  .f("KillXPMultiplier", 1, "Experience from kills. Higher is more.", live({ live: true }))
-  .f("HarvestXPMultiplier", 1, "Experience from harvesting. Higher is more.", live({ live: true }))
-  .f("CraftXPMultiplier", 1, "Experience from making things. Higher is more.", live({ live: true }))
+  .f("KillXPMultiplier", 1, "Experience from kills. Higher is more.", live({ public: true, live: true }))
+  .f("HarvestXPMultiplier", 1, "Experience from harvesting. Higher is more.", live({ public: true, live: true }))
+  .f("CraftXPMultiplier", 1, "Experience from making things. Higher is more.", live({ public: true, live: true }))
   .i("OverrideMaxExperiencePointsPlayer", 0, "The most experience a survivor may have. 0 leaves it to the level table.", live({ client: true, max: 4294967295 }))
   .i("OverrideMaxExperiencePointsDino", 0, "The most experience a tame may have. 0 leaves it to the level table.", live({ max: 4294967295 }))
   .s("LevelExperienceRampOverrides", "The level table: `(ExperiencePointsForLevel[0]=5,ExperiencePointsForLevel[1]=20,…)`, each the total needed. The first line is survivors', the second tames'.", live({ client: true }))
@@ -57,7 +57,7 @@ m.under("Harvesting")
   .f("DinoHarvestingDamageMultiplier", 3.2, "What a tamed creature's blow does to a tree or a rock.", plan("dinoHarvest"));
 
 m.under("Items")
-  .f("GlobalSpoilingTimeMultiplier", 1, "How long things keep before they spoil. Higher is longer.", live({ retime: "period", min: 0.001, note: "ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied." }))
+  .f("GlobalSpoilingTimeMultiplier", 1, "How long things keep before they spoil. Higher is longer.", live({ public: true, retime: "period", min: 0.001, note: "ARK Evolved can change this while running; here it is read at start. How it combines with what a container adds is not documented; they are multiplied." }))
   .f("GlobalItemDecompositionTimeMultiplier", 1, "How long a dropped bag lies. Higher is longer.", live({ live: true, retime: "period", min: 0.001 }))
   .f("GlobalCorpseDecompositionTimeMultiplier", 1, "How long a creature's body and what a dead survivor leaves lie. Higher is longer.", live({ live: true, retime: "period", min: 0.001 }))
   .f("UseCorpseLifeSpanMultiplier", 1, "The same again, as a second factor.", live({ live: true, retime: "period", min: 0.001, note: "How it overlaps the one above is not explained; they are multiplied." }))

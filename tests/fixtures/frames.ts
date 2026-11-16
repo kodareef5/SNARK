@@ -4,18 +4,18 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tierOf } from "../../client/core/assets/tiers.ts";
-import type { DeviceReport } from "../../client/core/device.ts";
-import { Governor, TARGET_MS, ladder } from "../../client/core/governor.ts";
+import type { DeviceReport, SoakReport } from "../../client/core/device.ts";
+import { Governor, TARGET_MS } from "../../client/core/governor.ts";
 import { Rng } from "../../shared/rng.ts";
 
-/** What a frame at `t` ms takes at `level`: its GPU ms (null where the browser does not time it), our code's ms, uploads, and its work. */
+/** What a frame at `t` ms takes at `level`: its GPU ms, our code's ms, uploads, and its work. */
 export interface Frame {
   gpu: number;
   ours?: number;
-  timed?: boolean;
   busy?: boolean;
+  /** What it asked of the card, as the app counts it (governor.ts workMs): 10 unless said. */
   work?: number;
-  /** The triangles crowns near took that they could still give: none unless said. */
+  /** The part of the work crowns near took that they could still give: none unless said. */
   crowns?: number;
   /** A gap before this frame, in ms: a hidden page or a stall. */
   gap?: number;
@@ -33,8 +33,8 @@ export interface Minute {
 
 /**
  * Runs `minutes` of frames through a governor on `tier` at `dpr`. A frame's interval is its GPU time rounded up to the
- * display's interval where `quantized`, else the larger of the two, with a little jitter; the GPU's time comes back two
- * frames late.
+ * display's interval where `quantized`, as a display that shows only whole intervals gives them, else the larger of the
+ * two; with a little jitter.
  */
 export function run(minutes: number, at: (t: number, level: number) => Frame, o: { tier?: string; dpr?: number; quantized?: boolean; seed?: number; governor?: Governor } = {}): { minutes: Minute[]; governor: Governor } {
   const g = o.governor ?? new Governor();
@@ -42,7 +42,6 @@ export function run(minutes: number, at: (t: number, level: number) => Frame, o:
   const dpr = o.dpr ?? 3;
   const rng = new Rng(o.seed ?? 1);
   const out: Minute[] = [];
-  const timed: number[] = [];
   let now = 0;
   let list: number[] = [];
   let most = 0;
@@ -56,9 +55,7 @@ export function run(minutes: number, at: (t: number, level: number) => Frame, o:
     interval += f.gap ?? 0;
     now += interval;
     g.tier(tier, true, dpr, now);
-    if (f.timed) timed.push(f.gpu);
-    if (timed.length > 2) g.timed(timed.shift()!);
-    g.frame(now, interval, f.ours ?? 1, f.busy ?? false, f.work ?? 1e6, f.crowns ?? 0);
+    g.frame(now, interval, f.ours ?? 1, f.busy ?? false, f.work ?? 10, f.crowns ?? 0);
     if (f.gap === undefined) list.push(interval);
     most = Math.max(most, g.level);
     if (now >= (out.length + 1) * 60000) {
@@ -70,24 +67,17 @@ export function run(minutes: number, at: (t: number, level: number) => Frame, o:
   return { minutes: out, governor: g };
 }
 
-/** The share of a frame's GPU time each level of `tier` leaves, from `shares`: each step's share of the level before it. */
-export function leaves(tier: string, dpr: number, shares: Readonly<Record<string, number>>): number[] {
-  const out = [1];
-  for (const step of ladder(tierOf(tier), dpr).slice(1)) out.push(out.at(-1)! * (shares[step.name] ?? 1));
-  return out;
-}
-
 /**
  * The iPhone's soaks on lit tiers that ran their minutes, from the kept reports (planning/reference/device-reports, D349):
- * each minute's median frame, a minute that held the display's rate read as just inside it.
+ * what each turned through and each minute's median frame, a minute that held the display's rate read as just inside it.
  */
-export function phoneSoaks(): { name: string; tier: string; points: number[] }[] {
+export function phoneSoaks(): { name: string; tier: string; load: SoakReport["load"]; wood: boolean; points: number[] }[] {
   const dir = join(import.meta.dir, "../../planning/reference/device-reports");
   return readdirSync(dir).flatMap((file) => {
     const r = JSON.parse(readFileSync(join(dir, file), "utf8")) as DeviceReport;
     if (!r.soak || !r.done || r.soak.minutes.length < r.soak.minutesWanted || !r.soak.cascades) return [];
     const l = r.soak.load;
-    return [{ name: `${file.slice(0, 19)}, ${r.soak.wood ? "the wood" : `${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near`}`, tier: r.soak.tier, points: r.soak.minutes.map((m) => (m.frameMs.median <= 17 ? TARGET_MS * 0.99 : m.frameMs.median)) }];
+    return [{ name: `${file.slice(0, 19)}, ${r.soak.wood ? "the wood" : `${l.bodies} bodies, ${l.pieces} pieces, ${l.near} rocks near`}`, tier: r.soak.tier, load: l, wood: r.soak.wood === true, points: r.soak.minutes.map((m) => (m.frameMs.median <= 17 ? TARGET_MS * 0.99 : m.frameMs.median)) }];
   });
 }
 

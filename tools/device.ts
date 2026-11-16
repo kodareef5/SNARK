@@ -11,7 +11,7 @@
 // a phone; each report says if what it serves changed all the same. With --self the local headless Chrome opens the
 // link and runs a test without a tap, which must finish: `--self` for the quick look, `--self ladder`, `--self soak`
 // or `--self governed` (with --soak-minutes n), or `--self terrain` or `--self trees`, the test that the probe works,
-// not part of the check. With `--texfmt astc` the page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a
+// not part of the check. The soaks run on high, or with `--soak-tier medium` on that tier. With `--texfmt astc` the page takes that texture variant, with `--assetnet 500,0,0` its asset fetches go over a
 // made-up link (delay ms, KB/s, % lost), and with `--rebuild` a plain build of client/dist starts once the page has the
 // game, as `bun run build` in another terminal would. With --flock forty dodos stand round the spawn point, hurt and
 // dead (tools/bench/gpu.ts `flock`). --port n, and --minutes n before it stops by itself (30). CHROME and CLOUDFLARED
@@ -69,6 +69,8 @@ export interface DeviceOptions {
   password: string;
   /** The tests the page is to offer, as its link names them, or "" for all but the terrain flight. */
   tests?: string;
+  /** The tier the soaks run on, where not high. */
+  soakTier?: string;
   /** The server's hashes of the scenarios, for the page to compare its own with. */
   expected: Record<string, string>;
   say(line: string): void;
@@ -190,7 +192,7 @@ export function deviceRoutes(o: DeviceOptions): { routes: (req: Request, url: UR
     }
     if (path === `/d/${o.code}` && wrong < MAX_WRONG) {
       o.say("the short path was opened");
-      return new Response(null, { status: 302, headers: { location: `/?device=${o.token}&password=${o.password}${o.tests ? `&tests=${o.tests}` : ""}`, "cache-control": "no-store" } });
+      return new Response(null, { status: 302, headers: { location: `/?device=${o.token}&password=${o.password}${o.tests ? `&tests=${o.tests}` : ""}${o.soakTier ? `&soaktier=${o.soakTier}` : ""}`, "cache-control": "no-store" } });
     }
     if (path.startsWith("/d/")) {
       if (++wrong === MAX_WRONG) o.say(`${MAX_WRONG} wrong guesses at the short path, so it is closed; the whole link still works`);
@@ -346,6 +348,7 @@ if (import.meta.main) {
   const self = process.argv.includes("--self");
   const mode = MODES.find((m) => m === value("--self")) ?? "quick";
   const soakMinutes = Number(value("--soak-minutes") ?? 10);
+  const soakTier = TIERS.find((t) => t.name === value("--soak-tier"))?.name;
   const tunnel = process.argv.includes("--tunnel");
   const rebuild = self && process.argv.includes("--rebuild");
   // Only what a page's address may hold.
@@ -442,7 +445,7 @@ if (import.meta.main) {
     );
     return answer;
   };
-  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,trees,soak,governed" : "", expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)), ...(terrain ? { stand, layers } : {}) });
+  const probe = deviceRoutes({ dir, token, code, password, tests: terrain ? "terrain,trees,soak,governed" : "", soakTier, expected, say, base, done: (report, file) => (print(report, file), finished({ report, file })), held: () => ({ skipped: server!.skipped, overflows: server!.host.game.stats.overflows }), changed: () => filesChanged(servedAtStart, servedFiles(dist)), ...(terrain ? { stand, layers } : {}) });
   // With --rebuild, once a page has the game, another process builds client/dist as a person might in another terminal.
   let builder: ReturnType<typeof Bun.spawn> | null = null;
   let besideDone: Promise<unknown> = Promise.resolve();
@@ -546,7 +549,7 @@ if (import.meta.main) {
   }
 
   console.log(terrain ? `\nSNARK device probe on the bench's 8 km map, for the terrain flight; reports go to ${dir}` : `\nSNARK device probe: ${crowd} bodies in the crowd${flocked > 0 ? `, ${flocked} hurt and dead dodos round the spawn point` : ""} and ${pieces} pieces of thatch; reports go to ${dir}`);
-  const tests = terrain ? "&tests=terrain,trees,soak,governed" : "";
+  const tests = `${terrain ? "&tests=terrain,trees,soak,governed" : ""}${soakTier ? `&soaktier=${soakTier}` : ""}`;
   console.log(`  open on the device:  ${base0}/d/${code}`);
   console.log(`  where that leads:    ${base0}/?device=${token}&password=${password}${tests}`);
   if (tunnel) console.log(`  on this machine:     http://127.0.0.1:${running.port}/d/${code}`);

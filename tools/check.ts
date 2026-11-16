@@ -30,6 +30,8 @@ const VOICE_MAX_LINES = 600;
 const SOUND_MAX_LINES = 300;
 /** The asset worker and its port: fetching, hashing and caching, with no decisions of their own. */
 const ASSETS_MAX_LINES = 500;
+/** The field guide's script: sounds, the map, search. Its decisions are in client/core/pages. */
+const PAGES_MAX_LINES = 160;
 const ALLOWED_DEV_PACKAGES = new Set(["typescript", "@types/bun"]);
 
 interface Zone {
@@ -49,6 +51,7 @@ const ZONES: Zone[] = [
   { dir: "client/sound", may: ["shared", "client/core", "client/sound"], builtins: false },
   { dir: "client/city", may: ["shared", "client/core", "client/city"], builtins: false },
   { dir: "client/shell", may: ["shared", "content", "client/core", "client/voice", "client/assets", "client/sound", "client/city", "client/shell"], builtins: false },
+  { dir: "client/pages", may: ["shared", "client/core", "client/pages"], builtins: false },
   { dir: "server", may: ["shared", "content", "server", "server/api"], builtins: true },
   // What a module is written against. It names nothing of the server's own.
   { dir: "server/api", may: ["shared", "server/api"], builtins: false },
@@ -130,6 +133,7 @@ function checkPolicy(): void {
   let voiceLines = 0;
   let assetLines = 0;
   let soundLines = 0;
+  let pagesLines = 0;
 
   for (const file of files) {
     const rel = relative(ROOT, file);
@@ -155,6 +159,10 @@ function checkPolicy(): void {
     if (zone.dir === "client/assets") {
       if (rel.endsWith(".test.ts")) fail(`${rel}: client/assets has no tests; move the logic into client/core/assets`);
       assetLines += src.split("\n").filter((l) => l.trim().length > 0).length;
+    }
+    if (zone.dir === "client/pages") {
+      if (rel.endsWith(".test.ts")) fail(`${rel}: client/pages has no tests; move logic into client/core/pages`);
+      pagesLines += src.split("\n").filter((l) => l.trim().length > 0).length;
     }
 
     // An import the rules below cannot read the name of is an import they cannot judge.
@@ -200,6 +208,8 @@ function checkPolicy(): void {
   console.log(`  assets size  ${assetLines}/${ASSETS_MAX_LINES} lines`);
   if (soundLines > SOUND_MAX_LINES) fail(`client/sound is ${soundLines} lines (budget ${SOUND_MAX_LINES}); move logic into client/core/sound`);
   console.log(`  sound size   ${soundLines}/${SOUND_MAX_LINES} lines`);
+  if (pagesLines > PAGES_MAX_LINES) fail(`client/pages is ${pagesLines} lines (budget ${PAGES_MAX_LINES}); move logic into client/core/pages`);
+  console.log(`  pages size   ${pagesLines}/${PAGES_MAX_LINES} lines`);
 }
 
 /** `cpu` is the CPU-seconds of the process and of the processes it waited for. */

@@ -1,0 +1,494 @@
+/* The field guide. The build fills in the game's font, its interface sheet, and where the glass lies in that sheet. */
+@font-face {
+  font-family: Barlow;
+  src: url("HUD_FONT") format("truetype");
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  --ground: #071427;
+  --panel: #10294a;
+  --line: #2c5280;
+  --text: #e3edf9;
+  --muted: #9db3cf;
+  --accent: #8fd0ff;
+  --warm: #f0c987;
+  font: 17px/1.5 Barlow, "Arial Narrow", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1,
+h2 {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+}
+
+h1 {
+  font-size: 2.3rem;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.3rem;
+  margin: 2rem 0 0.6rem;
+}
+
+h2 small {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+small,
+.note,
+.kicker {
+  color: var(--muted);
+}
+
+code {
+  font: 0.92em ui-monospace, Menlo, monospace;
+  color: var(--warm);
+}
+
+.glass {
+  background: var(--panel) url("HUD_SHEET") GLASS;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1.2rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: #0b1d37;
+}
+
+.home {
+  color: var(--text);
+  font-weight: 600;
+  font-size: 1.15rem;
+}
+
+.top nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 1rem;
+}
+
+.top nav a[aria-current] {
+  color: var(--text);
+}
+
+.find input {
+  width: 12rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #06101f;
+  color: var(--text);
+  font: inherit;
+}
+
+.find.big input {
+  width: 100%;
+  max-width: 34rem;
+  font-size: 1.15rem;
+  padding: 0.6rem 0.8rem;
+}
+
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.2rem 1rem 3rem;
+}
+
+footer {
+  padding: 1rem;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.heading {
+  margin-bottom: 1.2rem;
+}
+
+.kicker {
+  margin: 0 0 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+}
+
+.lede {
+  max-width: 44rem;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
+.shelves,
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1.2rem 0;
+}
+
+.shelves a,
+.chips a {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.shelves small {
+  margin-left: 0.4rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
+  gap: 0.8rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.card img,
+.card .blank {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+}
+
+.card.map img {
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
+.card .blank {
+  display: grid;
+  place-items: center;
+  font-size: 2.2rem;
+  color: var(--line);
+}
+
+.lead {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(16rem, 2fr);
+  gap: 1.2rem;
+  align-items: start;
+}
+
+.views {
+  margin: 0;
+}
+
+.views img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.views img + img {
+  max-width: 50%;
+}
+
+figcaption {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.facts {
+  padding: 1rem;
+}
+
+.facts dl,
+.related,
+.commands {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+}
+
+.console {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  margin: 1rem 0 0;
+}
+
+button {
+  padding: 0.2rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #18406f;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+button.failed {
+  border-color: #c85a5a;
+}
+
+.wide {
+  overflow-x: auto;
+}
+
+.wide td,
+.wide thead th {
+  white-space: nowrap;
+}
+
+table {
+  border-collapse: collapse;
+  min-width: 100%;
+}
+
+th,
+td {
+  padding: 0.35rem 0.8rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+thead th {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+tbody th {
+  font-weight: 600;
+}
+
+.sounds,
+.places,
+.list,
+.layers ul,
+.results {
+  list-style: none;
+  padding: 0;
+}
+
+.sound,
+.layers li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.takes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.tag {
+  color: var(--warm);
+  font-style: normal;
+  font-size: 0.8rem;
+}
+
+.results li {
+  padding: 0.3rem 0;
+}
+
+.results img {
+  vertical-align: middle;
+  margin-right: 0.6rem;
+}
+
+.results small {
+  margin-left: 0.6rem;
+}
+
+.pager {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1.2rem;
+}
+
+.pager [aria-current] {
+  color: var(--text);
+}
+
+.atlas {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 16rem;
+  gap: 1rem;
+  align-items: start;
+}
+
+.viewport {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border: 1px solid var(--line);
+  touch-action: none;
+  cursor: grab;
+  background: #0e2d45;
+}
+
+.plane {
+  position: absolute;
+  inset: 0;
+  transform-origin: center;
+}
+
+.plane img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.plane .layer {
+  image-rendering: auto;
+  opacity: 0.85;
+}
+
+.marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  font: 15px Barlow, sans-serif;
+}
+
+.marks [hidden] {
+  display: none;
+}
+
+.marks text {
+  fill: #fff;
+  paint-order: stroke;
+  stroke: #000a;
+  stroke-width: 3px;
+  text-anchor: middle;
+  font-size: calc(15px / var(--zoom, 1));
+}
+
+.marks [data-layer="districts"] polygon {
+  fill: none;
+  stroke: #ffffff55;
+  stroke-width: calc(1.5px / var(--zoom, 1));
+}
+
+.marks .region {
+  fill: color-mix(in srgb, var(--c) 30%, transparent);
+  stroke: var(--c);
+  stroke-width: calc(1.5px / var(--zoom, 1));
+}
+
+.marks .spawn circle {
+  fill: #9fe3ff;
+}
+
+.marks .obelisk circle {
+  fill: #d8b4ff;
+}
+
+.marks .parked {
+  fill: #ffd479;
+}
+
+.zoom {
+  position: absolute;
+  right: 0.5rem;
+  top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.layers {
+  padding: 0.6rem 0.8rem;
+}
+
+fieldset {
+  border: 0;
+  margin: 0 0 0.6rem;
+  padding: 0;
+}
+
+legend {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+}
+
+fieldset label {
+  display: block;
+}
+
+fieldset i {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin: 0 0.4rem;
+  border-radius: 2px;
+  background: var(--c);
+}
+
+@media (max-width: 760px) {
+  :root {
+    font-size: 16px;
+  }
+
+  .lead,
+  .atlas {
+    grid-template-columns: 1fr;
+  }
+
+  .find input {
+    width: 100%;
+  }
+}
