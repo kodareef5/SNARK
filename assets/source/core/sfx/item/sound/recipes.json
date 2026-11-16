@@ -5925,6 +5925,156 @@
         "loop_crossfade_frames": 36000
       }
     },
+    "takes/radio/tune/moss-pt-40212-00895.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "radio/tune",
+      "prompt_id": "v5-40210",
+      "prompt": "A radio's dial is turned: crackling static sweeps and whistles for two seconds, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40212,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40212.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A radio's dial is turned: crackling static sweeps and whistles for two seconds, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "da10fb8708f20f3c6b670232234f5286971f98eb177dd09668d54d6808042c21",
+      "worker": {
+        "takes": 8,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 271.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 7.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1081dac809aa2cf82472ff173f9bafc8eb43030ae2641b23e9955c4af3646de2",
+      "cut": {
+        "source_file": "moss-pt-40212.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          40560,
+          63840
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
+    "takes/radio/tune/moss-pt-40212-00165.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "radio/tune",
+      "prompt_id": "v5-40210",
+      "prompt": "A radio's dial is turned: crackling static sweeps and whistles for two seconds, then silence. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40212,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40212.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "A radio's dial is turned: crackling static sweeps and whistles for two seconds, then silence. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "7f2fa976f1abdc653f63507e43cef2863e5e5d54eec90459c56ae8c1151bc00c",
+      "worker": {
+        "takes": 8,
+        "process": {
+          "max_rss_gb": 7.24
+        },
+        "stages": {
+          "text": {
+            "seconds": 1.2,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 271.9,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 7.7,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "1081dac809aa2cf82472ff173f9bafc8eb43030ae2641b23e9955c4af3646de2",
+      "cut": {
+        "source_file": "moss-pt-40212.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          5520,
+          25200
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/battery/moss-pt-24630-07435.wav": {
       "model": "moss",
       "backend": "torch",

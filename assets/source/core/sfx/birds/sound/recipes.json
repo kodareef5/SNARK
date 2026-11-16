@@ -1950,6 +1950,81 @@
         "margin_seconds": 0.05
       }
     },
+    "takes/hummingbird/moss-pt-40202-00485.wav": {
+      "model": "moss",
+      "backend": "torch",
+      "model_name": "MOSS-SoundEffect v2.0 (upstream PyTorch on CUDA)",
+      "repo": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "code": {
+        "repo": "github.com/OpenMOSS/MOSS-TTS",
+        "commit": "934d6826b084c46a0d033402174d5f8ac4ed2519",
+        "path": "moss_soundeffect_v2",
+        "package": "moss-soundeffect-v2 0.1.0",
+        "licence": "Apache-2.0"
+      },
+      "licence": "Apache License 2.0",
+      "licence_link": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "slot": "hummingbird",
+      "prompt_id": "v5-40200",
+      "prompt": "Very close: a hummingbird hovers, its wings a loud fast buzzing hum, and it darts away with a tiny chirp. Close-miked, dry, no music, no voices, quiet background.",
+      "negative_prompt": "",
+      "seed": 40202,
+      "seconds": 6,
+      "settings": {
+        "steps": 100,
+        "cfg": 4.0,
+        "sigma_shift": 5.0,
+        "max_seconds": 30
+      },
+      "date": "2026-11-16",
+      "file": "moss-pt-40202.wav",
+      "writer": "soundfile, 32-bit float, mono, 48 kHz, the pipeline's output unchanged",
+      "prompt_sent": "Very close: a hummingbird hovers, its wings a loud fast buzzing hum, and it darts away with a tiny chirp. Close-miked, dry, no music, no voices, quiet background. duration: 6.0s",
+      "pipeline": "tools/sound/generate.py run_moss_torch",
+      "sample_seconds": 32.8,
+      "runtime": {
+        "torch": "2.9.0+cu128",
+        "cuda": "12.8",
+        "device": "NVIDIA GeForce RTX 4070 Laptop GPU",
+        "compiled": true
+      },
+      "sha256": "cc20c018ef47d9a416b536e4438f37817672cb5d516ca1e545f02e33beb8bcf3",
+      "worker": {
+        "takes": 32,
+        "process": {
+          "max_rss_gb": 7.25
+        },
+        "stages": {
+          "text": {
+            "seconds": 3.5,
+            "gpu_peak_gb": 3.67
+          },
+          "dit": {
+            "seconds": 1071.7,
+            "gpu_peak_gb": 5.84
+          },
+          "vae": {
+            "seconds": 18.4,
+            "gpu_peak_gb": 3.64
+          }
+        }
+      },
+      "source_sha256": "57db66cd9e843720cc91643395f6af0dadc9fe3878a34eb2f2b43c233a8c01be",
+      "cut": {
+        "source_file": "moss-pt-40202.wav",
+        "source_frames": 288000,
+        "source_channels": 1,
+        "source_subtype": "FLOAT",
+        "frames": [
+          20880,
+          286080
+        ],
+        "rate": 48000,
+        "stored_as": "mono PCM_16",
+        "margin_seconds": 0.05
+      }
+    },
     "takes/loon/moss-pt-22130-05160.wav": {
       "model": "moss",
       "backend": "torch",

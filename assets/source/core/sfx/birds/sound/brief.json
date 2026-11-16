@@ -250,7 +250,7 @@
       ]
     },
     "hummingbird": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 15,
       "level": -20,
       "vary": 0.04,
@@ -266,6 +266,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A hummingbird's wings buzz as it hovers and darts away with tiny chirps, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40200",
+          "models": [
+            "moss"
+          ],
+          "seed": 40200,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "Very close: a hummingbird hovers, its wings a loud fast buzzing hum, and it darts away with a tiny chirp. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

@@ -188,6 +188,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "An airplane's wheels touch down on a runway: a short tyre screech and a heavy thump, four separate touchdowns with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40120",
+          "models": [
+            "moss"
+          ],
+          "seed": 40120,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "One small airplane landing: its tyres chirp and squeal briefly on the runway with a thump, then silence. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

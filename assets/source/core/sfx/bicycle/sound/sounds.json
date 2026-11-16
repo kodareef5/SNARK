@@ -18,6 +18,13 @@
         {"file": "takes/horn/moss-pt-10420-02750.wav", "from": "moss", "start": 0.05, "end": 0.915}
       ]
     },
+    "brake": {
+      "range": 30, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/brake/moss-pt-40152-00190.wav", "from": "moss", "start": 0.05, "end": 5.78},
+        {"file": "takes/brake/moss-pt-40150-00165.wav", "from": "moss", "start": 0.05, "end": 4.805}
+      ]
+    },
     "shift": {
       "range": 10, "level": -24, "vary": 0.0,
       "takes": [

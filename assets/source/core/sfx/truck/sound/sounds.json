@@ -31,6 +31,19 @@
         {"file": "takes/engine/start/moss-pt-10841-06190.wav", "from": "moss", "start": 0.05, "end": 3.86}
       ]
     },
+    "engine/stop": {
+      "range": 40, "level": -18, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/stop/moss-pt-40170-00000.wav", "from": "moss", "start": 0.0, "end": 5.615},
+        {"file": "takes/engine/stop/moss-pt-40172-00000.wav", "from": "moss", "start": 0.0, "end": 4.95}
+      ]
+    },
+    "engine/brake": {
+      "range": 150, "level": -12, "vary": 0.0,
+      "takes": [
+        {"file": "takes/engine/brake/moss-pt-40162-00200.wav", "from": "moss", "start": 0.05, "end": 5.75}
+      ]
+    },
     "brake": {
       "range": 60, "level": -14, "vary": 0.0,
       "takes": [

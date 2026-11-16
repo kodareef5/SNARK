@@ -186,8 +186,20 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A crowd boos and jeers, two separate rounds with pauses. Recorded outdoors, no music, no voices."
+        },
+        {
+          "id": "v5-40220",
+          "models": [
+            "moss"
+          ],
+          "seed": 40220,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A crowd boos and jeers loudly together for a few seconds, then quiet. Indoors, no music."
         }
-      ]
+      ],
+      "whole": true
     },
     "scream/man": {
       "kind": "impact",

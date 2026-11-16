@@ -236,7 +236,7 @@
       "space": "ear"
     },
     "alarm": {
-      "kind": "impact",
+      "kind": "voice",
       "range": 10,
       "level": -18,
       "vary": 0.0,
@@ -252,6 +252,17 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A helicopter cockpit warning: a harsh electronic warbling alarm, three separate alarms with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40110",
+          "models": [
+            "moss"
+          ],
+          "seed": 40110,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 6,
+          "text": "A cockpit warning alarm: a fast harsh electronic beeping, beep beep beep beep, two seconds, then silence. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

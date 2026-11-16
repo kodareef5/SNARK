@@ -461,6 +461,28 @@
           "takes_moss-pt": 1,
           "seconds": 8,
           "text": "A small fire is put out: a hiss of steam and smoke, embers dying, four separate times with pauses. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40060",
+          "models": [
+            "moss"
+          ],
+          "seed": 40060,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A campfire is doused with a bucket of water: one loud steaming hiss and sizzle that fades out, then silence. Close-miked, dry, no music, no voices, quiet background."
+        },
+        {
+          "id": "v5-40070",
+          "models": [
+            "moss"
+          ],
+          "seed": 40070,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 8,
+          "text": "A torch is plunged into water: a short sharp hiss of steam, then silence. Two separate times with a long pause. Close-miked, dry, no music, no voices, quiet background."
         }
       ]
     },

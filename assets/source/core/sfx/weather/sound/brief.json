@@ -281,9 +281,21 @@
           "takes_moss-pt": 2,
           "seconds": 12,
           "text": "A strong gust of wind rushes through trees and past, rising and falling away, three separate gusts with pauses. Recorded outdoors, no music, no voices."
+        },
+        {
+          "id": "v5-40180",
+          "models": [
+            "moss"
+          ],
+          "seed": 40180,
+          "takes": 3,
+          "takes_moss-pt": 3,
+          "seconds": 10,
+          "text": "One strong gust of wind rushes through trees, rising and falling away to calm. Recorded outdoors, no music, no voices."
         }
       ],
-      "space": "ear"
+      "space": "ear",
+      "whole": true
     },
     "wind/gale": {
       "kind": "impact",
