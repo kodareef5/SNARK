@@ -100,7 +100,7 @@ test("render cells use one physical anchor without baking interactive leaves or 
   const original: CruiseLayout = CRUISE_LAYOUT;
   const instance = original.instances.find(i => i.placed && i.yaw === 0 && !i.sourcePrototype && !original.prototypes.find(p => p.id === i.prototype)!.opens)!;
   const prototype = original.prototypes.find(p => p.id === instance.prototype)!;
-  const id = "cruise:cell_999999", anchor = { ...prototype, id: "cruise:anchor_test", mesh: id };
+  const id = "cruise:cell_999999", anchor = { ...prototype, id: "cruise:anchor_test", sourcePrototype: prototype.id, mesh: id };
   const cell = { id, grid: [900, 900, 900], bounds: { min: [14400, 14400, 14400], max: [14416, 14416, 14416] },
     anchor: instance.id, origin: instance.at, yaw: 0, members: [{ instance: instance.id, prototype: prototype.id, category: prototype.category }] };
   const layout: CruiseLayout = { ...original, prototypes: [...original.prototypes, anchor],

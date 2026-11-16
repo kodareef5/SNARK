@@ -22,6 +22,7 @@ export interface CruiseParts {
 export interface CruisePrototype extends CruiseParts {
   readonly id: string; readonly mesh: string; readonly category: string; readonly color: number;
   readonly visualBounds: CruiseBounds; readonly look?: CruiseParts; readonly opens?: string;
+  readonly sourcePrototype?: string;
 }
 export interface CruiseInstance {
   readonly id: string; readonly prototype: string; readonly at: CruisePoint; readonly yaw: number;
@@ -230,7 +231,7 @@ export function cruiseLayoutFaults(layout: CruiseLayout): string[] {
   for (const i of layout.instances) if (i.placed) placementCounts.set(i.prototype, (placementCounts.get(i.prototype) ?? 0) + 1);
   for (const i of layout.instances) if (i.sourcePrototype) {
     const p = prototypes.get(i.prototype), source = prototypes.get(i.sourcePrototype);
-    if (!source || !p || !anchors.has(i.id) || i.sourcePrototype === i.prototype) bad(i.id, "sourcePrototype requires an original prototype and unique cell anchor");
+    if (!source || !p || p.sourcePrototype !== i.sourcePrototype || !anchors.has(i.id) || i.sourcePrototype === i.prototype) bad(i.id, "sourcePrototype requires an original prototype and unique cell anchor");
     else if (["boxes", "hulls", "look", "visualBounds", "category", "color", "opens"].some(key => JSON.stringify(p[key as keyof CruisePrototype]) !== JSON.stringify(source[key as keyof CruisePrototype]))) bad(i.id, "render anchor must preserve its original collision, look and category");
   }
   for (const p of layout.prototypes) if (/^cruise:cell_[0-9]+$/.test(p.mesh) && (!drawnCells.has(p.mesh) || placementCounts.get(p.id) !== 1)) bad(p.id, "cell mesh requires exactly one placed anchor");
