@@ -37,8 +37,8 @@ test("a new map is a file: a flat one made here runs a server, is served as a br
   expect(parseMap(Bun.gunzipSync(await packed.arrayBuffer())).hash).toBe(h.world.mapHash);
   expect(new Uint8Array(await route(`/${named.file}`, "")!.arrayBuffer())).toEqual(file);
   expect(route("/index.html", "gzip")).toBeNull();
-  // The page is sent with a header that has it ask for the file while it is read.
-  expect(route.link).toBe(`</${named.file}>; rel=preload; as=fetch; crossorigin`);
+  // The page is sent with a header that has it ask for the file while it is read, named as the page names it, beside itself.
+  expect(route.link).toBe(`<${named.file}>; rel=preload; as=fetch; crossorigin`);
   // With the copies its build wrote, the file goes out as Brotli to whoever takes it, and as their gzip to the rest.
   const copied = mapRoutes(h.host.mapFile!, h.world.mapId, h.world.mapHash, { br: new Blob([brotliCompressSync(file)]), gz: new Blob([Bun.gzipSync(file)]) });
   const br = copied(`/${named.file}`, "gzip, deflate, br")!;

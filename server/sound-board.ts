@@ -5,7 +5,7 @@
 // files and what made them, and the briefs, recipes and sheets themselves, for whoever makes more sounds.
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, dirname, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, dirname, join, normalize, posix, relative, resolve, sep } from "node:path";
 import type { Registry } from "../shared/content/registry.ts";
 import { sameSecret } from "./commands/core.ts";
 import type { Guesses } from "./guesses.ts";
@@ -106,12 +106,14 @@ function refused(req: Request, who: string, gate: BoardGate): Response | null {
 
 /**
  * The board's answer to a request, or null for a request that is not the board's. `page` is the built sounds.html, and
- * `owners` makes the list of owners when it is asked for.
+ * `owners` makes the list of owners when it is asked for. `pathname` is the request's path, or for a server reached at a
+ * path of its host the part of it under that path (server/site.ts placeOf).
  */
-export function soundBoard(req: Request, who: string, gate: BoardGate, page: string, owners: () => BoardOwner[], root = SOURCE_DIR): Response | null {
-  let path = new URL(req.url).pathname;
+export function soundBoard(req: Request, who: string, gate: BoardGate, page: string, owners: () => BoardOwner[], root = SOURCE_DIR, pathname = new URL(req.url).pathname): Response | null {
+  let path = pathname;
   try {
-    path = normalize(decodeURIComponent(path));
+    // An address's path, which has / between its parts on every system.
+    path = posix.normalize(decodeURIComponent(path));
   } catch {
     return null;
   }
