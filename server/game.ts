@@ -5,6 +5,7 @@ import { CHUNK_SIZE, STRUCT_UNITS, TICK_DT, TICK_RATE, chunkAt, chunkCount, chun
 import { TAU, detCos, detSin } from "../shared/math/scalar.ts";
 import { BitReader, BitWriter, Named } from "../shared/net/codec.ts";
 import {
+  CMD_STATICS,
   CMD_VIEW,
   C_COMMAND,
   C_HELLO,
@@ -973,12 +974,19 @@ export class GameServer {
       const op = r.u8();
       const handler = this.handlers[op];
       // What a session is shown is its own to ask in any state, so that is answered here.
-      const code = op === CMD_VIEW ? this.askView(c, r) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
+      const code = op === CMD_VIEW ? this.askView(c, r) : op === CMD_STATICS ? this.takeStatics(c) : !handler ? RESULT_INVALID : this.allows && !this.allows(c, op) ? RESULT_DENIED : handler(c, r);
       this.stats.commands++;
       // The handler may have ended the session (a kick, too many password attempts).
       if (this.clients[c.id] !== c || c.closed || !c.conn.open) return;
       this.result(c, seq, code);
     }
+  }
+
+  /** CMD_STATICS. Every chunk message sent after the answer takes from the map what is as the map has it. */
+  private takeStatics(c: Client): number {
+    if (!this.world.statics) return RESULT_INVALID;
+    c.statics = true;
+    return RESULT_OK;
   }
 
   /** CMD_VIEW. The snapshot takes up what was asked. */

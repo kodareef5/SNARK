@@ -3,25 +3,25 @@
     "engine/idle": {
       "range": 60, "level": -22, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/idle/moss-pt-9400-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/idle/moss-pt-9400-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/low": {
       "range": 80, "level": -20, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/low/moss-pt-9410-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/low/moss-pt-9410-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/mid": {
       "range": 100, "level": -18, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/mid/moss-pt-9420-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/mid/moss-pt-9420-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/high": {
       "range": 120, "level": -16, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/engine/high/moss-pt-9432-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/engine/high/moss-pt-9432-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "engine/start": {
@@ -40,13 +40,13 @@
     "hull/slow": {
       "range": 25, "level": -24, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/hull/slow/moss-pt-9460-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/hull/slow/moss-pt-9460-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "hull/fast": {
       "range": 50, "level": -20, "vary": 0.0, "loop": true,
       "takes": [
-        {"file": "takes/hull/fast/moss-pt-9470-01500.wav", "from": "moss", "start": 0.0, "end": 12.0}
+        {"file": "takes/hull/fast/moss-pt-9470-01500.wav", "from": "moss", "start": 0.0, "end": 6.0, "crossfade": 0.75}
       ]
     },
     "slam": {

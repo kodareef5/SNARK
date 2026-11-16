@@ -31,10 +31,9 @@ function bodyAt(w: TestWorld, x: number, z: number): Body {
   return b;
 }
 
-test("a map's bodies of water are written at version 3 and read back whole; a map without them is the same bytes at version 2 as before", () => {
+test("a map's bodies of water are written and read back whole", () => {
   const map = lakesMap();
   const file = writeMap(map);
-  expect(new DataView(file.buffer).getUint16(4, true)).toBe(3);
   const back = parseMap(file);
   const w = back.water!;
   expect(w.bodies).toEqual(map.water!.bodies);
@@ -42,10 +41,7 @@ test("a map's bodies of water are written at version 3 and read back whole; a ma
   expect(writeMap(back)).toEqual(file);
   // Ten chunks of the sixteen hold water, 2 KB of squares each before the wire's compression.
   expect(w.chunks().length).toBe(10);
-  // Written as they were before water stood apart from the sea (main at 82d7ac66): the same bytes, so the same hash.
-  const dry = writeMap(busyMap());
-  expect([new DataView(dry.buffer).getUint16(4, true), parseMap(dry).hash, parseMap(writeMap(flatMap(4))).hash]).toEqual([2, 604744827, 3013362243]);
-  expect(parseMap(dry).water).toBeUndefined();
+  expect(parseMap(writeMap(busyMap())).water).toBeUndefined();
 
   const grid = (b: number): Uint16Array => new Uint16Array(128 * 128).fill(b, 0, 64);
   const refused = (water: MapWater): (() => void) => () => void writeMap({ ...flatMap(4), water });

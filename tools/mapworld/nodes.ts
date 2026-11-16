@@ -162,7 +162,8 @@ export function makeNodes(ground: Ground, world: World, clear: (col: number, row
   const layer = (seed: number, perChunk: number, zones: readonly Zone[], picture: string): unknown => ({
     seed,
     perChunk,
-    zones: zones.map((z) => ({ kinds: growth?.zones[z.name]?.kinds ?? z.kinds, bare: growth?.zones[z.name]?.bare ?? z.bare })),
+    // A kind of no weight grows nowhere, and a file's zone names none.
+    zones: zones.map((z) => ({ kinds: Object.fromEntries(Object.entries(growth?.zones[z.name]?.kinds ?? z.kinds).filter(([, weight]) => weight > 0)), bare: growth?.zones[z.name]?.bare ?? z.bare })),
     zone: picture,
   });
   return { plants, stones, sea, side, layers: [layer(0x4d1a, PLANT_SLOTS, PLANTS, "plants.png"), layer(0x4d1b, STONE_SLOTS, STONES, "stones.png"), layer(0x4d1c, SEA_SLOTS, SEA_FLOOR, "sea.png")] };
