@@ -54,10 +54,10 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
     mode: "walk", tier: "high", arrival: true, framePoints },
     { name: "02-shore-comparison", feet: [c.scenic.x, hf.heightAt(c.scenic.x, c.scenic.z), c.scenic.z], target: p([0, 28, -100]), mode: "walk", tier: "high" }];
   for (const tier of ["medium", "high"] as const) {
-    shots.push({ name: `03-port-profile-${tier}`, feet: spectator([400, 42, 0]), target: focus, mode: "spectator", tier, framePoints });
+    shots.push({ name: `03-port-profile-${tier}`, feet: spectator([400, 60, 0]), target: focus, mode: "spectator", tier, framePoints });
     for (const view of views) shots.push({ name: `interior-${view.id}-${tier}`, feet: p(view.at), target: p(view.target), mode: view.mode as "walk" | "spectator", tier });
   }
-  const first = views.find(view => view.mode === "walk");
+  const first = views.find(view => view.id === "arrival" && view.mode === "walk") ?? views.find(view => view.mode === "walk");
   if (first) shots.push({ name: "04-portrait-boarding", feet: p(first.at), target: p(first.target), mode: "walk", tier: "high", portrait: true },
     { name: "05-shoulder-boarding", feet: p(first.at), target: p(first.target), mode: "walk", tier: "high", thirdPerson: true });
   shots.push({ name: "06-flat-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "lowpoly", framePoints });
