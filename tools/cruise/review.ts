@@ -2,7 +2,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { App } from "../../client/core/app.ts";
-import type { FramePacket } from "../../client/core/render/packet.ts";
+import { DRAW_RANGED, DRAW_TEXTURED, type FramePacket } from "../../client/core/render/packet.ts";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { CRUISE_LAYOUT } from "../../content/landmarks/cruise.ts";
 import { defaultLook } from "../../shared/anim/look.ts";
@@ -134,7 +134,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
     const draws: { mesh: string; lod: number; instances: number; triangles: number }[] = [];
     for (let i = 0; i < p.drawCount; i++) {
       const mesh = files.manifest.meshes[p.drawMesh[i]!]!, lod = p.drawLod[i]!, count = p.drawInstances[i]!;
-      const triangles = (p.drawIndexCount[i] ? p.drawIndexCount[i]! / 3 : mesh.levels[lod]?.tris ?? 0) * count;
+      const triangles = ((p.drawFlags[i]! & (DRAW_RANGED | DRAW_TEXTURED)) !== 0 ? p.drawIndexCount[i]! / 3 : mesh.levels[lod]?.tris ?? 0) * count;
       if (mesh.id.startsWith("core:cruise") || mesh.id === "core:far") draws.push({ mesh: mesh.id, lod, instances: count, triangles });
     }
     const tier = app.scene.assets.tier;
@@ -172,7 +172,7 @@ function capture(shot: CruiseShot, map: MapData, pack: Pack, files: GameFiles, w
       dropped: p.dropped, skipped: p.skipped, casterDropped: p.casterDropped, faults,
       placement: { ...placement, actualPlaced: placed.length, cruiseInstances: map.statics.filter(row => row.kind.startsWith("core:cruise")).length },
       budget: { tier: tier.name, ...tier.budget, gpuBytes: tier.gpuBytes, uploadBytes: tier.uploadBytes },
-      cold: { ...cold, medianMs: coldTimes[Math.floor(coldTimes.length / 2)], p95Ms: coldTimes[Math.ceil(coldTimes.length * .95) - 1], maxMs: coldTimes.at(-1),
+      cold: { ...cold, assetTransport: "Zero latency, unlimited bandwidth, no loss; native per-frame upload budgets remain enabled.", medianMs: coldTimes[Math.floor(coldTimes.length / 2)], p95Ms: coldTimes[Math.ceil(coldTimes.length * .95) - 1], maxMs: coldTimes.at(-1),
         scope: "App.frame from cold client arrival through placement and streaming; excludes server/network/raster/GPU work." },
       shipTarget: { triangles: draws.filter(draw => draw.mesh.startsWith("core:cruise")).reduce((sum, draw) => sum + draw.triangles, 0), draws: draws.filter(draw => draw.mesh.startsWith("core:cruise")).length, targetTriangles: 1000000, targetDraws: 600, note: "Near cruise meshes only; shared far-city draws are reported separately and include port/Koru geometry." },
       residency: { ...app.scene.assets.residency?.stats }, casterCount: p.casterCount,
@@ -209,7 +209,7 @@ export async function reviewCruise(map: MapData, shots: readonly CruiseShot[], a
   }
   for (const shot of selected) {
     console.log(`Native cruise review ${shot.name}`);
-    report.push({ ...capture(shot, map, pack, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images")), packHash, assetStage: graybox ? "preliminary graybox" : "production" });
+    report.push({ ...capture(shot, map, pack, files, shot.portrait ? 540 : width, shot.portrait ? 960 : height, out, !args.includes("--visual-only"), !args.includes("--no-images")), packHash, assetStage: graybox ? "preliminary graybox" : CRUISE_LAYOUT.phase });
     report.sort((a, b) => String(a.name).localeCompare(String(b.name)));
     writeFileSync(resolve(out, "report.json"), JSON.stringify({ source, generated: new Date().toISOString(), pipeline: "native map → authoritative Harness → App → streamed production packs → native frame packet → optional Rasterizer", layout: { phase: CRUISE_LAYOUT.phase, prototypes: CRUISE_LAYOUT.prototypes.length, placedInstances: CRUISE_LAYOUT.instances.filter(instance => instance.placed).length, deckLabels: CRUISE_LAYOUT.decks.map(deck => deck.id) }, shots: report,
       limits: "Static native software-rendered views establish model, collision-camera and streaming behavior; they do not establish browser GPU performance or identical lit ocean shading." }, null, 2));
