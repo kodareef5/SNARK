@@ -1,7 +1,8 @@
 // Draws the proving ground to a PNG without a browser. Yaw and pitch are in degrees. Yaw 0 faces +Z (north) and positive yaw turns toward +X.
 // Scene flags: --poses N, --creatures, --states knockout|flinch, --looks, --gear, --creator TAB, --house TIER (--view VIEW), --slopes KIND|scene (--from near|far), --falling MS, --ragdoll SECONDS, --build, --fight WHAT, --overhead WHAT, --used X,Z, --grow KIND,X,Z[,KIND,X,Z...], --chop X,Z,DEG[,TICKS], --ui (--console TEXT, --inventory, --station ID, --chat, --cone DEGREES, --sight scope|holo|dot).
 // --graphics TIER draws as a client on that graphics tier does, textures and all, and --source DIR reads another tree's asset folders.
-// --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise.
+// --map FILE draws that map file in place of the proving ground, from its first spawn point unless --pos says otherwise,
+// with its landmarks; --travelled 1 draws their travelling statics at their second state (a yacht's sails set).
 // --saddles worn|saddled|both|own (--species ID, --close MOMENT, --levels) draws a creature in its saddle (tools/snap/saddles.ts).
 // --ride SPECIES (--moment ground|run|air|bank|dive, --watch, --passenger) draws riding it in the whole client (tools/snap/ride.ts).
 // --flight draws the pteranodon ridden through a flight, a picture at each moment (tools/snap/flight.ts), with --each DIR each on its own too.
@@ -36,7 +37,9 @@ import { V_TORPOR } from "../shared/sim/vitals.ts";
 import { ACT_DRAW, ACT_HOLD, ACT_NONE, ACT_RELOAD, ACT_SWING, HOLD_BOW, HOLD_HANDS, HOLD_PISTOL, HOLD_RIFLE, HOLD_TOOL } from "../shared/sim/weapon.ts";
 import { DOOR_HEIGHT, FLOOR_THICK, FOUNDATION_THICK, WALL_HEIGHT } from "../content/building.ts";
 import { CORE_CONTENT } from "../content/core.ts";
-import { compileContent, type Registry } from "../shared/content/registry.ts";
+import { compileContent, withContent, type Registry } from "../shared/content/registry.ts";
+import { TRAVEL_STEPS, type TravelState } from "../shared/sim/travel.ts";
+import { travellingOf } from "../client/core/render/travel.ts";
 import { MATERIAL_CUTOUT, MATERIAL_TWO_SIDED, parsePack, type Pack } from "../shared/pack/pack.ts";
 import { SKY_COLOR } from "../shared/pack/palette.ts";
 import type { TextureRole } from "../shared/pack/texture.ts";
@@ -279,8 +282,8 @@ export interface ProvingView {
  * With `files` as well (tools/snap/files.ts) those are fetched instead, textures among them. `game` is content and a pack
  * of its own in place of the core's.
  */
-export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile, game?: { reg: Registry; pack: Uint8Array }): ProvingView {
-  const reg = game?.reg ?? compileContent(CORE_CONTENT).registry!;
+export function provingView(width = 640, height = 360, net?: NetOptions, files?: GameFiles, map?: MapFile, game?: { reg: Registry; pack: Uint8Array }, travelled = 0): ProvingView {
+  const reg = game?.reg ?? withContent(compileContent(CORE_CONTENT).registry!, map?.content?.defs ?? []);
   const dims = map?.dims ?? PROVING_DIMS;
   const hf = map ? mapHeightfield(map) : buildProvingHeightfield();
   const structs = new StructureStore(dims, reg.halfX, reg.halfY, reg.halfZ, null, reg.parts);
@@ -293,7 +296,11 @@ export function provingView(width = 640, height = 360, net?: NetOptions, files?:
   const nodes = new NodeField(dims, reg, map ? (mapNodes(map, hf, reg) ?? { perChunk: 0, at: (_c, _i, out) => void (out.kind = 0) }) : provingNodes(hf, reg));
   if (!map) nodes.retain(0, 64, 1, () => false);
   const farNodes = map ? { farNodes: { nodes: nodes.source, held: (c: number) => nodes.isLoaded(c), gone: () => undefined, changes: new NodeChanges(dims) } } : {};
-  const scene = new Scene({ mapId: map?.id, dims, hf, structs, nodes: nodes.store, ...farNodes }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
+  // A map's travelling statics stand as `travelled` says, all at their first state where it is 0 and their second where 1.
+  const states = new Map<number, TravelState>();
+  if (map) for (const t of travellingOf(reg, map.statics)) states.set(t.ref, { from: travelled * TRAVEL_STEPS, to: travelled as 0 | 1, at: 0 });
+  const travel = map ? { travel: { states: () => states, tick: () => 0, statics: () => map.statics } } : {};
+  const scene = new Scene({ mapId: map?.id, dims, hf, structs, nodes: nodes.store, ...farNodes, ...travel }, reg, pack, split && port ? { manifest: split.manifest, port } : undefined);
   const cam = new Camera();
   cam.x = map?.spawns[0]!.x ?? PROVING_SPAWN.x;
   cam.z = map?.spawns[0]!.z ?? PROVING_SPAWN.z;
@@ -1289,14 +1296,14 @@ if (import.meta.main) {
     const names = graphics === "all" ? TIERS.map((t) => t.name) : [graphics];
     for (const name of names) if (!TIERS.some((t) => t.name === name)) throw new Error(`--graphics takes ${TIERS.map((t) => t.name).join(", ")} or all, not "${name}"`);
     const t0 = performance.now();
-    const files = await gameFiles(source, undefined, extra);
+    const files = await gameFiles(source, undefined, extra, mapFile?.content?.landmarks);
     console.log(`asset files from ${relative(process.cwd(), source) || "."}: ${files.manifest.textures?.length ?? 0} textures, ${(files.files.reduce((n, f) => n + f.length, 0) / 1048576).toFixed(1)} MB, ${(performance.now() - t0).toFixed(0)} ms`);
     const across = names.length > 1 ? 2 : 1;
     const [W, H] = [w! * across, h! * Math.ceil(names.length / across)];
     const pixels = new Uint8ClampedArray(W * H * 4);
     for (const [i, name] of names.entries()) {
       const t1 = performance.now();
-      const view = provingView(w, h, {}, files, mapFile);
+      const view = provingView(w, h, {}, files, mapFile, undefined, Number(arg("travelled") ?? 0));
       view.scene.assets.tier = tierOf(name);
       view.scene.viewHeight = h!;
       await setup(view);

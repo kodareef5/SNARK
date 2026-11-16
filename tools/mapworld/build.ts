@@ -38,22 +38,22 @@ export async function buildMap(name: string): Promise<{ file: string; stats: Rec
   const source = join(ROOT, "assets/source/maps", name);
   const base = new Base(source);
   const world = JSON.parse(readFileSync(join(source, "world/world.json"), "utf8")) as World;
-  // The core's content and what the map's landmarks bring.
-  const sited = landmarksOf(world.landmarks ?? []);
-  const compiled = compileContent([...CORE_CONTENT, ...landmarkDefs(sited)]);
-  if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
-  const reg = compiled.registry;
   const n = base.n;
   const size = base.info.size_m;
   const chunks = base.info.chunks;
-
-  const ground = makeGround(base, world, lap);
-  lap("ground");
   const half = size / 2;
   const toSample = (lon: number, lat: number): [number, number] => {
     const [e, no] = base.tm.forward(lon, lat);
     return [(e + half) / 2, (half - no) / 2];
   };
+  // The core's content and what the map's landmarks bring.
+  const sited = landmarksOf(world.landmarks ?? [], toSample, size);
+  const compiled = compileContent([...CORE_CONTENT, ...landmarkDefs(sited)]);
+  if (!compiled.registry) throw new Error(compiled.errors.join("\n"));
+  const reg = compiled.registry;
+
+  const ground = makeGround(base, world, lap);
+  lap("ground");
   const site = siteOf(world, ground, size, source);
   const layered = STATIC_LAYERS.flatMap((layer) => {
     const pieces = layer.make(site);

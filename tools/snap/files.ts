@@ -14,7 +14,7 @@ import { defaultPalette } from "../../shared/pack/palette.ts";
 import { pictureBytes, topIn, type TextureRole } from "../../shared/pack/texture.ts";
 import { findAssets } from "../art/assets.ts";
 import { materialsOf, mipsOf, pictureFiles, type Material } from "../art/materials.ts";
-import { SOURCE, readPacks } from "../art/source.ts";
+import { LANDMARKS, SOURCE, readPacks } from "../art/source.ts";
 import { buildCorePack, farMesh, grayboxMeshes, withArt } from "../pack/build.ts";
 import { mannequinMeshes } from "../pack/mannequin.ts";
 import { splitPack } from "../pack/split.ts";
@@ -133,9 +133,11 @@ export function splitWithTextures(whole: Uint8Array, texture: (t: ManifestTextur
  * The core pack of the asset folders under `source`, split as a build splits it, with the rgba variant of its textures.
  * `extra` meshes, drawn flat, are put in with the rest: a test's code-made saddles.
  */
-export async function gameFiles(source: string = SOURCE, cache: string | null = SNAP_CACHE, extra: SourceMesh[] = []): Promise<GameFiles> {
+export async function gameFiles(source: string = SOURCE, cache: string | null = SNAP_CACHE, extra: SourceMesh[] = [], landmarks: readonly string[] = []): Promise<GameFiles> {
   const named = await namedTextures(source);
-  return splitWithTextures(corePack(source, extra), (t) => {
+  // A map's landmarks are drawn from the core's files here, their meshes after the core's as a client joins them.
+  const theirs = landmarks.flatMap((name) => readPacks(join(LANDMARKS, name)).meshes);
+  return splitWithTextures(corePack(source, [...extra, ...theirs]), (t) => {
     const n = named.get(t.id);
     if (!n) throw new Error(`texture ${t.id} is named by a mesh, and no asset under ${source} has its pictures`);
     return rgbaOf(n.material, t.role, t.top, cache);
