@@ -85,5 +85,6 @@ cells(D)
 D=clean(D)
 from layout_collision_cells import finish as collision_cells
 collision_cells(D)
-OUT.write_text(json.dumps(D,indent=2)+'\n')
+from layout_json import dumps
+OUT.write_text(dumps(D))
 print(f'Cruise layout: {len(D["prototypes"])} prototypes, {len(D["instances"])} instances, {len(D["routes"])} routes')
