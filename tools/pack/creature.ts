@@ -227,7 +227,8 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset, palett
     if (node.mesh === undefined || node.skin === undefined) continue;
     const at = Number(/_LOD(\d)$/i.exec(node.name ?? "")?.[1] ?? 0);
     const part = parts[partOf(node.name ?? "")]!;
-    const { pictured, weights } = part;
+    const { weights } = part;
+    const pictured = spec.authoredLevels && at > 0 ? [] : part.pictured;
     if (pictured.length > 0 && at > 0) {
       passed++;
       continue;
@@ -251,7 +252,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset, palett
         if (section < 0) faults.push(`${part === parts[0] ? "" : `${part.id}: `}material "${material}" has no pictures in asset.ts`);
         if (a.TEXCOORD_0 === undefined || a.NORMAL === undefined) throw new Error(`${g.path}: material "${material}" is on faces with no texture coordinates or no normals`);
       } else if (region >= 0 && region < REGION_COUNT) flat = REGION_BASE + region;
-      else if (part !== parts[0]) flat = ownColour(prim.material);
+      else if (part !== parts[0] || spec.authoredLevels && at > 0) flat = ownColour(prim.material);
       else {
         warnings.push(`material "${material}" is not one of the regions: read as the first`);
         flat = REGION_BASE;
@@ -385,7 +386,7 @@ export function convertCreature(g: Gltf, id: string, spec: CreatureAsset, palett
   const meshes = parts.filter((p) => p.levels.length > 0).map((p): SourceMesh => {
     const lods = p.levels.map((l): SourceLod => {
       const lod: SourceLod = { positions: Float32Array.from(l.positions), colors: Uint8Array.from(l.colors), indices: Uint32Array.from(l.indices), bones: Uint8Array.from(l.bones) };
-      if (p.pictured.length === 0) return lod;
+      if (p.pictured.length === 0 || l.uvs.length === 0) return lod;
       Object.assign(lod, { uvs: Float32Array.from(l.uvs), normals: Float32Array.from(l.normals), joints: Uint8Array.from(l.joints), weights: Float32Array.from(l.weights), sections: Uint8Array.from(l.sections) });
       // Tangents are kept only where every part of the model has them.
       if (l.tangents.length === l.colors.length * 4) lod.tangents = Float32Array.from(l.tangents);

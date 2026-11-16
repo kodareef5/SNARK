@@ -121,6 +121,11 @@ export function convertModel(asset: Asset & { spec: CreatureAsset }, glb: string
   measureSpans(textured.map((t) => t.mesh));
   for (const t of textured) {
     out.faults.push(...surfaceFaults(t.mesh));
+    if (spec.authoredLevels) {
+      if (spec.flat !== 1) out.faults.push(`${asset.id}: authored creature levels require flat:1`);
+      if (t.mesh.lods.length !== t.budgets.length + 1) out.faults.push(`${asset.id}: authored creature has ${t.mesh.lods.length} levels for ${t.budgets.length + 1} budgets`);
+      continue;
+    }
     const preserveBones = spec.preserveBones?.map(name => {
       const bone = made.rig.names!.indexOf(name);
       if (bone < 0) out.faults.push(`${asset.id}: preserved LOD bone "${name}" does not exist`);
@@ -353,6 +358,7 @@ export function repack(file: Uint8Array, levels: boolean, asset?: Asset): Uint8A
     if (!m.flat) return withLevels({ ...measured, lods: [measured.lods[0]!] });
     const spec = asset?.spec;
     if (!asset || spec?.kind !== "creature") throw new Error(`${m.id} is drawn with materials: its levels are made again only from its asset's pictures`);
+    if (spec.authoredLevels) return measured;
     const pictures = new Map(materialsOf(asset).map((d) => [d.id, describe(d, spec.budgets.texture?.top ?? stepSize(LAST_STEP), palette).maps]));
     // The body's plan, or a worn saddle's or the saddled model's own.
     const plan = planOf(asset.id, spec, m.id);

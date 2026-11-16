@@ -107,6 +107,31 @@ test("a creature whose materials name pictures converts to a mesh drawn with the
   });
 });
 
+test("authored skinned levels preserve their silhouette, palette and dominant bones while the default still simplifies the fine surface", async () => {
+  await scratch((root) => {
+    const { asset, glb } = tube(root, { flat: 1, authoredLevels: true, budgets: { triangles: [512, 256], texture: { top: 64, megabytes: 1 } } });
+    writeFileSync(glb, tubeGlb(true, true));
+    const authored = built();
+    convertModel(asset, glb, authored);
+    expect(authored.faults).toEqual([]);
+    const coarse = authored.meshes[0]!.lods[1]!;
+    expect(coarse.indices.length).toBe(12);
+    expect([...coarse.bones!]).toEqual([1, 1, 1, 1]);
+    expect(Math.max(...coarse.positions)).toBeCloseTo(.6);
+    expect(coarse.uvs).toBeUndefined();
+    expect(new Set(coarse.colors).size).toBe(1);
+    expect(coarse.colors[0]).toBeLessThan(REGION_BASE);
+    const packed = packOf(authored);
+    expect(unpackMeshes(parsePack(repack(packed, true, asset)))[0]!.lods[1]!.indices.length).toBe(12);
+    const generated = built();
+    convertModel({ ...asset, spec: { ...asset.spec, authoredLevels: undefined } }, glb, generated);
+    expect(generated.faults).toEqual([]);
+    expect(generated.meshes[0]!.lods[1]!.indices.length).toBeGreaterThan(12);
+    expect(Math.max(...generated.meshes[0]!.lods[1]!.positions)).toBeGreaterThan(1.8);
+    expect(new Set(generated.meshes[0]!.lods[1]!.bones!).size).toBe(2);
+  });
+});
+
 test("pieces take their materials by name: one of the asset's own, one that several assets share, and their flat colours from the pictures or the asset", async () => {
   await scratch((root) => {
     const dir = join(root, "t/structures/posts");
