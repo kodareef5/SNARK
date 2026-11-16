@@ -11,7 +11,7 @@ Every captured walking view remained supported and dry; full-silhouette views pa
 | Arrival and scale | [Shore arrival](01-authentic-arrival-scene.png), [port profile and utility launch](03-port-profile-scene.png) |
 | Boarding | [Port gangway](06-port-gangway-scene.png) |
 | Four floors | [Lower corridor](07-lower-interior-scene.png), [main salon](08-main-salon-scene.png), [upper bridge](09-upper-bridge-scene.png), [sun terrace](10-sun-terrace-scene.png) |
-| Normal cameras | [Grand stairs](11-grand-stair-scene.png), [portrait HUD](12-portrait-arrival-lobby.png) |
+| Normal cameras | [Grand stairs](11-grand-stair-scene.png), [portrait HUD](12-portrait-arrival-lobby.png), [shoulder view with survivor scale and Galley and Pantry plaque](15-shoulder-stair-scene.png) |
 | Flat detail | [Profile](13-flat-profile-scene.png), [salon](14-flat-main-salon-scene.png) |
 | Distant identity | [280 m](16-far-280m-scene.png), [900 m](18-far-900m-scene.png) |
 
