@@ -9,8 +9,9 @@ import { hashString } from "../../../shared/hash.ts";
 import { EYE_BASE, EYE_COLORS, HAIR_BASE, HAIR_COLORS, SKIN_BASE, SKIN_TONES } from "../../../shared/pack/palette.ts";
 import { Rng } from "../../../shared/rng.ts";
 import type { ClientSession } from "../session.ts";
-import { K_BAR, K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
-import { S_BUTTON, S_LABEL, S_MARK_SELF, S_PANEL, S_STAMINA, S_SWATCH, S_TITLE } from "./style.ts";
+import { K_BUTTON, K_PANEL, lineHeight, type UiFrame } from "./nodes.ts";
+import { S_BUTTON, S_LABEL, S_MARK_SELF, S_PANEL, S_SWATCH, S_TITLE } from "./style.ts";
+import { slider } from "./slider.ts";
 
 export const KEY_CREATOR_PANEL = 3000;
 export const KEY_CREATOR_TITLE = 3001;
@@ -54,10 +55,6 @@ export class CreatorScreen {
   refused = false;
   private sent = 0;
   private rng: Rng | null = null;
-  /** The region whose bar is being dragged, or -1. barX and barW are from the last build. */
-  private drag = -1;
-  private barX = 0;
-  private barW = 1;
 
   build(f: UiFrame, palette: Uint8Array | null, name: string): void {
     const look = this.look;
@@ -120,8 +117,8 @@ export class CreatorScreen {
     } else {
       const labelW = 92;
       const small = 22;
-      this.barX = x + PAD + labelW + small + 4;
-      this.barW = inner - labelW - small * 2 - 8;
+      const barX = x + PAD + labelW + small + 4;
+      const barW = inner - labelW - small * 2 - 8;
       const rowH = Math.min(ROW, Math.floor((y0 + h - y - 96) / REGION_COUNT));
       for (let r = 0; r < REGION_COUNT; r++) {
         const key = KEY_CREATOR_REGION + r * 4;
@@ -129,10 +126,8 @@ export class CreatorScreen {
         const down = f.add(key + 1, K_BUTTON, x + PAD + labelW, y + 1, small, rowH - 3, S_BUTTON);
         down.text = "-";
         down.interactive = true;
-        const bar = f.add(key + 2, K_BAR, this.barX, y + 5, this.barW, rowH - 11, S_STAMINA);
-        bar.value = (regionOf(look, r) + 1) / 2;
-        bar.interactive = true;
-        const up = f.add(key + 3, K_BUTTON, this.barX + this.barW + 4, y + 1, small, rowH - 3, S_BUTTON);
+        slider(f,key+2,barX,y+1,barW,rowH-3,(regionOf(look,r)+1)/2,.05,REGIONS[r]!.label,`${Math.round(regionOf(look,r)*100)}%`);
+        const up = f.add(key + 3, K_BUTTON, barX + barW + 4, y + 1, small, rowH - 3, S_BUTTON);
         up.text = "+";
         up.interactive = true;
         y += rowH;
@@ -161,27 +156,22 @@ export class CreatorScreen {
     if (seq === this.sent && seq !== 0) this.refused = !ok;
   }
 
+  value(key: number, value: number): boolean {
+    const index=key-KEY_CREATOR_REGION;
+    if(index<0 || index>=REGION_COUNT*4 || index%4!==2 || !Number.isFinite(value))return false;
+    setRegion(this.look,index>>2,Math.max(0,Math.min(1,value))*2-1); return true;
+  }
+
   /** `kind` is 0 for down, 1 for up, 2 for move. Returns true if `key` is one of this screen's nodes. */
-  pointer(kind: number, key: number, x: number, session: ClientSession): boolean {
+  pointer(kind: number, key: number, session: ClientSession): boolean {
     if (key < KEY_CREATOR_PANEL || key >= KEY_CREATOR_REGION + REGION_COUNT * 4) return false;
     const look = this.look;
-    if (kind === 1) {
-      this.drag = -1;
-      return true;
-    }
+    if (kind !== 0) return true;
     const region = key >= KEY_CREATOR_REGION ? Math.floor((key - KEY_CREATOR_REGION) / 4) : -1;
     const part = key >= KEY_CREATOR_REGION ? (key - KEY_CREATOR_REGION) % 4 : -1;
-    if (kind === 2) {
-      if (this.drag >= 0 && region === this.drag && part === 2) setRegion(look, region, ((x - this.barX) / this.barW) * 2 - 1);
-      return true;
-    }
     if (region >= 0) {
       if (part === 1) setRegion(look, region, regionOf(look, region) - STEP);
       else if (part === 3) setRegion(look, region, regionOf(look, region) + STEP);
-      else if (part === 2) {
-        this.drag = region;
-        setRegion(look, region, ((x - this.barX) / this.barW) * 2 - 1);
-      }
       return true;
     }
     const pick = (base: number, count: number, field: number): boolean => {

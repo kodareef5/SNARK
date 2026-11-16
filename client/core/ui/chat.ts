@@ -2,7 +2,7 @@
 
 import { MAX_CHAT_CHARS, TEXT_GLOBAL, TEXT_LOCAL, TEXT_MOTD, TEXT_NOTICE, TEXT_TRIBE } from "../../../shared/net/protocol.ts";
 import type { ClientSession } from "../session.ts";
-import { columns, lineHeight, wrap, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
+import { lineHeight, wrapText, K_BUTTON, K_INPUT, K_PANEL, type UiFrame } from "./nodes.ts";
 import { S_CHAT, S_CHAT_LOCAL, S_CHAT_NOTICE, S_CHAT_PANEL, S_CHAT_TAG, S_CHAT_TRIBE, S_INPUT } from "./style.ts";
 
 export const KEY_CHAT_PANEL = 13;
@@ -112,15 +112,14 @@ export class ChatState {
     const w = Math.min(WIDTH, f.width - MARGIN * 2);
     const lh = lineHeight(S_CHAT);
     const inputH = lineHeight(S_INPUT) + 6;
-    const cols = columns(w - 8, S_CHAT);
-    const sig = `${cols}:${this.version}`;
+    const sig = `${w}:${this.version}`;
     if (sig !== this.rowsFor) {
       this.rowsFor = sig;
       this.rows.length = 0;
       const parts: string[] = [];
       for (const line of this.lines) {
         parts.length = 0;
-        wrap((PREFIX[line.channel] ?? "") + line.text, cols, parts);
+        wrapText((PREFIX[line.channel] ?? "") + line.text, w - 8, S_CHAT, parts);
         for (const text of parts) this.rows.push({ text, channel: line.channel, at: line.at, hold: line.hold });
       }
     }

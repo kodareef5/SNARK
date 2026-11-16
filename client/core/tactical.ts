@@ -238,6 +238,8 @@ function cellColour(palette: Uint8Array, tint: number, band: number, whose: numb
 
 /** A picture of the map as a screen shows it: terrain, then structure cells, then the grid and its numbers. */
 export class MapPicture {
+  private readonly coordinates: boolean;
+  constructor(coordinates = true) { this.coordinates = coordinates; }
   /** Made anew at the size asked for, so its pixels are the screen's and a line is never lost to scaling. */
   readonly image: UiImage = { width: 0, height: 0, data: new Uint8ClampedArray(0), version: 0 };
   readonly view = new MapView();
@@ -374,15 +376,15 @@ export class MapPicture {
     for (let k = Math.max(0, Math.ceil((view.u0 * 100) / step - 1e-6)); k * step <= 100; k++) {
       const px = Math.round((((k * step) / 100 - view.u0) / view.du) * N);
       if (px >= N) break;
-      for (let py = top; py < bottom; py++) darken(out, py * N + px, (k * step) % 10 === 0 ? 110 : 56);
-      if ((k * step) % sparse === 0) this.number(k * step, px + 2, top + 2, big);
+      for (let py = top; py < bottom; py++) darken(out, py * N + px, this.coordinates ? (k * step) % 10 === 0 ? 110 : 56 : 26);
+      if (this.coordinates && (k * step) % sparse === 0) this.number(k * step, px + 2, top + 2, big);
     }
     for (let k = Math.max(0, Math.ceil((view.v0 * 100) / step - 1e-6)); k * step <= 100; k++) {
       const py = Math.round((((k * step) / 100 - view.v0) / view.dv) * N);
       if (py >= N) break;
-      for (let px = left; px < right; px++) darken(out, py * N + px, (k * step) % 10 === 0 ? 110 : 56);
+      for (let px = left; px < right; px++) darken(out, py * N + px, this.coordinates ? (k * step) % 10 === 0 ? 110 : 56 : 26);
       // The top row belongs to the longitudes.
-      if ((k * step) % sparse === 0 && py - top > 7 * big) this.number(k * step, left + 2, py + 2, big);
+      if (this.coordinates && (k * step) % sparse === 0 && py - top > 7 * big) this.number(k * step, left + 2, py + 2, big);
     }
   }
 
@@ -408,7 +410,7 @@ export class MapPicture {
 /** The map as one client shows it: the minimap's picture and zoom, and the map screen's picture, zoom and the place it looks at. */
 export class Chart {
   readonly tiles: TileSource;
-  readonly mini = new MapPicture();
+  readonly mini = new MapPicture(false);
   readonly full = new MapPicture();
   miniZoom: number;
   fullZoom = 0;
