@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { CORE_CONTENT } from "../../content/core.ts";
 import { CRUISE_CONTENT, CRUISE_LAYOUT, cruisePoint, cruiseStatics } from "../../content/landmarks/cruise.ts";
-import { cruiseLayoutFaults, type CruiseLayout, type CruisePrototype } from "../../content/landmarks/cruise-layout.ts";
+import { cruiseLayoutFaults, cruiseRoomEntryFaults, type CruiseLayout, type CruisePrototype, type CruiseRoute } from "../../content/landmarks/cruise-layout.ts";
 import { compileContent } from "../../shared/content/registry.ts";
 import { STRUCT_UNITS } from "../../shared/coords.ts";
 import { placeStatics } from "../../shared/world/mapfile.ts";
@@ -77,4 +77,16 @@ test("advertised room footprints retain real occupied area and their reachable e
   const p = room.routeTarget;
   expect(cruiseLayoutFaults({ ...CRUISE_LAYOUT, rooms: [{ ...room, footprint: { ...footprint,
     holes: [[[p[0] - .1, p[2] - .1], [p[0] + .1, p[2] - .1], [p[0] + .1, p[2] + .1], [p[0] - .1, p[2] + .1]]] } }] }).join("\n")).toContain("target is outside");
+});
+
+test("room entry associations reject arbitrary bound edges while accepting real path crossings and shared entry nodes", () => {
+  const route: CruiseRoute = { id: "approach", kind: "room", from: "outside", to: "physical", anchors: [[0, 14, 0], [0, 14, 10]], clearWidth: 2, clearHeight: 2.6 };
+  const alias: CruiseRoute = { ...route, id: "alias", from: "physical", to: "named", anchors: [[0, 14, 10], [0, 14, 10]] };
+  const room = { ...CRUISE_LAYOUT.rooms[0]!, id: "test entry", node: "named", entry: [0, 14, 5] };
+  expect(cruiseRoomEntryFaults([room], [route, alias])).toEqual([]);
+  expect(cruiseRoomEntryFaults([{ ...room, entry: [3, 14, 5] }], [route, alias])).toEqual(["test entry: entry must meet its authored access path (nearest 3.000 m)"]);
+  expect(cruiseRoomEntryFaults([{ ...room, node: "missing" }], [route, alias])[0]).toContain("authored access path");
+  // A tempting unrelated corridor cannot validate an entry belonging to this room's own approach.
+  const other: CruiseRoute = { ...route, id: "unrelated", from: "other", to: "elsewhere", anchors: [[3, 14, 0], [3, 14, 10]] };
+  expect(cruiseRoomEntryFaults([{ ...room, entry: [3, 14, 5] }], [route, alias, other])).toHaveLength(1);
 });

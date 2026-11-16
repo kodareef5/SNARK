@@ -97,6 +97,21 @@ export function cruiseAccessRoutes(routes: readonly CruiseRoute[]): ReadonlyMap<
   }
   return result;
 }
+/** Room entries describe actual walking-path crossings; separate portal metadata retains physical jamb centres. */
+export function cruiseRoomEntryFaults(rooms: readonly CruiseRoom[], routes: readonly CruiseRoute[]): string[] {
+  const access = cruiseAccessRoutes(routes), faults: string[] = [];
+  for (const room of rooms) {
+    let nearest = Infinity;
+    for (const route of access.get(room.node) ?? []) for (let i = 1; i < route.anchors.length; i++) {
+      const a = route.anchors[i - 1]!, b = route.anchors[i]!, dx = b[0]! - a[0]!, dy = b[1]! - a[1]!, dz = b[2]! - a[2]!;
+      const length = dx * dx + dy * dy + dz * dz, p = room.entry;
+      const t = length > 0 ? Math.max(0, Math.min(1, ((p[0]! - a[0]!) * dx + (p[1]! - a[1]!) * dy + (p[2]! - a[2]!) * dz) / length)) : 0;
+      nearest = Math.min(nearest, Math.hypot(p[0]! - a[0]! - t * dx, p[1]! - a[1]! - t * dy, p[2]! - a[2]! - t * dz));
+    }
+    if (!(nearest <= .002)) faults.push(`${room.id}: entry must meet its authored access path (nearest ${nearest.toFixed(3)} m)`);
+  }
+  return faults;
+}
 export function cruiseParts(source: CruiseParts): ShapeLook {
   return { boxes: source.boxes?.map(b => ({ at: cruiseTuple(b.at), half: cruiseTuple(b.half) })),
     hulls: source.hulls?.map(h => ({ corners: h.points.map(cruiseTuple) })) };
