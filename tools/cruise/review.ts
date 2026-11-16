@@ -119,8 +119,8 @@ export function cruiseReviewShots(map: MapData): readonly CruiseShot[] {
   const park = localViews.find(view => view.id === "central_park")!;
   shots.push({ name: "07-open-canyon", feet: p(park.at), target: p([0, 46, 45]), mode: "walk", tier: "high" },
     { name: "08-starboard-profile", feet: spectator([-400, 42, 0]), target: focus, mode: "spectator", tier: "high", framePoints },
-    { name: "09-bow-quarter", feet: spectator([-140, 68, 370]), target: p([0, 32, 30]), mode: "spectator", tier: "high", framePoints },
-    { name: "10-stern-quarter", feet: spectator([-140, 68, -370]), target: p([0, 32, -30]), mode: "spectator", tier: "high", framePoints });
+    { name: "09-bow-quarter", feet: spectator([-250, 68, 270]), target: p([0, 32, 30]), mode: "spectator", tier: "high", framePoints },
+    { name: "10-stern-quarter", feet: spectator([-250, 68, -270]), target: p([0, 32, -30]), mode: "spectator", tier: "high", framePoints });
   // Close native-mesh detail view, intentionally cropped at the ordinary FOV.
   // Whole-envelope certification belongs to the separate 400 m profiles.
   shots.push({ name: "12-near-starboard-profile", feet: spectator([-185, 48, 0]), target: focus, mode: "spectator", tier: "high" });
