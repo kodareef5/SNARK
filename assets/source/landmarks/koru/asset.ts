@@ -5,17 +5,23 @@ import layout from "../../../../content/landmarks/koru-layout.json" with { type:
 import { LANDMARK_TRIANGLES, PIECE_TRIANGLES } from "../../../../tools/art/check.ts";
 import type { PieceSpec, PiecesAsset } from "../../../../tools/art/spec.ts";
 
-const piece = (id: string, triangles: readonly (readonly [number, number])[]): PieceSpec => ({ id, object: id.slice("koru:".length), triangles: triangles.map(([, n]) => n) });
-const doors = layout.modules.filter((m) => m.category === "door").map((m) => m.id);
-const sails = layout.motion.parts.map((p) => p.mesh);
+const budget = (rule: readonly (readonly [number, number])[]): number[] => rule.map(([, n]) => n);
+const name = (id: string): string => id.slice("koru:".length);
+// A cell's finest level is drawn past 50 m, so it is held to that distance's budget. Its three far levels are model.py's:
+// they show what is seen from outside, the hull, decks, deckhouse walls and rig, and leave the rooms behind the white
+// walls and the glass, which is dark from outside. What they leave or thin that shows is under 2.5, 6 and 13 cm across
+// (rail posts and port rims, then rails, rigging and ports, then the rig's facets), which a measure of points cannot
+// judge: it counts the rooms.
+const cell = (id: string): PieceSpec => ({ id, object: name(id), triangles: budget(LANDMARK_TRIANGLES).slice(1), errors: [0.025, 0.06, 0.13] });
+const part = (id: string): PieceSpec => ({ id, object: name(id), triangles: budget(PIECE_TRIANGLES) });
 
 export default {
   kind: "pieces",
   source: { scripts: ["model.py"] },
-  pieces: [...layout.cells.map((c) => piece(c.id, LANDMARK_TRIANGLES)), ...[...doors, ...sails].map((id) => piece(id, PIECE_TRIANGLES))],
+  pieces: [...layout.cells.map((c) => cell(c.id)), ...layout.modules.filter((m) => m.category === "door").map((m) => part(m.id)), ...layout.motion.parts.map((p) => part(p.mesh))],
   materials: {
     surfaces: { base: "tex/surfaces_base.png", normal: "tex/surfaces_normal.png", packed: "tex/surfaces_packed.png", height: "tex/surfaces_height.png" },
   },
-  flat: 3,
-  budgets: { triangles: LANDMARK_TRIANGLES.map(([, n]) => n), texture: { top: 2048, megabytes: 64 } },
+  flat: 1,
+  budgets: { triangles: budget(LANDMARK_TRIANGLES), texture: { top: 2048, megabytes: 64 } },
 } satisfies PiecesAsset;

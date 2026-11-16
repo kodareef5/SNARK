@@ -48319,7 +48319,7 @@
         "id": "outer",
         "kind": "jib",
         "sheet": "koru:sail_outer",
-        "camber": 1.0,
+        "camber": 0.85,
         "tack": [
           0.0,
           8.960621,
@@ -48340,7 +48340,7 @@
         "id": "inner",
         "kind": "jib",
         "sheet": "koru:sail_inner",
-        "camber": 0.8,
+        "camber": 0.7,
         "tack": [
           0.0,
           8.305948,
